@@ -409,14 +409,9 @@ test("registry-aware classification governs file decoding, operation gates, and 
     }
 });
 
-// --- #524 (mimetypes#523) consumer regression: recursive descent over a DEEP parse tree ------
-// The prod break: json-p3's default maxRecursionDepth (50) threw InvalidExpressionError on
-// `$..x` over any code entry's deepJson (a 2-line file is ~350 nodes) — and matcher.ts maps
-// that error class to 400 "malformed matcher", blaming the MODEL for a correct expression.
-// Supplier-side fix is unbounded recursion over trusted trees; this pins the CONSUMER contract
-// (a $.. READ over a real code entry through the dispatch path succeeds) so a future engine
-// swap that reintroduces a depth ceiling fails HERE, loudly, not in a live daemon.
-test("recursive-descent jsonpath over a deep code-entry parse tree matches — never a depth-capped 400 (#524)", async () => {
+// {§mimetype-query} Recursive descent over a deep structural projection remains
+// a valid matcher rather than becoming a depth-capped 400.
+test("recursive-descent jsonpath over a deep code-entry parse tree matches", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         const k = new Worker();

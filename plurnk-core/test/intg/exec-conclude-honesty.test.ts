@@ -1,8 +1,6 @@
-// Stream-conclude honesty (execs-search#3's service half, found in a dogfood hang): a driver that
-// REJECTS must still conclude its stream (uncaught, the subscription sat open forever and the
-// floating spawn promise was an unhandled rejection), and a driver that resolves 2xx UNDER ABORT
-// must not be believed — the service's own abort knowledge outranks the claim (a reaped execution is not
-// a success). A stub runtime drives the REAL dispatch path; nothing is mocked below the executor.
+// {§scheme-subscriptions} {§exec-stream} A rejecting executor must still conclude
+// its stream, and cancellation outranks an executor's later 2xx claim. A stub
+// runtime drives the real dispatch path; nothing below the executor is mocked.
 
 import test from "node:test";
 import assert from "node:assert/strict";

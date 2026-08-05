@@ -14,7 +14,7 @@ import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 import type { EntryAddress, SchemeCtx } from "@plurnk/plurnk-schemes";
 import Owner from "../core/Owner.ts";
 
-// #240 — an executor IS a scheme; its output lives at <tag>://. Each discovered
+// {§executor-scheme-output} An executor is a scheme; its output lives at <tag>://. Each discovered
 // executor registers this face under its runtime tag, so READ/FIND <tag>://<coord>
 // read PRIOR output, scoped to the tag's stored entries via the executor's OWN
 // manifest (name = the tag) — fixing the latent mis-scope where the shared `exec`
@@ -22,8 +22,8 @@ import Owner from "../core/Owner.ts";
 // face never executes (the worker stays on EXEC); process-KILL by coordinate and the
 // COPY/MOVE source-read are the only cross-cutting bits — KILL delegates to the one
 // Exec handler that owns the spawn-abort state, the source-read is tag-scoped here.
-// Every tag — sh, search, sqlite, MCP — reads through this one uniform path; an executor
-// is a pure PRODUCER (run() writes channels), never a read/find face (execs#13).
+// Every tag reads through this one uniform path; an executor is a pure producer
+// whose run() writes channels, never a read/find face.
 export default class ExecOutputScheme extends CoreSchemeAdapterBase {
     #executor: Executor;
     #exec: Exec;

@@ -1,9 +1,9 @@
-// @graph (plurnk-service#186) — FIND graph dialect over symbol_defs/symbol_refs.
+// {§relation-indexed-dialects} FIND graph dialect over symbol_defs/symbol_refs.
 //   @<sym  referrers — entries that REFERENCE sym
 //   @>sym  referents — entries DEFINING what sym references
 //   @sym   neighborhood — def ∪ referrers ∪ referents
-// Symbol rows derive at the EDIT/write hook (EntryGraph.populate via mimetypes
-// symbols+references channels); resolution is name-match across (workspace, scheme).
+// Symbol rows derive from mimetype symbols/references during persistent-index
+// maintenance; resolution is name-match across (workspace, scheme).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -56,7 +56,7 @@ const seed = async () => {
 const find = (db: import("../../src/core/Db.ts").Db, workspaceId: number, workerId: number, raw: string) =>
     new Worker().find(findStmt(url(""), graph(raw)), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
 
-test("[#640-graph-readiness] graph FIND reports an incomplete persistent index instead of silently dropping entries", async () => {
+test("graph FIND reports an incomplete persistent index instead of silently dropping entries", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `graph-readiness-${crypto.randomUUID()}`);

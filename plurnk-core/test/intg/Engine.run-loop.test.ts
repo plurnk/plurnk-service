@@ -238,8 +238,7 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
             contextWindow: 100000,
             responses: [
                 response([editStmt("/state", "from turn 1"), sendStmt(102, "stored")]),
-                // READ continues (SEND[102]) — its result folds into turn 3, then delivered. (A same-turn
-                // READ + SEND[200] is a parser-rejected shape, grammar#51 — no longer an engine gate.)
+                // READ continues (SEND[102]); its result enters turn 3, where it can be observed.
                 response([readStmt("/state"), sendStmt(102, "reading")]),
                 response([sendStmt(200, "retrieved")]),
             ],

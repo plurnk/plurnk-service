@@ -544,7 +544,7 @@ export default class Dispatcher {
             // content-level outcomes such as 203.
             return await this.#handleReadFanout(statement, schemeCtx, { workerId, loopId, turnId, sequence, origin, onDispatch });
         } else {
-            // SPEC {§scheme-surface} + plurnk-schemes#1: action-entry-as-outcome. Scheme-handler
+            // {§scheme-surface-exception-500} Scheme-handler
             // exceptions become the action-entry's outcome (status 500), not a
             // thrown bubble. The log_entry is the durable record; engine never
             // skips it. Logging failures (#writeLog throws) are NOT caught —

@@ -260,7 +260,7 @@ export default class EntryFind {
         } else if (statement.body === null) {
             matches = candidates.map((c) => ({ pathname: c.pathname, matches: [] }));
         } else if (statement.body.dialect === "graph") {
-            // @graph (plurnk-service#186): body is `@<sym` / `@>sym` / `@sym`. EntryGraph resolves
+            // {§relation-indexed-dialects} Body is `@<sym` / `@>sym` / `@sym`. EntryGraph resolves
             // the relation across (workspace, scheme), each as a (file, span); intersect with the
             // in-scope candidates (target glob + tags) for the final set.
             const scopedCandidates = resolveSearchCandidates(

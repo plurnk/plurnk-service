@@ -4,7 +4,7 @@ import type { PackageAttributions } from "@plurnk/plurnk-meta";
 import type { SchemeManifest } from "./types.ts";
 
 // The executor contract surface we consume (a BaseExecutor subclass). We bind
-// to the contract, not the framework's class identity. #240 — the executor is also
+// to the contract, not the framework's class identity. Under {§executor-scheme-output}, the executor is also
 // the scheme face for its output, so it exposes `manifest` (OutputScheme-derived,
 // name = the tag) + `defaultChannel`.
 export interface Executor {
@@ -42,10 +42,9 @@ export interface RegistryEntry {
 // host actually has, instead of stamping all of them with the first tag's
 // probe. Probes are cheap + local (command -v / env read / `gh auth status`),
 // so per-tag costs nothing. A probe that rejects or exceeds its timeout
-// degrades that tag to unavailable — it never crashes boot. SPEC {§scheme};
-// plurnk-service#181, #185.
+// degrades that tag to unavailable — it never crashes boot. {§exec-registry-resolves}
 export default class ExecutorRegistry {
-    readonly #byTag: Map<string, RegistryEntry>;   // own copy — runtime-registration (#289) mutates it in place
+    readonly #byTag: Map<string, RegistryEntry>;   // own copy — runtime registration mutates it in place
     readonly #attributions: readonly string[]; // {§attribution-discovery-placeholder}
 
     constructor(byTag: ReadonlyMap<string, RegistryEntry>, attributions: readonly string[] = []) {
@@ -57,9 +56,9 @@ export default class ExecutorRegistry {
     // discover -> probe -> build; this is the setup door for a daemon module whose runtime names
     // depend on operator configuration. The caller owns availability; the SchemeRegistry face is registered
     // separately (registerRuntimeScheme), keeping the reserved/cross-family arbitration one-owned there.
-    // Fail-hard on a tag already registered — one name, one owner (mirrors #240 boot policy).
+    // Fail hard on a tag already registered: one name, one owner ({§executor-runtime-declaration}).
     register(tag: string, entry: RegistryEntry): void {
-        if (this.#byTag.has(tag)) throw new Error(`executor tag '${tag}' is already registered — one name, one owner (#289)`);
+        if (this.#byTag.has(tag)) throw new Error(`executor tag '${tag}' is already registered — one name, one owner`);
         this.#byTag.set(tag, entry);
     }
 
@@ -82,14 +81,14 @@ export default class ExecutorRegistry {
             skipped = [],
         } = await (discoverFn ?? (() => discover({ cwd })))();
 
-        // #229 trust gate: discover() skips untrusted third-party packages
+        // {§plugin-trust-boundary} discover() skips untrusted third-party packages
         // (PLURNK_PLUGINS_TRUSTED_ONLY) and reports them here — note each, mirror
         // of SchemeRegistry's untrusted-scheme warning. Discovered, not loaded.
         for (const name of skipped) {
             console.warn(`exec discovery: '${name}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
         }
 
-        // #259 - Git lockout. PLURNK_SERVICE_GIT_ALLOWED=0 must drop every
+        // {§membership-git-flags} PLURNK_SERVICE_GIT_ALLOWED=0 must drop every
         // Git-capability executor entirely: a denied host neither dispatches
         // EXEC[git]/EXEC[isogit] nor teaches them through the tools sheet.
         const gitDenied = process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1";
@@ -149,7 +148,7 @@ export default class ExecutorRegistry {
         });
         try {
             // Hand the probe our abort signal — the finally reaps its child on resolve OR timeout,
-            // so a slow --version write can't EPIPE after the host tears down (execs#16).
+            // so a slow --version write cannot EPIPE after the host tears down ({§executor-probe}).
             return await Promise.race([executor.probe(controller.signal), timeout]);
         } catch (error) {
             return { available: false, detail: error instanceof Error ? error.message : String(error) };

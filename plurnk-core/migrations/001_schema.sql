@@ -418,7 +418,7 @@ CREATE TABLE IF NOT EXISTS entry_tags (
 CREATE INDEX IF NOT EXISTS entry_tags_tag ON entry_tags (tag);
 
 -- symbol_defs
--- @graph NODES (plurnk-service#186). Code symbol definitions, populated
+-- @graph NODES ({§relation-indexed-dialects}). Code symbol definitions, populated
 -- once per content-addressed derivation from mimetypes'
 -- `symbols` channel. Qualified path = container ? container || '.' || name : name.
 CREATE TABLE IF NOT EXISTS symbol_defs (
@@ -435,7 +435,7 @@ CREATE TABLE IF NOT EXISTS symbol_defs (
 CREATE INDEX IF NOT EXISTS symbol_defs_name ON symbol_defs (name);
 
 -- symbol_refs
--- @graph EDGES (plurnk-service#186), from mimetypes' `references` channel.
+-- @graph EDGES ({§relation-indexed-dialects}), from mimetypes' `references` channel.
 -- name = edge TARGET; container = the SOURCE def's full qualified path (the
 -- @> join key; module-level → NULL); kind ∈ import|call|instantiate|inherit|
 -- type|use (frozen, edge metadata only — traversal is kind-agnostic).
@@ -453,14 +453,14 @@ CREATE TABLE IF NOT EXISTS symbol_refs (
 CREATE INDEX IF NOT EXISTS symbol_refs_name   ON symbol_refs (name);
 CREATE INDEX IF NOT EXISTS symbol_refs_source ON symbol_refs (derivation_id, container);
 
--- derivation_fts (~semantic FTS half — plurnk-service#186)
+-- derivation_fts (~semantic keyword fallback; {§relation-indexed-dialects})
 -- Keyword/content index over a derivation's readable content; rowid IS derivations.id.
 -- Explicit keyword fallback when no embedder is installed. Vector search never
 -- consults this table: semantic recall is exhaustive over complete vectors.
 CREATE VIRTUAL TABLE IF NOT EXISTS derivation_fts USING fts5(content);
 
--- derivation_embeddings (~semantic vector half — plurnk-service#186; Project
--- Semantics chunking). One canonical wire vector ({§mimetype-embedding-wire}) per CHUNK: a derivation tiles into N chunks,
+-- derivation_embeddings (~semantic vectors; {§relation-indexed-dialects}).
+-- One canonical wire vector ({§mimetype-embedding-wire}) per CHUNK: a derivation tiles into N chunks,
 -- each addressed by its <L> line range (line_start..line_end) and embedded
 -- separately, so a large body is fully searchable instead of truncated at the
 -- embedder's window. line_start/line_end are stored for Project Findings to expose;

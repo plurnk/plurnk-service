@@ -1796,7 +1796,7 @@ export default class Engine {
     // Split the wire-level ProviderResponse into the two destinations:
     // packet.assistant gets the model's emission (content, ops, reasoning);
     // Turn columns get the call-metadata (usage, finishReason, model).
-    // SPEC {§provider-surface} / plurnk-providers#1: text-fragment scraping policy lives
+    // {§provider-surface} Text-fragment scraping policy lives
     // here — engine owns the parse and the scraping rule, providers stay
     // grammar-unaware.
     //

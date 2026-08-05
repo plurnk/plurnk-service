@@ -1,4 +1,4 @@
-// Process-KILL (plurnk-service#203). A backgrounded (host-effect) exec is
+// {§stream-control} A backgrounded host-effect exec is
 // addressable by its stamped coordinate and killable via the same controller
 // abort loop.cancel rides. This proves the 200 case end-to-end: a real `sleep`
 // spawned, killed mid-flight, and the spawn drained — not just the routing.

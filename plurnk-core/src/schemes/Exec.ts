@@ -53,7 +53,7 @@ interface ExecAttrs {
 }
 
 // Executors are discovered + probed at boot into ExecutorRegistry and reach
-// the scheme through ctx.executors (plurnk-service#181). Each runtime tag
+// the scheme through ctx.executors ({§exec-registry-resolves}). Each runtime tag
 // resolves to its sibling executor; the scheme itself stays runtime-agnostic.
 
 // The local path a subprocess EXEC's `(target)` slot names — a bare local path or a file:/// URL (both
@@ -479,8 +479,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         }
 
         // Resolve the runtime's executor from the boot registry, then seed
-        // channels from its declared topology (Q1(b) in plurnk-service#174 —
-        // executor declares, scheme honors). Each executor declares its own
+        // channels from its declared topology ({§executor-channels}). Each executor declares its own
         // shape (subprocess → stdout/stderr; search → results; etc.).
         if (core.executors === undefined) {
             throw new InvalidOperationResultError("An accepted EXEC proposal has no executor registry.");
@@ -560,7 +559,7 @@ export default class Exec extends CoreSchemeAdapterBase {
 
     // Bridge the executor's sink-style contract (write/setState/emit)
     // onto plurnk-service's storage primitives (appendToChannel,
-    // setChannelState, ctx.pushNotice). Per plurnk-service#174 Q3,
+    // setChannelState, ctx.pushNotice). Under {§executor-results},
     // executor Notices flow through the same engine path as
     // grammar parse advisories: emit, buffer, next packet, and live notify.
     //

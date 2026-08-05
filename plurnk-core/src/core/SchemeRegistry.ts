@@ -163,8 +163,8 @@ export default class SchemeRegistry {
         return this.manifestFor(scheme)?.defaultChannel ?? "body";
     }
 
-    // The scheme directory — the `schemes` packet section (below tools). grammar
-    // 0.49+ teaches grammar/dialects only, not the scheme set (grammar#239), so the
+    // {§schemes-directory} The `schemes` packet section sits below tools. Language
+    // teaching covers grammar and dialects, not the installed scheme set, so the
     // service advertises what schemes exist at packet-time. Each handler that ships a
     // `manifest.example` contributes ONE terse line — its canonical usage — plus a
     // pull doc when it ships `manifest.documentation` (materialized at

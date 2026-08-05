@@ -44,9 +44,9 @@ flowchart LR
 | **entry** | The unit of canonical state. Identity: `(workspace, owner, scheme, pathname)` ({§entry-identity-no-null}). Holds one or more `channels` of content plus `tags` and `attributes`. |
 | **channel** | A named content buffer on an entry. Examples: `body`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, `tokens`, `state`. |
 | **scope** | A scheme-manifest declaration ignored by core; registrations are discovered at boot and are not persisted. Entry sharing and privacy are owner-based; #80 owns retiring this residual axis. |
-| **scheme** | An addressed capability family + handler. Built-ins include `worker`, `prompt`, `log`, and bare/file paths; discovered schemes and executor-runtime tags extend that set. Internal `exec` routes the EXEC op but is not an addressable model namespace. Consumption surface {§scheme-surface}; author contract: [plurnk-schemes](https://github.com/plurnk/plurnk-schemes). |
-| **mimetype** | A channel's content type. Drives the handler that produces the structural projections (`symbols`, `deepJson`, `deepXml`). Consumption surface {§mimetype-surface}; author contract: [plurnk-mimetypes](https://github.com/plurnk/plurnk-mimetypes). |
-| **provider** | An LLM transport implementing the `@plurnk/plurnk-providers` `Provider` interface. Core supplies an assembled request and generation context; the provider owns endpoint adaptation and normalized response evidence. Consumption surface {§provider}; author contract: [plurnk-providers](https://github.com/plurnk/plurnk-providers). |
+| **scheme** | An addressed capability family + handler. Built-ins include `worker`, `prompt`, `log`, and bare/file paths; discovered schemes and executor-runtime tags extend that set. Internal `exec` routes the EXEC op but is not an addressable model namespace. Consumption surface {§scheme-surface}; author contract: [plurnk-schemes](../plurnk-schemes/SPEC.md). |
+| **mimetype** | A channel's content type. Drives the handler that produces the structural projections (`symbols`, `deepJson`, `deepXml`). Consumption surface {§mimetype-surface}; author contract: [plurnk-mimetypes](../plurnk-mimetypes/SPEC.md). |
+| **provider** | An LLM transport implementing the `@plurnk/plurnk-providers` `Provider` interface. Core supplies an assembled request and generation context; the provider owns endpoint adaptation and normalized response evidence. Consumption surface {§provider}; author contract: [plurnk-providers](../plurnk-providers/SPEC.md). |
 
 ### §state-terms State / status
 
@@ -649,7 +649,7 @@ each tag as opaque.
 ### §provider-instantiation Provider instantiation
 
 §provider-instantiation-alias-resolution Model alias parsing and provider construction live in
-[`@plurnk/plurnk-providers`](https://github.com/plurnk/plurnk-providers).
+[`@plurnk/plurnk-providers`](../plurnk-providers/SPEC.md).
 `src/core/ProviderInstantiate.ts` delegates to that owner and adds only
 service-side caching, per-loop selection, context-cap handling, and local GBNF
 verification. Cataloged providers use Models.dev metadata and official AI SDK
@@ -2571,7 +2571,7 @@ One parsed content matcher crosses three ownership layers:
 | `@plurnk/plurnk-schemes/Matcher` | Map framework results and typed failures to the universal scheme-result contract.                                       |
 | Core `Matcher.matchCandidates`   | Apply that operation adapter across caller-supplied `{key, content, mimetype}` candidates and preserve source identity. |
 
-`~semantic` and `@graph` are indexed relation dialects and never route through
+§relation-indexed-dialects `~semantic` and `@graph` are indexed relation dialects and never route through
 the content matcher. Candidate composition has no dependency on the table that
 stored a resource.
 

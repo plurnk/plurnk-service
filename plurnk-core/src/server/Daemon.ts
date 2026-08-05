@@ -1141,7 +1141,7 @@ export default class Daemon {
         }
 
         // Discover + probe the installed executor siblings, then hand the
-        // registry to the engine for exec dispatch (plurnk-service#181). The
+        // registry to the engine for exec dispatch ({§exec-registry-resolves}). The
         // shell is the default runtime, so its executor must boot usable.
         const executors = await ExecutorRegistry.build({ defaultRuntime: "sh", cwd: this.#discoveryCwd });
         this.#engine.setExecutors(executors);

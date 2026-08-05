@@ -1,6 +1,6 @@
 // Unit tests for matcher.ts. Dialect dispatch, projection, AND source-line
 // provenance all live in @plurnk/plurnk-mimetypes, reached through the single
-// high-level Mimetypes.query(input, ParsedBodyMatcher) (mimetypes#42). What
+// high-level Mimetypes.query(input, ParsedBodyMatcher) ({§mimetype-query}). What
 // plurnk-service owns the orchestration around that call: building the parsed
 // matcher, preserving source/readable coordinates, and mapping statuses.
 

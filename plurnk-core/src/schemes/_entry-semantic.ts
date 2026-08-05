@@ -11,8 +11,8 @@ import {
     type TokenizerResolution,
 } from "@plurnk/plurnk-mimetypes";
 
-// mimetypes' package entry doesn't re-export EmbedderInfo (asked on mimetypes#51) — project it
-// from the contract method itself so this stays the REAL type, never a local fiction.
+// Project EmbedderInfo from the contract method so this stays the exact public
+// type even though the package entry does not export a named alias.
 type EmbedderInfo = NonNullable<Awaited<ReturnType<Mimetypes["embedderInfo"]>>>;
 import EntryChunk from "./_entry-chunk.ts";
 import type { SearchCandidate } from "./_search-candidate.ts";

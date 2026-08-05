@@ -345,15 +345,8 @@ test("story: pull just one line out of a file", { timeout: TIMEOUT }, async () =
     } finally { await story.cleanup(); }
 });
 
-// --- xpath / jsonpath demos (auto-activate when plurnk-mimetypes#3 lands) ---
-//
-// These demos exercise the dialect the model is MOST likely to reach for
-// given the prompt: natural language that asks for structured extraction
-// against JSON or HTML. Currently jsonpath/xpath return 501 in matcher.ts;
-// the model will see that and fall back to regex / EXEC / full-read.
-// The assertions still validate the outcome (the answer reaches SEND);
-// when the sibling lands and matcher.ts wires through, the model will
-// reach for jsonpath/xpath directly and the same demos pass via that path.
+// Structured matcher demos. The assertions pin the user-visible answer without
+// prescribing whether the model uses JSONPath, XPath, another matcher, or a complete READ.
 
 test("story: list every admin user from a JSON file", { timeout: TIMEOUT }, async () => {
     // data/users.json: [{name:Alice,role:admin}, {name:Bob,role:viewer}].

@@ -1,4 +1,4 @@
--- ~semantic (plurnk-service#186): exhaustive cosine ranking over every complete
+-- {§relation-indexed-dialects} Exhaustive cosine ranking over every complete
 -- derivation in scope. FTS is retained only as the explicit no-embedder fallback;
 -- it never gates vector recall.
 

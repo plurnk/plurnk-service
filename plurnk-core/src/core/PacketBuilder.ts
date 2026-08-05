@@ -263,8 +263,8 @@ export default class PacketBuilder {
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         // plurnk.md (grammar/dialects) ONLY — the definition is the hot-path grammar.
         // The scheme catalogue is its own `schemes` section below tools ({§schemes-directory}),
-        // NOT appended here: grammar 0.49+ is scheme-agnostic, so the service advertises
-        // the scheme set at packet-time (grammar#239 item 7) via SchemeRegistry.teach().
+        // NOT appended here: the language teaching is scheme-agnostic, so the service advertises
+        // the installed scheme set at packet-time via SchemeRegistry.teach().
         const system_definition = compactDefinitionTables(byRole("system"));
         // The prompt section sources the loop's prompt:///<loop>/<N> entries.
         // Inject and turn-1 initialization write them. Bare callers that
@@ -378,8 +378,8 @@ export default class PacketBuilder {
         return (tag: string) => Policy.isEnabled(tag, execs);
     }
 
-    // The ## Registered Executable Tools capability sheet (SPEC {§tools}). Each available executor
-    // tag contributes its self-documenting example (plurnk-execs#7); the closed heading distinguishes
+    // The ## Registered Executable Tools capability sheet. Each available executor
+    // tag contributes its self-documenting example; the closed heading distinguishes
     // registered selectors from the open-ended general examples above it. {§tools-capability-sheet}
     #collectTools(
         workspaceEnabled: (tag: string) => boolean,
@@ -399,7 +399,7 @@ export default class PacketBuilder {
         if (executors !== undefined) {
             const excluded = docsExcludeSet();
             const runtimes = executors.availableRuntimes();
-            // execs#24 / #367: the sheet's lines are EXEC-usage examples, keyed on the 'exec' scheme
+            // {§tools-capability-sheet} The sheet's lines are EXEC-usage examples, keyed on the 'exec' scheme
             // (the op face, excludedInAsk). When inactive, say so POSITIVELY (a prose notice): plurnk.md
             // still teaches EXEC as language, and silent absence measurably invites confabulated runtimes.
             const execActive = activeSchemes === undefined || activeSchemes.has("exec");

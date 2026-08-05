@@ -34,7 +34,7 @@ const COMPLETION_RESERVE = 8192;
 // zero-cost pre-generate hard-413, _floor-probe.ts) and pins ceiling = floor × factor —
 // teaching growth re-calibrates the pin instead of breaking it. TIGHT keeps the small
 // fixtures under real curation pressure; jumbo gets the same factor over its own floor.
-const TIGHT_FACTOR = 1.6; // floor x factor: enough headroom to absorb a stroke-and-recover (op-repetition rambles, grammar#49/50) while the small fixtures still curate under real pressure
+const TIGHT_FACTOR = 1.6; // enough headroom for recovery while the small fixtures still curate under real pressure
 
 interface BudgetRun {
     db: Db;

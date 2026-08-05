@@ -1,5 +1,4 @@
-// #321 — usage.reasoning persists per turn (from providers#28): the reasoning-token count was
-// the one usage field the turn row dropped, so cost accounting couldn't see reasoning spend.
+// {§tokenomics-provider-usage} Provider reasoning usage persists as turn and digest evidence.
 
 import test from "node:test";
 import assert from "node:assert/strict";

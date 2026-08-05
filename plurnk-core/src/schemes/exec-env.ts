@@ -9,8 +9,8 @@
 //
 // A denylist, not an allowlist: a subprocess needs the long tail of inherited vars
 // (PATH, HOME, LANG, the project's own keys); only plurnk's two owned families are
-// stripped. The service owns this policy; the executor (plurnk-execs SubprocessExecutor,
-// plurnk-execs#8) spawns with the env it is handed.
+// stripped. The service owns this policy; the subprocess executor spawns with
+// the environment it is handed.
 
 import { providerCredentialEnvNames } from "@plurnk/plurnk-models";
 

@@ -542,7 +542,7 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
     } finally { await db.close(); }
 });
 
-// SPEC {§scheme-surface} / plurnk-schemes#1: action-entry-as-outcome — scheme-handler
+// {§scheme-surface-exception-500} Scheme-handler
 // exceptions finalize the action-entry at 500, not bubble up.
 
 test("Engine.dispatch: scheme handler that throws → action-entry at status 500 (action-entry-as-outcome)", async () => {

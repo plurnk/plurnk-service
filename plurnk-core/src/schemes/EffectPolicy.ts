@@ -6,9 +6,9 @@ export type ExecPolicy = "propose" | "auto";
 // lifecycle. The executor declares the FACT (does this invocation mutate the
 // host?); the service decides the POLICY (does it need a human gate?).
 //
-// Default (plurnk-service#182): `host` runs code / mutates the host → propose;
+// {§exec-host-proposes} `host` runs code / mutates the host → propose;
 // `read` (observes external state) and `pure` (no observable effect) are
-// side-effect-free → auto-run, no human in the loop. Conservative by
+// side-effect-free → auto-run, no human in the loop ({§exec-readpure-ungated}). Conservative by
 // construction — an undeclared/unknown effect classifies as `host` upstream
 // (BaseExecutor.effect defaults to host), so it lands here as propose.
 //

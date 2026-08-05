@@ -1,4 +1,4 @@
--- @graph (plurnk-service#186) — symbol_defs/refs population + @< / @> / @
+-- {§relation-indexed-dialects} symbol_defs/refs population + @< / @> / @
 -- resolution. Populated delete-then-insert per readable derivation by SearchIndex;
 -- queried by the FIND `graph` dialect via EntryGraph. Traversal is kind-agnostic
 -- (every ref is an edge; `kind` is edge metadata, never filtered here). 1-hop —

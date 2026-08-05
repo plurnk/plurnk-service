@@ -233,8 +233,8 @@ export default class Service {
             await daemon.start(); // the daemon owns no transport (#364) — the agui module opens the one listener
             if (agui === null) throw new Error("AG-UI module did not start");
             const aguiAddr = (agui as AguiModule).address();
-            // mimetypes#50 recontract: null ⇔ NO embedder (a remote embedder with an incomplete
-            // self-report returns info with the unknowns explicitly null — say which case this is).
+            // {§mimetype-embedding} null means no embedder; an active remote embedder
+            // reports unknown capabilities as null fields instead.
             const embedInfo = await daemon.mimetypes.embedderInfo();
             if (embedInfo === null) {
                 throw new Error(

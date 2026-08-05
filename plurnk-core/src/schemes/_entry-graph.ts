@@ -1,8 +1,8 @@
-// @graph (plurnk-service#186) — the symbol index behind the FIND `graph` dialect
+// {§relation-indexed-dialects} The symbol index behind the FIND `graph` dialect
 // (@<sym referrers / @>sym referents / @sym neighborhood). Files are first-class
 // channel-backed entries, so the index is uniform across worker:/// and file:/// with
 // no scheme special-casing. Traversal is kind-agnostic; 1-hop (the grammar's
-// `@<sym` surface). Cross-entry resolution is name-match (ctags-grade-plus per #186).
+// `@<sym` surface). Cross-entry resolution is name-match.
 //
 // Derivation does NOT happen at write — a scheme write never invokes the mimetypes
 // handler ({§mimetype}). SearchIndex extracts symbols and references from each readable

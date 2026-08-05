@@ -1,4 +1,4 @@
-// Effect-gating (plurnk-service#182): the executor declares its effect, the
+// {§exec-host-proposes} {§exec-readpure-ungated} The executor declares its effect; the
 // service owns the policy. `host` runtimes (sh/node/python, file-backed
 // sqlite) propose — a human gate. `read`/`pure` runtimes (search, :memory:
 // sqlite) auto-run ungated: no proposal, no notification — but, like every
@@ -37,7 +37,7 @@ const wire = async () => {
     const engine = new Engine({ db, schemes });
     const executors = await testExecutors();
     engine.setExecutors(executors);
-    schemes.registerRuntimeSchemes(executors); // #240 — register per-tag faces so READ <tag>:// resolves (mirrors Daemon boot)
+    schemes.registerRuntimeSchemes(executors); // {§executor-scheme-output} Register per-tag READ faces as daemon boot does.
     const workspaceId = await insertWorkspace(db, `effect-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "effect test");
