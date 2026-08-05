@@ -57,7 +57,8 @@ test("{§executor-probe} ExecutorRegistry preserves per-tag availability within 
     assert.equal(registry.entry("beta")?.available, false, "the absent tag did NOT ride alpha's probe");
     assert.equal(registry.entry("beta")?.detail, "not on PATH", "the absent tag carries its own probe detail");
     assert.deepEqual(registry.availableRuntimes(), ["alpha"], "only the present tag is offered to the model");
-    // #7: the self-documenting example flows through; absent → "" (not undefined).
+    // {§tools-capability-sheet}: the self-documenting example flows through;
+    // absent → "" (not undefined).
     assert.equal(registry.entry("alpha")?.example, "EXEC[alpha]:do a thing:EXEC", "the declared example is carried to the tools sheet");
     assert.equal(registry.entry("beta")?.example, "", "a tag with no example defaults to empty");
 });

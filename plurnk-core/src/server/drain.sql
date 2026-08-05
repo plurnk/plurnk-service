@@ -27,8 +27,8 @@ SELECT max_turns FROM loops WHERE id = $loop_id;
 -- PREP: drain_current_loop_for_worker
 -- The worker's current NON-TERMINAL loop — active (102) or parked (202). At most one per worker
 -- under drain semantics. Engine.inject uses it to write the prompt entry for the right loop's
--- next turn; including 202 lets an irc target a PARKED loop's resume turn (#55) instead of
--- orphaning it with a fresh loop. (102 preferred if both somehow exist.)
+-- next turn; {§methods-loop-run-fold-consistency} requires an IRC to target a PARKED loop's
+-- resume turn instead of orphaning it with a fresh loop. (102 preferred if both somehow exist.)
 SELECT id, sequence FROM loops
 WHERE worker_id = $worker_id AND status IN (102, 202)
 ORDER BY (status = 102) DESC, sequence ASC

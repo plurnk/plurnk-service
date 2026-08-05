@@ -224,7 +224,7 @@ test("EntrySemantic.deriveEmbeddings: empty PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS
     }
 });
 
-test("EntrySemantic.prepareEmbeddings: folds the embedder model id — a same-window model swap re-derives (#31)", async () => {
+test("{§semantic-embed-dedup}: a same-window model swap re-derives", async () => {
     const mk = (model: string) => ({ embedderInfo: async () => ({ dimension: 3, contextWindow: 1000, countTokens: wordCount, model }) }) as unknown as Mimetypes;
     const a = (await EntrySemantic.prepareEmbeddings(mk("e5@1"))).signature;
     const b = (await EntrySemantic.prepareEmbeddings(mk("e5@2"))).signature; // identical window + knobs, different model

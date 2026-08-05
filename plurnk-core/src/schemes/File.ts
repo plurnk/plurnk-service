@@ -48,11 +48,8 @@ type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string;
 type ApplyResult = ProposalApplyResult;
 
 // Workspace root for file ops is sourced from `workspaces.project_root`,
-// supplied by the client at workspace.create (headless is forever; issue
-// #150 wired the client-interface seam; F.1 added the column). Core doesn't guess —
-// the client owns workspace identity. If a workspace is headless
-// (project_root=null), file ops fail at 400; the client either supplies
-// a root or the op isn't appropriate for this workspace.
+// supplied at {§methods-workspace-create}. Under {§fs-namespace}, core never
+// guesses a root: headless workspaces fail file operations at 400.
 const loadWorkspaceRoot = async (db: Db, workspaceId: number): Promise<string | null> => {
     const row = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
     return row?.project_root ?? null;
@@ -335,10 +332,9 @@ export default class File extends CoreSchemeAdapterBase {
         return { ok: true, canonical, rel, fileExists, original, mimetype, baseSig, ...(admittedBy !== undefined ? { admittedBy } : {}) };
     }
 
-    // Edit op (task #42 canonical proposal consumer). Returns status=202
-    // with a udiff body for client review + attrs carrying the full patched
-    // content. Engine writes the proposed log entry, pauses dispatch, and
-    // calls applyResolution() (below) after the proposal accepts.
+    // {§membership-edit-write-cas}, {§proposal-202-pauses}: return status=202
+    // with a udiff body for client review and attrs carrying the full patched
+    // content. Engine pauses dispatch and calls applyResolution() after accept.
     async editBatch(statements: readonly EditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
         const failure = (
             code: string,
