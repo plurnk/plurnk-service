@@ -340,9 +340,10 @@ stamp. A representation is fresh only while both origin lifetime and operator
 ceiling permit it. Unknown cache extensions are inert. Stale content is never
 served, so `must-revalidate` requires no separate path.
 
-Outside the fresh window, direct READ sends stored ETag or Last-Modified
-validators. A 304 can restore the stored channels only when its validator
-corresponds to the nominated stored representation:
+Outside the fresh window, direct READ sends a stored ETag or Last-Modified only
+when that field is singular and syntactically valid. A 304 can restore the
+stored channels only when its validator corresponds to the nominated stored
+representation:
 
 | 304 validator                                         | Correspondence requirement                  |
 | ----------------------------------------------------- | ------------------------------------------- |

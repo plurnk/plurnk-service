@@ -63,10 +63,11 @@ the freshness shortcut and old validators instead of creating a variant store.
 Eligible content is served directly only while both the operator TTL and any
 origin `max-age` or `Expires` lifetime remain live. `no-cache` requires origin
 validation; `no-store` evidence remains in the log but supplies neither content
-nor validators to a later request. A 304 restores the stored channels only when
-its ETag or Last-Modified value identifies the nominated representation;
-otherwise acquisition fails without serving the stored body. A valid 304
-updates cache and validator metadata while preserving fields that describe the
+nor validators to a later request. Only singular, syntactically valid stored
+validators are sent. A 304 restores the stored channels only when its ETag or
+Last-Modified value identifies the nominated representation; otherwise
+acquisition fails without serving the stored body. A valid 304 updates cache
+and validator metadata while preserving fields that describe the
 already-processed body. Responses to POST, PUT, and DELETE are not reused as
 later GET representations. A projected GET is reused only while the installed
 reader has the same projection identity; changing it forces a full acquisition
