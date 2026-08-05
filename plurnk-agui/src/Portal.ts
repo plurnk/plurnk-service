@@ -1,4 +1,4 @@
-// The in-process module's orchestration engine (plurnk-agui#2). Composes the seam +
+// {§agui-daemon-client} The in-process module's orchestration engine composes the seam +
 // the render router + the HITL core into the worker flow: subscribe ONCE to the event
 // source, fan each event to the bound thread for its workspace, drive/cancel loops via
 // the seam, and route standard resume entries to resolveProposal. Transport-agnostic —

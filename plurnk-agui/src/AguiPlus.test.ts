@@ -1,4 +1,4 @@
-// The AG-UI+ choreography, unit-tested as logic (plurnk-agui#2, WS-1) — de-risks the
+// {§agui-proposal-resolve} The AG-UI+ choreography is unit-tested as logic to de-risk the
 // terminate-resume HITL before any module code. The load-bearing assertion is the
 // two-Run round-trip: a proposal terminates AG-UI Run N as a tool-call, and AG-UI Run N+1's
 // tool-result maps back to the EXACT pending proposal via the toolCallId.

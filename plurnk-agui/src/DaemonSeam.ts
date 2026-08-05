@@ -1,4 +1,4 @@
-// My coupling to the daemon's in-process client-interface seam (service#355). The
+// {§agui-daemon-client} The daemon's in-process client-interface seam. The
 // module depends on THIS interface — the committed, tested contract — never the
 // Daemon class's guts. It grows as the service lands hooks (loop-control,
 // workspace/envelope, reads, fork, execs/auth, the boot plug-point); today it carries
@@ -79,7 +79,7 @@ export interface DaemonSeam {
     // Contracts {§entry-read-result}: the thread worker supplies the reader perspective.
     readEntry(args: { workspaceId: number; workerId: number; target: string; channel?: string; offset?: number }): Promise<EntryReadResult>;
     forkWorker(args: { workspaceId: number; workerId: number; name?: string }): Promise<{ workerId: number; workerName: string | null; parentWorkerId: number }>;
-    // The third door (svc#366): a named, empty-log, model-origin root worker — a fresh
+    // {§agui-thread-binding} A named, empty-log, model-origin root worker — a fresh
     // conversation over the same world. ensureModelWorker = the stable default,
     // forkWorker = branch with history, createConversationWorker = fresh thread.
     createConversationWorker(args: { workspaceId: number; name?: string }): Promise<{ workerId: number; workerName: string }>;

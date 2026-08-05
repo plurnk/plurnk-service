@@ -1,4 +1,4 @@
-// The standard's own client as the conformance gate (plurnk-agui#2 WS-5): HttpAgent
+// {§agui-daemon-client} The standard's own client is the conformance gate: HttpAgent
 // from @ag-ui/client — the exact engine under `npx create-ag-ui-app` frontends —
 // drives a REAL model worker against the in-process module. Their verifier validates
 // every event; a spec drift is THEIR rejection, not our opinion. Env-gated like the

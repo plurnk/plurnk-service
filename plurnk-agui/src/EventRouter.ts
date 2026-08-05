@@ -1,4 +1,4 @@
-// The module's per-worker render core (plurnk-agui#2). Routes a daemon event
+// {§agui-projection} The module's per-worker render core routes a daemon event
 // (method, params) from the seam's event source → AG-UI events, composing the proven
 // projections: log/entry → core vocab, loop/terminated → RUN_FINISHED + budget STATE,
 // notices/stream → CUSTOM. Per-AG-UI-Run state (turn tracking, model-worker binding) lives in

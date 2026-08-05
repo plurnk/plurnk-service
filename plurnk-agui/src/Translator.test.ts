@@ -121,7 +121,7 @@ test("the budget STATE_DELTA carries the daemon's numbers verbatim", () => {
     const tr = t();
     const term: TerminatedNotification = { workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2, 3, 4], usage: { promptTokens: 4321, completionTokens: 99, costUsd: 0, contextTokens: 4321, promptBudget: 35840, meta: {} } };
     const delta = tr.terminated(term).find((e) => e.type === "STATE_DELTA") as { delta: Array<{ path: string; value?: unknown }> };
-    assert.equal(delta.delta.find((d) => d.path === "/budget/promptBudget")?.value, 35840, "the effective prompt budget (service#345), never recomputed");
+    assert.equal(delta.delta.find((d) => d.path === "/budget/promptBudget")?.value, 35840, "the effective prompt budget is never recomputed");
     assert.equal(delta.delta.find((d) => d.path === "/budget/contextTokens")?.value, 4321);
 });
 

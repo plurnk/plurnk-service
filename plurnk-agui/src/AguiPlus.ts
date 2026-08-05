@@ -1,5 +1,5 @@
-// The AG-UI+ projection (single-interface rendering) — prototyped + unit-tested
-// standalone ahead of the in-process module (plurnk-agui#2, WS-1). Pure functions:
+// {§agui-projection} The AG-UI+ projection is unit-tested independently of the
+// in-process module. Pure functions:
 // engine state → AG-UI events, and the inverse resume-mapping. No transport, no I/O
 // — so it ports into the in-process module unchanged when the seam lands.
 //

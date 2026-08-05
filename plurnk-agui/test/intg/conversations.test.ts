@@ -1,4 +1,4 @@
-// TWO CONVERSATIONS OVER ONE WORLD (the machine model's core split, svc#366 landed):
+// {§agui-thread-binding} TWO CONVERSATIONS OVER ONE WORLD:
 // two threads name the same workspace; each gets its OWN worker (its own history), and the
 // world — the workspace filesystem — is SHARED: an EDIT made through thread A is READable
 // through thread B (the environment door). No model needed: client ops (op.parse)

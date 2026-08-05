@@ -334,7 +334,8 @@ non-preflight request must carry that exact value as an
 reading. A missing or mismatched credential returns the stable 401
 `bearer-token-required` Problem.
 
-Failures before SSE headers are sent use `application/problem+json` with exact
+§agui-http-failure Failures before SSE headers are sent use
+`application/problem+json` with exact
 RFC 9457 Problem Details. Once SSE has opened, `CUSTOM plurnk.problem` preserves
 that same object and `RUN_ERROR` maps it to the standard AG-UI fields. The custom
 event and `plurnk.terminated.result.problem` are lossless; `RUN_ERROR.code` and

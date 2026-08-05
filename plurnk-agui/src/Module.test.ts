@@ -97,7 +97,7 @@ const waitForFixture = async (barrier: Promise<void>, detail: () => string): Pro
     }
 };
 
-test("a workspace's stream events fan to every open AG-UI Run (never last-binder-wins) — svc#504", async () => {
+test("a workspace's stream events fan to every open AG-UI Run (never last-binder-wins)", async () => {
     const { seam, emit } = mockSeam();
     const firstRun = Promise.withResolvers<void>();
     const bothRuns = Promise.withResolvers<void>();
@@ -821,7 +821,7 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
     } finally { await mod.close(); }
 });
 
-test("WORKSPACE=WORLD, AG-UI THREAD=CONVERSATION: the workspace prop selects the world; the thread resolves to a worker (svc#366)", async () => {
+test("WORKSPACE=WORLD, AG-UI THREAD=CONVERSATION: the workspace prop selects the world; the thread resolves to a worker", async () => {
     const attaches: number[] = [];
     const created: Array<{ name?: string; projectRoot?: string | null }> = [];
     const ensured: number[] = [];
@@ -1010,7 +1010,7 @@ test("loop.cancel is a REAL action kind — cancels the model worker's drain (bo
     } finally { await mod.close(); }
 });
 
-// ── AG-UI THREAD ↔ CORE WORKER (svc#366): threadId is the conversation ───────
+// {§agui-thread-binding} AG-UI THREAD ↔ CORE WORKER: threadId is the conversation.
 // threadId == workspace name → the model worker (the default conversation, unchanged).
 // A DISTINCT threadId names its own conversation worker within the world: found by
 // name if it exists, minted via createConversationWorker if it doesn't — the name is

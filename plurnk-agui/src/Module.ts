@@ -1,4 +1,4 @@
-// The in-process transport module (plurnk-agui#2) — what the daemon's boot plug-point
+// {§agui-daemon-client} The in-process transport module is what the daemon's boot plug-point
 // activates: registerModule(aguiModule(opts)) hands this the CoreSeam handle; it opens
 // the AG-UI+ HTTP/SSE listener and owns the client interface from there.
 //
@@ -254,7 +254,7 @@ export default class Module {
                 writeHttpProblem(res, problem);
                 return;
             }
-            // Post-headers throw (svc#480): the SSE is already open, so a JSON body is
+            // {§agui-http-failure} The SSE is already open, so a JSON body is
             // invisible to the event parser. Preserve a contract Problem exactly when
             // one exists; unexpected exceptions become one generic boundary failure.
             for (const event of runErrorEvents(problem)) {
@@ -271,7 +271,7 @@ export default class Module {
     // REQUIRED: a worker has no existence without a world, so its absence is a contract
     // violation the client must fix — never a workspace forged from the threadId.
     // The threadId is the CONVERSATION over that world — resolved to a worker by
-    // #conversationWorker (svc#366 landed: the three doors are ensureModelWorker, forkWorker,
+    // #conversationWorker ({§agui-thread-binding}: the three doors are ensureModelWorker, forkWorker,
     // createConversationWorker).
     async #envelope(threadId: string, forwarded?: Record<string, unknown>): Promise<{ env: ClientEnvelope; reattached: boolean }> {
         const workspace = forwarded?.workspace;
@@ -381,7 +381,7 @@ export default class Module {
 
         const { env, reattached } = await this.#envelope(input.threadId, forwarded);
         const workspaceId = env.workspaceId;
-        // AG-UI thread ↔ worker (svc#366): the threadId is the conversation over the
+        // {§agui-thread-binding} The threadId is the conversation over the
         // world. threadId == workspace name binds the model worker (the default conversation);
         // a distinct threadId names its own worker: found by name, else minted via
         // createConversationWorker. The name is the identity at BOTH levels.
@@ -514,7 +514,7 @@ export default class Module {
             finish();
         });
         } catch (err) {
-            // Post-headers throw inside the AG-UI Run (svc#480, completed): the frame alone is
+            // {§agui-http-failure} After headers, the frame alone is
             // not enough — the heartbeat interval and the Portal binding are live, and a
             // throw that escapes past finish() leaks them forever (the drill-hang). emit()
             // writes the terminal frame AND finish()es on RUN_ERROR — one door out.

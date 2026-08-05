@@ -1,4 +1,4 @@
-// The in-process HITL core (service#355 hooks B + C + A-resolve; plurnk-agui#2 WS-1).
+// {§agui-proposal-resolve} The in-process HITL core.
 // Subscribes to the daemon's event source, renders each stopped-world proposal as an
 // AG-UI tool-call (via AguiPlus), re-surfaces a workspace's pending proposals on
 // (re)connect, and maps standard resume entries back to resolveProposal. The

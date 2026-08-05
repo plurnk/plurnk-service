@@ -1,4 +1,4 @@
-// THE go-live smoke (plurnk-agui#2): the in-process transport module, activated
+// {§agui-daemon-client} The go-live smoke: the in-process transport module, activated
 // through the daemon's boot plug-point (registerModule → the CoreSeam handle), drives
 // a REAL model worker through the AG-UI+ single interface — no WebSocket, no bridge
 // process, no DaemonClient. Gated on a configured model supplied to the runner;
