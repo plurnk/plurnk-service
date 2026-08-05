@@ -544,10 +544,11 @@ test("worker IRC rejects contract-invalid delegator flags before inheritance (#1
     } finally { await db.close(); }
 });
 
-// Dispatch-path coverage (#282): KILL of an owner-addressed entry must DELETE it, NOT
-// cancel the worker — and stay self-only. Driven through engine.dispatch (the real routing),
-// not a bare Worker instance, because the bug lived in Dispatcher.#handleKill's worker branch.
-test("entry KILL: a child naming upward is 404 (no existence leak); an ancestor sees but cannot write (403); the worker survives — #282", async () => {
+// {§worker-control-addressing} {§worker-read-scope} {§worker-write-scoping}: KILL of an
+// owner-addressed entry deletes the entry rather than cancelling the worker and obeys the same
+// ancestry gates as other entry mutations. Drive the real dispatch route that distinguishes an
+// authority-only control address from an entry path.
+test("entry KILL: a child naming upward is 404; an ancestor sees but cannot write (403); the worker survives", async () => {
     const db = await openMigrated();
     try {
         const { injectWorker } = recordingInjectWorker();
