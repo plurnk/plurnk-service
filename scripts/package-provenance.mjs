@@ -3,6 +3,7 @@ import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs, promisify } from "node:util";
+import { packageArtifactViolations } from "./package-artifacts.mjs";
 
 const run = promisify(execFile);
 const root = path.resolve(import.meta.dirname, "..");
@@ -101,6 +102,13 @@ try {
         const packedViolations = mismatches(dir, candidate);
         if (packedViolations.length > 0) {
             throw new Error(`${manifest.name}: packed manifest violates provenance:\n  ${packedViolations.join("\n  ")}`);
+        }
+        if (!Array.isArray(record.files)) {
+            throw new Error(`${manifest.name}: npm pack returned no file projection`);
+        }
+        const artifactViolations = packageArtifactViolations(dir, record.files.map(({ path }) => path));
+        if (artifactViolations.length > 0) {
+            throw new Error(`${manifest.name}: packed artifacts violate their projection:\n  ${artifactViolations.join("\n  ")}`);
         }
         console.log(`  packed ${manifest.name}`);
     }

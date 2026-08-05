@@ -59,6 +59,11 @@ emission-only work in `build:dist`, and runs the complete build from `prepack`.
 The root package-build policy and release gates enforce this projection; do not
 introduce package-local cleanup variants.
 
+Build inputs are runtime package inputs. Keep test-only and private harness
+helpers under their test or bench owner rather than compiling them into `dist`.
+When runtime code loads a module by exact path instead of through an export,
+assert that path in the root packed-artifact projection.
+
 ## Monorepo contracts
 
 - JSON Schema is authoritative for shared wire shapes.
