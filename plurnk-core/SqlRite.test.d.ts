@@ -276,7 +276,7 @@ export class SqlRiteSync {
 	worker_count_active: SqlRiteSyncPreparedStatements;
 	worker_name_count: SqlRiteSyncPreparedStatements;
 	worker_name_claim: SqlRiteSyncPreparedStatements;
-	worker_name_get_root: SqlRiteSyncPreparedStatements;
+	worker_name_get_default_conversation: SqlRiteSyncPreparedStatements;
 	test_insert_workspace: SqlRiteSyncPreparedStatements;
 	test_insert_worker: SqlRiteSyncPreparedStatements;
 	test_insert_loop: SqlRiteSyncPreparedStatements;
@@ -487,6 +487,7 @@ export class SqlRiteSync {
 	test_workers_insert_with_parent: SqlRiteSyncPreparedStatements;
 	test_workers_insert_with_parent_returning: SqlRiteSyncPreparedStatements;
 	test_workers_insert_returning: SqlRiteSyncPreparedStatements;
+	test_workers_insert_default_conversation: SqlRiteSyncPreparedStatements;
 	test_workers_insert_cost: SqlRiteSyncPreparedStatements;
 	test_workers_insert_version: SqlRiteSyncPreparedStatements;
 	test_workers_get_by_workspace: SqlRiteSyncPreparedStatements;
@@ -747,7 +748,7 @@ export default class SqlRite {
 	worker_count_active: SqlRitePreparedStatements;
 	worker_name_count: SqlRitePreparedStatements;
 	worker_name_claim: SqlRitePreparedStatements;
-	worker_name_get_root: SqlRitePreparedStatements;
+	worker_name_get_default_conversation: SqlRitePreparedStatements;
 	test_insert_workspace: SqlRitePreparedStatements;
 	test_insert_worker: SqlRitePreparedStatements;
 	test_insert_loop: SqlRitePreparedStatements;
@@ -958,6 +959,7 @@ export default class SqlRite {
 	test_workers_insert_with_parent: SqlRitePreparedStatements;
 	test_workers_insert_with_parent_returning: SqlRitePreparedStatements;
 	test_workers_insert_returning: SqlRitePreparedStatements;
+	test_workers_insert_default_conversation: SqlRitePreparedStatements;
 	test_workers_insert_cost: SqlRitePreparedStatements;
 	test_workers_insert_version: SqlRitePreparedStatements;
 	test_workers_get_by_workspace: SqlRitePreparedStatements;

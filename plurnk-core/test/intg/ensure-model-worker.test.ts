@@ -20,3 +20,33 @@ test("{§methods-model-worker}, {§worker-auto-name}, #159: concurrent ensureMod
         } finally { ws.close(); }
     });
 });
+
+test("{§methods-model-worker}, {§methods-conversation-worker}: a fresh root cannot claim the stable default", async () => {
+    await withDaemon(null, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "fresh-before-default" });
+            const workspaceId = (created.result as { id: number }).id;
+            const fresh = await daemon.createConversationWorker({ workspaceId, name: "thread-first" });
+
+            const [a, b] = await Promise.all([
+                daemon.ensureModelWorker(workspaceId),
+                daemon.ensureModelWorker(workspaceId),
+            ]);
+
+            assert.notEqual(a, fresh.workerId, "the named fresh conversation remains a distinct root");
+            assert.equal(a, b, "concurrent default ensures resolve one stable identity");
+            assert.equal(await daemon.ensureModelWorker(workspaceId), a, "the durable default remains stable");
+            const roots = await db.test_workers_by_workspace.all<{
+                id: number; origin: string; parent_worker_id: number | null; default_conversation: number;
+            }>({ workspace_id: workspaceId });
+            assert.deepEqual(
+                roots
+                    .filter(({ origin, parent_worker_id: parent }) => origin === "model" && parent === null)
+                    .map(({ id, default_conversation: isDefault }) => ({ id, isDefault })),
+                [{ id: fresh.workerId, isDefault: 0 }, { id: a, isDefault: 1 }],
+                "both roots remain separate and only the stable conversation owns the durable role",
+            );
+        } finally { ws.close(); }
+    });
+});

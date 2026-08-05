@@ -208,11 +208,11 @@ export default class Envelope {
 
     static async ensureModelWorker(db: Db, workspaceId: number): Promise<number> {
         // {§methods-model-worker}: idempotence lives at the seam, not in a client's
-        // connection cache. #186 tracks distinguishing this default from arbitrary fresh roots.
-        const worker = await WorkerName.ensureAutoRoot(db, {
+        // connection cache. The durable role, not root ordering or a name parse,
+        // distinguishes this default from arbitrary fresh conversations.
+        const worker = await WorkerName.ensureDefaultConversation(db, {
             workspaceId,
             prefix: "model",
-            origin: "model",
         });
         return worker.id;
     }

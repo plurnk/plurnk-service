@@ -449,7 +449,8 @@ SELECT rx FROM log_entries WHERE worker_id = $worker_id AND op = 'error';
 SELECT rx, status_rx FROM log_entries WHERE worker_id = $worker_id AND op = 'SEND';
 
 -- PREP: test_workers_by_workspace
-SELECT id, name, origin, parent_worker_id FROM workers WHERE workspace_id = $workspace_id ORDER BY id;
+SELECT id, name, origin, parent_worker_id, default_conversation
+FROM workers WHERE workspace_id = $workspace_id ORDER BY id;
 
 -- PREP: test_first_turn_for_loop
 SELECT packet FROM turns WHERE loop_id = $loop_id ORDER BY sequence LIMIT 1;

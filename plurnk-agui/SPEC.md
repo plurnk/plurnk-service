@@ -19,7 +19,8 @@ recompute them.
   violation the module rejects (400) - never a workspace forged from the `threadId`. The
   `threadId` is the conversation over that world, and the name is the identity at
   BOTH levels: `threadId` == the workspace name binds the workspace's model worker (the default
-  conversation, `ensureModelWorker` — origin identifies it, never a name parse); a DISTINCT
+  conversation, `ensureModelWorker` — its durable default-conversation role identifies it,
+  never a name parse or root ordering); a DISTINCT
   `threadId` names its own conversation worker — found by name if it exists (forks and prior
   conversations are addressable as threads), minted via `createConversationWorker`
   if it doesn't. The core workspace envelope carries only the workspace and selected client

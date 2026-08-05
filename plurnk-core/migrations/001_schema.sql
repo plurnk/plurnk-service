@@ -31,15 +31,21 @@ CREATE TABLE IF NOT EXISTS workers (
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
     cost_usd        REAL    NOT NULL DEFAULT 0 CHECK (cost_usd >= 0),
     origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', 'plurnk')),
+    -- {§methods-model-worker}: durable identity for the workspace's stable
+    -- default conversation; unrelated to its human-facing, reclaimable name.
+    default_conversation INTEGER NOT NULL DEFAULT 0 CHECK (default_conversation IN (0, 1)),
     -- {§env-delta-log-pull}: monotonic observation progress, not a private world snapshot.
     -- NULL means the worker has not established its first-turn baseline yet.
     ambient_event_cursor INTEGER      CHECK (ambient_event_cursor IS NULL OR ambient_event_cursor >= 0),
+    CHECK (default_conversation = 0 OR (origin = 'model' AND parent_worker_id IS NULL)),
     FOREIGN KEY (workspace_id)    REFERENCES workspaces(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_worker_id) REFERENCES workers(id)     ON DELETE CASCADE
 ) STRICT;
 
 CREATE        INDEX IF NOT EXISTS workers_workspace_id_created_at ON workers (workspace_id, created_at);
 CREATE        INDEX IF NOT EXISTS workers_parent_worker_id         ON workers (parent_worker_id);
+CREATE UNIQUE INDEX IF NOT EXISTS workers_workspace_default_conversation
+    ON workers (workspace_id) WHERE default_conversation = 1;
 -- NOT unique: a name is frozen per worker ({§machine-processes-worker-origin}) but RECLAIMABLE across
 -- time — a terminated worker keeps its name in permanent history while a fresh spawn reuses it;
 -- worker_resolve_by_name picks the newest. A LIVE collision is refused at the spawn gate (Worker.edit

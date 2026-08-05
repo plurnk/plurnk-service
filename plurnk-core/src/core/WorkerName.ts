@@ -68,21 +68,19 @@ export default class WorkerName {
         throw new Error(`Worker ordinal suffix '${suffix}' leaves no mintable name prefix.`);
     }
 
-    static async #root(
+    static async #defaultConversation(
         db: Db,
         workspaceId: number,
-        origin: WorkerOrigin,
     ): Promise<WorkerNameClaim | undefined> {
-        return await db.worker_name_get_root.get<WorkerNameClaim>({
+        return await db.worker_name_get_default_conversation.get<WorkerNameClaim>({
             workspace_id: workspaceId,
-            origin,
         });
     }
 
     static async #claimAuto(
         db: Db,
         options: AutoWorkerOptions,
-        rootOrigin: WorkerOrigin | null,
+        defaultConversation: boolean,
     ): Promise<WorkerNameClaim> {
         const { workspaceId, prefix, qualifier, parentWorkerId, origin } = options;
         const namePrefix = `${prefix}${qualifier === undefined ? "" : `-${qualifier}`}-%`;
@@ -98,12 +96,12 @@ export default class WorkerName {
                 name: WorkerName.ordinal(prefix, ordinal, qualifier),
                 parent_worker_id: parentWorkerId ?? null,
                 origin,
-                root_origin: rootOrigin,
+                default_conversation: defaultConversation ? 1 : 0,
             });
             if (claimed !== undefined) return claimed;
 
-            if (rootOrigin !== null) {
-                const existing = await WorkerName.#root(db, workspaceId, rootOrigin);
+            if (defaultConversation) {
+                const existing = await WorkerName.#defaultConversation(db, workspaceId);
                 if (existing !== undefined) return existing;
             }
             ordinal++;
@@ -113,17 +111,17 @@ export default class WorkerName {
     // A generated name is not minted until this atomic claim creates its worker.
     // Competing allocators retry only after losing the claim. {§worker-auto-name}
     static async claimAuto(db: Db, options: AutoWorkerOptions): Promise<WorkerNameClaim> {
-        return await WorkerName.#claimAuto(db, options, null);
+        return await WorkerName.#claimAuto(db, options, false);
     }
 
-    // The stable default conversation is both an auto-name allocation and a
-    // per-workspace root ensure; both predicates therefore share one write.
-    static async ensureAutoRoot(
+    // The stable default conversation is both an auto-name allocation and the
+    // workspace's one durable default role; both predicates share one write.
+    static async ensureDefaultConversation(
         db: Db,
-        options: Omit<AutoWorkerOptions, "parentWorkerId" | "qualifier">,
+        options: Omit<AutoWorkerOptions, "parentWorkerId" | "qualifier" | "origin">,
     ): Promise<WorkerNameClaim> {
-        const existing = await WorkerName.#root(db, options.workspaceId, options.origin);
+        const existing = await WorkerName.#defaultConversation(db, options.workspaceId);
         if (existing !== undefined) return existing;
-        return await WorkerName.#claimAuto(db, options, options.origin);
+        return await WorkerName.#claimAuto(db, { ...options, origin: "model" }, true);
     }
 }

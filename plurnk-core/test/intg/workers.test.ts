@@ -59,6 +59,54 @@ test("workers: root worker insert — null parent_worker_id, defaults populate",
     } finally { await db.close(); }
 });
 
+test("{§methods-model-worker}: one durable default-conversation role admits only a model root", async () => {
+    const db = await openMigrated();
+    try {
+        const uniqueWorkspaceId = await insertWorkspace(db, "ws-one-default-conversation");
+        await db.test_workers_insert_default_conversation.run({
+            workspace_id: uniqueWorkspaceId,
+            name: n("default"),
+            parent_worker_id: null,
+            origin: "model",
+        });
+        await assert.rejects(
+            () => db.test_workers_insert_default_conversation.run({
+                workspace_id: uniqueWorkspaceId,
+                name: n("second-default"),
+                parent_worker_id: null,
+                origin: "model",
+            }),
+            /UNIQUE constraint failed: workers\.workspace_id/,
+        );
+
+        const clientWorkspaceId = await insertWorkspace(db, "ws-client-not-default");
+        await assert.rejects(
+            () => db.test_workers_insert_default_conversation.run({
+                workspace_id: clientWorkspaceId,
+                name: n("client-default"),
+                parent_worker_id: null,
+                origin: "client",
+            }),
+            /CHECK constraint failed/,
+        );
+
+        const childWorkspaceId = await insertWorkspace(db, "ws-child-not-default");
+        const parent = await db.test_workers_insert_returning.get<{ id: number }>({
+            workspace_id: childWorkspaceId,
+            name: n("parent"),
+        });
+        await assert.rejects(
+            () => db.test_workers_insert_default_conversation.run({
+                workspace_id: childWorkspaceId,
+                name: n("child-default"),
+                parent_worker_id: parent?.id,
+                origin: "model",
+            }),
+            /CHECK constraint failed/,
+        );
+    } finally { await db.close(); }
+});
+
 test("workers: fork insert — non-null parent_worker_id pointing at root worker", async () => {
     const db = await openMigrated();
     try {

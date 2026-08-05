@@ -9,31 +9,28 @@ WHERE workspace_id = $workspace_id AND name LIKE $name_prefix;
 
 -- PREP: worker_name_claim
 -- Claiming the literal and creating its worker are one SQLite write statement.
--- The root predicate is enabled only by ensureAutoRoot; ordinary allocation
--- passes NULL and competes solely on the generated literal.
-INSERT INTO workers (workspace_id, name, parent_worker_id, origin)
-SELECT $workspace_id, $name, $parent_worker_id, $origin
+-- The default-conversation predicate is enabled only by
+-- ensureDefaultConversation; ordinary allocation passes 0 and competes solely
+-- on the generated literal.
+INSERT INTO workers (workspace_id, name, parent_worker_id, origin, default_conversation)
+SELECT $workspace_id, $name, $parent_worker_id, $origin, $default_conversation
 WHERE NOT EXISTS (
     SELECT 1
     FROM workers
     WHERE workspace_id = $workspace_id AND name = $name
 )
 AND (
-    $root_origin IS NULL OR NOT EXISTS (
+    $default_conversation = 0 OR NOT EXISTS (
         SELECT 1
         FROM workers
         WHERE workspace_id = $workspace_id
-          AND origin = $root_origin
-          AND parent_worker_id IS NULL
+          AND default_conversation = 1
     )
 )
 RETURNING id, name;
 
--- PREP: worker_name_get_root
+-- PREP: worker_name_get_default_conversation
 SELECT id, name
 FROM workers
 WHERE workspace_id = $workspace_id
-  AND origin = $origin
-  AND parent_worker_id IS NULL
-ORDER BY id
-LIMIT 1;
+  AND default_conversation = 1;
