@@ -79,6 +79,7 @@ test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases i
         PLURNK_PROVIDERS_REASONING: "off",
         PLURNK_PROVIDERS_REASONING_turboderp: "on",
         PLURNK_PROVIDERS_REASONING_BUDGET_TURBODERP: "4096", // case-folds like PLURNK_MODEL_ keys
+        PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE_TURBODERP: "think-tags",
         PLURNK_PROVIDERS_CONTEXT_WINDOW_turboderp: "8000",
         PLURNK_PROVIDERS_COMPLETION_RESERVE_turboderp: "4096",
         PLURNK_PROVIDERS_CONTEXT_WINDOW_other: "1",
@@ -86,6 +87,7 @@ test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases i
     const scoped = scopeEnvToAlias(env, "turboderp");
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING, "on");
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING_BUDGET, "4096");
+    assert.equal(scoped.PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE, "think-tags");
     assert.equal(scoped.PLURNK_PROVIDERS_CONTEXT_WINDOW, "8000");
     assert.equal(scoped.PLURNK_PROVIDERS_COMPLETION_RESERVE, "4096");
     assert.equal(scopeEnvToAlias(env, "plain").PLURNK_PROVIDERS_REASONING, "off"); // fallback intact

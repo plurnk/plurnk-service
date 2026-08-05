@@ -439,6 +439,141 @@ test("generate aggregates reasoning deltas under multiple field names", async ()
     assert.equal("reasoningEncrypted" in assistant, false); // open reasoning only -> field absent
 });
 
+test("{§provider-tagged-reasoning} explicit think-tags projects one streamed leading envelope and reclassifies usage", async () => {
+    const config = { ...injectedBase, reasoningResponseStyle: "think-tags" as const };
+    const p = new AiSdkProvider(config);
+    installFetch([
+        { choices: [{ delta: { content: "<thi" } }] },
+        { choices: [{ delta: { content: "nk>12345</th" } }] },
+        { choices: [{ delta: { content: "ink>abcde" }, finish_reason: "stop" }] },
+        { usage: { prompt_tokens: 3, completion_tokens: 10, total_tokens: 13 } },
+    ]);
+
+    const response = await p.generate({ workerId: "tagged-stream", messages: [] });
+
+    assert.equal(response.assistant.reasoning, "12345");
+    assert.equal(response.assistant.content, "abcde");
+    assert.deepEqual(response.assistant.usage, {
+        prompt: 3,
+        completion: 5,
+        reasoning: 5,
+        cached: 0,
+        total: 13,
+    });
+});
+
+test("{§provider-tagged-reasoning} explicit think-tags projects one buffered leading envelope", async () => {
+    installFetchJson({
+        model: "m",
+        choices: [{ message: { content: "<think>12345</think>abcde" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 3, completion_tokens: 10, total_tokens: 13 },
+    });
+    const config = { ...injectedBase, streaming: false, reasoningResponseStyle: "think-tags" as const };
+    const response = await new AiSdkProvider(config).generate({ workerId: "tagged-buffer", messages: [] });
+
+    assert.equal(response.assistant.reasoning, "12345");
+    assert.equal(response.assistant.content, "abcde");
+    assert.equal(response.assistant.usage.completion, 5);
+    assert.equal(response.assistant.usage.reasoning, 5);
+});
+
+test("{§provider-tagged-reasoning} an unclosed capped envelope is wholly reasoning in streamed and buffered responses", async () => {
+    const config = { ...injectedBase, reasoningResponseStyle: "think-tags" as const };
+    installFetch([
+        { choices: [{ delta: { content: "<think>unfinished" }, finish_reason: "length" }] },
+        { usage: { prompt_tokens: 3, completion_tokens: 8, total_tokens: 11 } },
+    ]);
+    const streamed = await new AiSdkProvider(config).generate({ workerId: "tagged-capped-stream", messages: [] });
+    assert.equal(streamed.assistant.reasoning, "unfinished");
+    assert.equal(streamed.assistant.content, "");
+    assert.deepEqual(streamed.assistant.usage, {
+        prompt: 3,
+        completion: 0,
+        reasoning: 8,
+        cached: 0,
+        total: 11,
+    });
+
+    mock.restoreAll();
+    installFetchJson({
+        model: "m",
+        choices: [{ message: { content: "<think>unfinished" }, finish_reason: "length" }],
+        usage: { prompt_tokens: 3, completion_tokens: 8, total_tokens: 11 },
+    });
+    const bufferedConfig = { ...config, streaming: false };
+    const buffered = await new AiSdkProvider(bufferedConfig).generate({ workerId: "tagged-capped-buffer", messages: [] });
+    assert.equal(buffered.assistant.reasoning, "unfinished");
+    assert.equal(buffered.assistant.content, "");
+    assert.equal(buffered.assistant.usage.completion, 0);
+    assert.equal(buffered.assistant.usage.reasoning, 8);
+});
+
+test("{§provider-tagged-reasoning} verbatim, non-leading, and structured-reasoning controls preserve literal tags", async () => {
+    installFetchJson({
+        model: "m",
+        choices: [{ message: { content: "<think>literal</think>answer" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 1, completion_tokens: 4, total_tokens: 5 },
+    });
+    const verbatim = await new AiSdkProvider({ ...injectedBase, streaming: false })
+        .generate({ workerId: "verbatim", messages: [] });
+    assert.equal(verbatim.assistant.content, "<think>literal</think>answer");
+    assert.equal(verbatim.assistant.reasoning, null);
+    assert.equal(verbatim.assistant.usage.completion, 4);
+
+    mock.restoreAll();
+    installFetchJson({
+        model: "m",
+        choices: [{ message: { content: "show <think>literal</think> exactly" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 1, completion_tokens: 5, total_tokens: 6 },
+    });
+    const taggedConfig = { ...injectedBase, streaming: false, reasoningResponseStyle: "think-tags" as const };
+    const nonLeading = await new AiSdkProvider(taggedConfig)
+        .generate({ workerId: "non-leading", messages: [] });
+    assert.equal(nonLeading.assistant.content, "show <think>literal</think> exactly");
+    assert.equal(nonLeading.assistant.reasoning, null);
+
+    mock.restoreAll();
+    installFetchJson({
+        model: "m",
+        choices: [{ message: {
+            content: "<think>literal visible bytes</think>",
+            reasoning_content: "structured reasoning",
+        }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 1, completion_tokens: 7, total_tokens: 8 },
+    });
+    const structured = await new AiSdkProvider(taggedConfig)
+        .generate({ workerId: "structured", messages: [] });
+    assert.equal(structured.assistant.content, "<think>literal visible bytes</think>");
+    assert.equal(structured.assistant.reasoning, "structured reasoning");
+});
+
+test("{§provider-tagged-reasoning} grammar evidence retains the exact pre-projection tagged sentence", async () => {
+    const content = "<think>reason</think><<PLAN::PLAN\n<<SEND[200]:done:SEND";
+    const config = {
+        ...injectedBase,
+        contextWindow: 640,
+        reasoning: { mode: "adaptive" as const, budget: null },
+        reasoningResponseStyle: "think-tags" as const,
+        reasoningStyle: "think" as const,
+        grammarStyle: "llamacpp" as const,
+    };
+    installFetch([{ choices: [{ delta: { content }, finish_reason: "stop" }] }]);
+
+    const response = await new AiSdkProvider(config).generate({
+        workerId: "tagged-grammar",
+        messages: [],
+        grammar: `root ::= ${JSON.stringify(content)}`,
+    });
+
+    assert.equal(response.assistant.reasoning, "reason");
+    assert.equal(response.assistant.content, "<<PLAN::PLAN\n<<SEND[200]:done:SEND");
+    assert.deepEqual(response.grammarEvidence, {
+        input: content,
+        contentStart: [..."<think>reason</think>"].length,
+        transported: true,
+    });
+});
+
 test("encrypted reasoning (non-streamed): encrypted entries normalize and text entries stay separate", async () => {
     // The live o4-mini-via-OpenRouter shape: reasoning null, one encrypted entry.
     installFetchJson({ model: "m", choices: [{ message: {
