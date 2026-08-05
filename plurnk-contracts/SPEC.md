@@ -349,6 +349,9 @@ Matching and folder-scope semantics remain runtime concerns.
 WHATWG decomposition and preserves them as ordered pairs so order and duplicate
 names survive. Local paths retain braces as ordinary path text. Scheme handlers,
 not the language parser, define the meaning and authorization of the metadata.
+The admitted AST retains exact values for execution; malformed-metadata visitor
+diagnostics identify only the structural fault and source position, never quote
+metadata contents or a native URL parser's input-bearing diagnostic.
 
 §worker-name The exported `WORKER_NAME` contract governs names minted for URI
 authority slots: a lowercase DNS label matching

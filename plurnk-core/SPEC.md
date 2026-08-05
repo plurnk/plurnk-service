@@ -1196,6 +1196,21 @@ The worker's **first** model row is exceptional: a born-OPEN turn-0 **exemplar**
 
 §kill-log-receipt-suppressed **A successful KILL of a log item is suppressed from the render too — same principle, different mechanism.** KILL is a real deletion (not a meta-op), but once it has executed against a `log://` target its tombstone is *spent*: the killed row is gone, and a receipt saying "I deleted it" is no forward-actionable context. So a **successful** `KILL` whose target is a **log item** is recorded in the DB (forensics) and suppressed from the packet, while its emission survives in the `model` mirror. Without suppression, every deleted row would create a replacement receipt, so per-row curation could not shrink the log. The suppression is **scoped to log targets**: a `KILL` of a `worker://` note, an `sh://` stream, or any stored artifact is a **world mutation**, not log housekeeping, and stays visible. A **failed** KILL (bad target, no match ≠ error but a malformed coordinate is) renders like any error.
 
+### §log-sensitive-request-evidence Durable request evidence
+
+Ordinary operation rows store a normalized statement projection, not exact
+provider evidence. This is a structural credential-slot rule, not general
+secret detection.
+
+| Surface                             | Durable rule                                                                                                                                                                                                                                    |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Operation target                    | Each non-null URL username or password becomes `__redacted__`; every request-metadata value becomes the same marker while names, order, duplicates, and represented slot presence survive. `raw` is rebuilt from that projected representation. |
+| COPY/MOVE destination               | The nested destination target receives the identical projection. URI component columns derive from the projected primary target, so columns and `tx` cannot disagree.                                                                           |
+| Query and authored body             | Preserved exactly; they are authored content and URI identity, not structurally identifiable credential slots.                                                                                                                                  |
+| Parser failure                      | Preserves the structural diagnosis and source position without quoting request-metadata contents ({§path-request-metadata}).                                                                                                                    |
+| Client, fork, packet, and digest    | Consume the stored projection; none owns a second redaction policy.                                                                                                                                                                             |
+| Provider attempt and `model` mirror | `turn_attempts.response` under {§emission-admission} and the folded row under {§model-entry-log-curation} remain exact forensic evidence and are the explicit exception.                                                                        |
+
 ### §copy COPY (engine-orchestrated)
 
 AST: `{ op: "COPY", target (source), lineMarker (source scope),

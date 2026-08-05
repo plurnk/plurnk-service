@@ -63,6 +63,7 @@ import {
     type MatchEvidence,
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
+import DurableStatement from "./DurableStatement.ts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
@@ -392,9 +393,8 @@ export default class Dispatcher {
     }
 
     // {§fs-answer-in-canon} — a file-class target's engine-authored address COLUMNS carry
-    // the canonical key; the tx JSON keeps the model's verbatim statement (history is never
-    // rewritten — the one surviving spelling). An un-canonicalizable spelling keeps its raw
-    // form: the row must still faithfully exist for the op that happened.
+    // the canonical key; tx keeps the operation spelling after the one durable request-evidence
+    // projection. An un-canonicalizable spelling keeps its raw form.
     async #canonColumns(target: { scheme: string | null; pathname: string | null }, workspaceId: number): Promise<void> {
         if (target.scheme !== null || target.pathname === null) return;
         const key = Namespace.canonicalizeSpelling(target.pathname, await this.#workspaceRoot(workspaceId));
@@ -2947,10 +2947,11 @@ export default class Dispatcher {
         statement: PlurnkStatement; result: DispatchResult;
         workspaceId: number; workerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
     }): Promise<number> {
-        const target = this.#extractTarget(statement.target);
-        await this.#canonColumns(target, workspaceId); // {§fs-answer-in-canon} — columns speak canon; tx below stays verbatim
-        const lineMarkerJson = "lineMarker" in statement && statement.lineMarker !== null
-            ? JSON.stringify(statement.lineMarker as LineMarker)
+        const durableStatement = DurableStatement.project(statement);
+        const target = this.#extractTarget(durableStatement.target);
+        await this.#canonColumns(target, workspaceId); // {§fs-answer-in-canon}
+        const lineMarkerJson = "lineMarker" in durableStatement && durableStatement.lineMarker !== null
+            ? JSON.stringify(durableStatement.lineMarker as LineMarker)
             : null;
         // A proposal (status 202 from a side-effecting op) is written to the log in
         // state='proposed' until the proposal lifecycle resolves it; attrs holds the
@@ -2999,7 +3000,7 @@ export default class Dispatcher {
             }
         }
         const attrs = JSON.stringify(attrsObj);
-        const txJson = JSON.stringify(statement);
+        const txJson = JSON.stringify(durableStatement);
         const rxJson = JSON.stringify(result);
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId,
@@ -3008,9 +3009,9 @@ export default class Dispatcher {
             sequence: sequence,
             origin,
             source: null,  // dispatch entries are self-authored; {§env-delta} deltas set this
-            op: statement.op,
-            suffix: statement.suffix,
-            signal: this.#signalToJson(statement.signal),
+            op: durableStatement.op,
+            suffix: durableStatement.suffix,
+            signal: this.#signalToJson(durableStatement.signal),
             scheme: target.scheme,
             username: target.username,
             password: target.password,

@@ -515,9 +515,8 @@ export default class AstBuilder {
         let url: URL;
         try {
             url = new URL(urlPart);
-        } catch (e) {
-            const detail = e instanceof Error ? e.message : target;
-            throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid URI in path: ${detail}`);
+        } catch {
+            throw new PlurnkParseError(pos.line, pos.column, "visitor", "invalid URI in path");
         }
         // Uniform WHATWG decomposition — no per-scheme authority allowlist. `://`
         // introduces an authority for every scheme; an authority-less reference
@@ -540,7 +539,7 @@ export default class AstBuilder {
         return parsed;
     }
 
-    // Split a target's trailing `{key: value}` header region into ordered pairs.
+    // Split a target's trailing `{key: value}` request-metadata region into ordered pairs.
     // Each block is one header (the value ends at `}`, so commas inside a value are
     // fine); the key is the text before the first `:`, the value the trimmed rest
     // (internal colons kept). Fail-hard on a malformed region (stray text, unclosed
@@ -551,20 +550,20 @@ export default class AstBuilder {
         let i = 0;
         while (i < meta.length) {
             if (meta[i] !== "{") {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid header metadata: expected \`{\` at \`${meta.slice(i)}\``);
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", "invalid request metadata: expected a `{name: value}` block");
             }
             const end = meta.indexOf("}", i + 1);
             if (end === -1) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid header metadata: unclosed \`{\` in \`${meta.slice(i)}\``);
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", "invalid request metadata: unclosed `{name: value}` block");
             }
             const inner = meta.slice(i + 1, end);
             const colon = inner.indexOf(":");
             if (colon === -1) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid header metadata: no \`:\` in \`{${inner}}\``);
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", "invalid request metadata: missing `:` separator");
             }
             const key = inner.slice(0, colon).trim();
             if (key.length === 0) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid header metadata: empty key in \`{${inner}}\``);
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", "invalid request metadata: empty name");
             }
             headers.push([key, inner.slice(colon + 1).trim()]);
             i = end + 1;

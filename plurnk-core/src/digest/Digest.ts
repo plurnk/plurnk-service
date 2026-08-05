@@ -69,7 +69,7 @@ const readPositiveInt = (name: string): number => {
 };
 
 // DB row shapes — only the columns this tool reads. JSON columns (packet,
-// flags, tx, rx) arrive as strings, parsed on use.
+// flags, rx) arrive as strings, parsed on use.
 interface WorkspaceRow { id: number; name: string; cost_usd: number }
 interface WorkerRow { id: number; workspace_id: number; name: string; cost_usd: number }
 interface LoopRow {

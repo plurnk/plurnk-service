@@ -31,7 +31,7 @@ ORDER BY turn_id, sequence;
 SELECT id, worker_id, loop_id, turn_id, sequence, at, origin, source,
        op, suffix, signal,
        scheme, hostname, port, pathname, query, fragment,
-       tx, rx, status_rx, mimetype_rx,
+       rx, status_rx, mimetype_rx,
        state, outcome, attrs
 FROM log_entries ORDER BY loop_id, turn_id, sequence;
 

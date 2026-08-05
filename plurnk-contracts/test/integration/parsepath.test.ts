@@ -200,6 +200,52 @@ test("parsePath: a keyless/colonless block throws a visitor error", () => {
     );
 });
 
+test("{§path-request-metadata}: malformed request metadata diagnostics never quote values", () => {
+    const cases = [
+        ["https://x.dev/a{Authorization: Bearer unclosed-secret", "unclosed-secret", "invalid request metadata: unclosed `{name: value}` block"],
+        ["https://x.dev/a{colonless-secret}", "colonless-secret", "invalid request metadata: missing `:` separator"],
+        ["https://x.dev/a{: empty-name-secret}", "empty-name-secret", "invalid request metadata: empty name"],
+        ["https://x.dev/a{Accept: text/plain}trailing-secret", "trailing-secret", "invalid request metadata: expected a `{name: value}` block"],
+    ] as const;
+
+    for (const [raw, secret, expected] of cases) {
+        assert.throws(
+            () => AstBuilder.parsePath(raw),
+            (error) => {
+                assert.ok(error instanceof PlurnkParseError);
+                assert.equal(error.source, "visitor");
+                assert.equal(error.message, expected);
+                assert.equal(error.message.includes(secret), false);
+                return true;
+            },
+        );
+    }
+});
+
+test("{§path-request-metadata}: a bounded parser diagnostic does not echo malformed metadata", () => {
+    const secret = "bounded-header-secret";
+    const parsed = PlurnkParser.parse([
+        "<<PLAN::PLAN",
+        `<<READ(https://x.dev/a{Authorization: Bearer ${secret})::READ`,
+        "<<SEND[200]::SEND",
+    ].join("\n"));
+    const errors = parsed.items.filter((item) => item.kind === "error");
+    assert.equal(errors.length, 1);
+    const [item] = errors;
+    if (item?.kind !== "error") assert.fail("expected one parser error");
+    assert.equal(item.error.message, "invalid request metadata: unclosed `{name: value}` block");
+    assert.equal(item.error.message.includes(secret), false);
+});
+
+test("{§path-request-metadata}: malformed URL diagnostics do not relay native parser text", () => {
+    assert.throws(
+        () => AstBuilder.parsePath("https://uri-user:uri-password@[bad"),
+        (error) => error instanceof PlurnkParseError
+            && error.source === "visitor"
+            && error.message === "invalid URI in path",
+    );
+});
+
 test("parsePath: headers flow through a full parse to the statement target", () => {
     const result = PlurnkParser.parseStatements("<<READ(https://api.dev/me{Authorization: Bearer x}{Accept: q})::READ");
     const item = result.items[0];
