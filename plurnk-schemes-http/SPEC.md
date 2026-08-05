@@ -18,7 +18,7 @@ foundations. Both handlers implement the DB-free `SchemeCtx` author contract.
 
 | Channel  | Seed type                  | Meaning                                                         |
 | -------- | -------------------------- | --------------------------------------------------------------- |
-| `body`   | `application/octet-stream` | Text response, binary marker, SSE data, or readable HTML        |
+| `body`   | `application/octet-stream` | Source text, derived Unicode, binary marker, SSE data, or HTML  |
 | `header` | `text/plain`               | Status line, response headers, and package acquisition metadata |
 | `html`   | `text/html`                | Faithful HTML used to produce the readable body                 |
 
@@ -80,11 +80,16 @@ flowchart TD
     guard -->|refused or unavailable| dead
     guard -->|response| prefetchType{"Accepted response?"}
     prefetchType -->|2xx HTML| prefetchHtml["Shared HTML materialization;<br/>render lazily only if absent"]
-    prefetchType -->|2xx text| prefetchText["Materialize complete text"]
+    prefetchType -->|2xx non-HTML| prefetchClass{"Configured media class"}
     prefetchType -->|dead| dead["404 not-materialized"]
+    prefetchClass -->|text| prefetchText["Materialize complete UTF-8 text"]
+    prefetchClass -->|binary| prefetchBinary["Bounded readable-byte projection"]
     prefetchHtml -->|present, including empty| materialize["Write entry"]
     prefetchHtml -->|absent| noProjection["422 no-readable-projection"]
     prefetchText --> materialize
+    prefetchBinary -->|present, including empty| materialize
+    prefetchBinary -->|absent| noProjection
+    prefetchBinary -->|input ceiling| inputLimit["413 projection-input-limit"]
     materialize --> query
 
     stream --> response{"Response path"}
@@ -94,8 +99,11 @@ flowchart TD
     acquired --> events["Detached event data → body chunks"]
     response -->|other| representation{"Body representation"}
     representation -->|none| empty["Header only"]
-    representation -->|textual| text["UTF-8 response chunks → body"]
-    representation -->|binary or unknown| binary["Cancel bytes → typed empty marker + 415"]
+    representation -->|configured text| text["UTF-8 response chunks → body"]
+    representation -->|configured binary| binaryProjection["Bounded readable-byte projection"]
+    binaryProjection -->|present, including empty| projected["Derived Unicode → body"]
+    binaryProjection -->|absent| binary["Cancel bytes → typed empty marker + 415"]
+    binaryProjection -->|input ceiling| binaryLimit["Typed empty marker + 413"]
     restore --> close["Persist/publish → close exact result"]
     render --> directHtml["Shared HTML materialization"]
     directHtml -->|present, including empty| close
@@ -103,18 +111,23 @@ flowchart TD
     events --> close
     empty --> close
     text --> close
+    projected --> close
     binary --> close
+    binaryLimit --> close
 ```
 
-| Consumer / response                      | `body`                                                          | Auxiliary materialization                 | Completion                               |
-| ---------------------------------------- | --------------------------------------------------------------- | ----------------------------------------- | ---------------------------------------- |
-| Direct GET + HTML                        | Present projection of the rendered DOM, including `""`          | Rendered DOM in `html`; render headers    | `102`; absent projection is `422`        |
-| Direct GET + `text/event-stream`         | One `data` value plus newline per `text/plain` chunk            | Initial response in `header`              | `102` after header; origin close settles |
-| Direct request + no response body        | Empty seed                                                      | Response and package metadata in `header` | Subscription closes; op is `102`         |
-| Direct request + textual response        | Incremental UTF-8 text under the declared type                  | Response and package metadata in `header` | Response-body end closes the stream      |
-| Direct request + binary or unknown type  | Empty marker; declared type or `application/octet-stream`       | Response and package metadata in `header` | `415 binary-response-unsupported`        |
-| Exact WebFetcher + non-empty 2xx HTML    | Present projection of server HTML or the lazy rendered fallback | Selected HTML in `html`; byte headers     | Materialize; absent projection is `422`  |
-| WebFetcher + accepted non-empty 2xx text | Complete textual response                                       | Byte response in `header`                 | Materialize, then universal query        |
+| Consumer / response                          | `body`                                                          | Auxiliary materialization                              | Completion                                      |
+| -------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------ | ----------------------------------------------- |
+| Direct GET + HTML                            | Present projection of the rendered DOM, including `""`          | Rendered DOM in `html`; render/projection metadata     | `102`; absent projection is `422`               |
+| Direct GET + `text/event-stream`             | One `data` value plus newline per `text/plain` chunk            | Initial response in `header`                           | `102` after header; origin close settles        |
+| Direct request + no response body            | Empty seed                                                      | Response and package metadata in `header`              | Subscription closes; op is `102`                |
+| Direct request + configured textual type     | Incremental UTF-8 text under the declared type                  | Response and package metadata in `header`              | Response-body end closes the stream             |
+| Direct request + readable binary type        | Derived Unicode under the projection output type               | Origin type and projection identity in `header`        | `102`; bytes are never durable                  |
+| Direct request + unreadable binary/unknown   | Empty marker; declared type or `application/octet-stream`       | Response and package metadata in `header`              | `415 binary-response-unsupported`               |
+| Direct binary input exceeds configured bound | Empty marker under the source type                              | Limit evidence in the terminal Problem                 | `413 projection-input-limit`                    |
+| Exact WebFetcher + non-empty 2xx HTML        | Present projection of server HTML or the lazy rendered fallback | Selected HTML plus origin/projection metadata          | Materialize; absent projection is `422`         |
+| Exact WebFetcher + configured text           | Complete UTF-8 response                                         | Byte response in `header`                              | Materialize, then universal query               |
+| Exact WebFetcher + readable binary           | Derived Unicode under the projection output type               | Origin type and projection identity in `header`        | Materialize; absent projection is `422`         |
 
 A fragmentless direct operation publishes only `body`. An explicit fragment
 publishes that named channel. Every acquired channel remains durable even when
@@ -135,23 +148,28 @@ evidence.
 | Server-sent events            | UTF-8 only under the HTML event-stream standard                                                  |
 | Malformed UTF-8               | Preserve the Encoding Standard's replacement-character behavior                                  |
 
-This boundary is text normalization, not a media-format processor. A byte-aware
-or format-specific source representation requires a separately ratified
-representation contract rather than a second HTTP decoding path.
+This decoder boundary remains text normalization, not a media-format processor.
+A configured binary type bypasses it and enters the mimetype family's bounded
+readable-byte projection {§mimetype-binary-input}; raw bytes never become a
+durable channel.
 
-### §html-materialization HTML materialization
+### §html-materialization Readable materialization
 
-`WebFetcher.materialize` is the shared HTML-family projection seam for direct
-GET, exact query preparation, and executor entry acquisition.
+`WebFetcher.materialize` is the shared readable-representation seam for exact
+query preparation and executor entry acquisition. Direct GET uses the same
+HTML and binary projection results while retaining incremental text streaming.
 
-| Input or event                       | Action                                             | Result                                                   |
-| ------------------------------------ | -------------------------------------------------- | -------------------------------------------------------- |
-| Non-HTML text                        | Bypass projection                                  | Original representation in `body`                        |
-| HTML with a present projection       | Stop                                               | Projection in `body`; selected HTML in `html`            |
-| HTML with an absent projection       | Render once when the caller supplies a renderer    | Rendered projection in `body`; rendered `html`           |
-| HTML still absent after fallback     | Stop                                               | `null`; the consumer applies its absence policy          |
-| Projection implementation throws     | Stop and preserve the cause                        | `WebMaterializationError` with stage `projection`        |
-| Lazy renderer throws                 | Stop before another projection attempt             | `WebMaterializationError` with stage `render`            |
+| Input or event                        | Action                                              | Result                                                          |
+| ------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------- |
+| Configured non-HTML text              | Decode with Fetch UTF-8                             | Original representation in `body`                               |
+| Configured binary with reader         | Apply the bounded byte projection                   | Derived Unicode plus source type and identity                    |
+| Configured binary without reader      | Cancel without retaining bytes                      | `null`; the consumer applies its absence policy                 |
+| Binary input exceeds the common bound | Cancel and preserve the typed cause                  | `WebMaterializationError` caused by `ProjectionInputLimitError`  |
+| HTML with a present projection        | Stop                                                | Projection in `body`; selected HTML in `html`                    |
+| HTML with an absent projection        | Render once when the caller supplies a renderer     | Rendered projection in `body`; rendered `html`                   |
+| HTML still absent after fallback      | Stop                                                | `null`; the consumer applies its absence policy                 |
+| Projection implementation throws      | Stop and preserve the cause                         | `WebMaterializationError` with stage `projection`                |
+| Lazy renderer throws                  | Stop before another projection attempt              | `WebMaterializationError` with stage `render`                    |
 
 A projection object is present even when its content is `""`; only `null`
 denotes absence. A materialization exception retains its original `cause`; it
@@ -159,25 +177,26 @@ never enters the absence channel.
 
 ## §http-status §4 HTTP status mapping
 
-| Outcome                                               | Operation status                                 |
-| ----------------------------------------------------- | ------------------------------------------------ |
-| Scoped READ                                           | Exact universal selected-channel READ result     |
-| Exact FIND / matcher READ after preparation           | Exact universal query result                     |
-| Exact acquisition returns no WebFetcher value         | `404` (`not-materialized`)                       |
-| Direct or exact-preparation HTML projection is absent | `422` (`no-readable-projection`)                 |
-| Direct textual or empty response completes            | `102`                                            |
-| Direct non-textual response                           | `415` (`binary-response-unsupported`)            |
-| `SEND[410]`                                           | Exact entry-delete result                        |
-| Routed `SEND[499]` dispatch                           | `200`                                            |
-| Client-cancelled acquisition                          | Direct `499` (`cancelled`)                       |
-| SSE cancellation after acquisition                    | `102` initial; terminal `499`                    |
-| SSE parser/transfer failure after acquisition         | `102` initial; terminal `502`                    |
-| Multi-statement HTTP edit batch                       | `409` (`non-atomic-edit-batch`)                  |
-| Invalid target, channel, line edit, or URL userinfo   | `400` with the corresponding stable Problem kind |
-| Direct network or acquisition exception               | `502` (`fetch-failed`)                           |
-| Direct or prepared HTML render exception              | `502` (`render-failed`)                          |
-| Direct or prepared projection exception               | `500` (`projection-failed`)                      |
-| Uninterpreted SEND status                             | `501` (`send-status-unsupported`)                |
+| Outcome                                                    | Operation status                                 |
+| ---------------------------------------------------------- | ------------------------------------------------ |
+| Scoped READ                                                | Exact universal selected-channel READ result     |
+| Exact FIND / matcher READ after preparation                | Exact universal query result                     |
+| Exact acquisition returns no WebFetcher value              | `404` (`not-materialized`)                       |
+| Direct HTML or exact preparation has no readable projection | `422` (`no-readable-projection`)                 |
+| Direct textual, projected-binary, or empty response        | `102`                                            |
+| Direct binary response has no readable projection          | `415` (`binary-response-unsupported`)            |
+| Binary projection input exceeds the configured byte bound  | `413` (`projection-input-limit`)                 |
+| `SEND[410]`                                                | Exact entry-delete result                        |
+| Routed `SEND[499]` dispatch                                | `200`                                            |
+| Client-cancelled acquisition                               | Direct `499` (`cancelled`)                       |
+| SSE cancellation after acquisition                         | `102` initial; terminal `499`                    |
+| SSE parser/transfer failure after acquisition              | `102` initial; terminal `502`                    |
+| Multi-statement HTTP edit batch                            | `409` (`non-atomic-edit-batch`)                  |
+| Invalid target, channel, line edit, or URL userinfo        | `400` with the corresponding stable Problem kind |
+| Direct network or acquisition exception                    | `502` (`fetch-failed`)                           |
+| Direct or prepared HTML render exception                   | `502` (`render-failed`)                          |
+| Direct or prepared projection exception                    | `500` (`projection-failed`)                      |
+| Uninterpreted SEND status                                  | `501` (`send-status-unsupported`)                |
 
 An HTTP error status is still a successfully acquired direct response: its
 status remains in `header` and its body streams normally. WebFetcher instead
@@ -186,12 +205,16 @@ Problem Details. Caught direct-acquisition diagnostics are bounded by
 `PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT` in model-facing detail while complete
 errors remain in daemon diagnostics.
 
-A direct non-textual response preserves its status and headers plus an empty
-body marker carrying the true media type. Its `415` describes Plurnk's response
-materialization boundary, not the remote HTTP outcome. It is non-retryable: a
-POST, PUT, or DELETE might already have changed the remote resource. Missing
-`Content-Type` is treated as `application/octet-stream`; the handler does not
-sniff or decode unknown bytes.
+A direct binary response first asks the installed mimetype family for a bounded
+readable projection. A present result stores only its derived Unicode and
+appends authoritative `x-plurnk-projection-id` evidence after the origin and
+acquisition fields. Absence preserves an empty marker under the source type and
+returns non-retryable `415`; exceeding the input ceiling preserves the same
+marker and returns non-retryable `413` with configured and observed sizes.
+These statuses describe Plurnk's materialization boundary, not the remote HTTP
+outcome—a POST, PUT, or DELETE might already have changed the remote resource.
+Missing or malformed `Content-Type` becomes `application/octet-stream`; the
+handler does not sniff or guess unknown bytes.
 
 ## §5 Dependencies and configuration
 
@@ -275,16 +298,22 @@ are checked under {§automatic-fetch-check} only when `WebFetcher` acquires them
 ### §revalidation GET representation freshness
 
 Acquired GET responses append package-owned `x-plurnk-request-method` and
-`x-plurnk-fetched-at` fields after origin headers; the last value is
-authoritative. Only a GET representation can supply a direct READ's body, TTL
-stamp, or conditional validators. Completion comes from channel lifecycle, not
-body length: every stored channel must be final (`static` after exact
+`x-plurnk-fetched-at` fields after origin headers. Derived responses then append
+`x-plurnk-projection-id`; only a projection field after the package stamp is
+authoritative, so an origin cannot spoof it. Only a GET representation can
+supply a direct READ's body, TTL stamp, or conditional validators. Completion
+comes from channel lifecycle, not body length: every stored channel must be final (`static` after exact
 materialization or `closed` after a successful stream); `active`, `errored`, or
 unknown state is ineligible. A copy inside `PLURNK_SCHEMES_HTTP_TTL_MS`
 serves with no network request. Outside the window, READ sends stored ETag or
 Last-Modified validators. A 304 refreshes the package stamp and restores the
 stored channels without rendering; any other response replaces them. `0`
 disables the TTL fast path.
+
+A stored derived representation is reusable only while its projection identity
+matches the currently installed reader for the origin media type. A mismatch
+invalidates the body, TTL shortcut, and origin validators together: a 304 can
+certify unchanged source bytes, not output from a different projection.
 
 POST, PUT, and DELETE responses retain their method marker but cannot satisfy a
 later GET or exact-FIND acquisition. An unmarked authored entry and a stored GET
@@ -305,24 +334,26 @@ operation is cancelled.
 
 ## §prefetch §7 WebFetcher
 
-| Result                       | Meaning                                                                              |
-| ---------------------------- | ------------------------------------------------------------------------------------ |
-| Non-empty 2xx HTML           | Server body, MIME type, package-stamped headers, and a lazy browser renderer         |
-| Non-empty accepted text      | Complete body, MIME type, and package-stamped headers                                |
-| Lazy renderer value          | Non-empty rendered HTML, or `null` only when rendering yields no HTML                |
-| Lazy renderer failure        | Rejects with the complete browser failure; materialization preserves stage and cause |
-| Top-level `null`             | Refused, unreachable, timed-out, non-2xx, non-textual, or empty byte response        |
-| Caller-cancelled acquisition | Rejects with the caller signal's exact reason                                        |
-| Accepted textual family      | Shared `MimetypeClassifier` taxonomy {§mimetype-classifier}                          |
+| Result                       | Meaning                                                                                  |
+| ---------------------------- | ---------------------------------------------------------------------------------------- |
+| Non-empty 2xx HTML           | Server text, MIME type, package-stamped headers, and a lazy browser renderer             |
+| Other 2xx body               | One unconsumed byte stream, MIME type, package-stamped headers, and cancellation owner   |
+| Materialized configured text | Complete Fetch-decoded UTF-8 body                                                        |
+| Materialized readable binary | Bounded derived Unicode plus source type, projection identity, and enriched header       |
+| Lazy renderer value          | Non-empty rendered HTML, or `null` only when rendering yields no HTML                    |
+| Lazy renderer failure        | Rejects with the complete browser failure; materialization preserves stage and cause     |
+| Top-level fetch `null`       | Refused, unreachable, timed-out, non-2xx, missing body, or empty HTML byte response       |
+| Materialization `null`       | Empty configured text or no final readable projection                                    |
+| Caller-cancelled acquisition | Rejects with the caller signal's exact reason                                            |
 
 Top-level `null` is a liveness value rather than a thrown failure. Caller
 cancellation is not liveness: a pre-aborted caller fails before acquisition, and
 the first abort reason selected between the caller and configured byte-probe
 deadline owns the outcome. The probe deadline remains `null`. WebFetcher owns
-no entry identity, projection verdict, or query policy; its consumer projects
-and materializes the returned value. Lazy-render exceptions remain distinct
-from a renderer that honestly returns no HTML. The handler lifecycle closes
-the shared browser.
+no entry identity, registry selection, or query policy; its consumer supplies
+the projection capability and materializes the returned value. Lazy-render
+exceptions remain distinct from a renderer that honestly returns no HTML. The
+handler lifecycle closes the shared browser.
 
 ## §ws §8 WebSocket
 

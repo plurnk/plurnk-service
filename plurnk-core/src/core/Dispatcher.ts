@@ -1597,20 +1597,21 @@ export default class Dispatcher {
             );
         }
         let content = selected.content;
+        if (await MimetypeBinary.isBinaryMimetype(selected.mimetype, ctx.mimetypes)) {
+            return Dispatcher.#failure(
+                "binary-source-unsupported",
+                415,
+                `Channel #${selection.channel} is a binary marker and cannot be copied or moved.`,
+                {},
+                {
+                    channel: selection.channel,
+                    mimetype: selected.mimetype,
+                    recovery: "Use a source with a readable text projection.",
+                    retryable: false,
+                },
+            );
+        }
         if (selection.lineMarker !== null) {
-            if (await MimetypeBinary.isBinaryMimetype(selected.mimetype, ctx.mimetypes)) {
-                return Dispatcher.#failure(
-                    "binary-range-unsupported",
-                    415,
-                    `Channel #${selection.channel} is binary and cannot be region-sliced.`,
-                    {},
-                    {
-                        channel: selection.channel,
-                        mimetype: selected.mimetype,
-                        retryable: false,
-                    },
-                );
-            }
             const sliced = LineMarkerOps.sliceLinesRaw(content, selection.lineMarker);
             if (sliced.status !== 200) return Results.assert(sliced) as DispatchResult;
             content = sliced.text ?? "";

@@ -5,11 +5,20 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import Guard from "./Guard.ts";
-import WebFetcher from "./WebFetcher.ts";
+import WebFetcher, { WebMaterializationError } from "./WebFetcher.ts";
 import type { RenderResult } from "./Browser.ts";
-import type { ProjectionCaps } from "@plurnk/plurnk-schemes";
+import { MimetypeClassifier, type ProjectionCaps } from "@plurnk/plurnk-schemes";
 
 const PUB = "https://93.184.216.34/x"; // public IP literal — skips DNS
+
+const projectionCaps = (overrides: Partial<ProjectionCaps> = {}): ProjectionCaps => ({
+    async readable() { return null; },
+    async readableBytes() { return null; },
+    async identity(mimetype) { return `${mimetype}-projection`; },
+    async isBinary(mimetype) { return MimetypeClassifier.isBinary(mimetype); },
+    ...overrides,
+});
+const PROJECTION = projectionCaps();
 
 const fakeBrowser = (html: string) => {
     const calls: Array<{ url: string; signal: AbortSignal | undefined }> = [];
@@ -33,7 +42,8 @@ const resp = (body: string | Uint8Array<ArrayBuffer> | null, status: number, hea
 test("live public textual URL → { body, mimetype }", async () => {
     await withFetch((async () => resp('{"a":1}', 200, { "content-type": "application/json" })) as typeof fetch, async () => {
         const fetched = await new WebFetcher().fetch(PUB);
-        assert.equal(fetched?.body, '{"a":1}');
+        const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
+        assert.equal(materialized?.body.content, '{"a":1}');
         assert.equal(fetched?.mimetype, "application/json");
         assert.match(fetched?.header ?? "", /^HTTP 200 /);
         assert.match(fetched?.header ?? "", /^x-plurnk-request-method: GET$/m);
@@ -44,7 +54,8 @@ test("live public textual URL → { body, mimetype }", async () => {
 test("the shared textual taxonomy accepts application/yaml", async () => {
     await withFetch((async () => resp("name: plurnk", 200, { "content-type": "application/yaml" })) as typeof fetch, async () => {
         const fetched = await new WebFetcher().fetch(PUB);
-        assert.equal(fetched?.body, "name: plurnk");
+        const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
+        assert.equal(materialized?.body.content, "name: plurnk");
         assert.equal(fetched?.mimetype, "application/yaml");
     });
 });
@@ -55,7 +66,8 @@ test("text acquisition uses Fetch UTF-8 decoding and retains charset as metadata
         "content-type": "text/plain; charset=windows-1252",
     })) as typeof fetch, async () => {
         const fetched = await new WebFetcher().fetch(PUB);
-        assert.equal(fetched?.body, "caf�");
+        const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
+        assert.equal(materialized?.body.content, "caf�");
         assert.equal(fetched?.mimetype, "text/plain");
         assert.match(fetched?.header ?? "", /^content-type: text\/plain; charset=windows-1252$/m);
     });
@@ -66,7 +78,8 @@ test("an unsupported charset does not invent a non-Fetch decoder", async () => {
         "content-type": "text/plain; charset=not-a-real-encoding",
     })) as typeof fetch, async () => {
         const fetched = await new WebFetcher().fetch(PUB);
-        assert.equal(fetched?.body, "Unicode stays Unicode");
+        const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
+        assert.equal(materialized?.body.content, "Unicode stays Unicode");
         assert.equal(fetched?.mimetype, "text/plain");
     });
 });
@@ -103,11 +116,16 @@ test("HTML → guarded byte response first; ordinary browser render is a lazy fa
 
 test("materialization accepts an honest empty XHTML projection without rendering", async () => {
     let renders = 0;
-    const projection: ProjectionCaps = {
-        async readable() {
-            return { content: "", mimetype: "text/markdown" };
+    const projection = projectionCaps({
+        async readable(_content, mimetype) {
+            return {
+                content: "",
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: "empty-xhtml-projection",
+            };
         },
-    };
+    });
     const result = await WebFetcher.materialize({
         body: "<html><body></body></html>",
         mimetype: "application/xhtml+xml",
@@ -119,17 +137,21 @@ test("materialization accepts an honest empty XHTML projection without rendering
     assert.deepEqual(result, {
         body: { content: "", mimetype: "text/markdown" },
         html: { content: "<html><body></body></html>", mimetype: "application/xhtml+xml" },
+        projection: {
+            sourceMimetype: "application/xhtml+xml",
+            identity: "empty-xhtml-projection",
+        },
     });
     assert.equal(renders, 0);
 });
 
 test("materialization preserves a projection exception and identifies its stage", async () => {
     const cause = new Error("reader implementation failed");
-    const projection: ProjectionCaps = {
+    const projection = projectionCaps({
         async readable() {
             throw cause;
         },
-    };
+    });
     await assert.rejects(
         WebFetcher.materialize({ body: "<html></html>", mimetype: "text/html" }, projection),
         (err: unknown) => {
@@ -143,7 +165,7 @@ test("materialization preserves a projection exception and identifies its stage"
 
 test("materialization preserves a lazy-render exception and identifies its stage", async () => {
     const cause = new Error("browser navigation failed");
-    const projection: ProjectionCaps = { async readable() { return null; } };
+    const projection = projectionCaps({ async readable() { return null; } });
     await assert.rejects(
         WebFetcher.materialize({
             body: "<html></html>",
@@ -250,23 +272,105 @@ test("non-2xx → null", async () => {
     });
 });
 
-test("non-textual (binary) → null (pruned)", async () => {
-    await withFetch((async () => resp("PNGDATA", 200, { "content-type": "image/png" })) as typeof fetch, async () => {
-        assert.equal(await new WebFetcher().fetch(PUB), null);
+test("handler-declared binary bytes reach one readable projection without a durable byte lane", async () => {
+    const projection = projectionCaps({
+        async isBinary(mimetype) { return mimetype === "text/x-binary"; },
+        async readableBytes(chunks, mimetype) {
+            const bytes: number[] = [];
+            for await (const chunk of chunks) bytes.push(...chunk);
+            return {
+                content: `projected:${bytes.join(",")}`,
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: "binary-reader-v1",
+            };
+        },
+    });
+    await withFetch((async () => resp(Uint8Array.of(1, 2, 3), 200, {
+        "content-type": "text/x-binary",
+    })) as typeof fetch, async () => {
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.ok(fetched !== null);
+        assert.notEqual(typeof fetched.body, "string", "registry-declared binary input remains bytes");
+        assert.match(fetched.header ?? "", /^content-type: text\/x-binary$/m);
+        const materialized = await WebFetcher.materialize(fetched, projection);
+        assert.deepEqual(materialized, {
+            body: { content: "projected:1,2,3", mimetype: "text/markdown" },
+            header: `${fetched.header}\nx-plurnk-projection-id: binary-reader-v1`,
+            projection: {
+                sourceMimetype: "text/x-binary",
+                identity: "binary-reader-v1",
+            },
+        });
     });
 });
 
-test("an unparseable Content-Type is not admitted as text", async () => {
+test("binary materialization cancels unread response bytes after a projection returns", async () => {
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(Uint8Array.of(1, 2, 3)); },
+        cancel() { cancelled = true; },
+    });
+    const projection = projectionCaps({
+        async isBinary() { return true; },
+        async readableBytes(_chunks, mimetype) {
+            return {
+                content: "projected without reading",
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: "non-consuming-reader",
+            };
+        },
+    });
+    await withFetch(async () => new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/x-binary" },
+    }), async () => {
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.ok(fetched !== null);
+        assert.equal((await WebFetcher.materialize(fetched, projection))?.body.content, "projected without reading");
+    });
+    assert.equal(cancelled, true);
+});
+
+test("registry classification failure cancels the owned response body and preserves its cause", async () => {
+    const cause = new Error("registry unavailable");
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(Uint8Array.of(1, 2, 3)); },
+        cancel() { cancelled = true; },
+    });
+    const projection = projectionCaps({ async isBinary() { throw cause; } });
+    await withFetch(async () => new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/x-binary" },
+    }), async () => {
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.ok(fetched !== null);
+        await assert.rejects(
+            WebFetcher.materialize(fetched, projection),
+            (error: unknown) => error instanceof WebMaterializationError && error.cause === cause,
+        );
+    });
+    assert.equal(cancelled, true);
+});
+
+test("an unparseable Content-Type reaches binary projection and is pruned when absent", async () => {
     await withFetch((async () => resp("not trustworthy", 200, {
         "content-type": "text/plain garbage",
     })) as typeof fetch, async () => {
-        assert.equal(await new WebFetcher().fetch(PUB), null);
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.ok(fetched !== null);
+        assert.notEqual(typeof fetched.body, "string");
+        assert.equal(await WebFetcher.materialize(fetched, PROJECTION), null);
     });
 });
 
 test("empty textual body → null", async () => {
     await withFetch((async () => resp("", 200, { "content-type": "text/plain" })) as typeof fetch, async () => {
-        assert.equal(await new WebFetcher().fetch(PUB), null);
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.ok(fetched !== null);
+        assert.equal(await WebFetcher.materialize(fetched, PROJECTION), null);
     });
 });
 

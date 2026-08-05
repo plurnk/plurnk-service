@@ -19,12 +19,20 @@ import type {
     StoredEntryData,
     FindStatement,
     SchemeResult,
+    ProjectionCaps,
 } from "@plurnk/plurnk-schemes";
-import { MimetypeClassifier, NetworkAddress, PathSyntax, Results } from "@plurnk/plurnk-schemes";
+import {
+    MimetypeClassifier,
+    NetworkAddress,
+    PathSyntax,
+    ProjectionInputLimitError,
+    Results,
+} from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import WebFetcher, {
+    PROJECTION_ID_HEADER,
     rewriteAcquisitionTarget,
     WebMaterializationError,
     type WebFetchResult,
@@ -79,8 +87,8 @@ export default class Http implements SchemeHandler {
         name: "http",
         // Channel mimetypes here are SEED DEFAULTS (pre-fetch placeholders).
         // body is retyped per-call via notifyChunk's mimetype arg — to the real
-        // response Content-Type, or projected markdown for a rendered page; octet-stream
-        // is the honest "unknown until fetched". header is always the status
+        // response Content-Type or the configured readable projection type;
+        // octet-stream is the honest "unknown until fetched". header is always the status
         // line + headers (text/plain).
         channels: { [BODY]: "application/octet-stream", [HEADER]: "text/plain", html: "text/html" },
         defaultChannel: BODY,
@@ -128,9 +136,27 @@ export default class Http implements SchemeHandler {
         if (PathSyntax.hasGlob(target.pathname)) return { shape: "passthrough", status: 200 };
         const prior = await ctx.entries.read(pathname);
         if (prior.entry !== null) {
-            const priorMethod = Http.#requestMethod(prior.entry.channels[HEADER]?.content ?? "");
-            if (priorMethod === undefined || priorMethod === "GET") {
+            const priorHeader = prior.entry.channels[HEADER]?.content ?? "";
+            const priorMethod = Http.#requestMethod(priorHeader);
+            if (priorMethod === undefined) {
                 return { shape: "passthrough", status: 200 };
+            }
+            if (priorMethod === "GET") {
+                try {
+                    if (await Http.#projectionCurrent(priorHeader, ctx.projection)) {
+                        return { shape: "passthrough", status: 200 };
+                    }
+                } catch (cause) {
+                    return Http.#materializationFailure(
+                        url,
+                        "GET",
+                        new WebMaterializationError(
+                            "projection",
+                            Http.#sourceMimetype(priorHeader),
+                            cause,
+                        ),
+                    );
+                }
             }
         }
         if (Results.isErrorStatus(prior.status) && prior.status !== 404) {
@@ -174,7 +200,9 @@ export default class Http implements SchemeHandler {
         const channels: EntryData["channels"] = {
             [BODY]: materialized.body,
             ...(materialized.html === undefined ? {} : { html: materialized.html }),
-            ...(fetched.header === undefined ? {} : { [HEADER]: { content: fetched.header, mimetype: "text/plain" } }),
+            ...(materialized.header === undefined
+                ? {}
+                : { [HEADER]: { content: materialized.header, mimetype: "text/plain" } }),
         };
         const written = await ctx.entries.write(pathname, { channels, tags: [] });
         return Http.#passthrough(written);
@@ -344,13 +372,29 @@ export default class Http implements SchemeHandler {
                 && Http.#representationComplete(prior.entry)
                 && Http.#requestMethod(ph.content) === "GET"
             ) {
-                const html = prior.entry.channels.html;
-                cached = {
-                    header: ph.content,
-                    body: { content: pb.content, mimetype: pb.mimetype },
-                    ...(html === undefined || html.content.length === 0 ? {} : { html: { content: html.content, mimetype: html.mimetype } }),
-                };
-                conditional.push(...Http.#validators(ph.content));
+                let projectionCurrent: boolean;
+                try {
+                    projectionCurrent = await Http.#projectionCurrent(ph.content, ctx.projection);
+                } catch (cause) {
+                    return Http.#materializationFailure(
+                        url,
+                        method,
+                        new WebMaterializationError(
+                            "projection",
+                            Http.#sourceMimetype(ph.content),
+                            cause,
+                        ),
+                    );
+                }
+                if (projectionCurrent) {
+                    const html = prior.entry.channels.html;
+                    cached = {
+                        header: ph.content,
+                        body: { content: pb.content, mimetype: pb.mimetype },
+                        ...(html === undefined || html.content.length === 0 ? {} : { html: { content: html.content, mimetype: html.mimetype } }),
+                    };
+                    conditional.push(...Http.#validators(ph.content));
+                }
             }
         }
 
@@ -437,6 +481,9 @@ export default class Http implements SchemeHandler {
                     await subscription.close(failure, failure.problem?.detail);
                     return failure;
                 }
+                if (materialized.projection !== undefined) {
+                    await Http.#writeProjectionIdentity(subscription, materialized.projection.identity);
+                }
                 await subscription.notifyChunk(BODY, materialized.body.content, materialized.body.mimetype);
                 await subscription.close({ status: 200 }, `rendered HTTP ${result.status}; ${materialized.body.content.length} readable chars`);
                 return { shape: "passthrough", status: 102 };
@@ -466,17 +513,42 @@ export default class Http implements SchemeHandler {
             }
 
             // {§http-lifecycle}/{§mimetype-classifier} String channels retain
-            // textual response data. Binary responses become typed empty markers;
-            // decoding bytes while preserving their origin MIME type would lie
-            // about the stored representation.
+            // textual response data. Binary input is transient: an installed
+            // reader may derive Unicode, otherwise the durable body is a typed
+            // empty marker rather than a fabricated byte channel.
             await Http.#writeHeader(subscription, method, response.status, response.statusText, [...response.headers]);
             const bodyMime = responseMime;
             if (response.body === null) {
                 await subscription.close({ status: 200 }, `HTTP ${response.status}; empty body`);
                 return { shape: "passthrough", status: 102 };
             }
-            if (MimetypeClassifier.isBinary(bodyMime)) {
-                await response.body.cancel();
+            const responseBody = response.body;
+            const byteBody = {
+                chunks: responseBody as AsyncIterable<Uint8Array>,
+                cancel: () => responseBody.cancel(),
+            };
+            const binary = await WebFetcher.classifyBinary(byteBody, bodyMime, ctx.projection);
+            if (binary) {
+                let projected;
+                try {
+                    projected = await WebFetcher.projectBytes(
+                        byteBody,
+                        bodyMime,
+                        ctx.projection,
+                    );
+                } catch (error) {
+                    await subscription.notifyChunk(BODY, "", bodyMime);
+                    throw error;
+                }
+                if (projected !== null) {
+                    await Http.#writeProjectionIdentity(subscription, projected.projectionIdentity);
+                    await subscription.notifyChunk(BODY, projected.content, projected.mimetype);
+                    await subscription.close(
+                        { status: 200 },
+                        `HTTP ${response.status}; ${projected.content.length} readable chars from ${bodyMime}`,
+                    );
+                    return { shape: "passthrough", status: 102 };
+                }
                 await subscription.notifyChunk(BODY, "", bodyMime);
                 const detail = `HTTP ${method} ${url} returned ${bodyMime}. The remote response was received, but its binary body cannot be represented in a Plurnk text channel.`;
                 const result = Http.#bad(
@@ -500,7 +572,7 @@ export default class Http implements SchemeHandler {
             // Content-Type charset remains response evidence, not a second decoder.
             let bytes = 0;
             const decoder = new TextDecoder();
-            for await (const chunk of response.body as AsyncIterable<Uint8Array>) {
+            for await (const chunk of responseBody as AsyncIterable<Uint8Array>) {
                 bytes += chunk.length;
                 await subscription.notifyChunk(BODY, decoder.decode(chunk, { stream: true }), bodyMime);
             }
@@ -573,6 +645,17 @@ export default class Http implements SchemeHandler {
         lines.push(`${REQUEST_METHOD}: ${method}`);
         lines.push(`${FETCHED_AT}: ${new Date().toISOString()}`);
         await subscription.notifyChunk(HEADER, lines.join("\n"), "text/plain");
+    }
+
+    static async #writeProjectionIdentity(
+        subscription: StreamSubscription,
+        identity: string,
+    ): Promise<void> {
+        await subscription.notifyChunk(
+            HEADER,
+            `\n${WebFetcher.projectionEvidence(identity)}`,
+            "text/plain",
+        );
     }
 
     // Drain an acquired SSE body and settle its retained subscription. The READ
@@ -697,6 +780,38 @@ export default class Http implements SchemeHandler {
         return lastHeaderValue(priorHeader, REQUEST_METHOD)?.toUpperCase();
     }
 
+    // Projection evidence is package-owned only when it follows the package's
+    // acquisition stamp. An origin field with the same name remains inert.
+    static #projectionIdentity(priorHeader: string): string | undefined {
+        const lines = priorHeader.split(/\r?\n/);
+        let stampIndex = -1;
+        let projectionIndex = -1;
+        let identity: string | undefined;
+        for (const [index, line] of lines.entries()) {
+            const colon = line.indexOf(":");
+            if (colon < 0) continue;
+            const name = line.slice(0, colon).trim().toLowerCase();
+            if (name === FETCHED_AT) stampIndex = index;
+            if (name === PROJECTION_ID_HEADER) {
+                projectionIndex = index;
+                identity = line.slice(colon + 1).trim();
+            }
+        }
+        return stampIndex >= 0 && projectionIndex > stampIndex && identity !== ""
+            ? identity
+            : undefined;
+    }
+
+    static #sourceMimetype(header: string): string {
+        return responseMimetype(lastHeaderValue(header, "content-type") ?? null);
+    }
+
+    static async #projectionCurrent(header: string, projection: ProjectionCaps): Promise<boolean> {
+        const storedIdentity = Http.#projectionIdentity(header);
+        if (storedIdentity === undefined) return true;
+        return await projection.identity(Http.#sourceMimetype(header)) === storedIdentity;
+    }
+
     // Re-stamp the package-owned (last) field when the origin vouches with 304.
     static #stamp(header: string): string {
         return replaceLastHeaderValue(header, FETCHED_AT, new Date().toISOString());
@@ -739,6 +854,23 @@ export default class Http implements SchemeHandler {
         method: string,
         error: WebMaterializationError,
     ): PassthroughResult {
+        if (error.stage === "projection" && error.cause instanceof ProjectionInputLimitError) {
+            return Http.#bad(
+                413,
+                "http",
+                "projection-input-limit",
+                `HTTP ${method} ${url} exceeded the ${error.cause.maximumBytes}-byte readable-projection input limit.`,
+                {
+                    target: url,
+                    method,
+                    mimetype: error.cause.mimetype,
+                    maximumBytes: error.cause.maximumBytes,
+                    observedBytes: error.cause.observedBytes,
+                    stage: "projection",
+                    retryable: false,
+                },
+            );
+        }
         console.error("HTTP materialization failed", { method, url, error });
         const projection = error.stage === "projection";
         return Http.#bad(
@@ -746,7 +878,7 @@ export default class Http implements SchemeHandler {
             "http",
             projection ? "projection-failed" : "render-failed",
             projection
-                ? `HTTP ${method} ${url} acquired HTML, but its readable projection failed.`
+                ? `HTTP ${method} ${url} acquired content, but its readable projection failed.`
                 : `HTTP ${method} ${url} could not render HTML.`,
             {
                 target: url,

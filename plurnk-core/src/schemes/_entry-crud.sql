@@ -46,7 +46,7 @@ RETURNING id;
 -- SPEC {§membership-change-gated-sync} — the member's last-synced disk signature
 -- (mtime:size), read before materializing so an unchanged file short-circuits
 -- before any content read. File members store scheme='file' ({§entry-identity-no-null}).
-SELECT id, synced_sig, membership_origin FROM entries
+SELECT id, synced_sig, membership_origin, attributes FROM entries
 WHERE workspace_id = $workspace_id AND owner_id = $owner_id AND scheme = $scheme AND pathname = $pathname;
 
 -- PREP: crud_set_synced_sig

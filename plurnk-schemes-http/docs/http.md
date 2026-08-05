@@ -22,25 +22,29 @@ metadata, not the selected page body. Use READ for content.
 Caller cancellation of an exact acquisition returns `499 cancelled`. The
 independent byte-probe deadline remains an ordinary unavailable result.
 
-| Direct response           | `body`                                                       | Other channel                    |
-| ------------------------- | ------------------------------------------------------------ | -------------------------------- |
-| GET HTML                  | Readable projection of the rendered page                     | Faithful rendered DOM in `#html` |
-| GET `text/event-stream`   | Event `data` chunks after READ `102`                          | Initial response in `#header`    |
-| Other textual response    | Incremental UTF-8 text under its declared type               | Status and headers in `#header`  |
-| Binary or undeclared type | Empty marker under its type or `application/octet-stream`    | Status and headers in `#header`  |
+| Direct response                      | `body`                                                       | Other channel                              |
+| ------------------------------------ | ------------------------------------------------------------ | ------------------------------------------ |
+| GET HTML                             | Readable projection of the rendered page                     | Faithful rendered DOM in `#html`           |
+| GET `text/event-stream`              | Event `data` chunks after READ `102`                          | Initial response in `#header`              |
+| Configured textual response          | Incremental UTF-8 text under its declared type               | Status and headers in `#header`            |
+| Binary with a readable projection    | Derived Unicode under the projection output type             | Origin type and projection ID in `#header` |
+| Binary without a readable projection | Empty marker under its type or `application/octet-stream`    | Status and headers in `#header`            |
 
-HTML projection presence is structural: a returned projection is accepted even
-when its content is empty. `422 no-readable-projection` means HTML was acquired
-but no model-facing body projection exists. A direct READ retains its faithful
-`#html` and `#header` evidence; exact FIND preparation creates no entry.
+Projection presence is structural: a returned projection is accepted even
+when its content is empty. `422 no-readable-projection` means exact acquisition,
+or a direct HTML READ, produced no model-facing body. A direct HTML READ retains
+its faithful `#html` and `#header` evidence; exact FIND preparation creates no entry.
 An internal projection exception instead returns non-retryable
 `500 projection-failed`; a browser failure returns retryable
 `502 render-failed`.
 
-A non-textual direct response returns `415 binary-response-unsupported`. The
+A binary response uses the installed mimetype reader when one supplies a
+bounded Unicode projection; raw bytes never enter a durable channel. Without a
+reader, a direct operation returns `415 binary-response-unsupported`. Input
+above the configured byte ceiling returns `413 projection-input-limit`. The
 remote response was received and its metadata remains in `#header`; do not
 retry a POST, PUT, or DELETE solely to retrieve its binary body. Exact FIND
-instead prunes non-textual responses because they cannot satisfy a text query.
+instead prunes responses that produce no readable projection.
 
 `#header` contains the remote HTTP status line and headers. The PLURNK
 operation result describes the streaming lifecycle; `SEND[code]` is never the
@@ -56,7 +60,9 @@ Re-reading without a scope uses the stored GET when it is inside the operator's
 freshness window. Outside that window, stored ETag or Last-Modified validators
 produce a conditional GET; a 304 restores the stored channels without
 rendering. Without validators, the next READ performs a full GET. Responses to
-POST, PUT, and DELETE are not reused as later GET representations.
+POST, PUT, and DELETE are not reused as later GET representations. A projected
+GET is reused only while the installed reader has the same projection identity;
+changing it forces a full acquisition without old validators.
 
 A scoped READ never fetches. Its fragment, or `body` by default, selects an
 already-materialized channel before the universal READ contract applies the

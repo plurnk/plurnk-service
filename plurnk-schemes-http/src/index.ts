@@ -11,6 +11,6 @@ export type { ChromiumEngine, ChromiumFactory, RenderResult } from "./Browser.ts
 
 // Automatic entry-acquisition primitive {§prefetch} and its URL check.
 export { default as WebFetcher } from "./WebFetcher.ts";
-export { WebMaterializationError } from "./WebFetcher.ts";
+export { PROJECTION_ID_HEADER, WebMaterializationError } from "./WebFetcher.ts";
 export type { WebFetchResult, WebMaterializedResult } from "./WebFetcher.ts";
 export { default as Guard, GuardBlockedError } from "./Guard.ts";

@@ -928,7 +928,7 @@ API and receive no implicit token accounting.
 
 Author-facing contract: [`@plurnk/plurnk-mimetypes`](../plurnk-mimetypes/SPEC.md). Below: firing semantics + core's consumption surface.
 
-§mimetype-schemes-do-not-invoke-handlers **Firing semantics.** Scheme writes are verbatim and do not invoke mimetype handlers. `SearchIndex.maintain` processes the current readable projections before model execution and attaches complete search artifacts. Catalog rendering independently asks handlers for extents. Fetch-time materialization is earlier still: the web-fetch sink converts guarded HTTP HTML into the sanitized markdown body that READ serves and search indexes, retaining faithful DOM only as an explicit auxiliary channel. An authored workspace HTML file remains verbatim; its markup is data.
+§mimetype-schemes-do-not-invoke-handlers **Firing semantics.** Scheme writes are verbatim and do not invoke mimetype handlers. `SearchIndex.maintain` processes the current readable projections before model execution and attaches complete search artifacts. Catalog rendering independently asks handlers for extents. Fetch-time materialization is earlier still: the web-fetch sink converts guarded HTTP HTML or supported binary input into derived Unicode that READ serves and search indexes, retaining faithful DOM and origin/projection evidence only in explicit auxiliary channels. An authored workspace HTML file remains verbatim; its markup is data.
 
 ### §mimetype-manifest Manifest
 
@@ -947,7 +947,7 @@ consume these public methods:
 |-------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
 | `ready`, `skippedPackages`                | Complete trust-gated discovery and present withheld-package evidence at daemon boot.                                        |
 | `detect`, `process`                       | Resolve mimetypes, extents, readable content, symbols, and references.                                                      |
-| `projectionIdentity`                      | Identify installed reader behavior for search artifacts that consume symbols and references.                               |
+| `projectionIdentity`                      | Identify installed reader behavior for derived entries and search artifacts that consume symbols and references.           |
 | `query`                                   | Execute glob/regex/JSONPath/XPath through `@plurnk/plurnk-schemes/Matcher`, which maps typed outcomes to operation results. |
 | `embedderInfo`, `embedBatch`, `tokenizer` | Plan and derive semantic-search chunks without reaching into artifact packages.                                             |
 
@@ -994,11 +994,11 @@ is authoritative; only an unregistered label reaches the framework's taxonomy.
 Absence of the configured registry at an engine classification boundary is an
 internal contract failure, never a reason to substitute the pure heuristic.
 
-| Core boundary                  | Classification effect                                      |
-|--------------------------------|------------------------------------------------------------|
-| File membership materializing | Decode textual content or retain a typed empty binary body. |
-| READ/EDIT and COPY/MOVE scope  | Admit text regions or return 415.                           |
-| Search derivation              | Build graph/FTS/vector artifacts or mark nonsemantic.       |
+| Core boundary                 | Classification effect                                                     |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| File membership materializing | Persist textual content, derived Unicode, or a typed empty binary marker. |
+| READ/EDIT and COPY/MOVE scope | Admit text regions or return 415.                                         |
+| Search derivation             | Build graph/FTS/vector artifacts or mark nonsemantic.                     |
 
 The default service installation includes its structured, document, embedding,
 and tokenizer leaves through the service manifest. The lean framework also
@@ -1202,8 +1202,8 @@ AST: `{ op: "COPY", target (source), lineMarker (source scope),
 body: ResourceSelection (destination), signal: tags | null }`.
 
 1. §copy-missing-source-404 Resolve source path, channel, and optional text scope; missing resource or
-   channel is 404. Binary whole-channel COPY is valid, but a binary region is
-   415.
+   channel is 404. A binary marker is not a byte channel and returns 415;
+   readable projections are ordinary text sources under {§membership-source-projection}.
 2. Resolve destination path, channel, and optional text scope. Source and
    destination mimetypes must agree or the result is 415.
 3. A scoped destination must already exist and is mutated through the
@@ -2152,7 +2152,7 @@ the loop-total usage fields remain billing evidence, not gauge inputs.
 | `providers.list` alias row | not present                                                            | Active alias's current enforced packet allowance; `null` when not established |
 
 - **Derivation is eager and exhaustive.** Workspace creation and searchable-resource changes start one coalesced warm. The first model turn joins that warm; later turns derive intervening changes before dispatch. No model operation observes partial graph or vector coverage. A semantic query ranks every eligible candidate in scope, so lexical overlap never gates vector recall. With no embedder, readable-content FTS is the explicit keyword fallback. Progress notices make the wait visible; latency is never hidden by partial semantics. {§derivation-exhaustive}
-- §membership-binary-sniff **Binary truth beats the label; no entry dominates the corpus.** A tracked member whose HEAD bytes contain NUL is materialized as a binary marker (empty body, `application/octet-stream`, READ-415) **regardless of what extension-based detection claims**; byte-level evidence outranks a default label. Every eligible text is tiled losslessly to the embedder window and every tile is embedded before its derivation attaches; semantic ranking max-pools the best chunk per candidate.
+- §membership-binary-sniff **Binary truth beats the label; no entry dominates the corpus.** A tracked member whose HEAD bytes contain NUL enters {§membership-source-projection} as `application/octet-stream` **regardless of what extension-based detection claims**; byte-level evidence outranks a default label. Every eligible text is tiled losslessly to the embedder window and every tile is embedded before its derivation attaches; semantic ranking max-pools the best chunk per candidate.
 - §tokenomics-agnostic-ruler **One model-agnostic ruler.** The daemon runs workers on different models in one workspace concurrently, while catalog and log accounting are workspace-wide. The complete model-facing ledger therefore uses `rulerCount = ceil(chars/2)`: one content has one number regardless of which model reads it, with no per-model workspace state or recount pass. Under-policy packets rely on that ruler. Only an over-policy packet being considered for a recovery turn invokes the shipping provider's request-shaped physical measurement.
 - §tokenomics-neutral-telemetry **Budget telemetry is state, not instruction.** The model-facing Budget is exactly one line: token ceiling, current usage and percentage, and free tokens. Per-entry weights remain on log rows where they describe the entries themselves. Packet-level composition, rankings, and visualizations are absent because their salience can redirect the model toward context gardening. OPEN/FOLD/KILL remain documented capabilities; recovery directs the model only after overflow. The model receives enough state to own its context decisions without a competing dashboard.
 - §tokenomics-content-hash-identity **Content identity, not per-tokenizer counts.** Static channel writes stamp `content_hash` (SHA-256) as a stable per-content identity. `tokens` is stored in ruler units beside that content and is never keyed or recomputed by model.
@@ -2195,8 +2195,9 @@ flowchart LR
 Search prefetch and direct HTTP READ materialize the same resource contract:
 protocol + canonical authority (including a non-default port) + path + serialized
 query is the absolute identity ({§scheme-address-network}); the sanitized
-readable projection is the fragmentless default, while faithful DOM and
-response metadata remain explicit auxiliary channels. A normal
+readable projection is the fragmentless default, while faithful DOM, origin
+media type, and projection identity remain explicit auxiliary evidence. A
+normal
 `READ(https://host/path?query)` therefore publishes only the sanitized body
 under that exact URL—never raw HTML, response headers, or a channel-selection
 lesson. FIND, matcher READ, and embeddings consume the same stored readable
@@ -2238,7 +2239,18 @@ materialization verdicts and folded ambient rows for every acquired page.
 - §membership-overlay-view **`view`** — keep a member readable but refuse `File.edit`, 403'd at the membership check before any diff. (Admitting an untracked file as `view` rides on `pick`'s scan.)
 - §membership-resolved-effects **Resolved effect is a read, not a re-derivation.** `workspace.members` surfaces each candidate's resolved effect — `(ls-files ∪ pick) − hide` tagged `member` / `view`, plus the `hide`-excluded `hidden` set — so a client signs file visibility (member / read-only / ignored) without reimplementing the overlay glob-matching. The daemon owns git + the globs; the per-file effect is its to resolve, the client's to render.
 
-**File ops act on the entry, not the disk; the two reconcile only at gates.** A `file:///` member is a row whose body channel holds the *materialized snapshot* of its disk content. READ returns that channel; EDIT diffs against it — neither reaches the filesystem directly. Entry and disk reconcile at exactly two gates: the **pre-turn materialize** (disk → entry, below) and the **accept-time write-back** (entry → disk, {§proposal}). Between the gates the entry is the truth the model curates against, and `synced_sig` — the member's last-synced disk stat (`mtime:size`) — is the version token both gates compare on.
+**File ops act on the entry, not the disk; the two reconcile only at gates.** A `file:///` member is a row whose body channel holds its *materialized model-readable snapshot*. READ returns that channel; EDIT diffs against editable text snapshots — neither reaches the filesystem directly. Entry and disk reconcile at exactly two gates: the **pre-turn materialize** (disk → entry, below) and the **accept-time write-back** (entry → disk, {§proposal}). Between the gates the entry is the truth the model curates against, and `synced_sig` — the member's last-synced disk stat (`mtime:size`) — is the version token both gates compare on.
+
+§membership-source-projection Binary acquisition is transient and bounded by
+{§mimetype-binary-input}; durable entry channels remain Unicode text. Core-private
+`sourceProjection` attributes preserve the source mimetype, opaque projection
+identity, and terminal disposition without exposing raw bytes or a base64 lane.
+
+| Disk source                        | Durable body                                         | Operation effect                                                                 |
+| ---------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Text                               | Verbatim Unicode under the detected textual mimetype | READ and EDIT use the snapshot.                                                  |
+| Binary with readable projection    | Derived Unicode as `text/markdown`                   | READ uses the projection; source-aware EDIT remains 415.                         |
+| Binary without projection/over cap | Empty marker under the source binary mimetype        | READ and EDIT return 415; private metadata distinguishes unavailable from limit. |
 
 §derivation-dedup-parallel **The index dedups then parallelizes.** The derivation identity hashes the exact READ body, mimetype, reader behavior, embedding configuration, and applicable search exclusion. A resource attaches the immutable artifact only after it is complete; identical entry and log bodies therefore share one FTS row, one symbol graph, and one vector set without copying. Distinct artifacts run with bounded producer concurrency (`PLURNK_SERVICE_DERIVE_CONCURRENCY`). Pending artifacts sort by readable content length before entering that pool, so small resources start first while every outlier still derives fully. Unset uses a host-relative square-root fan-out; a positive integer is an exact operator budget and `-1` claims every core. Token-count and embedding batches retain only a pool-sized promise window; graph persistence writes at most `PLURNK_SERVICE_DERIVE_STORE_BATCH` definitions or references per SQLite statement. Every pending resource attaches a terminal classified artifact, identical at concurrency 1 and N. Multi-item warming reports aggregate milestones and heartbeat notices according to `PLURNK_SERVICE_DERIVE_PROGRESS_STEPS` and `PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS`.
 
@@ -2260,11 +2272,11 @@ Lossless chunk admission requires either the embedder's own counter or an exact 
 
 §semantic-max-embed-size **Embedding has an optional size posture.** `PLURNK_SERVICE_MAX_EMBED_SIZE` is an operator-set maximum UTF-8 byte size eligible for vectors; `0` is unlimited and is the shipped default. The measured value is the exact default body READ exposes and the embedder receives. Exhaustive embedding therefore remains the normal posture. When a nonzero ceiling rejects an oversized body, the entry remains directly readable with full graph and lexical indexing; only vectors are absent. The setting is folded into the deep derivation signature, so changing it honestly re-derives affected entries. Client notices report compact aggregate progress; the digest records every non-vector pathname, terminal disposition, and reason for forensic inspection.
 
-§membership-change-gated-sync **Sync is idempotent and change-gated.** Per turn, membership materializes every member's disk content into its entry, but a member unchanged on disk since its last sync is not re-read, re-tokenized, or rewritten. Coverage is exhaustive across the project repository while work is proportional to change. After a pass every member's entry equals its disk content; a no-change pass is a no-op.
+§membership-change-gated-sync **Sync is idempotent and change-gated.** Per turn, membership materializes every member's model-readable snapshot into its entry. Text with an unchanged disk signature is a stat-only no-op. Binary sources additionally compare the cached per-mimetype projection identity; unchanged bytes are never reacquired, while changed reader behavior rematerializes without fabricating a filesystem-divergence event. Coverage is exhaustive across the project repository while work is proportional to source or projection change. After a pass every member carries the current representation defined by {§membership-source-projection}.
 
 §membership-emi-divergence-signal **EMI divergence signal.** The detector that gates the work *is* the one that fires this — one mechanism, not a second full read. When the change-detect finds a member moved out-of-band, the delta detector ({§env-delta}) surfaces it as a system `EDIT` log row naming the file, `source="file"` — the model sees what changed without diffing the manifest against memory. The model's own edits are write-through (the entry equals disk after a File write), so the scan never mis-attributes them as external divergence.
 
-§membership-edit-write-cas **The write-back is a compare-and-swap — never a clobber, never a clever merge.** EDIT is *naive against the snapshot*: it diffs the model's change onto the entry's body channel — the exact bytes the model READ — and the proposal carries the `synced_sig` that snapshot was taken at. At accept, `applyResolution` re-stats disk and lands the proposed content only if that signature still matches. If disk moved out-of-band in the propose→accept window — a sibling worker, the user's editor, a build step — the write is **refused** with a `write_conflict` and **nothing is written**. The engine neither blind-writes over the ambient change (a *clobber*) nor silently re-diffs the model's edit against a state it never saw (getting *clever*) — both would bury a stale-view contract violation under a fallback. The conflict surfaces instead: a ≥400 apply downgrades to a reject ({§proposal}), so the model sees the EDIT **did not occur** (400; the `write_conflict` outcome is forensics-only), the next reconcile narrates the real disk content as a `source=file` divergence ({§membership-emi-divergence-signal}), and the model re-reads and re-proposes against the fresh snapshot.
+§membership-edit-write-cas **The write-back is a compare-and-swap — never a clobber, never a clever merge.** EDIT is *naive against the editable text snapshot*: it diffs the model's change onto the entry's body channel — the exact Unicode the model READ — and the proposal carries the `synced_sig` that snapshot was taken at. Binary sources are refused before this path ({§membership-source-projection}). At accept, `applyResolution` re-stats disk and lands the proposed content only if that signature still matches. If disk moved out-of-band in the propose→accept window — a sibling worker, the user's editor, a build step — the write is **refused** with a `write_conflict` and **nothing is written**. The engine neither blind-writes over the ambient change (a *clobber*) nor silently re-diffs the model's edit against a state it never saw (getting *clever*) — both would bury a stale-view contract violation under a fallback. The conflict surfaces instead: a ≥400 apply downgrades to a reject ({§proposal}), so the model sees the EDIT **did not occur** (400; the `write_conflict` outcome is forensics-only), the next reconcile narrates the real disk content as a `source=file` divergence ({§membership-emi-divergence-signal}), and the model re-reads and re-proposes against the fresh snapshot.
 
 The version travels *with the proposal*, never re-read from the entry at accept: a sibling worker in the same workspace may reconcile while this proposal sits paused, advancing the entry's `synced_sig` to the drifted disk — comparing against the *current* entry sig would wave that clobber through, so the comparison is always against the sig the proposal was computed at. A proposal that assumed an **absent** path (a create) conflicts only if a file has since appeared; a member with **no recorded snapshot** (an un-materialized entry, null `synced_sig`) has no baseline to guard and writes through — the two are told apart by the proposal's `existed` flag, not by a null sig alone. On a clean landing the entry refreshes to the written content and `synced_sig` is **restamped** to it, so the next reconcile recognizes the model's own write (not an external divergence) and a second same-turn edit bases on the landed bytes, not a stale sig. This is the write-side twin of the read-side change-gate ({§membership-change-gated-sync}): one `synced_sig`, gating both the re-read and the write.
 
@@ -2935,26 +2947,26 @@ Auto-derived text mimetypes anywhere in plurnk-service normalize to `text/markdo
 Carried from the contract walk; durable.
 
 - **Dialect/mimetype mismatch** → 415 (xpath on text/plain → 415; jsonpath on JSON-shapeless mimetypes → 204 because outline is empty, not 415).
-- **Binary entries** → 415 across the board for READ/EDIT/OPEN/FOLD.
+- **Binary markers** → 415 for text operations. A readable binary source is durably represented as projected `text/markdown` under {§membership-source-projection}; source-aware File EDIT remains 415.
 - **EDIT `<L>` on non-existent entry** → body becomes content; `<L>` is positional-only on existing content.
 - §copy-l-source-range **COPY/MOVE source scope** selects only the addressed source channel and
   transfers canonical text without the packet's `N:` prefix. A MOVE removes
   that same selected region; an unscoped MOVE removes only the selected
-  channel, deleting the entry only when no channels remain. Binary whole
-  channels may be copied/moved, but binary regions are 415.
+  channel, deleting the entry only when no channels remain. A binary marker
+  is not transferable; a readable binary projection is already a textual channel.
 
 - **COPY/MOVE destination scope** is independent of the source scope and lowers
   through the destination scheme's `editBatch`.
 - **COPY/MOVE result effects** are engine-owned and describe only mutations that
   landed. COPY orders destination only; MOVE orders destination then source.
   Any scoped textual transfer materializes create/update receipts; whole-channel
-  and binary changes do not. Operand selections remain independently visible per
+  changes do not. Operand selections remain independently visible per
   {§copy-move-observation}.
 - **READ rx** prefixes every textual line with `N:` per {§render-rule}.
 - **FIND body matcher** applies to entry content (all dialects), per-candidate via the in-tree `Matcher.matchAgainstContent` ({§matcher-dispatch}; status 200 = content hit → entry selected). Scope + tags select candidates in SQL; the path-glob is the (target).
 - **OPEN/FOLD** operate on the **log** (`log:///`), not entries ({§open-fold}) — FOLD collapses a log row to its path, OPEN restores its body. Aimed at an entry scheme they return 501.
 - **SEND[410]** deletes as a side-effect (not the model idiom; {§move}): with `#fragment`, that channel only; without, the whole entry. **SEND[499]** resolves the durable open-subscription row and invokes that subscription's exact callable owner through the process-local live registry ({§subscriptions}).
-- **File scheme** detects with `Mimetypes.detect({ path })` and classifies with the same configured service ({§mimetype-classification-consumption}). Handler-declared binary mimetypes → 415 on READ and EDIT.
+- **File scheme** detects with `Mimetypes.detect({ path })` and classifies with the same configured service ({§mimetype-classification-consumption}). Handler-declared binary sources materialize through {§membership-source-projection}; projected bodies are READ-able, while source-aware EDIT remains 415.
 
 ### §send-status-policy Directed-SEND status code policy
 

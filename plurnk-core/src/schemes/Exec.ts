@@ -670,15 +670,15 @@ export default class Exec extends CoreSchemeAdapterBase {
                     }
                     throw error;
                 }
-                if (web === null) throw new Error(`entry(): '${path.slice(0, 80)}' has no readable HTML projection`);
+                if (web === null) throw new Error(`entry(): '${path.slice(0, 80)}' has no readable projection`);
                 const prior = await EntryCrud.readEntry(pathname, ctx, scheme);
                 const tags = [...new Set([...(prior.entry?.tags ?? []), ...opts.tags])];
-                // {§exec-entry-sink}/{§html-materialization} The sink stores one
-                // decisive projection beside the faithful HTML evidence.
+                // {§exec-entry-sink}/{§html-materialization} The shared
+                // materializer owns the decisive projection and its provenance.
                 const channels: EntryData["channels"] = {
                     body: web.body,
                     ...(web.html === undefined ? {} : { html: web.html }),
-                    ...(fetched.header === undefined ? {} : { header: { content: fetched.header, mimetype: "text/plain" } }),
+                    ...(web.header === undefined ? {} : { header: { content: web.header, mimetype: "text/plain" } }),
                 };
                 const decisive = web.body.content;
                 const source = web.html?.content ?? decisive;

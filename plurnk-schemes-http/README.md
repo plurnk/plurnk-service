@@ -27,15 +27,18 @@ catalog, matcher evidence, weighting, pagination, and status contract.
 
 | Channel  | Content                                                                 |
 | -------- | ----------------------------------------------------------------------- |
-| `body`   | Text, typed binary marker, SSE data, or readable HTML (default)         |
+| `body`   | Text, derived Unicode, typed binary marker, SSE data, or readable HTML  |
 | `header` | HTTP status line, headers, and package acquisition metadata             |
 | `html`   | Faithful HTML used to produce the readable body                         |
 
 A fragmentless operation publishes only `body`; auxiliary channels remain
 durable and can be addressed explicitly. Remote HTTP status is stored in
 `header`; the PLURNK operation result reports the streaming lifecycle.
-Non-textual direct responses preserve a typed empty marker and return `415`;
-WebFetcher prunes them because they cannot satisfy a text query.
+Binary responses use an installed bounded readable projection when available;
+only derived Unicode becomes durable. Otherwise direct operations preserve a
+typed empty marker and return `415`, while exact query preparation prunes the
+unreadable result from automatic search ingestion. Input above the common
+projection ceiling returns `413`.
 
 ## Design
 
@@ -43,8 +46,9 @@ WebFetcher prunes them because they cannot satisfy a text query.
   Playwright, and WebSocket use their ordinary configured transports.
 - Direct GET HTML is rendered through Playwright, projected into `body`, and
   retained faithfully in `html`.
-- GET representations carry method and acquisition-time metadata for the
-  configured TTL and conditional revalidation path.
+- GET representations carry method and acquisition-time metadata; derived
+  representations also carry projection identity. A reader change invalidates
+  the body, TTL shortcut, and conditional validators together.
 - HTTP(S) and WS(S) entry identity retains protocol, authority, path, ordered
   query, and explicit empty query; a fragment selects a channel.
 - Handler-owned browser and socket state follows the shared readiness, drain,

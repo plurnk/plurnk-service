@@ -66,9 +66,17 @@ const makeCtx = () => {
         tags: { add: ok, remove: ok, list: async () => ({ status: 200, tags: [] }) },
         notify: { streamEvent() {} },
         projection: {
-            async readable(content) {
-                return { content: content.replace(/<[^>]+>/g, " "), mimetype: "text/markdown" };
+            async readable(content, mimetype) {
+                return {
+                    content: content.replace(/<[^>]+>/g, " "),
+                    mimetype: "text/markdown",
+                    sourceMimetype: mimetype,
+                    projectionIdentity: `test:${mimetype}`,
+                };
             },
+            async readableBytes() { return null; },
+            async identity(mimetype) { return `test:${mimetype}`; },
+            async isBinary() { return false; },
         },
         subscriptions: {
             async open(_p: string, _h: SubscriptionHandle) {

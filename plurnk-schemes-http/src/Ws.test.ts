@@ -133,7 +133,19 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
             overrides.streamEvent?.(pathname, channel, state, contentLength);
         },
     };
-    const projection: ProjectionCaps = { async readable(content) { return { content, mimetype: "text/markdown" }; } };
+    const projection: ProjectionCaps = {
+        async readable(content, mimetype) {
+            return {
+                content,
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: `test:${mimetype}`,
+            };
+        },
+        async readableBytes() { return null; },
+        async identity(mimetype) { return `test:${mimetype}`; },
+        async isBinary() { return false; },
+    };
     let current: StreamSubscription | null = null;
     const notifyChunk: StreamSubscription["notifyChunk"] = async (channel, chunk, mimetype) => {
         await overrides.notifyChunk?.(channel, chunk, mimetype);

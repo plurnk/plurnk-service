@@ -389,6 +389,13 @@ test("{§exec-entry-sink}: content:null materializes a live page and prunes an u
         url.includes("/dead") ? null : {
             body: "<p>fetched live turkeys</p>",
             mimetype: "application/xhtml+xml",
+            header: [
+                "HTTP 200 OK",
+                "content-type: application/xhtml+xml",
+                "x-plurnk-projection-id: origin-spoof",
+                "x-plurnk-request-method: GET",
+                `x-plurnk-fetched-at: ${new Date().toISOString()}`,
+            ].join("\n"),
             render: async () => {
                 browserFallbacks += 1;
                 return { body: "<p>wrong fallback</p>", mimetype: "text/html" };
@@ -412,6 +419,15 @@ test("{§exec-entry-sink}: content:null materializes a live page and prunes an u
         assert.equal(body?.mimetype, "text/markdown", "the fetched html projected to the decisive markdown body");
         assert.match(body?.content ?? "", /fetched live turkeys/, "the projected body carries the fetched content, not the raw markup alone");
         assert.equal(browserFallbacks, 0, "a useful byte-response projection never invokes browser rendering");
+        const header = await db.test_get_channel.get<{ content: string }>({ entry_id: live.id, name: "header" });
+        const projectionEvidence = [
+            ...(header?.content ?? "").matchAll(/^x-plurnk-projection-id:[ \t]*(.*)$/gim),
+        ];
+        assert.match(
+            projectionEvidence.at(-1)?.[1] ?? "",
+            /^[a-f0-9]{64}$/,
+            "the shared materializer appends authoritative installed-reader identity after origin metadata",
+        );
 
         // {§exec-entry-sink} {§web-search-retrieval}: the sink rejects an unavailable URL,
         // creates no HTTP entry, and lets the search executor prune that candidate.

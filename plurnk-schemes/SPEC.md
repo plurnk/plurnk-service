@@ -268,11 +268,26 @@ handler; they do not collapse resource identity.
 - `MimetypeClassifier.normalizeAutoText(mimetype)` — `text/plain` / null / undefined → `TEXT_PRIMITIVE_MIMETYPE` (`text/markdown`).
 - `TEXT_PRIMITIVE_MIMETYPE` — `"text/markdown"` (named export from the same module).
 
-`ProjectionCaps.readable(content, mimetype)` returns the configured
-model-facing projection. A returned object is present even when its `content`
-is `""`; only `null` denotes absence. Consumers must not infer projection
-presence from content length. A thrown projection call is an execution failure
-whose cause propagates; it must never be converted to `null`.
+### §scheme-projection Projection capability
+
+Acquisition schemes delegate model-facing projection to the consumer's one
+configured mimetype family. They neither instantiate readers nor widen durable
+entry channels beyond Unicode text.
+
+| Surface                           | Contract                                                                                              |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `readable(content, mimetype)`     | Project an acquired Unicode representation.                                                           |
+| `readableBytes(chunks, mimetype)` | Project one async byte source under the mimetype family's bounded-input policy.                       |
+| `identity(mimetype)`              | Return the opaque identity of configured projection behavior for cache and materialization freshness. |
+| `isBinary(mimetype)`              | Classify through the configured registry; installed handler declarations remain authoritative.        |
+| `ProjectedText`                   | Derived Unicode plus its output mimetype, source mimetype, and opaque projection identity.            |
+
+A returned object is present even when its `content` is `""`; only `null`
+denotes absence. Consumers must not infer projection presence from content
+length. A thrown projection call is an execution failure whose cause
+propagates; it must never be converted to `null`.
+`ProjectionInputLimitError` is the projection boundary's exported name for the
+configured mimetype family's typed bounded-input failure.
 
 ### §slicer-text-algebra Text-region slicing and replacement - `Slicer`
 
@@ -361,7 +376,7 @@ its implementation.
 - `channels` — content writes + state (`append`/`replace`/`setState`).
 - `tags` — entry tags (`add`/`remove`/`list`).
 - `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the worker wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a worker, always via close.)
-- `projection` — `readable(content, mimetype)` asks the consumer's configured mimetype family for the model-facing text projection. Acquisition schemes own bytes/DOM; they do not instantiate or second-guess the reader family. `null` means no readable projection.
+- `projection` — the text and bounded-byte projection capability in {§scheme-projection}. Acquisition schemes own bytes/DOM; they do not instantiate or second-guess the reader family. `null` means no readable projection.
 - §scheme-subscriptions `subscriptions` — one streaming lifecycle:
 
 | Surface                           | Lifetime   | Contract                                                                                                   |
