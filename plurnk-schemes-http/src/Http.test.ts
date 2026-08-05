@@ -1993,6 +1993,281 @@ test("TTL: fresh stamp serves the stored copy with ZERO round-trips", async () =
     assert.match(inspect().closed?.summary ?? "", /ttl-fresh/);
 });
 
+test("cache policy: no-store evidence supplies neither TTL content nor validators", async () => {
+    const { ctx, inspect } = makeCtx(priorEntry(
+        "historical response",
+        "text/plain",
+        stampedHeader(1000, '\ncache-control: no-store\netag: "private"'),
+    ));
+    let conditional = false;
+    await withTtl("60000", async () => {
+        await withFetch(async (_url, init) => {
+            const headers = new Headers(init?.headers);
+            conditional = headers.has("if-none-match") || headers.has("if-modified-since");
+            return new Response("current response", {
+                status: 200,
+                headers: { "content-type": "text/plain" },
+            });
+        }, async () => {
+            await new Http().read(
+                readStmt(urlTarget("https://example.com/no-store", "/no-store")),
+                ctx,
+            );
+        });
+    });
+    assert.equal(conditional, false);
+    assert.equal(
+        inspect().chunks.filter(({ channel }) => channel === "body").map(({ chunk }) => chunk).join(""),
+        "current response",
+    );
+});
+
+for (const { name, ageMs, ttl, cacheHeaders, expectedFetch } of [
+    {
+        name: "max-age inside both origin and operator windows",
+        ageMs: 1000,
+        ttl: "60000",
+        cacheHeaders: "cache-control: max-age=60",
+        expectedFetch: false,
+    },
+    {
+        name: "max-age beyond the origin window",
+        ageMs: 2000,
+        ttl: "60000",
+        cacheHeaders: "cache-control: max-age=1",
+        expectedFetch: true,
+    },
+    {
+        name: "max-age inside origin but beyond the operator ceiling",
+        ageMs: 2000,
+        ttl: "1000",
+        cacheHeaders: "cache-control: max-age=60",
+        expectedFetch: true,
+    },
+    {
+        name: "upstream Age beyond max-age",
+        ageMs: 1000,
+        ttl: "60000",
+        cacheHeaders: "cache-control: max-age=60\nage: 120",
+        expectedFetch: true,
+    },
+    {
+        name: "quoted max-age accepted from a recipient",
+        ageMs: 1000,
+        ttl: "60000",
+        cacheHeaders: 'cache-control: max-age="60"',
+        expectedFetch: false,
+    },
+    {
+        name: "invalid explicit max-age fails stale",
+        ageMs: 1000,
+        ttl: "60000",
+        cacheHeaders: "cache-control: max-age=tomorrow",
+        expectedFetch: true,
+    },
+    {
+        name: "ambiguous max-age fails stale",
+        ageMs: 1000,
+        ttl: "60000",
+        cacheHeaders: "cache-control: max-age=60, max-age=120",
+        expectedFetch: true,
+    },
+] as const) {
+    test(`cache policy: ${name}`, async () => {
+        const header = stampedHeader(ageMs, `\n${cacheHeaders}\netag: "policy"`);
+        const { ctx } = makeCtx(priorEntry("cached", "text/plain", header));
+        let fetched = false;
+        let conditional = false;
+        await withTtl(ttl, async () => {
+            await withFetch(async (_url, init) => {
+                fetched = true;
+                const headers = new Headers(init?.headers);
+                conditional = headers.has("if-none-match") || headers.has("if-modified-since");
+                return new Response("fresh", {
+                    status: 200,
+                    headers: { "content-type": "text/plain" },
+                });
+            }, async () => {
+                await new Http().read(
+                    readStmt(urlTarget("https://example.com/policy", "/policy")),
+                    ctx,
+                );
+            });
+        });
+        assert.equal(fetched, expectedFetch);
+        assert.equal(conditional, expectedFetch);
+    });
+}
+
+test("cache policy: an expired Expires field bounds the operator heuristic", async () => {
+    const generatedAt = new Date(Date.now() - 10_000);
+    const expiredAt = new Date(generatedAt.getTime() + 5000);
+    const { ctx } = makeCtx(priorEntry(
+        "cached",
+        "text/plain",
+        stampedHeader(
+            1000,
+            `\ndate: ${generatedAt.toUTCString()}\nexpires: ${expiredAt.toUTCString()}\netag: "expires"`,
+        ),
+    ));
+    let conditional = false;
+    await withTtl("60000", async () => {
+        await withFetch(async (_url, init) => {
+            conditional = new Headers(init?.headers).has("if-none-match");
+            return new Response("fresh", { headers: { "content-type": "text/plain" } });
+        }, async () => {
+            await new Http().read(
+                readStmt(urlTarget("https://example.com/expires", "/expires")),
+                ctx,
+            );
+        });
+    });
+    assert.equal(conditional, true);
+});
+
+for (const { name, cacheHeaders, expectedFetch } of [
+    { name: "fresh max-age", cacheHeaders: "cache-control: max-age=60", expectedFetch: false },
+    { name: "no-cache", cacheHeaders: "cache-control: no-cache", expectedFetch: true },
+    { name: "no-store", cacheHeaders: "cache-control: no-store", expectedFetch: true },
+    { name: "expired max-age", cacheHeaders: "cache-control: max-age=0", expectedFetch: true },
+] as const) {
+    test(`prepareFind cache policy: ${name}`, async () => {
+        const { ctx } = makeCtx(priorEntry(
+            "stored",
+            "text/plain",
+            stampedHeader(1000, `\n${cacheHeaders}\netag: "find"`),
+            undefined,
+            "static",
+        ));
+        let fetched = false;
+        await withTtl("60000", async () => {
+            await withFetch(async () => {
+                fetched = true;
+                return new Response("current", {
+                    status: 200,
+                    headers: { "content-type": "text/plain" },
+                });
+            }, async () => {
+                const result = await new Http().prepareFind(
+                    findStmt(urlTarget("https://example.com/find-policy", "/find-policy")),
+                    ctx,
+                );
+                assert.equal(result.status, expectedFetch ? 201 : 200);
+            });
+        });
+        assert.equal(fetched, expectedFetch);
+    });
+}
+
+test("304 merges freshness metadata without relabeling a processed representation", async () => {
+    const projection = projectionCaps({
+        async identity(mimetype) {
+            assert.equal(mimetype, "application/pdf");
+            return "pdf-reader-v1";
+        },
+    });
+    const storedHeader = `${stampedHeader(1000, [
+        "",
+        "content-type: application/pdf",
+        "content-encoding: gzip",
+        "content-range: bytes 0-9/10",
+        "content-length: 10",
+        "cache-control: no-cache",
+        'etag: "pdf-v1"',
+        "x-origin-version: 1",
+    ].join("\n"))}\nx-plurnk-projection-id: pdf-reader-v1`;
+    const { ctx, inspect } = makeCtx(
+        priorEntry("projected PDF", "text/markdown", storedHeader),
+        { projection },
+    );
+    let conditional = false;
+    await withTtl("60000", async () => {
+        await withFetch(async (_url, init) => {
+            conditional = new Headers(init?.headers).get("if-none-match") === '"pdf-v1"';
+            return new Response(null, {
+                status: 304,
+                statusText: "Not Modified",
+                headers: {
+                    "cache-control": "max-age=60",
+                    "content-encoding": "br",
+                    "content-length": "0",
+                    "content-range": "bytes 0-0/0",
+                    "content-type": "text/plain",
+                    etag: '"pdf-v1"',
+                    "x-origin-version": "2",
+                },
+            });
+        }, async () => {
+            await new Http().read(
+                readStmt(urlTarget("https://example.com/paper.pdf", "/paper.pdf")),
+                ctx,
+            );
+        });
+    });
+    assert.equal(conditional, true, "no-cache forces successful origin validation");
+    const served = inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "";
+    assert.match(served, /^cache-control: max-age=60$/m);
+    assert.match(served, /^x-origin-version: 2$/m);
+    assert.doesNotMatch(served, /^x-origin-version: 1$/m);
+    assert.match(served, /^content-type: application\/pdf$/m);
+    assert.match(served, /^content-encoding: gzip$/m);
+    assert.match(served, /^content-range: bytes 0-9\/10$/m);
+    assert.match(served, /^content-length: 10$/m);
+    assert.match(served, /^x-plurnk-projection-id: pdf-reader-v1$/m);
+
+    const { ctx: refreshedCtx } = makeCtx(
+        priorEntry("projected PDF", "text/markdown", served),
+        { projection },
+    );
+    let fetchedAgain = false;
+    await withTtl("60000", async () => {
+        await withFetch(async () => {
+            fetchedAgain = true;
+            return new Response("unexpected");
+        }, async () => {
+            await new Http().read(
+                readStmt(urlTarget("https://example.com/paper.pdf", "/paper.pdf")),
+                refreshedCtx,
+            );
+        });
+    });
+    assert.equal(fetchedAgain, false, "the 304-provided max-age governs the refreshed representation");
+});
+
+test("304 no-store retires the restored body and its validators from the next request", async () => {
+    const stored = stampedHeader(1000, '\ncache-control: no-cache\netag: "v1"');
+    const { ctx, inspect } = makeCtx(priorEntry("cached", "text/plain", stored));
+    await withTtl("60000", async () => {
+        await withFetch(async () => new Response(null, {
+            status: 304,
+            headers: { "cache-control": "no-store", etag: '"v1"' },
+        }), async () => {
+            await new Http().read(
+                readStmt(urlTarget("https://example.com/retired", "/retired")),
+                ctx,
+            );
+        });
+    });
+    const refreshedHeader = inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "";
+    assert.match(refreshedHeader, /^cache-control: no-store$/m);
+
+    const { ctx: nextCtx } = makeCtx(priorEntry("cached", "text/plain", refreshedHeader));
+    let conditional = false;
+    await withTtl("60000", async () => {
+        await withFetch(async (_url, init) => {
+            const headers = new Headers(init?.headers);
+            conditional = headers.has("if-none-match") || headers.has("if-modified-since");
+            return new Response("new body", { headers: { "content-type": "text/plain" } });
+        }, async () => {
+            await new Http().read(
+                readStmt(urlTarget("https://example.com/retired", "/retired")),
+                nextCtx,
+            );
+        });
+    });
+    assert.equal(conditional, false);
+});
+
 test("TTL: a changed projection identity invalidates derived content and its origin validators", async () => {
     const header = `${stampedHeader(
         1000,
