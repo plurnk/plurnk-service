@@ -15,9 +15,8 @@ import Results, { type SchemeResultBase } from "../core/results.ts";
 import BranchReceipt from "../core/BranchReceipt.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 
-// A loop cancelled outside the worker names that act as state before preserving the
-// model's last words. NULL terminated_by = the model's own terminal, including an
-// already-drained join; its message is the result.
+// {§loop-terminal-authorship}: an external cancellation is marked as state;
+// model terminals and engine verdicts already carry their own exact result.
 export const markTerminal = (terminatedBy: string | null, message: string | null): string | null => {
     if (terminatedBy === "cancel") return `[ cancelled from outside the worker ]${message === null ? "" : ` ${message}`}`;
     return message;

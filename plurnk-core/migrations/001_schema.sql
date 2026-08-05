@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS ambient_events (
     attrs              TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attrs)),
     status_rx          INTEGER NOT NULL CHECK (status_rx BETWEEN 100 AND 599),
     prompt             TEXT,
-    terminated_by      TEXT             CHECK (terminated_by IS NULL OR terminated_by IN ('collapse', 'cancel')),
+    terminated_by      TEXT             CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
     created_at         TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     CHECK (
         (kind = 'edit' AND op = 'EDIT' AND rx IS NOT NULL AND prompt IS NULL AND terminated_by IS NULL)
@@ -110,12 +110,9 @@ CREATE TABLE IF NOT EXISTS loops (
     terminated_at    TEXT,
     terminal_message TEXT,
     terminal_result  TEXT                      CHECK (terminal_result IS NULL OR json_valid(terminal_result)),
-    -- Who ended the loop when it wasn't the model's own deliberate terminal: 'collapse' (the
-    -- ∅-wait conclude, #379) or 'cancel' (an external loop.cancel, #380). NULL = the model's own
-    -- SEND / the engine's budget-strike terminals, whose status already carries the story. The
-    -- COLLECT and the termination delta render it as a marker ALONGSIDE terminal_message — the
-    -- model's words are never rewritten; the engine's act is named.
-    terminated_by    TEXT                      CHECK (terminated_by IS NULL OR terminated_by IN ('collapse', 'cancel')),
+    -- {§loop-terminal-authorship}: 'cancel' names an external loop.cancel;
+    -- NULL covers model terminals and engine verdicts whose result carries the story.
+    terminated_by    TEXT                      CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
     FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE
 ) STRICT;
 

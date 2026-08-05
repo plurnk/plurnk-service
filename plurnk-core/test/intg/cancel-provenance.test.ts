@@ -1,8 +1,4 @@
-// #380 (owner ruling) — an external loop.cancel is allowed but provenanced, never silent. The
-// loop's terminal ROW is written (499; a dead loop must never read as live 102 — before this,
-// the 499 existed only in the broadcast) with terminated_by='cancel' and the client's reason as
-// the abandonment message; the loop/terminated broadcast carries the same message. A PARKED
-// (202) loop has no drain to observe the abort, so the cancel terminalizes it directly.
+// {§loop-terminal-authorship}, {§methods-loop-cancel}: external cancellation is durable and explicit.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -11,7 +7,7 @@ import { insertLoop, insertTurn, insertWorker } from "./_helpers.ts";
 
 type LoopRow = { id: number; status: number; terminal_message: string | null; terminated_by: string | null };
 
-test("cancelling a LIVE loop writes the provenanced 499 row — who/why on the record (#380)", async () => {
+test("{§loop-terminal-authorship}: cancelling a live loop records who and why", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[102]:running:SEND"),
         makeMockResponse("<<SEND[200]:done:SEND"),
@@ -63,10 +59,9 @@ test("cancelling a LIVE loop writes the provenanced 499 row — who/why on the r
     });
 });
 
-test("cancelling a PARKED (202) loop terminalizes it — no dead-park at 202 forever (#380)", async () => {
-    // A worker parked on a live obligation (a 30s exec + SEND[202]) has NO active drain — the
-    // drain tears down on 202. Before #380 an external cancel left the row 202 forever (the
-    // no-resurrection guard blocks wakes): a zombie neither live nor terminal.
+test("{§methods-loop-cancel}: cancelling a parked loop terminalizes it", async () => {
+    // A worker parked on a live obligation has no active drain, so cancellation
+    // terminalizes the durable 202 row directly.
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[202]:awaiting the slow job:SEND"),
         makeMockResponse("<<SEND[200]:done:SEND"),
@@ -97,7 +92,7 @@ test("cancelling a PARKED (202) loop terminalizes it — no dead-park at 202 for
     });
 });
 
-test("external cancellation terminalizes the complete durable subtree and emits each loop's turns", async () => {
+test("{§worker-lifecycle-total-reap}: external cancellation terminalizes the durable subtree and emits each loop's turns", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);

@@ -1281,7 +1281,12 @@ AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, signal: nu
 
 §wait-obligation-matrix **499** gives up regardless of obligations and cancels the unresolved descendant scope — the model's one self-decided failure ({§state-terms}). The surface is small on purpose. The **one** non-obvious cell is **200 with an obligation in flight** — a contradiction (you claimed done while you owe work), which the engine holds you to via Premature-Terminate below. A child join is bounded by the child's terminal transition; an external stream may carry an explicit `<T,P>` policy.
 
-**An externally-authored terminal is marked as state, never re-worded.** `terminated_by` names who ended a loop when the model did not: `'cancel'` for an externally-cancelled loop ({§methods-loop-cancel}); `NULL` = the model's own terminal, whose status already carries the story. COLLECT renders the named act as a marker before any preserved last words, so cancellation cannot masquerade as a deliverable. An already-drained join is the model's own successful terminal and needs no special marker.
+§loop-terminal-authorship **Terminal authorship is explicit when external.**
+
+| `terminated_by` | Meaning | Presentation |
+|---|---|---|
+| `NULL` | The model's own terminal or an engine verdict whose exact result already carries the story. An already-drained join is the model's own successful terminal. | No authorship marker. |
+| `cancel` | An external client cancelled the structured scope ({§methods-loop-cancel}). | COLLECT and the termination delta prepend a cancellation marker to the recorded reason, so cancellation cannot masquerade as a deliverable. The model's prior log rows remain untouched. |
 
 The engine's failure terminals — **500** (strike threshold) and **508** (cycle), {§engine-rails} — are never the model's to pick; they are the engine ruling the loop failed. The surface is small on purpose: the model says done, waiting, or giving up, and is never asked to hold a correct opinion about *how* it failed or *whether* it can be woken — the engine decides those from state.
 
