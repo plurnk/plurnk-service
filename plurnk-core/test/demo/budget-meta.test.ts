@@ -28,8 +28,6 @@ import { measureFloor } from "./_floor-probe.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
 const TIMEOUT = 480_000; // 8 minutes — matches the storyline timeout.
-const REASONING_RESERVE = 1;
-const COMPLETION_RESERVE = 8192;
 // Ceilings are FLOOR-RELATIVE: each worker probes its own fixture's true turn-1 floor (a
 // zero-cost pre-generate hard-413, _floor-probe.ts) and pins ceiling = floor × factor —
 // teaching growth re-calibrates the pin instead of breaking it. TIGHT keeps the small
@@ -46,13 +44,11 @@ interface BudgetRun {
     dump: () => Promise<void>;
 }
 
-// runStory with a pinned budget ceiling. The daemon's engine reads
-// the partition env at construction (inside liveWorkspace), so set before / restore
-// after — mirrors budget-grind. `projectRoot` overrides the default fixture (the SPEC demo).
+// runStory with a pinned budget ceiling. `projectRoot` overrides the default
+// fixture (the SPEC demo).
 const runUnderBudget = async (opts: { label: string; prompt: string; factor?: number; projectRoot?: string; cleanupRoot?: () => Promise<void> }): Promise<BudgetRun> => {
     const fixture = opts.projectRoot === undefined ? await seedDemoFixture(opts.label) : null;
     const root = opts.projectRoot ?? fixture!.workspace;
-    const restoreReserves = pinAliasBudget({ REASONING: String(REASONING_RESERVE), COMPLETION: String(COMPLETION_RESERVE), SAFETY: "0" });
     const floor = await measureFloor({ label: opts.label, projectRoot: root, prompt: opts.prompt });
     const ceiling = Math.round(floor * (opts.factor ?? TIGHT_FACTOR));
     const restore = pinAliasBudget({ PROMPT_BUDGET: String(ceiling) });
@@ -82,7 +78,6 @@ const runUnderBudget = async (opts: { label: string; prompt: string; factor?: nu
         throw err;
     } finally {
         restore();
-        restoreReserves();
     }
 };
 

@@ -13,15 +13,10 @@ import StoredPacket from "../../src/core/StoredPacket.ts";
 import { rulerCount } from "../../src/core/token-ruler.ts";
 
 const CEILING_FACTOR = 1.6;
-const REASONING_RESERVE = 1;
-const COMPLETION_RESERVE = 8192;
 
 test("demo: complete a multi-source briefing under a tight prompt budget", async () => {
     const fixture = await seedDemoFixture("budget");
     const userPromptText = "Brief me on this project — its codename, the database host it connects to, and the one outstanding TODO in the app code.";
-    // Pin the absolute response envelope before both phases; the virtual prompt budgets below
-    // alter only the model-facing gauge and grinder.
-    const restoreReserves = pinAliasBudget({ REASONING: String(REASONING_RESERVE), COMPLETION: String(COMPLETION_RESERVE), SAFETY: "0" });
     const floor = await measureFloor({ label: "grind", projectRoot: fixture.workspace, prompt: userPromptText });
     const CEILING = Math.round(floor * CEILING_FACTOR);
     const restore = pinAliasBudget({ PROMPT_BUDGET: String(CEILING) });
@@ -52,7 +47,6 @@ test("demo: complete a multi-source briefing under a tight prompt budget", async
         } finally { await s.cleanup(); }
     } finally {
         restore();
-        restoreReserves();
         await fixture.cleanup();
     }
 });
