@@ -65,6 +65,7 @@ import {
 } from "./generated/plurnkParser.ts";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
+import PathSyntax from "./PathSyntax.ts";
 
 // The xpath package's .d.ts omits its `parse` function; augment here.
 declare module "xpath" {
@@ -502,19 +503,20 @@ export default class AstBuilder {
      */
     static parsePath(raw: string, pos: Position = { line: 0, column: 0 }): ParsedPath | null {
         if (raw.length === 0) return null;
-        if (!AstBuilder.#SCHEME_PATTERN.test(raw)) {
-            return { kind: "local", raw };
+        const target = PathSyntax.unescapeTarget(raw);
+        if (!AstBuilder.#SCHEME_PATTERN.test(target)) {
+            return { kind: "local", raw: target };
         }
         // Split trailing request metadata before WHATWG decomposition; the addressed
         // scheme interprets the preserved ordered pairs. {§path-request-metadata}
-        const braceIdx = raw.indexOf("{");
-        const urlPart = braceIdx === -1 ? raw : raw.slice(0, braceIdx);
-        const headers = braceIdx === -1 ? null : AstBuilder.#splitHeaders(raw.slice(braceIdx), pos);
+        const braceIdx = target.indexOf("{");
+        const urlPart = braceIdx === -1 ? target : target.slice(0, braceIdx);
+        const headers = braceIdx === -1 ? null : AstBuilder.#splitHeaders(target.slice(braceIdx), pos);
         let url: URL;
         try {
             url = new URL(urlPart);
         } catch (e) {
-            const detail = e instanceof Error ? e.message : raw;
+            const detail = e instanceof Error ? e.message : target;
             throw new PlurnkParseError(pos.line, pos.column, "visitor", `invalid URI in path: ${detail}`);
         }
         // Uniform WHATWG decomposition — no per-scheme authority allowlist. `://`
@@ -524,7 +526,7 @@ export default class AstBuilder {
         // not the grammar's; the parser just reports what the standard parsed.
         const parsed: UrlPath = {
             kind: "url",
-            raw,
+            raw: target,
             scheme: url.protocol.replace(/:$/, ""),
             username: url.username || null,
             password: url.password || null,

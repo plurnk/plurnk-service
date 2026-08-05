@@ -265,7 +265,9 @@ SD_END   : ']' -> type(RBRACKET), mode(SLOTS) ;
 // ============================================================================
 
 mode TARGET;
-TARGET_INNER : (~[()<\r\n] | '<' ~[()<\r\n])+ -> type(TARGET_TEXT) ;
+TARGET_ESCAPE : '\\' ('\\' | '(' | ')') -> type(TARGET_TEXT) ;
+TARGET_INNER : (~[\\()<\r\n] | '<' ~[\\()<\r\n])+ -> type(TARGET_TEXT) ;
+TARGET_BACKSLASH : '\\' -> type(TARGET_TEXT) ;
 TARGET_NEST_OPEN : '(' { this.targetDepth++; } -> type(TARGET_TEXT) ;
 TARGET_NEST_END  : { this.targetDepth > 0 }? ')' { this.targetDepth--; } -> type(TARGET_TEXT) ;
 TARGET_END   : ')' -> type(RPAREN), mode(SLOTS) ;

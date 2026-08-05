@@ -343,11 +343,16 @@ export const buildModel = (): GModel => {
     model.set("branch", [[lit("["), plus(BRANCH_CHAR), lit("]")]]);
     model.set("tag", [[plus(TAG_CHAR)]]);
     model.set("tag-rest", [[lit(","), ref("tag")]]);
-    // Target — the canonical generation subset: an opaque exact path or shell glob
-    // with parentheses percent-encoded. ANTLR deliberately accepts balanced raw
-    // parentheses too, but the rail generates one low-ambiguity spelling.
+    // Target — the canonical generation subset. ANTLR deliberately accepts balanced
+    // raw parentheses and unknown backslash pairs, but the rail emits only the three
+    // lossless target-slot escapes. {§path-parentheses}
     model.set("target", [[lit("("), ref("target-inner"), lit(")")]]);
-    model.set("target-inner", [[plus(cls([...CONTROL_RANGES, ...C("()<\r\n")], true))]]);
+    model.set("target-inner", [[plus(ref("target-atom"))]]);
+    model.set("target-atom", [
+        [cls([...CONTROL_RANGES, ...C("\\()<\r\n")], true)],
+        [ref("target-escape")],
+    ]);
+    model.set("target-escape", [[lit("\\\\")], [lit("\\(")], [lit("\\)")]]);
     // N numeric components, comma-separated (the dictated form). `<N>`, `<N,M>`,
     // `<0.7,10,20>` all derive; dash-separated scope stays parse-side only.
     model.set("line", [[lit("<"), ref("int"), star(ref("line-rest")), lit(">")]]);

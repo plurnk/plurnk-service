@@ -54,6 +54,31 @@ test("#607: unmatched target parentheses require percent-encoding", () => {
     }
 });
 
+test("#113: target escapes preserve literal and percent-encoded URI spelling", () => {
+    const source = String.raw`<<READ(https://example.test/x?literal=\)&encoded=%29#preview\()::READ`;
+    const result = PlurnkParser.parseStatements(source);
+    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+    assert.equal(result.unparsedTail, undefined);
+    const item = result.items.find((candidate) => candidate.kind === "statement");
+    if (item?.kind !== "statement" || item.statement.op !== "READ") assert.fail("expected READ");
+    assert.equal(item.statement.target?.raw, "https://example.test/x?literal=)&encoded=%29#preview(");
+    if (item.statement.target?.kind !== "url") assert.fail("expected URL target");
+    assert.equal(item.statement.target.query, "literal=)&encoded=%29");
+    assert.equal(item.statement.target.fragment, "preview(");
+});
+
+test("#113: COPY/MOVE destinations use the same target escape layer", () => {
+    const result = PlurnkParser.parseStatements(
+        String.raw`<<COPY(worker:///draft):https://example.test/archive?literal=\)&encoded=%29:COPY`,
+    );
+    const item = result.items.find((candidate) => candidate.kind === "statement");
+    if (item?.kind !== "statement" || item.statement.op !== "COPY") assert.fail("expected COPY");
+    const destination = item.statement.body?.target;
+    if (destination?.kind !== "url") assert.fail("expected URL destination");
+    assert.equal(destination.raw, "https://example.test/archive?literal=)&encoded=%29");
+    assert.equal(destination.query, "literal=)&encoded=%29");
+});
+
 test("ex 12 — EDIT with empty body (clear)", () => {
     assert.equal(statementsOf("<<EDIT(known://countries/france/capital)::EDIT").length, 1);
 });

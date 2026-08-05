@@ -647,6 +647,16 @@ test("GBNF: targets use the canonical percent-encoded spelling for parentheses",
     assert.equal(derives("statement", "<<FIND(a<b)::FIND"), false);
 });
 
+test("GBNF: target delimiters and backslashes use the canonical lexical escape", () => {
+    assert.equal(
+        derives("statement", String.raw`<<READ(https://example.test/x?q=\)&encoded=%29#preview\()::READ`),
+        true,
+    );
+    assert.equal(derives("statement", String.raw`<<FIND(docs/\\*.md)::FIND`), true);
+    assert.equal(derives("statement", String.raw`<<FIND(docs/\*.md)::FIND`), false);
+    assert.equal(derives("statement", String.raw`<<FIND(docs/trailing\)::FIND`), false);
+});
+
 test("GBNF: unsuffixed body cannot contain its own close literal", () => {
     const collision = "<<EDIT(known://demo):quoted: <<EDIT(known://inner):hello:EDIT\n:EDIT";
     assert.equal(derives("statement", collision), false);

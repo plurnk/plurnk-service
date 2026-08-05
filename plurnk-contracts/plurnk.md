@@ -80,6 +80,7 @@ Examples:
 * Append `#channel` to select a channel; absent, the scheme's default channel is used.
 * A file or entry suffix such as `.json`, `.md`, or `.txt` declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28`, `)` becomes `%29`, and `<` becomes `%3C`.
+* Escape literal target syntax as `\\`, `\(`, and `\)` to preserve exact query and `#channel` spelling.
 
 Examples:
 

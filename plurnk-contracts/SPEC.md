@@ -316,11 +316,23 @@ absent query and an explicit empty query survive parsing. Consumers that need
 key/value access may construct `URLSearchParams`; the shared AST does not replace
 URI identity with a grouped object projection.
 
-§path-parentheses A depth-zero `)` closes the target slot. The tolerant lexer
-preserves balanced literal parentheses inside the target, but canonical
-producers percent-encode `(` as `%28`, `)` as `%29`, and `<` as `%3C` so the
-address cannot collide with slot syntax. Newlines and `<<` are never target
-content. Glob metacharacters remain legal path data.
+§path-parentheses An unescaped depth-zero `)` closes the target slot. The
+tolerant lexer preserves balanced unescaped parentheses, while canonical
+producers use one lossless Plurnk lexical layer before target interpretation:
+
+| Target-slot spelling | Interpreted character |
+| -------------------- | --------------------- |
+| `\\`                 | `\`                   |
+| `\(`                 | `(`                   |
+| `\)`                 | `)`                   |
+
+Decoding consumes only those three pairs in one left-to-right pass; unknown
+pairs such as `\*` retain both characters for glob interpretation. Encoding
+escapes backslashes before parentheses, so every target string round-trips.
+Pathname producers retain the deliberate `%28`/`%29` alias and `%3C` spelling,
+but must use the lexical layer for identity-bearing query and fragment text
+rather than changing their percent-encoded spelling. Newlines and `<<` are
+never target content. Glob metacharacters remain legal path data.
 
 §path-glob `PathSyntax` owns exact-path versus path-pattern classification.
 
@@ -529,7 +541,7 @@ stateDiagram-v2
     SLOTS --> SIGNAL: signal opener
     SIGNAL --> SLOTS: signal close
     SLOTS --> TARGET: target opener
-    TARGET --> TARGET: balanced inner parentheses
+    TARGET --> TARGET: balanced literals / target escapes
     TARGET --> SLOTS: target close at depth zero
     SLOTS --> SLOTS: scope token
     SLOTS --> BODY: body-opening colon
@@ -539,7 +551,7 @@ stateDiagram-v2
 SLOTS admits operation-appropriate signal, target, and scope openers in any
 order; the parser grammar enforces at-most-once multiplicity. Signal submodes
 select tags, integer, or identifier tokens by operation family. TARGET preserves
-balanced inner parentheses. BODY emits opaque text until the semantic predicate
+balanced inner parentheses and recognized target escapes. BODY emits opaque text until the semantic predicate
 recognizes the exact close from the captured opener.
 
 TURN is the single exception to opaque-body mode: its opener returns to DEFAULT
@@ -564,7 +576,7 @@ therefore produces `unparsedTail`; no later input is trustworthy.
 | Between header slots    | Adjacent                             | Spaces, tabs, and newlines are ignored                      |
 | Between `OP` and suffix | Adjacent                             | Must remain adjacent                                        |
 | Inside signal           | Adjacent values                      | Horizontal whitespace is ignored; newline is invalid        |
-| Inside target           | Reserved characters percent-encoded  | Spaces and tabs are preserved; newline and `<<` are invalid |
+| Inside target           | Path alias plus target escapes        | Balanced literals tolerated; newline and `<<` are invalid   |
 | Inside scope            | Comma-separated numbers              | Dash separator and one post-comma space are also accepted   |
 | Inside body             | Character-perfect                    | Character-perfect                                           |
 | Inside close tag        | Colon and `OPsuffix` are adjacent    | Must remain adjacent and match the opener                   |

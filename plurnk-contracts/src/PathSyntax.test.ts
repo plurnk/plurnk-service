@@ -16,6 +16,28 @@ test("encodeParens is the model-facing inverse without general URL encoding", ()
     assert.equal(PathSyntax.encodeParens("/wiki/Igor_%28politician%29"), "/wiki/Igor_%28politician%29");
 });
 
+test("target-slot escaping round-trips backslashes and parentheses without decoding glob escapes", () => {
+    assert.equal(
+        PathSyntax.escapeTarget(String.raw`a\(b\)`),
+        String.raw`a\\\(b\\\)`,
+    );
+    assert.equal(
+        PathSyntax.unescapeTarget(String.raw`a\\\(b\\\)`),
+        String.raw`a\(b\)`,
+    );
+    assert.equal(PathSyntax.unescapeTarget(String.raw`docs/a\*.md`), String.raw`docs/a\*.md`);
+
+    for (const target of [
+        "plain",
+        "a(b)c",
+        String.raw`slash\path`,
+        String.raw`slash\(paren\)`,
+        "trailing\\",
+    ]) {
+        assert.equal(PathSyntax.unescapeTarget(PathSyntax.escapeTarget(target)), target);
+    }
+});
+
 test("path-glob classification recognizes the complete shared syntax", () => {
     assert.equal(PathSyntax.hasGlob("/docs/exact.md"), false);
     assert.equal(PathSyntax.globMagicIndex("/docs/exact.md"), -1);

@@ -1,7 +1,5 @@
-// A depth-zero `)` closes a model-language target slot. Parentheses within an
-// address therefore use the contract's narrow `%28`/`%29` spelling. This is
-// intentionally not general percent decoding: every other escape and literal
-// percent sign belongs to the addressed path. {§path-parentheses}
+// Target-slot quoting and pathname-parenthesis aliasing are distinct layers.
+// Neither is general URI encoding or decoding. {§path-parentheses}
 export default class PathSyntax {
     // {§path-glob} The index is shared with consumers that use
     // the literal prefix only as a candidate-set optimization.
@@ -19,6 +17,14 @@ export default class PathSyntax {
 
     static hasGlob(value: string): boolean {
         return PathSyntax.globMagicIndex(value) >= 0;
+    }
+
+    static escapeTarget(value: string): string {
+        return value.replace(/\\/g, "\\\\").replace(/[()]/g, "\\$&");
+    }
+
+    static unescapeTarget(value: string): string {
+        return value.replace(/\\([\\()])/g, "$1");
     }
 
     static encodeParens(value: string): string {
