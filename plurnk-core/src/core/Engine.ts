@@ -1311,12 +1311,7 @@ export default class Engine {
             emissionAttempts = sequence;
         };
         try {
-            // {§turn-lifecycle} (#301) — the provider call is the long, opaque window (submit → first
-            // committed op is provider latency + a full first-turn generation, ~70s local): a static
-            // screen there is indistinguishable from a hang. Bracket generate() with two notices beats
-            // so a client can show "awaiting model" the instant the turn starts and flip to "parsing" when
-            // ops are about to land. Base notice/event channel (the embed_progress precedent, {§tokenomics}
-            // clients already render it unconditionally); the abort guard keeps a cancelled loop silent.
+            // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
             if (!signal?.aborted) this.#notices.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
             const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
             railGrammar = await this.#grammarConstraint(provider);
