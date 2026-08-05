@@ -13,6 +13,7 @@ const TABLE_ROW_DECLARATION = new RegExp(`^ {0,3}\\|[ \\t]*${NAMED_TAG}`);
 const PARAGRAPH_DECLARATION = new RegExp(`^ {0,3}${NAMED_TAG}`);
 const REFERENCE_TAG = /\{§([a-z][a-z0-9-]*)\}(?![a-z0-9_-])/g;
 const UNBRACED_NAMED_TAG = /§([A-Za-z][A-Za-z0-9_-]*)/g;
+const AMBIGUOUS_ISSUE_SHORTHAND = /\b((?:plurnk-[a-z0-9-]+|service|svc|gbnf|(?:grammar|schemes|mimetypes|providers|execs|embeddings|endpoint)(?:-[a-z0-9-]+)?)#\d+)\b/g;
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 const INLINE_CODE = /(`+)([^`]*?)\1/g;
 const UNBRACED_SOURCE_EXTENSIONS = new Set([
@@ -167,6 +168,16 @@ export const analyzeSpecReferences = (files) => {
 export const unresolvedSpecReferences = (files) =>
     analyzeSpecReferences(files).unresolvedReferences;
 
+export const ambiguousIssueShorthands = (files) => files
+    .flatMap(({ name, text }) => markdownLines(name, text)
+        .filter(({ ignored }) => !ignored)
+        .flatMap(({ line, number }) => [...line.matchAll(AMBIGUOUS_ISSUE_SHORTHAND)]
+            .map((match) => ({ name, line: number, reference: match[1] }))))
+    .toSorted((left, right) =>
+        left.name.localeCompare(right.name)
+        || left.line - right.line
+        || left.reference.localeCompare(right.reference));
+
 const repositoryFiles = async (root) => {
     const names = execFileSync(
         "git",
@@ -196,8 +207,11 @@ const printLocations = (title, entries, render) => {
 
 const main = async () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-    const analysis = analyzeSpecReferences(await repositoryFiles(root));
-    const failed = Object.values(analysis).some((entries) => entries.length > 0);
+    const files = await repositoryFiles(root);
+    const analysis = analyzeSpecReferences(files);
+    const issueShorthands = ambiguousIssueShorthands(files);
+    const failed = Object.values(analysis).some((entries) => entries.length > 0)
+        || issueShorthands.length > 0;
     if (!failed) {
         console.log("spec references OK");
         return;
@@ -227,6 +241,11 @@ const main = async () => {
         "Specification-tag declarations without an owning contract",
         analysis.emptyDeclarations,
         ({ name, line, tag }) => `${name}:${line} §${tag}`,
+    );
+    printLocations(
+        "Ambiguous issue shorthands (use a current local #N, a specification tag, or a full URL)",
+        issueShorthands,
+        ({ name, line, reference }) => `${name}:${line} ${reference}`,
     );
     process.exitCode = 1;
 };

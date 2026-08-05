@@ -1,9 +1,41 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { analyzeSpecReferences } from "./spec-references.mjs";
+import {
+    ambiguousIssueShorthands,
+    analyzeSpecReferences,
+} from "./spec-references.mjs";
 
 const cite = (tag) => `{${"§"}${tag}}`;
 const declare = (tag) => `${"§"}${tag}`;
+const issueShorthand = (repository, number) => `${repository}${"#"}${number}`;
+
+test("legacy repository issue shorthands are distinct from valid citation forms", () => {
+    const serviceReference = issueShorthand("service", 240);
+    const packageReference = issueShorthand("plurnk-mimetypes", 41);
+    const files = [
+        {
+            name: "alpha/SPEC.md",
+            text: [
+                `${declare("current-law")} **Current law.**`,
+                `Historical shorthand ${serviceReference} is ambiguous.`,
+                `Inline code \`${packageReference}\` is an inert example.`,
+                "```md",
+                packageReference,
+                "```",
+                "Current local work #52 and https://github.com/plurnk/plurnk-service/issues/240 are explicit.",
+            ].join("\n"),
+        },
+        {
+            name: "src/code.ts",
+            text: `// ${packageReference}; response#2 is an ordinary local label.`,
+        },
+    ];
+
+    assert.deepEqual(ambiguousIssueShorthands(files), [
+        { name: "alpha/SPEC.md", line: 2, reference: serviceReference },
+        { name: "src/code.ts", line: 1, reference: packageReference },
+    ]);
+});
 
 test("the first semantic token of a SPEC heading, paragraph, list item, or table row declares a tag", () => {
     const files = [
