@@ -113,16 +113,10 @@ export const quiesceExecs = async (schemes: { get(name: string): unknown }): Pro
     if (exec?.idle !== undefined) await exec.idle();
 };
 
-// A mock context window safely above the REAL packet floor, not a magic number. The floor is the
-// law/definition (grammar's plurnk.md — it GROWS as teaching is added, e.g. #430's harmony channel)
-// plus the generation reserves; a docs-foisting turn roughly doubles it (the teaching-docs catalog
-// is ~law-sized). A hardcoded window (the old `8192`) silently drifts UNDER that floor as the
-// definition grows and the turn hard-413s instead of concluding (#433/#355). This tracks it: measure
-// the authored law ONCE at module load (a conservative upper bound after {§definition-table-projection}),
-// ×2 to cover the docs catalog + headroom. Tight relative to a real model's window (the grinder still
-// engages on large content), but never impossible. Use it wherever a test runs a loop to CONCLUSION
-// and just needs the packet to fit — NOT for grinder/overflow tests, which deliberately pick a
-// sub-floor window.
+// Test-only viable window ({§definition-table-projection}, {§tokenomics-window-partition}):
+// measure current authored teaching once, add configured generation reserves, and double for the
+// docs catalog plus headroom. Conclusion fixtures use it so teaching growth cannot make unrelated
+// loops impossible; grinder and overflow tests deliberately select their own sub-floor windows.
 const _reserves = ["REASONING", "COMPLETION", "SAFETY"].reduce((n, k) => n + Number(process.env[`PLURNK_SERVICE_${k}`] ?? 0), 0);
 const _viableWindow = Math.ceil((rulerCount(await readFile(Paths.instructionsSystem, "utf8")) + _reserves) * 2);
 export const viableWindow = (): number => _viableWindow;
