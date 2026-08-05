@@ -1825,7 +1825,14 @@ for (const {
         name: "matching malformed Last-Modified values cannot certify the stored response",
         storedValidator: "last-modified: 0",
         responseHeaders: { "last-modified": "0" },
-        expectedConditional: ["if-modified-since", "0"],
+        expectedConditional: null,
+        valid: false,
+    },
+    {
+        name: "matching malformed ETags cannot certify the stored response",
+        storedValidator: "etag: not-an-entity-tag",
+        responseHeaders: { etag: "not-an-entity-tag" },
+        expectedConditional: null,
         valid: false,
     },
     {
