@@ -15,16 +15,19 @@ import {
     makeHandlerCtx,
 } from "./_helpers.ts";
 
-const statement = (lineMarker: ReadStatement["lineMarker"] = null): ReadStatement => {
+const statement = (
+    lineMarker: ReadStatement["lineMarker"] = null,
+    pathname = "/logo.png",
+): ReadStatement => {
     const target: UrlPath = {
         kind: "url",
-        raw: "https://93.184.216.34/logo.png",
+        raw: `https://93.184.216.34${pathname}`,
         scheme: "https",
         username: null,
         password: null,
         hostname: "93.184.216.34",
         port: null,
-        pathname: "/logo.png",
+        pathname,
         query: null,
         fragment: null,
     };
@@ -38,6 +41,12 @@ const statement = (lineMarker: ReadStatement["lineMarker"] = null): ReadStatemen
         position: { line: 1, column: 0 },
     };
 };
+
+// Minimal valid one-page PDF whose content stream contains "Hello, world!".
+const readablePdf = () => new Uint8Array(Buffer.from(
+    "JVBERi0xLjQKJaWx6woxIDAgb2JqCjw8IC9UeXBlIC9DYXRhbG9nIC9QYWdlcyAyIDAgUiA+PgplbmRvYmoKMiAwIG9iago8PCAvVHlwZSAvUGFnZXMgL0tpZHMgWzMgMCBSXSAvQ291bnQgMSA+PgplbmRvYmoKMyAwIG9iago8PCAvVHlwZSAvUGFnZSAvUGFyZW50IDIgMCBSIC9NZWRpYUJveCBbMCAwIDMwMCAxNDRdIC9SZXNvdXJjZXMgPDwgL0ZvbnQgPDwgL0YxIDUgMCBSID4+ID4+IC9Db250ZW50cyA0IDAgUiA+PgplbmRvYmoKNCAwIG9iago8PCAvTGVuZ3RoIDQ1ID4+CnN0cmVhbQpCVCAvRjEgMTggVGYgMzYgMTAwIFRkIChIZWxsbywgd29ybGQhKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMTQgMDAwMDAgbiAKMDAwMDAwMDA2MyAwMDAwMCBuIAowMDAwMDAwMTIwIDAwMDAwIG4gCjAwMDAwMDAyNDYgMDAwMDAgbiAKMDAwMDAwMDM0MCAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQxMAolJUVPRgo=",
+    "base64",
+));
 
 const emptyStatement = (): ReadStatement => ({
     op: "READ",
@@ -119,6 +128,44 @@ test("a direct binary response persists one typed marker whose universal READ is
         assert.equal(reread.status, 415);
         assert.equal(reread.problem?.type, "https://problems.plurnk.dev/scheme/https/binary-read-unsupported");
         assert.equal(reread.mimetype, "image/png");
+    } finally {
+        globalThis.fetch = originalFetch;
+        await http.close();
+        await db.close();
+    }
+});
+
+test("a direct readable PDF persists only derived Unicode plus projection evidence", async () => {
+    const db = await openMigrated();
+    const originalFetch = globalThis.fetch;
+    const http = new Http();
+    try {
+        globalThis.fetch = async () => new Response(readablePdf(), {
+            status: 200,
+            statusText: "OK",
+            headers: { "content-type": "application/pdf" },
+        });
+        const workspaceId = await insertWorkspace(db, `http-readable-binary-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const manifest = { ...Http.manifest, name: "https" };
+        const handlerCtx = makeHandlerCtx(ctx, manifest);
+
+        assert.equal((await http.read(statement(null, "/paper.pdf"), handlerCtx)).status, 102);
+        const entry = await handlerCtx.entries.read("/93.184.216.34/paper.pdf");
+        assert.equal(entry.entry?.channels.body.mimetype, "text/markdown");
+        assert.match(entry.entry?.channels.body.content ?? "", /Hello, world!/);
+        assert.equal(entry.entry?.channels.body.state, "closed");
+        assert.match(entry.entry?.channels.header.content ?? "", /^content-type: application\/pdf$/m);
+        assert.match(
+            entry.entry?.channels.header.content ?? "",
+            /^x-plurnk-projection-id: [a-f0-9]{64}$/m,
+        );
+
+        const reread = await http.read(statement({ marks: [1] }, "/paper.pdf"), handlerCtx);
+        assert.equal(reread.status, 200);
+        assert.match(reread.content ?? "", /Hello, world!/);
+        assert.equal(reread.mimetype, "text/markdown");
     } finally {
         globalThis.fetch = originalFetch;
         await http.close();
