@@ -225,6 +225,69 @@ test("{§exec-target-routing} an empty-body directory target is refused", async 
     });
 });
 
+test("{§exec-target-routing} an absent local target alone takes the executor file arm", async () => {
+    await withWorkspace(async (ctx) => {
+        const root = await mkdtemp(join(tmpdir(), "exec-target-absent-"));
+        try {
+            await rootWorkspace(ctx.db, ctx.workspaceId, root);
+            const idDeferred = deferred<number>();
+            const dispatchPromise = ctx.engine.dispatch({
+                statement: execStmt("sh", "missing.sh", ""),
+                workspaceId: ctx.workspaceId,
+                workerId: ctx.workerId,
+                loopId: ctx.loopId,
+                turnId: ctx.turnId,
+                sequence: 1,
+                origin: "model",
+                onDispatch: (id) => idDeferred.resolve(id),
+            });
+            const logEntryId = await idDeferred.promise;
+            const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
+            const attrs = JSON.parse(row?.attrs ?? "{}") as { target?: unknown; cwd?: unknown; command?: unknown };
+            assert.equal(attrs.target, "missing.sh");
+            assert.equal(attrs.cwd, root);
+            assert.equal(attrs.command, "");
+            ctx.engine.resolveProposal(logEntryId, { decision: "reject" });
+            await dispatchPromise;
+        } finally { await rm(root, { recursive: true, force: true }); }
+    });
+});
+
+test("{§exec-target-routing} a non-absence stat failure stops before effect admission with its cause", async (t) => {
+    const diagnostics: unknown[][] = [];
+    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
+    await withWorkspace(async (ctx) => {
+        const root = await mkdtemp(join(tmpdir(), "exec-target-stat-failure-"));
+        try {
+            await writeFile(join(root, "not-a-directory"), "file");
+            await rootWorkspace(ctx.db, ctx.workspaceId, root);
+            try {
+                const result = await ctx.engine.dispatch({
+                    statement: execStmt("jq", "not-a-directory/child.json", "."),
+                    workspaceId: ctx.workspaceId,
+                    workerId: ctx.workerId,
+                    loopId: ctx.loopId,
+                    turnId: ctx.turnId,
+                    sequence: 1,
+                    origin: "model",
+                });
+
+                assert.equal(result.status, 500);
+                assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/exec/target-classification-failed");
+                assert.equal(result.problem?.stage, "target-classification");
+                assert.equal(result.problem?.target, "not-a-directory/child.json");
+                assert.match(result.problem?.detail ?? "", /could not be inspected.*ENOTDIR/i);
+                assert.equal(diagnostics.length, 1);
+                assert.match(String(diagnostics[0]?.[0]), /EXEC target classification failed/);
+                const cause = diagnostics[0]?.[1];
+                assert.ok(cause instanceof Error && "code" in cause && cause.code === "ENOTDIR");
+            } finally {
+                await ctx.exec.idle();
+            }
+        } finally { await rm(root, { recursive: true, force: true }); }
+    });
+});
+
 // applyResolution returns 200/"started" immediately; the spawn runs async.
 // The dispatch outcome on the log entry is "started" — the SPAWN's exit
 // result lives intact on the subscription row's close_result; close_status is

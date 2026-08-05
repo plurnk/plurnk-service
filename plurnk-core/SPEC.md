@@ -1354,12 +1354,16 @@ Loop-flag authority follows the same target classification:
 | Absent, local, or `file://`     | `exec`                                   |
 | Non-file scheme address        | `exec` and the addressed source scheme   |
 
-A stat miss takes the file arm so the runtime reports its own not-found rather
-than dispatch returning 400. An empty body is legal for a local file or scheme
-command source; it remains a 400 with no target or a directory target. For a
-scheme-data target, the authored address is an opaque target-present identity:
-the executor neither resolves it nor sees it during `run()`; core materializes
-the selected content only after acceptance and supplies that local path.
+A stat miss means exactly `ENOENT` and takes the file arm so the runtime reports
+its own not-found rather than dispatch returning 400. Any other stat failure
+stops target classification before effect admission with a core-owned 500
+Problem: its bounded diagnostic states the occurrence-specific cause and daemon
+diagnostics retain the complete error. An empty body is legal for a local file
+or scheme command source; it remains a 400 with no target or a directory target.
+For a scheme-data target, the authored address is an opaque target-present
+identity: the executor neither resolves it nor sees it during `run()`; core
+materializes the selected content only after acceptance and supplies that local
+path.
 Worker and runtime-stream authorities, query, fragment, request metadata, and
 every other address component therefore retain their owning READ semantics. A
 failed source READ is preserved as the proposal-application failure. A

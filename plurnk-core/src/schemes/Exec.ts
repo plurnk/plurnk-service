@@ -272,7 +272,27 @@ export default class Exec extends CoreSchemeAdapterBase {
         let cwd: string | null = projectRoot;
         if (localTarget !== null) {
             const abs = projectRoot !== null ? resolve(projectRoot, localTarget) : localTarget;
-            try { if ((await stat(abs)).isDirectory()) { cwd = abs; routedTarget = null; } } catch { /* Absence takes the file arm; other stat failures: #185. */ }
+            try {
+                if ((await stat(abs)).isDirectory()) {
+                    cwd = abs;
+                    routedTarget = null;
+                }
+            } catch (cause) {
+                if ((cause as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
+                    console.error(`EXEC target classification failed for '${abs}':`, cause);
+                    return Results.failure(
+                        "scheme:exec",
+                        "target-classification-failed",
+                        500,
+                        `EXEC target '${localTarget}' could not be inspected: ${ErrorDetail.preview(cause)}`,
+                        {},
+                        {
+                            target: localTarget,
+                            stage: "target-classification",
+                        },
+                    ) as ExecResult;
+                }
+            }
         }
         // An empty body requires a file/program or scheme command source.
         // {§exec-target-routing}
