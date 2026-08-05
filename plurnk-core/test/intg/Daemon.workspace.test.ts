@@ -28,7 +28,7 @@ const rpcCall = (ws: SeamSocket, id: number, method: string, params?: object): P
         ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
     });
 
-// #364 — the harness rides the seam; the "addr" is the daemon itself.
+// The integration harness calls the in-process seam. {§rpc}
 const withDaemon = async <T>(fn: (db: Db, addr: { daemon: Daemon }) => Promise<T>): Promise<T> => {
     const db = await openMigrated();
     const daemon = new Daemon({ db });

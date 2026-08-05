@@ -168,7 +168,7 @@ test("End-to-end via daemon RPC: op.send with status 499 on entry with no subscr
 
     const db = await openMigrated();
     const daemon = new Daemon({ db });
-    await daemon.start(); // #364 — the harness rides the seam
+    await daemon.start(); // {§rpc}
     const { default: SeamSocket } = await import("./_seam.ts");
     const ws = new SeamSocket(daemon);
 

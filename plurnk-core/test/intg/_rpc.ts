@@ -1,6 +1,4 @@
-// Shared Daemon test helpers — the harness rides the CoreSeam (#364): connect() hands back a
-// SeamSocket (the ws-mimic whose every method dispatches into the seam), so the whole intg tier
-// certifies the one client surface. Used by every Daemon.* and SEND[*] integration test.
+// Shared Daemon test helpers over the in-process CoreSeam. {§rpc}
 
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { OperationResult, ProblemDetails } from "@plurnk/plurnk-contracts";
@@ -18,7 +16,7 @@ export interface RpcResponse {
     error?: { code: number; message: string };
 }
 
-// The "address" is the daemon itself — there is no socket to dial (#364).
+// The "address" is the daemon itself; no socket is involved.
 export interface DaemonAddr { daemon: Daemon }
 
 export const rpcCall = (ws: SeamSocket, id: number, method: string, params?: object): Promise<RpcResponse> =>
