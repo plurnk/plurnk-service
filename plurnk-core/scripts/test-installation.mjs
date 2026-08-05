@@ -207,7 +207,7 @@ const boot = await bootStart({
     // {§browser-provisioning}: this fixture provisions no operator browser.
     PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
 });
-ok(boot.listening === true, "`start` boots the daemon (the AG-UI listener bound — single-listener production, #357)");
+ok(boot.listening === true, "{§agui-daemon-client}: `start` boots the daemon with its AG-UI+ listener");
 ok(!/embedder inactive/.test(boot.stderr), "no embedder-inactive notice — the shipped embedder is active");
 // {§operator-config-shipped-defaults}: a fresh install resolves no model and names
 // the available configuration paths instead.

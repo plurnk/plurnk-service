@@ -2,8 +2,8 @@
 // exercise the in-tree Daemon class directly; nothing else catches rot in the
 // entrypoint (config cascade, env→arg mapping, signal handlers, the dynamic
 // provider load path, the startup-line stdout format clients may parse). This test
-// spawns the actual entry, waits for the AG-UI listener (production is
-// single-listener, #357), probes it over HTTP, and ensures clean SIGTERM shutdown.
+// spawns the actual entry, waits for the one AG-UI+ client listener
+// ({§agui-daemon-client}), probes it over HTTP, and ensures clean SIGTERM shutdown.
 
 import test from "node:test";
 import assert from "node:assert/strict";
