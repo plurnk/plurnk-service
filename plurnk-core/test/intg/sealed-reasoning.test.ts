@@ -4,6 +4,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import type { Db } from "../../src/core/Db.ts";
+import LogEntry from "../../src/server/logEntry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Translator } from "@plurnk/plurnk-agui";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
@@ -11,10 +13,20 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_help
 const MESSAGES = [{ role: "system" as const, content: "SD" }, { role: "user" as const, content: "go" }];
 const BLOB = "gAAAAABqBLOB-SEALED-0123456789";
 
-// Feed a mirror row's serialized attrs to agui's real Translator; return the projected events.
-const projectThroughAgui = (workerId: number, attrs: string) => {
+// Hydrate the real core rows, then feed them to AG-UI in durable order.
+const projectThroughAgui = async (db: Db, workerId: number, turnId: number) => {
     const tr = new Translator({ threadId: "xlane", runId: "xlane", modelWorkerId: workerId });
-    return tr.logEntry({ entry: { id: 9, op: "model", origin: "model", coordinate: "1/1/9/model", turn_id: 1, tx: "", attrs, worker_id: workerId } as never });
+    const refs = await db.test_log_entries_by_worker.all<{ id: number; turn_id: number }>({ worker_id: workerId });
+    const events = [];
+    for (const { id, turn_id } of refs) {
+        if (turn_id !== turnId) continue;
+        const row = await LogEntry.fetchLogEntry(db, id);
+        events.push(...tr.logEntry({ entry: {
+            ...row,
+            coordinate: `${row.loop_seq}/${row.turn_seq}/${row.sequence}/${row.op}`,
+        } as never }));
+    }
+    return events;
 };
 
 test("core preserves the normalized item list, AG-UI correlates it, and the packet excludes it", async () => {
@@ -38,13 +50,16 @@ test("core preserves the normalized item list, AG-UI correlates it, and the pack
         assert.ok(Array.isArray(list), "attrs.reasoning is the item LIST (the standard shape)");
         assert.deepEqual(list, [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }], "core relays the normalized item unchanged");
 
-        // 2. Cross-lane conformance: core's real attrs → agui's real Translator → the standard event.
-        const events = projectThroughAgui(workerId, row!.attrs);
+        // 2. Cross-lane conformance: real core rows → hydration → AG-UI Translator.
+        const events = await projectThroughAgui(db, workerId, t1.turnId);
+        const assistant = events.find((e) => e.type === "TEXT_MESSAGE_START") as { messageId?: string } | undefined;
         const ev = events.find((e) => e.type === "REASONING_ENCRYPTED_VALUE") as { entityId?: string; encryptedValue?: string; subtype?: string } | undefined;
         assert.ok(ev, "agui projected REASONING_ENCRYPTED_VALUE from core's real serialization");
-        assert.equal(ev!.entityId, "rs_1", "correlated by the wire id");
+        assert.ok(assistant?.messageId, "the same turn projected a real SEND assistant message");
+        assert.equal(ev!.entityId, assistant!.messageId, "encrypted evidence targets the actual SEND entity");
+        assert.notEqual(ev!.entityId, "rs_1", "provider detail identity never masquerades as a client entity");
         assert.equal(ev!.encryptedValue, BLOB, "the sealed value reaches the seam intact");
-        assert.equal((events.find((e) => e.type === "REASONING_START") as { messageId?: string } | undefined)?.messageId, "rs_1", "the span correlates to the same id");
+        assert.ok(!events.some((e) => e.type === "REASONING_START" || e.type === "REASONING_END"), "no unbacked reasoning span is invented");
 
         // 3. Weight safety: the NEXT packet's render must not contain the blob anywhere.
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
@@ -55,7 +70,7 @@ test("core preserves the normalized item list, AG-UI correlates it, and the pack
     } finally { await db.close(); }
 });
 
-test("multiple encrypted-reasoning items project as distinct correlated spans", async () => {
+test("multiple encrypted-reasoning items remain distinct forensic evidence without collapsing into AG-UI", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `sealed-multi-${crypto.randomUUID()}`);
@@ -69,14 +84,13 @@ test("multiple encrypted-reasoning items project as distinct correlated spans", 
                 { id: "rs_b", subtype: "message", encrypted: [{ data: B, format: "openai-responses-v1" }] },
             ] } },
         ] as never });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
         const rows = await db.test_log_entries_by_worker_op.all<{ attrs: string }>({ worker_id: workerId, op: "model" });
         const row = rows.find((r) => (JSON.parse(r.attrs) as { reasoning?: unknown }).reasoning !== undefined)!;
-        // Core relays both items; AG-UI projects two correlated encrypted values.
-        const values = projectThroughAgui(workerId, row.attrs)
-            .filter((e) => e.type === "REASONING_ENCRYPTED_VALUE") as Array<{ entityId: string; encryptedValue: string }>;
-        assert.equal(values.length, 2, "both reasoning items serve — no collapse-to-first");
-        assert.deepEqual(values.map((v) => [v.entityId, v.encryptedValue]).sort(), [["rs_a", A], ["rs_b", B]], "each item correlated to its own id + blob");
+        const list = (JSON.parse(row.attrs) as { reasoning: Array<{ id: string; encrypted: Array<{ data: string }> }> }).reasoning;
+        assert.deepEqual(list.map(({ id, encrypted }) => [id, encrypted[0]?.data]), [["rs_a", A], ["rs_b", B]], "the forensic row retains both provider details distinctly");
+        const events = await projectThroughAgui(db, workerId, turn.turnId);
+        assert.ok(!events.some((e) => e.type === "REASONING_ENCRYPTED_VALUE"), "the single AG-UI message slot does not select, join, or overwrite multiple values");
     } finally { await db.close(); }
 });

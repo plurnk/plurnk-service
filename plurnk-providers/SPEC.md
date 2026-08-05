@@ -388,10 +388,20 @@ When enabled, raw per-token model logprob is canonical; alternatives are
 preserved when returned. Raw body/chunks preserve wire evidence the normalized
 record omits.
 
-Readable reasoning and encrypted reasoning are separate. Encrypted payload
-bytes remain opaque and are never decoded. #44 owns the unsettled normalization
-contract for their identity and subtype metadata; derived metadata must not be
-described as verbatim evidence.
+§provider-encrypted-reasoning **Readable reasoning and encrypted reasoning are
+separate.** Encrypted payload bytes remain opaque and are never decoded. The
+provider boundary distinguishes preserved detail evidence from derived entity
+classification:
+
+| Provider fact                    | Meaning |
+| -------------------------------- | ------- |
+| `id`                             | The provider's reasoning-detail identity, or `null`; never an AG-UI message or tool-call identity. |
+| `subtype`                        | A provider-normalized classification supported by wire structure. OpenAI-compatible `message.reasoning_details` is `message`; no PLURNK operation is reclassified as a native tool call. |
+| `encrypted[*].data` / `format`   | Ordered provider evidence, retained without decoding or concatenation across distinct details. |
+
+Unrecognized detail shapes are omitted at this normalization boundary. Core
+may preserve normalized items as forensic evidence, but a client protocol must
+correlate them to an entity it actually created rather than reusing `id`.
 
 ## §12 Generation envelopes
 

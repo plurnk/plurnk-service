@@ -467,6 +467,19 @@ test("distinct encrypted-reasoning wire ids stay distinct items", async () => {
     assert.deepEqual(assistant.reasoningEncrypted?.map((i) => i.id), ["rs_1", "rs_2"]);
 });
 
+test("assistant-message location classifies encrypted reasoning without inventing a missing detail id", async () => {
+    installFetchJson({ model: "m", choices: [{ message: { content: "ok", reasoning_details: [
+        { type: "reasoning.encrypted", data: "OPAQUE", format: "openai-responses-v1", id: null, index: 0 },
+    ] }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
+    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
+    const { assistant } = await p.generate({ workerId: "r", messages: [] });
+    assert.deepEqual(assistant.reasoningEncrypted, [{
+        id: null,
+        subtype: "message",
+        encrypted: [{ data: "OPAQUE", format: "openai-responses-v1" }],
+    }]);
+});
+
 test("encrypted reasoning (streamed): chunked blob concatenates per entry index", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([
