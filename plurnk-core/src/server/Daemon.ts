@@ -59,6 +59,7 @@ import type {
     RuntimeRegistration,
     StartedModule,
 } from "./DaemonModule.ts";
+import { observed } from "../observe/spans.ts";
 
 const clientActionFailure = (error: unknown): SchemeResult => {
     if (error instanceof OperationFailureError) return error.result;
@@ -1542,16 +1543,24 @@ export default class Daemon {
                             this.#broadcast({ workspaceId }, "log/entry", { entry });
                         })().catch((e: unknown) => console.error("log/entry broadcast failed:", e instanceof Error ? e.message : String(e)));
                     };
-                    const result = await this.#engine.runLoop({
-                        provider, workspaceId, workerId, loopId: loopRow.id, maxTurns: loopRow.max_turns,
-                        messages: [
-                            { role: "system", content: systemPrompt },
-                            { role: "user", content: loopRow.prompt },
-                        ],
-                        origin: "model",
-                        onDispatch,
-                        signal: controller.signal,
-                    });
+                    const result = await observed( // {§observability-boundary}
+                        "loop.run",
+                        { workspaceId, workerId, "loop.id": loopRow.id },
+                        async (span) => {
+                            const loopResult = await this.#engine.runLoop({
+                                provider, workspaceId, workerId, loopId: loopRow.id, maxTurns: loopRow.max_turns,
+                                messages: [
+                                    { role: "system", content: systemPrompt },
+                                    { role: "user", content: loopRow.prompt },
+                                ],
+                                origin: "model",
+                                onDispatch,
+                                signal: controller.signal,
+                            });
+                            span.setAttribute("status", loopResult.result.status);
+                            return loopResult;
+                        },
+                    );
                     if (result.result.status === 202) {
                         // The loop slept via SEND[202] — suspended, not terminated. Leave it at 202
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion

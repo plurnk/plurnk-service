@@ -111,6 +111,7 @@
         "isomorphic-git": "1.40.0"
     },
     "devDependencies": {
+        "@opentelemetry/context-async-hooks": "^2.10.0",
         "@types/diff": "^7.0.2"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-core#readme",
