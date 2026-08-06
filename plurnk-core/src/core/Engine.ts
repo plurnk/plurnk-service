@@ -60,6 +60,7 @@ import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 import Dispatcher from "./Dispatcher.ts";
 import type { DispatchContext, DispatchResult, ResolvedClientEntryAddress } from "./Dispatcher.ts";
 import { observed, observedSync } from "../observe/spans.ts";
+import { OPS_DISPATCHED, PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
 
 // Proposal types are part of Engine's public API (resolveProposal/onProposalPending);
@@ -1404,22 +1405,31 @@ export default class Engine {
                 const completedResponse = await observed( // {§observability-boundary}
                     "provider.generate",
                     { model: provider.model, attempt },
-                    () => provider.generate({
-                        messages: modelMessages,
-                        workerId: String(workerId),
-                        primaryWorkerId,
-                        signal: providerSignal,
-                        grammar: railGrammar,
-                        maxTokens,
-                        strikes: strikeStreak,
-                        attributions: providerAttemptAttributions.length > 0
-                            ? providerAttemptAttributions
-                            : undefined,
-                        client: client ?? undefined,
-                        workspaceId: String(workspaceId),
-                        loop: loopSeq,
-                        turn: seq,
-                    }), // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
+                    async (span) => {
+                        const generated = await provider.generate({
+                            messages: modelMessages,
+                            workerId: String(workerId),
+                            primaryWorkerId,
+                            signal: providerSignal,
+                            grammar: railGrammar,
+                            maxTokens,
+                            strikes: strikeStreak,
+                            attributions: providerAttemptAttributions.length > 0
+                                ? providerAttemptAttributions
+                                : undefined,
+                            client: client ?? undefined,
+                            workspaceId: String(workspaceId),
+                            loop: loopSeq,
+                            turn: seq,
+                        }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
+                        recordCounter(PROVIDER_CALLS, {
+                            model: provider.model,
+                            attempt,
+                            status: "resolved",
+                        });
+                        span.setAttribute("status", "resolved");
+                        return generated;
+                    },
                 );
                 response = completedResponse;
                 providerCallInFlight = false;
@@ -1780,6 +1790,7 @@ export default class Engine {
                         origin, onDispatch,
                     });
                     span.setAttribute("status", dispatchResult.status);
+                    recordCounter(OPS_DISPATCHED, { op: statement.op, status: dispatchResult.status });
                     return dispatchResult;
                 },
             );

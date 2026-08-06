@@ -7,6 +7,7 @@
 
 import Translator from "./Translator.ts";
 import { EventType, type AguiEvent, type LogEntryNotification, type TerminatedNotification } from "./types.ts";
+import { observedSync } from "./observe.ts";
 
 export default class EventRouter {
     #t: Translator;
@@ -19,6 +20,14 @@ export default class EventRouter {
     replay(entries: Array<Record<string, unknown>>): AguiEvent[] { return this.#t.replay(entries); }
 
     route(method: string, params: unknown): AguiEvent[] {
+        return observedSync( // {§observability-boundary} — the method name only; params stay off the span.
+            "agui.event",
+            { method },
+            (): AguiEvent[] => this.#routeSettled(method, params),
+        );
+    }
+
+    #routeSettled(method: string, params: unknown): AguiEvent[] {
         switch (method) {
             case "log/entry": return this.#t.logEntry(params as LogEntryNotification);
             case "loop/terminated": return this.#t.terminated(params as TerminatedNotification);
