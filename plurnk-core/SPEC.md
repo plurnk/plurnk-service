@@ -171,6 +171,12 @@ consuming the language and each capability family's author contract. Domain
 logic stays with its owning package. AG-UI projects that runtime to clients;
 clients render and submit actions but contain no engine logic.
 
+### §observability-boundary Observability boundary
+
+OpenTelemetry may observe PLURNK; it never becomes product state, failure transport, scheduler input, model teaching, or client protocol. Domain and client activity remain on AG-UI. Reusable packages depend on the OTel API only; the daemon initializes the SDK before instrumented modules load and constructs it lazily — an unconfigured process never loads the SDK and keeps the API's no-op behavior with bounded overhead.
+
+Configuration uses the standard `OTEL_*` environment: `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` select `otlp` or `console` per signal (a missing or `none` value keeps that signal off; the SDK's own "empty means otlp" default never applies), `OTEL_SERVICE_NAME` names the service (default `plurnk-service`), `OTEL_SDK_DISABLED` turns the boundary off, and OTLP exporters honor `OTEL_EXPORTER_OTLP_*`. An unknown exporter name fails daemon boot; a typo never silently disables observation. OTel Logs and draft semantic conventions are excluded. Spans carry high-cardinality identifiers; metric labels stay low-cardinality. Prompts, reasoning, file bodies, arbitrary URLs, secrets, and plugin payloads are never recorded as attributes or metric values by default. Exporter failure cannot change product results or client lifecycle.
+
 ### §in-process In-process architecture
 
 Composed daemon internals + admin CLI. Four plug points:
