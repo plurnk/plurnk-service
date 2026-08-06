@@ -150,9 +150,9 @@ Other scope examples:
 
 ### The Log
 
-The log is addressable so that you can curate it with bulk, tagged FOLD or OPEN operations.
-Use FIND, READ, and other commands to add context, FOLD what you don't need, then reOPEN what you need later.
-FOLD is reversible; KILL permanently erases addressed log items.
+The log is your context and you are its curator: what you retrieve stays until you FOLD it, and folded bodies are hidden, not gone — OPEN brings them back.
+When the packet runs out of room, nothing new lands until you make room: FOLD what you are done with, or conclude.
+KILL permanently erases addressed log items.
 
 Examples:
 
