@@ -50,6 +50,7 @@ const daemon = spawn(
 
 let client;
 let finalizing;
+let requestedStatus;
 const stop = async (child) => {
     if (child === undefined || child.exitCode !== null) return;
     const exited = new Promise((accept) => child.once("exit", accept));
@@ -76,6 +77,8 @@ const finalize = () => {
     return finalizing;
 };
 const stopFromSignal = (status) => {
+    if (requestedStatus !== undefined) return;
+    requestedStatus = status;
     void finalize().then(() => process.exit(status), (error) => {
         process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`);
         process.exit(1);
@@ -87,7 +90,9 @@ process.once("SIGTERM", () => stopFromSignal(143));
 const address = await new Promise((accept, reject) => {
     let output = "";
     const timeout = setTimeout(() => reject(new Error("daemon did not publish its AG-UI address within 30 seconds")), 30_000);
-    daemon.once("exit", (code) => reject(new Error(`daemon exited before startup (status ${code})`)));
+    daemon.once("exit", (code) => {
+        if (requestedStatus === undefined) reject(new Error(`daemon exited before startup (status ${code})`));
+    });
     daemon.stdout.setEncoding("utf8");
     daemon.stdout.on("data", (chunk) => {
         process.stderr.write(chunk);
@@ -117,8 +122,8 @@ client = spawn(
 const status = await new Promise((accept, reject) => {
     client.once("error", reject);
     client.once("exit", (code, signal) => {
-        if (signal !== null) reject(new Error(`client terminated by ${signal}`));
-        else accept(code ?? 1);
+        if (signal !== null && requestedStatus === undefined) reject(new Error(`client terminated by ${signal}`));
+        else accept(requestedStatus ?? code ?? 1);
     });
 });
 
