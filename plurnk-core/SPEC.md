@@ -117,6 +117,18 @@ shown. The current streak may ride first-party provider metadata
 | **live** | `test/live/` | Real | Wire-level assertions |
 | **demo** | `test/demo/` | Real | Holistic outcome assertions |
 
+§provider-conformance-matrix **Every configured model alias is exercised through a
+real PLURNK loop: the production packet, a model-selected operation, its
+materialized result, and completion.** Transport-only completions are not
+conformance evidence. Provider-exposed reasoning must survive in the durable
+assistant packet and digest; a provider with no private reasoning is valid when
+the observable operation cycle succeeds. The maintained procedure runs one
+named live specimen deterministically (`npm run test:live:specimen -- <pattern>`
+in plurnk-core); the ledger and classification taxonomy live in
+`plurnk-providers/README.md` and report authorization/credential failures
+distinct from model failures and repeated stochastic failures separately from
+stable ones, never with weakened assertions.
+
 §test-artifact-retention **File-backed test databases use lane-local current-run
 retention.** Each workspace's normal intg runner clears its own
 `test/intg/.tmp/` once before the suite, reports that forensic directory, and
