@@ -213,3 +213,4 @@ Put every user-facing message in a SEND with a submit code.
 ### Tool choice
 
 Use the Plurnk OP built for the job; reserve EXEC for what no OP can do.
+Previews locate targets; they are never their contents — READ the located body to answer.

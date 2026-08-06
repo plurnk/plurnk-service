@@ -274,17 +274,18 @@ export default class PacketWire {
         };
     }
 
-    // Wrap a body in heredoc fences. Leading `\n` always (separates the
-    // opening fence from the first body character — necessary because
-    // numbered bodies start with `1:…` which would otherwise collide
-    // visually with the `:::FENCE` markers). Trailing `\n` only when the
-    // body doesn't already end with one — otherwise you get a doubled
-    // newline that renders as a blank line before the closing fence, which
-    // reads as "the content has a trailing blank line" when actually it
+    // Wrap a body in heredoc fences. The fence is FIXED (`<<BODY`/`BODY`), never the
+    // target: every body line is `N:`-prefixed, so a bare fence line can never occur
+    // inside a body, and a fixed fence gives the model nothing address-shaped to
+    // mimic back as op syntax — identity lives in the adjacent meta JSON. Leading
+    // `\n` always (separates the opening fence from the first body character).
+    // Trailing `\n` only when the body doesn't already end with one — otherwise you
+    // get a doubled newline that renders as a blank line before the closing fence,
+    // which reads as "the content has a trailing blank line" when actually it
     // doesn't. The body's own whitespace decides the shape.
     static #wrapHeredocBody(fence: string, body: string): string {
         const sep = body.endsWith("\n") ? "" : "\n";
-        return `<<:::${fence}\n${body}${sep}:::${fence}`;
+        return `<<BODY\n${body}${sep}BODY`;
     }
 
     // Render one Log entry → a single bullet line carrying the meta JSON.

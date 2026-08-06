@@ -759,7 +759,7 @@ test("Engine.runTurn: the log section parses an application/json rx body", async
         // The EDIT's result span renders (line-numbered) under its target fence —
         // observable proof #buildLog parsed the JSON rx: a string rx couldn't yield
         // rx.span, so the render would fall back to the statement heredoc instead.
-        assert.match(packetSection(packet, "log"), /<<:::worker:\/\/\/x\n1:v\n:::worker:\/\/\/x/);
+        assert.match(packetSection(packet, "log"), /<<BODY\n1:v\nBODY/);
     } finally { await db.close(); }
 });
 

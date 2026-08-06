@@ -141,7 +141,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
     );
     assert.match(
         out,
-        /<<:::log:\/\/\/1\/2\/5\/COPY\n1:before\n2:copied content\n:::log:\/\/\/1\/2\/5\/COPY/,
+        /<<BODY\n1:before\n2:copied content\nBODY/,
         "the regional effect exposes its bounded resulting context",
     );
 
@@ -332,7 +332,7 @@ test("log render: READ@200 with text/markdown rx body → line-numbered heredoc"
     };
     const out = PacketWire.renderLog(system.log, tok);
     // Line-navigable mimetype → `N:` prefix per line.
-    assert.match(out, /<<:::notes\.md\n1:hello\n2:world\n:::notes\.md/);
+    assert.match(out, /<<BODY\n1:hello\n2:world\nBODY/);
 });
 
 test("log render: a scoped READ preserves its complete source TextRegion", () => {
@@ -418,7 +418,7 @@ test("log render: a matcher READ keeps the resource body and exposes surgical co
     }], tok);
     assert.match(out, /"matcher":"\/grinder\/"/);
     assert.match(out, /"matches":\[\{"region":\{"startLine":143,"startColumn":1,"endLine":143,"endColumn":8\}\},\{"region":\{"startLine":617,"startColumn":4,"endLine":617,"endColumn":11\}\}\]/);
-    assert.match(out, /<<:::spec\.md\n1:intro\n2:grinder\n3:context\n:::spec\.md/);
+    assert.match(out, /<<BODY\n1:intro\n2:grinder\n3:context\nBODY/);
 });
 
 test("log render: malformed matcher evidence cannot reach the model packet", () => {
@@ -450,7 +450,7 @@ test("log render: READ@200 with application/json is line-addressable", () => {
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /<<:::notes\.md\n1:\[\n2: {2}\{"line":1,"matched":"hello"\}\n3:\]\n:::notes\.md/);
+    assert.match(out, /<<BODY\n1:\[\n2: {2}\{"line":1,"matched":"hello"\}\n3:\]\nBODY/);
 });
 
 // EDIT log renders re-emit the model's statement as heredoc — same syntax
@@ -471,7 +471,7 @@ test("log render: EDIT@200 with rx.span → wraps the pre-numbered span verbatim
     // line-numbered it, so the renderer wraps verbatim. Re-numbering here would double it (1:3:…)
     // and lose the real position. (A span-less EDIT — a scheme that returns no span — stands on its meta
     // line alone; the log NEVER re-serializes the op's emission tag, per the no-tags-in-the-log paradigm.)
-    assert.match(out, /<<:::worker:\/\/\/plan\.md\n3:- \[x\] ship the fix\n:::worker:\/\/\/plan\.md/, "EDIT wraps the pre-numbered span verbatim under the target fence");
+    assert.match(out, /<<BODY\n3:- \[x\] ship the fix\nBODY/, "EDIT wraps the pre-numbered span verbatim under the fixed fence");
     assert.doesNotMatch(out, /1:3:/, "must NOT re-number an already-numbered span");
 });
 
@@ -700,7 +700,7 @@ test("log render: READ@200 with text/html is line-addressable", () => {
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /<<:::page\.html\n1:<h1>Hi<\/h1>\n:::page\.html/);
+    assert.match(out, /<<BODY\n1:<h1>Hi<\/h1>\nBODY/);
 });
 
 test("a folded model row renders meta-only — the verbatim hides until OPEN", () => {
@@ -732,7 +732,7 @@ test("the Log renders as a fenced jsonplurnk array that strips to valid JSON —
     const m = /(`{3,})jsonplurnk\n([\s\S]*?)\n\1/.exec(out);
     assert.ok(m, "a fenced jsonplurnk block");
     // Strip the ONE deviation (a `body` heredoc) with a content-agnostic, TAG-anchored transform → strict JSON.
-    const strict = m![2].replace(/"body":\n<<:::(.+)\n[\s\S]*?\n:::\1\n\}/g, '"body":""}');
+    const strict = m![2].replace(/"body":\n<<BODY\n[\s\S]*?\nBODY\n\}/g, '"body":""}');
     const arr = JSON.parse(strict) as Array<{ display: string; body?: string }>;
     assert.deepEqual(arr.map((e) => e.display), ["none", "folded", "open"], "the three display states render explicitly — no glyph legend");
     assert.equal(arr[0].body, "", "display:none carries an explicit empty JSON body");

@@ -138,7 +138,7 @@ test("assembled packet: matcher READ shows the resource and surgical coordinates
 
         assert.match(log, /"matcher":"\/target\/"/);
         assert.match(log, /"matches":\[\{"region":\{"startLine":2,"startColumn":1,"endLine":2,"endColumn":7\}\},\{"region":\{"startLine":4,"startColumn":1,"endLine":4,"endColumn":7\}\}\]/);
-        assert.match(log, /<<:::worker:\/\/\/notes\.md\n1:heading\n2:target one\n3:context\n4:target two\n:::worker:\/\/\/notes\.md/);
+        assert.match(log, /<<BODY\n1:heading\n2:target one\n3:context\n4:target two\nBODY/);
     } finally { await db.close(); }
 });
 

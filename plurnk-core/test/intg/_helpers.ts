@@ -161,12 +161,12 @@ export const packetSection = (packet: unknown, name: string): string =>
 // Parse the rendered log section's fenced jsonplurnk array back into structured records — lets
 // tests assert on the model's actual log VIEW with field precision (coordinate via `path`, the
 // model-facing `target` URI, op, status, origin, display). Strips the ONE deviation (a `body` value
-// is a raw <<:::tag … :::tag heredoc) to recover strict JSON — the same content-agnostic,
-// TAG-anchored transform the plurnkdown linter applies ({§jsonplurnk}).
+// is a raw <<BODY … BODY heredoc) to recover strict JSON — the same content-agnostic,
+// fence-anchored transform the plurnkdown linter applies ({§jsonplurnk}).
 export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
     const fence = /(`{3,})jsonplurnk\n([\s\S]*?)\n\1(?:\n|$)/.exec(packetSection(packet, "log"));
     if (fence === null) return [];
-    const strict = fence[2].replace(/"body":\n<<:::(.+)\n[\s\S]*?\n:::\1\n\}/g, '"body":""}');
+    const strict = fence[2].replace(/"body":\n<<BODY\n[\s\S]*?\nBODY\n\}/g, '"body":""}');
     return JSON.parse(strict) as Array<Record<string, unknown>>;
 };
 
