@@ -64,7 +64,7 @@ Matcher bodies select treemapped resources by their content.
 * In path targets, `*` maps one level and `**` crosses directories.
 * Filters bracket directly: `$[?(@.role=="admin")]`, never `$.[?(...)]`.
 * Mapping is universal: JSONPath can query XML and XPath can query JSON.
-* FIND reports each match's line and column — the way to locate text within a known file.
+* FIND reports each match's line and column — locate, then READ or EDIT at the coordinates.
 
 Examples:
 

@@ -33,7 +33,7 @@ test("live: READ regex — extract a pattern from an entry's content", { timeout
     const s = await liveWorkspace({ name: `live-contract-read-regex-${crypto.randomUUID()}` });
     try {
         await seedEntry(s.db, s.workspaceId, { pathname: "doc.md", content: "hello world hello again" });
-        const { modelWorkerId } = await liveLoop(s, 2, { prompt: "Find every occurrence of the word `hello` in worker:///doc.md." }, { timeoutMs: TIMEOUT });
+        const { modelWorkerId } = await liveLoop(s, 2, { prompt: "Read every line containing the word `hello` in worker:///doc.md." }, { timeoutMs: TIMEOUT });
         assert.match(await lastRx(s.db, modelWorkerId, "READ"), /hello/);
     } finally { await s.cleanup(); }
 });
