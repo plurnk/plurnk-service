@@ -126,6 +126,7 @@ export type {
     LineSpan,
     MimeRef,
     MimeSymbol,
+    MimetypeDisplayMetadata,
     QueryDialect,
     QueryMatch,
     RefKind,

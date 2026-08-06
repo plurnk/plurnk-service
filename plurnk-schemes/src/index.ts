@@ -62,6 +62,7 @@ export type {
     PassthroughResult,
     ProposalResult,
     ProblemDetails,
+    ScopeNormalization,
     SchemeResult,
     SchemeResultBase,
 } from "./Results.ts";

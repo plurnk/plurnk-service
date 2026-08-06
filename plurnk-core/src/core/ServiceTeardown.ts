@@ -2,12 +2,14 @@ type Cleanup = () => Promise<void>;
 
 export default class ServiceTeardown {
     readonly #stopDaemon: Cleanup;
+    readonly #shutdownObservability: Cleanup;
     readonly #closeDatabase: Cleanup;
     #closing: Promise<void> | null = null;
     #requested = false;
 
-    constructor(stopDaemon: Cleanup, closeDatabase: Cleanup) {
+    constructor(stopDaemon: Cleanup, shutdownObservability: Cleanup, closeDatabase: Cleanup) {
         this.#stopDaemon = stopDaemon;
+        this.#shutdownObservability = shutdownObservability;
         this.#closeDatabase = closeDatabase;
     }
 
@@ -48,15 +50,12 @@ export default class ServiceTeardown {
 
     async #close(): Promise<void> {
         const failures: unknown[] = [];
-        try {
-            await this.#stopDaemon();
-        } catch (cause) {
-            failures.push(...ServiceTeardown.#causes(cause));
-        }
-        try {
-            await this.#closeDatabase();
-        } catch (cause) {
-            failures.push(...ServiceTeardown.#causes(cause));
+        for (const cleanup of [this.#stopDaemon, this.#shutdownObservability, this.#closeDatabase]) {
+            try {
+                await cleanup();
+            } catch (cause) {
+                failures.push(...ServiceTeardown.#causes(cause));
+            }
         }
         if (failures.length === 1) throw failures[0];
         if (failures.length > 1) throw new AggregateError(failures, "service shutdown failed");

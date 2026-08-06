@@ -11,6 +11,7 @@ is the single code API for those contracts.
 | Parser, AST, validators, Problems, results, Notices, text regions               | `@plurnk/plurnk-contracts`                          |
 | Effective loop policy and its default                                           | `LoopFlags`, `DEFAULT_LOOP_FLAGS`                   |
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
+| Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
 | Local-model rail                                                                | `@plurnk/plurnk-contracts/plurnk.gbnf`              |
 | Model language reference                                                        | `plurnk.md` in the package                          |
@@ -247,8 +248,12 @@ MOVE use one universal text algebra independent of mimetype:
 two-integer line selections normalize to the same exclusive-end `TextRegion`
 used by four-coordinate selections. Whole-line replacement deliberately
 accounts for newline separators; it is an ergonomic projection over exact
-replacement, not a different mimetype navigation mode. Other arities and
-decimal text coordinates are runtime 416 failures.
+replacement, not a different mimetype navigation mode. As an unadvertised
+ingestion tolerance, the runtime accepts three integers as
+`startLine,startColumn,endLine` and immediately normalizes them to the complete
+four-coordinate region ending after the final code point of `endLine`.
+Producers never emit that form. Other arities and decimal text coordinates are
+runtime 416 failures.
 
 For READ, a body matcher selects files, entries, or log items against their
 complete readable content. A non-semantic `<scope>` then projects text from each
@@ -434,10 +439,12 @@ component greedily consumes an optional leading minus sign, digits, and an
 optional decimal fraction, so the ingester preserves even noncanonical numeric
 shapes for runtime validation.
 
-The runtime rejects invalid arity, out-of-range or inverted positions, and
-decimal text coordinates rather than rounding or reinterpreting them. FIND owns
-a deterministic result order so the same inclusive range selects the same
-positions from unchanged state. The parser does not enforce either condition.
+Apart from the unadvertised three-coordinate text-scope tolerance in
+{§text-scope-semantics}, the runtime rejects invalid arity, out-of-range or
+inverted positions, and decimal text coordinates rather than rounding or
+reinterpreting them. FIND owns a deterministic result order so the same
+inclusive range selects the same positions from unchanged state. The parser
+does not enforce either condition.
 
 ## §suffix-discipline 8. Suffix Discipline
 
@@ -773,6 +780,25 @@ or from the canonical Problem without creating another PLURNK failure contract.
 §notice A `Notice` is a transient, nonterminal observation. It cannot determine durable
 failure truth, lifecycle, scheduling, or recovery. Sharing a renderer with
 Problems does not merge their semantics.
+
+### §client-display-capabilities 13.6 Client display capabilities
+
+`ClientDisplayCapabilities` is the transport-neutral installed-capability
+projection used by external clients. It is an ordered array of closed,
+discriminated values:
+
+| `kind` | Identity field | `display` |
+|--------|----------------|-----------|
+| `scheme` | Non-empty `scheme` URI-family name | `CapabilityDisplay` |
+| `mimetype` | Non-empty `mimetype` media type | `CapabilityDisplay` |
+
+`CapabilityDisplay` is a closed object whose optional `glyph` is a non-empty,
+opaque string. Capability frameworks own and validate their intrinsic
+declarations; Core owns composition of the installed families; interface
+modules expose this exact shape; clients own rendering, font support, theme,
+and identity fallback when `glyph` is absent. Empty framework sentinels are
+normalized to absence at composition. Display metadata is client state, never
+model-language syntax or model packet teaching.
 
 ## 14. Parse diagnostics
 

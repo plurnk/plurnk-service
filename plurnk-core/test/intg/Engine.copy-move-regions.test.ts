@@ -172,6 +172,38 @@ test("COPY composes source selection and destination insertion with Unicode code
     }
 });
 
+test("COPY propagates tolerated source and destination scope normalizations in authored order", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        await seed("/source", {
+            channels: { body: { content: "abc\n", mimetype: "text/markdown" } },
+            tags: [],
+        });
+        await seed("/destination", {
+            channels: { body: { content: "XY\n", mimetype: "text/markdown" } },
+            tags: [],
+        });
+
+        const result = await dispatch(copyStmt(
+            urlPath("multi", "/source"),
+            urlPath("multi", "/destination"),
+            null,
+            { marks: [1, 2, 1] },
+            { marks: [1, 2, 1] },
+        ));
+
+        assert.equal(result.status, 200);
+        assert.deepEqual(result.scopeNormalizations, [
+            { requested: [1, 2, 1], canonical: [1, 2, 1, 4] },
+            { requested: [1, 2, 1], canonical: [1, 2, 1, 3] },
+        ]);
+        assert.equal((await read("/source")).entry?.channels.body?.content, "abc\n");
+        assert.equal((await read("/destination")).entry?.channels.body?.content, "Xbc\n");
+    } finally {
+        await db.close();
+    }
+});
+
 test("MOVE composes exact source and destination regions across resources", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
@@ -210,6 +242,38 @@ test("MOVE composes exact source and destination regions across resources", asyn
         );
         assert.equal((await read("/source")).entry?.channels.body?.content, "ac");
         assert.equal((await read("/destination")).entry?.channels.body?.content, "XbY");
+    } finally {
+        await db.close();
+    }
+});
+
+test("MOVE propagates tolerated source and destination scope normalizations", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        await seed("/source", {
+            channels: { body: { content: "abc\n", mimetype: "text/markdown" } },
+            tags: [],
+        });
+        await seed("/destination", {
+            channels: { body: { content: "XY\n", mimetype: "text/markdown" } },
+            tags: [],
+        });
+
+        const result = await dispatch(moveStmt(
+            urlPath("multi", "/source"),
+            urlPath("multi", "/destination"),
+            null,
+            { marks: [1, 2, 1] },
+            { marks: [1, 2, 1] },
+        ));
+
+        assert.equal(result.status, 200);
+        assert.deepEqual(result.scopeNormalizations, [
+            { requested: [1, 2, 1], canonical: [1, 2, 1, 4] },
+            { requested: [1, 2, 1], canonical: [1, 2, 1, 3] },
+        ]);
+        assert.equal((await read("/source")).entry?.channels.body?.content, "a\n");
+        assert.equal((await read("/destination")).entry?.channels.body?.content, "Xbc\n");
     } finally {
         await db.close();
     }

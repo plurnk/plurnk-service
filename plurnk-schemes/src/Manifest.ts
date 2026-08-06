@@ -15,6 +15,7 @@ const MANIFEST_FIELD_NAMES = new Set<string>(Object.keys({
     flags: true,
     example: true,
     documentation: true,
+    glyph: true,
     storedScheme: true,
 } satisfies Record<keyof SchemeManifest, true>));
 const FLAG_AFFINITIES = ["excludedInAsk", "requiresWeb", "requiresInteraction"] as const satisfies ReadonlyArray<keyof SchemeFlagAffinity>;
@@ -64,6 +65,7 @@ export default class Manifest {
         Manifest.#boolean(manifest, "modelVisible");
         for (const field of ["folderScopes", "foldedByDefault"] as const) Manifest.#optionalBoolean(manifest, field);
         for (const field of ["example", "documentation", "storedScheme"] as const) Manifest.#optionalString(manifest, field);
+        Manifest.#optionalNonemptyString(manifest, "glyph");
         Manifest.#flags(manifest.flags, name);
         return value as SchemeManifest;
     }
@@ -89,6 +91,12 @@ export default class Manifest {
     static #optionalString(record: Record<string, unknown>, field: string): void {
         if (record[field] !== undefined && typeof record[field] !== "string") {
             throw new Error(`scheme manifest.${field} must be a string when present`);
+        }
+    }
+
+    static #optionalNonemptyString(record: Record<string, unknown>, field: string): void {
+        if (record[field] !== undefined && (typeof record[field] !== "string" || record[field].length === 0)) {
+            throw new Error(`scheme manifest.${field} must be a non-empty string when present`);
         }
     }
 

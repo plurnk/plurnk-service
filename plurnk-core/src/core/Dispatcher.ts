@@ -61,6 +61,7 @@ import {
     InvalidOperationResultError,
     NetworkAddress,
     type MatchEvidence,
+    type ScopeNormalization,
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import type { ProviderEncryptedReasoningItem } from "@plurnk/plurnk-providers";
@@ -111,6 +112,7 @@ type PreparedEditBatch = {
 type PreparedEdit = {
     readonly first: boolean;
     readonly index: number;
+    readonly normalizationIndex: number | null;
     readonly batch: PreparedEditBatch;
 };
 
@@ -141,6 +143,7 @@ type ResolvedResourceSelection = {
 type SelectedSource = ResolvedResourceSelection & {
     readonly content: string;
     readonly mimetype: string;
+    readonly scopeNormalizations?: ReadonlyArray<ScopeNormalization>;
 };
 
 type DeferredMoveSource = {
@@ -481,6 +484,16 @@ export default class Dispatcher {
             let resolveSettled!: (result: DispatchResult) => void;
             const settled = new Promise<DispatchResult>((resolve) => { resolveSettled = resolve; });
             const candidate = initial.editReceipt;
+            const expectedNormalizations = group.filter(({ lineMarker }) =>
+                lineMarker?.marks.length === 3).length;
+            if (
+                initial.status < 400
+                && (initial.scopeNormalizations?.length ?? 0) !== expectedNormalizations
+            ) {
+                throw new InvalidOperationResultError(
+                    `EDIT batch normalized ${initial.scopeNormalizations?.length ?? 0} scope(s), expected ${expectedNormalizations}.`,
+                );
+            }
             const batch: PreparedEditBatch = {
                 initial,
                 settled,
@@ -489,9 +502,15 @@ export default class Dispatcher {
                     : assertEditBatchReceipt(candidate),
                 settle: resolveSettled,
             };
-            this.#preparedEdits.set(first, { first: true, index: 0, batch });
-            for (const [index, statement] of group.slice(1).entries()) {
-                this.#preparedEdits.set(statement, { first: false, index: index + 1, batch });
+            let normalizationIndex = 0;
+            for (const [index, statement] of group.entries()) {
+                const ownsNormalization = statement.lineMarker?.marks.length === 3 && initial.status < 400;
+                this.#preparedEdits.set(statement, {
+                    first: index === 0,
+                    index,
+                    normalizationIndex: ownsNormalization ? normalizationIndex++ : null,
+                    batch,
+                });
             }
         }
     }
@@ -500,7 +519,12 @@ export default class Dispatcher {
         const result = await this.#dispatchOne(context);
         if (context.statement.op === "EDIT") {
             const prepared = this.#preparedEdits.get(context.statement);
-            if (prepared?.first === true) prepared.batch.settle(result);
+            if (prepared?.first === true) {
+                const normalizations = prepared.batch.initial.scopeNormalizations;
+                prepared.batch.settle(normalizations === undefined
+                    ? result
+                    : Results.assert({ ...result, scopeNormalizations: normalizations }));
+            }
         }
         return result;
     }
@@ -558,16 +582,26 @@ export default class Dispatcher {
                         const settled = prepared.first
                             ? prepared.batch.initial
                             : await prepared.batch.settled;
+                        const normalization = prepared.normalizationIndex === null
+                            ? undefined
+                            : settled.scopeNormalizations?.[prepared.normalizationIndex];
+                        const {
+                            scopeNormalizations: _scopeNormalizations,
+                            ...projectedSettlement
+                        } = settled;
+                        const statementResult = normalization === undefined
+                            ? projectedSettlement
+                            : { ...projectedSettlement, scopeNormalizations: [normalization] };
                         const aggregate = prepared.batch.aggregate;
                         if (aggregate !== undefined) {
                             const receipt = assertEditBatchReceipt(aggregate);
-                            const { editReceipt: _editReceipt, ...withoutAggregate } = settled;
+                            const { editReceipt: _editReceipt, ...withoutAggregate } = statementResult;
                             result = {
                                 ...withoutAggregate,
                                 receipt: projectEditReceipt(receipt, prepared.index),
                             };
                         } else {
-                            result = settled;
+                            result = statementResult;
                         }
                     }
                 } else if (statement.op === "SEND" && statement.target === null) {
@@ -1400,6 +1434,7 @@ export default class Dispatcher {
             return { ...result, rowsWritten: 1 };
         }
         const fannedStatuses: number[] = [];
+        const scopeNormalizations: ScopeNormalization[] = [];
         let written = 0;
         for (const match of matches) {
             ctx.signal?.throwIfAborted();
@@ -1422,9 +1457,15 @@ export default class Dispatcher {
             const id = await this.#writeLog({ statement: loggedStatement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence: sequence + written, origin });
             onDispatch?.(id);
             fannedStatuses.push(result.status);
+            scopeNormalizations.push(...(result.scopeNormalizations ?? []));
             written++;
         }
-        return { status: 200, rowsWritten: written, fannedStatuses };
+        return {
+            status: 200,
+            rowsWritten: written,
+            fannedStatuses,
+            ...(scopeNormalizations.length === 0 ? {} : { scopeNormalizations }),
+        };
     }
 
     // {§model-entry} — mirror an admitted model emission back as an actionless `model` log row, so
@@ -1598,6 +1639,7 @@ export default class Dispatcher {
             );
         }
         let content = selected.content;
+        let scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined;
         if (await MimetypeBinary.isBinaryMimetype(selected.mimetype, ctx.mimetypes)) {
             return Dispatcher.#failure(
                 "binary-source-unsupported",
@@ -1616,12 +1658,28 @@ export default class Dispatcher {
             const sliced = LineMarkerOps.sliceLinesRaw(content, selection.lineMarker);
             if (sliced.status !== 200) return Results.assert(sliced) as DispatchResult;
             content = sliced.text ?? "";
+            scopeNormalizations = sliced.scopeNormalizations;
         }
         return {
             ...selection,
             content,
             mimetype: selected.mimetype,
+            ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
         };
+    }
+
+    static #prependScopeNormalizations(
+        result: DispatchResult,
+        scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined,
+    ): DispatchResult {
+        if (scopeNormalizations === undefined) return result;
+        return Results.assert({
+            ...result,
+            scopeNormalizations: [
+                ...scopeNormalizations,
+                ...(result.scopeNormalizations ?? []),
+            ],
+        });
     }
 
     #resourceAddress(selection: ResolvedResourceSelection): string {
@@ -2138,7 +2196,8 @@ export default class Dispatcher {
         if (Dispatcher.#isDispatchResult(resolvedDestination)) return resolvedDestination;
         const selected = await this.#selectSource(resolvedSource, ctx);
         if (Dispatcher.#isDispatchResult(selected)) return selected;
-        return this.#writeDestination(statement, selected, resolvedDestination, ctx);
+        const result = await this.#writeDestination(statement, selected, resolvedDestination, ctx);
+        return Dispatcher.#prependScopeNormalizations(result, selected.scopeNormalizations);
     }
 
     #deferredMoveSource(
@@ -2280,19 +2339,25 @@ export default class Dispatcher {
         if (Dispatcher.#isDispatchResult(selected)) return selected;
 
         if (this.#sameChannel(resolvedSource, resolvedDestination)) {
-            return this.#moveWithinChannel(
+            const result = await this.#moveWithinChannel(
                 statement,
                 selected,
                 resolvedDestination,
                 ctx,
             );
+            return resolvedDestination.lineMarker === null
+                ? Dispatcher.#prependScopeNormalizations(result, selected.scopeNormalizations)
+                : result;
         }
 
-        const destinationResult = await this.#writeDestination(
-            statement,
-            selected,
-            resolvedDestination,
-            ctx,
+        const destinationResult = Dispatcher.#prependScopeNormalizations(
+            await this.#writeDestination(
+                statement,
+                selected,
+                resolvedDestination,
+                ctx,
+            ),
+            selected.scopeNormalizations,
         );
         if (destinationResult.status >= 400) return destinationResult;
         const destinationAddress = this.#resourceAddress(resolvedDestination);
@@ -2318,6 +2383,9 @@ export default class Dispatcher {
         if (sourceResult.status === 202) {
             return {
                 ...sourceResult,
+                ...(destinationResult.scopeNormalizations === undefined
+                    ? {}
+                    : { scopeNormalizations: destinationResult.scopeNormalizations }),
                 attrs: {
                     ...(sourceResult.attrs as Record<string, unknown> | undefined),
                     moveDestinationWritten: destinationAddress,
@@ -2327,7 +2395,12 @@ export default class Dispatcher {
         }
         if (sourceResult.status >= 400) {
             return this.#moveFailureAfterDestination(
-                sourceResult,
+                destinationResult.scopeNormalizations === undefined
+                    ? sourceResult
+                    : Results.assert({
+                        ...sourceResult,
+                        scopeNormalizations: destinationResult.scopeNormalizations,
+                    }),
                 destinationAddress,
                 destinationEffects,
             );

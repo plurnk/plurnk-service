@@ -100,6 +100,35 @@ test("assert rejects the legacy top-level error envelope", () => {
     );
 });
 
+test("assert validates schemes-owned scope normalization evidence", () => {
+    const result = {
+        status: 200,
+        scopeNormalizations: [{
+            requested: [2, 1, 3] as const,
+            canonical: [2, 1, 3, 6] as const,
+        }],
+    };
+    assert.equal(Results.assert(result), result);
+    assert.throws(
+        () => Results.assert({
+            status: 200,
+            scopeNormalizations: [{ requested: [2, 1, 3], canonical: [2, 1, 3] }],
+        } as never),
+        /canonical must contain four safe integers/,
+    );
+    assert.throws(
+        () => Results.assert({ status: 200, scopeNormalizations: [] }),
+        /expected a non-empty array/,
+    );
+    assert.throws(
+        () => Results.assert({
+            status: 200,
+            scopeNormalizations: [{ requested: [2, 1, 3], canonical: [2, 2, 3, 6] }],
+        } as never),
+        /must preserve the requested prefix/,
+    );
+});
+
 test("attachInstance adds the durable operation coordinate", () => {
     const result = Results.failure("scheme:file", "entry-not-found", 404, "Missing.");
     Results.attachInstance(result, "log:///5/2/1/READ");

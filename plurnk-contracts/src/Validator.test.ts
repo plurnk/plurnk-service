@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Validator, {
+    InvalidClientDisplayCapabilitiesError,
     InvalidLoopFlagsError,
     InvalidNoticeError,
     InvalidOperationResultError,
@@ -9,6 +10,27 @@ import Validator, {
     InvalidTextRegionError,
 } from "./Validator.ts";
 import Problems from "./Problems.ts";
+import type { ClientDisplayCapabilities } from "./types.generated.ts";
+
+test("ClientDisplayCapabilities admits only discriminated client display metadata", () => {
+    const capabilities: ClientDisplayCapabilities = [
+        { kind: "scheme", scheme: "http", display: { glyph: "🌐" } },
+        { kind: "scheme", scheme: "worker", display: {} },
+        { kind: "mimetype", mimetype: "text/markdown", display: { glyph: "󰽛" } },
+    ];
+    assert.equal(Validator.assertClientDisplayCapabilities(capabilities), capabilities);
+    for (const invalid of [
+        [{ kind: "scheme", mimetype: "text/plain", display: {} }],
+        [{ kind: "mimetype", mimetype: "text/plain", display: { glyph: "" } }],
+        [{ kind: "scheme", scheme: "file", display: { color: "blue" } }],
+        [{ kind: "executor", name: "sh", display: { glyph: "🐚" } }],
+    ]) {
+        assert.throws(
+            () => Validator.assertClientDisplayCapabilities(invalid as never),
+            InvalidClientDisplayCapabilitiesError,
+        );
+    }
+});
 
 test("TextRegion requires complete ordered Unicode text coordinates", () => {
     const region = {

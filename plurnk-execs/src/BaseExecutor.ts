@@ -34,6 +34,7 @@ export default abstract class BaseExecutor implements SchemeHandler {
     get manifest(): SchemeManifest {
         return OutputScheme.manifestFromRuntime({
             name: this.runtime,
+            glyph: this.glyph,
             channels: Object.fromEntries(
                 Object.entries(this.channels).map(([name, decl]) => [name, decl.mimetype]),
             ),

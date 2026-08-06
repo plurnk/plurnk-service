@@ -10,7 +10,7 @@ test("manifestFromRuntime: derives a read-only-output manifest from the runtime 
     const m = OutputScheme.manifestFromRuntime(runtime);
     // From the decl
     assert.equal(m.name, "sh");
-    assert.equal(Object.hasOwn(m, "glyph"), false);
+    assert.equal(m.glyph, "🐚");
     assert.equal(m.example, "EXEC[sh]:ls:EXEC");
     assert.deepEqual(m.channels, { stdout: "text/plain", stderr: "text/plain" });
     assert.equal(m.defaultChannel, "stdout");
@@ -22,9 +22,10 @@ test("manifestFromRuntime: derives a read-only-output manifest from the runtime 
     assert.equal(m.foldedByDefault, true); // folded off the ranked surface
 });
 
-test("manifestFromRuntime: example is optional", () => {
+test("manifestFromRuntime: presentation and teaching are independently optional", () => {
     const m = OutputScheme.manifestFromRuntime({ name: "bc", channels: { stdout: "text/plain" }, defaultChannel: "stdout" });
     assert.equal(m.name, "bc");
+    assert.equal(m.glyph, undefined);
     assert.equal(m.example, undefined);
     assert.equal(m.foldedByDefault, true);
 });

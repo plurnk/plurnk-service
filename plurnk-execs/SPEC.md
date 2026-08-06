@@ -75,7 +75,10 @@ type Effect = "pure" | "read" | "host";
 
 The framework constructs one executor per matched runtime tag with
 `{ runtime, glyph }`. A package that declares several tags may branch on
-`this.runtime`; it must not retain per-run state on the executor instance.
+`this.runtime`; it must not retain per-run state on the executor instance. The
+derived addressable runtime scheme retains `glyph` for client discovery
+({§manifest-client-display}); runtime aliases remain excluded from scheme
+model-teaching because EXEC examples own that hot-path surface.
 
 ### §executor-sinks Inputs and sinks
 

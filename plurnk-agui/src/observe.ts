@@ -9,6 +9,17 @@ export const TRACER_NAME = "plurnk.agui";
 
 export const aguiTracer = (): ReturnType<typeof trace.getTracer> => trace.getTracer(TRACER_NAME);
 
+export type AguiRouteTemplate = "/agui" | "preflight" | "unmatched";
+
+export const aguiRouteTemplate = (
+    method: string | undefined,
+    url: string | undefined,
+): AguiRouteTemplate => {
+    if (method === "OPTIONS") return "preflight";
+    if (method === "POST" && (url === "/" || url === "/agui")) return "/agui";
+    return "unmatched";
+};
+
 const MAX_STRING_LENGTH = 300;
 
 const sanitize = (attributes: Record<string, unknown>): Record<string, string | number | boolean> => {

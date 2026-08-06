@@ -9,9 +9,15 @@ import type { TextRegion } from "@plurnk/plurnk-contracts";
 export type { ProblemDetails };
 export { InvalidOperationResultError };
 
+export interface ScopeNormalization {
+    readonly requested: readonly [number, number, number];
+    readonly canonical: readonly [number, number, number, number];
+}
+
 export interface SchemeResult {
     readonly status: number;
     readonly problem?: ProblemDetails;
+    readonly scopeNormalizations?: ReadonlyArray<ScopeNormalization>;
     readonly error?: never;
     readonly [field: string]: unknown;
 }
@@ -148,8 +154,50 @@ export default class Results {
         return exact;
     }
 
+    static assertScopeNormalizations(value: unknown): ReadonlyArray<ScopeNormalization> {
+        if (!Array.isArray(value) || value.length === 0) {
+            throw new TypeError("invalid scope normalizations: expected a non-empty array");
+        }
+        for (const item of value) {
+            if (item === null || typeof item !== "object" || Array.isArray(item)) {
+                throw new TypeError("invalid scope normalization: expected an object");
+            }
+            const record = item as Record<string, unknown>;
+            const extras = Object.keys(record).filter((key) => key !== "requested" && key !== "canonical");
+            if (extras.length > 0) {
+                throw new TypeError(`invalid scope normalization: unexpected field ${JSON.stringify(extras[0])}`);
+            }
+            if (!Object.hasOwn(record, "requested") || !Object.hasOwn(record, "canonical")) {
+                throw new TypeError("invalid scope normalization: requested and canonical coordinates are required");
+            }
+            const { requested, canonical } = record;
+            if (
+                !Array.isArray(requested)
+                || requested.length !== 3
+                || !requested.every(Number.isSafeInteger)
+            ) {
+                throw new TypeError("invalid scope normalization: requested must contain three safe integers");
+            }
+            if (
+                !Array.isArray(canonical)
+                || canonical.length !== 4
+                || !canonical.every(Number.isSafeInteger)
+            ) {
+                throw new TypeError("invalid scope normalization: canonical must contain four safe integers");
+            }
+            if (!requested.every((coordinate, index) => canonical[index] === coordinate)) {
+                throw new TypeError("invalid scope normalization: canonical coordinates must preserve the requested prefix");
+            }
+        }
+        return value as ReadonlyArray<ScopeNormalization>;
+    }
+
     static assert<T extends SchemeResult>(result: T): T {
-        return Validator.assertOperationResult(result);
+        const exact = Validator.assertOperationResult(result);
+        if (exact.scopeNormalizations !== undefined) {
+            Results.assertScopeNormalizations(exact.scopeNormalizations);
+        }
+        return exact;
     }
 
     static attachInstance<T extends SchemeResult>(result: T, instance: string): T {

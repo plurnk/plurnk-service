@@ -72,6 +72,7 @@ export default class Ws implements SchemeHandler {
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,
+        glyph: "🔌",
         example: "<<READ(wss://echo.websocket.events)::READ",
         documentation,
         flags: {

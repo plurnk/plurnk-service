@@ -18,10 +18,10 @@ import { stateSnapshot, parseAction, actionResult, type ActionRequest, type Acti
 import type { DaemonSeam, ClientEnvelope, PlurnkStatement } from "./DaemonSeam.ts";
 import { PlurnkParser, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
-import { observed } from "./observe.ts";
+import { aguiRouteTemplate, observed } from "./observe.ts";
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
 import { logEntryIdFromToolCallId, proposalInterrupt } from "./AguiPlus.ts";
-import { Problems, Validator, type ExecStatement, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { Problems, Validator, type ClientDisplayCapabilities, type ExecStatement, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 
 export type { ModuleOptions } from "./config.ts";
@@ -211,9 +211,9 @@ export default class Module {
     }
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        return observed( // {§observability-boundary} — the perimeter span; the path may carry query data, so only the pathname leaves.
+        return observed( // {§observability-boundary} — only a bounded route class leaves the perimeter.
             "agui.http",
-            { method: req.method ?? "", route: (req.url ?? "").split("?")[0] },
+            { route: aguiRouteTemplate(req.method, req.url) },
             (): Promise<void> => this.#routeSettled(req, res),
         );
     }
@@ -564,7 +564,11 @@ export default class Module {
 
     // The capability manifest a client probes (`discover`) for exact action/event membership.
     // The built-ins come from the same inventories routing uses; extension names come from core.
-    #capabilities(): { methods: Record<string, true>; notifications: Record<string, true> } {
+    async #capabilities(): Promise<{
+        methods: Record<string, true>;
+        notifications: Record<string, true>;
+        display: ClientDisplayCapabilities;
+    }> {
         const methods: Record<string, true> = {};
         for (const k of [
             ...Module.#CONTROL_ACTIONS,
@@ -576,7 +580,10 @@ export default class Module {
         }
         const notifications: Record<string, true> = {};
         for (const n of Module.#NOTIFICATIONS) notifications[n] = true;
-        return { methods, notifications };
+        const display = Validator.assertClientDisplayCapabilities(
+            await this.#seam.listClientDisplayCapabilities(),
+        );
+        return { methods, notifications, display };
     }
 
     // The action executor — the verb surface. The control plane runs worldless; everything
@@ -590,7 +597,7 @@ export default class Module {
             // The control plane — worldless verbs (no bound workspace; #WORLD_SCOPED gates this).
             switch (a.kind) {
                 case "ping": return { ok: true, result: {} };
-                case "discover": return { ok: true, result: this.#capabilities() };
+                case "discover": return { ok: true, result: await this.#capabilities() };
                 case "providers.list": return { ok: true, result: this.#seam.listProviders() };
                 case "workspace.list": return { ok: true, result: { workspaces: await this.#seam.listWorkspaces() } };
                 case "workspace.create": {

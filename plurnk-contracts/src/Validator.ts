@@ -15,7 +15,8 @@ import textRegionSchema from "../schema/TextRegion.json" with { type: "json" };
 import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
 import proposalDispositionSchema from "../schema/ProposalDisposition.json" with { type: "json" };
 import loopFlagsSchema from "../schema/LoopFlags.json" with { type: "json" };
-import type { EntryReadResult, LoopFlags, Notice, OperationResult, ProblemDetails, ProposalProjection, TextRegion } from "./types.generated.ts";
+import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
+import type { ClientDisplayCapabilities, EntryReadResult, LoopFlags, Notice, OperationResult, ProblemDetails, ProposalProjection, TextRegion } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
@@ -26,6 +27,7 @@ export class InvalidEntryReadResultError extends TypeError {}
 export class InvalidTextRegionError extends TypeError {}
 export class InvalidLoopFlagsError extends TypeError {}
 export class InvalidProposalProjectionError extends TypeError {}
+export class InvalidClientDisplayCapabilitiesError extends TypeError {}
 
 export default class Validator {
     static #position = new CfValidator(positionSchema as Schema, "2020-12");
@@ -65,6 +67,10 @@ export default class Validator {
     static #proposalProjection = Validator.#withRefs(
         proposalProjectionSchema,
         [proposalDispositionSchema, loopFlagsSchema],
+    );
+    static #clientDisplayCapabilities = new CfValidator(
+        clientDisplayCapabilitiesSchema as Schema,
+        "2020-12",
     );
 
     static #withRefs(mainSchema: unknown, refSchemas: unknown[]): CfValidator {
@@ -151,6 +157,10 @@ export default class Validator {
         return Validator.#validate(Validator.#proposalProjection, value);
     }
 
+    static validateClientDisplayCapabilities(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#clientDisplayCapabilities, value);
+    }
+
     static assertNotice<T extends Notice>(value: T): T {
         const result = Validator.validateNotice(value);
         if (!result.valid) throw new InvalidNoticeError(`invalid Notice: ${JSON.stringify(result.errors)}`);
@@ -220,6 +230,16 @@ export default class Validator {
         if (!result.valid) {
             throw new InvalidProposalProjectionError(
                 `invalid ProposalProjection: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        return value;
+    }
+
+    static assertClientDisplayCapabilities<T extends ClientDisplayCapabilities>(value: T): T {
+        const result = Validator.validateClientDisplayCapabilities(value);
+        if (!result.valid) {
+            throw new InvalidClientDisplayCapabilitiesError(
+                `invalid ClientDisplayCapabilities: ${JSON.stringify(result.errors)}`,
             );
         }
         return value;

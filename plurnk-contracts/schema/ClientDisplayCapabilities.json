@@ -1,0 +1,54 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/ClientDisplayCapabilities.json",
+    "title": "ClientDisplayCapabilities",
+    "description": "The installed scheme and MIME capability identities with optional opaque client presentation metadata.",
+    "type": "array",
+    "items": {
+        "oneOf": [
+            { "$ref": "#/$defs/schemeCapability" },
+            { "$ref": "#/$defs/mimetypeCapability" }
+        ]
+    },
+    "$defs": {
+        "display": {
+            "title": "CapabilityDisplay",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "glyph": {
+                    "type": "string",
+                    "minLength": 1
+                }
+            }
+        },
+        "schemeCapability": {
+            "title": "SchemeDisplayCapability",
+            "type": "object",
+            "required": ["kind", "scheme", "display"],
+            "additionalProperties": false,
+            "properties": {
+                "kind": { "const": "scheme" },
+                "scheme": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "display": { "$ref": "#/$defs/display" }
+            }
+        },
+        "mimetypeCapability": {
+            "title": "MimetypeDisplayCapability",
+            "type": "object",
+            "required": ["kind", "mimetype", "display"],
+            "additionalProperties": false,
+            "properties": {
+                "kind": { "const": "mimetype" },
+                "mimetype": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "display": { "$ref": "#/$defs/display" }
+            }
+        }
+    }
+}

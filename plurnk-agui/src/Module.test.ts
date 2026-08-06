@@ -14,6 +14,7 @@ const mockSeam = () => {
     const loopRuns: Array<{ alias?: string; model?: string; prompt: string }> = [];
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
     const seam: DaemonSeam = {
+        listClientDisplayCapabilities: async () => [],
         listModuleActions: () => [],
         invokeModuleAction: async (name) => { throw new Error(`unexpected module action '${name}'`); },
         subscribeToEvents: (h) => { handlers.add(h); return () => { handlers.delete(h); }; },
@@ -940,12 +941,20 @@ test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none (oper
 
 test("discover returns the exact public action and notification membership", async () => {
     const { seam } = mockSeam();
+    seam.listClientDisplayCapabilities = async () => [
+        { kind: "scheme", scheme: "http", display: { glyph: "🌐" } },
+        { kind: "mimetype", mimetype: "text/html", display: { glyph: "󰖟" } },
+    ];
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         const ev = await post(mod.address().port, { threadId: "probe", workerId: "r1", forwardedProps: { plurnk: { action: { kind: "discover" } } } });
-        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { methods: Record<string, true>; notifications: Record<string, true> } } };
+        const r = ev.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { methods: Record<string, true>; notifications: Record<string, true>; display: unknown[] } } };
         assert.equal(r.value.ok, true);
-        assert.deepEqual(Object.keys(r.value.result).toSorted(), ["methods", "notifications"]);
+        assert.deepEqual(Object.keys(r.value.result).toSorted(), ["display", "methods", "notifications"]);
+        assert.deepEqual(r.value.result.display, [
+            { kind: "scheme", scheme: "http", display: { glyph: "🌐" } },
+            { kind: "mimetype", mimetype: "text/html", display: { glyph: "󰖟" } },
+        ]);
         assert.deepEqual(Object.keys(r.value.result.methods).toSorted(), [
             "discover",
             "entry.read",

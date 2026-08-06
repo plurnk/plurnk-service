@@ -27,6 +27,7 @@ import type {
     Discovery,
     DiscoveryResult,
     HandlerInfo,
+    MimetypeDisplayMetadata,
     HandlerMetadata,
     MimeRef,
     MimeSymbol,
@@ -185,6 +186,13 @@ export default class Mimetypes {
     async skippedPackages(): Promise<readonly string[]> {
         await this.ready();
         return [...this.#discovery!.skipped];
+    }
+
+    async displayMetadata(): Promise<readonly MimetypeDisplayMetadata[]> {
+        await this.ready();
+        return [...this.#discovery!.handlers.values()]
+            .map(({ mimetype, glyph }) => ({ mimetype, glyph }))
+            .toSorted((a, b) => a.mimetype.localeCompare(b.mimetype));
     }
 
     // {§plugin-attribution} Static package tags remain always-on. Runtime

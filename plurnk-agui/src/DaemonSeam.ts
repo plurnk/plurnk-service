@@ -15,7 +15,7 @@ export interface ProposalResolution {
 // Core's contracts-owned pending-proposal projection. Persistence never crosses
 // this seam; live delivery and reconnect expose the same domain shape.
 export type { ProposalProjection as PendingProposal } from "@plurnk/plurnk-contracts";
-import type { EntryReadResult, ProposalProjection } from "@plurnk/plurnk-contracts";
+import type { ClientDisplayCapabilities, EntryReadResult, ProposalProjection } from "@plurnk/plurnk-contracts";
 
 // The grammar owns the protocol: the statement handed to dispatchAsClient IS
 // @plurnk/plurnk-contracts's PlurnkStatement (parsed at the module's edge). Type-only
@@ -28,6 +28,7 @@ export type { PlurnkStatement };
 export type LogEntryWire = Record<string, unknown>;
 
 export interface DaemonSeam {
+    listClientDisplayCapabilities(): Promise<ClientDisplayCapabilities>;
     listModuleActions(): string[];
     invokeModuleAction(name: string, params: Readonly<Record<string, unknown>>): Promise<unknown>;
     // Hook B — the in-process event source. `handler` receives every workspace-scoped

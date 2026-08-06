@@ -70,6 +70,79 @@ test("Daemon: listenerless boot — the seam is live with no socket bound", asyn
     });
 });
 
+test("Daemon composes deterministic scheme and MIME display capabilities for clients", async () => {
+    const db = await openMigrated();
+    const mimetypes = new Mimetypes({
+        discovery: {
+            registry: { byExtension: new Map(), byFilename: new Map() },
+            handlers: new Map([
+                ["text/plain", {
+                    mimetype: "text/plain",
+                    glyph: "📄",
+                    packageName: "@plurnk/plurnk-mimetypes-text-plain",
+                    projectionRevision: "test-1",
+                    extensions: [".txt"],
+                    binary: false,
+                    source: "package" as const,
+                }],
+                ["application/x-unmarked", {
+                    mimetype: "application/x-unmarked",
+                    glyph: "",
+                    packageName: "@acme/mimetype-unmarked",
+                    projectionRevision: "test-1",
+                    extensions: [],
+                    binary: false,
+                    source: "package" as const,
+                }],
+            ]),
+            skipped: [],
+        },
+    });
+    const daemon = new Daemon({ db, provider: null, mimetypes });
+    daemon.schemes.register("figma", {
+        manifest: {
+            name: "figma",
+            channels: { body: "application/json" },
+            defaultChannel: "body",
+            category: "data",
+            writableBy: ["model"],
+            volatile: true,
+            modelVisible: true,
+            glyph: "󰕧",
+        },
+    });
+    try {
+        const capabilities = await daemon.listClientDisplayCapabilities();
+        Validator.assertClientDisplayCapabilities(capabilities);
+        assert.deepEqual(
+            capabilities.filter((capability) => capability.kind === "scheme"),
+            [
+                { kind: "scheme", scheme: "figma", display: { glyph: "󰕧" } },
+                { kind: "scheme", scheme: "file", display: {} },
+                { kind: "scheme", scheme: "log", display: {} },
+                { kind: "scheme", scheme: "prompt", display: {} },
+                { kind: "scheme", scheme: "skill", display: {} },
+                { kind: "scheme", scheme: "worker", display: {} },
+            ],
+        );
+        assert.deepEqual(
+            capabilities.filter((capability) => capability.kind === "mimetype"),
+            [
+                { kind: "mimetype", mimetype: "application/x-unmarked", display: {} },
+                { kind: "mimetype", mimetype: "text/plain", display: { glyph: "📄" } },
+            ],
+        );
+        assert.equal(
+            capabilities.some((capability) => capability.kind === "scheme" && capability.scheme === "exec"),
+            false,
+            "the internal EXEC implementation is not advertised as an addressable URI scheme",
+        );
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
 test("Daemon boot reports mimetype packages withheld by the shared trust gate", async () => {
     const db = await openMigrated();
     const discovery = {

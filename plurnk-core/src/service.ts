@@ -214,14 +214,16 @@ export default class Service {
         // admitted before provider verification can perform external work.
         const db = await Service.#openDb(dbPath, true);
         let daemon: Daemon | null = null;
-        // {§observability-boundary} — the daemon initializes the SDK before any
-        // instrumented module loads; an unconfigured process never loads it.
-        const observability = await startObservability();
+        let observability: Awaited<ReturnType<typeof startObservability>> = null;
         const teardown = new ServiceTeardown(
-            async () => { await daemon?.stop(); await observability?.shutdown(); },
+            async () => { await daemon?.stop(); },
+            async () => { await observability?.shutdown(); },
             async () => db.close(),
         );
         try {
+            // {§observability-boundary} — config is normalized before any SDK
+            // implementation loads; teardown already owns the admitted DB.
+            observability = await startObservability();
             const provider = alias === null ? null : await ProviderInstantiate.loadActiveProvider();
             daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
             daemon.registerModule(McpModule.init());

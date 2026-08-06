@@ -231,6 +231,55 @@ test("bin: provider initialization failure closes the admitted database", async 
     }
 });
 
+test("bin: observability initialization failure closes the admitted database", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-observe-startup-"));
+    try {
+        const dbPath = join(dir, "plurnk.db");
+        const env: NodeJS.ProcessEnv = {
+            ...process.env,
+            HOME: dir,
+            PLURNK_SERVICE_DB_PATH: dbPath,
+            PLURNK_HOST: "127.0.0.1",
+            PLURNK_PORT: "0",
+            OTEL_TRACES_EXPORTER: "unsupported",
+            OTEL_METRICS_EXPORTER: "none",
+            PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
+        };
+        delete env.PLURNK_MODEL;
+        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "start"], {
+            env,
+            cwd: dir,
+            stdio: ["ignore", "ignore", "pipe"],
+        });
+        let stderr = "";
+        child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+        const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolvePromise, rejectPromise) => {
+            const timer = setTimeout(() => {
+                child.kill("SIGKILL");
+                rejectPromise(new Error(`observability-startup timeout; stderr=${stderr}`));
+            }, 10_000);
+            child.once("exit", (code, signal) => {
+                clearTimeout(timer);
+                resolvePromise({ code, signal });
+            });
+            child.once("error", (cause) => {
+                clearTimeout(timer);
+                rejectPromise(cause);
+            });
+        });
+        assert.equal(result.code, 1, `observability initialization fails startup (signal=${result.signal})`);
+        assert.match(stderr, /unsupported OTEL_TRACES_EXPORTER value "unsupported"/);
+        await access(dbPath);
+        await assert.rejects(
+            access(`${dbPath}.lock`),
+            { code: "ENOENT" },
+            "the admitted database owner is closed and its lock released",
+        );
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
 // {§provider-resolution}: a set-but-unresolvable PLURNK_MODEL fails boot naming the value and
 // declaration contract; it never degrades to a silently modelless daemon.
 test("bin: PLURNK_MODEL naming no declared alias fails the boot LOUD — never a silent modelless daemon", { timeout: 60_000 }, async () => {

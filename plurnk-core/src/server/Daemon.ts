@@ -21,6 +21,7 @@ export interface DrainLoopResult { loopId: number; result: SchemeResult; hitMaxT
 import {
     parsePath,
     Validator,
+    type ClientDisplayCapabilities,
     type ClientEntryChannel,
     type EntryReadResult,
     type Notice,
@@ -697,6 +698,30 @@ export default class Daemon {
                 };
             }),
         };
+    }
+
+    // {§client-display-capabilities} Core composes the installed family
+    // declarations; interface modules expose this contracts-owned wire without
+    // inventing presentation policy. `exec` is operation machinery, not an
+    // addressable URI scheme; its runtime-tag scheme faces remain discoverable.
+    async listClientDisplayCapabilities(): Promise<ClientDisplayCapabilities> {
+        const schemes: ClientDisplayCapabilities = this.#schemes.list()
+            .filter((scheme) => scheme !== "exec")
+            .map((scheme) => {
+                const glyph = this.#schemes.manifestFor(scheme)?.glyph;
+                return {
+                    kind: "scheme" as const,
+                    scheme,
+                    display: glyph === undefined ? {} : { glyph },
+                };
+            });
+        const mimetypes: ClientDisplayCapabilities = (await this.#mimetypes.displayMetadata())
+            .map(({ mimetype, glyph }) => ({
+                kind: "mimetype" as const,
+                mimetype,
+                display: glyph.length === 0 ? {} : { glyph },
+            }));
+        return Validator.assertClientDisplayCapabilities([...schemes, ...mimetypes]);
     }
 
     listWorkspaces() { return Envelope.listWorkspaces(this.#db); }
@@ -2177,6 +2202,7 @@ export type CoreSeam = Pick<Daemon,
     | "runLoop" | "cancelDrain" | "dispatchClientAction" | "ensureModelWorker"
     | "readLog" | "readEntry" | "look"
     | "listProviders" | "listWorkspaces" | "listWorkers" | "listPrompts" | "listMembers" | "listConstraints" | "workspaceDerivationStatus"
+    | "listClientDisplayCapabilities"
     | "createWorkspace" | "attachWorkspace" | "createConversationWorker" | "renameWorkspace" | "constrain" | "unconstrain"
     | "forkWorker"
     | "listModuleActions" | "invokeModuleAction"

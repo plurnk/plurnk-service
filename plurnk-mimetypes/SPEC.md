@@ -162,7 +162,7 @@ The containing `package.json` `name` must be a valid current npm package name.
 |--------------|----------|----------|-----------------------------------------------------------------------------------------------------------------|
 | `name`       | string   | yes      | RFC 6838 restricted type/subtype name registered by this entry (`text/markdown`, `application/json`, …).        |
 | `revision`   | string   | yes      | Non-empty handler-owned projection revision ({§mimetype-projection-identity}).                                  |
-| `glyph`      | string   | no       | Display marker; defaults to an empty string.                                                                    |
+| §mimetype-client-display `glyph` | string | no | Opaque client presentation glyph; discovery retains the handler-facing empty-string default, while Core projects that sentinel as absence through {§client-display-capabilities}. |
 | `extensions` | string[] | no       | Dotted entries are case-insensitive extensions; bare entries are case-sensitive filenames such as `Dockerfile`. |
 
 §mimetype-discovery `discover()` uses one scope-agnostic, trust-gated path for

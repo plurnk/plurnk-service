@@ -251,6 +251,7 @@ const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 // ── manifest ──────────────────────────────────────────────────────────────
 test("manifest: name http, default channel body, requiresWeb, network-volatile", () => {
     assert.equal(Http.manifest.name, "http");
+    assert.equal(Http.manifest.glyph, "🌐");
     assert.equal(Http.manifest.defaultChannel, "body");
     assert.equal(Http.manifest.flags?.requiresWeb, true);
     assert.equal(Http.manifest.volatile, true);

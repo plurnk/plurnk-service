@@ -9,6 +9,7 @@ export {
     InvalidProblemDetailsError,
     InvalidProposalProjectionError,
     InvalidTextRegionError,
+    InvalidClientDisplayCapabilitiesError,
 } from "./Validator.ts";
 export { default as Problems } from "./Problems.ts";
 export type { ProblemOptions } from "./Problems.ts";

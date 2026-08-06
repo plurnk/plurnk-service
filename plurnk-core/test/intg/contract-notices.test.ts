@@ -11,7 +11,7 @@ import { Mock, ProviderError } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, seedEntryWithChannel } from "./_helpers.ts";
-import { readStmt, sendStmt, urlPath } from "./_dsl.ts";
+import { editStmt, readStmt, sendStmt, urlPath } from "./_dsl.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 
 // Response from raw content WITHOUT ops - forces the engine to run the real
@@ -122,35 +122,82 @@ test("the notice buffer drains — a notice appears on exactly one packet, then 
     } finally { await db.close(); }
 });
 
-test("a three-coordinate scope normalizes with a next-packet Notice ({§slicer-text-algebra})", async () => {
-    // <SL,SC,EL> reads as <SL,SC> through the end of line EL: the slice serves the
-    // intent, the next packet's notices steer the model to the canonical forms.
+test("a tolerated three-coordinate scope reports its exact canonical region on the next packet ({§text-scope-runtime})", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
-    await seedEntryWithChannel(db, { workspaceId, pathname: "/x", content: "alpha\nbeta\ngamma\ndelta", mimetype: "text/markdown" });
+    await seedEntryWithChannel(db, {
+        workspaceId,
+        pathname: "/x",
+        content: "alpha\nbeta\ngamma\ndelta",
+        mimetype: "text/markdown",
+    });
     try {
         const stmtTurn = (ops: PlurnkStatement[]): MockResponse => ({
-            assistant: { content: "", ops, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+            assistant: {
+                content: "",
+                ops,
+                reasoning: null,
+                usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
+            },
         } as MockResponse);
+        const scopedRead = readStmt(urlPath("worker", "/x"));
+        scopedRead.lineMarker = { marks: [2, 1, 3] };
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                stmtTurn([{ ...readStmt(urlPath("worker", "/x")), lineMarker: { marks: [2, 1, 3] } }, sendStmt(102, null, "read")]),
+                stmtTurn([scopedRead, sendStmt(102, null, "read")]),
                 stmtTurn([sendStmt(200, null, "done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const packet = await getPacket(db, second.turnId);
 
-        const p2 = await getPacket(db, t2.turnId);
-        assert.match(
-            packetSection(p2, "log"),
-            /<<BODY\n2:beta\n3:gamma\nBODY/,
-            "the 3-form sliced from line 2 column 1 through the end of line 3",
-        );
+        assert.match(packetSection(packet, "log"), /<<BODY\n2:beta\n3:gamma\nBODY/);
         assert.equal(
-            packetSection(p2, "notices"),
-            "* scope_normalized: Scope <2,1,3> read as <2,1> through the end of line 3; canonical region forms are one, two, or four coordinates.",
-            "the steer lands on exactly the next packet",
+            packetSection(packet, "notices"),
+            "* scope_normalized: Scope <2,1,3> was normalized to <2,1,3,6>.",
+        );
+    } finally { await db.close(); }
+});
+
+test("an EDIT batch reports each tolerated scope once in authored order ({§text-scope-runtime})", async () => {
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const target = urlPath("worker", "/x");
+    await seedEntryWithChannel(db, {
+        workspaceId,
+        pathname: "/x",
+        content: "alpha\nbeta\ngamma\ndelta",
+        mimetype: "text/markdown",
+    });
+    try {
+        const stmtTurn = (ops: PlurnkStatement[]): MockResponse => ({
+            assistant: {
+                content: "",
+                ops,
+                reasoning: null,
+                usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
+            },
+        } as MockResponse);
+        const provider = new Mock({
+            contextWindow: 100000,
+            responses: [
+                stmtTurn([
+                    editStmt(target, "A", null, { marks: [1, 2, 1] }),
+                    editStmt(target, "G", null, { marks: [3, 2, 3] }),
+                    sendStmt(102, null, "edited"),
+                ]),
+                stmtTurn([sendStmt(200, null, "done")]),
+            ],
+        });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+
+        assert.equal(
+            packetSection(await getPacket(db, second.turnId), "notices"),
+            [
+                "* scope_normalized: Scope <1,2,1> was normalized to <1,2,1,6>.",
+                "* scope_normalized: Scope <3,2,3> was normalized to <3,2,3,6>.",
+            ].join("\n"),
         );
     } finally { await db.close(); }
 });

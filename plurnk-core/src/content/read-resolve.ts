@@ -10,7 +10,7 @@
 import type { LineMarker, MatcherBody } from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import type { MatchEvidence, RangeExtent, SchemeResultBase } from "@plurnk/plurnk-schemes";
+import type { MatchEvidence, RangeExtent, SchemeResultBase, ScopeNormalization } from "@plurnk/plurnk-schemes";
 import LineMarkerOps from "./line-marker.ts";
 import Matcher from "./matcher.ts";
 import MimetypeBinary from "./mimetype-binary.ts";
@@ -23,6 +23,7 @@ export interface ReadSliceResult extends SchemeResultBase {
     matches?: ReadonlyArray<MatchEvidence>;
     reason?: string;
     range?: RangeExtent;
+    scopeNormalizations?: ReadonlyArray<ScopeNormalization>;
 }
 
 export default class ReadResolve {
@@ -74,7 +75,7 @@ export default class ReadResolve {
         let workingContent = content;
         let workingStart: number | null = 1;
         let workingRegion: TextRegion | undefined;
-        let normalizedScope: unknown;
+        let scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined;
         if (lineMarker !== null) {
             const sliced = LineMarkerOps.sliceLines(content, lineMarker);
             if (sliced.status === 416) return {
@@ -91,7 +92,7 @@ export default class ReadResolve {
             workingContent = sliced.text ?? "";
             workingStart = sliced.startLine ?? null;
             workingRegion = sliced.region;
-            normalizedScope = sliced.normalizedScope;
+            scopeNormalizations = sliced.scopeNormalizations;
         }
 
         if (selectionFallback !== null) {
@@ -102,6 +103,7 @@ export default class ReadResolve {
                 startLine: workingStart,
                 ...(workingRegion === undefined ? {} : { region: workingRegion }),
                 ...(selectionFallback.reason === undefined ? {} : { reason: selectionFallback.reason }),
+                ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
             };
         }
 
@@ -114,6 +116,7 @@ export default class ReadResolve {
                     startLine: null,
                     ...(workingRegion === undefined ? {} : { region: workingRegion }),
                     ...(selectedMatches === undefined ? {} : { matches: selectedMatches }),
+                    ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
                 };
             }
             return {
@@ -123,7 +126,7 @@ export default class ReadResolve {
                 startLine: workingStart,
                 ...(workingRegion === undefined ? {} : { region: workingRegion }),
                 ...(selectedMatches === undefined ? {} : { matches: selectedMatches }),
-                ...(normalizedScope === undefined ? {} : { normalizedScope }),
+                ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
             };
         }
 

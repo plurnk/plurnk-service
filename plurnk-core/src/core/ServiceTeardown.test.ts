@@ -6,20 +6,23 @@ test("service teardown stops the daemon before closing the database, exactly onc
     const calls: string[] = [];
     const teardown = new ServiceTeardown(
         async () => { calls.push("daemon.stop"); },
+        async () => { calls.push("observability.shutdown"); },
         async () => { calls.push("db.close"); },
     );
 
     await Promise.all([teardown.close(), teardown.close()]);
 
-    assert.deepEqual(calls, ["daemon.stop", "db.close"]);
+    assert.deepEqual(calls, ["daemon.stop", "observability.shutdown", "db.close"]);
 });
 
-test("service teardown closes the database after daemon failure and preserves both failures", async () => {
+test("service teardown runs observability and database phases after daemon failure and preserves every failure", async () => {
     const daemonFailure = new Error("daemon stop failed");
+    const observabilityFailure = new Error("observability shutdown failed");
     const databaseFailure = new Error("database close failed");
     const calls: string[] = [];
     const teardown = new ServiceTeardown(
         async () => { calls.push("daemon.stop"); throw daemonFailure; },
+        async () => { calls.push("observability.shutdown"); throw observabilityFailure; },
         async () => { calls.push("db.close"); throw databaseFailure; },
     );
 
@@ -28,19 +31,21 @@ test("service teardown closes the database after daemon failure and preserves bo
         (cause: unknown) => {
             assert.ok(cause instanceof AggregateError);
             assert.equal(cause.message, "service shutdown failed");
-            assert.deepEqual(cause.errors, [daemonFailure, databaseFailure]);
+            assert.deepEqual(cause.errors, [daemonFailure, observabilityFailure, databaseFailure]);
             return true;
         },
     );
-    assert.deepEqual(calls, ["daemon.stop", "db.close"]);
+    assert.deepEqual(calls, ["daemon.stop", "observability.shutdown", "db.close"]);
 });
 
 test("failed startup preserves the originating failure and every teardown failure", async () => {
     const startupFailure = new Error("daemon start failed");
     const daemonFailure = new Error("daemon stop failed");
+    const observabilityFailure = new Error("observability shutdown failed");
     const databaseFailure = new Error("database close failed");
     const teardown = new ServiceTeardown(
         async () => { throw daemonFailure; },
+        async () => { throw observabilityFailure; },
         async () => { throw databaseFailure; },
     );
 
@@ -49,7 +54,7 @@ test("failed startup preserves the originating failure and every teardown failur
         (cause: unknown) => {
             assert.ok(cause instanceof AggregateError);
             assert.equal(cause.message, "service startup and shutdown failed");
-            assert.deepEqual(cause.errors, [startupFailure, daemonFailure, databaseFailure]);
+            assert.deepEqual(cause.errors, [startupFailure, daemonFailure, observabilityFailure, databaseFailure]);
             return true;
         },
     );
@@ -57,7 +62,7 @@ test("failed startup preserves the originating failure and every teardown failur
 
 test("failed startup rethrows its exact failure when teardown succeeds", async () => {
     const startupFailure = new Error("daemon start failed");
-    const teardown = new ServiceTeardown(async () => {}, async () => {});
+    const teardown = new ServiceTeardown(async () => {}, async () => {}, async () => {});
 
     await assert.rejects(
         () => teardown.fail(startupFailure),
@@ -74,6 +79,7 @@ test("a repeated signal request performs and reports failed teardown once", asyn
     const reportReceived = new Promise<void>((resolve) => { resolveReport = resolve; });
     const teardown = new ServiceTeardown(
         async () => { stops += 1; throw failure; },
+        async () => {},
         async () => { closes += 1; },
     );
     const report = (cause: unknown): void => {

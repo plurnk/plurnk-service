@@ -10,6 +10,7 @@ import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editReceipt }
 import type { EditBatchReceipt } from "../content/index.ts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import Results, { type MatchEvidence, type SchemeResultBase } from "../core/results.ts";
+import type { ScopeNormalization } from "@plurnk/plurnk-schemes";
 
 // Shared static-method helpers for owner-addressed entry-bearing schemes.
 // Each scheme passes its manifest; helpers extract scheme name, channels,
@@ -201,6 +202,7 @@ export default class EntryOps {
         // EXISTING entry has no easy-clobber path: a marker is REQUIRED, even for a
         // deliberate full rewrite (`<1,-1>` states that intent explicitly).
         let newContent: string;
+        let scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined;
         if (existing !== undefined && statements.some(({ lineMarker }) => lineMarker === null)) {
             return failure(
                 "line-marker-required",
@@ -227,6 +229,7 @@ export default class EntryOps {
                 }) as EditResult;
             }
             newContent = result.result ?? "";
+            scopeNormalizations = result.scopeNormalizations;
         } else {
             if (statements.length !== 1) {
                 return failure(
@@ -256,7 +259,12 @@ export default class EntryOps {
                 );
                 addsTag = signalTags.some((t) => !have.has(t));
             }
-            if (!addsTag) return { status: 304, entryId: existing.id, channel: targetChannel };  // {§edit-noop-304}
+            if (!addsTag) return {
+                status: 304,
+                entryId: existing.id,
+                channel: targetChannel,
+                ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
+            };  // {§edit-noop-304}
         }
 
         let entryId: number;
@@ -292,6 +300,7 @@ export default class EntryOps {
             entryId,
             channel: targetChannel,
             editReceipt: editReceipt(originalContent, newContent, receiptEdits),
+            ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
         };  // {§edit-status-201-200}
     }
 

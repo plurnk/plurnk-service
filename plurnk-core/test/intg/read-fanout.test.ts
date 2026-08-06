@@ -139,6 +139,40 @@ test("a scoped matcher READ selects full resources then projects the range from 
     } finally { await db.close(); }
 });
 
+test("a fanned READ reports each resource-specific three-coordinate normalization", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, mimetypes, engine } = await setup();
+    try {
+        await seed(db, workspaceId, workerId, mimetypes, "/a", "alpha\nlonger line\nneedle");
+        await seed(db, workspaceId, workerId, mimetypes, "/b", "beta\nshort\nneedle");
+
+        const result = await engine.dispatch({
+            statement: {
+                ...readStmt(urlPath("worker", "/**"), {
+                    dialect: "glob",
+                    raw: "needle",
+                } as MatcherBody),
+                lineMarker: { marks: [1, 2, 2] },
+            },
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 1,
+            origin: "model",
+        });
+
+        assert.equal(result.status, 200);
+        assert.deepEqual(
+            (result.scopeNormalizations ?? []).map(({ requested, canonical }) => ({ requested, canonical }))
+                .toSorted((left, right) => left.canonical[3] - right.canonical[3]),
+            [
+                { requested: [1, 2, 2], canonical: [1, 2, 2, 6] },
+                { requested: [1, 2, 2], canonical: [1, 2, 2, 12] },
+            ],
+        );
+    } finally { await db.close(); }
+});
+
 test("a scoped matcher READ with no matching resource returns 204 instead of paginating an empty match set", async () => {
     const { db, workspaceId, workerId, loopId, turnId, mimetypes, engine } = await setup();
     try {

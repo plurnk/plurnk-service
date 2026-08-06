@@ -206,6 +206,7 @@ const flush = () => new Promise((r) => setImmediate(r));
 
 test("manifest: wss scheme - messages channel, requiresWeb, network-volatile", () => {
     assert.equal(Ws.manifest.name, "wss");
+    assert.equal(Ws.manifest.glyph, "🔌");
     assert.equal(Ws.manifest.defaultChannel, "messages");
     assert.deepEqual(Object.keys(Ws.manifest.channels), ["messages"]);
     assert.equal(Ws.manifest.flags?.requiresWeb, true);

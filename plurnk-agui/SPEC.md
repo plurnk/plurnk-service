@@ -252,8 +252,13 @@ system:
 type Discovery = {
     methods: Record<string, true>;
     notifications: Record<string, true>;
+    display: ClientDisplayCapabilities;
 };
 ```
+
+`display` is Core's validated, contracts-owned installed scheme/MIME projection
+({§client-display-capabilities}). AG-UI adds no fallback, font, theme, or packet
+policy.
 
 `methods` contains the 22 built-ins in the table plus every registered module
 action. `notifications` contains exactly these externally projected daemon

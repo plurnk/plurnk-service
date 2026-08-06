@@ -43,6 +43,9 @@ export interface SchemeManifest {
     // Field-by-field contract: {§manifest-self-doc}.
     readonly example?: string;
     readonly documentation?: string;
+    // Opaque client presentation metadata. It is deliberately absent from
+    // model-facing scheme teaching; clients choose rendering and fallback.
+    readonly glyph?: string;
     // Value persisted to `entries.scheme`, which may differ from the addressing
     // `name`. Absent defaults to `name`; identity components are never null.
     readonly storedScheme?: string;

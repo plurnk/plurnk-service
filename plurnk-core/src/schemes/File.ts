@@ -21,6 +21,7 @@ import Results, { type SchemeResultBase } from "../core/results.ts";
 import {
     type EntryAddress,
     InvalidOperationResultError,
+    type ScopeNormalization,
     type ProposalApplyResult,
 } from "@plurnk/plurnk-schemes";
 
@@ -400,6 +401,7 @@ export default class File extends CoreSchemeAdapterBase {
         // {§edit-marker-required-on-existing} — markerless content creates a new
         // file; every existing-file rewrite states its range explicitly.
         let patched: string;
+        let scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined;
         if (fileExists) {
             if (statements.some(({ lineMarker }) => lineMarker === null)) {
                 return failure(
@@ -416,6 +418,7 @@ export default class File extends CoreSchemeAdapterBase {
             const result = LineMarkerOps.applyLineMarkerEditBatch(original, edits);
             if (result.status !== 200) return Results.assert(result) as EditResult;
             patched = result.result ?? "";
+            scopeNormalizations = result.scopeNormalizations;
         } else {
             if (statements.length !== 1) {
                 return failure(
@@ -431,7 +434,10 @@ export default class File extends CoreSchemeAdapterBase {
             patched = statement.body ?? "";
         }
 
-        if (fileExists && patched === original) return { status: 304 };  // {§edit-noop-304}
+        if (fileExists && patched === original) return {
+            status: 304,
+            ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
+        };  // {§edit-noop-304}
 
         const patch = createPatch(rel, original, patched, "current", "proposed");
         const receiptEdits = fileExists
@@ -442,6 +448,7 @@ export default class File extends CoreSchemeAdapterBase {
             status: 202,
             body: patch,
             editReceipt: batchReceipt,
+            ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
             attrs: { path: rel, canonical, patch, patched, editReceipt: batchReceipt, baseSig, existed: fileExists, ...(admittedBy !== undefined ? { admittedBy } : {}) },
         };
     }

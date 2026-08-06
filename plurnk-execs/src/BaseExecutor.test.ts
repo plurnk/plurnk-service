@@ -86,7 +86,7 @@ test("BaseExecutor: scheme manifest derives from the tag + declared channels", (
     const m = executor.manifest;
     assert.equal(m.name, "sqlite", "scheme name is the tag");
     assert.equal(executor.glyph, "🗃", "executor presentation remains executor-owned");
-    assert.equal(Object.hasOwn(m, "glyph"), false, "executor display metadata does not leak into the scheme face");
+    assert.equal(m.glyph, "🗃", "the runtime's addressable scheme face retains its intrinsic presentation metadata");
     assert.deepEqual(m.channels, { results: "application/json" }, "channels derive from the declared output channels");
     assert.equal(m.defaultChannel, "results");
     // the read-only-output default an executor-scheme inherits

@@ -95,6 +95,23 @@ const binaryInfo: HandlerInfo = {
     source: "package",
 };
 
+it("projects deterministic family-owned MIME display metadata without loading handlers", async () => {
+    const unmarked: HandlerInfo = {
+        ...plainInfo,
+        mimetype: "application/x-unmarked",
+        glyph: "",
+    };
+    const mimetypes = new Mimetypes({
+        discovery: makeDiscovery([plainInfo, unmarked]),
+        loader: async () => { throw new Error("display discovery must not load handler code"); },
+    });
+
+    assert.deepEqual(await mimetypes.displayMetadata(), [
+        { mimetype: "application/x-unmarked", glyph: "" },
+        { mimetype: "text/plain", glyph: "📄" },
+    ]);
+});
+
 describe("Mimetypes — bounded readable projections", () => {
     it("does not consume binary bytes when the installed handler has no content projection", async () => {
         let consumed = false;

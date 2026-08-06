@@ -117,43 +117,53 @@ test("lines addresses exact regions in Unicode code points", () => {
     );
 });
 
-test("lines accepts the three-coordinate idiom as start position through end of line", () => {
-    // {§slicer-text-algebra} — <SL,SC,EL> reads as <SL,SC> through end of EL.
+test("lines tolerates three coordinates and reports the exact canonical region", () => {
     const oneLine = Slicer.lines("abc", { marks: [1, 2, 1] });
     assert.equal(oneLine.status, 200);
     assert.equal(oneLine.text, "bc");
-    assert.deepEqual(oneLine.region, { startLine: 1, startColumn: 2, endLine: 1, endColumn: 4 });
-    assert.deepEqual(oneLine.normalizedScope, [1, 2, 1, 4]);
+    assert.deepEqual(oneLine.region, {
+        startLine: 1,
+        startColumn: 2,
+        endLine: 1,
+        endColumn: 4,
+    });
+    assert.deepEqual(oneLine.scopeNormalizations, [{
+        requested: [1, 2, 1],
+        canonical: [1, 2, 1, 4],
+    }]);
 
     const multiLine = Slicer.lines("one\ntwo\nthree\nfour", { marks: [2, 2, 3] });
     assert.equal(multiLine.status, 200);
     assert.equal(multiLine.text, "wo\nthree");
-    assert.deepEqual(multiLine.normalizedScope, [2, 2, 3, 6]);
+    assert.deepEqual(multiLine.scopeNormalizations, [{
+        requested: [2, 2, 3],
+        canonical: [2, 2, 3, 6],
+    }]);
 
-    // The same errors a 4-form would produce, with the original 3 marks as evidence.
     const outOfRange = Slicer.lines("abc", { marks: [1, 2, 9] });
     assert.equal(outOfRange.status, 416);
     assert.deepEqual(outOfRange.problem?.requestedCoordinates, [1, 2, 9]);
+
     const badStart = Slicer.lines("abc", { marks: [1, 9, 1] });
     assert.equal(badStart.status, 416);
     assert.deepEqual(badStart.problem?.requestedCoordinates, [1, 9, 1]);
 });
 
 test("lines rejects unaddressable exact regions", () => {
+
     const unaddressable = Slicer.lines("a😀b", { marks: [1, 4, 1, 5] });
     assert.equal(unaddressable.status, 416);
     assert.deepEqual(unaddressable.problem?.requestedCoordinates, [1, 4, 1, 5]);
 });
 
-test("textReplacement applies the three-coordinate idiom to EDIT", () => {
-    const replaced = Slicer.textReplacement("one\ntwo\nthree", { marks: [2, 2, 2] }, "X");
-    assert.ok(!("error" in replaced));
-    if ("error" in replaced) return;
-    assert.equal(replaced.normalizedScope !== undefined, true);
+test("lineMarkerEdit applies and reports the tolerated three-coordinate region", () => {
     const applied = Slicer.lineMarkerEdit("one\ntwo\nthree", { marks: [2, 2, 2] }, "X");
     assert.equal(applied.status, 200);
     assert.equal(applied.result, "one\ntX\nthree");
-    assert.deepEqual(applied.normalizedScope, [2, 2, 2, 4]);
+    assert.deepEqual(applied.scopeNormalizations, [{
+        requested: [2, 2, 2],
+        canonical: [2, 2, 2, 4],
+    }]);
 });
 
 test("linesRaw preserves selected source separators", () => {
@@ -271,6 +281,19 @@ test("lineMarkerEditBatch applies disjoint edits against one snapshot", () => {
     assert.equal(forward.status, 200);
     assert.equal(forward.result, "alpha\nTWO\n2.5\ngamma\nFOUR\n");
     assert.equal(reverse.result, forward.result);
+});
+
+test("lineMarkerEditBatch preserves every tolerated normalization in authored order", () => {
+    const result = Slicer.lineMarkerEditBatch("alpha\nbeta\ngamma\ndelta", [
+        { marker: { marks: [1, 2, 1] }, body: "A" },
+        { marker: { marks: [3, 2, 3] }, body: "G" },
+    ]);
+    assert.equal(result.status, 200);
+    assert.equal(result.result, "aA\nbeta\ngG\ndelta");
+    assert.deepEqual(result.scopeNormalizations, [
+        { requested: [1, 2, 1], canonical: [1, 2, 1, 6] },
+        { requested: [3, 2, 3], canonical: [3, 2, 3, 6] },
+    ]);
 });
 
 test("lineMarkerEditBatch composes disjoint line and exact regions", () => {

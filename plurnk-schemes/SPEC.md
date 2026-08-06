@@ -43,6 +43,7 @@ class Notes {
 | `flags?` | Optional exact `SchemeFlagAffinity`; see {§manifest-flag-affinity}. |
 | `example?` | The scheme's terse **hot-path** one-liner (e.g. `"READ(foo://thing/42)"`) — renders in the live catalogue every turn, so keep it to one canonical usage line. Omit → not advertised. Depth goes in `documentation`. |
 | `documentation?` | The **deep doc** (semantics / channels / edge cases). Consumer materializes it as a pull-able `worker://plurnk/docs/<name>.md` entry READ on demand; never hits the hot path. Mirrors `ExecInfo.documentation`. |
+| §manifest-client-display `glyph?` | Non-empty opaque client presentation glyph. It is projected through {§client-display-capabilities}; omission delegates identity fallback to the client. It never enters model teaching. |
 | `foldedByDefault?` | Entries land FOLDED, off the ranked manifest surface (READable via address, not poured into the ranked view). For executor-output streams (`<tag>://`) — containment one level up. Absent/false → ranked/first-class. |
 | `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Absent defaults to `name`. It must be a non-null string because every persisted identity component is non-null. |
 
@@ -65,7 +66,7 @@ Proposal behavior is not scheme affinity. A handler proposes by returning 202;
 the consumer's proposal lifecycle decides whether a client, loop auto,
 `noProposals`, or a timeout resolves it.
 
-§manifest-self-doc **Self-doc split (terse pushes, depth pulls).** `example` is the hot-path listing rendered every turn — keep it terse. `documentation` is the deep prose (every op, channel, status code, gotcha); the consumer materializes it as a pull-able **`worker://plurnk/docs/<name>.md`** entry the model READs on demand, off the hot path. Both live on the manifest; the consumer decides what's pushed vs pulled.
+§manifest-self-doc **Self-doc split (terse pushes, depth pulls).** `example` is the hot-path listing rendered every turn — keep it terse. `documentation` is the deep prose (every op, channel, status code, gotcha); the consumer materializes it as a pull-able **`worker://plurnk/docs/<name>.md`** entry the model READs on demand, off the hot path. Both live on the manifest; the consumer decides what's pushed vs pulled. `glyph` is client display metadata under {§manifest-client-display}, not self-documentation.
 
 **Authoring convention — `docs/<name>.md`.** The contract field stays a plain `string`, but a sibling SHOULD keep the deep doc in a **`docs/<name>.md`** file at the package root rather than inline, and load it into the manifest at module init — e.g. `documentation: await readFile(new URL("../docs/<name>.md", import.meta.url), "utf-8")` (top-level await; `../` resolves identically from `src/` in test and `dist/` once built). Ship it by adding `docs/**/*` to `files`. This keeps prose out of the handler source and gives editors real Markdown; the contract and the consumer's `worker://plurnk/docs/<name>.md` materialization are unchanged. A missing file fails-hard at import (no silent empty doc).
 
@@ -298,8 +299,14 @@ configured mimetype family's typed bounded-input failure.
 | `<N>` | whole physical line `N` |
 | `<N,M>` | inclusive whole physical lines `N..M` |
 | `<SL,SC,EL,EC>` | exact exclusive-end region using 1-based Unicode code-point columns |
-| `<SL,SC,EL>` | the start-position-plus-end-line idiom — read as `<SL,SC>` through the end of line EL; the result carries the canonical four-coordinate `normalizedScope` and the engine steers to canon with a Notice |
 | `<0>` / `<-1>` | mutation anchors before the first / after the final line |
+
+As an unadvertised ingestion tolerance, `Slicer` accepts
+`<startLine,startColumn,endLine>` and immediately lowers it to the complete
+four-coordinate region ending after the final code point of `endLine`.
+Successful results carry schemes-owned, boundary-validated normalization
+evidence containing both the authored and canonical coordinates. Producers do
+not emit or proactively teach the tolerated form.
 
 - `Slicer.lines(content, marker)` returns the selected text, source
   `startLine`, and complete resolved `region`; `Slicer.linesRaw` preserves
@@ -314,9 +321,11 @@ configured mimetype family's typed bounded-input failure.
   helper; it accepts only one or two integer positions.
 
 A line/pagination 416 carries `range: { unit, requested: { first, last },
-available: { first, last, total } }`. An exact-region 416 carries the four
-`requestedCoordinates` and `columnKind: "unicodeCodePoints"`. Empty sources use
-`null` line-range endpoints and `total: 0`.
+available: { first, last, total } }`. An exact-region failure, including a
+failed tolerated three-coordinate scope, carries `requestedCoordinates`
+exactly as authored; an invalid-arity text scope does likewise. Both carry
+`columnKind: "unicodeCodePoints"`. Empty sources use `null` line-range
+endpoints and `total: 0`.
 
 ### §path-extension-mimetype Path-extension mimetype — `PathMimetype`
 

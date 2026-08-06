@@ -1,36 +1,12 @@
-// The daemon-owned OTel SDK boundary ({§observability-boundary}). This is the
-// only module that constructs the SDK; reusable packages acquire tracers and
-// meters through api.ts. Behavior rules:
-//
-// - Standard OTEL_* env config: OTEL_TRACES_EXPORTER / OTEL_METRICS_EXPORTER
-//   (otlp | console), OTEL_SERVICE_NAME, OTEL_SDK_DISABLED, and the OTLP
-//   exporter's own OTEL_EXPORTER_OTLP_* settings.
-// - Unconfigured processes never load the SDK: no exporter named (and not
-//   disabled) returns null and the API stays no-op.
-// - Every signal is explicit: an exporter list is passed for every source, so
-//   the SDK's own "empty → default otlp" fallback can never fire. A signal with
-//   no exporter is registered with an empty processor/reader list (off).
-// - OTel Logs are excluded by contract: the logger provider is given an empty
-//   processor list instead of the env-driven default.
-// - Unknown exporter names fail at boot; a typo must not silently disable the
-//   operator's configured observation.
-// - One SDK per process, first initialization wins; its shutdown is owned by
-//   the daemon teardown.
+// The daemon-owned OTel implementation boundary ({§observability-boundary}).
+// Configuration is normalized before any SDK/exporter module loads. Reusable
+// modules depend only on the API; this owner registers only the selected trace
+// and metric providers and has no Logs path.
 
-import type { NodeSDK } from "@opentelemetry/sdk-node";
-import {
-    BatchSpanProcessor,
-    ConsoleSpanExporter,
-    SimpleSpanProcessor,
-    type SpanProcessor,
-} from "@opentelemetry/sdk-trace-base";
-import {
-    ConsoleMetricExporter,
-    PeriodicExportingMetricReader,
-    type MetricReader,
-} from "@opentelemetry/sdk-metrics";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
+import type {
+    MeterProvider as ApiMeterProvider,
+    TracerProvider as ApiTracerProvider,
+} from "@opentelemetry/api";
 
 export interface ObservabilityHandle {
     shutdown(): Promise<void>;
@@ -39,62 +15,164 @@ export interface ObservabilityHandle {
 const SERVICE_NAME = "plurnk-service";
 
 type Env = Record<string, string | undefined>;
+type SignalName = "OTEL_TRACES_EXPORTER" | "OTEL_METRICS_EXPORTER";
+type ExporterName = "otlp" | "console";
+type ShutdownOwner = { shutdown(): Promise<void> };
+type TraceProviderOwner = ApiTracerProvider & ShutdownOwner;
+type MetricProviderOwner = ApiMeterProvider & ShutdownOwner;
 
-const exporterNames = (value: string | undefined): string[] =>
-    [...new Set((value ?? "").split(",").map((s) => s.trim()).filter((s) => s.length > 0))];
+interface Selection {
+    readonly traces: ExporterName[];
+    readonly metrics: ExporterName[];
+    readonly serviceName: string;
+}
 
-const enabledNames = (value: string | undefined): string[] =>
-    exporterNames(value).filter((name) => name !== "none");
+const exporterNames = (value: string | undefined): string[] => [
+    ...new Set((value ?? "")
+        .split(",")
+        .map((name) => name.trim().toLowerCase())
+        .filter((name) => name.length > 0 && name !== "none")),
+];
 
-const traceProcessors = (names: string[]): SpanProcessor[] => names.map((name) => {
-    switch (name) {
-        case "otlp": return new BatchSpanProcessor(new OTLPTraceExporter());
-        case "console": return new SimpleSpanProcessor(new ConsoleSpanExporter());
-        default:
-            throw new Error(
-                `observe: unsupported OTEL_TRACES_EXPORTER value ${JSON.stringify(name)} (supported: otlp, console)`,
-            );
-    }
+const selectExporters = (env: Env, signal: SignalName): ExporterName[] => exporterNames(env[signal]).map((name) => {
+    if (name === "otlp" || name === "console") return name;
+    throw new Error(
+        `observe: unsupported ${signal} value ${JSON.stringify(name)} (supported: otlp, console)`,
+    );
 });
 
-const metricReaders = (names: string[]): MetricReader[] => names.map((name) => {
-    switch (name) {
-        case "otlp": return new PeriodicExportingMetricReader({ exporter: new OTLPMetricExporter() });
-        case "console": return new PeriodicExportingMetricReader({ exporter: new ConsoleMetricExporter() });
-        default:
-            throw new Error(
-                `observe: unsupported OTEL_METRICS_EXPORTER value ${JSON.stringify(name)} (supported: otlp, console)`,
-            );
-    }
-});
+const select = (env: Env): Selection | null => {
+    if (env.OTEL_SDK_DISABLED?.trim().toLowerCase() === "true") return null;
+    const traces = selectExporters(env, "OTEL_TRACES_EXPORTER");
+    const metrics = selectExporters(env, "OTEL_METRICS_EXPORTER");
+    if (traces.length === 0 && metrics.length === 0) return null;
+    const configuredServiceName = env.OTEL_SERVICE_NAME;
+    return {
+        traces,
+        metrics,
+        serviceName: configuredServiceName === undefined || configuredServiceName.trim() === ""
+            ? SERVICE_NAME
+            : configuredServiceName,
+    };
+};
 
 let active: ObservabilityHandle | null = null;
+let starting: Promise<ObservabilityHandle | null> | null = null;
 
-export const startObservability = async (env: Env = process.env): Promise<ObservabilityHandle | null> => {
-    if (active !== null) return active;
-    if (env.OTEL_SDK_DISABLED === "true") return null;
-    const traces = enabledNames(env.OTEL_TRACES_EXPORTER);
-    const metrics = enabledNames(env.OTEL_METRICS_EXPORTER);
-    if (traces.length === 0 && metrics.length === 0) return null;
+const initialize = async (selection: Selection): Promise<ObservabilityHandle> => {
+    const [{ context, metrics, trace }, { resourceFromAttributes }] = await Promise.all([
+        import("@opentelemetry/api"),
+        import("@opentelemetry/resources"),
+    ]);
+    const resource = resourceFromAttributes({ "service.name": selection.serviceName });
+    let traceProvider: TraceProviderOwner | null = null;
+    let metricProvider: MetricProviderOwner | null = null;
+    let contextRegistered = false;
+    let traceRegistered = false;
+    let metricsRegistered = false;
 
-    const { NodeSDK: NodeSdk } = await import("@opentelemetry/sdk-node");
-    const sdk: NodeSDK = new NodeSdk({
-        instrumentations: [], // hand-instrumented boundaries only; no auto-patching
-        serviceName: env.OTEL_SERVICE_NAME ?? SERVICE_NAME,
-        spanProcessors: traceProcessors(traces),
-        metricReaders: metricReaders(metrics),
-        logRecordProcessors: [], // OTel Logs excluded by contract
-    });
-    await sdk.start();
+    const shutdown = async (): Promise<void> => {
+        const failures: unknown[] = [];
+        if (metricsRegistered) {
+            metrics.disable();
+            metricsRegistered = false;
+        }
+        if (traceRegistered) {
+            trace.disable();
+            traceRegistered = false;
+        }
+        if (contextRegistered) {
+            context.disable();
+            contextRegistered = false;
+        }
+        for (const owner of [metricProvider, traceProvider]) {
+            if (owner === null) continue;
+            try {
+                await owner.shutdown();
+            } catch (cause) {
+                failures.push(cause);
+            }
+        }
+        metricProvider = null;
+        traceProvider = null;
+        if (failures.length === 1) throw failures[0];
+        if (failures.length > 1) throw new AggregateError(failures, "observability shutdown failed");
+    };
+
+    try {
+        if (selection.traces.length > 0) {
+            const [traceSdk, { AsyncLocalStorageContextManager }] = await Promise.all([
+                import("@opentelemetry/sdk-trace-base"),
+                import("@opentelemetry/context-async-hooks"),
+            ]);
+            const processors = await Promise.all(selection.traces.map(async (name) => {
+                if (name === "console") {
+                    return new traceSdk.SimpleSpanProcessor(new traceSdk.ConsoleSpanExporter());
+                }
+                const { OTLPTraceExporter } = await import("@opentelemetry/exporter-trace-otlp-http");
+                return new traceSdk.BatchSpanProcessor(new OTLPTraceExporter());
+            }));
+            traceProvider = new traceSdk.BasicTracerProvider({ resource, spanProcessors: processors });
+            const contextManager = new AsyncLocalStorageContextManager().enable();
+            if (!context.setGlobalContextManager(contextManager)) {
+                contextManager.disable();
+                throw new Error("observe: an OpenTelemetry context manager is already registered");
+            }
+            contextRegistered = true;
+            if (!trace.setGlobalTracerProvider(traceProvider)) {
+                throw new Error("observe: an OpenTelemetry tracer provider is already registered");
+            }
+            traceRegistered = true;
+        }
+
+        if (selection.metrics.length > 0) {
+            const metricSdk = await import("@opentelemetry/sdk-metrics");
+            const readers = await Promise.all(selection.metrics.map(async (name) => {
+                if (name === "console") {
+                    return new metricSdk.PeriodicExportingMetricReader({
+                        exporter: new metricSdk.ConsoleMetricExporter(),
+                    });
+                }
+                const { OTLPMetricExporter } = await import("@opentelemetry/exporter-metrics-otlp-http");
+                return new metricSdk.PeriodicExportingMetricReader({ exporter: new OTLPMetricExporter() });
+            }));
+            metricProvider = new metricSdk.MeterProvider({ resource, readers });
+            if (!metrics.setGlobalMeterProvider(metricProvider)) {
+                throw new Error("observe: an OpenTelemetry meter provider is already registered");
+            }
+            metricsRegistered = true;
+        }
+    } catch (cause) {
+        try {
+            await shutdown();
+        } catch (shutdownCause) {
+            throw new AggregateError([cause, shutdownCause], "observability startup and shutdown failed");
+        }
+        throw cause;
+    }
+
+    let stopped = false;
     const handle: ObservabilityHandle = {
-        // One SDK per process, first initialization wins. The handle drops out of
-        // the cache on shutdown so a later daemon in the same process can re-init.
-        shutdown: async () => {
-            if (active === null) return;
-            active = null;
-            await sdk.shutdown();
+        shutdown: async (): Promise<void> => {
+            if (stopped) return;
+            stopped = true;
+            if (active === handle) active = null;
+            await shutdown();
         },
     };
     active = handle;
     return handle;
+};
+
+export const startObservability = async (env: Env = process.env): Promise<ObservabilityHandle | null> => {
+    if (active !== null) return active;
+    if (starting !== null) return starting;
+    const selection = select(env);
+    if (selection === null) return null;
+    starting = initialize(selection);
+    try {
+        return await starting;
+    } finally {
+        starting = null;
+    }
 };

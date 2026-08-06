@@ -58,12 +58,16 @@ test("Manifest.of validates dispatch-critical fields", () => {
 test("Manifest.of admits only declared top-level fields", () => {
     const ownerManifest = manifest("owner");
     assert.doesNotThrow(() => Manifest.of({ manifest: ownerManifest }, "owner"));
+    assert.equal(
+        Manifest.of({ manifest: { ...ownerManifest, glyph: "🦊" } }, "owner").glyph,
+        "🦊",
+    );
     assert.throws(
         () => Manifest.of({ manifest: { ...ownerManifest, scope: "worker" } }, "owner"),
         /unknown.*scope/,
     );
     assert.throws(
-        () => Manifest.of({ manifest: { ...ownerManifest, glyph: "🦊" } }, "owner"),
-        /unknown.*glyph/,
+        () => Manifest.of({ manifest: { ...ownerManifest, glyph: "" } }, "owner"),
+        /glyph.*non-empty/,
     );
 });
