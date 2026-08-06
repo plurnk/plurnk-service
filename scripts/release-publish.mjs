@@ -17,7 +17,15 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 const run = promisify(execFile);
 const ROOT_PKG = "@plurnk/plurnk-service";
+const CLIENT_PKG = "@plurnk/plurnk";
+const CLIENT_ROOT = path.resolve(import.meta.dirname, "..", "..", "plurnk");
+const CLIENT_RELEASE = path.join(CLIENT_ROOT, "scripts", "release-publish.mjs");
 const BOOT_PORT = 17821;
+const clientVersion = process.argv[2];
+
+if (!/^\d+\.\d+\.\d+$/.test(clientVersion ?? "")) {
+    throw new Error("usage: release-publish.mjs <client-version>");
+}
 
 const assertClean = async (phase) => {
     const dirty = (await run("git", ["status", "--porcelain"])).stdout.trim();
@@ -25,19 +33,13 @@ const assertClean = async (phase) => {
         throw new Error(`release-publish requires a clean committed stamp ${phase}:\n${dirty}`);
     }
 };
-const runVisible = (command, args) => new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: "inherit" });
+const runVisible = (command, args, options = {}) => new Promise((resolve, reject) => {
+    const child = spawn(command, args, { ...options, stdio: "inherit" });
     child.once("error", reject);
     child.once("exit", (code) => code === 0
         ? resolve()
         : reject(new Error(`${command} ${args.join(" ")} failed (exit ${code})`)));
 });
-
-await assertClean("before build");
-console.log("release-publish: building and gating the committed stamp");
-await runVisible("npm", ["run", "build"]);
-await runVisible("node", ["scripts/release-gates.mjs"]);
-await assertClean("after gates");
 
 const root = JSON.parse(await fs.readFile("package.json", "utf8"));
 const order = [];
@@ -47,6 +49,13 @@ for (const dir of root.workspaces) {
 }
 const version = order[0].version;
 if (!order.every((p) => p.version === version)) throw new Error("lockstep violated: workspaces disagree on version — stamp before publishing");
+
+await assertClean("before build");
+await runVisible("node", [CLIENT_RELEASE, "--check", clientVersion, version], { cwd: CLIENT_ROOT });
+console.log("release-publish: building and gating the committed stamp");
+await runVisible("npm", ["run", "build"]);
+await runVisible("node", ["scripts/release-gates.mjs"]);
+await assertClean("after gates");
 
 const served = async (name) => {
     try { return (await run("npm", ["view", name, "version"])).stdout.trim(); }
@@ -102,20 +111,21 @@ try {
     await fs.rm(tmp, { recursive: true, force: true });
 }
 
-// The service and independently versioned client share one public AG-UI
-// composition contract. Verify the exact registry artifacts through a real,
-// deterministic model turn before the release can be announced.
-console.log(`verify: packed client/service composition against ${ROOT_PKG}@${version}`);
-await new Promise((res, rej) => {
-    const ph = spawn("node", [path.resolve("..", "plurnk", "scripts", "test-composition.mjs")], {
-        stdio: "inherit",
-        env: {
-            ...process.env,
-            PLURNK_COMPOSITION_CLIENT: "@plurnk/plurnk@latest",
-            PLURNK_COMPOSITION_SERVICE: `${ROOT_PKG}@${version}`,
-        },
-    });
-    ph.on("exit", (code) => code === 0 ? res() : rej(new Error(`packed client/service composition failed (exit ${code})`)));
+// The client has an independent version line but consumes the platform. Only
+// prepare and publish it after its exact contracts are registry-resolvable.
+console.log(`release-publish: client phase ${CLIENT_PKG}@${clientVersion}`);
+await runVisible("node", [CLIENT_RELEASE, clientVersion, version], { cwd: CLIENT_ROOT });
+
+// Verify the exact served artifacts rather than whichever client happened to
+// own the latest tag before this train.
+console.log(`verify: packed composition ${CLIENT_PKG}@${clientVersion} + ${ROOT_PKG}@${version}`);
+await runVisible("node", [path.join(CLIENT_ROOT, "scripts", "test-composition.mjs")], {
+    cwd: CLIENT_ROOT,
+    env: {
+        ...process.env,
+        PLURNK_COMPOSITION_CLIENT: `${CLIENT_PKG}@${clientVersion}`,
+        PLURNK_COMPOSITION_SERVICE: `${ROOT_PKG}@${version}`,
+    },
 });
 
 // Align managed external packages before completing the release.
@@ -125,4 +135,4 @@ await new Promise((res, rej) => {
     ph.on("exit", (code) => code === 0 ? res() : rej(new Error(`external package phase failed (exit ${code})`)));
 });
 
-console.log(`release-publish: ${version} published, consumer-verified, and external packages checked`);
+console.log(`release-publish: platform ${version} and client ${clientVersion} published, consumer-verified, and external packages checked`);

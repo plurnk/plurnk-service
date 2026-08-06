@@ -11,14 +11,22 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
     assert.match(prepare, /\["scripts\/release-version\.mjs", version\]/);
     assert.doesNotMatch(prepare, /release-gates|npm", \["run", "build"/);
     const publish = await readFile(new URL("./release-publish.mjs", import.meta.url), "utf8");
+    assert.match(publish, /usage: release-publish\.mjs <client-version>/);
     const preBuildClean = publish.indexOf('assertClean("before build")');
+    const clientPreflight = publish.indexOf('[CLIENT_RELEASE, "--check", clientVersion, version]');
     const build = publish.indexOf('["run", "build"]');
     const gates = publish.indexOf('["scripts/release-gates.mjs"]');
     const postGateClean = publish.indexOf('assertClean("after gates")');
     const firstPublish = publish.indexOf('["publish", "-w", name');
-    assert.ok(preBuildClean >= 0 && preBuildClean < build);
+    assert.ok(preBuildClean >= 0 && preBuildClean < clientPreflight && clientPreflight < build);
     assert.ok(build < gates && gates < postGateClean && postGateClean < firstPublish);
     assert.match(publish, /\["publish", "-w", name, "--access", "public", "--ignore-scripts"\]/);
+
+    const clientPublish = publish.indexOf("[CLIENT_RELEASE, clientVersion, version]");
+    const exactComposition = publish.indexOf("PLURNK_COMPOSITION_CLIENT: `${CLIENT_PKG}@${clientVersion}`");
+    const externals = publish.indexOf('["scripts/release-external-packages.mjs"]');
+    assert.ok(firstPublish < clientPublish && clientPublish < exactComposition && exactComposition < externals);
+    assert.doesNotMatch(publish, /@latest/);
 
     const gateSweep = await readFile(new URL("./release-gates.mjs", import.meta.url), "utf8");
     const buildPolicy = gateSweep.indexOf('["scripts/package-build-policy.mjs"]');
