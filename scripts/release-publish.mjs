@@ -93,8 +93,15 @@ try {
 
     const svc = spawn("npx", ["plurnk-service"], {
         cwd: tmp,
-        env: { ...process.env, HOME: tmp, PLURNK_HOST: "127.0.0.1", PLURNK_PORT: String(BOOT_PORT), PLURNK_WS_PORT: String(BOOT_PORT + 1) },
-        stdio: "ignore",
+        env: {
+            ...process.env,
+            HOME: tmp,
+            PLURNK_HOST: "127.0.0.1",
+            PLURNK_PORT: String(BOOT_PORT),
+            PLURNK_WS_PORT: String(BOOT_PORT + 1),
+            PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
+        },
+        stdio: "inherit",
     });
     try {
         let alive = false;

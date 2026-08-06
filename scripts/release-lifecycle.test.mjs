@@ -27,6 +27,8 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
     const installedBoot = publish.indexOf('spawn("npx", ["plurnk-service"]');
     assert.ok(firstPublish < consumerInstall && consumerInstall < dependencyGraph && dependencyGraph < installedBoot);
     assert.doesNotMatch(publish, /order\.length - 1|dep tree incomplete/);
+    assert.match(publish, /PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled"/);
+    assert.match(publish, /stdio: "inherit"/);
 
     const clientPublish = publish.indexOf("[CLIENT_RELEASE, clientVersion, version]");
     const exactComposition = publish.indexOf("PLURNK_COMPOSITION_CLIENT: `${CLIENT_PKG}@${clientVersion}`");
