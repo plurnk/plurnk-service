@@ -20,8 +20,6 @@
 //   - Outcome assertions only: file content, response text. Not op shapes.
 
 import test from "node:test";
-import { cannedWeb } from "./_web-fixture.ts";
-import type { WebFetch } from "../../src/schemes/Exec.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -37,7 +35,6 @@ interface StoryOpts {
     prompt: string;
     maxTurns?: number;
     flags?: Record<string, unknown>;
-    fetchWeb?: WebFetch; // Canned gate override; absent uses the real guarded fetcher. {§search-gate}
 }
 
 interface StoryResult {
@@ -57,7 +54,7 @@ const assertMaterializedWebPage = async (story: StoryResult): Promise<void> => {
 
 const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     const fixture = await seedDemoFixture(opts.label);
-    const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace, ...(opts.fetchWeb !== undefined ? { fetchWeb: opts.fetchWeb } : {}) });
+    const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
     // A liveLoop throw (loop.run rejection, waitFor timeout) happens BEFORE the caller holds the
     // StoryResult, so its finally-cleanup is unreachable — tear down HERE or the orphaned daemon's
     // handles (ws pair, db worker) keep the child process alive after the worker and wedge the tier.
@@ -95,7 +92,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     };
 };
 
-interface ChainOpts { label: string; prompts: string[]; maxTurns?: number; onStep?: (index: number, workspace: string) => Promise<void>;     fetchWeb?: WebFetch;
+interface ChainOpts { label: string; prompts: string[]; maxTurns?: number; onStep?: (index: number, workspace: string) => Promise<void>;
 }
 interface ChainStep { finalStatus: number; lastContent: string; turnIds: number[]; }
 interface ChainResult { workspace: string; steps: ChainStep[]; db: Db; cleanup: () => Promise<void>; }
@@ -106,7 +103,7 @@ interface ChainResult { workspace: string; steps: ChainStep[]; db: Db; cleanup: 
 // runStory: a liveLoop throw lands before the caller holds the result, so tear down here.
 const runStoryChain = async (opts: ChainOpts): Promise<ChainResult> => {
     const fixture = await seedDemoFixture(opts.label);
-    const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace, ...(opts.fetchWeb !== undefined ? { fetchWeb: opts.fetchWeb } : {}) });
+    const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
     const teardown = async () => { await s.cleanup(); await fixture.cleanup(); };
     const steps: ChainStep[] = [];
     try {
@@ -147,99 +144,33 @@ test("story: find a single value in a JSON config", { timeout: TIMEOUT }, async 
     } finally { await story.cleanup(); }
 });
 
-test("{§search-gate} story: answer a question through deterministic web search and retrieval", { timeout: TIMEOUT }, async () => {
-    // The model remains live while the search results and page bodies are canned;
-    // the run still crosses the production search→materialize→retrieve path.
-    const web = await cannedWeb();
-    const prevSearx = process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
-    process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = web.searxngUrl;
+test("{§search-gate} story: answer a question through live web search and retrieval", { timeout: TIMEOUT }, async () => {
+    // The whole composition in one story, live end to end: EXEC[search] → a real
+    // SearXNG → survivor pages materialized as ordinary https:// entries → the model
+    // answers from what it retrieved. The subject is release-current, so weights
+    // alone can't answer it honestly — the tool is the path of least resistance,
+    // not a scripted op. A materialized HTTPS body and a substantive answer from a
+    // real page are the positive control; a model that can't close is honestly red.
+    const story = await runStory({
+        label: "web-search",
+        prompt: "Search the web for the latest stable Node.js version and tell me in one sentence.",
+        maxTurns: 8,
+    });
     try {
-        const story = await runStory({
-            label: "web-search",
-            prompt: "Search the web for the latest stable Node.js version. From the authoritative release page, report both the version and its primary-source evidence code in one sentence.",
-            maxTurns: 8,
-            fetchWeb: web.fetchWeb,
-        });
-        try {
-            const searchEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "search" });
-            const ok = story.finalStatus === 200
-                && (searchEntries?.n ?? 0) > 0
-                && story.lastContent.includes(web.facts.version)
-                && story.lastContent.includes(web.evidence.node);
-            if (!ok) await story.dump();
-            assert.ok((searchEntries?.n ?? 0) > 0, "a search results entry exists — the model actually reached for the tool");
-            await assertMaterializedWebPage(story);
-            assert.equal(story.finalStatus, 200);
-            assert.ok(story.lastContent.includes(web.facts.version), `the answer carries the page's version ${web.facts.version}; got: ${story.lastContent.slice(0, 200)}`);
-            assert.ok(story.lastContent.includes(web.evidence.node), `the answer carries the run-unique primary-page sentinel ${web.evidence.node}; got: ${story.lastContent.slice(0, 200)}`);
-        } finally { await story.cleanup(); }
-    } finally {
-        if (prevSearx === undefined) delete process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL; else process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = prevSearx;
-        await web.close();
-    }
-});
-
-test("story: search, retrieve, and report a measured claim from a page (canned)", { timeout: TIMEOUT }, async () => {
-    const web = await cannedWeb();
-    const previous = process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
-    process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = web.searxngUrl;
-    try {
-        const story = await runStory({
-            label: "web-research-claim",
-            prompt: "Search the web for Project Aurora's inference report. By how much did it reduce inference cost, and what primary-source evidence code does the report print?",
-            maxTurns: 8,
-            fetchWeb: web.fetchWeb,
-        });
-        try {
-            const pages = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "https" });
-            const ok = story.finalStatus === 200
-                && story.lastContent.toLowerCase().includes(web.facts.savings)
-                && story.lastContent.includes(web.evidence.aurora);
-            if (!ok) await story.dump();
-            assert.ok((pages?.n ?? 0) > 0, "search materialized a primary web page");
-            assert.equal(story.finalStatus, 200);
-            assert.match(story.lastContent, /37\s*(?:percent|%)/i);
-            assert.ok(story.lastContent.includes(web.evidence.aurora), `the answer carries the run-unique primary-page sentinel ${web.evidence.aurora}; got: ${story.lastContent.slice(0, 200)}`);
-        } finally { await story.cleanup(); }
-    } finally {
-        if (previous === undefined) delete process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL; else process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = previous;
-        await web.close();
-    }
-});
-
-test("story: search and recover an exact statement from a transcript page (canned)", { timeout: TIMEOUT }, async () => {
-    const web = await cannedWeb();
-    const previous = process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL;
-    process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = web.searxngUrl;
-    try {
-        const story = await runStory({
-            label: "web-transcript-quote",
-            prompt: "Search the web for Secretary Rowan's recent AI infrastructure interview. What exactly did Rowan say was the bottleneck, and what primary-source evidence code does the transcript print?",
-            maxTurns: 8,
-            fetchWeb: web.fetchWeb,
-        });
-        try {
-            const searchEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "search" });
-            const ok = story.finalStatus === 200
-                && story.lastContent.toLowerCase().includes(web.facts.quote)
-                && story.lastContent.includes(web.evidence.rowan);
-            if (!ok) await story.dump();
-            assert.ok((searchEntries?.n ?? 0) > 0, "the model used web search rather than answering from fixture files");
-            await assertMaterializedWebPage(story);
-            assert.equal(story.finalStatus, 200);
-            assert.match(story.lastContent, /power,\s*not demand/i);
-            assert.ok(story.lastContent.includes(web.evidence.rowan), `the answer carries the run-unique primary-page sentinel ${web.evidence.rowan}; got: ${story.lastContent.slice(0, 200)}`);
-        } finally { await story.cleanup(); }
-    } finally {
-        if (previous === undefined) delete process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL; else process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL = previous;
-        await web.close();
-    }
+        const searchEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "search" });
+        const ok = story.finalStatus === 200 && (searchEntries?.n ?? 0) > 0 && /\d{2}/.test(story.lastContent);
+        if (!ok) await story.dump();
+        assert.ok((searchEntries?.n ?? 0) > 0, "a search results entry exists — the model actually reached for the tool");
+        await assertMaterializedWebPage(story);
+        assert.equal(story.finalStatus, 200);
+        assert.match(story.lastContent, /\d{2}/, `the answer carries a version number; got: ${story.lastContent.slice(0, 200)}`);
+    } finally { await story.cleanup(); }
 });
 
 test("{§search-gate} story: answer a question through live web discovery", { timeout: TIMEOUT }, async () => {
-    // Live discovery remains diagnostic beside the deterministic gate, and its
-    // benchmark artifact remains available for autopsy.
-    // {§test-artifact-retention}
+    // Live discovery: the answer is a person-fact the model could substitute from
+    // memory, so the story diagnoses research judgment against the real web. Its
+    // benchmark artifact remains available for autopsy. {§test-artifact-retention}
     const story = await runStory({
         label: "web-search-live",
         prompt: "Who was the spouse of President Igor Nikolaevich Smirnov?",

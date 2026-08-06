@@ -10,8 +10,6 @@
 // stance). Everything funnels through these two so the tier has exactly one path.
 
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
-import SchemeRegistry from "../src/core/SchemeRegistry.ts";
-import type { WebFetch } from "../src/schemes/Exec.ts";
 import Owner from "../src/core/Owner.ts";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -65,14 +63,12 @@ export const liveProvider = async (): Promise<Provider> => {
 // return), the db stays OPEN so the caller can run post-loop forensic asserts;
 // cleanup stops the daemon and closes the db. workspace.create uses rpc id 1, so
 // callers drive loop.run from id 2. This owns only the boot + open-db lifecycle.
-export const liveWorkspace = async (opts: { name: string; projectRoot?: string; fetchWeb?: WebFetch }): Promise<LiveWorkspace> => {
+export const liveWorkspace = async (opts: { name: string; projectRoot?: string }): Promise<LiveWorkspace> => {
     const provider = await liveProvider();
     const runDir = await claimRunDir(opts.name);
     const dbPath = join(runDir, "plurnk.db");
     const db = await openMigrated(dbPath);
-    // {§search-gate} — a caller-supplied WebFetch rides the sink's injectable
-    // seam; absent, the registry wires the real checked WebFetcher as in production.
-    const daemon = new Daemon({ db, provider, ...(opts.fetchWeb !== undefined ? { schemes: new SchemeRegistry({ fetchWeb: opts.fetchWeb }) } : {}) });
+    const daemon = new Daemon({ db, provider });
     await daemon.start(); // {§rpc} — the harness rides the listenerless seam
     const ws = await connect({ daemon });
     // SANDBOX: every live/demo workspace roots at a fresh empty dir, NEVER the host repo. With
