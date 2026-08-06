@@ -6,6 +6,9 @@
 //   <-1>     sentinel: after the last position (EDIT append)
 //   <1,-1>   every position (in range context, -1 normalizes to last line)
 //   <SL,SC,EL,EC> selects an exact text region with an exclusive end.
+//   <SL,SC,EL> reads as <SL,SC> through the end of line EL — the common
+//   start-position-plus-end-line idiom is accepted, never invented: results
+//   carry `normalizedScope` with the canonical four-coordinate form.
 //
 // "N and M are signed integers" — but plurnk.md only documents <0> and
 // <-1> as defined sentinels. Other negatives (<-2>, <-3>) are not
@@ -29,6 +32,7 @@ export interface TextReplacement {
     readonly body: string;
     readonly startLine: number;
     readonly endLine: number;
+    readonly normalizedScope?: NormalizedScope;
 }
 
 export type RangeUnit = "line" | "result";
@@ -37,14 +41,18 @@ export interface RangeExtent {
     readonly requested: { readonly first: number; readonly last: number | null };
     readonly available: { readonly first: number | null; readonly last: number | null; readonly total: number };
 }
+// The canonical four-coordinate form a three-coordinate scope was read as
+// ({§slicer-text-algebra}); present on the result only when normalization ran.
+export type NormalizedScope = readonly [number, number, number, number];
 export interface SliceResult extends SchemeResult {
     text?: string;
     startLine?: number;
     region?: TextRegion;
     range?: RangeExtent;
+    normalizedScope?: NormalizedScope;
 }
 export interface PageResult<T> extends SchemeResult { items?: T[]; range?: RangeExtent }
-export interface EditResult extends SchemeResult { result?: string; range?: RangeExtent }
+export interface EditResult extends SchemeResult { result?: string; range?: RangeExtent; normalizedScope?: NormalizedScope }
 export interface BatchEdit {
     readonly marker: LineMarker;
     readonly body: string;
@@ -205,8 +213,17 @@ export default class Slicer {
         marker: LineMarker,
         body: string,
     ): TextReplacement | { error: string } {
+        let normalizedScope: NormalizedScope | undefined;
+        if (marker.marks.length === 3) {
+            const expanded = Slicer.#expandRegion3(content, marker);
+            if ("error" in expanded) return { error: expanded.error };
+            marker = expanded.marker;
+            normalizedScope = expanded.normalizedScope;
+        }
         if (marker.marks.length === 4) {
-            return Slicer.#exactTextReplacement(content, marker, body);
+            const exact = Slicer.#exactTextReplacement(content, marker, body);
+            if ("error" in exact || normalizedScope === undefined) return exact;
+            return { ...exact, normalizedScope };
         }
         if (marker.marks.length === 1 || marker.marks.length === 2) {
             return Slicer.#lineTextReplacement(content, marker, body);
@@ -214,6 +231,28 @@ export default class Slicer {
         return {
             error: `Text regions require one, two, or four coordinates; received ${marker.marks.length}.`,
         };
+    }
+
+    // <SL,SC,EL> → the canonical <SL,SC,EL,EC> with EC one past line EL's final
+    // code point (exclusive end). Range validity (line/column bounds, ordering)
+    // is enforced downstream by the exact-region path, so a bad 3-form fails
+    // with the same legible errors a 4-form would.
+    static #expandRegion3(
+        content: string,
+        marker: LineMarker,
+    ): { marker: LineMarker; normalizedScope: NormalizedScope } | { error: string } {
+        const [startLine, startColumn, endLine] = marker.marks;
+        if (![startLine, startColumn, endLine].every(Number.isSafeInteger)) {
+            return { error: "An exact text region requires integer coordinates." };
+        }
+        const lines = TextCoordinates.lines(content);
+        const last = lines[endLine - 1];
+        if (endLine < 1 || last === undefined) {
+            return { error: `End line ${endLine} is outside the available line range 1..${lines.length}.` };
+        }
+        const endColumn = [...content.slice(last.start, last.contentEnd)].length + 1;
+        const normalizedScope: NormalizedScope = [startLine, startColumn, endLine, endColumn];
+        return { marker: { ...marker, marks: [...normalizedScope] }, normalizedScope };
     }
 
     static #normalize(marker: LineMarker, totalLines: number): NormalizedMarker | { error: string } {
@@ -266,10 +305,22 @@ export default class Slicer {
     // Sentinel positions <0> and <-1> select no content (they're insertion
     // points, not lines) → status 200 with empty text.
     static lines(content: string, marker: LineMarker): SliceResult {
+        let normalizedScope: NormalizedScope | undefined;
+        if (marker.marks.length === 3) {
+            const expanded = Slicer.#expandRegion3(content, marker);
+            if ("error" in expanded) return Slicer.#regionFailure(expanded.error, marker);
+            marker = expanded.marker;
+            normalizedScope = expanded.normalizedScope;
+        }
         if (marker.marks.length === 4) {
             const selected = Slicer.#exactTextReplacement(content, marker, "");
             if ("error" in selected) {
-                return Slicer.#regionFailure(selected.error, marker);
+                // The Problem keeps what the model WROTE — a 3-form's failure
+                // reports its original three coordinates, not the expansion.
+                const evidence: LineMarker = normalizedScope === undefined
+                    ? marker
+                    : { marks: marker.marks.slice(0, 3) as [number, ...number[]] };
+                return Slicer.#regionFailure(selected.error, evidence);
             }
             const region = TextCoordinates.regionFromOffsets(
                 content,
@@ -284,6 +335,7 @@ export default class Slicer {
                 text: content.slice(selected.start, selected.end),
                 startLine: selected.startLine,
                 region,
+                ...(normalizedScope === undefined ? {} : { normalizedScope }),
             };
         }
         if (marker.marks.length !== 1 && marker.marks.length !== 2) {
@@ -389,7 +441,7 @@ export default class Slicer {
     static linesRaw(content: string, marker: LineMarker): SliceResult {
         const selected = Slicer.textReplacement(content, marker, "");
         if ("error" in selected) {
-            return marker.marks.length === 4
+            return marker.marks.length >= 3
                 ? Slicer.#regionFailure(selected.error, marker)
                 : Slicer.#rangeFailure(
                     selected.error,
@@ -400,6 +452,7 @@ export default class Slicer {
             status: 200,
             text: content.slice(selected.start, selected.end),
             startLine: selected.startLine,
+            ...(selected.normalizedScope === undefined ? {} : { normalizedScope: selected.normalizedScope }),
         };
     }
 
@@ -420,7 +473,7 @@ export default class Slicer {
         for (const edit of edits) {
             const replacement = Slicer.textReplacement(content, edit.marker, edit.body);
             if ("error" in replacement) {
-                return edit.marker.marks.length === 4
+                return edit.marker.marks.length >= 3
                     ? Slicer.#regionFailure(replacement.error, edit.marker)
                     : Slicer.#rangeFailure(
                         replacement.error,
@@ -487,7 +540,8 @@ export default class Slicer {
         for (const replacement of replacements.toSorted((a, b) => b.start - a.start || b.end - a.end)) {
             result = `${result.slice(0, replacement.start)}${replacement.body}${result.slice(replacement.end)}`;
         }
-        return { status: 200, result };
+        const normalizedScope = replacements.find((r) => r.normalizedScope !== undefined)?.normalizedScope;
+        return { status: 200, result, ...(normalizedScope === undefined ? {} : { normalizedScope }) };
     }
 
 }

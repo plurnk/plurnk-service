@@ -9,7 +9,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import { Mock, ProviderError } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, seedEntryWithChannel } from "./_helpers.ts";
+import { readStmt, sendStmt, urlPath } from "./_dsl.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 
 // Response from raw content WITHOUT ops - forces the engine to run the real
@@ -117,6 +119,39 @@ test("the notice buffer drains — a notice appears on exactly one packet, then 
         assert.equal(await kindsOf(t1.turnId), 0, "notice not visible on the turn that produced it");
         assert.equal(await kindsOf(t2.turnId), 1, "notice drained exactly once on read");
         assert.equal(await kindsOf(t3.turnId), 0, "drained notice does not reappear on subsequent packets");
+    } finally { await db.close(); }
+});
+
+test("a three-coordinate scope normalizes with a next-packet Notice ({§slicer-text-algebra})", async () => {
+    // <SL,SC,EL> reads as <SL,SC> through the end of line EL: the slice serves the
+    // intent, the next packet's notices steer the model to the canonical forms.
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    await seedEntryWithChannel(db, { workspaceId, pathname: "/x", content: "alpha\nbeta\ngamma\ndelta", mimetype: "text/markdown" });
+    try {
+        const stmtTurn = (ops: PlurnkStatement[]): MockResponse => ({
+            assistant: { content: "", ops, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+        } as MockResponse);
+        const provider = new Mock({
+            contextWindow: 100000,
+            responses: [
+                stmtTurn([{ ...readStmt(urlPath("worker", "/x")), lineMarker: { marks: [2, 1, 3] } }, sendStmt(102, null, "read")]),
+                stmtTurn([sendStmt(200, null, "done")]),
+            ],
+        });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+
+        const p2 = await getPacket(db, t2.turnId);
+        assert.match(
+            packetSection(p2, "log"),
+            /<<BODY\n2:beta\n3:gamma\nBODY/,
+            "the 3-form sliced from line 2 column 1 through the end of line 3",
+        );
+        assert.equal(
+            packetSection(p2, "notices"),
+            "* scope_normalized: Scope <2,1,3> read as <2,1> through the end of line 3; canonical region forms are one, two, or four coordinates.",
+            "the steer lands on exactly the next packet",
+        );
     } finally { await db.close(); }
 });
 

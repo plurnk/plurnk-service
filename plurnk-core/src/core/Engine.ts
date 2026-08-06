@@ -1795,6 +1795,18 @@ export default class Engine {
                 },
             );
             statuses.push(result.status);
+            // {§slicer-text-algebra} — a normalized 3-coordinate scope tells the
+            // model what it got and the canonical form, once per use.
+            const normalizedScope = result.normalizedScope;
+            if (normalizedScope !== undefined) {
+                const [sl, sc, el] = normalizedScope as readonly [number, number, number, number];
+                this.#notices.push(workspaceId, loopId, {
+                    source: "engine:slicer",
+                    kind: "scope_normalized",
+                    level: "warn",
+                    message: `Scope <${sl},${sc},${el}> read as <${sl},${sc}> through the end of line ${el}; canonical region forms are one, two, or four coordinates.`,
+                });
+            }
             // {§engine-rails} — a refused final disposition leaves both loop
             // and turn continuing, and its 409 steering ruling strikes once.
             if (statement === sendOp && result.status === 409) {

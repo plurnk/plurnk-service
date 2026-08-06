@@ -298,6 +298,7 @@ configured mimetype family's typed bounded-input failure.
 | `<N>` | whole physical line `N` |
 | `<N,M>` | inclusive whole physical lines `N..M` |
 | `<SL,SC,EL,EC>` | exact exclusive-end region using 1-based Unicode code-point columns |
+| `<SL,SC,EL>` | the start-position-plus-end-line idiom — read as `<SL,SC>` through the end of line EL; the result carries the canonical four-coordinate `normalizedScope` and the engine steers to canon with a Notice |
 | `<0>` / `<-1>` | mutation anchors before the first / after the final line |
 
 - `Slicer.lines(content, marker)` returns the selected text, source

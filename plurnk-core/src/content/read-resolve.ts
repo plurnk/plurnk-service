@@ -74,6 +74,7 @@ export default class ReadResolve {
         let workingContent = content;
         let workingStart: number | null = 1;
         let workingRegion: TextRegion | undefined;
+        let normalizedScope: unknown;
         if (lineMarker !== null) {
             const sliced = LineMarkerOps.sliceLines(content, lineMarker);
             if (sliced.status === 416) return {
@@ -90,6 +91,7 @@ export default class ReadResolve {
             workingContent = sliced.text ?? "";
             workingStart = sliced.startLine ?? null;
             workingRegion = sliced.region;
+            normalizedScope = sliced.normalizedScope;
         }
 
         if (selectionFallback !== null) {
@@ -121,6 +123,7 @@ export default class ReadResolve {
                 startLine: workingStart,
                 ...(workingRegion === undefined ? {} : { region: workingRegion }),
                 ...(selectedMatches === undefined ? {} : { matches: selectedMatches }),
+                ...(normalizedScope === undefined ? {} : { normalizedScope }),
             };
         }
 

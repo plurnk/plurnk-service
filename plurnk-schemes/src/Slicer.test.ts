@@ -117,14 +117,43 @@ test("lines addresses exact regions in Unicode code points", () => {
     );
 });
 
-test("lines rejects incomplete and unaddressable exact regions", () => {
-    const incomplete = Slicer.lines("abc", { marks: [1, 2, 1] });
-    assert.equal(incomplete.status, 416);
-    assert.match(incomplete.problem?.detail ?? "", /one, two, or four/);
+test("lines accepts the three-coordinate idiom as start position through end of line", () => {
+    // {§slicer-text-algebra} — <SL,SC,EL> reads as <SL,SC> through end of EL.
+    const oneLine = Slicer.lines("abc", { marks: [1, 2, 1] });
+    assert.equal(oneLine.status, 200);
+    assert.equal(oneLine.text, "bc");
+    assert.deepEqual(oneLine.region, { startLine: 1, startColumn: 2, endLine: 1, endColumn: 4 });
+    assert.deepEqual(oneLine.normalizedScope, [1, 2, 1, 4]);
 
+    const multiLine = Slicer.lines("one\ntwo\nthree\nfour", { marks: [2, 2, 3] });
+    assert.equal(multiLine.status, 200);
+    assert.equal(multiLine.text, "wo\nthree");
+    assert.deepEqual(multiLine.normalizedScope, [2, 2, 3, 6]);
+
+    // The same errors a 4-form would produce, with the original 3 marks as evidence.
+    const outOfRange = Slicer.lines("abc", { marks: [1, 2, 9] });
+    assert.equal(outOfRange.status, 416);
+    assert.deepEqual(outOfRange.problem?.requestedCoordinates, [1, 2, 9]);
+    const badStart = Slicer.lines("abc", { marks: [1, 9, 1] });
+    assert.equal(badStart.status, 416);
+    assert.deepEqual(badStart.problem?.requestedCoordinates, [1, 9, 1]);
+});
+
+test("lines rejects unaddressable exact regions", () => {
     const unaddressable = Slicer.lines("a😀b", { marks: [1, 4, 1, 5] });
     assert.equal(unaddressable.status, 416);
     assert.deepEqual(unaddressable.problem?.requestedCoordinates, [1, 4, 1, 5]);
+});
+
+test("textReplacement applies the three-coordinate idiom to EDIT", () => {
+    const replaced = Slicer.textReplacement("one\ntwo\nthree", { marks: [2, 2, 2] }, "X");
+    assert.ok(!("error" in replaced));
+    if ("error" in replaced) return;
+    assert.equal(replaced.normalizedScope !== undefined, true);
+    const applied = Slicer.lineMarkerEdit("one\ntwo\nthree", { marks: [2, 2, 2] }, "X");
+    assert.equal(applied.status, 200);
+    assert.equal(applied.result, "one\ntX\nthree");
+    assert.deepEqual(applied.normalizedScope, [2, 2, 2, 4]);
 });
 
 test("linesRaw preserves selected source separators", () => {
