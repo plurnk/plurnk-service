@@ -27,7 +27,7 @@ test("demo: locate and edit deep in a large source file — coordinate held, no 
     try {
         loop = await liveLoop(
             s, 2,
-            { prompt: "In Engine.ts, insert a new line containing exactly `// AUDIT-OK` immediately above the line that declares the `resolveWorkerPrimary` method. Read the file first to locate it. Change nothing else.", maxTurns: 30 },
+            { prompt: "In Engine.ts, insert a new line containing exactly `// AUDIT-OK` immediately above the line that declares the `resolveWorkerPrimary` method.", maxTurns: 30 },
             { timeoutMs: TIMEOUT - 30_000 },
         );
     } finally {
