@@ -59,8 +59,6 @@ import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecyc
 import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 import Dispatcher from "./Dispatcher.ts";
 import type { DispatchContext, DispatchResult, ResolvedClientEntryAddress } from "./Dispatcher.ts";
-import { observed, observedSync } from "../observe/spans.ts";
-import { OPS_DISPATCHED, PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
 
 // Proposal types are part of Engine's public API (resolveProposal/onProposalPending);
@@ -766,18 +764,10 @@ export default class Engine {
             let turn;
             const releaseWorkspace = await this.#acquireWorkspaceTurn(workspaceId, workerId);
             try {
-                turn = await observed( // {§observability-boundary}
-                    "loop.turn",
-                    { workerId, "loop.id": loopId },
-                    async (span) => {
-                        const t = await this.runTurn({
-                            provider, messages, requirements, workspaceId, workerId, loopId, origin, signal, onDispatch,
-                            turnNumber: turnIds.length + 1, maxTurns,
-                        });
-                        span.setAttribute("turn.id", t.turnId);
-                        return t;
-                    },
-                );
+                turn = await this.runTurn({
+                    provider, messages, requirements, workspaceId, workerId, loopId, origin, signal, onDispatch,
+                    turnNumber: turnIds.length + 1, maxTurns,
+                });
                 await this.#workspaceTurnCompleted?.({
                     workspaceId,
                     workerId,
@@ -1402,35 +1392,22 @@ export default class Engine {
                 providerAttemptAttributions = await this.#attemptAttributions(provider, attributionContext);
                 requestPacket = { ...requestPacket, attributions: providerAttemptAttributions };
                 providerCallInFlight = true;
-                const completedResponse = await observed( // {§observability-boundary}
-                    "provider.generate",
-                    { model: provider.model, attempt },
-                    async (span) => {
-                        const generated = await provider.generate({
-                            messages: modelMessages,
-                            workerId: String(workerId),
-                            primaryWorkerId,
-                            signal: providerSignal,
-                            grammar: railGrammar,
-                            maxTokens,
-                            strikes: strikeStreak,
-                            attributions: providerAttemptAttributions.length > 0
-                                ? providerAttemptAttributions
-                                : undefined,
-                            client: client ?? undefined,
-                            workspaceId: String(workspaceId),
-                            loop: loopSeq,
-                            turn: seq,
-                        }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
-                        recordCounter(PROVIDER_CALLS, {
-                            model: provider.model,
-                            attempt,
-                            status: "resolved",
-                        });
-                        span.setAttribute("status", "resolved");
-                        return generated;
-                    },
-                );
+                const completedResponse = await provider.generate({
+                    messages: modelMessages,
+                    workerId: String(workerId),
+                    primaryWorkerId,
+                    signal: providerSignal,
+                    grammar: railGrammar,
+                    maxTokens,
+                    strikes: strikeStreak,
+                    attributions: providerAttemptAttributions.length > 0
+                        ? providerAttemptAttributions
+                        : undefined,
+                    client: client ?? undefined,
+                    workspaceId: String(workspaceId),
+                    loop: loopSeq,
+                    turn: seq,
+                }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
                 response = completedResponse;
                 providerCallInFlight = false;
                 railEvidence = railGrammar === undefined
@@ -1779,21 +1756,12 @@ export default class Engine {
             ) {
                 await recordRecoverableParseErrors();
             }
-            const result = await observed( // {§observability-boundary}
-                "op.dispatch",
-                { op: statement.op },
-                async (span) => {
-                    const dispatchResult = await this.#dispatcher.dispatch({
-                        statement, workspaceId, workerId, loopId, turnId,
-                        sequence: rowSeq,
-                        ...(operationConstraint === undefined ? {} : { operationConstraint }),
-                        origin, onDispatch,
-                    });
-                    span.setAttribute("status", dispatchResult.status);
-                    recordCounter(OPS_DISPATCHED, { op: statement.op, status: dispatchResult.status });
-                    return dispatchResult;
-                },
-            );
+            const result = await this.#dispatcher.dispatch({
+                statement, workspaceId, workerId, loopId, turnId,
+                sequence: rowSeq,
+                ...(operationConstraint === undefined ? {} : { operationConstraint }),
+                origin, onDispatch,
+            });
             statuses.push(result.status);
             // {§engine-rails} — a refused final disposition leaves both loop
             // and turn continuing, and its 409 steering ruling strikes once.
@@ -1920,13 +1888,7 @@ export default class Engine {
         if (preParsedOps !== undefined) {
             ops.push(...preParsedOps);
         } else {
-            // {§observability-boundary} — the parse is observed without its input;
-            // only the resulting statement count is attributable.
-            const parsed = observedSync("contracts.parse", {}, (span) => {
-                const result = PlurnkParser.parse(assistant.content);
-                span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length);
-                return result;
-            });
+            const parsed = PlurnkParser.parse(assistant.content);
             for (const item of parsed.items) {
                 if (item.kind === "statement") {
                     ops.push(item.statement);
@@ -2218,19 +2180,11 @@ export default class Engine {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
-        return observed( // {§observability-boundary}
-            "op.dispatch",
-            { op: context.statement.op },
-            async (span) => {
-                if (context.statement.op === "EDIT") {
-                    const { statement, sequence: _sequence, ...batchContext } = context;
-                    await this.#dispatcher.prepareEditBatches([statement], batchContext);
-                }
-                const result = await this.#dispatcher.dispatch(context);
-                span.setAttribute("status", result.status);
-                return result;
-            },
-        );
+        if (context.statement.op === "EDIT") {
+            const { statement, sequence: _sequence, ...batchContext } = context;
+            await this.#dispatcher.prepareEditBatches([statement], batchContext);
+        }
+        return this.#dispatcher.dispatch(context);
     }
 
     // {§op-look}: resolve a READ without writing a log_entries row.

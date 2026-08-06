@@ -18,7 +18,6 @@ import { stateSnapshot, parseAction, actionResult, type ActionRequest, type Acti
 import type { DaemonSeam, ClientEnvelope, PlurnkStatement } from "./DaemonSeam.ts";
 import { PlurnkParser, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
-import { observed } from "./observe.ts";
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
 import { logEntryIdFromToolCallId, proposalInterrupt } from "./AguiPlus.ts";
 import { Problems, Validator, type ExecStatement, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
@@ -211,14 +210,6 @@ export default class Module {
     }
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
-        return observed( // {§observability-boundary} — the perimeter span; the path may carry query data, so only the pathname leaves.
-            "agui.http",
-            { method: req.method ?? "", route: (req.url ?? "").split("?")[0] },
-            (): Promise<void> => this.#routeSettled(req, res),
-        );
-    }
-
-    async #routeSettled(req: IncomingMessage, res: ServerResponse): Promise<void> {
         try {
             res.setHeader("access-control-allow-origin", "*");
             res.setHeader("access-control-allow-headers", "content-type, authorization");

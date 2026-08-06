@@ -19,7 +19,6 @@ import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
 import { readTeachingSourceSync } from "./core/teaching-corpus.ts";
-import { startObservability } from "./observe/init.ts";
 
 // The `plurnk-service` executable: launches the daemon (start) or applies the schema baseline.
 // Not the user-facing client — that is the separate `plurnk` project.
@@ -214,11 +213,8 @@ export default class Service {
         // admitted before provider verification can perform external work.
         const db = await Service.#openDb(dbPath, true);
         let daemon: Daemon | null = null;
-        // {§observability-boundary} — the daemon initializes the SDK before any
-        // instrumented module loads; an unconfigured process never loads it.
-        const observability = await startObservability();
         const teardown = new ServiceTeardown(
-            async () => { await daemon?.stop(); await observability?.shutdown(); },
+            async () => { await daemon?.stop(); },
             async () => db.close(),
         );
         try {

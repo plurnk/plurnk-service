@@ -59,8 +59,6 @@ import type {
     RuntimeRegistration,
     StartedModule,
 } from "./DaemonModule.ts";
-import { observed, observedSync } from "../observe/spans.ts";
-import { LOOP_TERMINALS, recordCounter } from "../observe/metrics.ts";
 
 const clientActionFailure = (error: unknown): SchemeResult => {
     if (error instanceof OperationFailureError) return error.result;
@@ -744,22 +742,15 @@ export default class Daemon {
         const projectRoot = ClientInput.assertProjectRoot("workspace.create", args.projectRoot);
         const settings = ClientInput.parseSettings(args.settings);
         const constraints = ClientInput.parseConstraints(args.constraints);
-        return observed( // {§observability-boundary}
-            "workspace.create",
-            {},
-            async (span) => {
-                const envelope = await Envelope.createClientEnvelope(this.#db, { name, projectRoot, settings });
-                span.setAttribute("workspace.id", envelope.workspaceId);
-                for (const { effect, glob } of constraints) {
-                    await this.#db.crud_insert_workspace_constraint.run({ workspace_id: envelope.workspaceId, effect, glob });
-                }
-                if (constraints.length > 0) await GitMembership.resolveGitMembership(this.#db, envelope.workspaceId, undefined);
-                await LoopDocs.materialize(this.#engine, this.#db, envelope.workspaceId);
-                void this.#engine.warmWorkspaceDerivations(envelope.workspaceId).catch(() => {});
-                this.#broadcast("all", "workspace/created", { id: envelope.workspaceId, name: envelope.workspaceName, projectRoot: envelope.projectRoot });
-                return envelope;
-            },
-        );
+        const envelope = await Envelope.createClientEnvelope(this.#db, { name, projectRoot, settings });
+        for (const { effect, glob } of constraints) {
+            await this.#db.crud_insert_workspace_constraint.run({ workspace_id: envelope.workspaceId, effect, glob });
+        }
+        if (constraints.length > 0) await GitMembership.resolveGitMembership(this.#db, envelope.workspaceId, undefined);
+        await LoopDocs.materialize(this.#engine, this.#db, envelope.workspaceId);
+        void this.#engine.warmWorkspaceDerivations(envelope.workspaceId).catch(() => {});
+        this.#broadcast("all", "workspace/created", { id: envelope.workspaceId, name: envelope.workspaceName, projectRoot: envelope.projectRoot });
+        return envelope;
     }
 
     async attachWorkspace(args: { workspaceId: number; workerId?: number; workerName?: string }): Promise<ClientEnvelope> {
@@ -1551,25 +1542,16 @@ export default class Daemon {
                             this.#broadcast({ workspaceId }, "log/entry", { entry });
                         })().catch((e: unknown) => console.error("log/entry broadcast failed:", e instanceof Error ? e.message : String(e)));
                     };
-                    const result = await observed( // {§observability-boundary}
-                        "loop.run",
-                        { workspaceId, workerId, "loop.id": loopRow.id },
-                        async (span) => {
-                            const loopResult = await this.#engine.runLoop({
-                                provider, workspaceId, workerId, loopId: loopRow.id, maxTurns: loopRow.max_turns,
-                                messages: [
-                                    { role: "system", content: systemPrompt },
-                                    { role: "user", content: loopRow.prompt },
-                                ],
-                                origin: "model",
-                                onDispatch,
-                                signal: controller.signal,
-                            });
-                            span.setAttribute("status", loopResult.result.status);
-                            recordCounter(LOOP_TERMINALS, { status: loopResult.result.status });
-                            return loopResult;
-                        },
-                    );
+                    const result = await this.#engine.runLoop({
+                        provider, workspaceId, workerId, loopId: loopRow.id, maxTurns: loopRow.max_turns,
+                        messages: [
+                            { role: "system", content: systemPrompt },
+                            { role: "user", content: loopRow.prompt },
+                        ],
+                        origin: "model",
+                        onDispatch,
+                        signal: controller.signal,
+                    });
                     if (result.result.status === 202) {
                         // The loop slept via SEND[202] — suspended, not terminated. Leave it at 202
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
@@ -2148,22 +2130,16 @@ export default class Daemon {
     }
 
     #broadcast(target: NotifyTarget, method: string, params?: unknown): void {
-        observedSync( // {§observability-boundary}
-            "stream.broadcast",
-            { method, ...(target === "all" ? {} : { "workspace.id": target.workspaceId }) },
-            () => {
-                if (target === "all") {
-                    // {§notifications-envelope-carries-workspaceid}: global events carry workspaceId null.
-                    this.#emitTo(null, method, params);
-                    return;
-                }
-                // {§methods-event-subscribe}: publish to the in-process source; transport modules subscribe
-                // here (plurnk-agui renders to AG-UI+). Each subscriber owns its own fan-out; core just emits.
-                // Scope-stamping onto the notification envelope ({§notifications-envelope-carries-workspaceid})
-                // is each subscriber's edge concern now — the seam hands (workspaceId, method, params) raw.
-                this.#emitTo(target.workspaceId, method, params);
-            },
-        );
+        if (target === "all") {
+            // {§notifications-envelope-carries-workspaceid}: global events carry workspaceId null.
+            this.#emitTo(null, method, params);
+            return;
+        }
+        // {§methods-event-subscribe}: publish to the in-process source; transport modules subscribe
+        // here (plurnk-agui renders to AG-UI+). Each subscriber owns its own fan-out; core just emits.
+        // Scope-stamping onto the notification envelope ({§notifications-envelope-carries-workspaceid})
+        // is each subscriber's edge concern now — the seam hands (workspaceId, method, params) raw.
+        this.#emitTo(target.workspaceId, method, params);
     }
 }
 

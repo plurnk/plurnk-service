@@ -15,7 +15,6 @@ import type NoticeChannel from "./NoticeChannel.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import type { PlurnkSchemeContext, LoopFlags } from "./scheme-types.ts";
-import { observedSync } from "../observe/spans.ts";
 import LoopFlagsReader from "./LoopFlagsReader.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 import { schemeNameOf } from "./plurnk-uri.ts";
@@ -151,16 +150,6 @@ export default class ProposalLifecycle {
     // pending waiter — duplicate resolutions, IDs for non-proposed entries,
     // or entries already-resolved are caller errors.
     resolve(logEntryId: number, resolution: ProposalResolution): void {
-        observedSync( // {§observability-boundary}
-            "proposal.resolve",
-            { "entry.id": logEntryId, decision: resolution.decision },
-            () => {
-                this.#resolveSettled(logEntryId, resolution);
-            },
-        );
-    }
-
-    #resolveSettled(logEntryId: number, resolution: ProposalResolution): void {
         const waiter = this.#pending.get(logEntryId);
         if (waiter === undefined) {
             throw new OperationFailureError(Results.failure(

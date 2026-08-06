@@ -89,12 +89,5 @@ Each mirrors a `# --- section ---` in the floor; consult the floor for exact def
 - **Semantic search** — `PLURNK_SERVICE_SEMANTIC_TOP_K` (markerless result count), `_SEMANTIC_CHUNK_TOKENS`/`_CHUNK_OVERLAP` (service-side chunking), `PLURNK_SERVICE_EMBED_DISABLE` (FTS-only), `PLURNK_MIMETYPES_EMBED_WORKERS` (the embedder's pool — mimetypes-owned).
 - **Schemes: http** — `PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT`/`_SALVAGE_MIN_BODY_CHARS`/`_IDLE_TIMEOUT` (required on the HTML render path), optional Playwright/Chromium knobs.
 - **Execs** - `PLURNK_EXECS_<runtime>=0` disables a runtime; `PLURNK_EXECS_SEARCH_SEARXNG_URL` enables web search (unset = search off).
-- **Observability** — standard `OTEL_*` env ({§observability-boundary}):
-  `OTEL_TRACES_EXPORTER`/`OTEL_METRICS_EXPORTER` (`otlp` or `console`; unset
-  keeps the signal off), `OTEL_SERVICE_NAME` (default `plurnk-service`),
-  `OTEL_SDK_DISABLED` (opt out), and the OTLP exporters' own
-  `OTEL_EXPORTER_OTLP_*` settings. An unconfigured daemon never loads the OTel
-  SDK. Prompts, reasoning, file bodies, URLs, secrets, and plugin payloads are
-  never exported.
 
 The client's own knobs live under `PLURNK_CLIENT_*` (`--workspace`, `--run`, `--yolo`, `--json`…) — see `plurnk --help`.
