@@ -22,6 +22,12 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
     assert.ok(build < gates && gates < postGateClean && postGateClean < firstPublish);
     assert.match(publish, /\["publish", "-w", name, "--access", "public", "--ignore-scripts"\]/);
 
+    const consumerInstall = publish.indexOf('["i", `${ROOT_PKG}@${version}`]');
+    const dependencyGraph = publish.indexOf('["ls", "--all"]');
+    const installedBoot = publish.indexOf('spawn("npx", ["plurnk-service"]');
+    assert.ok(firstPublish < consumerInstall && consumerInstall < dependencyGraph && dependencyGraph < installedBoot);
+    assert.doesNotMatch(publish, /order\.length - 1|dep tree incomplete/);
+
     const clientPublish = publish.indexOf("[CLIENT_RELEASE, clientVersion, version]");
     const exactComposition = publish.indexOf("PLURNK_COMPOSITION_CLIENT: `${CLIENT_PKG}@${clientVersion}`");
     const externals = publish.indexOf('["scripts/release-external-packages.mjs"]');

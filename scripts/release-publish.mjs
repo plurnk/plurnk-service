@@ -87,9 +87,9 @@ const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-release-verify-"));
 try {
     await run("npm", ["init", "-y"], { cwd: tmp });
     await run("npm", ["i", `${ROOT_PKG}@${version}`], { cwd: tmp, maxBuffer: 64 * 1024 * 1024 });
+    await run("npm", ["ls", "--all"], { cwd: tmp, maxBuffer: 64 * 1024 * 1024 });
     const installed = await fs.readdir(path.join(tmp, "node_modules", "@plurnk"));
-    console.log(`verify: ${installed.length} @plurnk packages on disk`);
-    if (installed.length < order.length - 1) throw new Error(`dep tree incomplete: ${installed.length} < ${order.length - 1}`);
+    console.log(`verify: dependency graph valid; ${installed.length} @plurnk packages on disk`);
 
     const svc = spawn("npx", ["plurnk-service"], {
         cwd: tmp,
