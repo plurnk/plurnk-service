@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-contracts",
-    "version": "1.3.12",
+    "version": "1.4.0",
     "description": "Canonical PLURNK language, schemas, generated types, parser, rails, and runtime-neutral wire contracts",
     "keywords": [
         "plurnk",

@@ -1,19 +1,9 @@
 {
     "root": "«repo forest»",
-    "count": 56,
-    "managed": 55,
-    "independent": 1,
+    "count": 54,
+    "managed": 54,
+    "independent": 0,
     "packages": [
-        {
-            "dir": "plurnk",
-            "name": "@plurnk/plurnk",
-            "release": "independent",
-            "owner": "client",
-            "pushable": true,
-            "platformDependencies": [
-                "@plurnk/plurnk-aliases"
-            ]
-        },
         {
             "dir": "plurnk-mimetypes-application-gguf",
             "name": "@plurnk/plurnk-mimetypes-application-gguf",
@@ -552,16 +542,6 @@
             "pushable": true,
             "platformDependencies": [
                 "@plurnk/plurnk-mimetypes"
-            ]
-        },
-        {
-            "dir": "plurnk-providers-cloudflare",
-            "name": "@plurnk/plurnk-providers-cloudflare",
-            "release": "managed",
-            "owner": "providers",
-            "pushable": true,
-            "platformDependencies": [
-                "@plurnk/plurnk-providers"
             ]
         }
     ]
