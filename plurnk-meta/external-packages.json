@@ -1,9 +1,20 @@
 {
     "root": "«repo forest»",
-    "count": 54,
+    "count": 55,
     "managed": 54,
-    "independent": 0,
+    "independent": 1,
     "packages": [
+        {
+            "dir": "plurnk",
+            "name": "@plurnk/plurnk",
+            "release": "independent",
+            "owner": "client",
+            "pushable": true,
+            "platformDependencies": [
+                "@plurnk/plurnk-aliases",
+                "@plurnk/plurnk-contracts"
+            ]
+        },
         {
             "dir": "plurnk-mimetypes-application-gguf",
             "name": "@plurnk/plurnk-mimetypes-application-gguf",
