@@ -197,7 +197,7 @@ sequenceDiagram
 
 * Open every turn with a concise PLAN.
 * Close every turn with a SEND.
-* Retrieval results land in the next packet's Log, never in the current turn.
+* Retrieval results land in the next packet's Log, so SEND[200] never shares a turn with retrieval.
 
 | submit code | meaning                                                                           |
 |-------------|-----------------------------------------------------------------------------------|
