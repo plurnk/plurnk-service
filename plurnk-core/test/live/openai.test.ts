@@ -32,7 +32,7 @@ test("live OpenAI: a multi-turn loop consumes a fold-back result and concludes w
         }
 
         assert.ok(turnIds.length >= 2, "the fold-back forces the loop: the READ result arrives next packet, so a correct answer needs a second turn");
-        assert.ok([200, 499].includes(finalStatus), `loop must terminate cleanly; got ${finalStatus}`);
+        assert.equal(finalStatus, 200, `loop must conclude successfully; got ${finalStatus}`);
         assert.ok(lastContent.includes(secret), `the conclusion carries the seeded secret '${secret}' — proof the fold-back was consumed; got: ${lastContent.slice(0, 200)}`);
     } finally { await s.cleanup(); }
 });
@@ -40,20 +40,18 @@ test("live OpenAI: a multi-turn loop consumes a fold-back result and concludes w
 test("live OpenAI: a single-shot store-and-reply terminates cleanly", async () => {
     const s = await liveWorkspace({ name: `live-smoke-${crypto.randomUUID()}` });
     try {
-        const userPrompt = "What is the capital of France? Store the answer under worker:///france/capital and reply with a single SEND[200] message containing the answer.";
+        const userPrompt = "What is the capital of France? Store the answer under worker:///france/capital and conclude with the answer.";
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 4 }, { timeoutMs: 240_000 });
 
-        assert.ok([200, 499].includes(finalStatus), `single-shot store-and-reply terminates cleanly; got ${finalStatus}`);
+        assert.equal(finalStatus, 200, `single-shot store-and-reply must conclude successfully; got ${finalStatus}`);
         assert.ok(turnIds.length >= 1, "at least one turn ran");
-        assert.ok(lastContent.length > 0, "model emitted non-empty content");
+        assert.match(lastContent, /\bParis\b/i, "the successful conclusion contains the answer");
 
-        // The answer was stored where the prompt asked. Use the unbounded pathname query —
-        // test_parser_entries_first is a LIMIT-1 helper (parser_roundtrip's single-entry world)
-        // and against a multi-entry workspace DB only ever returns the first-inserted doc.
-        const pathnames = (await s.db.test_parser_pathnames.all<{ pathname: string }>()).map((e) => e.pathname);
-        assert.ok(
-            pathnames.some((p) => /france|capital/.test(p)),
-            `the answer was stored under worker:///france/capital; got ${JSON.stringify(pathnames)}`,
-        );
+        const stored = await s.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+            pathname: "/france/capital",
+            scheme: "worker",
+            name: "body",
+        });
+        assert.match(stored?.content ?? "", /\bParis\b/i, "worker:///france/capital contains the answer");
     } finally { await s.cleanup(); }
 });

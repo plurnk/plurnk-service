@@ -6,7 +6,7 @@
 // Driven through the REAL prod loop (loop.run via the daemon — liveWorkspace +
 // liveLoop). The daemon wires the executors itself (Daemon.start), so this no
 // longer hand-builds an ExecutorRegistry; the loop's completion implies the
-// backgrounded spawn finished (the model SENT only after reading its result).
+// backgrounded spawn finished (the model concluded only after reading its result).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -19,12 +19,14 @@ test("live exec: model emits <<EXEC[sh]:command:EXEC and the spawn captures stdo
             "Two-turn probe.",
             "",
             "If you see the exec's stdout stream (a `sh:///...` entry) containing",
-            "`plurnk-exec-live-ok`, emit:",
+            "`plurnk-exec-live-ok`, emit this complete turn:",
+            "  <<PLAN:Report the observed stdout.:PLAN",
             "  <<SEND[200]:plurnk-exec-live-ok:SEND",
             "",
-            "Otherwise, emit a single EXEC to run `echo plurnk-exec-live-ok` so that the next turn's",
-            "log will have the exec entry. Emit ONLY the EXEC, no SEND yet:",
+            "Otherwise, emit this complete turn to run `echo plurnk-exec-live-ok` and await its result:",
+            "  <<PLAN:Run the stdout probe and await its result.:PLAN",
             "  <<EXEC[sh]:echo plurnk-exec-live-ok:EXEC",
+            "  <<SEND[202]:Waiting for the stdout probe.:SEND",
             "",
             "Do not repeat the EXEC once you see the `sh:///...` stream entry in the log.",
         ].join("\n");
