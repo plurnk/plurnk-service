@@ -49,6 +49,11 @@ test("every ```plurnk fenced turn in plurnk.md parses clean", () => {
     assert.equal(failures.length, 0, `plurnk fenced blocks that do not parse:\n${failures.join("\n")}`);
 });
 
+test("{§text-scope-semantics}{§whitespace-contract} model reference teaches literal whole-line EDIT", () => {
+    assert.ok(plurnkMd.includes("`<<EDIT(notes.md)<2>:replacement text:EDIT` replaces line 2"));
+    assert.ok(plurnkMd.includes("PLURNK does not decode body escapes: `\\n` is backslash plus `n`."));
+});
+
 // Model teaching mirrors the packet prose thresholds without adding a reverse package
 // dependency. {§packet-atomic-prose}
 test("plurnk.md prose has no run-on sentences", () => {

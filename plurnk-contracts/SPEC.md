@@ -602,6 +602,11 @@ therefore produces `unparsedTail`; no later input is trustworthy.
 | Inside close tag        | Colon and `OPsuffix` are adjacent    | Must remain adjacent and match the opener                   |
 | Between turn statements | GBNF `sep`: zero to seven whitespace | Whitespace is hidden; non-whitespace may surface as TEXT    |
 
+PLURNK never escape-decodes body text: `\n` reaches the owning operation as
+backslash plus `n`. A matcher or executor may interpret those characters under
+its own body dialect. Producers that need a physical newline in literal EDIT
+content emit an actual newline.
+
 `parse` and `parseLog` admit TEXT around their PLAN-anchored operations and
 return it as ordered text items without assigning semantics. `parseStatements`
 and `parseClient` admit statements and hidden whitespace only. PLURNK defines no

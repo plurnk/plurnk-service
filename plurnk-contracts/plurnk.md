@@ -23,6 +23,8 @@ The closer echoes the operation name and optional suffix.
 When a body contains an OP, suffix the outer OP: `<<EDIT1(worker:///demo.md):Quoted: <<READ(source.md)::READ:EDIT1`
 An empty body retains both delimiters: `<<READ(AGENTS.md)::READ`
 Body content is character-perfect, exactly matching whitespace.
+PLURNK does not decode body escapes: `\n` is backslash plus `n`.
+Emit a physical newline when literal body content needs one.
 Reference examples are alternatives unless explicitly presented as a turn.
 
 ### OPs
@@ -118,7 +120,7 @@ Text scope (Line, StartLine, EndLine, StartColumn, EndColumn) has one meaning fo
 
 | form            | endpoint rule                | example                                                       |
 |-----------------|------------------------------|---------------------------------------------------------------|
-| `<L>`           | one line                     | `<<READ(notes.md)<2>::READ` reads only line 2                 |
+| `<L>`           | one line                     | `<<EDIT(notes.md)<2>:replacement text:EDIT` replaces line 2  |
 | `<SL,EL>`       | lines SL through EL, inclusive | `<<READ(notes.md)<2,3>::READ` reads lines 2 and 3             |
 | `<SL,SC,EL,EC>` | start included, end excluded | `<<READ(notes.md)<2,1,2,5>::READ` reads columns 1-4 of line 2 |
 | `<SL,SC,SL,SC>` | positions, zero-width        | `<<EDIT(notes.md)<2,5,2,5>:inserted text:EDIT` insertion      |
