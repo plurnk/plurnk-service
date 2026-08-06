@@ -45,6 +45,8 @@ A `?` marks an optional slot.
 | KILL | delete or terminate            | code?        | target, including log item | -              | empty                 |
 | SEND | send a message                 | code?        | recipient?                 | timeout, poll? | message               |
 
+* Bodies may span lines; a multiline EXEC input needs no one-line contortions.
+
 ### Pattern Filtering
 
 Matcher bodies select treemapped resources by their content.
@@ -62,6 +64,7 @@ Matcher bodies select treemapped resources by their content.
 * In path targets, `*` maps one level and `**` crosses directories.
 * Filters bracket directly: `$[?(@.role=="admin")]`, never `$.[?(...)]`.
 * Mapping is universal: JSONPath can query XML and XPath can query JSON.
+* FIND reports each match's line and column — the way to locate text within a known file.
 
 Examples:
 
@@ -111,20 +114,28 @@ One or more numbers narrow an operation according to its type:
 * Semantic FIND and READ reserve a leading decimal scope component for a similarity threshold. Remaining integers keep the operation's meaning above.
 * EXEC and SEND use `<timeout, poll>` seconds.
 
-Text scope has one meaning for every textual mimetype:
+Text scope (Line, StartLine, EndLine, StartColumn, EndColumn) has one meaning for every textual mimetype:
 
 | form            | endpoint rule                | example                                                       |
 |-----------------|------------------------------|---------------------------------------------------------------|
-| `<N>`           | one line                     | `<<READ(notes.md)<2>::READ` reads only line 2                 |
-| `<N,M>`         | lines N through M, inclusive | `<<READ(notes.md)<2,3>::READ` reads lines 2 and 3             |
+| `<L>`           | one line                     | `<<READ(notes.md)<2>::READ` reads only line 2                 |
+| `<SL,EL>`       | lines SL through EL, inclusive | `<<READ(notes.md)<2,3>::READ` reads lines 2 and 3             |
 | `<SL,SC,EL,EC>` | start included, end excluded | `<<READ(notes.md)<2,1,2,5>::READ` reads columns 1-4 of line 2 |
 | `<SL,SC,SL,SC>` | positions, zero-width        | `<<EDIT(notes.md)<2,5,2,5>:inserted text:EDIT` insertion      |
 
 Lines and Unicode code-point columns are 1-based.
-Rendered `N:` prefixes are reference coordinates, not source content.
-To read exactly line N, use `<N>`; `<N,N+1>` selects both lines.
+Rendered `L:` prefixes are reference coordinates, not source content.
+To read exactly line L, use `<L>`; `<L,L+1>` selects both lines.
 
 For EDIT and COPY/MOVE destinations, `<0>` and `<-1>` insert before the first and after the final position.
+Insert a line above line L with a zero-width scope at its start; the body ends with a newline:
+
+```plurnk
+<<PLAN:Insert a new line above line 3.:PLAN
+<<EDIT(notes.md)<3,1,3,1>:// new line
+:EDIT
+<<SEND[102]:Line inserted.:SEND
+```
 `<1,-1>` selects all content; an empty EDIT body deletes its selection.
 Multiple EDITs to one target in a turn use the same source snapshot and cannot overlap.
 YOU MUST use a text scope when editing an existing file or entry.
@@ -193,7 +204,7 @@ sequenceDiagram
 | 102         | Continue after performing operations; the message states what remains.            |
 | 202         | Wait for workers or streams.                                                      |
 | 200         | Conclude only when no results remain unseen and no worker or stream remains live. |
-| 499         | Abort the loop.                                                                   |
+| 499         | Abort and fail.                                                                       |
 
 ### User messages
 
