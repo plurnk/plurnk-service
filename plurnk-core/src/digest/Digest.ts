@@ -37,6 +37,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
+import { observedSync } from "../observe/spans.ts";
 import type { SqlRiteSyncPreparedStatements } from "@possumtech/sqlrite";
 
 // sqlrite types dynamic PREP accessors as `any` ([method: string]); bind each
@@ -732,6 +733,12 @@ export default class Digest {
     }
 
     static run(opts: DigestOptions): void {
+        // {§observability-boundary} — the evidence write is observed; the digest
+        // paths themselves are environment-specific and stay off the boundary.
+        observedSync("digest.write", {}, () => { Digest.#runSettled(opts); });
+    }
+
+    static #runSettled(opts: DigestOptions): void {
         // {§digest-programmatic-surface}: digest.sql is packaged beside this module
         // (src/digest → dist/digest via copy-sql), including in an installed package.
         const moduleDir = dirname(fileURLToPath(import.meta.url));

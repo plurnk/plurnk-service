@@ -48,6 +48,10 @@ imports `@plurnk/plurnk-service/digest`.
 - `@plurnk/plurnk-mimetypes` — content handling contract.
 - `@plurnk/plurnk-execs` — executable capability contract.
 
+## Observability
+
+The daemon can emit OpenTelemetry traces and low-cardinality metrics through the standard `OTEL_*` environment ({§observability-boundary}): `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` select `otlp` or `console` per signal, `OTEL_SERVICE_NAME` names the service, and `OTEL_SDK_DISABLED` opts out. Unconfigured, the daemon never loads the SDK. The boundary observes lifecycle (workspace, loop, turn, provider, parse, dispatch, proposal, stream, digest) without ever recording prompts, reasoning, file bodies, URLs, secrets, or plugin payloads.
+
 ## Semantic search
 
 The default service installation includes `@plurnk/plurnk-mimetypes-embeddings`, so `FIND`'s `~query` uses embedding cosine ranking without a separate package install. `PLURNK_SERVICE_EMBED_DISABLE=1` explicitly selects FTS keyword ranking; a missing required artifact is a broken installation and refuses startup. A remote OpenAI-compatible embedder can replace the included local path; see [`INSTALL.md`](./INSTALL.md).

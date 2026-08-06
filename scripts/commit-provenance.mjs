@@ -5,6 +5,7 @@ const ZERO = "0".repeat(40);
 export const ALLOWED_AUTHORS = new Set([
     "wikitopian\0wikitopian@pm.me",
     "plurnk_codex\0wikitopian+plurnk_codex@pm.me",
+    "plurnk_oc\0wikitopian+plurnk_oc@pm.me",
 ]);
 
 export const validateCommit = ({ sha, authorName, authorEmail, committerName, committerEmail, signature }) => {
