@@ -88,6 +88,54 @@ The `plurnk` provider retains the compatible transport because it carries
 first-party attribution and loop metadata and leaves model tuning to the
 endpoint.
 
+## Configured-provider packet conformance matrix
+
+Every configured model alias is exercised through a real PLURNK loop — the
+production packet, a model-selected operation, its materialized result, and
+completion — never a transport-only completion. Provider-exposed reasoning must
+survive in the durable assistant packet and digest; a provider with no private
+reasoning is valid when the observable operation cycle succeeds.
+
+One specimen at a time, deterministically:
+
+```sh
+cd plurnk-core
+npm run test:live:specimen -- "<test-name-pattern>"
+```
+
+The selector inserts `--test-name-pattern` before the expanded live file list in
+the exact standard `test:live` invocation; trailing npm arguments alone cannot
+narrow the suite. This procedure is `plurnk-core`'s own; the ledger below is
+maintained with the evidence for every alias it names.
+
+### Classifications
+
+| Class | Meaning |
+|---|---|
+| pass | Full packet cycle completed; durable packet and digest verified |
+| auth/credential | The route is blocked before the model by authorization or credential handling |
+| transport | The route fails at a transport/capability boundary, not the model |
+| op:stable-fail | An operation-level failure repeated on replay; assertion unweakened |
+| op:stochastic | An operation-level failure did not repeat on a later roll |
+| unreachable | The endpoint cannot be reached from this machine |
+
+Authorization and credential failures are reported as their own class, never as
+model failures. Repeated stochastic and stable operation failures are reported
+separately in the ledger's specimens.
+
+### Ledger
+
+| Alias | Route (snapshot) | Class | Evidence |
+|---|---|---|---|
+| 38 configured aliases — 2026-07 sweep | — | 20 × pass; 14 × auth/credential/transport; 4 × operation-level | Initial READ line-slice sweep (`#7`) |
+| `cfgpt120b`, `grok` | — | op:stochastic → pass on replay | `#7` |
+| `cfkimi27`, `kimi` | — | op:stable-fail (unresolved, unweakened assertion) | `#7` |
+| `cfds1` | `cloudflare/@cf/deepseek-ai/deepseek-r1-distill-qwen-32b` | op:stable-fail — READ repeated 13 turns to the 508 strike threshold; retrieval materialization verified (`2:beta` present, exact 409 recovery given) | `/home/hyzen/benchmarks/live-contract-read-L-TIgart/digest/` (`#7`) |
+
+The full current classifications of every configured alias are refreshed by the
+frozen-candidate live drill's honest reporting; this ledger is the maintained
+record of that procedure, never a substitute for it.
+
 ## Development
 
 ```sh
