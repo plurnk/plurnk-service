@@ -60,6 +60,7 @@ import type {
     StartedModule,
 } from "./DaemonModule.ts";
 import { observed, observedSync } from "../observe/spans.ts";
+import { LOOP_TERMINALS, recordCounter } from "../observe/metrics.ts";
 
 const clientActionFailure = (error: unknown): SchemeResult => {
     if (error instanceof OperationFailureError) return error.result;
@@ -1565,6 +1566,7 @@ export default class Daemon {
                                 signal: controller.signal,
                             });
                             span.setAttribute("status", loopResult.result.status);
+                            recordCounter(LOOP_TERMINALS, { status: loopResult.result.status });
                             return loopResult;
                         },
                     );
