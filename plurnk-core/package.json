@@ -113,6 +113,7 @@
     },
     "devDependencies": {
         "@opentelemetry/context-async-hooks": "^2.10.0",
+        "@opentelemetry/core": "^2.10.0",
         "@types/diff": "^7.0.2"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-core#readme",
