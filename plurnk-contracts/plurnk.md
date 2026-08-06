@@ -130,6 +130,7 @@ Rendered `L:` prefixes are reference coordinates, not source content.
 To read exactly line L, use `<L>`; `<L,L+1>` selects both lines.
 
 For EDIT and COPY/MOVE destinations, `<0>` and `<-1>` insert before the first and after the final position.
+A scoped COPY/MOVE destination must already exist; omit its scope when creating a new destination channel.
 Insert a line above line L with a zero-width scope at its start; the body ends with a newline:
 
 ```plurnk
@@ -146,6 +147,7 @@ Use precise, current positions from recent READ results when modifying existing 
 Other scope examples:
 
 * FIND result range: `<<FIND(src/**)<10,20>::FIND`
+* Copy lines into a new entry: `<<COPY(worker:///src.md)<2,3>:worker:///slice.md:COPY`
 * Exact source and destination append: `<<COPY(sh:///1/2/3#stderr)<1,1,1,12>:worker:///firstError.txt<-1>:COPY`
 * Semantic FIND threshold and result range: `<<FIND(worker:///**)<0.7,11,20>:~france:FIND`
 * Semantic READ threshold and text range: `<<READ(worker:///**)<0.5,11,20>:~poland:READ`

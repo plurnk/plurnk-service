@@ -146,7 +146,7 @@ SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, rx
 FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_worker
-SELECT id, ambient_event_id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx
+SELECT id, ambient_event_id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx, origin
 FROM log_entries WHERE worker_id = $worker_id ORDER BY id;
 
 -- PREP: test_log_tags_by_worker

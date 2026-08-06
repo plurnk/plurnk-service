@@ -54,6 +54,11 @@ test("{§text-scope-semantics}{§whitespace-contract} model reference teaches li
     assert.ok(plurnkMd.includes("PLURNK does not decode body escapes: `\\n` is backslash plus `n`."));
 });
 
+test("{§copy} model reference teaches unscoped COPY creation", () => {
+    assert.ok(plurnkMd.includes("A scoped COPY/MOVE destination must already exist; omit its scope when creating a new destination channel."));
+    assert.ok(plurnkMd.includes("`<<COPY(worker:///src.md)<2,3>:worker:///slice.md:COPY`"));
+});
+
 // Model teaching mirrors the packet prose thresholds without adding a reverse package
 // dependency. {§packet-atomic-prose}
 test("plurnk.md prose has no run-on sentences", () => {

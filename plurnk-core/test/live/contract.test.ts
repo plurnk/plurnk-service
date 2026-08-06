@@ -74,10 +74,13 @@ test("live: COPY <L> — copy a line range into a new entry", { timeout: TIMEOUT
     const s = await liveWorkspace({ name: `live-contract-copy-L-${crypto.randomUUID()}` });
     try {
         await seedEntry(s.db, s.workspaceId, { pathname: "src.md", content: "one\ntwo\nthree\nfour" });
-        await liveLoop(s, 2, { prompt: "Copy the second and third lines of worker:///src.md into a new entry worker:///slice.md." }, { timeoutMs: TIMEOUT });
-        // lines 2-3 only; the trailing newline varies with the model's path
-        // (a COPY slice keeps it; a READ-then-EDIT reconstruction may drop it).
-        assert.match(await readBody(s.db, "slice.md") ?? "", /^two\nthree\n?$/);
+        const { modelWorkerId } = await liveLoop(s, 2, { prompt: "Copy the second and third lines of worker:///src.md into a new entry worker:///slice.md." }, { timeoutMs: TIMEOUT });
+        const rows = await s.db.test_log_entries_by_worker.all<{
+            op: string; origin: string; status_rx: number;
+        }>({ worker_id: modelWorkerId });
+        assert.ok(rows.some(({ op, origin, status_rx }) => op === "COPY" && origin === "model" && status_rx >= 200 && status_rx < 300),
+            "the model completed the COPY contract rather than reconstructing the result through READ + EDIT");
+        assert.match(await readBody(s.db, "slice.md") ?? "", /^two\nthree\n?$/, "COPY selected only source lines 2-3");
     } finally { await s.cleanup(); }
 });
 
