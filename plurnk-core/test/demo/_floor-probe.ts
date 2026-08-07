@@ -1,7 +1,6 @@
 // Measure a workspace's true turn-1 packet floor: a one-token virtual prompt budget
 // forces the first turn over budget, and turn 1's STORED packet
-// record carries the real assembled total whatever the loop then does — the recovery turn may
-// conclude ({§grinder-hard-413-recovery}'s conclude-law) or terminate 413; the measurement is the
+// record carries the real assembled total whatever the loop then does; the measurement is the
 // turn-1 record, not the terminal. Costs one bounded recovery generate. Zero model cost, zero GPU.
 // Budget-test ceilings derive from THIS number × a pressure factor, so teaching growth
 // (grammar/schemes/personality releases) re-calibrates the pins instead of breaking them

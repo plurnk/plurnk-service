@@ -422,7 +422,7 @@ test("the FIRST hard overflow is an informed normal turn; the SECOND terminates 
         // Physically sendable (window 200k >> the packet) but hopelessly over the policy ceiling:
         // the SAFETY pin holds the budget at ~TINY while sendability stays 199,998. The model gets
         // one informed recovery turn under the ordinary operation contract. A continuing response remains over, so
-        // the second hard overflow terminates. A concluding recovery is legitimate.
+        // the second hard overflow terminates.
         const restore = pinSafety(199_990);
         const mock = mockAt(199_998, [response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")])], 200_000);
         let result: Awaited<ReturnType<Engine["runLoop"]>>;
@@ -437,7 +437,7 @@ test("the FIRST hard overflow is an informed normal turn; the SECOND terminates 
         assert.doesNotMatch(recoveryErrors, /Prompt budget exceeded|overflow-detection|FOLDing/, "Errors remains a terse index, not a duplicate Problem");
         const recoveryLog = packetSection(recoveryPacket, "log");
         assert.equal(
-            recoveryLog.match(/Restore working room before the next turn: FOLD or KILL irrelevant log items, use smaller retrieval ranges, or conclude if the work is complete\./g)?.length,
+            recoveryLog.match(/Restore working room before the next turn: FOLD or KILL irrelevant log items, or use smaller retrieval ranges\./g)?.length,
             1,
             "the complete recovery instruction appears once on the inline error row",
         );
@@ -463,7 +463,7 @@ test("the FIRST hard overflow is an informed normal turn; the SECOND terminates 
         assert.equal(recovery.title, "Prompt budget exceeded");
         assert.equal(
             recovery.recovery,
-            "Restore working room before the next turn: FOLD or KILL irrelevant log items, use smaller retrieval ranges, or conclude if the work is complete.",
+            "Restore working room before the next turn: FOLD or KILL irrelevant log items, or use smaller retrieval ranges.",
         );
         assert.equal(recovery.stage, "overflow-detection");
         assert.equal(recovery.retryable, false);
@@ -646,7 +646,7 @@ test("physical admission includes the recovery occurrence added by the final reb
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
-        const recoveryInstruction = "Restore working room before the next turn: FOLD or KILL irrelevant log items, use smaller retrieval ranges, or conclude if the work is complete.";
+        const recoveryInstruction = "Restore working room before the next turn: FOLD or KILL irrelevant log items, or use smaller retrieval ranges.";
         const measuredRequests: string[] = [];
         const mock = Object.assign(
             mockAt(1, [response([sendStmt(200, "must not run")])], 3),

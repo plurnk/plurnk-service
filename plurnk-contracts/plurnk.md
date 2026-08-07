@@ -155,7 +155,7 @@ Other scope examples:
 ### The Log
 
 The log is your context and you are its curator: what you retrieve stays until you FOLD it, and folded bodies are hidden, not gone — OPEN brings them back.
-When the packet runs out of room, nothing new lands until you make room: FOLD what you are done with, or conclude.
+When the packet runs out of room, nothing new lands until you make room: FOLD what you are done with.
 KILL permanently erases addressed log items.
 
 Examples:

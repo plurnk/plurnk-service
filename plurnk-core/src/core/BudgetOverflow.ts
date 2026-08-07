@@ -59,7 +59,7 @@ export default class BudgetOverflow {
                         ...(physical.tokenSource === undefined ? {} : { physicalTokenSource: physical.tokenSource }),
                     }),
                     ...(recovery ? {
-                        recovery: "Restore working room before the next turn: FOLD or KILL irrelevant log items, use smaller retrieval ranges, or conclude if the work is complete.",
+                        recovery: "Restore working room before the next turn: FOLD or KILL irrelevant log items, or use smaller retrieval ranges.",
                     } : {}),
                 },
                 { title: "Prompt budget exceeded" },
