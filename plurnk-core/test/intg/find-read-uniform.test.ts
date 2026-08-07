@@ -237,6 +237,40 @@ test("FIND with a matcher emits one item per resource with all coordinates", asy
     } finally { await db.close(); }
 });
 
+test("FIND on an exact target with a result-position scope", async () => {
+    // <<FIND(worker:///doc.md)<1>::FIND — the scope selects the first result of
+    // an exact-target listing; a single-target FIND returns that target.
+    const { db, workspaceId, workerId, ctx } = await setup();
+    try {
+        await seedRaw(ctx, "doc.md", "hello world hello again");
+        const result = await new Worker().find(
+            parseOp<FindStatement>("<<FIND(worker:///doc.md)<1>::FIND", "FIND"),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
+        );
+        assert.equal(result.results.length, 1);
+        assert.equal(result.results[0]?.path, "worker:///doc.md");
+    } finally { await db.close(); }
+});
+
+test("FIND on an exact target with a content matcher and result-position scope", async () => {
+    // <<FIND(worker:///doc.md)<1>:/hello/:FIND — the scope selects the first
+    // matching resource; its matches carry both occurrences' coordinates.
+    const { db, workspaceId, workerId, ctx } = await setup();
+    try {
+        await seedRaw(ctx, "doc.md", "hello world hello again");
+        const result = await new Worker().find(
+            parseOp<FindStatement>("<<FIND(worker:///doc.md)<1>:/hello/:FIND", "FIND"),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
+        );
+        assert.equal(result.results.length, 1);
+        assert.equal(result.results[0]?.path, "worker:///doc.md");
+        assert.equal(result.results[0]?.matches?.length, 2, "both hello matches carry coordinates");
+        assert.deepEqual(result.results[0]?.matches?.[0]?.region, {
+            startLine: 1, startColumn: 1, endLine: 1, endColumn: 6,
+        });
+    } finally { await db.close(); }
+});
+
 test("FIND pagination counts selected resources, not match occurrences", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
