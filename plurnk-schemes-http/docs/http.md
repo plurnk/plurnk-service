@@ -2,8 +2,8 @@
 
 Use a web URL as an addressable entry. An unscoped READ performs a GET
 or reuses a fresh stored GET representation, then streams the selected response
-channel. HTML becomes a readable model-facing body (normally markdown); its
-faithful DOM is retained separately. Auxiliary channels are never presented by
+channel. HTML becomes a readable model-facing body (normally Markdown); its
+original server source is retained separately. Auxiliary channels are never presented by
 default.
 
 | Operation                         | Remote action | Effect                                                                         |
@@ -19,24 +19,28 @@ A path-pattern FIND searches only web entries already materialized in the
 workspace; a pattern cannot discover the remote web. FIND returns navigation
 metadata, not the selected page body. Use READ for content.
 
-Caller cancellation of an exact acquisition returns `499 cancelled`. The
-independent byte-probe deadline remains an ordinary unavailable result.
+Caller cancellation of an exact acquisition returns `499 cancelled`.
 
-| Direct response                      | `body`                                                       | Other channel                              |
-| ------------------------------------ | ------------------------------------------------------------ | ------------------------------------------ |
-| GET HTML                             | Readable projection of the rendered page                     | Faithful rendered DOM in `#html`           |
-| GET `text/event-stream`              | Event `data` chunks after READ `102`                          | Initial response in `#header`              |
-| Configured textual response          | Incremental UTF-8 text under its declared type               | Status and headers in `#header`            |
-| Binary with a readable projection    | Derived Unicode under the projection output type             | Origin type and projection ID in `#header` |
-| Binary without a readable projection | Empty marker under its type or `application/octet-stream`    | Status and headers in `#header`            |
+| Direct response                      | `body`                                                    | Other channel                                  |
+| ------------------------------------ | --------------------------------------------------------- | ---------------------------------------------- |
+| Negotiated origin Markdown           | Exact origin Markdown                                     | Independently requested server HTML in `#html` |
+| GET HTML                             | Tavily Markdown or the local HTML-reader projection       | Original server HTML in `#html`                |
+| GET `text/event-stream`              | Event `data` chunks after READ `102`                       | Initial response in `#header`                  |
+| Configured textual response          | Incremental UTF-8 text under its declared type            | Status and headers in `#header`                |
+| Binary with a readable projection    | Derived Unicode under the projection output type          | Origin type and projection ID in `#header`     |
+| Binary without a readable projection | Empty marker under its type or `application/octet-stream` | Status and headers in `#header`                |
+
+Generic public HTML uses configured Tavily as its body producer. A recoverable
+timeout, transport error, `429`, `5xx`, or per-URL extraction failure uses the
+local HTML reader and records terminal body status `203`. Authentication,
+provider rejection, and malformed provider responses are hard failures and do
+not silently switch producers. Any authored target metadata makes HTML use the
+local reader directly. Origin Markdown always wins without Tavily.
 
 Projection presence is structural: a returned projection is accepted even
-when its content is empty. `422 no-readable-projection` means exact acquisition,
-or a direct HTML READ, produced no model-facing body. A direct HTML READ retains
-its faithful `#html` and `#header` evidence; exact FIND preparation creates no entry.
-An internal projection exception instead returns non-retryable
-`500 projection-failed`; a browser failure returns retryable
-`502 render-failed`.
+when its content is empty. `422 no-readable-projection` means the local route
+produced no model-facing body. An internal projection exception returns
+non-retryable `500 projection-failed`.
 
 A binary response uses the installed mimetype reader when one supplies a
 bounded Unicode projection; raw bytes never enter a durable channel. Without a
@@ -46,10 +50,12 @@ remote response was received and its metadata remains in `#header`; do not
 retry a POST, PUT, or DELETE solely to retrieve its binary body. Exact FIND
 instead prunes responses that produce no readable projection.
 
-`#header` contains the remote HTTP status line and headers. The PLURNK
-operation result describes the streaming lifecycle; `SEND[code]` is never the
-remote HTTP status. An HTTP 4xx/5xx response still streams normally and remains
-visible in `#header`.
+`#header` contains origin and package acquisition evidence. A Tavily attempt
+adds its route, status, timing, any reported request ID and credits, and bounded
+failure evidence. `body`, `header`, and `html` settle independently; the selected
+channel determines success. Thus `#html` or `#header` can remain readable after
+a body failure, while a Tavily body can succeed without fabricating unavailable
+server HTML. `SEND[code]` is never the remote HTTP status.
 
 For SSE, the response and persisted `#header` establish acquisition. READ then
 returns `102` while events continue. Origin close settles the subscription at
@@ -64,14 +70,14 @@ Eligible content is served directly only while both the operator TTL and any
 origin `max-age` or `Expires` lifetime remain live. `no-cache` requires origin
 validation; `no-store` evidence remains in the log but supplies neither content
 nor validators to a later request. Only singular, syntactically valid stored
-validators are sent. A 304 restores the stored channels only when its ETag or
-Last-Modified value identifies the nominated representation; otherwise
-acquisition fails without serving the stored body. A valid 304 updates cache
-and validator metadata while preserving fields that describe the
-already-processed body. Responses to POST, PUT, and DELETE are not reused as
-later GET representations. A projected GET is reused only while the installed
-reader has the same projection identity; changing it forces a full acquisition
-without old validators.
+validators are sent. A 304 restores a non-page representation only when its
+ETag or Last-Modified value identifies the nominated representation; otherwise
+acquisition fails without serving the stored body. Responses to POST, PUT, and
+DELETE are not reused as later GET representations. A projected GET is reused
+only while the installed reader has the same projection identity. Page bodies
+likewise require the same origin-Markdown, local, Tavily depth/version, or
+local-fallback route. Once stale, a page composite is fully reacquired without
+old validators; an origin 304 cannot certify provider or auxiliary material.
 
 A scoped READ never fetches. Its fragment, or `body` by default, selects an
 already-materialized channel before the universal READ contract applies the
@@ -88,7 +94,10 @@ blocks, one header per block:
 
 Percent-encode `)`, `<`, and `}` inside a header value.
 An exact FIND forwards these headers when it must acquire the URL, but the
-result remains intentionally ineligible for later cache reuse.
+result remains intentionally ineligible for later cache reuse. Target headers
+are never forwarded to Tavily, so HTML requests carrying any explicit metadata
+use the local HTML-reader projection. Executor-supplied HTML also stays local;
+only generic web acquisition grants Tavily spending authority.
 
 GET acquisition of a GitHub `…/blob/…` URL uses its
 `raw.githubusercontent.com` source. The addressed GitHub URL remains entry

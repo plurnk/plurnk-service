@@ -41,7 +41,6 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
     const dependencyGraph = publish.indexOf('["ls", "--all"]');
     const installedBoot = publish.indexOf('spawn("npx", ["plurnk-service"]');
     assert.ok(firstPublish < consumerInstall && consumerInstall < dependencyGraph && dependencyGraph < installedBoot);
-    assert.match(publish, /PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled"/);
     assert.match(publish, /stdio: "inherit"/);
 
     const clientPublish = publish.indexOf("[CLIENT_RELEASE, clientVersion, version]");

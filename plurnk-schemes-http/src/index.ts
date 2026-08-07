@@ -5,10 +5,6 @@ export { default as Http } from "./Http.ts";
 // The registered WebSocket handler {§ws}.
 export { default as Ws } from "./Ws.ts";
 
-// Standalone render foundation {§render-lifecycle}.
-export { default as Browser } from "./Browser.ts";
-export type { ChromiumEngine, ChromiumFactory, RenderResult } from "./Browser.ts";
-
 // Automatic entry-acquisition primitive {§prefetch} and its URL check.
 export { default as WebFetcher } from "./WebFetcher.ts";
 export { PROJECTION_ID_HEADER, WebMaterializationError } from "./WebFetcher.ts";

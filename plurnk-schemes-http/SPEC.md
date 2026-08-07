@@ -1,8 +1,8 @@
 # plurnk-schemes-http — Specification
 
 This package owns the `http(s)://` request/response scheme, the `ws(s)://`
-full-duplex scheme, plus automatic entry-acquisition and browser-rendering
-foundations. Both handlers implement the DB-free `SchemeCtx` author contract.
+full-duplex scheme, plus automatic entry-acquisition, Tavily Extract, and local
+HTML projection foundations. Both handlers implement the DB-free `SchemeCtx` author contract.
 
 ## §http-manifest §1 HTTP manifest
 
@@ -16,11 +16,11 @@ foundations. Both handlers implement the DB-free `SchemeCtx` author contract.
 | Requires web    | `true`                        |
 | Default channel | `body`                        |
 
-| Channel  | Seed type                  | Meaning                                                         |
-| -------- | -------------------------- | --------------------------------------------------------------- |
-| `body`   | `application/octet-stream` | Source text, derived Unicode, binary marker, SSE data, or HTML  |
-| `header` | `text/plain`               | Status line, response headers, and package acquisition metadata |
-| `html`   | `text/html`                | Faithful HTML used to produce the readable body                 |
+| Channel  | Seed type                   | Meaning                                                                        |
+| -------- | --------------------------- | ------------------------------------------------------------------------------ |
+| `body`   | `application/octet-stream`  | Source text, derived Unicode, binary marker, SSE data, or HTML-page Markdown   |
+| `header` | `text/plain`                | Origin, acquisition, materializer, projection, provider, and usage evidence   |
+| `html`   | `text/html`                 | Original server-source HTML when an HTML representation can be acquired       |
 
 `package.json#plurnk.schemes` registers `http` through the default export and
 `wss` through `Ws`.
@@ -32,8 +32,7 @@ duplicate names, and an explicit empty `?` remain significant. The fragment is
 a Plurnk channel selector and never enters network identity or transport.
 Request metadata affects transport but not identity. URL userinfo is rejected;
 neither credentials nor metadata are reconstructed from `raw`. Within storage
-pathnames, `%28` and `%29` canonicalize to literal parentheses and renderers
-encode them again.
+pathnames, `%28` and `%29` canonicalize to literal parentheses.
 
 ## §op-surface §2 HTTP operation surface
 
@@ -61,73 +60,48 @@ path-pattern grammar.
 
 ```mermaid
 flowchart TD
-    op{"HTTP operation"}
-
-    op -->|scoped READ| selected["Universal READ selects the channel,<br/>requires it to exist, and applies scope"]
-
-    op -->|FIND or matcher READ| pattern{"Path pattern?"}
-    pattern -->|yes| query["Universal catalog, matcher,<br/>weight, and pagination"]
-    pattern -->|no| usable{"Usable exact entry?"}
-    usable -->|yes| query
-    usable -->|no| prefetch["WebFetcher GET"]
-
-    op -->|unscoped READ| fresh{"Fresh stored GET?"}
-    fresh -->|yes| replay["Seed → open → replay stored channels → close"]
-    fresh -->|no| stream["Seed entry → open subscription"]
-    op -->|POST, PUT, or DELETE| stream
-
-    prefetch --> guard["Guard.fetch checks the target<br/>and every followed redirect"]
-    guard -->|refused or unavailable| dead
-    guard -->|response| prefetchType{"Accepted response?"}
-    prefetchType -->|2xx HTML| prefetchHtml["Shared HTML materialization;<br/>render lazily only if absent"]
-    prefetchType -->|2xx non-HTML| prefetchClass{"Configured media class"}
-    prefetchType -->|dead| dead["404 not-materialized"]
-    prefetchClass -->|text| prefetchText["Materialize complete UTF-8 text"]
-    prefetchClass -->|binary| prefetchBinary["Bounded readable-byte projection"]
-    prefetchHtml -->|present, including empty| materialize["Write entry"]
-    prefetchHtml -->|absent| noProjection["422 no-readable-projection"]
-    prefetchText --> materialize
-    prefetchBinary -->|present, including empty| materialize
-    prefetchBinary -->|absent| noProjection
-    prefetchBinary -->|input ceiling| inputLimit["413 projection-input-limit"]
-    materialize --> query
-
-    stream --> response{"Response path"}
-    response -->|304 with stored GET| restore["Restore stored channels and refresh stamp"]
-    response -->|GET + HTML| render["Browser → rendered HTML"]
-    response -->|GET + SSE| acquired["Persist header → READ 102"]
-    acquired --> events["Detached event data → body chunks"]
-    response -->|other| representation{"Body representation"}
-    representation -->|none| empty["Header only"]
-    representation -->|configured text| text["UTF-8 response chunks → body"]
-    representation -->|configured binary| binaryProjection["Bounded readable-byte projection"]
-    binaryProjection -->|present, including empty| projected["Derived Unicode → body"]
-    binaryProjection -->|absent| binary["Cancel bytes → typed empty marker + 415"]
-    binaryProjection -->|input ceiling| binaryLimit["Typed empty marker + 413"]
-    restore --> close["Persist/publish → close exact result"]
-    render --> directHtml["Shared HTML materialization"]
-    directHtml -->|present, including empty| close
-    directHtml -->|absent| noProjection
-    events --> close
-    empty --> close
-    text --> close
-    projected --> close
-    binary --> close
-    binaryLimit --> close
+    get["GET acquisition"] --> origin{"Origin outcome"}
+    origin -->|text/markdown| markdown["Use origin Markdown as body<br/>and request an HTML variant"]
+    origin -->|server HTML| source["Retain exact server HTML"]
+    origin -->|transport unavailable<br/>after public admission| noSource["No HTML source"]
+    source --> eligible{"Generic public request<br/>with Tavily configured?"}
+    noSource --> eligible
+    eligible -->|no| local["Installed HTML projection"]
+    eligible -->|yes| tavily["Tavily Extract Markdown"]
+    tavily -->|success| providerBody["Tavily body"]
+    tavily -->|recoverable failure<br/>and source exists| recovery["Local projection; body 203"]
+    tavily -->|hard failure or<br/>no recovery source| bodyError["Body errored"]
+    local -->|present, including empty| localBody["Local body"]
+    local -->|absent or no source| bodyError
+    markdown --> settle["Persist each available channel<br/>and its independent terminal state"]
+    providerBody --> settle
+    recovery --> settle
+    localBody --> settle
+    bodyError --> settle
+    settle --> selected{"Selected channel"}
+    selected -->|successful| streamed["Publish; operation 102"]
+    selected -->|errored| problem["Return that channel's Problem"]
 ```
 
-| Consumer / response                          | `body`                                                          | Auxiliary materialization                              | Completion                                      |
-| -------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------ | ----------------------------------------------- |
-| Direct GET + HTML                            | Present projection of the rendered DOM, including `""`          | Rendered DOM in `html`; render/projection metadata     | `102`; absent projection is `422`               |
-| Direct GET + `text/event-stream`             | One `data` value plus newline per `text/plain` chunk            | Initial response in `header`                           | `102` after header; origin close settles        |
-| Direct request + no response body            | Empty seed                                                      | Response and package metadata in `header`              | Subscription closes; op is `102`                |
-| Direct request + configured textual type     | Incremental UTF-8 text under the declared type                  | Response and package metadata in `header`              | Response-body end closes the stream             |
-| Direct request + readable binary type        | Derived Unicode under the projection output type               | Origin type and projection identity in `header`        | `102`; bytes are never durable                  |
-| Direct request + unreadable binary/unknown   | Empty marker; declared type or `application/octet-stream`       | Response and package metadata in `header`              | `415 binary-response-unsupported`               |
-| Direct binary input exceeds configured bound | Empty marker under the source type                              | Limit evidence in the terminal Problem                 | `413 projection-input-limit`                    |
-| Exact WebFetcher + non-empty 2xx HTML        | Present projection of server HTML or the lazy rendered fallback | Selected HTML plus origin/projection metadata          | Materialize; absent projection is `422`         |
-| Exact WebFetcher + configured text           | Complete UTF-8 response                                         | Byte response in `header`                              | Materialize, then universal query               |
-| Exact WebFetcher + readable binary           | Derived Unicode under the projection output type               | Origin type and projection identity in `header`        | Materialize; absent projection is `422`         |
+The same page producer serves direct GET, exact FIND preparation, and executor
+entry acquisition. Their outer policies differ: direct GET accepts explicit
+targets and HTTP error responses; automatic acquisition first admits a public
+credential-free target and treats non-2xx responses as unavailable. A scoped
+READ never enters the producer. It delegates the already-stored selected
+channel and scope to universal READ.
+
+| Consumer / response                          | `body`                                                        | Auxiliary materialization                                 | Completion                                             |
+| -------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------ |
+| GET + negotiated origin Markdown             | Exact origin Markdown                                         | Independently acquired server source in `html` when found | Selected-channel settlement                            |
+| GET + HTML-page production                   | Tavily Markdown, local Markdown, or an independent error      | Exact server source in `html` when origin supplied it     | Selected-channel settlement                            |
+| Direct GET + `text/event-stream`             | One `data` value plus newline per `text/plain` chunk          | Initial response in `header`                              | `102` after header; origin close settles               |
+| Direct request + no response body            | Empty seed                                                    | Response and package metadata in `header`                 | Subscription closes; op is `102`                       |
+| Direct request + configured textual type     | Incremental UTF-8 text under the declared type                | Response and package metadata in `header`                 | Response-body end closes the stream                    |
+| Direct request + readable binary type        | Derived Unicode under the projection output type             | Origin type and projection identity in `header`           | `102`; bytes are never durable                         |
+| Direct request + unreadable binary/unknown   | Empty marker; declared type or `application/octet-stream`     | Response and package metadata in `header`                 | `415 binary-response-unsupported`                      |
+| Direct binary input exceeds configured bound | Empty marker under the source type                            | Limit evidence in the terminal Problem                    | `413 projection-input-limit`                           |
+| Exact WebFetcher + configured text           | Complete UTF-8 response                                       | Response evidence in `header`                             | Materialize, then universal query                      |
+| Exact WebFetcher + readable binary           | Derived Unicode under the projection output type             | Origin type and projection identity in `header`           | Materialize; absent projection is `422`                |
 
 A fragmentless direct operation publishes only `body`. An explicit fragment
 publishes that named channel. Every acquired channel remains durable even when
@@ -144,7 +118,7 @@ evidence.
 | WebFetcher textual response   | Fetch `Response.text()` UTF-8 decoding; buffering does not select a different character encoding |
 | `charset` parameter           | Preserve in `header` as origin evidence; it does not replace Fetch text decoding                 |
 | JSON and XML textual families | Use the same HTTP byte-to-string rule; format projections consume the resulting Unicode string   |
-| Direct HTML GET               | Browser navigation owns the separate HTML document encoding algorithm                            |
+| Direct HTML GET               | Fetch UTF-8 decoding of origin server HTML                                                       |
 | Server-sent events            | UTF-8 only under the HTML event-stream standard                                                  |
 | Malformed UTF-8               | Preserve the Encoding Standard's replacement-character behavior                                  |
 
@@ -159,50 +133,106 @@ durable channel.
 query preparation and executor entry acquisition. Direct GET uses the same
 HTML and binary projection results while retaining incremental text streaming.
 
-| Input or event                        | Action                                              | Result                                                          |
-| ------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------- |
-| Configured non-HTML text              | Decode with Fetch UTF-8                             | Original representation in `body`                               |
-| Configured binary with reader         | Apply the bounded byte projection                   | Derived Unicode plus source type and identity                    |
-| Configured binary without reader      | Cancel without retaining bytes                      | `null`; the consumer applies its absence policy                 |
-| Binary input exceeds the common bound | Cancel and preserve the typed cause                  | `WebMaterializationError` caused by `ProjectionInputLimitError`  |
-| HTML with a present projection        | Stop                                                | Projection in `body`; selected HTML in `html`                    |
-| HTML with an absent projection        | Render once when the caller supplies a renderer     | Rendered projection in `body`; rendered `html`                   |
-| HTML still absent after fallback      | Stop                                                | `null`; the consumer applies its absence policy                 |
-| Projection implementation throws      | Stop and preserve the cause                         | `WebMaterializationError` with stage `projection`                |
-| Lazy renderer throws                  | Stop before another projection attempt              | `WebMaterializationError` with stage `render`                    |
+| Input or event                              | Action                                      | Result                                                             |
+| ------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------ |
+| Configured non-HTML text                    | Decode with Fetch UTF-8                     | Original representation in `body`                                  |
+| Configured binary with reader               | Apply the bounded byte projection           | Derived Unicode plus source type and identity                       |
+| Configured binary without reader            | Cancel without retaining bytes              | `null`; the consumer applies its absence policy                    |
+| Binary input exceeds the common bound       | Cancel and preserve the typed cause         | `WebMaterializationError` caused by `ProjectionInputLimitError`     |
+| Negotiated origin `text/markdown`           | Accept it without Tavily                    | Exact Markdown in `body`; independently requested source in `html`  |
+| Eligible HTML with Tavily configured        | Use Tavily as the body producer             | Tavily Markdown in `body`; origin server source in `html`           |
+| Ineligible HTML or Tavily not configured    | Use the installed HTML projection           | Local Markdown in `body`; origin server source in `html`            |
+| Recoverable Tavily failure with source HTML | Use the installed projection as recovery    | Local Markdown in `body` with terminal `203`; source in `html`       |
+| Hard Tavily failure                         | Preserve evidence; do not run local recovery | `body` errored; independently successful `html`/`header` survive    |
+| Tavily success after origin transport loss  | Preserve provider body and origin failure   | `body` closed; `html` errored                                       |
+| Projection implementation throws            | Stop and preserve the cause                 | `WebMaterializationError` with stage `projection`                   |
 
 A projection object is present even when its content is `""`; only `null`
 denotes absence. A materialization exception retains its original `cause`; it
 never enters the absence channel.
 
+#### §tavily-extract Tavily Extract boundary
+
+Tavily is eligible only for a credential-free generic request whose target has
+been admitted as public. Authored request metadata—including an authored
+`Accept` field—makes the request ineligible. The package-generated Markdown
+negotiation, browser-compatible `User-Agent`, and conditional cache fields are
+transport mechanics, not authored metadata. No target headers or origin
+credentials cross the provider boundary.
+
+When no `Accept` is authored, origin acquisition offers
+`text/markdown, text/html;q=0.9, */*;q=0.1`. An origin `text/markdown`
+representation wins and Tavily is skipped; a second origin request with
+`Accept: text/html` may populate `html`. An authored `Accept` value is sent
+unchanged and makes any returned HTML use the local projection route.
+
+One provider request is `POST https://api.tavily.com/extract` with bearer
+authentication and exactly one URL, configured `basic` or `advanced` depth,
+`format: "markdown"`, and `include_usage: true`. A package-owned abort timeout
+bounds the call. Success requires Markdown plus `request_id` and
+`usage.credits`; those facts remain durable in `header`.
+
+| Provider outcome                         | Classification | Body behavior when server HTML exists                  |
+| ---------------------------------------- | -------------- | ------------------------------------------------------ |
+| Success with required evidence           | Success        | Use Tavily Markdown                                    |
+| Caller cancellation                      | Cancelled      | Return exact `499`; no recovery                        |
+| Client timeout or transport failure      | Recoverable    | Local projection, terminal `203`                       |
+| `429`, `5xx`, or `failed_results`        | Recoverable    | Local projection, terminal `203`                       |
+| `401` or `403`                           | Hard           | `tavily-authentication-failed`; no local projection    |
+| Other `4xx`                              | Hard           | `tavily-provider-rejected`; no local projection        |
+| Malformed success or missing evidence    | Hard           | `tavily-invalid-response`; no local projection         |
+
+Without server HTML, no local recovery input exists. A Tavily success can still
+close `body`, but every Tavily failure remains the body failure and `html`
+closes errored.
+
+#### §http-channel-outcomes Channel outcomes
+
+For HTML-page production, `body`, `header`, and `html` settle independently.
+Available evidence is written before settlement. The selected channel alone
+determines the operation result: successful `#html` or `#header` can be read
+when `body` failed, and a successful default `body` is not invalidated by an
+unavailable `html`. Unselected failures remain durable channel state. A
+recoverable local body is closed, not errored, with result `203`; direct READ
+still returns its ordinary streaming acknowledgement `102`.
+
+Synchronous exact-FIND and executor materialization preserves the same outcome
+when it persists a successful body: available channels remain static, while an
+explicitly unavailable `html` representation is an empty `errored` channel.
+Later cache use therefore cannot reinterpret missing source evidence as a
+successful empty representation.
+
 ## §http-status §4 HTTP status mapping
 
-| Outcome                                                    | Operation status                                 |
-| ---------------------------------------------------------- | ------------------------------------------------ |
-| Scoped READ                                                | Exact universal selected-channel READ result     |
-| Exact FIND / matcher READ after preparation                | Exact universal query result                     |
-| Exact acquisition returns no WebFetcher value              | `404` (`not-materialized`)                       |
-| Direct HTML or exact preparation has no readable projection | `422` (`no-readable-projection`)                 |
-| Direct textual, projected-binary, or empty response        | `102`                                            |
-| Direct binary response has no readable projection          | `415` (`binary-response-unsupported`)            |
-| Binary projection input exceeds the configured byte bound  | `413` (`projection-input-limit`)                 |
-| `SEND[410]`                                                | Exact entry-delete result                        |
-| Routed `SEND[499]` dispatch                                | `200`                                            |
-| Client-cancelled acquisition                               | Direct `499` (`cancelled`)                       |
-| SSE cancellation after acquisition                         | `102` initial; terminal `499`                    |
-| SSE parser/transfer failure after acquisition              | `102` initial; terminal `502`                    |
-| Multi-statement HTTP edit batch                            | `409` (`non-atomic-edit-batch`)                  |
-| Invalid target, channel, line edit, or URL userinfo        | `400` with the corresponding stable Problem kind |
-| Non-corresponding 304                                      | `502` (`fetch-failed`)                           |
-| Direct network or acquisition exception                    | `502` (`fetch-failed`)                           |
-| Direct or prepared HTML render exception                   | `502` (`render-failed`)                          |
-| Direct or prepared projection exception                    | `500` (`projection-failed`)                      |
-| Uninterpreted SEND status                                  | `501` (`send-status-unsupported`)                |
+| Outcome                                                       | Operation status                                      |
+| ------------------------------------------------------------- | ----------------------------------------------------- |
+| Scoped READ                                                   | Exact universal selected-channel READ result          |
+| Exact FIND / matcher READ after preparation                   | Exact universal query result                          |
+| Exact acquisition returns no WebFetcher value                 | `404` (`not-materialized`)                            |
+| Selected HTML-page channel succeeds                           | Direct READ `102`; terminal selected-channel result   |
+| Selected HTML-page channel fails                              | That channel's exact producer Problem                 |
+| Local HTML projection is absent                               | `422` (`no-readable-projection`)                      |
+| Recoverable Tavily failure uses local projection              | Direct READ `102`; terminal body result `203`         |
+| Direct textual, projected-binary, or empty response           | `102`                                                 |
+| Direct binary response has no readable projection             | `415` (`binary-response-unsupported`)                 |
+| Binary projection input exceeds the configured byte bound     | `413` (`projection-input-limit`)                      |
+| `SEND[410]`                                                   | Exact entry-delete result                             |
+| Routed `SEND[499]` dispatch                                   | `200`                                                 |
+| Client-cancelled acquisition                                  | Direct `499` (`cancelled`)                            |
+| SSE cancellation after acquisition                            | `102` initial; terminal `499`                         |
+| SSE parser/transfer failure after acquisition                 | `102` initial; terminal `502`                         |
+| Multi-statement HTTP edit batch                               | `409` (`non-atomic-edit-batch`)                       |
+| Invalid target, channel, line edit, or URL userinfo           | `400` with the corresponding stable Problem kind      |
+| Non-corresponding 304                                         | `502` (`fetch-failed`)                                |
+| Direct acquisition failure without a successful provider body | `502` (`fetch-failed`)                                |
+| Direct or prepared projection exception                       | `500` (`projection-failed`)                           |
+| Uninterpreted SEND status                                     | `501` (`send-status-unsupported`)                     |
 
 An HTTP error status is still a successfully acquired direct response: its
-status remains in `header` and its body streams normally. WebFetcher instead
-treats a non-2xx response as unmaterializable. Handler failures use RFC 9457
-Problem Details. Caught direct-acquisition diagnostics are bounded by
+status remains in `header`; HTML enters page production and other content uses
+the ordinary response path. Automatic WebFetcher acquisition instead treats a
+non-2xx response as unavailable. Handler failures use RFC 9457 Problem Details.
+Caught direct-acquisition diagnostics are bounded by
 `PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT` in model-facing detail while complete
 errors remain in daemon diagnostics.
 
@@ -223,36 +253,17 @@ handler does not sniff or guess unknown bytes.
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
 | Platform          | Node ≥26 native fetch, streams, abort signals, decoding, DNS, and `WebSocket`                             |
 | SSE               | `eventsource-parser` for bounded WHATWG event-stream framing                                              |
-| Browser rendering | Required lazy-loaded `playwright` client; executable provisioning follows {§browser-provisioning}        |
+| Tavily Extract    | Optional Tavily Extract API primitive when `TAVILY_API_KEY` is present                                    |
 
 ### §http-config Operator configuration
 
-| Concern              | Contract                                                                                                 |
-| -------------------- | -------------------------------------------------------------------------------------------------------- |
-| Canonical registry   | Shipped `.env.defaults`; the daemon assembles it as a set-if-unset floor {§operator-config-env-defaults} |
-| Required values      | Missing or invalid required values fail at their owning read; code carries no hidden fallback            |
-| Browser method       | Exactly one of `launch`, `connect`, `connectOverCDP`, or `disabled`                                      |
-| Method-specific data | Endpoint belongs to connection methods; channel/executable belong to launch and are mutually exclusive   |
-| Browser location     | Operator-set Playwright location variables remain authoritative                                         |
-
-`Http.ready()` verifies the selected browser route before the handler is
-advertised. Disabled rendering is a valid configured route and fails clearly
-if an HTML operation later requires the browser.
-
-### §browser-provisioning Browser provisioning
-
-| Component or method | Contract                                                                                             |
-| ------------------- | ---------------------------------------------------------------------------------------------------- |
-| Playwright client   | Required runtime dependency; lazy import keeps non-render paths from initializing it                 |
-| `launch`            | Requires an operator-provisioned compatible browser, selected by Playwright, channel, or exact path  |
-| `connect`           | Requires an external Playwright endpoint; no local browser executable                                |
-| `connectOverCDP`    | Requires an external Chromium CDP endpoint; no local browser executable                              |
-| `disabled`          | Requires no browser executable; a render attempt fails clearly                                       |
-
-The package has no browser-install lifecycle script and never assigns
-`PLAYWRIGHT_BROWSERS_PATH`. Operators may provision the standard compatible
-Chromium with `npx playwright install chromium`; methods never fall back into
-one another.
+| Concern               | Contract                                                                                                 |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| Canonical registry    | Shipped `.env.defaults`; the daemon assembles it as a set-if-unset floor {§operator-config-env-defaults} |
+| Required values       | Missing or invalid required values fail at readiness/owning read; code carries no hidden fallback        |
+| Tavily API Key        | Optional `# TAVILY_API_KEY=`; enables Tavily Extract for eligible public HTML                            |
+| Tavily Extract Depth  | `PLURNK_SCHEMES_HTTP_TAVILY_DEPTH=basic`; only `basic` or `advanced`                                     |
+| Tavily client timeout | Positive `PLURNK_SCHEMES_HTTP_TAVILY_TIMEOUT_MS=30000`                                                   |
 
 ### §automatic-fetch-check Automatic acquisition URL check
 
@@ -260,10 +271,10 @@ one another.
 acquisition, it accepts credential-free HTTP(S) targets only when every
 resolved address is ordinary globally reachable unicast, and repeats the check
 before every manually followed redirect. A refused or unresolvable target is
-the ordinary unavailable `null` result.
+the ordinary unavailable `null` result. A transport failure after public
+admission may still enter Tavily page production.
 
-Direct HTTP operations, WebSocket connections, Playwright navigation, browser
-subresources, and Playwright/CDP endpoints do not use this check. Loopback,
+Direct HTTP operations and WebSocket connections do not use this check. Loopback,
 private, and link-local destinations are therefore valid explicit targets.
 
 Redirect transitions follow WHATWG Fetch: 301/302 rewrite POST to GET; 303
@@ -272,26 +283,24 @@ A body rewrite removes body headers, cross-origin redirects remove
 `Authorization`, and followed redirect bodies are cancelled. The configured
 hop limit returns the last redirect rather than following beyond the limit.
 Validation-time DNS answers are not pinned to connection-time resolution. This
-check therefore makes no DNS-rebinding, browser-sandbox, or total-egress claim.
+check therefore makes no DNS-rebinding or total-egress claim.
 
-## §render-lifecycle §6 Render lifecycle
+## §materialization-lifecycle §6 Materialization lifecycle
 
-| Concern       | Contract                                                                                                      |
-| ------------- | ------------------------------------------------------------------------------------------------------------- |
-| Direct gate   | A GET HTML response cancels the byte probe body and navigates through the browser                             |
-| Prefetch gate | Server HTML is primary; browser rendering is a lazy fallback only when its readable projection is absent      |
-| Pool          | One warm browser per `Browser`; one atomically acquired context per worker; prefetch uses worker `0`          |
-| Navigation    | Mobile-emulated by default; `networkidle` with bounded substantive-DOM timeout salvage                        |
-| Projection    | A present result, including `""`, becomes `body`; exact HTML used becomes `html`                              |
-| Cancellation  | The render-owned page close aborts in-flight navigation; an already-aborted render never navigates            |
-| Page cleanup  | Close each opened page once and await it; preserve its failure alone or aggregate it after a primary failure  |
-| Shutdown      | Attempt every context and browser close, await all, then aggregate failures under {§handler-lifecycle}        |
+| Concern        | Contract                                                                                                   |
+| -------------- | ---------------------------------------------------------------------------------------------------------- |
+| Direct gate    | Explicit targets use native origin transport; only a generic public request grants Tavily authority          |
+| Automatic gate | Target and redirects require public admission; accepted generic HTML follows the same page producer       |
+| Body owner     | Origin Markdown wins; otherwise configured eligible Tavily is structural, with one local projection floor  |
+| Source owner   | `html` is exact server-source HTML; it is never provider-generated or DOM-generated                         |
+| Projection     | A present projection, including `""`, becomes `body`; `null` alone means absence                           |
+| Cancellation   | One caller signal spans origin, auxiliary origin, projection, and Tavily work                              |
 
 ### §host-rewrite Acquisition target rewrite
 
 Only acquisition GETs are eligible for host rewriting. A GitHub
 `…/blob/…` address uses the corresponding `raw.githubusercontent.com` source for
-both byte and browser transport. Direct READ, exact FIND, matcher READ, and
+byte transport. Direct READ, exact FIND, matcher READ, and
 WebFetcher prefetch share that rule. The originally addressed GitHub URL remains
 entry identity. POST, PUT, and DELETE are never retargeted. Rewritten targets
 are checked under {§automatic-fetch-check} only when `WebFetcher` acquires them.
@@ -300,8 +309,10 @@ are checked under {§automatic-fetch-check} only when `WebFetcher` acquires them
 
 Acquired responses append package-owned `x-plurnk-request-method`,
 `x-plurnk-fetched-at`, and `x-plurnk-cache-variant` fields after origin headers.
-Derived responses then append `x-plurnk-projection-id`. Only package metadata
-after the acquisition stamp is authoritative, so an origin cannot spoof it.
+Page bodies append `x-plurnk-materializer-id`; local projections append
+`x-plurnk-projection-id`; Tavily appends status, route, request, usage, timing,
+and bounded failure evidence. Only package metadata after the acquisition stamp
+is authoritative.
 Plurnk stores one representation per canonical URL rather than a variant set:
 
 | Acquisition context                          | Package variant | Later cache use |
@@ -318,11 +329,11 @@ restored representation's package marker to `bypass`.
 
 Only an eligible GET representation can supply a direct READ's body, TTL stamp,
 conditional validators, or exact-FIND preparation. Completion comes from
-channel lifecycle, not body length: every stored channel must be final (`static`
-after exact materialization or `closed` after a successful stream); `active`,
-`errored`, or unknown state is ineligible. Durable operation evidence and HTTP
-reuse eligibility remain distinct: an acquired response stays in the entry even
-when its origin policy prevents later cache use.
+channel lifecycle, not body length: `body` and `header` must be successful
+(`static` or `closed`), and every channel must be terminal. An auxiliary channel
+may be `errored`; `active` or unknown state is ineligible. Durable operation
+evidence and HTTP reuse eligibility remain distinct: an acquired response stays
+in the entry even when its origin policy prevents later cache use.
 
 | Stored origin policy                  | Direct READ after acquisition                          | Exact FIND after acquisition             |
 | ------------------------------------- | ------------------------------------------------------ | ---------------------------------------- |
@@ -340,10 +351,10 @@ stamp. A representation is fresh only while both origin lifetime and operator
 ceiling permit it. Unknown cache extensions are inert. Stale content is never
 served, so `must-revalidate` requires no separate path.
 
-Outside the fresh window, direct READ sends a stored ETag or Last-Modified only
-when that field is singular and syntactically valid. A 304 can restore the
-stored channels only when its validator corresponds to the nominated stored
-representation:
+Outside the fresh window, a representation without a materializer identity may
+send a stored ETag or Last-Modified only when that field is singular and
+syntactically valid. A 304 can restore those stored channels only when its
+validator corresponds to the nominated stored representation:
 
 | 304 validator                                         | Correspondence requirement                  |
 | ----------------------------------------------------- | ------------------------------------------- |
@@ -352,7 +363,7 @@ representation:
 | No ETag; Last-Modified                                | Same valid stored Last-Modified instant     |
 | Missing, malformed, unsolicited, or non-corresponding | Invalid acquisition; `502` (`fetch-failed`) |
 
-A corresponding 304 restores the stored channels without rendering and
+A corresponding 304 restores the stored channels without rematerializing and
 updates the header under the following ownership rule; any other response
 replaces the channels:
 
@@ -362,16 +373,25 @@ replaces the channels:
 | Origin fields absent from the 304                                     | Preserve                                                |
 | `Content-Type`, `Content-Encoding`, `Content-Range`, `Content-Length` | Preserve metadata describing the already-processed body |
 | Package method, acquisition stamp, and variant                        | Rebuild authoritatively; refresh stamp and variant      |
-| Projection identity                                                   | Preserve                                                |
+| Projection evidence                                                   | Preserve                                                |
 
 A 304-provided `Vary`, `no-store`, `no-cache`, expiry, or validator
 therefore governs the next operation without relabeling derived Unicode as a
 different source representation.
 
-A stored derived representation is reusable only while its projection identity
-matches the currently installed reader for the origin media type. A mismatch
-invalidates the body, TTL shortcut, and origin validators together: a 304 can
-certify unchanged source bytes, not output from a different projection.
+A stored derived representation requires the current projection identity. A
+stored page body also requires its current route: negotiated origin Markdown,
+local projection while Tavily is unconfigured, metadata-ineligible local
+projection, configured Tavily depth/version, or the corresponding recoverable
+local-fallback route. Enabling Tavily or changing depth invalidates the affected
+route.
+
+Once a page representation leaves its fresh window, Plurnk performs complete
+reacquisition without old origin validators. Origin `304` can certify origin
+bytes, but it cannot certify a composite that may also contain a fresh Tavily
+extraction, a newly negotiated Markdown representation, or an independently
+acquired HTML variant. Projection or materializer mismatch likewise invalidates
+body, TTL, and validators together.
 
 POST, PUT, and DELETE responses retain their method marker but cannot satisfy a
 later GET or exact-FIND acquisition. An unmarked authored entry and an eligible
@@ -392,26 +412,25 @@ operation is cancelled.
 
 ## §prefetch §7 WebFetcher
 
-| Result                       | Meaning                                                                                  |
-| ---------------------------- | ---------------------------------------------------------------------------------------- |
-| Non-empty 2xx HTML           | Server text, MIME type, package-stamped headers, and a lazy browser renderer             |
-| Other 2xx body               | One unconsumed byte stream, MIME type, package-stamped headers, and cancellation owner   |
-| Materialized configured text | Complete Fetch-decoded UTF-8 body                                                        |
-| Materialized readable binary | Bounded derived Unicode plus source type, projection identity, and enriched header       |
-| Lazy renderer value          | Non-empty rendered HTML, or `null` only when rendering yields no HTML                    |
-| Lazy renderer failure        | Rejects with the complete browser failure; materialization preserves stage and cause     |
-| Top-level fetch `null`       | Refused, unreachable, timed-out, non-2xx, missing body, or empty HTML byte response       |
-| Materialization `null`       | Empty configured text or no final readable projection                                    |
-| Caller-cancelled acquisition | Rejects with the caller signal's exact reason                                            |
+| Result                               | Meaning                                                                                  |
+| ------------------------------------ | ---------------------------------------------------------------------------------------- |
+| Origin HTML                          | Exact source text, MIME type, package-stamped evidence, and page-producer eligibility    |
+| Negotiated origin Markdown           | Exact body plus independent HTML-variant outcome                                         |
+| Other accepted body                  | One unconsumed byte stream, MIME type, package-stamped headers, and cancellation owner   |
+| Admitted origin transport failure    | Bounded origin failure plus eligibility for provider-only page production                |
+| Materialized configured text         | Complete Fetch-decoded UTF-8 body                                                        |
+| Materialized readable binary         | Bounded derived Unicode plus source type, projection identity, and enriched header       |
+| Materialized HTML page               | Independent body/html outcomes and complete route/provider evidence                      |
+| Automatic top-level `null`           | Refused target, non-2xx response, or unavailable response with no provider route          |
+| Non-page materialization `null`      | Empty configured text or no final readable binary projection                             |
+| Caller-cancelled acquisition         | Rejects with the caller signal's exact reason                                            |
 
-Top-level `null` is a liveness value rather than a thrown failure. Caller
-cancellation is not liveness: a pre-aborted caller fails before acquisition, and
-the first abort reason selected between the caller and configured byte-probe
-deadline owns the outcome. The probe deadline remains `null`. WebFetcher owns
-no entry identity, registry selection, or query policy; its consumer supplies
-the projection capability and materializes the returned value. Lazy-render
-exceptions remain distinct from a renderer that honestly returns no HTML. The
-handler lifecycle closes the shared browser.
+Top-level `null` is an automatic-acquisition liveness value rather than a thrown
+failure. Caller cancellation is not liveness: a pre-aborted caller fails before
+acquisition and a caller abort wins with its exact reason. Package-owned origin
+and Tavily timeouts are ordinary classified acquisition outcomes. WebFetcher
+owns no entry identity, registry selection, selected-channel policy, or query
+policy; its consumers supply those boundaries and the projection capability.
 
 ## §ws §8 WebSocket
 

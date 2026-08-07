@@ -62,6 +62,24 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         assert.equal(wakes[0].summary, "exit 0; 11 bytes");
         assert.equal(wakes[0].target, "exec:///run");
 
+        // A producer may preserve successfully acquired auxiliary evidence when
+        // the default body fails; overrides are exact and validated before writes.
+        await entries.write("/mixed", { channels: {
+            stdout: { content: "", mimetype: "text/plain", state: "active" },
+            stderr: { content: "evidence", mimetype: "text/plain", state: "active" },
+        }, tags: [] });
+        await subs.open("/mixed", { cancel: () => {} });
+        const bodyFailure = Results.failure("scheme:exec", "body-failed", 500, "The default body failed.");
+        await assert.rejects(
+            () => subs.close(bodyFailure, "bad override", { missing: "closed" }),
+            /unknown channel state override missing/,
+        );
+        assert.equal((await entries.read("/mixed")).entry?.channels.stdout.state, "active");
+        await subs.close(bodyFailure, "body failed", { stderr: "closed" });
+        const mixed = await entries.read("/mixed");
+        assert.equal(mixed.entry?.channels.stdout.state, "errored");
+        assert.equal(mixed.entry?.channels.stderr.state, "closed");
+
         // a worker abort propagates to the subscription signal AND force-cancels the handle
         await entries.write("/run2", { channels: {
             stdout: { content: "", mimetype: "text/plain", state: "active" },

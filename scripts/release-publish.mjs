@@ -99,7 +99,6 @@ try {
             PLURNK_HOST: "127.0.0.1",
             PLURNK_PORT: String(BOOT_PORT),
             PLURNK_WS_PORT: String(BOOT_PORT + 1),
-            PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
         },
         stdio: "inherit",
     });

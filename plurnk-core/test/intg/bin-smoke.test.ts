@@ -37,7 +37,6 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
             PLURNK_SERVICE_DB_PATH: dbPath,
             PLURNK_HOST: "127.0.0.1",
             PLURNK_PORT: "0",      // the AG-UI+ surface — THE listener; OS picks a free port
-            PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled", // {§browser-provisioning}: no operator browser in this launcher fixture
         };
         delete env.PLURNK_MODEL;
 
@@ -195,7 +194,6 @@ test("bin: provider initialization failure closes the admitted database", async 
             PLURNK_PORT: "0",
             PLURNK_MODEL: "broken",
             PLURNK_MODEL_broken: "missing/model",
-            PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
         };
         const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "start"], {
             env,
@@ -243,7 +241,6 @@ test("bin: observability initialization failure closes the admitted database", a
             PLURNK_PORT: "0",
             OTEL_TRACES_EXPORTER: "unsupported",
             OTEL_METRICS_EXPORTER: "none",
-            PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
         };
         delete env.PLURNK_MODEL;
         const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "start"], {

@@ -87,7 +87,7 @@ Each mirrors a `# --- section ---` in the floor; consult the floor for exact def
   virtual pressure; `PLURNK_SERVICE_SAFETY` is the packing margin.
 - **Plugins** — bare `PLURNK_PLUGINS_TRUSTED_ONLY` (0/unset = load all installed; a value = `@plurnk/*` plus an allowlist).
 - **Semantic search** — `PLURNK_SERVICE_SEMANTIC_TOP_K` (markerless result count), `_SEMANTIC_CHUNK_TOKENS`/`_CHUNK_OVERLAP` (service-side chunking), `PLURNK_SERVICE_EMBED_DISABLE` (FTS-only), `PLURNK_MIMETYPES_EMBED_WORKERS` (the embedder's pool — mimetypes-owned).
-- **Schemes: http** — `PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT`/`_SALVAGE_MIN_BODY_CHARS`/`_IDLE_TIMEOUT` (required on the HTML render path), optional Playwright/Chromium knobs.
+- **Schemes: http** — `PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT`, `_TTL_MS`, optional `# TAVILY_API_KEY=`, and `PLURNK_SCHEMES_HTTP_TAVILY_DEPTH`/`_TAVILY_TIMEOUT_MS`.
 - **Execs** - `PLURNK_EXECS_<runtime>=0` disables a runtime; `PLURNK_EXECS_SEARCH_SEARXNG_URL` enables web search (unset = search off).
 - **Observability** — standard `OTEL_*` env ({§observability-boundary}):
   `OTEL_TRACES_EXPORTER`/`OTEL_METRICS_EXPORTER` (`otlp` or `console`; unset

@@ -4,9 +4,9 @@
 //     worker+teardown-composed StreamSubscription; a worker abort also
 //     force-cancels the sibling's handle.
 //   notifyChunk(channel, chunk) → FUSED append-to-channel + stream/event.
-//   close(result, summary?) → composites every channel's terminal state, the
-//     registry close, and the rich worker wake (the only place with the close
-//     context to populate it; NotifyCaps therefore has no wakeWorker operation).
+//   close(result, summary?, channelStates?) → composites every channel's
+//     terminal state, registry close, and rich worker wake (the only place with
+//     the close context; NotifyCaps therefore has no wakeWorker operation).
 // The returned object owns the exact retained lifecycle. Namespace methods are
 // operation-scoped compatibility forwarders to that same object.
 
@@ -16,6 +16,7 @@ import type {
     SubscriptionHandle,
     StreamSubscription,
     ChannelState,
+    TerminalChannelState,
     SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
@@ -62,11 +63,23 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
                 mimetype,
             });
         };
-        const close = async (result: SchemeResult, summary?: string): Promise<void> => {
+        const close = async (
+            result: SchemeResult,
+            summary?: string,
+            channelStates?: Readonly<Record<string, TerminalChannelState>>,
+        ): Promise<void> => {
             Results.assert(result);
-            const state: ChannelState = result.status >= 400 ? "errored" : "closed";
+            const defaultState: ChannelState = result.status >= 400 ? "errored" : "closed";
             const channels = await db.crud_read_channels.all<{ name: string }>({ entry_id: entryId });
+            const channelNames = new Set(channels.map(({ name }) => name));
+            for (const [name, state] of Object.entries(channelStates ?? {})) {
+                if (!channelNames.has(name)) throw new Error(`subscriptions.close: unknown channel state override ${name}`);
+                if (state !== "closed" && state !== "errored") {
+                    throw new Error(`subscriptions.close: invalid state ${JSON.stringify(state)} for channel ${name}`);
+                }
+            }
             for (const { name } of channels) {
+                const state: ChannelState = channelStates?.[name] ?? defaultState;
                 await ChannelWrite.setChannelState(db, {
                     entryId, channel: name, state,
                     ...(publishedChannel === null || publishedChannel === name ? { notify: streamEventNotify } : {}),
@@ -111,9 +124,13 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         await current.notifyChunk(channel, chunk, mimetype);
     }
 
-    async close(result: SchemeResult, summary?: string): Promise<void> {
+    async close(
+        result: SchemeResult,
+        summary?: string,
+        channelStates?: Readonly<Record<string, TerminalChannelState>>,
+    ): Promise<void> {
         const current = this.#current;
         if (current === null) throw new Error("subscriptions.close: no open subscription");
-        await current.close(result, summary);
+        await current.close(result, summary, channelStates);
     }
 }

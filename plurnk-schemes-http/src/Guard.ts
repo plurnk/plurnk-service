@@ -5,7 +5,7 @@
 
 import dns from "node:dns/promises";
 import net from "node:net";
-import { requireNumEnv } from "./Browser.ts";
+import { requireNonNegativeIntegerEnv } from "./Config.ts";
 
 const BLOCKED = new net.BlockList();
 for (const [network, prefix] of [
@@ -60,7 +60,6 @@ const safeUrl = (raw: string): string => {
 };
 
 // A target (or redirect hop) that automatic acquisition cannot follow.
-// WebFetcher collapses this with other unavailable-page outcomes to `null`.
 export class GuardBlockedError extends Error {
     readonly url: string;
     constructor(url: string) {
@@ -114,7 +113,7 @@ export default class Guard {
         let method = init.method;
         let body = init.body;
         let headers = init.headers.map(([name, value]): [string, string] => [name, value]);
-        let hops = requireNumEnv("PLURNK_SCHEMES_HTTP_REDIRECTS");
+        let hops = requireNonNegativeIntegerEnv("PLURNK_SCHEMES_HTTP_REDIRECTS");
         while (true) {
             let current: URL;
             try { current = new URL(target); } catch { throw new GuardBlockedError(target); }

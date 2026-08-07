@@ -4,7 +4,7 @@
 // subscription lifecycle (open → notifyChunk → close) and the SEND verb
 // dispatch without a network or a database.
 
-import test, { mock } from "node:test";
+import test, { after, beforeEach, mock } from "node:test";
 import { strict as assert } from "node:assert";
 import {
     MimetypeClassifier,
@@ -34,27 +34,29 @@ import {
     type UrlPath,
 } from "@plurnk/plurnk-schemes";
 import Http from "./Http.ts";
-import type { RenderResult } from "./Browser.ts";
 import Guard from "./Guard.ts";
-import WebFetcher, { CACHE_VARIANT_HEADER } from "./WebFetcher.ts";
+import WebFetcher, {
+    CACHE_VARIANT_HEADER,
+    MATERIALIZER_ID_HEADER,
+    TAVILY_CREDITS_HEADER,
+    TAVILY_REQUEST_ID_HEADER,
+} from "./WebFetcher.ts";
 
-// A fake render foundation: returns a canned rendered page, records the call
-// including ordered request-header metadata {§op-surface}.
-const fakeBrowser = (html: string) => {
-    const calls: Array<{ url: string; workerId: number; headers?: ReadonlyArray<readonly [string, string]> }> = [];
-    return {
-        calls,
-        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult> => {
-            calls.push({ url, workerId: opts.workerId, headers: opts.headers });
-            return { status: 200, statusText: "OK", headers: [["content-type", "text/html"]], html };
-        },
-    };
-};
-
-const failingBrowser = (cause: Error) => ({
-    async render(): Promise<RenderResult> {
-        throw cause;
-    },
+const originalTavilyKey = process.env.TAVILY_API_KEY;
+const originalTavilyDepth = process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH;
+const originalTavilyTimeout = process.env.PLURNK_SCHEMES_HTTP_TAVILY_TIMEOUT_MS;
+beforeEach(() => {
+    delete process.env.TAVILY_API_KEY;
+    process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH = "basic";
+    process.env.PLURNK_SCHEMES_HTTP_TAVILY_TIMEOUT_MS = "30000";
+});
+after(() => {
+    if (originalTavilyKey === undefined) delete process.env.TAVILY_API_KEY;
+    else process.env.TAVILY_API_KEY = originalTavilyKey;
+    if (originalTavilyDepth === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH;
+    else process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH = originalTavilyDepth;
+    if (originalTavilyTimeout === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TAVILY_TIMEOUT_MS;
+    else process.env.PLURNK_SCHEMES_HTTP_TAVILY_TIMEOUT_MS = originalTavilyTimeout;
 });
 
 const projectionCaps = (overrides: Partial<ProjectionCaps> = {}): ProjectionCaps => ({
@@ -86,7 +88,11 @@ interface CtxOverrides {
 const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverrides = {}) => {
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let opened: { pathname: string; handle: SubscriptionHandle; publishedChannel?: string } | null = null;
-    type ClosedSubscription = { result: Parameters<SubscriptionCaps["close"]>[0]; summary?: string };
+    type ClosedSubscription = {
+        result: Parameters<StreamSubscription["close"]>[0];
+        summary?: string;
+        channelStates?: Parameters<StreamSubscription["close"]>[2];
+    };
     let closed: ClosedSubscription | null = null;
     const settled = Promise.withResolvers<ClosedSubscription>();
     let deleted: string | null = null;
@@ -148,8 +154,8 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
     const notifyChunk: StreamSubscription["notifyChunk"] = async (channel, chunk, mimetype) => {
         chunks.push({ channel, chunk, mimetype });
     };
-    const close: StreamSubscription["close"] = async (result, summary) => {
-        closed = { result, summary };
+    const close: StreamSubscription["close"] = async (result, summary, channelStates) => {
+        closed = { result, summary, channelStates };
         settled.resolve(closed);
     };
     const subscriptions: SubscriptionCaps = {
@@ -163,9 +169,9 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
             if (current === null) throw new Error("no open subscription");
             await current.notifyChunk(channel, chunk, mimetype);
         },
-        async close(result, summary) {
+        async close(result, summary, channelStates) {
             if (current === null) throw new Error("no open subscription");
-            await current.close(result, summary);
+            await current.close(result, summary, channelStates);
         },
     };
     const ctx: SchemeCtx = {
@@ -276,9 +282,25 @@ test("manifest: documentation is loaded verbatim from docs/http.md", async () =>
     assert.match(Http.manifest.documentation ?? "", /^# http\(s\):\/\//);
 });
 
+test("ready validates Tavily depth and timeout without making a provider request", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test";
+    let calls = 0;
+    await withFetch((async () => {
+        calls += 1;
+        throw new Error("readiness must not call Tavily");
+    }) as typeof fetch, async () => {
+        process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH = "automatic";
+        await assert.rejects(new Http().ready(), /must be "basic" or "advanced"/);
+        process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH = "basic";
+        process.env.PLURNK_SCHEMES_HTTP_TAVILY_TIMEOUT_MS = "0";
+        await assert.rejects(new Http().ready(), /must be a positive integer/);
+    });
+    assert.equal(calls, 0);
+});
+
 test("prepareFind materializes an exact URL through the checked readable path", async () => {
     const { ctx, inspect } = makeCtx();
-    const http = new Http(fakeBrowser("<html>browser fallback</html>"));
+    const http = new Http();
     const target = urlTarget("https://example.com/dist/index.json", "/dist/index.json");
     await withFetch(
         mockFetch(200, "OK", ['{"version":"24.18.0"}'], { "content-type": "application/json" }),
@@ -290,6 +312,33 @@ test("prepareFind materializes an exact URL through the checked readable path", 
     assert.equal(inspect().wrote?.pathname, "/example.com/dist/index.json");
     assert.equal(inspect().wrote?.entry.channels.body?.content, '{"version":"24.18.0"}');
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
+});
+
+test("prepareFind preserves a provider-only page's unavailable HTML channel", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test";
+    const { ctx, inspect } = makeCtx();
+    const target = urlTarget("https://example.com/provider-only", "/provider-only");
+    await withFetch((async (input) => {
+        if (String(input) === "https://api.tavily.com/extract") {
+            return new Response(JSON.stringify({
+                results: [{ url: target.raw, raw_content: "provider body" }],
+                failed_results: [],
+                request_id: "req-provider-only",
+                usage: { credits: 1 },
+            }), { status: 200, headers: { "content-type": "application/json" } });
+        }
+        throw new Error("origin unavailable");
+    }) as typeof fetch, async () => {
+        const prepared = await new Http().prepareFind(findStmt(target), ctx);
+        assert.equal(prepared.status, 201);
+    });
+
+    assert.equal(inspect().wrote?.entry.channels.body?.content, "provider body");
+    assert.deepEqual(inspect().wrote?.entry.channels.html, {
+        content: "",
+        mimetype: "text/html",
+        state: "errored",
+    });
 });
 
 test("prepareFind persists a readable binary projection with source and projection evidence", async () => {
@@ -385,18 +434,16 @@ test("prepareFind treats XHTML and a present empty projection as successful mate
         },
     });
     const { ctx, inspect } = makeCtx(null, { projection });
-    const browser = fakeBrowser("<p>wrong fallback</p>");
     await withFetch(
         mockFetch(200, "OK", ["<html><body></body></html>"], { "content-type": "application/xhtml+xml" }),
         async () => {
-            const result = await new Http(browser).prepareFind(
+            const result = await new Http().prepareFind(
                 findStmt(urlTarget("https://example.com/empty.xhtml", "/empty.xhtml")),
                 ctx,
             );
             assert.equal(result.status, 201);
         },
     );
-    assert.equal(browser.calls.length, 0);
     assert.deepEqual(inspect().wrote?.entry.channels.body, { content: "", mimetype: "text/markdown" });
     assert.deepEqual(inspect().wrote?.entry.channels.html, {
         content: "<html><body></body></html>",
@@ -407,11 +454,10 @@ test("prepareFind treats XHTML and a present empty projection as successful mate
 test("prepareFind reports an absent final HTML projection as 422", async () => {
     const projection = projectionCaps({ async readable() { return null; } });
     const { ctx, inspect } = makeCtx(null, { projection });
-    const browser = fakeBrowser("<html><body><div></div></body></html>");
     await withFetch(
         mockFetch(200, "OK", ["<html><body><div></div></body></html>"], { "content-type": "text/html" }),
         async () => {
-            const result = await new Http(browser).prepareFind(
+            const result = await new Http().prepareFind(
                 findStmt(urlTarget("https://example.com/empty", "/empty")),
                 ctx,
             );
@@ -419,7 +465,6 @@ test("prepareFind reports an absent final HTML projection as 422", async () => {
             assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/no-readable-projection");
         },
     );
-    assert.equal(browser.calls.length, 1);
     assert.equal(inspect().wrote, null);
 });
 
@@ -432,7 +477,7 @@ test("prepareFind reports a projection exception as 500 and logs its cause", asy
     await withFetch(
         mockFetch(200, "OK", ["<html><body>page</body></html>"], { "content-type": "text/html" }),
         async () => {
-            const result = await new Http(fakeBrowser("unused")).prepareFind(
+            const result = await new Http().prepareFind(
                 findStmt(urlTarget("https://example.com/projection", "/projection")),
                 ctx,
             );
@@ -447,58 +492,7 @@ test("prepareFind reports a projection exception as 500 and logs its cause", asy
     assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
 });
 
-test("prepareFind reports a lazy-render exception as a retryable 502", async (t) => {
-    const cause = new Error("browser navigation failed");
-    const projection = projectionCaps({ async readable() { return null; } });
-    const { ctx, inspect } = makeCtx(null, { projection });
-    const diagnostics: unknown[][] = [];
-    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
-    await withFetch(
-        mockFetch(200, "OK", ["<html><body></body></html>"], { "content-type": "text/html" }),
-        async () => {
-            const result = await new Http(failingBrowser(cause)).prepareFind(
-                findStmt(urlTarget("https://example.com/render", "/render")),
-                ctx,
-            );
-            assert.equal(result.status, 502);
-            assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/render-failed");
-            assert.equal(result.problem?.stage, "render");
-            assert.equal(result.problem?.retryable, true);
-        },
-    );
-    assert.equal(inspect().wrote, null);
-    assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
-});
-
-test("prepareFind keeps caller cancellation distinct from lazy-render failure", async (t) => {
-    const controller = new AbortController();
-    const cause = new Error("render aborted");
-    const projection = projectionCaps({ async readable() { return null; } });
-    const browser = {
-        async render(): Promise<RenderResult> {
-            controller.abort();
-            throw cause;
-        },
-    };
-    const { ctx } = makeCtx(null, { projection, signal: controller.signal });
-    const diagnostics: unknown[][] = [];
-    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
-    await withFetch(
-        mockFetch(200, "OK", ["<html><body></body></html>"], { "content-type": "text/html" }),
-        async () => {
-            const result = await new Http(browser).prepareFind(
-                findStmt(urlTarget("https://example.com/cancelled", "/cancelled")),
-                ctx,
-            );
-            assert.equal(result.status, 499);
-            assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/cancelled");
-            assert.equal(result.problem?.retryable, false);
-        },
-    );
-    assert.equal(diagnostics.length, 0);
-});
-
-test("prepareFind reports caller cancellation during the byte probe as 499", async (t) => {
+test("prepareFind reports caller cancellation during origin acquisition as 499", async (t) => {
     const controller = new AbortController();
     const reason = new Error("operator cancelled");
     const { ctx, inspect } = makeCtx(null, { signal: controller.signal });
@@ -558,7 +552,7 @@ test("prepareFind rewrites acquisition but stores the addressed GitHub identity"
 
 test("prepareFind leaves absent and shared-classified path globs to the entry query", async () => {
     const { ctx, inspect } = makeCtx();
-    const http = new Http(fakeBrowser("unused"));
+    const http = new Http();
     const absent = await http.prepareFind(findStmt(null), ctx);
     assert.equal(absent.status, 200);
     const star = await http.prepareFind(
@@ -1197,28 +1191,24 @@ test("READ SSE: cancellation after acquisition settles the retained stream at 49
     });
 });
 
-test("READ: rendered HTML archives the DOM while body carries the model-facing projection", async () => {
+test("READ: HTML acquisition archives server HTML while body carries the model-facing projection", async () => {
     const { ctx, inspect } = makeCtx();
-    const browser = fakeBrowser("<html><body>rendered</body></html>");
-    // The probe-fetch returns an HTML content-type (a SPA shim); render takes over.
-    await withFetch(mockFetch(200, "OK", ["<html><body><div id=root></div></body></html>"], { "content-type": "text/html; charset=utf-8" }), async () => {
-        const r = await new Http(browser).read(readStmt(urlTarget("https://example.com/spa", "/spa")), ctx);
+    await withFetch(mockFetch(200, "OK", ["<html><body><h1>Hello</h1></body></html>"], { "content-type": "text/html; charset=utf-8" }), async () => {
+        const r = await new Http().read(readStmt(urlTarget("https://example.com/spa", "/spa")), ctx);
         assert.equal(r.status, 102);
     });
     const { chunks, closed } = inspect();
-    assert.deepEqual(browser.calls, [{ url: "https://example.com/spa", workerId: 1, headers: [] }]);
     const bodyChunks = chunks.filter((c) => c.channel === "body");
     assert.equal(bodyChunks.length, 1);
-    assert.equal(bodyChunks[0].chunk, "rendered");
+    assert.equal(bodyChunks[0].chunk, "Hello");
     assert.equal(bodyChunks[0].mimetype, "text/markdown");
     const htmlChunks = chunks.filter((c) => c.channel === "html");
-    assert.equal(htmlChunks[0]?.chunk, "<html><body>rendered</body></html>");
+    assert.equal(htmlChunks[0]?.chunk, "<html><body><h1>Hello</h1></body></html>");
     assert.equal(htmlChunks[0]?.mimetype, "text/html");
     assert.equal(closed?.result.status, 200);
-    assert.match(closed?.summary ?? "", /rendered HTTP 200; \d+ readable chars/);
 });
 
-test("READ: a present empty rendered projection succeeds and retains its HTML evidence", async () => {
+test("READ: a present empty HTML projection succeeds and retains its HTML evidence", async () => {
     const projection = projectionCaps({
         async readable(_content, mimetype) {
             return {
@@ -1231,11 +1221,10 @@ test("READ: a present empty rendered projection succeeds and retains its HTML ev
     });
     const { ctx, inspect } = makeCtx(null, { projection });
     const html = "<html><body></body></html>";
-    const browser = fakeBrowser(html);
     await withFetch(
         mockFetch(200, "OK", [html], { "content-type": "text/html" }),
         async () => {
-            const result = await new Http(browser).read(
+            const result = await new Http().read(
                 readStmt(urlTarget("https://example.com/empty", "/empty")),
                 ctx,
             );
@@ -1251,16 +1240,216 @@ test("READ: a present empty rendered projection succeeds and retains its HTML ev
     assert.equal(inspect().closed?.result.status, 200);
 });
 
-test("READ: an absent rendered projection returns 422 and retains its HTML evidence", async () => {
+test("READ: public HTML uses Tavily Markdown and retains origin, request, and credit evidence", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test";
+    const projection = projectionCaps({
+        async readable() {
+            throw new Error("the local floor must not run after successful Tavily extraction");
+        },
+    });
+    const { ctx, inspect } = makeCtx(null, { projection });
+    const html = "<html><body><h1>Origin</h1></body></html>";
+    await withFetch((async (input) => String(input) === "https://api.tavily.com/extract"
+        ? new Response(JSON.stringify({
+            results: [{ url: "https://example.com/tavily", raw_content: "# Tavily body" }],
+            request_id: "req-direct",
+            usage: { credits: 0.2 },
+        }), { status: 200, headers: { "content-type": "application/json" } })
+        : new Response(html, { status: 200, statusText: "OK", headers: { "content-type": "application/xhtml+xml" } })) as typeof fetch, async () => {
+        const result = await new Http().read(
+            readStmt(urlTarget("https://example.com/tavily", "/tavily")),
+            ctx,
+        );
+        assert.equal(result.status, 102);
+    });
+    assert.deepEqual(inspect().chunks.find(({ channel }) => channel === "body"), {
+        channel: "body",
+        chunk: "# Tavily body",
+        mimetype: "text/markdown",
+    });
+    assert.deepEqual(inspect().chunks.find(({ channel }) => channel === "html"), {
+        channel: "html",
+        chunk: html,
+        mimetype: "application/xhtml+xml",
+    });
+    const header = inspect().chunks.filter(({ channel }) => channel === "header").map(({ chunk }) => chunk).join("");
+    assert.match(header, /^HTTP 200 OK/m);
+    assert.match(header, /^x-plurnk-materializer-id: tavily-extract:v1:basic$/m);
+    assert.match(header, /^x-plurnk-tavily-request-id: req-direct$/m);
+    assert.match(header, /^x-plurnk-tavily-credits: 0\.2$/m);
+});
+
+test("READ: negotiated origin Markdown is authoritative and acquires auxiliary server HTML without Tavily", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test";
+    const { ctx, inspect } = makeCtx();
+    const accepts: string[] = [];
+    await withFetch((async (input, init) => {
+        if (String(input) === "https://api.tavily.com/extract") {
+            throw new Error("origin Markdown must bypass Tavily");
+        }
+        const accept = new Headers(init?.headers).get("accept") ?? "";
+        accepts.push(accept);
+        return accept === "text/html"
+            ? new Response("<html><body>Origin source</body></html>", {
+                status: 200,
+                headers: { "content-type": "text/html" },
+            })
+            : new Response("# Origin Markdown", {
+                status: 200,
+                headers: { "content-type": "text/markdown", vary: "Accept" },
+            });
+    }) as typeof fetch, async () => {
+        const result = await new Http().read(
+            readStmt(urlTarget("https://example.com/markdown", "/markdown")),
+            ctx,
+        );
+        assert.equal(result.status, 102);
+    });
+    assert.match(accepts[0] ?? "", /^text\/markdown/);
+    assert.equal(accepts[1], "text/html");
+    assert.equal(inspect().chunks.find(({ channel }) => channel === "body")?.chunk, "# Origin Markdown");
+    assert.equal(inspect().chunks.find(({ channel }) => channel === "html")?.chunk, "<html><body>Origin source</body></html>");
+    const header = inspect().chunks.filter(({ channel }) => channel === "header").map(({ chunk }) => chunk).join("");
+    assert.match(header, /^x-plurnk-materializer-id: origin-markdown:v1$/m);
+    assert.match(header, /^x-plurnk-html-status: 200$/m);
+    assert.equal(inspect().closed?.result.status, 200);
+    assert.deepEqual(inspect().closed?.channelStates, {
+        body: "closed",
+        header: "closed",
+        html: "closed",
+    });
+});
+
+for (const selected of ["body", "html", "header"] as const) {
+    test(`READ #${selected}: hard Tavily authentication failure settles by the selected channel`, async () => {
+        process.env.TAVILY_API_KEY = "tvly-test";
+        const projection = projectionCaps({
+            async readable() { throw new Error("hard provider failure must not use the local floor"); },
+        });
+        const { ctx, inspect } = makeCtx(null, { projection });
+        await withFetch((async (input) => String(input) === "https://api.tavily.com/extract"
+            ? new Response(JSON.stringify({ detail: "invalid key" }), {
+                status: 401,
+                headers: { "content-type": "application/json" },
+            })
+            : new Response("<html><body>Durable source</body></html>", {
+                status: 200,
+                headers: { "content-type": "text/html" },
+            })) as typeof fetch, async () => {
+            const result = await new Http().read(
+                readStmt(urlTarget(
+                    "https://example.com/hard-provider",
+                    "/hard-provider",
+                    undefined,
+                    selected === "body" ? null : selected,
+                )),
+                ctx,
+            );
+            if (selected === "body") {
+                assert.equal(result.status, 502);
+                assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/tavily-authentication-failed");
+            } else {
+                assert.equal(result.status, 102);
+            }
+        });
+        assert.equal(inspect().chunks.some(({ channel }) => channel === "body"), false);
+        assert.equal(inspect().chunks.find(({ channel }) => channel === "html")?.chunk, "<html><body>Durable source</body></html>");
+        assert.equal(inspect().closed?.result.status, selected === "body" ? 502 : 200);
+        assert.deepEqual(inspect().closed?.channelStates, {
+            body: "errored",
+            header: "closed",
+            html: "closed",
+        });
+    });
+}
+
+test("READ: recoverable Tavily failure uses the local floor with explicit terminal 203", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test";
+    const projection = projectionCaps({
+        async readable(_content, mimetype) {
+            return {
+                content: "local floor",
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: "floor-v1",
+            };
+        },
+    });
+    const { ctx, inspect } = makeCtx(null, { projection });
+    await withFetch((async (input) => String(input) === "https://api.tavily.com/extract"
+        ? new Response(JSON.stringify({
+            failed_results: [{ url: "https://example.com/recover", error: "not extractable" }],
+            request_id: "req-recover",
+            usage: { credits: 0 },
+        }), { status: 200, headers: { "content-type": "application/json" } })
+        : new Response("<html><body>Origin</body></html>", {
+            status: 200,
+            headers: { "content-type": "text/html" },
+        })) as typeof fetch, async () => {
+        const result = await new Http().read(
+            readStmt(urlTarget("https://example.com/recover", "/recover")),
+            ctx,
+        );
+        assert.equal(result.status, 102);
+    });
+    assert.equal(inspect().chunks.find(({ channel }) => channel === "body")?.chunk, "local floor");
+    assert.equal(inspect().closed?.result.status, 203);
+    assert.deepEqual(inspect().closed?.channelStates, {
+        body: "closed",
+        header: "closed",
+        html: "closed",
+    });
+    const header = inspect().chunks.filter(({ channel }) => channel === "header").map(({ chunk }) => chunk).join("");
+    assert.match(header, /^x-plurnk-tavily-reason: failed-result$/m);
+});
+
+for (const selected of ["body", "html"] as const) {
+    test(`READ #${selected}: Tavily body may survive admitted origin transport failure`, async () => {
+        process.env.TAVILY_API_KEY = "tvly-test";
+        const { ctx, inspect } = makeCtx();
+        await withFetch((async (input) => {
+            if (String(input) !== "https://api.tavily.com/extract") throw new Error("origin reset");
+            return new Response(JSON.stringify({
+                results: [{ url: "https://example.com/provider-only", raw_content: "provider-only body" }],
+                failed_results: [],
+                request_id: "req-provider-only",
+                usage: { credits: 1 },
+            }), { status: 200, headers: { "content-type": "application/json" } });
+        }) as typeof fetch, async () => {
+            const result = await new Http().read(
+                readStmt(urlTarget(
+                    "https://example.com/provider-only",
+                    "/provider-only",
+                    undefined,
+                    selected === "body" ? null : "html",
+                )),
+                ctx,
+            );
+            assert.equal(result.status, selected === "body" ? 102 : 502);
+            if (selected === "html") {
+                assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/html-unavailable");
+            }
+        });
+        assert.equal(inspect().chunks.find(({ channel }) => channel === "body")?.chunk, "provider-only body");
+        assert.equal(inspect().chunks.some(({ channel }) => channel === "html"), false);
+        assert.equal(inspect().closed?.result.status, selected === "body" ? 200 : 502);
+        assert.deepEqual(inspect().closed?.channelStates, {
+            body: "closed",
+            header: "closed",
+            html: "errored",
+        });
+    });
+}
+
+test("READ: an absent HTML projection returns 422 and retains its HTML evidence", async () => {
     const projection = projectionCaps({ async readable() { return null; } });
     const { ctx, inspect } = makeCtx(null, { projection });
     const html = "<html><body><div></div></body></html>";
-    const browser = fakeBrowser(html);
     let result: Awaited<ReturnType<Http["read"]>> | undefined;
     await withFetch(
         mockFetch(200, "OK", [html], { "content-type": "text/html" }),
         async () => {
-            result = await new Http(browser).read(
+            result = await new Http().read(
                 readStmt(urlTarget("https://example.com/empty", "/empty")),
                 ctx,
             );
@@ -1272,6 +1461,11 @@ test("READ: an absent rendered projection returns 422 and retains its HTML evide
     assert.equal(inspect().chunks.find(({ channel }) => channel === "html")?.chunk, html);
     assert.match(inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "", /^HTTP 200 OK/m);
     assert.equal(inspect().chunks.some(({ channel }) => channel === "body"), false);
+    assert.deepEqual(inspect().closed?.channelStates, {
+        body: "errored",
+        header: "closed",
+        html: "closed",
+    });
 });
 
 test("READ: a projection exception returns 500, retains evidence, and logs its cause", async (t) => {
@@ -1285,7 +1479,7 @@ test("READ: a projection exception returns 500, retains evidence, and logs its c
     await withFetch(
         mockFetch(200, "OK", [html], { "content-type": "text/html" }),
         async () => {
-            result = await new Http(fakeBrowser(html)).read(
+            result = await new Http().read(
                 readStmt(urlTarget("https://example.com/projection", "/projection")),
                 ctx,
             );
@@ -1297,40 +1491,21 @@ test("READ: a projection exception returns 500, retains evidence, and logs its c
     assert.equal(inspect().chunks.find(({ channel }) => channel === "html")?.chunk, html);
     assert.match(inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "", /^HTTP 200 OK/m);
     assert.equal(inspect().chunks.some(({ channel }) => channel === "body"), false);
-    assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
-});
-
-test("READ: a render exception returns a retryable 502 render failure", async (t) => {
-    const cause = new Error("browser navigation failed");
-    const { ctx, inspect } = makeCtx();
-    const diagnostics: unknown[][] = [];
-    t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
-    let result: Awaited<ReturnType<Http["read"]>> | undefined;
-    await withFetch(
-        mockFetch(200, "OK", ["<html></html>"], { "content-type": "text/html" }),
-        async () => {
-            result = await new Http(failingBrowser(cause)).read(
-                readStmt(urlTarget("https://example.com/render", "/render")),
-                ctx,
-            );
-        },
-    );
-    assert.equal(result?.status, 502);
-    assert.equal(result?.problem?.type, "https://problems.plurnk.dev/scheme/http/render-failed");
-    assert.equal(result?.problem?.retryable, true);
-    assert.equal(inspect().closed?.result.problem, result?.problem);
-    assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
-});
-
-test("SEND[200]: an HTML response is NOT rendered (POST can't be a navigation)", async () => {
-    const { ctx, inspect } = makeCtx();
-    const browser = fakeBrowser("<html>should not be used</html>");
-    await withFetch(mockFetch(200, "OK", ["<html>body</html>"], { "content-type": "text/html" }), async () => {
-        await new Http(browser).send(sendStmt(200, urlTarget("https://example.com/p", "/p"), "payload"), ctx);
+    assert.deepEqual(inspect().closed?.channelStates, {
+        body: "errored",
+        header: "closed",
+        html: "closed",
     });
-    assert.equal(browser.calls.length, 0); // render never invoked
+    assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
+});
+
+test("SEND[200]: an HTML response streams body text as text/html", async () => {
+    const { ctx, inspect } = makeCtx();
+    await withFetch(mockFetch(200, "OK", ["<html>body</html>"], { "content-type": "text/html" }), async () => {
+        await new Http().send(sendStmt(200, urlTarget("https://example.com/p", "/p"), "payload"), ctx);
+    });
     const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
-    assert.equal(body, "<html>body</html>"); // streamed raw, not rendered
+    assert.equal(body, "<html>body</html>");
 });
 
 test("READ: non-url target → 400 with RFC 9457 Problem Details", async () => {
@@ -1494,19 +1669,28 @@ test("READ: target {…} headers are threaded into the fetch", async () => {
     await withFetch(probe as typeof fetch, async () => {
         await new Http().read(readStmt(target), ctx);
     });
-    // Default browser identity rides first when the model supplied no UA block.
+    // The default web identity rides first when the model supplied no UA block.
     assert.deepEqual(seenHeaders, [["User-Agent", (seenHeaders as [string, string][])[0][1]], ["Authorization", "Bearer T"], ["Accept", "application/json"]]);
     assert.match((seenHeaders as [string, string][])[0][1], /Mozilla.*Chrome/);
 });
 
-test("READ: headers reach the browser render on an HTML GET (authed page renders authed)", async () => {
-    const { ctx } = makeCtx();
-    const browser = fakeBrowser("<html><body>ok</body></html>");
+test("READ: headers reach direct fetch on an HTML GET (authed page requests authed)", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test";
+    const { ctx, inspect } = makeCtx();
     const target = urlTarget("https://app.x/dash", "/dash", [["Authorization", "Bearer T"]]);
-    await withFetch(mockFetch(200, "OK", ["<html></html>"], { "content-type": "text/html" }), async () => {
-        await new Http(browser).read(readStmt(target), ctx);
+    let seenAuth = "";
+    const seenUrls: string[] = [];
+    await withFetch((async (url, init) => {
+        seenUrls.push(String(url));
+        seenAuth = new Headers(init?.headers).get("authorization") ?? "";
+        return new Response("<html><body>authed</body></html>", { status: 200, headers: { "content-type": "text/html" } });
+    }) as typeof fetch, async () => {
+        await new Http().read(readStmt(target), ctx);
     });
-    assert.deepEqual(browser.calls[0].headers, [["Authorization", "Bearer T"]]);
+    assert.equal(seenAuth, "Bearer T");
+    assert.deepEqual(seenUrls, ["https://app.x/dash"], "explicit request metadata never authorizes Tavily");
+    const header = inspect().chunks.filter(({ channel }) => channel === "header").map(({ chunk }) => chunk).join("");
+    assert.match(header, /^x-plurnk-materializer-id: local-projection:v1:ineligible$/m);
 });
 
 test("EDIT → PUT with the body (method mapping)", async () => {
@@ -1730,33 +1914,83 @@ test("prepareFind reuses only a derived representation produced by the installed
     }
 });
 
-test("READ revalidation: prior ETag → If-None-Match → 304 serves cached projection + DOM, skips render", async () => {
+test("stale Tavily HTML-page materialization performs full reacquisition without origin validators", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test";
     const { ctx, inspect } = makeCtx(priorEntry(
         "cached page",
         "text/markdown",
-        stampedHeader(500_000, '\netag: "v1"'),
+        `${stampedHeader(500_000, '\ncontent-type: text/html\netag: "v1"')}\n${MATERIALIZER_ID_HEADER}: tavily-extract:v1:basic\n${TAVILY_REQUEST_ID_HEADER}: req-cached\n${TAVILY_CREDITS_HEADER}: 0.2`,
         "<html>cached page</html>",
     ));
-    const browser = fakeBrowser("<html>SHOULD NOT RENDER</html>");
-    let seenINM = "";
-    const probe = async (_url: string | URL | Request, init?: RequestInit) => {
-        seenINM = new Headers(init?.headers).get("if-none-match") ?? "";
-        return new Response(null, {
-            status: 304,
-            statusText: "Not Modified",
-            headers: { etag: '"v1"' },
+    let conditional = false;
+    const probe = async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input) === "https://api.tavily.com/extract") {
+            return new Response(JSON.stringify({
+                results: [{ url: "https://example.com/p", raw_content: "fresh page" }],
+                failed_results: [],
+                request_id: "req-fresh",
+                usage: { credits: 1 },
+            }), { status: 200, headers: { "content-type": "application/json" } });
+        }
+        conditional = new Headers(init?.headers).has("if-none-match");
+        return new Response("<html>fresh page</html>", {
+            status: 200,
+            statusText: "OK",
+            headers: { "content-type": "text/html", etag: '"v2"' },
         });
     };
     await withFetch(probe as typeof fetch, async () => {
-        const r = await new Http(browser).read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
-        assert.equal(r.status, 102); // first-class READ, not a cache status
+        const r = await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
+        assert.equal(r.status, 102);
     });
-    assert.equal(seenINM, "\"v1\"");                       // validator sent
-    assert.equal(browser.calls.length, 0);                  // 304 → no render
+    assert.equal(conditional, false);
     const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
-    assert.equal(body, "cached page");                      // cached body re-served
-    assert.equal(inspect().chunks.find((c) => c.channel === "html")?.chunk, "<html>cached page</html>");
-    assert.match(inspect().closed?.summary ?? "", /revalidated 304/); // honest in the close summary
+    assert.equal(body, "fresh page");
+    assert.equal(inspect().chunks.find((c) => c.channel === "html")?.chunk, "<html>fresh page</html>");
+    const header = inspect().chunks.filter((c) => c.channel === "header").map(({ chunk }) => chunk).join("");
+    assert.match(header, /^x-plurnk-materializer-id: tavily-extract:v1:basic$/m);
+    assert.match(header, /^x-plurnk-tavily-request-id: req-fresh$/m);
+});
+
+test("TTL: enabling Tavily invalidates a locally materialized HTML body and its validators", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test";
+    const storedHeader = `${stampedHeader(
+        1000,
+        '\ncontent-type: text/html\netag: "local-v1"',
+    )}\n${MATERIALIZER_ID_HEADER}: local-projection:v1\nx-plurnk-projection-id: test:text/html`;
+    const { ctx, inspect } = makeCtx(priorEntry(
+        "old local body",
+        "text/markdown",
+        storedHeader,
+        "<html>old source</html>",
+    ));
+    let originFetched = false;
+    let conditional = false;
+    await withTtl("60000", async () => {
+        await withFetch((async (input, init) => {
+            if (String(input) === "https://api.tavily.com/extract") {
+                return new Response(JSON.stringify({
+                    results: [{ url: "https://example.com/page", markdown: "# Current Tavily body" }],
+                    request_id: "req-current",
+                    usage: { credits: 1 },
+                }), { status: 200, headers: { "content-type": "application/json" } });
+            }
+            originFetched = true;
+            conditional = new Headers(init?.headers).has("if-none-match");
+            return new Response("<html>current source</html>", {
+                status: 200,
+                headers: { "content-type": "text/html", etag: '"current"' },
+            });
+        }) as typeof fetch, async () => {
+            await new Http().read(
+                readStmt(urlTarget("https://example.com/page", "/page")),
+                ctx,
+            );
+        });
+    });
+    assert.equal(originFetched, true);
+    assert.equal(conditional, false, "old validators cannot certify a different materializer route");
+    assert.equal(inspect().chunks.find(({ channel }) => channel === "body")?.chunk, "# Current Tavily body");
 });
 
 for (const {
@@ -2703,7 +2937,7 @@ test("GET appends authoritative request-method metadata after origin headers", a
 });
 
 // ── wire identity ───────────────────────────────────────────────────────────
-test("byte path sends the browser UA, not Node's automated-client default", async () => {
+test("byte path sends the default web UA, not Node's automated-client default", async () => {
     const { ctx } = makeCtx();
     let ua = "";
     const probe = async (_u: string | URL | Request, init?: RequestInit) => {

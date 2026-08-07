@@ -35,7 +35,11 @@ const makeCtx = () => {
     const events: string[] = [];
     const chunks: Array<{ channel: string; chunk: string; mimetype?: string }> = [];
     let woken = 0;
-    let closed: { result: Parameters<SubscriptionCaps["close"]>[0]; summary?: string } | null = null;
+    let closed: {
+        result: Parameters<SubscriptionCaps["close"]>[0];
+        summary?: string;
+        channelStates?: Parameters<SubscriptionCaps["close"]>[2];
+    } | null = null;
     const failure = <T extends Readonly<Record<string, unknown>> = Record<never, never>>(
         code: string,
         status: number,
@@ -178,8 +182,12 @@ const makeCtx = () => {
         chunks.push({ channel, chunk, mimetype });
         notify.streamEvent("sub", channel, "active", chunk.length);
     };
-    const close: StreamSubscription["close"] = async (result, summary) => {
-        closed = { result, summary };
+    const close: StreamSubscription["close"] = async (result, summary, channelStates) => {
+        closed = {
+            result,
+            ...(summary === undefined ? {} : { summary }),
+            ...(channelStates === undefined ? {} : { channelStates }),
+        };
         woken += 1;
     };
     const subscriptions: SubscriptionCaps = {
@@ -193,9 +201,9 @@ const makeCtx = () => {
         },
         // close composites the worker wake — there is no separate notify.wakeWorker;
         // the rich, summary-bearing wake lives where the close context is.
-        async close(result, summary) {
+        async close(result, summary, channelStates) {
             if (current === null) throw new Error("no open subscription");
-            await current.close(result, summary);
+            await current.close(result, summary, channelStates);
         },
     };
 
@@ -280,9 +288,17 @@ test("ctx: notifyChunk carries an optional per-call mimetype (channel retype)", 
 test("ctx: subscriptions.close composites state + wake (stream concluded)", async () => {
     const { ctx, inspect } = makeCtx();
     await ctx.subscriptions.open("exec://r-1", { cancel() {} });
-    await ctx.subscriptions.close({ status: 200 }, "exit=0 bytes=42");
+    await ctx.subscriptions.close(
+        { status: 200 },
+        "exit=0 bytes=42",
+        { stderr: "errored" },
+    );
     const { closed, woken } = inspect();
-    assert.deepEqual(closed, { result: { status: 200 }, summary: "exit=0 bytes=42" });
+    assert.deepEqual(closed, {
+        result: { status: 200 },
+        summary: "exit=0 bytes=42",
+        channelStates: { stderr: "errored" },
+    });
     assert.equal(woken, 1); // close fires the worker wake
 });
 

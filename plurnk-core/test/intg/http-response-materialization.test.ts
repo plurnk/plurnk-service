@@ -141,7 +141,6 @@ test("a direct binary response persists one typed marker whose universal READ is
         assert.equal(reread.mimetype, "image/png");
     } finally {
         globalThis.fetch = originalFetch;
-        await http.close();
         await db.close();
     }
 });
@@ -179,7 +178,6 @@ test("a direct readable PDF persists only derived Unicode plus projection eviden
         assert.equal(reread.mimetype, "text/markdown");
     } finally {
         globalThis.fetch = originalFetch;
-        await http.close();
         await db.close();
     }
 });
@@ -215,7 +213,65 @@ test("a direct textual response durably preserves Fetch UTF-8 normalization and 
         );
     } finally {
         globalThis.fetch = originalFetch;
-        await http.close();
+        await db.close();
+    }
+});
+
+test("{§http-channel-outcomes}: a hard page-body failure preserves readable server HTML", async () => {
+    const db = await openMigrated();
+    const originalFetch = globalThis.fetch;
+    const originalKey = process.env.TAVILY_API_KEY;
+    const http = new Http();
+    try {
+        process.env.TAVILY_API_KEY = "tvly-composed-test";
+        const source = "<html><body><h1>Preserved source</h1></body></html>";
+        globalThis.fetch = async (input) => String(input) === "https://api.tavily.com/extract"
+            ? new Response(JSON.stringify({ detail: "invalid test key" }), {
+                status: 401,
+                headers: { "content-type": "application/json" },
+            })
+            : new Response(source, {
+                status: 200,
+                statusText: "OK",
+                headers: { "content-type": "text/html" },
+            });
+        const workspaceId = await insertWorkspace(db, `http-channel-outcomes-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" });
+        const pathname = "/93.184.216.34/hard.html";
+
+        const acquired = await http.read(statement(null, "/hard.html"), handlerCtx);
+        assert.equal(acquired.status, 502);
+        assert.equal(
+            acquired.problem?.type,
+            "https://problems.plurnk.dev/scheme/http/tavily-authentication-failed",
+        );
+
+        const stored = await handlerCtx.entries.read(pathname);
+        assert.equal(stored.entry?.channels.body.state, "errored");
+        assert.equal(stored.entry?.channels.header.state, "closed");
+        assert.equal(stored.entry?.channels.html.state, "closed");
+        assert.equal(stored.entry?.channels.html.content, source);
+
+        const scoped = statement({ marks: [1] }, "/hard.html");
+        if (scoped.target?.kind !== "url") throw new Error("HTTP test helper produced a non-URL target");
+        const htmlRead: ReadStatement = {
+            ...scoped,
+            target: {
+                ...scoped.target,
+                raw: `${scoped.target.raw}#html`,
+                fragment: "html",
+            },
+        };
+        const reread = await http.read(htmlRead, handlerCtx);
+        assert.equal(reread.status, 200);
+        assert.equal(reread.content, source, "universal text scope preserves the exact source characters");
+        assert.equal(reread.mimetype, "text/markdown", "scoped text follows the universal text-primitive contract");
+    } finally {
+        globalThis.fetch = originalFetch;
+        if (originalKey === undefined) delete process.env.TAVILY_API_KEY;
+        else process.env.TAVILY_API_KEY = originalKey;
         await db.close();
     }
 });
@@ -281,7 +337,6 @@ test("an empty direct GET transitions active → closed and remains reusable thr
         globalThis.fetch = originalFetch;
         if (originalTtl === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
         else process.env.PLURNK_SCHEMES_HTTP_TTL_MS = originalTtl;
-        await http.close();
         await db.close();
     }
 });
@@ -347,7 +402,6 @@ test("parser-produced request metadata cannot share a fresh HTTP representation"
         globalThis.fetch = originalFetch;
         if (originalTtl === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
         else process.env.PLURNK_SCHEMES_HTTP_TTL_MS = originalTtl;
-        await http.close();
         await db.close();
     }
 });
@@ -394,7 +448,6 @@ test("a durable no-store response is operation evidence, not a reusable HTTP cac
         globalThis.fetch = originalFetch;
         if (originalTtl === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
         else process.env.PLURNK_SCHEMES_HTTP_TTL_MS = originalTtl;
-        await http.close();
         await db.close();
     }
 });

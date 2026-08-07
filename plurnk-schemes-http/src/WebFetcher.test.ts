@@ -1,15 +1,31 @@
-// WebFetcher contract coverage {§prefetch}. Hermetic: injected fake browser, mocked
-// global fetch, and IP literals or explicit guard mocks (no DNS). Env from
-// --env-file=.env.defaults.
+// WebFetcher contract coverage {§prefetch}. Hermetic: mocked global fetch,
+// and IP literals or explicit guard mocks (no DNS). Env from --env-file=.env.defaults.
 
-import test from "node:test";
+import test, { after, beforeEach } from "node:test";
 import { strict as assert } from "node:assert";
 import Guard from "./Guard.ts";
-import WebFetcher, { WebMaterializationError } from "./WebFetcher.ts";
-import type { RenderResult } from "./Browser.ts";
+import WebFetcher, {
+    MARKDOWN_ACCEPT,
+    MATERIALIZER_ID_HEADER,
+    TAVILY_REASON_HEADER,
+    WebMaterializationError,
+} from "./WebFetcher.ts";
 import { MimetypeClassifier, type ProjectionCaps } from "@plurnk/plurnk-schemes";
 
-const PUB = "https://93.184.216.34/x"; // public IP literal — skips DNS
+const PUB = "https://93.184.216.34/x";
+
+const originalApiKey = process.env.TAVILY_API_KEY;
+const originalDepth = process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH;
+beforeEach(() => {
+    delete process.env.TAVILY_API_KEY;
+    process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH = "basic";
+});
+after(() => {
+    if (originalApiKey === undefined) delete process.env.TAVILY_API_KEY;
+    else process.env.TAVILY_API_KEY = originalApiKey;
+    if (originalDepth === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH;
+    else process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH = originalDepth;
+});
 
 const projectionCaps = (overrides: Partial<ProjectionCaps> = {}): ProjectionCaps => ({
     async readable() { return null; },
@@ -19,17 +35,6 @@ const projectionCaps = (overrides: Partial<ProjectionCaps> = {}): ProjectionCaps
     ...overrides,
 });
 const PROJECTION = projectionCaps();
-
-const fakeBrowser = (html: string) => {
-    const calls: Array<{ url: string; signal: AbortSignal | undefined }> = [];
-    return {
-        calls,
-        render: async (url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult> => {
-            calls.push({ url, signal: opts.signal });
-            return { status: 200, statusText: "OK", headers: [["content-type", "text/html"]], html };
-        },
-    };
-};
 
 const withFetch = async (impl: typeof fetch, fn: () => Promise<void>) => {
     const orig = globalThis.fetch;
@@ -43,7 +48,7 @@ test("live public textual URL → { body, mimetype }", async () => {
     await withFetch((async () => resp('{"a":1}', 200, { "content-type": "application/json" })) as typeof fetch, async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
-        assert.equal(materialized?.body.content, '{"a":1}');
+        assert.equal(materialized?.body?.content, '{"a":1}');
         assert.equal(fetched?.mimetype, "application/json");
         assert.match(fetched?.header ?? "", /^HTTP 200 /);
         assert.match(fetched?.header ?? "", /^x-plurnk-request-method: GET$/m);
@@ -55,7 +60,7 @@ test("the shared textual taxonomy accepts application/yaml", async () => {
     await withFetch((async () => resp("name: plurnk", 200, { "content-type": "application/yaml" })) as typeof fetch, async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
-        assert.equal(materialized?.body.content, "name: plurnk");
+        assert.equal(materialized?.body?.content, "name: plurnk");
         assert.equal(fetched?.mimetype, "application/yaml");
     });
 });
@@ -67,7 +72,7 @@ test("text acquisition uses Fetch UTF-8 decoding and retains charset as metadata
     })) as typeof fetch, async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
-        assert.equal(materialized?.body.content, "caf�");
+        assert.equal(materialized?.body?.content, "caf\uFFFD");
         assert.equal(fetched?.mimetype, "text/plain");
         assert.match(fetched?.header ?? "", /^content-type: text\/plain; charset=windows-1252$/m);
     });
@@ -79,73 +84,274 @@ test("an unsupported charset does not invent a non-Fetch decoder", async () => {
     })) as typeof fetch, async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         const materialized = fetched === null ? null : await WebFetcher.materialize(fetched, PROJECTION);
-        assert.equal(materialized?.body.content, "Unicode stays Unicode");
+        assert.equal(materialized?.body?.content, "Unicode stays Unicode");
         assert.equal(fetched?.mimetype, "text/plain");
     });
 });
 
-test("GitHub blob acquisition uses one source target for byte fetch and render", async (t) => {
+test("GitHub blob acquisition uses one source target for byte fetch", async (t) => {
     t.mock.method(Guard, "isPublicUrl", async () => true);
-    const browser = fakeBrowser("<html><body>rendered source</body></html>");
     const seen: string[] = [];
     const blob = "https://github.com/nodejs/node/blob/main/src/node_version.h";
     const raw = "https://raw.githubusercontent.com/nodejs/node/main/src/node_version.h";
     await withFetch((async (url) => {
         seen.push(String(url));
-        return resp("<html></html>", 200, { "content-type": "text/html" });
+        return resp("/* content */", 200, { "content-type": "text/plain" });
     }) as typeof fetch, async () => {
-        const fetched = await new WebFetcher(browser).fetch(blob);
-        await fetched?.render?.();
+        await new WebFetcher().fetch(blob);
     });
     assert.deepEqual(seen, [raw]);
-    assert.equal(browser.calls[0]?.url, raw);
 });
 
-test("HTML → guarded byte response first; ordinary browser render is a lazy fallback", async () => {
-    const b = fakeBrowser("<html><body>rendered</body></html>");
-    await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html; charset=utf-8" })) as typeof fetch, async () => {
-        const fetched = await new WebFetcher(b).fetch(PUB);
-        assert.equal(fetched?.body, "<html></html>");
-        assert.equal(fetched?.mimetype, "text/html");
-        assert.equal(b.calls.length, 0, "a valid byte response does not launch the browser eagerly");
-        assert.deepEqual(await fetched?.render?.(), { body: "<html><body>rendered</body></html>", mimetype: "text/html" });
-    });
-    assert.equal(b.calls[0].signal, undefined,
-        "the byte-probe timeout does not close render at its salvage deadline");
-});
-
-test("materialization accepts an honest empty XHTML projection without rendering", async () => {
-    let renders = 0;
+test("HTML → byte response materializes local floor projection when Tavily is unconfigured", async () => {
+    delete process.env.TAVILY_API_KEY;
     const projection = projectionCaps({
-        async readable(_content, mimetype) {
+        async readable(content, mimetype) {
             return {
-                content: "",
+                content: "# Local Projected Floor",
                 mimetype: "text/markdown",
                 sourceMimetype: mimetype,
-                projectionIdentity: "empty-xhtml-projection",
+                projectionIdentity: "html-floor-v1",
             };
         },
     });
-    const result = await WebFetcher.materialize({
-        body: "<html><body></body></html>",
-        mimetype: "application/xhtml+xml",
-        render: async () => {
-            renders += 1;
-            return { body: "<p>wrong fallback</p>", mimetype: "text/html" };
-        },
-    }, projection);
-    assert.deepEqual(result, {
-        body: { content: "", mimetype: "text/markdown" },
-        html: { content: "<html><body></body></html>", mimetype: "application/xhtml+xml" },
-        projection: {
-            sourceMimetype: "application/xhtml+xml",
-            identity: "empty-xhtml-projection",
+    await withFetch((async () => resp("<html><body><h1>Title</h1></body></html>", 200, { "content-type": "text/html; charset=utf-8" })) as typeof fetch, async () => {
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.ok(fetched !== null);
+        assert.equal(fetched.body, "<html><body><h1>Title</h1></body></html>");
+        assert.equal(fetched.mimetype, "text/html");
+        const materialized = await WebFetcher.materialize(fetched, projection);
+        assert.equal(materialized?.body?.content, "# Local Projected Floor");
+        assert.equal(materialized?.html?.content, "<html><body><h1>Title</h1></body></html>");
+        assert.match(
+            materialized?.header ?? "",
+            new RegExp(`^${MATERIALIZER_ID_HEADER}: local-projection:v1:unconfigured$`, "m"),
+        );
+    });
+});
+
+test("HTML → materializes Tavily Extract Markdown when TAVILY_API_KEY is configured", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test";
+    const projection = projectionCaps({
+        async readable() {
+            return { content: "local floor", mimetype: "text/markdown", sourceMimetype: "text/html", projectionIdentity: "floor" };
         },
     });
-    assert.equal(renders, 0);
+    await withFetch((async (url, init) => {
+        if (String(url) === "https://api.tavily.com/extract") {
+            return resp(JSON.stringify({
+                results: [{ url: PUB, markdown: "# Tavily Extracted Page" }],
+                request_id: "req-777",
+                usage: { credits: 0.2 },
+            }), 200, { "content-type": "application/json" });
+        }
+        return resp("<html><body>Original</body></html>", 200, { "content-type": "text/html" });
+    }) as typeof fetch, async () => {
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.ok(fetched !== null);
+        const materialized = await WebFetcher.materialize(fetched, projection);
+        assert.equal(materialized?.body?.content, "# Tavily Extracted Page");
+        assert.equal(materialized?.body?.mimetype, "text/markdown");
+        assert.equal(materialized?.html?.content, "<html><body>Original</body></html>");
+        assert.match(materialized?.header ?? "", /x-plurnk-materializer-id: tavily-extract:v1:basic/);
+        assert.match(materialized?.header ?? "", /x-plurnk-tavily-request-id: req-777/);
+        assert.match(materialized?.header ?? "", /x-plurnk-tavily-credits: 0\.2/);
+    });
+});
+
+test("supplied HTML never grants Tavily authority", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test";
+    const projection = projectionCaps({
+        async readable(_content, mimetype) {
+            return {
+                content: "local supplied content",
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: "supplied-v1",
+            };
+        },
+    });
+    let calls = 0;
+    await withFetch((async () => {
+        calls += 1;
+        throw new Error("supplied content must not spend or refetch");
+    }) as typeof fetch, async () => {
+        const materialized = await WebFetcher.materialize({
+            url: PUB,
+            body: "<html><body>Supplied</body></html>",
+            mimetype: "text/html",
+            header: "HTTP 200 OK",
+            allowTavily: false,
+        }, projection);
+        assert.equal(materialized?.body?.content, "local supplied content");
+        assert.match(materialized?.header ?? "", /x-plurnk-materializer-id: local-projection:v1:ineligible/);
+    });
+    assert.equal(calls, 0);
+});
+
+test("Tavily failure uses an identified local floor", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test";
+    const projection = projectionCaps({
+        async readable(_content, mimetype) {
+            return {
+                content: "local fallback",
+                mimetype: "text/markdown",
+                sourceMimetype: mimetype,
+                projectionIdentity: "floor-v1",
+            };
+        },
+    });
+    await withFetch((async () => resp(JSON.stringify({
+        failed_results: [{ url: PUB, error: "provider unavailable" }],
+        request_id: "req-fallback",
+        usage: { credits: 0.4 },
+    }), 200, { "content-type": "application/json" })) as typeof fetch, async () => {
+        const materialized = await WebFetcher.materialize({
+            url: PUB,
+            body: "<html><body>Origin</body></html>",
+            mimetype: "text/html",
+            header: "HTTP 200 OK",
+            allowTavily: true,
+        }, projection);
+        assert.equal(materialized?.body?.content, "local fallback");
+        assert.equal(materialized?.bodyOutcome.status, 203);
+        assert.match(
+            materialized?.header ?? "",
+            /x-plurnk-materializer-id: local-fallback:tavily-extract:v1:basic/,
+        );
+        assert.match(materialized?.header ?? "", /x-plurnk-tavily-request-id: req-fallback/);
+        assert.match(materialized?.header ?? "", /x-plurnk-tavily-credits: 0\.4/);
+        assert.match(materialized?.header ?? "", /x-plurnk-projection-id: floor-v1/);
+    });
+});
+
+test("a hard Tavily authentication failure preserves HTML but does not bless a local body", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test";
+    let projectionCalls = 0;
+    const projection = projectionCaps({
+        async readable() {
+            projectionCalls += 1;
+            return { content: "must not publish", mimetype: "text/markdown", sourceMimetype: "text/html", projectionIdentity: "floor" };
+        },
+    });
+    await withFetch((async () => resp(JSON.stringify({ detail: "invalid key" }), 401, {
+        "content-type": "application/json",
+    })) as typeof fetch, async () => {
+        const materialized = await WebFetcher.materialize({
+            url: PUB,
+            body: "<html><body>Origin</body></html>",
+            mimetype: "text/html",
+            header: "HTTP 200 OK",
+            allowTavily: true,
+        }, projection);
+        assert.equal(materialized?.body, undefined);
+        assert.equal(materialized?.html?.content, "<html><body>Origin</body></html>");
+        assert.equal(materialized?.bodyOutcome.failure?.code, "tavily-authentication-failed");
+        assert.equal(materialized?.htmlOutcome?.status, 200);
+        assert.match(materialized?.header ?? "", new RegExp(`^${TAVILY_REASON_HEADER}: authentication$`, "m"));
+    });
+    assert.equal(projectionCalls, 0);
+});
+
+test("a malformed successful Tavily payload is a hard provider-boundary failure", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test";
+    await withFetch((async () => resp(JSON.stringify({
+        results: [{ raw_content: "ambiguous" }],
+        request_id: "req-without-usage",
+    }), 200, { "content-type": "application/json" })) as typeof fetch, async () => {
+        const materialized = await WebFetcher.materialize({
+            url: PUB,
+            body: "<html><body>Origin</body></html>",
+            mimetype: "text/html",
+            header: "HTTP 200 OK",
+            allowTavily: true,
+        }, PROJECTION);
+        assert.equal(materialized?.body, undefined);
+        assert.equal(materialized?.bodyOutcome.failure?.code, "tavily-invalid-response");
+        assert.equal(materialized?.htmlOutcome?.status, 200);
+    });
+});
+
+test("Tavily may produce the body after admitted origin transport failure while HTML stays failed", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test";
+    await withFetch((async () => resp(JSON.stringify({
+        results: [{ url: PUB, raw_content: "# Provider-only body" }],
+        failed_results: [],
+        request_id: "req-provider-only",
+        usage: { credits: 1 },
+    }), 200, { "content-type": "application/json" })) as typeof fetch, async () => {
+        const materialized = await WebFetcher.materialize(
+            WebFetcher.unavailable(PUB, new Error("origin reset"), true),
+            PROJECTION,
+        );
+        assert.equal(materialized?.body?.content, "# Provider-only body");
+        assert.equal(materialized?.bodyOutcome.status, 200);
+        assert.equal(materialized?.html, undefined);
+        assert.equal(materialized?.htmlOutcome?.failure?.code, "html-unavailable");
+        assert.match(materialized?.header ?? "", /x-plurnk-origin-error: origin reset/);
+    });
+});
+
+test("origin Markdown is authoritative, negotiates one HTML variant, and never calls Tavily", async () => {
+    process.env.TAVILY_API_KEY = "tvly-test";
+    const calls: Array<{ url: string; accept: string }> = [];
+    await withFetch((async (input, init) => {
+        const accept = new Headers(init?.headers).get("accept") ?? "";
+        calls.push({ url: String(input), accept });
+        if (String(input) === "https://api.tavily.com/extract") {
+            throw new Error("origin Markdown must bypass Tavily");
+        }
+        return accept === "text/html"
+            ? resp("<html><body>Source</body></html>", 200, { "content-type": "text/html" })
+            : resp("# Origin Markdown", 200, { "content-type": "text/markdown", vary: "Accept" });
+    }) as typeof fetch, async () => {
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.ok(fetched !== null);
+        assert.equal(fetched.body, "# Origin Markdown");
+        const materialized = await WebFetcher.materialize(fetched, PROJECTION);
+        assert.equal(materialized?.body?.content, "# Origin Markdown");
+        assert.equal(materialized?.html?.content, "<html><body>Source</body></html>");
+        assert.match(materialized?.header ?? "", /x-plurnk-materializer-id: origin-markdown:v1/);
+        assert.equal(materialized?.bodyOutcome.status, 200);
+        assert.equal(materialized?.htmlOutcome?.status, 200);
+    });
+    assert.deepEqual(calls.map(({ accept }) => accept), [MARKDOWN_ACCEPT, "text/html"]);
+});
+
+test("an authored Accept value is honored exactly", async () => {
+    let observed = "";
+    await withFetch((async (_input, init) => {
+        observed = new Headers(init?.headers).get("accept") ?? "";
+        return resp('{"ok":true}', 200, { "content-type": "application/json" });
+    }) as typeof fetch, async () => {
+        const fetched = await new WebFetcher().fetch(PUB, {
+            headers: [["Accept", "application/json"]],
+        });
+        assert.equal(fetched?.mimetype, "application/json");
+    });
+    assert.equal(observed, "application/json");
+});
+
+test("an authored Markdown Accept does not authorize a package-generated HTML variant request", async () => {
+    const observed: string[] = [];
+    await withFetch((async (_input, init) => {
+        observed.push(new Headers(init?.headers).get("accept") ?? "");
+        return resp("# Authored representation", 200, { "content-type": "text/markdown" });
+    }) as typeof fetch, async () => {
+        const fetched = await new WebFetcher().fetch(PUB, {
+            headers: [["Accept", "text/markdown"]],
+        });
+        assert.ok(fetched !== null);
+        const materialized = await WebFetcher.materialize(fetched, PROJECTION);
+        assert.equal(materialized?.body?.content, "# Authored representation");
+        assert.equal(materialized?.html, undefined);
+        assert.equal(materialized?.htmlOutcome?.failure?.code, "html-variant-unavailable");
+    });
+    assert.deepEqual(observed, ["text/markdown"]);
 });
 
 test("materialization preserves a projection exception and identifies its stage", async () => {
+    delete process.env.TAVILY_API_KEY;
     const cause = new Error("reader implementation failed");
     const projection = projectionCaps({
         async readable() {
@@ -153,7 +359,7 @@ test("materialization preserves a projection exception and identifies its stage"
         },
     });
     await assert.rejects(
-        WebFetcher.materialize({ body: "<html></html>", mimetype: "text/html" }, projection),
+        WebFetcher.materialize({ url: PUB, body: "<html></html>", mimetype: "text/html" }, projection),
         (err: unknown) => {
             assert.ok(err instanceof Error);
             assert.equal(err.cause, cause);
@@ -163,35 +369,7 @@ test("materialization preserves a projection exception and identifies its stage"
     );
 });
 
-test("materialization preserves a lazy-render exception and identifies its stage", async () => {
-    const cause = new Error("browser navigation failed");
-    const projection = projectionCaps({ async readable() { return null; } });
-    await assert.rejects(
-        WebFetcher.materialize({
-            body: "<html></html>",
-            mimetype: "text/html",
-            render: async () => { throw cause; },
-        }, projection),
-        (err: unknown) => {
-            assert.ok(err instanceof Error);
-            assert.equal(err.cause, cause);
-            assert.equal((err as Error & { stage?: string }).stage, "render");
-            return true;
-        },
-    );
-});
-
-test("caller cancellation spans both byte probe and lazy render", async () => {
-    const b = fakeBrowser("<html><body>rendered</body></html>");
-    const caller = new AbortController();
-    await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html" })) as typeof fetch, async () => {
-        const fetched = await new WebFetcher(b).fetch(PUB, { signal: caller.signal });
-        await fetched?.render?.();
-    });
-    assert.equal(b.calls[0].signal, caller.signal);
-});
-
-test("caller cancellation during the byte probe rejects with the exact caller reason", async (t) => {
+test("caller cancellation during origin acquisition rejects with the exact caller reason", async (t) => {
     const caller = new AbortController();
     const reason = new Error("operator cancelled");
     t.mock.method(Guard, "fetch", async (
@@ -221,43 +399,6 @@ test("a pre-aborted caller rejects before the automatic URL check", async (t) =>
     assert.equal(guarded.mock.callCount(), 0);
 });
 
-test("the independent byte-probe timeout remains an ordinary dead result", async (t) => {
-    const prior = process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT;
-    process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = "1";
-    const caller = new AbortController();
-    t.mock.method(Guard, "fetch", async (
-        _url: Parameters<typeof Guard.fetch>[0],
-        _init: Parameters<typeof Guard.fetch>[1],
-        signal: Parameters<typeof Guard.fetch>[2],
-    ) => await new Promise<Response>((_resolve, reject) => {
-        const rejectTimedOut = () => {
-            const timeoutReason = signal.reason;
-            caller.abort(new Error("later caller cancellation"));
-            reject(timeoutReason);
-        };
-        if (signal.aborted) rejectTimedOut();
-        else signal.addEventListener("abort", rejectTimedOut, { once: true });
-    }));
-    try {
-        assert.equal(await new WebFetcher().fetch(PUB, { signal: caller.signal }), null);
-    } finally {
-        if (prior === undefined) delete process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT;
-        else process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = prior;
-    }
-});
-
-test("close releases the owned renderer", async () => {
-    let closed = 0;
-    const fetcher = new WebFetcher({
-        render: async (): Promise<RenderResult> => ({
-            status: 200, statusText: "OK", headers: [], html: "<html></html>",
-        }),
-        close: async () => { closed += 1; },
-    });
-    await fetcher.close();
-    assert.equal(closed, 1);
-});
-
 test("automatic URL check refusal → null, and never fetches", async () => {
     let called = false;
     await withFetch((async () => { called = true; return resp("x", 200); }) as typeof fetch, async () => {
@@ -268,7 +409,7 @@ test("automatic URL check refusal → null, and never fetches", async () => {
 
 test("non-2xx → null", async () => {
     await withFetch((async () => resp("nope", 404, { "content-type": "text/html" })) as typeof fetch, async () => {
-        assert.equal(await new WebFetcher(fakeBrowser("x")).fetch(PUB), null);
+        assert.equal(await new WebFetcher().fetch(PUB), null);
     });
 });
 
@@ -297,6 +438,7 @@ test("handler-declared binary bytes reach one readable projection without a dura
         assert.deepEqual(materialized, {
             body: { content: "projected:1,2,3", mimetype: "text/markdown" },
             header: `${fetched.header}\nx-plurnk-projection-id: binary-reader-v1`,
+            bodyOutcome: { status: 200 },
             projection: {
                 sourceMimetype: "text/x-binary",
                 identity: "binary-reader-v1",
@@ -328,7 +470,7 @@ test("binary materialization cancels unread response bytes after a projection re
     }), async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
-        assert.equal((await WebFetcher.materialize(fetched, projection))?.body.content, "projected without reading");
+        assert.equal((await WebFetcher.materialize(fetched, projection))?.body?.content, "projected without reading");
     });
     assert.equal(cancelled, true);
 });
@@ -355,43 +497,11 @@ test("registry classification failure cancels the owned response body and preser
     assert.equal(cancelled, true);
 });
 
-test("an unparseable Content-Type reaches binary projection and is pruned when absent", async () => {
-    await withFetch((async () => resp("not trustworthy", 200, {
-        "content-type": "text/plain garbage",
-    })) as typeof fetch, async () => {
-        const fetched = await new WebFetcher().fetch(PUB);
-        assert.ok(fetched !== null);
-        assert.notEqual(typeof fetched.body, "string");
-        assert.equal(await WebFetcher.materialize(fetched, PROJECTION), null);
-    });
-});
-
 test("empty textual body → null", async () => {
     await withFetch((async () => resp("", 200, { "content-type": "text/plain" })) as typeof fetch, async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
         assert.equal(await WebFetcher.materialize(fetched, PROJECTION), null);
-    });
-});
-
-test("render yielding empty DOM → null", async () => {
-    await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html" })) as typeof fetch, async () => {
-        const fetched = await new WebFetcher(fakeBrowser("")).fetch(PUB);
-        assert.equal(await fetched?.render?.(), null);
-    });
-});
-
-test("lazy rendering preserves a browser exception instead of converting it to absence", async () => {
-    const cause = new Error("chromium crashed");
-    const browser = {
-        async render(): Promise<RenderResult> {
-            throw cause;
-        },
-    };
-    await withFetch((async () => resp("<html></html>", 200, { "content-type": "text/html" })) as typeof fetch, async () => {
-        const fetched = await new WebFetcher(browser).fetch(PUB);
-        assert.ok(fetched?.render !== undefined);
-        await assert.rejects(fetched.render(), (err: unknown) => err === cause);
     });
 });
 

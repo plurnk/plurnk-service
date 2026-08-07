@@ -20,6 +20,8 @@ import type {
     FindStatement,
     SchemeResult,
     ProjectionCaps,
+    ChannelState,
+    TerminalChannelState,
 } from "@plurnk/plurnk-schemes";
 import {
     MimetypeClassifier,
@@ -29,20 +31,25 @@ import {
     Results,
 } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
-import Browser, { BROWSER_UA, requireNumEnv, type RenderResult } from "./Browser.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import WebFetcher, {
+    DEFAULT_WEB_UA,
     CACHE_VARIANT_HEADER,
+    MATERIALIZER_ID_HEADER,
     PROJECTION_ID_HEADER,
+    TAVILY_CREDITS_HEADER,
+    TAVILY_REQUEST_ID_HEADER,
     cacheVariantEvidence,
     classifyCacheVariant,
     rewriteAcquisitionTarget,
     WebMaterializationError,
+    type WebChannelFailure,
     type CacheVariant,
     type WebFetchResult,
     type WebMaterializedResult,
 } from "./WebFetcher.ts";
 import { responseMimetype } from "./ContentType.ts";
+import { requireNonNegativeIntegerEnv as requireNumEnv } from "./Config.ts";
 
 // The channel the response body streams into, and the header metadata channel.
 const BODY = "body";
@@ -217,13 +224,6 @@ const httpDate = (value: string, now = Date.now()): number | null => {
 // The relative path is identical from src/ during development and dist/ after build.
 const documentation = await readFile(new URL("../docs/http.md", import.meta.url), "utf-8");
 
-// What Http needs from the render foundation — narrow, so tests inject a fake.
-interface Renderer {
-    ready?(): Promise<string>;
-    render(url: string, opts: { workerId: number; signal?: AbortSignal; headers?: ReadonlyArray<readonly [string, string]> }): Promise<RenderResult>;
-    close?(): Promise<void>;
-}
-
 export default class Http implements SchemeHandler {
     static manifest: SchemeManifest = {
         name: "http",
@@ -246,29 +246,20 @@ export default class Http implements SchemeHandler {
         },
     };
 
-    // The render foundation (lazy chromium). Injectable for tests; one warm
-    // pool per Http instance, shared across this scheme's fetches.
-    readonly #browser: Renderer;
     readonly #errorDetailLimit: number;
     readonly #webFetcher: WebFetcher;
-    constructor(browser: Renderer = new Browser()) {
-        this.#browser = browser;
+    constructor() {
         this.#errorDetailLimit = ErrorDetail.configuredLimit();
-        this.#webFetcher = new WebFetcher(browser);
+        this.#webFetcher = new WebFetcher();
     }
 
     async ready(): Promise<void> {
-        const mode = await this.#browser.ready?.();
-        if (mode !== undefined) console.info(`http renderer: ${mode}`);
-    }
-
-    async close(): Promise<void> {
-        await this.#webFetcher.close();
+        WebFetcher.validateConfiguration();
     }
 
     // FIND itself is the consumer's standard entry query. This hook owns only
     // HTTP's prerequisite: an exact URL that is not already an entry must be
-    // acquired through the same checked byte and lazy-render path used by search
+    // acquired through the same checked byte and materialization path used by search
     // prefetch. Glob targets only query already-known web entries.
     async prepareFind(statement: FindStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         const target = statement.target;
@@ -296,11 +287,7 @@ export default class Http implements SchemeHandler {
                 return Http.#materializationFailure(
                     url,
                     "GET",
-                    new WebMaterializationError(
-                        "projection",
-                        Http.#sourceMimetype(priorHeader),
-                        cause,
-                    ),
+                    new WebMaterializationError(Http.#sourceMimetype(priorHeader), cause),
                 );
             }
             if (reusable && Http.#fresh(priorHeader)) {
@@ -348,13 +335,19 @@ export default class Http implements SchemeHandler {
             throw err;
         }
         if (materialized === null) return Http.#noReadableProjection(url);
-        const channels: EntryData["channels"] = {
-            [BODY]: materialized.body,
-            ...(materialized.html === undefined ? {} : { html: materialized.html }),
-            ...(materialized.header === undefined
-                ? {}
-                : { [HEADER]: { content: materialized.header, mimetype: "text/plain" } }),
-        };
+        if (materialized.body === undefined) {
+            return Http.#producerFailure(
+                url,
+                "GET",
+                materialized.bodyOutcome.failure ?? {
+                    status: 502,
+                    code: "body-unavailable",
+                    detail: `The URL ${url} produced no body.`,
+                    retryable: true,
+                },
+            );
+        }
+        const channels = WebFetcher.materializedChannels(materialized);
         const written = await ctx.entries.write(pathname, { channels, tags: [] });
         return Http.#passthrough(written);
     }
@@ -507,7 +500,12 @@ export default class Http implements SchemeHandler {
 
         // {§revalidation} — recover only a GET-marked representation and its
         // validators before the seed write replaces the stored channels.
-        let cached: { header: string; body: { content: string; mimetype: string }; html?: { content: string; mimetype: string } } | undefined;
+        let cached: {
+            header: string;
+            body: { content: string; mimetype: string };
+            html?: { content: string; mimetype: string };
+            htmlState?: ChannelState;
+        } | undefined;
         const conditional: Array<[string, string]> = [];
         if (method === "GET") {
             const prior = await ctx.entries.read(pathname);
@@ -524,18 +522,17 @@ export default class Http implements SchemeHandler {
                             header: ph.content,
                             body: { content: pb.content, mimetype: pb.mimetype },
                             ...(html === undefined || html.content.length === 0 ? {} : { html: { content: html.content, mimetype: html.mimetype } }),
+                            ...(html === undefined ? {} : { htmlState: html.state }),
                         };
-                        conditional.push(...Http.#validators(ph.content));
+                        if (Http.#materializerIdentity(ph.content) === undefined) {
+                            conditional.push(...Http.#validators(ph.content));
+                        }
                     }
                 } catch (cause) {
                     return Http.#materializationFailure(
                         url,
                         method,
-                        new WebMaterializationError(
-                            "projection",
-                            Http.#sourceMimetype(ph.content),
-                            cause,
-                        ),
+                        new WebMaterializationError(Http.#sourceMimetype(ph.content), cause),
                     );
                 }
             }
@@ -547,11 +544,30 @@ export default class Http implements SchemeHandler {
             const written = await ctx.entries.write(pathname, Http.#seedEntry());
             if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
             const subscription = await ctx.subscriptions.open(pathname, { cancel: () => {} }, { publishedChannel });
-            await subscription.notifyChunk(HEADER, cached.header, "text/plain");
-            if (cached.html !== undefined) await subscription.notifyChunk("html", cached.html.content, cached.html.mimetype);
-            await subscription.notifyChunk(BODY, cached.body.content, cached.body.mimetype);
-            await subscription.close({ status: 200 }, `ttl-fresh; ${cached.body.content.length} chars from cache`);
-            return { shape: "passthrough", status: 102 };
+            return Http.#settleMaterialized(
+                subscription,
+                url,
+                method,
+                publishedChannel,
+                {
+                    body: cached.body,
+                    ...(cached.html === undefined ? {} : { html: cached.html }),
+                    header: cached.header,
+                    bodyOutcome: { status: Http.#materializerIdentity(cached.header)?.startsWith("local-fallback:") === true ? 203 : 200 },
+                    htmlOutcome: cached.htmlState === "errored"
+                        ? {
+                            status: 502,
+                            failure: {
+                                status: 502,
+                                code: "html-unavailable",
+                                detail: `Server-source HTML for ${url} was unavailable.`,
+                                retryable: true,
+                            },
+                        }
+                        : { status: 200 },
+                },
+                "ttl-fresh",
+            );
         }
 
         // Local AbortController for force-cancel from outside (SEND[499]).
@@ -564,30 +580,92 @@ export default class Http implements SchemeHandler {
         if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
 
         // open() returns the worker+teardown-composed signal — fires on loop.cancel
-        // OR our local teardown. Wire it so either path aborts the fetch/render.
+        // OR our local teardown. Wire it so either path aborts acquisition.
         const subscription = await ctx.subscriptions.open(pathname, handle, { publishedChannel });
         const onAbort = () => local.abort();
         subscription.addEventListener("abort", onAbort, { once: true });
         let detached = false;
-
         try {
-            const response = await fetch(url, {
-                method,
-                body,
-                // One browser identity on the wire (never Node's default "node"
-                // UA — a loud automated-client fingerprint). The model's own
-                // {User-Agent: …} block wins when present.
-                headers: headers.some(([k]) => k.toLowerCase() === "user-agent")
-                    ? [...headers, ...conditional]
-                    : [["User-Agent", BROWSER_UA] as [string, string], ...headers, ...conditional],
-                signal: local.signal,
-                redirect: "follow",
-            });
+            let response: Response;
+            if (method === "GET") {
+                const fetched = await this.#webFetcher.fetch(url, {
+                    signal: local.signal,
+                    headers,
+                    conditionalHeaders: conditional,
+                    guarded: false,
+                    acceptHttpErrors: true,
+                    preserveUnavailable: true,
+                });
+                if (fetched === null) throw new Error(`HTTP GET ${url} produced no response.`);
+                if (fetched.originUnavailable === true
+                    || MimetypeClassifier.isHtml(fetched.mimetype)
+                    || fetched.mimetype === "text/markdown") {
+                    let materialized: WebMaterializedResult | null;
+                    try {
+                        materialized = await WebFetcher.materialize(fetched, ctx.projection, local.signal);
+                    } catch (error) {
+                        if (MimetypeClassifier.isHtml(fetched.mimetype)
+                            && typeof fetched.body === "string") {
+                            if (fetched.header !== undefined) {
+                                await subscription.notifyChunk(HEADER, fetched.header, "text/plain");
+                            }
+                            await subscription.notifyChunk("html", fetched.body, fetched.mimetype);
+                            if (local.signal.aborted) {
+                                const result = Http.#cancelled(url, method);
+                                await subscription.close(result, result.problem?.detail, {
+                                    body: "errored",
+                                    header: fetched.header === undefined ? "errored" : "closed",
+                                    html: "closed",
+                                });
+                                return result;
+                            }
+                            if (error instanceof WebMaterializationError) {
+                                const result = Http.#materializationFailure(url, method, error);
+                                await subscription.close(result, result.problem?.detail, {
+                                    body: "errored",
+                                    header: fetched.header === undefined ? "errored" : "closed",
+                                    html: "closed",
+                                });
+                                return result;
+                            }
+                        }
+                        throw error;
+                    }
+                    if (materialized === null) {
+                        const failure = Http.#noReadableProjection(url);
+                        await subscription.close(failure, failure.problem?.detail);
+                        return failure;
+                    }
+                    return Http.#settleMaterialized(
+                        subscription,
+                        url,
+                        method,
+                        publishedChannel,
+                        materialized,
+                        `acquired ${fetched.status === undefined ? "provider body" : `HTTP ${fetched.status}`}`,
+                    );
+                }
+                if (fetched.response === undefined) throw new Error(`HTTP GET ${url} lost its response owner.`);
+                response = fetched.response;
+            } else {
+                response = await fetch(url, {
+                    method,
+                    body,
+                    headers: headers.some(([k]) => k.toLowerCase() === "user-agent")
+                        ? headers
+                        : [["User-Agent", DEFAULT_WEB_UA] as [string, string], ...headers],
+                    signal: local.signal,
+                    redirect: "follow",
+                });
+            }
 
             // {§revalidation} A corresponding 304 restores the nominated GET
             // representation into the freshly seeded channels and remains an
             // ordinary streaming READ.
             if (cached !== undefined && response.status === 304) {
+                if (Http.#materializerIdentity(cached.header) !== undefined) {
+                    throw new Error("HTTP 304 cannot certify a stored HTML-page materialization.");
+                }
                 if (!Http.#revalidationCorresponds(cached.header, response.headers)) {
                     throw new Error("HTTP 304 did not identify the stored representation nominated for revalidation.");
                 }
@@ -607,42 +685,6 @@ export default class Http implements SchemeHandler {
             }
 
             const responseMime = responseMimetype(response.headers.get("content-type"));
-
-            // Always-render: a GET of an HTML page is re-acquired through the
-            // browser so the body is projected from the final rendered DOM. The probe-fetch
-            // body is discarded — the browser does its own navigation. Only GET
-            // renders; POST/PUT/DELETE can't be replayed as a browser navigation.
-            const isHtml = method === "GET" && MimetypeClassifier.isHtml(responseMime);
-            if (isHtml) {
-                await response.body?.cancel();
-                let result: RenderResult;
-                try {
-                    result = await this.#browser.render(url, {
-                        workerId: ctx.workerId,
-                        signal: local.signal,
-                        headers,
-                    });
-                } catch (cause) {
-                    throw new WebMaterializationError("render", responseMime, cause);
-                }
-                await Http.#writeHeader(subscription, method, result.status, result.statusText, result.headers, headers);
-                await subscription.notifyChunk("html", result.html, "text/html");
-                const materialized = await WebFetcher.materialize(
-                    { body: result.html, mimetype: "text/html" },
-                    ctx.projection,
-                );
-                if (materialized === null) {
-                    const failure = Http.#noReadableProjection(url);
-                    await subscription.close(failure, failure.problem?.detail);
-                    return failure;
-                }
-                if (materialized.projection !== undefined) {
-                    await Http.#writeProjectionIdentity(subscription, materialized.projection.identity);
-                }
-                await subscription.notifyChunk(BODY, materialized.body.content, materialized.body.mimetype);
-                await subscription.close({ status: 200 }, `rendered HTTP ${result.status}; ${materialized.body.content.length} readable chars`);
-                return { shape: "passthrough", status: 102 };
-            }
 
             // SSE: an event stream is parsed into its `data` payloads (SPEC {§sse}),
             // one notifyChunk per event with the `data:`/comment framing stripped,
@@ -772,6 +814,77 @@ export default class Http implements SchemeHandler {
         }
     }
 
+    static async #settleMaterialized(
+        subscription: StreamSubscription,
+        url: string,
+        method: string,
+        publishedChannel: string,
+        materialized: WebMaterializedResult,
+        summary: string,
+    ): Promise<PassthroughResult> {
+        if (materialized.header !== undefined) {
+            await subscription.notifyChunk(HEADER, materialized.header, "text/plain");
+        }
+        if (materialized.html !== undefined) {
+            await subscription.notifyChunk("html", materialized.html.content, materialized.html.mimetype);
+        }
+        if (materialized.body !== undefined) {
+            await subscription.notifyChunk(BODY, materialized.body.content, materialized.body.mimetype);
+        }
+
+        const headerOutcome = materialized.header === undefined
+            ? {
+                status: 502,
+                failure: {
+                    status: 502,
+                    code: "header-unavailable",
+                    detail: `Acquisition evidence for ${url} was unavailable.`,
+                    retryable: true,
+                },
+            }
+            : { status: 200 };
+        const htmlOutcome = materialized.htmlOutcome ?? (materialized.html === undefined
+            ? {
+                status: 502,
+                failure: {
+                    status: 502,
+                    code: "html-unavailable",
+                    detail: `Server-source HTML for ${url} was unavailable.`,
+                    retryable: true,
+                },
+            }
+            : { status: 200 });
+        const outcomes = {
+            [BODY]: materialized.bodyOutcome,
+            [HEADER]: headerOutcome,
+            html: htmlOutcome,
+        };
+        const channelStates: Readonly<Record<string, TerminalChannelState>> = Object.fromEntries(
+            Object.entries(outcomes).map(([channel, outcome]) => [
+                channel,
+                outcome.failure === undefined ? "closed" : "errored",
+            ]),
+        );
+        const selected = outcomes[publishedChannel as keyof typeof outcomes];
+        if (selected === undefined) throw new Error(`No materialization outcome exists for #${publishedChannel}.`);
+        if (selected.failure !== undefined) {
+            const result = Http.#producerFailure(url, method, selected.failure);
+            await subscription.close(result, result.problem?.detail, channelStates);
+            return result;
+        }
+        const selectedContent = publishedChannel === BODY
+            ? materialized.body?.content
+            : publishedChannel === HEADER
+                ? materialized.header
+                : materialized.html?.content;
+        await subscription.close(
+            { status: selected.status },
+            `${summary}; ${selectedContent?.length ?? 0} chars`,
+            channelStates,
+        );
+        return { shape: "passthrough", status: 102 };
+    }
+
     // {§http-manifest}/{§http-lifecycle} Seed the declared channel shape before
     // open(); notifyChunk later welds acquired content to its actual mimetype.
     static #seedEntry(): EntryData {
@@ -785,11 +898,16 @@ export default class Http implements SchemeHandler {
         return { channels, tags: [] };
     }
 
-    // {§revalidation} `static` exact materializations and successfully `closed`
-    // streams are final. Active or failed channels cannot vouch for a reusable
-    // representation, regardless of whether partial content is non-empty.
+    // {§revalidation} The body and header must have settled successfully. An
+    // auxiliary channel may have terminally failed without invalidating body.
     static #representationComplete(entry: StoredEntryData): boolean {
-        return Object.values(entry.channels).every(({ state }) => state === "static" || state === "closed");
+        const bodyState = entry.channels[BODY]?.state;
+        const headerState = entry.channels[HEADER]?.state;
+        const successful = (state: ChannelState | undefined): boolean => state === "static" || state === "closed";
+        const terminal = (state: ChannelState): boolean => successful(state) || state === "errored";
+        return successful(bodyState)
+            && successful(headerState)
+            && Object.values(entry.channels).every(({ state }) => terminal(state));
     }
 
     // {§revalidation} Direct READ and exact FIND share the complete reusable
@@ -820,12 +938,26 @@ export default class Http implements SchemeHandler {
         responseHeaders: ReadonlyArray<readonly [string, string]>,
         requestHeaders: ReadonlyArray<readonly [string, string]>,
     ): Promise<void> {
+        await subscription.notifyChunk(
+            HEADER,
+            Http.#responseHeader(method, status, statusText, responseHeaders, requestHeaders),
+            "text/plain",
+        );
+    }
+
+    static #responseHeader(
+        method: string,
+        status: number,
+        statusText: string,
+        responseHeaders: ReadonlyArray<readonly [string, string]>,
+        requestHeaders: ReadonlyArray<readonly [string, string]>,
+    ): string {
         const lines = [`HTTP ${status} ${statusText}`];
         for (const [k, v] of responseHeaders) lines.push(`${k}: ${v}`);
         lines.push(`${REQUEST_METHOD}: ${method}`);
         lines.push(`${FETCHED_AT}: ${new Date().toISOString()}`);
         lines.push(cacheVariantEvidence(classifyCacheVariant(requestHeaders, responseHeaders)));
-        await subscription.notifyChunk(HEADER, lines.join("\n"), "text/plain");
+        return lines.join("\n");
     }
 
     static async #writeProjectionIdentity(
@@ -1068,6 +1200,10 @@ export default class Http implements SchemeHandler {
         return Http.#packageHeaderValue(priorHeader, PROJECTION_ID_HEADER);
     }
 
+    static #materializerIdentity(priorHeader: string): string | undefined {
+        return Http.#packageHeaderValue(priorHeader, MATERIALIZER_ID_HEADER);
+    }
+
     static #cacheVariant(priorHeader: string): CacheVariant | undefined {
         const value = Http.#packageHeaderValue(priorHeader, CACHE_VARIANT_HEADER);
         return value === "default" || value === "bypass" ? value : undefined;
@@ -1078,9 +1214,18 @@ export default class Http implements SchemeHandler {
     }
 
     static async #projectionCurrent(header: string, projection: ProjectionCaps): Promise<boolean> {
+        const sourceMimetype = Http.#sourceMimetype(header);
+        const isHtml = MimetypeClassifier.isHtml(sourceMimetype);
+        const materializerIdentity = Http.#materializerIdentity(header);
+        if (materializerIdentity !== undefined) {
+            if (!WebFetcher.materializerCurrent(materializerIdentity)) return false;
+            if (materializerIdentity.startsWith("tavily-extract:")
+                || materializerIdentity === "origin-markdown:v1") return true;
+        }
+        if (isHtml && materializerIdentity === undefined) return false;
         const storedIdentity = Http.#projectionIdentity(header);
-        if (storedIdentity === undefined) return true;
-        return await projection.identity(Http.#sourceMimetype(header)) === storedIdentity;
+        if (storedIdentity === undefined) return !isHtml;
+        return await projection.identity(sourceMimetype) === storedIdentity;
     }
 
     // RFC 9111 §3.2 permits a processed cache to retain the metadata that its
@@ -1102,7 +1247,15 @@ export default class Http implements SchemeHandler {
             ...retained.map(({ name, value }) => [name, value] as const),
             ...updates,
         ];
-        const projectionIdentity = Http.#projectionIdentity(header);
+        const packageEvidence = [
+            MATERIALIZER_ID_HEADER,
+            PROJECTION_ID_HEADER,
+            TAVILY_REQUEST_ID_HEADER,
+            TAVILY_CREDITS_HEADER,
+        ].flatMap((field) => {
+            const value = Http.#packageHeaderValue(header, field);
+            return value === undefined ? [] : [`${field}: ${value}`];
+        });
         return [
             lines[0] ?? "HTTP 200 OK",
             ...retained.map(({ line }) => line),
@@ -1110,9 +1263,7 @@ export default class Http implements SchemeHandler {
             `${REQUEST_METHOD}: GET`,
             `${FETCHED_AT}: ${new Date().toISOString()}`,
             cacheVariantEvidence(classifyCacheVariant(requestHeaders, merged)),
-            ...(projectionIdentity === undefined
-                ? []
-                : [WebFetcher.projectionEvidence(projectionIdentity)]),
+            ...packageEvidence,
         ].join("\n");
     }
 
@@ -1165,6 +1316,26 @@ export default class Http implements SchemeHandler {
         return Results.assert({ ...result, shape: "passthrough" }) as PassthroughResult;
     }
 
+    static #producerFailure(
+        url: string,
+        method: string,
+        producerFailure: WebChannelFailure,
+    ): PassthroughResult {
+        return Http.#bad(
+            producerFailure.status,
+            "http",
+            producerFailure.code,
+            producerFailure.detail,
+            {
+                target: url,
+                method,
+                stage: "materialization",
+                retryable: producerFailure.retryable,
+                ...(producerFailure.facts ?? {}),
+            },
+        );
+    }
+
     static #cancelled(url: string, method: string): PassthroughResult {
         return Http.#bad(
             499,
@@ -1203,20 +1374,17 @@ export default class Http implements SchemeHandler {
             );
         }
         console.error("HTTP materialization failed", { method, url, error });
-        const projection = error.stage === "projection";
         return Http.#bad(
-            projection ? 500 : 502,
+            500,
             "http",
-            projection ? "projection-failed" : "render-failed",
-            projection
-                ? `HTTP ${method} ${url} acquired content, but its readable projection failed.`
-                : `HTTP ${method} ${url} could not render HTML.`,
+            "projection-failed",
+            `HTTP ${method} ${url} acquired content, but its readable projection failed.`,
             {
                 target: url,
                 method,
                 mimetype: error.mimetype,
-                stage: error.stage,
-                retryable: !projection,
+                stage: "projection",
+                retryable: false,
             },
         );
     }

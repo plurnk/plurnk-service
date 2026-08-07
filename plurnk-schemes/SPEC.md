@@ -386,7 +386,7 @@ its implementation.
 - `channels` — content writes + state (`append`/`replace`/`setState`).
 - `tags` — entry tags (`add`/`remove`/`list`).
 - `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the worker wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a worker, always via close.)
-- `projection` — the text and bounded-byte projection capability in {§scheme-projection}. Acquisition schemes own bytes/DOM; they do not instantiate or second-guess the reader family. `null` means no readable projection.
+- `projection` — the text and bounded-byte projection capability in {§scheme-projection}. Acquisition schemes own source representations; they do not instantiate or second-guess the reader family. `null` means no readable projection.
 - §scheme-subscriptions `subscriptions` — one streaming lifecycle:
 
 | Surface                           | Lifetime   | Contract                                                                                                   |
@@ -397,9 +397,14 @@ its implementation.
 
 `notifyChunk` appends and emits one stream event. Its optional stateless
 `mimetype` retypes the channel only when the stored type differs.
-`close` validates and persists the exact universal `SchemeResult`, settles
-channel state, unregisters the live handle, and wakes the worker. `summary` is
-presentation only; it never replaces or reconstructs the result.
+`close(result, summary?, channelStates?)` validates and persists the exact
+universal `SchemeResult`, settles channel state (exact named overrides, then the
+result-status default), unregisters the live handle, and wakes the worker.
+`summary` is presentation only; it never replaces or reconstructs the result.
+An override names an existing channel and is exactly `closed` or `errored`;
+invalid overrides fail before any channel state is changed. This permits one
+multi-channel producer to preserve successful evidence beside an independently
+failed representation without inventing another settlement path.
 
 There is **no `visibility` capability**: entry-level SHOW/HIDE was removed in the index/visibility teardown — SHOW/HIDE now collapse/expand `log://` rows, a log-side concern with no entry-visibility for a scheme to set.
 

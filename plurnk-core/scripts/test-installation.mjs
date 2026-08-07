@@ -291,8 +291,6 @@ void home;
 
 const boot = await bootStart({
     PLURNK_SERVICE_DB_PATH: resolve(sandbox, "start.db"),
-    // {§browser-provisioning}: this fixture provisions no operator browser.
-    PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
 });
 ok(boot.listening === true, "{§agui-daemon-client}: `start` boots the daemon with its AG-UI+ listener");
 ok(!/embedder inactive/.test(boot.stderr), "no embedder-inactive notice — the shipped embedder is active");
@@ -310,7 +308,6 @@ try {
     );
     const invalidAguiFloor = await bootStart({
         PLURNK_SERVICE_DB_PATH: resolve(sandbox, "invalid-agui-floor.db"),
-        PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
     });
     ok(
         invalidAguiFloor.listening === false
@@ -325,7 +322,6 @@ const withheldEmbedderRoot = `${embedderRoot}.withheld`;
 renameSync(embedderRoot, withheldEmbedderRoot);
 const brokenComposition = await bootStart({
     PLURNK_SERVICE_DB_PATH: resolve(sandbox, "broken-composition.db"),
-    PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
 });
 renameSync(withheldEmbedderRoot, embedderRoot);
 ok(

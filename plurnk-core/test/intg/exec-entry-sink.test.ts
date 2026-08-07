@@ -384,9 +384,9 @@ test("an absolute web URL ending in slash is one fetchable resource, not a folde
 test("{§exec-entry-sink}: content:null materializes a live page and prunes an unavailable one", async () => {
     // The sink's WebFetch is faked: automatic acquisition blocks localhost, so no live server can stand in for
     // the fetch. A /dead URL resolves null; anything else returns useful server XHTML.
-    let browserFallbacks = 0;
     const fetchWeb: WebFetch = async (url) =>
         url.includes("/dead") ? null : {
+            url,
             body: "<p>fetched live turkeys</p>",
             mimetype: "application/xhtml+xml",
             header: [
@@ -396,10 +396,6 @@ test("{§exec-entry-sink}: content:null materializes a live page and prunes an u
                 "x-plurnk-request-method: GET",
                 `x-plurnk-fetched-at: ${new Date().toISOString()}`,
             ].join("\n"),
-            render: async () => {
-                browserFallbacks += 1;
-                return { body: "<p>wrong fallback</p>", mimetype: "text/html" };
-            },
         };
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ fetchWeb, nullContent: true, tag: "stubsearch2" });
     try {
@@ -418,7 +414,6 @@ test("{§exec-entry-sink}: content:null materializes a live page and prunes an u
         const body = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: live.id, name: "body" });
         assert.equal(body?.mimetype, "text/markdown", "the fetched html projected to the decisive markdown body");
         assert.match(body?.content ?? "", /fetched live turkeys/, "the projected body carries the fetched content, not the raw markup alone");
-        assert.equal(browserFallbacks, 0, "a useful byte-response projection never invokes browser rendering");
         const header = await db.test_get_channel.get<{ content: string }>({ entry_id: live.id, name: "header" });
         const projectionEvidence = [
             ...(header?.content ?? "").matchAll(/^x-plurnk-projection-id:[ \t]*(.*)$/gim),
@@ -476,16 +471,15 @@ test("entry(content:null) preserves caller cancellation through the real WebFetc
         globalThis.fetch = originalFetch;
         await quiesceExecs(schemes);
         await schemes.close();
-        await webFetcher.close();
         await db.close();
     }
 });
 
 test("entry(content:null) admits only HTTP acquisition targets", async () => {
     let fetches = 0;
-    const fetchWeb: WebFetch = async () => {
+    const fetchWeb: WebFetch = async (url) => {
         fetches += 1;
-        return { body: "unexpected", mimetype: "text/plain" };
+        return { url, body: "unexpected", mimetype: "text/plain" };
     };
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
         fetchWeb,
@@ -507,19 +501,12 @@ test("entry(content:null) admits only HTTP acquisition targets", async () => {
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("{§html-materialization}: an absent byte projection renders once and stores useful fallback Markdown", async () => {
-    let browserFallbacks = 0;
+test("{§html-materialization}: server HTML materializes Markdown projection", async () => {
     const fetchWeb: WebFetch = async (url) =>
         url.includes("/dead") ? null : {
-            body: "<html><body><div></div></body></html>",
+            url,
+            body: "<html><body><h1>Headline</h1><p>useful article</p></body></html>",
             mimetype: "text/html",
-            render: async () => {
-                browserFallbacks += 1;
-                return {
-                    body: "<html><body><h1>Hydrated headline</h1><p>useful client-rendered article</p></body></html>",
-                    mimetype: "text/html",
-                };
-            },
         };
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
         fetchWeb, nullContent: true, tag: "stubsearch3",
@@ -536,9 +523,8 @@ test("{§html-materialization}: an absent byte projection renders once and store
         const body = await db.test_get_channel.get<{ content: string; mimetype: string }>({
             entry_id: live.id, name: "body",
         });
-        assert.equal(browserFallbacks, 1);
         assert.equal(body?.mimetype, "text/markdown");
-        assert.match(body?.content ?? "", /useful client-rendered article/);
+        assert.match(body?.content ?? "", /useful article/);
         assert.ok(!(body?.content ?? "").includes("<html>"), "raw HTML never becomes the decisive model/embed body");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });

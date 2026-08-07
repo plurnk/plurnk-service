@@ -124,8 +124,8 @@ export const resolveStreamStatement = async <S extends { target: ReadStatement["
 };
 
 // {§exec-entry-sink}: the web-fetch the sink calls when the executor hands content:null:
-// schemes-http's WebFetcher (checked byte acquisition + lazy browser
-// fallback, dead-as-null; caller cancellation rejects per {§prefetch}).
+// schemes-http's WebFetcher (checked byte acquisition, dead-as-null; caller
+// cancellation rejects per {§prefetch}).
 // Injectable because automatic acquisition refuses localhost.
 export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise<WebFetchResult | null>;
 
@@ -145,20 +145,16 @@ export default class Exec extends CoreSchemeAdapterBase {
         },
     };
 
-    // The web-fetch the entry sink calls on content:null ({§exec-entry-sink}). Default = schemes-http's
-    // checked WebFetcher over one warm-Chromium pool shared across this handler's
-    // fallback renders; injectable so tests substitute the network.
+    // The web-fetch the entry sink calls on content:null ({§exec-entry-sink}).
+    // Default = schemes-http's checked WebFetcher; injectable for tests.
     readonly #fetchWeb: WebFetch;
-    readonly #closeWebFetcher: () => Promise<void>;
     constructor(fetchWeb?: WebFetch) {
         super();
-        const webFetcher = new WebFetcher();
         if (fetchWeb === undefined) {
+            const webFetcher = new WebFetcher();
             this.#fetchWeb = (url, opts) => webFetcher.fetch(url, opts);
-            this.#closeWebFetcher = () => webFetcher.close();
         } else {
             this.#fetchWeb = fetchWeb;
-            this.#closeWebFetcher = async () => {};
         }
     }
 
@@ -169,11 +165,9 @@ export default class Exec extends CoreSchemeAdapterBase {
         await Promise.allSettled([...this.#activeSpawns.values()]);
     }
 
-    // {§handler-lifecycle} — idle is the streaming drain barrier; the handler
-    // hook owns release of its separate checked-fetch browser pool.
+    // {§handler-lifecycle} — idle is the streaming drain barrier.
     async close(): Promise<void> {
         await this.idle();
-        await this.#closeWebFetcher();
     }
 
     // Whether the worker has an in-flight spawn (a background exec). The daemon
@@ -656,7 +650,12 @@ export default class Exec extends CoreSchemeAdapterBase {
                 if (fetchAddress === null) return Promise.reject(new Error("entry(): content:null requires an http(s):// URL"));
                 materialized = this.#fetchWeb(fetchAddress.url, { signal });
             } else {
-                materialized = Promise.resolve({ body: content, mimetype: opts.mimetype as string });
+                materialized = Promise.resolve({
+                    url: fetchAddress?.url ?? "http://localhost",
+                    body: content,
+                    mimetype: opts.mimetype as string,
+                    allowTavily: false,
+                });
             }
             const op = async (): Promise<string> => {
                 const fetched = await materialized;
@@ -671,15 +670,17 @@ export default class Exec extends CoreSchemeAdapterBase {
                     throw error;
                 }
                 if (web === null) throw new Error(`entry(): '${path.slice(0, 80)}' has no readable projection`);
+                if (web.body === undefined) {
+                    throw new Error(
+                        web.bodyOutcome.failure?.detail
+                        ?? `entry(): '${path.slice(0, 80)}' produced no readable body`,
+                    );
+                }
                 const prior = await EntryCrud.readEntry(pathname, ctx, scheme);
                 const tags = [...new Set([...(prior.entry?.tags ?? []), ...opts.tags])];
                 // {§exec-entry-sink}/{§html-materialization} The shared
                 // materializer owns the decisive projection and its provenance.
-                const channels: EntryData["channels"] = {
-                    body: web.body,
-                    ...(web.html === undefined ? {} : { html: web.html }),
-                    ...(web.header === undefined ? {} : { header: { content: web.header, mimetype: "text/plain" } }),
-                };
+                const channels: EntryData["channels"] = WebFetcher.materializedChannels(web);
                 const decisive = web.body.content;
                 const source = web.html?.content ?? decisive;
                 const causalSource = await resolveCallerSource();

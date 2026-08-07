@@ -235,7 +235,6 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
         assert.deepEqual(requests, [url, deadUrl]);
     } finally {
         globalThis.fetch = originalFetch;
-        await http.close();
         await db.close();
     }
 });
@@ -296,7 +295,6 @@ test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisitio
         ]);
     } finally {
         globalThis.fetch = originalFetch;
-        await http.close();
         await db.close();
     }
 });

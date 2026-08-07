@@ -11,7 +11,8 @@ import type { MatchEvidence, SchemeResult } from "./Results.ts";
 import type { EditBatchReceipt, EditBatchResult } from "./edit-receipt.ts";
 // Channel streaming-lifecycle state. Metadata, not an engine gate
 // (service SPEC {§channel-state}).
-export type ChannelState = "static" | "active" | "closed" | "errored";
+export type TerminalChannelState = "closed" | "errored";
+export type ChannelState = "static" | "active" | TerminalChannelState;
 
 // Entry write shape. Omitting state selects the consumer's `static` default.
 export interface EntryData {
@@ -152,7 +153,7 @@ export interface NotifyCaps {
 
 // ── projection ───────────────────────────────────────────────────────────
 // Ask the consumer's configured mimetype family for the model-facing text
-// projection of acquired content. Network schemes acquire bytes/DOM; they do
+// projection of acquired content. Network schemes acquire source representations; they do
 // not select or instantiate the reader family. Keeping that reader capability
 // on the consumer makes direct READ and executor-prefetch use the same
 // configured projection instead of shipping raw HTML down one path. A returned
@@ -184,7 +185,11 @@ export interface StreamSubscription extends AbortSignal {
 
     // Settle the subscription: validate and persist the exact universal
     // operation result, set channel state, and fire the worker wake.
-    close(result: SchemeResult, summary?: string): Promise<void>;
+    close(
+        result: SchemeResult,
+        summary?: string,
+        channelStates?: Readonly<Record<string, TerminalChannelState>>,
+    ): Promise<void>;
 }
 
 // The streaming lifecycle (service SPEC: streaming). The registered-vs-content
