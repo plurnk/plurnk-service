@@ -20,8 +20,8 @@ const editStmt = (pathname: string, content: string): EditStatement => ({
     target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null } as UrlPath,
     lineMarker: null, body: content, position: { line: 1, column: 1 },
 });
-const readStmt = (target: ParsedPath | null, body: MatcherBody | null = null): ReadStatement => ({
-    op: "READ", suffix: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 },
+const readStmt = (target: ParsedPath | null): ReadStatement => ({
+    op: "READ", suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
 const setup = async () => {
@@ -135,17 +135,17 @@ test("log FIND reports an exact readable region for structural matches", async (
     } finally { await db.close(); }
 });
 
-test("READ(log:///**):/pattern/ fans out — FIND locates, per-row READs deliver, uniform with entries", async () => {
+test("FIND(log:///**):/pattern/ — FIND locates matching log entries", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: readStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/engine hums/", pattern: "engine hums", flags: "" } as MatcherBody),
+            statement: findStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/engine hums/", pattern: "engine hums", flags: "" } as MatcherBody),
             workspaceId, workerId, loopId, turnId, sequence: 4, origin: "model",
         });
-        assert.equal(result.status, 200, "the matcher READ fans out through Log.find");
+        assert.equal(result.status, 200, "FIND locates log entries");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; sequence: number }>({ loop_id: loopId });
-        const delivered = rows.filter((r) => r.op === "READ" && r.sequence >= 4 && r.rx.includes("engine hums"));
-        assert.ok(delivered.length >= 1, "the matching row's content delivered as a fanned READ row");
+        const delivered = rows.filter((r) => r.op === "FIND" && r.sequence >= 4);
+        assert.ok(delivered.length >= 1, "the matching FIND row is recorded");
     } finally { await db.close(); }
 });
 

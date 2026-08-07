@@ -69,7 +69,8 @@
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
                 "body": { "$ref": "#/$defs/MatcherBodyOrNull" },
-                "position": { "$ref": "#/$defs/PositionRef" }
+                "position": { "$ref": "#/$defs/PositionRef" },
+                "coercedFromRead": { "type": "boolean" }
             }
         },
         "ReadStatement": {
@@ -82,7 +83,7 @@
                 "signal": { "$ref": "#/$defs/TagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
-                "body": { "$ref": "#/$defs/MatcherBodyOrNull" },
+                "body": { "type": "null" },
                 "position": { "$ref": "#/$defs/PositionRef" }
             }
         },

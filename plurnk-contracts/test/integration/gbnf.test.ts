@@ -435,7 +435,7 @@ test("GBNF: OPEN and FOLD admit tagged set selection but no positional scope", (
 
 // {§pattern-body-leading-colon}
 test("GBNF: pattern bodies cannot begin with the close delimiter - triple-colon recovery", () => {
-    for (const op of ["FIND", "READ", "OPEN", "FOLD"]) {
+    for (const op of ["FIND", "OPEN", "FOLD"]) {
         const prefix = `<<PLAN:p:PLAN\n<<${op}(a)`;
         assert.equal(derivesTurn(`${prefix}::${op}\n<<SEND[102]:c:SEND`), true, `${op} keeps an empty matcher body`);
         assert.equal(derivesTurn(`${prefix}:::${op}\n<<SEND[102]:c:SEND`), false, `${op} rejects the triple-colon typo`);
@@ -449,7 +449,7 @@ test("GBNF: pattern bodies cannot begin with the close delimiter - triple-colon 
         "the scoped live-demo failure is outside the rail",
     );
 
-    const parsed = PlurnkParser.parseStatements("<<READ(a):::READ");
+    const parsed = PlurnkParser.parseStatements("<<FIND(a):::FIND");
     assert.equal(parsed.items.filter((item) => item.kind === "error").length, 0, "ANTLR remains the permissive ingester");
     assert.equal(parsed.items[0]?.kind, "statement");
     if (parsed.items[0]?.kind === "statement") assert.deepEqual(parsed.items[0].statement.body, { dialect: "glob", raw: ":" });
@@ -711,7 +711,7 @@ test("GBNF: glued output round-trips through the parser", () => {
 test("GBNF: a malformed JSONPath claim remains one bounded visitor error", () => {
     const turn = [
         `${channel("inspect the available evidence")}<<PLAN:inspect the relevant entries:PLAN`,
-        "<<READ(worker:///x):$fC:READ",
+        "<<FIND(worker:///x):$fC:FIND",
         "<<READ(worker:///y)::READ",
         "<<SEND[102]:continue with the retained result:SEND",
     ].join("\n");

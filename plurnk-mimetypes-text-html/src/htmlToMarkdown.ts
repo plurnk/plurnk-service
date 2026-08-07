@@ -31,7 +31,10 @@ export function htmlToMarkdown(html: string): string | undefined {
         articleHtml = readableBody(document);
     }
 
-    const markdown = wrapMarkdown(turndown.turndown(articleHtml).trim());
+    let text = turndown.turndown(articleHtml).trim();
+    // Strip any residual HTML comments and tags to ensure zero raw markup leaks into the body
+    text = text.replace(/<!--[\s\S]*?-->/g, "").replace(/<[^>]+>/g, "");
+    const markdown = wrapMarkdown(text.trim());
     return markdown.length === 0 ? undefined : markdown;
 }
 

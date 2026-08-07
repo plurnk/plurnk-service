@@ -265,7 +265,9 @@ export default class PacketBuilder {
         // The scheme catalogue is its own `schemes` section below tools ({§schemes-directory}),
         // NOT appended here: the language teaching is scheme-agnostic, so the service advertises
         // the installed scheme set at packet-time via SchemeRegistry.teach().
-        const system_definition = compactDefinitionTables(byRole("system"));
+        const readDefaultEnv = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES ?? "16");
+        const readDefaultLines = Number.isInteger(readDefaultEnv) && readDefaultEnv > 0 ? readDefaultEnv : 16;
+        const system_definition = compactDefinitionTables(byRole("system")).replaceAll("<1,16>", `<1,${readDefaultLines}>`);
         // The prompt section sources the loop's prompt:///<loop>/<N> entries.
         // Inject and turn-1 initialization write them. Bare callers that
         // bypass prompt persistence fall back to messages.user.

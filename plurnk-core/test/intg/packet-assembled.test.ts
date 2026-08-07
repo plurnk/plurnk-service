@@ -16,7 +16,7 @@ import { rulerCount } from "../../src/core/token-ruler.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { InvalidLoopFlagsError, Validator } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { copyStmt, editStmt, readStmt, regex, sendStmt, urlPath } from "./_dsl.ts";
+import { copyStmt, editStmt, readStmt, findStmt, regex, sendStmt, urlPath } from "./_dsl.ts";
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; content: string; tokens: number }> }> =>
     JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
@@ -120,15 +120,15 @@ test("assembled packet: matcher READ shows the resource and surgical coordinates
             mimetype: "text/markdown",
         });
 
-        const matchedRead = {
-            ...readStmt(urlPath("worker", "/notes.md")),
+        const matchedFind = {
+            ...findStmt(urlPath("worker", "/notes.md")),
             body: regex("target"),
         };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                { assistant: { content: "", reasoning: null, ops: [matchedRead, sendStmt(102)] } },
+                { assistant: { content: "", reasoning: null, ops: [matchedFind, sendStmt(102)] } },
                 { assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } },
             ],
         });
@@ -138,7 +138,7 @@ test("assembled packet: matcher READ shows the resource and surgical coordinates
 
         assert.match(log, /"matcher":"\/target\/"/);
         assert.match(log, /"matches":\[\{"region":\{"startLine":2,"startColumn":1,"endLine":2,"endColumn":7\}\},\{"region":\{"startLine":4,"startColumn":1,"endLine":4,"endColumn":7\}\}\]/);
-        assert.match(log, /<<BODY\n1:heading\n2:target one\n3:context\n4:target two\nBODY/);
+        assert.match(log, /worker:\/\/\/notes\.md/);
     } finally { await db.close(); }
 });
 

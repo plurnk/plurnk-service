@@ -339,15 +339,16 @@ export default class EntryFind {
             matches = r.matches.map((match) => ({ pathname: match.key, matches: match.matches }));
         }
 
-        if (statement.lineMarker !== null && statement.body?.dialect !== "semantic" && candidatePathnames === undefined) {
-            const page = LineMarkerOps.page(matches, statement.lineMarker);
+        const marker = statement.lineMarker ?? (matches.length > 0 ? { marks: [1, 16] } : null);
+        if (marker !== null && statement.body?.dialect !== "semantic" && candidatePathnames === undefined) {
+            const page = LineMarkerOps.page(matches, marker);
             if (page.status !== 200) {
                 if (statement.body !== null && matches.length === 0) {
                     const failure = Results.failure(
                         `scheme:${manifest.name}`,
                         "selection-range-unavailable",
                         416,
-                        `The ${statement.body.dialect} matcher selected 0 resources; <${statement.lineMarker.marks.join(",")}> cannot select from an empty result set.`,
+                        `The ${statement.body.dialect} matcher selected 0 resources; <${marker.marks.join(",")}> cannot select from an empty result set.`,
                         {
                             matches: [],
                             range: page.range,
@@ -486,8 +487,9 @@ export default class EntryFind {
 
             // `<L>` pages the catalog the model actually sees, folder summaries
             // included. Only retained real-entry rows remain fan-out matches.
-            if (statement.lineMarker !== null) {
-                const page = LineMarkerOps.page(results, statement.lineMarker);
+            const pageMarker = statement.lineMarker ?? (results.length > 0 ? { marks: [1, 16] } : null);
+            if (pageMarker !== null) {
+                const page = LineMarkerOps.page(results, pageMarker);
                 if (page.status !== 200) {
                     if (page.problem === undefined) {
                         throw new Error("FIND pagination failed without Problem Details");
@@ -537,8 +539,10 @@ export default class EntryFind {
                 maximumItems: budget,
             };
         }
-        // Compact within rows; the single top-level boundary newline makes
-        // result ordinal N the universally numbered packet line N.
+        const reason = (statement as { coercedFromRead?: boolean }).coercedFromRead
+            ? "READ operations with path or body patterns are coerced into FIND operations."
+            : undefined;
+
         return {
             status: 200,
             content: renderFindContent(results),
@@ -547,6 +551,7 @@ export default class EntryFind {
             itemsTokenTotal,
             pathnames: matches.map(({ pathname }) => pathname),
             matches,
+            ...(reason ? { reason } : {}),
         };
     }
 }

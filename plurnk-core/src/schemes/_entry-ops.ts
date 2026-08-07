@@ -377,7 +377,8 @@ export default class EntryOps {
         // An xpath is a question about the DOM — a fragmentless xpath READ routes to the raw `html`
         // channel (the archive the decisive markdown body was projected from). A fragment still wins.
         let readChannel = targetChannel;
-        if (fragment === null && statement.body !== null && statement.body.dialect === "xpath") {
+        const bodyDialect = (statement.body as { dialect?: string } | null)?.dialect;
+        if (fragment === null && bodyDialect === "xpath") {
             const html = await db.ops_read_channel.get<{ content: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: "html" }, owner_id: ownerId });
             if (html !== undefined) readChannel = "html";
         }
@@ -435,7 +436,7 @@ export default class EntryOps {
                         ? {}
                         : {
                             stage: "matcher",
-                            dialect: statement.body.dialect,
+                            dialect: bodyDialect,
                             recovery: r.status === 501
                                 ? "Retry the READ without a content matcher."
                                 : "Correct or remove the matcher.",

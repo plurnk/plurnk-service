@@ -150,10 +150,27 @@ test("lines tolerates three coordinates and reports the exact canonical region",
 });
 
 test("lines rejects unaddressable exact regions", () => {
+    // Line out of range — no clamp applies.
+    const noLine = Slicer.lines("a😀b", { marks: [99, 1, 99, 2] });
+    assert.equal(noLine.status, 416);
+    assert.deepEqual(noLine.problem?.requestedCoordinates, [99, 1, 99, 2]);
 
-    const unaddressable = Slicer.lines("a😀b", { marks: [1, 4, 1, 5] });
-    assert.equal(unaddressable.status, 416);
-    assert.deepEqual(unaddressable.problem?.requestedCoordinates, [1, 4, 1, 5]);
+    // Start-column overshoot stays an error — the intent is ambiguous.
+    const badStart = Slicer.lines("a😀b", { marks: [1, 5, 1, 6] });
+    assert.equal(badStart.status, 416);
+    assert.deepEqual(badStart.problem?.requestedCoordinates, [1, 5, 1, 6]);
+});
+
+test("a harmless end-column overshoot clamps to the line's end", () => {
+    // {§slicer-text-algebra} — <4,1,4,50> on a 30-char line serves the whole line.
+    const clamped = Slicer.lines("one\ntwo\nthree\nfour", { marks: [4, 1, 4, 50] });
+    assert.equal(clamped.status, 200);
+    assert.equal(clamped.text, "four");
+    assert.deepEqual(clamped.region, { startLine: 4, startColumn: 1, endLine: 4, endColumn: 5 });
+
+    // Start-column overshoot stays an error — the intent is ambiguous.
+    const badStart = Slicer.lines("one\ntwo", { marks: [1, 50, 1, 60] });
+    assert.equal(badStart.status, 416);
 });
 
 test("lineMarkerEdit applies and reports the tolerated three-coordinate region", () => {

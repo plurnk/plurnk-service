@@ -123,6 +123,18 @@ export default class GitMembership {
         }
     }
 
+    static async stageFile(root: string, key: string, signal?: AbortSignal): Promise<void> {
+        try {
+            if (isomorphicGitEnabled()) {
+                await GitIso.add(root, key);
+            } else {
+                await GitMembership.#execFileP("git", ["add", "--", key], { cwd: root, signal, env: hermeticGitEnv() });
+            }
+        } catch {
+            // Ignore staging errors if root is not a git repo
+        }
+    }
+
     // project_root for a workspace. NULL = headless (no membership). Read once per
     // resolution; the File scheme reads the same column for its own root.
     static async #loadWorkspaceRoot(db: Db, workspaceId: number): Promise<string | null> {

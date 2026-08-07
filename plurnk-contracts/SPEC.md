@@ -206,7 +206,7 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 |------|-------------------------------|----------------------------------------------|---------------------------------|--------------------------------|
 | PLAN | none                          | none                                         | none                            | required intended goals        |
 | FIND | optional filter tags          | required target or glob                      | optional result range           | optional matcher               |
-| READ | optional filter tags          | required target or glob                      | optional text region            | optional matcher               |
+| READ | optional filter tags          | required target                              | optional text region            | empty                          |
 | EDIT | optional apply tags           | required file or entry                       | required for an existing target | literal text                   |
 | COPY | optional apply tags           | required source                              | optional source region          | required destination selection |
 | MOVE | optional apply tags           | required source                              | optional source region          | required destination selection |
@@ -255,13 +255,7 @@ four-coordinate region ending after the final code point of `endLine`.
 Producers never emit that form. Other arities and decimal text coordinates are
 runtime 416 failures.
 
-For READ, a body matcher selects files, entries, or log items against their
-complete readable content. A non-semantic `<scope>` then projects text from each
-selection; it never paginates the match set or limits where the matcher searches.
-Without `<scope>`, READ returns each selection's complete readable content.
-Semantic READ reserves a leading decimal for an optional similarity threshold;
-the remaining one, two, or four integers project text. Without a leading decimal, every
-integer belongs to READ projection and selection uses the configured default.
+READ targets an exact resource (a local path or scheme URL, with optional `#channel` fragment or `{header: value}` metadata). READ does not admit globs or matcher bodies; pattern matching belongs to FIND. A `<scope>` on READ selects a text region from that exact target. Decimal scope components are invalid on READ.
 
 Mutation semantics:
 
@@ -378,8 +372,9 @@ ingestion restriction: the parser decomposes arbitrary URL authorities.
 
 ## §matcher-prefix-claims 6. Bulk pattern matching
 
-FIND, READ, OPEN, and FOLD accept an optional body matcher. The lexer preserves
-the body opaquely; AstBuilder assigns the dialect from its leading characters.
+FIND, OPEN, and FOLD accept an optional body matcher. READ requires an exact target
+and an empty body. The lexer preserves the body opaquely; AstBuilder assigns the dialect
+from its leading characters.
 A leading prefix claims its dialect. Invalid claimed syntax is a positioned
 visitor error and never falls back to glob matching.
 
@@ -418,8 +413,8 @@ components, while the operation owner assigns their roles.
 
 | Operation             | Canonical components                         | Meaning                                                      |
 |-----------------------|----------------------------------------------|--------------------------------------------------------------|
-| FIND                  | optional threshold, then 0–2 positions       | Inclusive positions in a deterministic result order          |
-| READ                  | optional threshold, then 0/1/2/4 coordinates | Text projection from every selected file, entry, or log item |
+| FIND                  | optional threshold, then 0–2 positions       | Inclusive positions in a deterministic result order (defaults to `<1,16>`) |
+| READ                  | 0/1/2/4 coordinates                          | Text projection from the exact selected file, entry, or log item           |
 | EDIT                  | text coordinates                             | Text replacement, deletion, prepend, or append               |
 | COPY/MOVE source      | text coordinates                             | Region copied or moved from the selected source              |
 | COPY/MOVE destination | text coordinates after destination           | Region replaced or insertion point at the destination        |
@@ -429,9 +424,9 @@ components, while the operation owner assigns their roles.
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a
 whole line, two integers are an inclusive whole-line range, and four integers
 are an exact start-inclusive/end-exclusive region. Mutation scopes additionally
-admit `0` as prepend and `-1` as append. A leading decimal on semantic FIND or
-READ is a similarity threshold; any remaining integers retain the operation's
-ordinary result or text meaning.
+admit `0` as prepend and `-1` as append. A leading decimal on semantic FIND
+is a similarity threshold; any remaining integers select result positions. READ
+does not admit decimal scope components.
 
 §scope-marker-forms Canonical producers separate components with commas and no
 spaces. ANTLR tolerates a dash separator and one space after a comma. Each

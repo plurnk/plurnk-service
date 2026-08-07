@@ -2,7 +2,7 @@ import test from "node:test";
 import Worker from "../../src/schemes/Worker.ts";
 import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
-import type { EditStatement, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { EditStatement, FindStatement, LineMarker, LocalPath, MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -151,19 +151,19 @@ test("Log.read: a range miss carries the exact textual line extent", async () =>
     } finally { db.close(); }
 });
 
-test("Log.read: regex body matcher returns the complete projection plus coordinates", async () => {
+test("Log.find: regex body matcher returns the complete projection plus coordinates", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
-        const stmt: ReadStatement = {
-            ...readStmt(urlPath("log", "/1/1/2")),
-            body: { dialect: "regex", raw: "/\"status\"/", pattern: "\"status\"", flags: "" },
+        const stmt: FindStatement = {
+            op: "FIND", suffix: "", signal: null, target: urlPath("log", "/1/1/2"), lineMarker: null,
+            body: { dialect: "regex", raw: "/\"status\"/", pattern: "\"status\"", flags: "" }, position: { line: 1, column: 1 },
         };
-        const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
+        const r = await new Log().find(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
-        assert.match(r.content ?? "", /"status"\s*:\s*201/);
+        assert.match(r.content ?? "", /"path"\s*:\s*"log:\/\/\/1\/1\/2\/READ"/);
         assert.ok((r.matches?.length ?? 0) > 0);
     } finally { db.close(); }
 });
@@ -178,26 +178,26 @@ test("Log.read: a tag filter on an exact READ → 404 (tag recall is OPEN[tag]/F
     } finally { db.close(); }
 });
 
-test("Log.read: body matcher selects the full projection before <L> projects text", async () => {
+test("Log.find: body matcher selects the full projection before <L> projects text", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         // The matcher qualifies the complete JSON result. <1> then projects its
         // first rendered line instead of paginating matcher hits.
-        const stmt: ReadStatement = {
-            ...readStmt(urlPath("log", "/1/1/2")),
+        const stmt: FindStatement = {
+            op: "FIND", suffix: "", signal: null, target: urlPath("log", "/1/1/2"),
             lineMarker: { marks: [1, 1] },
-            body: { dialect: "regex", raw: "/\\d+/", pattern: "\\d+", flags: "" },
+            body: { dialect: "regex", raw: "/\\d+/", pattern: "\\d+", flags: "" }, position: { line: 1, column: 1 },
         };
-        const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
+        const r = await new Log().find(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
-        assert.match(r.content ?? "", /"status"\s*:\s*201/);
+        assert.match(r.content ?? "", /"path"\s*:\s*"log:\/\/\/1\/1\/2\/READ"/);
         assert.ok((r.matches?.length ?? 0) > 0);
     } finally { db.close(); }
 });
 
-test("Log.read: a matcher READ writes one resource row with surgical coordinates", async () => {
+test("Log.find: a matcher FIND writes one resource row with surgical coordinates", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await new Worker().edit(
@@ -206,7 +206,7 @@ test("Log.read: a matcher READ writes one resource row with surgical coordinates
         );
         const result = await engine.dispatch({
             statement: {
-                op: "READ", suffix: "", signal: null,
+                op: "FIND", suffix: "", signal: null,
                 target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", query: null, fragment: null },
                 lineMarker: null,
                 body: { dialect: "regex", raw: "/\\w+/g", pattern: "\\w+", flags: "g" },
@@ -217,8 +217,8 @@ test("Log.read: a matcher READ writes one resource row with surgical coordinates
         assert.equal(result.rowsWritten ?? 1, 1);
         const r = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
-        assert.equal(r.mimetype, "text/markdown");
-        assert.equal(r.content, "alpha\nbeta\ngamma");
+        assert.equal(r.mimetype, "application/json");
+        assert.match(r.content ?? "", /worker:\/\/\/notes/);
     } finally { db.close(); }
 });
 

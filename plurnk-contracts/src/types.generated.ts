@@ -52,6 +52,7 @@ target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
 body: (MatcherBody | null)
 position: Position
+coercedFromRead?: boolean
 }
 /**
  * A bare local path with no `scheme://` prefix. The raw string is stored verbatim; resolution is the runtime's job.
@@ -159,7 +160,7 @@ suffix: string
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
-body: (MatcherBody | null)
+body: null
 position: Position
 }
 

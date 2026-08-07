@@ -1267,18 +1267,7 @@ export default class Dispatcher {
     // READ row per selected resource. Match coordinates remain metadata on that
     // resource; they never create extra rows or replace its content.
     #readFansOut(statement: PlurnkStatement): boolean {
-        if (statement.op !== "READ") return false;
-        const body = statement.body;
-        if (body?.dialect === "semantic" || body?.dialect === "graph") return true;
-        const schemeName = schemeNameOf(statement.target);
-        const handler = schemeName === null
-            ? undefined
-            : this.#schemes.get(schemeName) as { prepareFind?: unknown } | undefined;
-        if (body !== null && typeof handler?.prepareFind === "function") return true;
-        const t = statement.target;
-        const p = t === null ? "" : (t.kind === "url" ? t.pathname : t.raw);
-        if (PathSyntax.hasGlob(p)) return true;
-        return p.endsWith("/") && schemeName !== null && this.#schemes.manifestFor(schemeName)?.folderScopes === true;
+        return false;
     }
 
     static #retargetRead(
@@ -1294,26 +1283,12 @@ export default class Dispatcher {
         return { ...statement, target: target as PlurnkStatement["target"], lineMarker, body } as PlurnkStatement;
     }
 
-    // READ scope always projects text. Semantic READ reserves a leading decimal
-    // for similarity selection; any remaining integers are the text projection.
-    // FIND retains its own public result-range interpretation.
+    // READ scope always projects text.
     static #readMarkers(statement: ReadStatement): {
         selection: LineMarker | null;
         projection: LineMarker | null;
     } {
-        const marker = statement.lineMarker;
-        if (statement.body?.dialect !== "semantic") {
-            return { selection: null, projection: marker };
-        }
-        if (marker === null) return { selection: null, projection: null };
-        const [first, ...rest] = marker.marks;
-        if (Number.isInteger(first)) {
-            return { selection: null, projection: marker };
-        }
-        return {
-            selection: { marks: [first] },
-            projection: rest.length === 0 ? null : { marks: rest as [number, ...number[]] },
-        };
+        return { selection: null, projection: statement.lineMarker };
     }
 
     #standardEntryManifest(schemeName: string, statement: PlurnkStatement): SchemeManifest | null {
@@ -2697,7 +2672,7 @@ export default class Dispatcher {
                 { retryable: false },
             );
         }
-        const raw = statement.body === null ? "" : typeof statement.body === "string" ? statement.body : statement.body.raw;
+        const raw = statement.body === null ? "" : statement.body.raw;
 
         // The park rides SEND[202] only ({§park-202-only}). A scoped SEND[102] is neither
         // a wait nor a meaningful continuation, so reject it instead of preserving the
@@ -2790,7 +2765,7 @@ export default class Dispatcher {
             }
             // {§send-300-choices} — return a proposal whose accepted body becomes
             // the answer; zero choices denotes an open question.
-            const parts = raw.split(";").map((x) => x.trim()).filter((x) => x.length > 0);
+            const parts = raw.split(";").map((x: string) => x.trim()).filter((x: string) => x.length > 0);
             const [question = "", ...choices] = parts;
             return { status: 202, attrs: choices.length > 0 ? { question, choices } : { question } };
         }

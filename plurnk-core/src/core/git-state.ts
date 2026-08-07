@@ -5,6 +5,11 @@ import { promisify } from "node:util";
 import type { Db } from "./Db.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 
+export interface GitFileStatus {
+    path: string;
+    status: string;
+}
+
 export interface GitStatus {
     branch: string;
     ahead: number;
@@ -12,6 +17,7 @@ export interface GitStatus {
     staged: number;
     unstaged: number;
     untracked: number;
+    files?: GitFileStatus[];
 }
 
 // Git working-tree state for the packet: the model's ambient "where am I, what
@@ -59,6 +65,7 @@ export default class GitState {
         let staged = 0;
         let unstaged = 0;
         let untracked = 0;
+        const files: GitFileStatus[] = [];
         for (const line of stdout.split("\n")) {
             if (line.length === 0) continue;
             if (line.startsWith("## ")) {
@@ -68,10 +75,17 @@ export default class GitState {
                 continue;
             }
             const xy = line.slice(0, 2);
-            if (xy === "??") { untracked++; continue; }
+            const path = line.slice(3).trim();
+            if (xy === "??") {
+                untracked++;
+                files.push({ path, status: "??" });
+                continue;
+            }
             if (xy[0] !== " ") staged++;
             if (xy[1] !== " ") unstaged++;
+            files.push({ path, status: xy.trim() });
         }
-        return { branch, ahead, behind, staged, unstaged, untracked };
+        files.sort((a, b) => a.path.localeCompare(b.path));
+        return { branch, ahead, behind, staged, unstaged, untracked, files };
     }
 }

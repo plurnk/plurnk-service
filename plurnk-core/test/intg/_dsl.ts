@@ -25,8 +25,8 @@ export const editStmt = (target: ParsedPath | null, body: string | null = null, 
     position: { line: 1, column: 1 },
 });
 
-export const readStmt = (target: ParsedPath | null): ReadStatement => ({
-    op: "READ", suffix: "", signal: null, target, lineMarker: null, body: null,
+export const readStmt = (target: ParsedPath | null, lineMarker: LineMarker | null = null): ReadStatement => ({
+    op: "READ", suffix: "", signal: null, target, lineMarker, body: null,
     position: { line: 1, column: 1 },
 });
 

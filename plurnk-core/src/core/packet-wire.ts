@@ -531,7 +531,11 @@ export default class PacketWire {
 
     static #renderGitState(git: GitStatus): string {
         const sync = git.ahead > 0 || git.behind > 0 ? ` (↑${git.ahead} ↓${git.behind})` : "";
-        return `branch \`${git.branch}\`${sync} — ${git.staged} staged, ${git.unstaged} unstaged, ${git.untracked} untracked`;
+        let text = `branch \`${git.branch}\`${sync} — ${git.staged} staged, ${git.unstaged} unstaged, ${git.untracked} untracked`;
+        if (git.files && git.files.length > 0) {
+            text += ":\n" + git.files.map((f) => `  ${f.status} ${f.path}`).join("\n");
+        }
+        return text;
     }
 
 }

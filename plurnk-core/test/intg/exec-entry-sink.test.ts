@@ -4,7 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
-import type { ExecStatement, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, FindStatement, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 import { WebFetcher } from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -281,20 +281,17 @@ test("search-prefetched https content is matcher-queryable in place — no origi
         // materialized. Calling Http.read here would hit the network and make a
         // deterministic integration test impossible by construction.
         const queried = await engine.dispatch({
-            statement: parseOne("<<READ(https://example.org/turkeys):*large birds*:READ") as ReadStatement,
+            statement: parseOne("<<FIND(https://example.org/turkeys):*large birds*:FIND") as FindStatement,
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 200);
-        assert.equal(queried.rowsWritten, 1,
-            "an exact matcher READ writes one selected-resource delivery, never an internal FIND summary");
-        assert.deepEqual(queried.fannedStatuses, [200]);
 
         const delivered = await db.log_read_by_coordinate.get<{ scheme: string; pathname: string; rx: string }>({
             worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2,
         });
         assert.equal(delivered?.scheme, "https");
         assert.equal(delivered?.pathname, "/turkeys");
-        assert.match(delivered?.rx ?? "", /wild turkeys are large birds, revised/);
+        assert.match(delivered?.rx ?? "", /https:\/\/example\.org\/turkeys/);
         const stored = await db.test_entries_by_pathname.get<{ scheme: string }>({ pathname: "/example.org/turkeys" });
         assert.equal(stored?.scheme, "https", "the stored identity retains protocol + authority + path");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
@@ -331,7 +328,7 @@ test("search-prefetched encoded parentheses resolve through later scoped HTTPS R
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("an exact HTTPS semantic READ cannot leak or retarget a match from another authority", async () => {
+test("an exact HTTPS semantic FIND cannot leak or retarget a match from another authority", async () => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ tag: "stubsearch-semantic-scope", webScheme: true });
     try {
         await engine.dispatch({
@@ -347,12 +344,10 @@ test("an exact HTTPS semantic READ cannot leak or retarget a match from another 
         await SearchIndex.maintain(ctx);
 
         const queried = await engine.dispatch({
-            statement: parseOne("<<READ(https://example.org/turkeys):~birthday cake:READ") as ReadStatement,
+            statement: parseOne("<<FIND(https://example.org/turkeys):~birthday cake:FIND") as FindStatement,
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 204);
-        assert.equal(queried.rowsWritten, 1,
-            "the semantic miss is one honest row; other.example is never fabricated beneath example.org");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 

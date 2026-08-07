@@ -76,6 +76,8 @@ export default class ReadResolve {
         let workingStart: number | null = 1;
         let workingRegion: TextRegion | undefined;
         let scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined;
+        const defaultLines = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES ?? "16");
+        const limit = Number.isInteger(defaultLines) && defaultLines > 0 ? defaultLines : 16;
         if (lineMarker !== null) {
             const sliced = LineMarkerOps.sliceLines(content, lineMarker);
             if (sliced.status === 416) return {

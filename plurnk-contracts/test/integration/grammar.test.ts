@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PlurnkParser, PlurnkParseError, parsePath } from "../../src/index.ts";
+import { PlurnkParser, PlurnkParseError, parsePath, Validator } from "../../src/index.ts";
 
 const statementsOf = (input: string) =>
     PlurnkParser.parseStatements(input).items.filter((i) => i.kind === "statement");
@@ -34,11 +34,11 @@ test("ex 4 — bare READ, empty body", () => {
 });
 
 test("balanced parentheses are ordinary URL target content", () => {
-    const source = "<<READ(https://en.wikipedia.org/wiki/Igor_Smirnov_(politician)):/spouse|wife|married|Zhannetta|Lotnik/i:READ";
+    const source = "<<FIND(https://en.wikipedia.org/wiki/Igor_Smirnov_(politician)):/spouse|wife|married|Zhannetta|Lotnik/i:FIND";
     const result = PlurnkParser.parseStatements(source);
     assert.equal(result.items.filter((item) => item.kind === "error").length, 0);
     const item = result.items.find((candidate) => candidate.kind === "statement");
-    if (item?.kind !== "statement" || item.statement.op !== "READ") assert.fail("expected READ");
+    if (item?.kind !== "statement" || item.statement.op !== "FIND") assert.fail("expected FIND");
     assert.equal(item.statement.target?.raw, "https://en.wikipedia.org/wiki/Igor_Smirnov_(politician)");
 });
 
@@ -128,7 +128,6 @@ test("ex 31 — nested EDIT via suffix discipline", () => {
 test("suffix-delimiter nesting is one parser contract for every protocol operation body", async (t) => {
     const forms: ReadonlyArray<readonly [string, string]> = [
         ["FIND", "(worker:///x)"],
-        ["READ", "(worker:///x)"],
         ["EDIT", "(worker:///x)"],
         ["COPY", "(worker:///x)"],
         ["MOVE", "(worker:///x)"],
@@ -671,7 +670,7 @@ test("invalid regex pattern is a visitor ERROR, not a silent glob", () => {
 test("a stray colon in regex flags errors with the library detail", () => {
     // gemma's actual emission: a lying 204 told it "no matches" about a file with two;
     // it burned four matcher turns and delivered a confidently wrong conclusion.
-    const result = PlurnkParser.parseStatements("<<READ(f.txt):/hello/i::READ");
+    const result = PlurnkParser.parseStatements("<<FIND(f.txt):/hello/i::FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
     assert.match(errors[0]!.error.message, /is not a valid `\/pattern\/flags` regex - Invalid flags/);
@@ -679,7 +678,7 @@ test("a stray colon in regex flags errors with the library detail", () => {
 });
 
 test("the matcher claim is per-statement; siblings still build around the errored matcher", () => {
-    const result = PlurnkParser.parseStatements("<<READ(a.txt):/ok/i:READ\n<<READ(f.txt):/bad/i::READ\n<<KILL(log:///1/2/3)::KILL");
+    const result = PlurnkParser.parseStatements("<<FIND(a.txt):/ok/i:FIND\n<<FIND(f.txt):/bad/i::FIND\n<<KILL(log:///1/2/3)::KILL");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 2);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 1);
 });
@@ -687,15 +686,15 @@ test("the matcher claim is per-statement; siblings still build around the errore
 test("a marker-shaped body prefix claims nothing and stays a glob", () => {
     // A scope marker in the body does not claim a matcher dialect.
     // Documented residual: we claim declared intent, we don't heuristic every fumble.
-    const result = PlurnkParser.parseStatements("<<READ(f.txt)::<1,-1>:/hello/i::READ");
+    const result = PlurnkParser.parseStatements("<<FIND(f.txt)::<1,-1>:/hello/i::FIND");
     const stmt = result.items.find((i) => i.kind === "statement");
     assert.ok(stmt && stmt.kind === "statement");
-    if (stmt.kind !== "statement" || stmt.statement.op !== "READ") return;
+    if (stmt.kind !== "statement" || stmt.statement.op !== "FIND") return;
     assert.equal(stmt.statement.body?.dialect, "glob");
 });
 
 test("MatcherBody: a path-shaped slash expression is regex syntax, not a glob", () => {
-    const result = PlurnkParser.parseStatements("<<READ(host.conf):/etc/hosts:READ");
+    const result = PlurnkParser.parseStatements("<<FIND(host.conf):/etc/hosts:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
     assert.match(errors[0]!.error.message, /Invalid flags supplied to RegExp constructor 'hosts'/);
@@ -745,18 +744,18 @@ test("a `//`-leading glob-intent body with stray operators errors because the pr
 });
 
 test("valid jsonpath body ($.greeting) accepted", () => {
-    const result = PlurnkParser.parseStatements("<<READ(lang/en.json):$.greeting:READ");
+    const result = PlurnkParser.parseStatements("<<FIND(lang/en.json):$.greeting:FIND");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
 });
 
 test("valid jsonpath body with descendant and wildcard accepted", () => {
-    const result = PlurnkParser.parseStatements("<<READ(books.json):$..book[*].price:READ");
+    const result = PlurnkParser.parseStatements("<<FIND(books.json):$..book[*].price:FIND");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
 
 test("invalid jsonpath body (unclosed paren) is a visitor ERROR, not a silent glob", () => {
-    const result = PlurnkParser.parseStatements("<<READ(books.json):$[(:READ");
+    const result = PlurnkParser.parseStatements("<<FIND(books.json):$[(:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
     assert.match(errors[0]!.error.message, /leads with `\$` but is not a valid jsonpath/);
@@ -764,7 +763,7 @@ test("invalid jsonpath body (unclosed paren) is a visitor ERROR, not a silent gl
 
 test("RFC 9535 rejects non-path variables and unclosed selectors", () => {
     for (const body of ["$HOME", "$.users["]) {
-        const result = PlurnkParser.parseStatements(`<<READ(data.json):${body}:READ`);
+        const result = PlurnkParser.parseStatements(`<<FIND(data.json):${body}:FIND`);
         const errors = result.items.filter((i) => i.kind === "error");
         assert.equal(errors.length, 1, `${body} must flag under RFC 9535`);
         assert.match(errors[0]!.error.message, /leads with `\$` but is not a valid jsonpath/);
@@ -772,7 +771,7 @@ test("RFC 9535 rejects non-path variables and unclosed selectors", () => {
 });
 
 test("RFC 9535 bare filter form ($[?@.role==\"admin\"]) is accepted", () => {
-    const result = PlurnkParser.parseStatements('<<READ(users.json):$[?@.role=="admin"]:READ');
+    const result = PlurnkParser.parseStatements('<<FIND(users.json):$[?@.role=="admin"]:FIND');
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 1);
 });
@@ -1235,9 +1234,9 @@ test("MatcherBody: xpath returns dialect + raw", () => {
 });
 
 test("MatcherBody: jsonpath returns dialect + raw", () => {
-    const result = PlurnkParser.parseStatements("<<READ(lang/en.json):$.greeting:READ");
+    const result = PlurnkParser.parseStatements("<<FIND(lang/en.json):$.greeting:FIND");
     const item = result.items[0];
-    if (item.kind !== "statement" || item.statement.op !== "READ") return;
+    if (item.kind !== "statement" || item.statement.op !== "FIND") return;
     const b = item.statement.body;
     assert.ok(b);
     assert.equal(b.dialect, "jsonpath");
@@ -1332,27 +1331,56 @@ test("MatcherBody: graph neighborhood query (@symbol) dispatches graph", () => {
 
 test("a `//`-leading literal (code comment) errors because the prefix claims xpath", () => {
     // The XPath prefix claims the dialect, so invalid XPath cannot become a glob.
-    const result = PlurnkParser.parseStatements("<<READ(src/app.js):// TODO: add error handling:READ");
+    const result = PlurnkParser.parseStatements("<<FIND(src/app.js):// TODO: add error handling:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
     assert.match(errors[0]!.error.message, /leads with `\/\/` but is not a valid xpath selector/);
 });
 
 test("a `//`-leading string with non-xpath syntax errors under the claim", () => {
-    const result = PlurnkParser.parseStatements("<<READ(file.txt):// foo {bar}:READ");
+    const result = PlurnkParser.parseStatements("<<FIND(file.txt):// foo {bar}:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
     assert.match(errors[0]!.error.message, /is not a valid xpath selector/);
 });
 
 test("MatcherBody: valid xpath still dispatches xpath even after disambiguation", () => {
-    const result = PlurnkParser.parseStatements("<<READ(page.html)://h1/text():READ");
+    const result = PlurnkParser.parseStatements("<<FIND(page.html)://h1/text():FIND");
     const item = result.items[0];
-    if (item.kind !== "statement" || item.statement.op !== "READ") return;
+    if (item.kind !== "statement" || item.statement.op !== "FIND") return;
     const b = item.statement.body;
     assert.ok(b);
     assert.equal(b.dialect, "xpath");
     assert.equal(b.raw, "//h1/text()");
+});
+
+test("READ statement coerces matcher bodies to FIND and validates against JSON Schema", () => {
+    const regexResult = PlurnkParser.parseStatements("<<READ(page.html):/header/:READ");
+    const regexSt = regexResult.items[0];
+    assert.equal(regexSt?.kind, "statement");
+    assert.equal(regexSt?.statement.op, "FIND");
+    assert.equal((regexSt?.statement as any).coercedFromRead, true);
+    assert.equal(regexSt?.statement.body?.dialect, "regex");
+    const regexVal = Validator.validatePlurnkStatement(regexSt.statement);
+    assert.equal(regexVal.valid, true, `regex coerced FIND AST must be schema-valid: ${JSON.stringify(regexVal.errors)}`);
+
+    const globResult = PlurnkParser.parseStatements("<<READ(package.json):TODO:READ");
+    const globSt = globResult.items[0];
+    assert.equal(globSt?.kind, "statement");
+    assert.equal(globSt?.statement.op, "FIND");
+    assert.equal((globSt?.statement as any).coercedFromRead, true);
+    assert.equal(globSt?.statement.body?.dialect, "glob");
+    const globVal = Validator.validatePlurnkStatement(globSt.statement);
+    assert.equal(globVal.valid, true, `glob coerced FIND AST must be schema-valid: ${JSON.stringify(globVal.errors)}`);
+
+    const pathGlobResult = PlurnkParser.parseStatements("<<READ(src/**/*.ts):TODO:READ");
+    const pathGlobSt = pathGlobResult.items[0];
+    assert.equal(pathGlobSt?.kind, "statement");
+    assert.equal(pathGlobSt?.statement.op, "FIND");
+    assert.equal((pathGlobSt?.statement as any).coercedFromRead, true);
+    assert.equal(pathGlobSt?.statement.body?.dialect, "glob");
+    const pathGlobVal = Validator.validatePlurnkStatement(pathGlobSt.statement);
+    assert.equal(pathGlobVal.valid, true, `path glob coerced FIND AST must be schema-valid: ${JSON.stringify(pathGlobVal.errors)}`);
 });
 
 test("COPY body carries a destination selection", () => {

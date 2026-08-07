@@ -625,6 +625,10 @@ export default class File extends CoreSchemeAdapterBase {
             const admitted = (args.attrs as { admittedBy?: string }).admittedBy;
             if (entryId !== null && (admitted === "client" || admitted === "git")) {
                 await core.db.crud_stamp_origin.run({ entry_id: entryId, membership_origin: admitted });
+                const root = await loadWorkspaceRoot(core.db, core.workspaceId);
+                if (root !== null) {
+                    await GitMembership.stageFile(root, relPath, ctx.signal);
+                }
             }
             // Restamp synced_sig to the landed write so the next reconcile recognizes our own
             // write as the synced state — not an FsDivergence narrated back at the model.

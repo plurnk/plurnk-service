@@ -184,13 +184,30 @@ export default class GitIso {
         let staged = 0;
         let unstaged = 0;
         let untracked = 0;
-        for (const [, head, workdir, stage] of matrix) {
-            if (head === 0 && stage === 0 && workdir === 2) { untracked++; continue; }
-            if (head === 1 ? stage !== 1 : stage !== 0) staged++;            // index differs from HEAD → X column
-            if ((workdir === 2 && stage !== 2) || (workdir === 0 && stage !== 0)) unstaged++;  // workdir differs from index → Y column
+        const files: import("./git-state.ts").GitFileStatus[] = [];
+        const untrackedDirs = new Set<string>();
+        for (const [filepath, head, workdir, stage] of matrix) {
+            if (head === 0 && stage === 0 && workdir === 2) {
+                untracked++;
+                const dir = filepath.includes("/") ? `${filepath.split("/")[0]}/` : filepath;
+                if (!untrackedDirs.has(dir)) {
+                    untrackedDirs.add(dir);
+                    files.push({ path: dir, status: "??" });
+                }
+                continue;
+            }
+            const isStaged = head === 1 ? stage !== 1 : stage !== 0;
+            const isUnstaged = (workdir === 2 && stage !== 2) || (workdir === 0 && stage !== 0);
+            if (isStaged) staged++;
+            if (isUnstaged) unstaged++;
+            if (isStaged || isUnstaged) {
+                const s = (isStaged ? (head === 0 ? "A" : "M") : "") + (isUnstaged ? "M" : "");
+                files.push({ path: filepath, status: s });
+            }
         }
+        files.sort((a, b) => a.path.localeCompare(b.path));
         const { ahead, behind } = await GitIso.#aheadBehind(root, branch, cache);
-        return { branch, ahead, behind, staged, unstaged, untracked };
+        return { branch, ahead, behind, staged, unstaged, untracked, files };
     }
 
     // ahead/behind vs the branch's configured upstream (branch.<name>.remote + .merge →
@@ -230,5 +247,9 @@ export default class GitIso {
             queue.push(...commit.parent);
         }
         return count;
+    }
+
+    static async add(root: string, filepath: string): Promise<void> {
+        await git.add({ fs, dir: root, filepath });
     }
 }

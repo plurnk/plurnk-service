@@ -192,7 +192,7 @@ test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model
     try {
         const malformed = [
             "<<PLAN:inspect relevant modules:PLAN",
-            "<<READ(worker:///x):$fC:READ",
+            "<<FIND(worker:///x):$fC:FIND",
             "<<SEND[102]:inspect the results next:SEND",
         ].join("\n");
         const provider = new AttemptWitness({

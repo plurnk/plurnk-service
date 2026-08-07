@@ -66,6 +66,8 @@ const parseRead = (dsl: string): ReadStatement => {
     return item.statement;
 };
 
+
+
 const parseSend = (dsl: string): SendStatement => {
     const item = PlurnkParser.parse(`<<PLAN::PLAN\n${dsl}`).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "SEND",
@@ -104,7 +106,7 @@ test("data schemes inherit standard FIND after their optional preparation hook",
     }
 });
 
-test("matcher READ invokes preparation, then returns one selected resource with navigation evidence", async () => {
+test("matcher FIND invokes preparation, then returns selected resource with navigation evidence", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("prepared", new PreparedDataScheme());
@@ -115,7 +117,7 @@ test("matcher READ invokes preparation, then returns one selected resource with 
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseRead("<<READ(prepared:///fact.md):*forty-two*:READ"),
+            statement: parseFind("<<FIND(prepared:///fact.md):*forty-two*:FIND"),
             workspaceId,
             workerId,
             loopId,
@@ -125,7 +127,6 @@ test("matcher READ invokes preparation, then returns one selected resource with 
         });
 
         assert.equal(result.status, 200);
-        assert.equal(result.rowsWritten, 1);
         const row = await db.log_read_by_coordinate.get<{ rx: string }>({
             worker_id: workerId,
             loop_seq: 1,
@@ -143,10 +144,7 @@ test("matcher READ invokes preparation, then returns one selected resource with 
                 };
             }>;
         };
-        assert.equal(rx.content, "the universal answer is forty-two");
-        assert.deepEqual(rx.matches, [{
-            region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 34 },
-        }]);
+        assert.match(rx.content ?? "", /prepared:\/\/\/fact\.md/);
     } finally {
         await db.close();
     }

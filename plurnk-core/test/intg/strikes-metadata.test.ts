@@ -28,7 +28,7 @@ class CapturingMock extends Mock {
 test("generate carries the live streak — 0 explicit, bumped by a struck turn, zeroed by recovery", async () => {
     const mock = new CapturingMock({ contextWindow: 100000, responses: [
         response("<<PLAN:continue without work:PLAN\n<<SEND[102]:working:SEND", 10),
-        response("<<PLAN:attempt a malformed matcher:PLAN\n<<READ(worker:///x):$fC:READ\n<<SEND[102]:continue:SEND", 10),
+        response("<<PLAN:attempt a malformed matcher:PLAN\n<<BADOP(worker:///x):body:BADOP\n<<SEND[102]:continue:SEND", 10),
         response("<<PLAN:recover:PLAN\n<<EDIT(worker:///note):r:EDIT\n<<SEND[102]:recovered:SEND", 10),
         response("<<PLAN:finish:PLAN\n<<SEND[200]:done:SEND", 10),
     ] });

@@ -123,8 +123,8 @@ export default class Slicer {
         marker: LineMarker,
         body: string,
     ): TextReplacement | { error: string } {
-        const [startLine, startColumn, endLine, endColumn] = marker.marks;
-        if (![startLine, startColumn, endLine, endColumn].every(Number.isSafeInteger)) {
+        const [startLine, startColumn, endLine, rawEndColumn] = marker.marks;
+        if (![startLine, startColumn, endLine, rawEndColumn].every(Number.isSafeInteger)) {
             return { error: "An exact text region requires four integer coordinates." };
         }
         const lines = TextCoordinates.lines(content);
@@ -134,6 +134,11 @@ export default class Slicer {
         if (endLine < 1 || endLine > lines.length) {
             return { error: `End line ${endLine} is outside the available line range 1..${lines.length}.` };
         }
+        // A harmless end-column overshoot clamps to the line's end — the model
+        // asked for "through the end" and the line is shorter than it guessed.
+        const endLineData = lines[endLine - 1]!;
+        const maxEndColumn = [...content.slice(endLineData.start, endLineData.contentEnd)].length + 1;
+        const endColumn = Math.min(rawEndColumn, maxEndColumn);
         let start: number;
         let end: number;
         try {
@@ -144,7 +149,7 @@ export default class Slicer {
         }
         if (end < start) {
             return {
-                error: `Exact region ${startLine},${startColumn},${endLine},${endColumn} ends before it starts.`,
+                error: `Exact region ${startLine},${startColumn},${endLine},${rawEndColumn} ends before it starts.`,
             };
         }
         return { start, end, body, startLine, endLine };
@@ -285,9 +290,9 @@ export default class Slicer {
         let n = first;
         let m = last;
         if (n === 0) n = 1;
-        if (m === -1) m = totalLines;
+        if (m === -1 || m > totalLines) m = totalLines;
         if (n < 1 || n > totalLines) return { error: `Range start ${first} is outside the available line range 1..${totalLines}.` };
-        if (m < 1 || m > totalLines) return { error: `Range end ${last} is outside the available line range 1..${totalLines}.` };
+        if (m < 1) return { error: `Range end ${last} is outside the available line range 1..${totalLines}.` };
         if (n > m) return { error: `Range start ${first} exceeds end ${last}.` };
         return { kind: "range", start: n, end: m };
     }
@@ -408,12 +413,12 @@ export default class Slicer {
             );
         }
         const n = first === 0 ? 1 : first;
-        const m = last === -1 ? total : last;
+        const m = last === -1 ? total : Math.min(last, total);
         if (n < 1 || n > total) return Slicer.#rangeFailure(
             `Result range start ${first} is out of range; available positions are 1..${total}.`,
             extent,
         );
-        if (m < 1 || m > total) return Slicer.#rangeFailure(
+        if (m < 1) return Slicer.#rangeFailure(
             `Result range end ${last} is out of range; available positions are 1..${total}.`,
             extent,
         );

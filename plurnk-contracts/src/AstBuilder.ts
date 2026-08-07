@@ -171,11 +171,21 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
+        if (raw !== null && raw.trim() !== "") {
+            return {
+                op: "FIND",
+                suffix: AstBuilder.#splitSuffix(ctx.OPEN_READ().getText(), "READ"),
+                ...slots,
+                body: AstBuilder.#parseMatcherBody(raw, position),
+                position,
+                coercedFromRead: true,
+            } as unknown as ReadStatement;
+        }
         return {
             op: "READ",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_READ().getText(), "READ"),
             ...slots,
-            body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
+            body: null,
             position,
         };
     }

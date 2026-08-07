@@ -56,7 +56,7 @@ test("a long prompt renders an honest recoverable preview and the section lists 
             const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId });
             assert.ok(worker, "the model worker exists");
             const recovered = await new Log().read(
-                readStmt(urlPath("log", new URL(recoveryTarget).pathname)),
+                readStmt(urlPath("log", new URL(recoveryTarget).pathname), { marks: [1, -1] }),
                 makeSchemeCtx({ db, workerId: worker!.worker_id, mimetypes: DEFAULT_MIMETYPES }),
             );
             assert.equal(recovered.status, 200);

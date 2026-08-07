@@ -184,16 +184,6 @@ export default class Log extends CoreSchemeAdapterBase {
                 resolved.reason,
                 {
                     ...(resolved.range === undefined ? {} : { range: resolved.range, stage: "projection" }),
-                    ...(statement.body === null || resolved.status === 416
-                        ? {}
-                        : {
-                            stage: "matcher",
-                            dialect: statement.body.dialect,
-                            recovery: resolved.status === 501
-                                ? "Retry the READ without a content matcher."
-                                : "Correct or remove the matcher.",
-                            retryable: false,
-                        }),
                 },
             );
         }
@@ -464,8 +454,9 @@ export default class Log extends CoreSchemeAdapterBase {
         const folderSummaries = statement.body === null
             ? pathFolderSummaries(scope, candidateRows.map((row) => canonicalCoordinate(row.coordinate)))
             : [];
-        if (statement.lineMarker !== null && statement.body?.dialect !== "semantic" && folderSummaries.length === 0) {
-            const page = LineMarkerOps.page(matches, statement.lineMarker);
+        const marker = statement.lineMarker ?? (matches.length > 0 ? { marks: [1, 16] } : null);
+        if (marker !== null && statement.body?.dialect !== "semantic" && folderSummaries.length === 0) {
+            const page = LineMarkerOps.page(matches, marker);
             if (page.status !== 200) {
                 if (page.problem === undefined) throw new Error("Log FIND pagination failed without Problem Details");
                 return Results.assert({
@@ -517,28 +508,29 @@ export default class Log extends CoreSchemeAdapterBase {
         }
         if (folderSummaries.length > 0) {
             results.sort((a, b) => a.path.localeCompare(b.path));
-            if (statement.lineMarker !== null) {
-                const page = LineMarkerOps.page(results, statement.lineMarker);
-                if (page.status !== 200) {
-                    if (page.problem === undefined) throw new Error("Log FIND pagination failed without Problem Details");
-                    return Results.assert({
-                        status: page.status,
-                        problem: page.problem,
-                        content: null,
-                        mimetype: null,
-                        results: [],
-                        itemsTokenTotal: 0,
-                        pathnames: [],
-                        matches: [],
-                    }) as FindResult;
-                }
-                results = page.items ?? [];
-                const retained = new Set(results.filter((item) => item.items === undefined).map((item) => item.path.replace(/^log:\/\/\//, "").replace(/^\//, "")));
-                matches = matches.filter((match) => retained.has(match.pathname));
-                seenPath.splice(0, seenPath.length, ...matches.map((match) => match.pathname).filter((coordinate, i, all) => all.indexOf(coordinate) === i));
-                itemsTokenTotal = results.reduce((sum, item) => sum + (item.items === undefined
-                    ? Object.values(item.channels).reduce((channelSum, channel) => channelSum + channel.tokens, 0)
-                    : item.tokens ?? 0), 0);
+            const pageMarker = statement.lineMarker ?? (results.length > 0 ? { marks: [1, 16] } : null);
+            if (pageMarker !== null) {
+                const page = LineMarkerOps.page(results, pageMarker);
+            if (page.status !== 200) {
+                if (page.problem === undefined) throw new Error("Log FIND pagination failed without Problem Details");
+                return Results.assert({
+                    status: page.status,
+                    problem: page.problem,
+                    content: null,
+                    mimetype: null,
+                    results: [],
+                    itemsTokenTotal: 0,
+                    pathnames: [],
+                    matches: [],
+                }) as FindResult;
+            }
+            results = page.items ?? [];
+            const retained = new Set(results.filter((item) => item.items === undefined).map((item) => item.path.replace(/^log:\/\/\//, "").replace(/^\//, "")));
+            matches = matches.filter((match) => retained.has(match.pathname));
+            seenPath.splice(0, seenPath.length, ...matches.map((match) => match.pathname).filter((coordinate, i, all) => all.indexOf(coordinate) === i));
+            itemsTokenTotal = results.reduce((sum, item) => sum + (item.items === undefined
+                ? Object.values(item.channels).reduce((channelSum, channel) => channelSum + channel.tokens, 0)
+                : item.tokens ?? 0), 0);
             }
         }
         if (results.length === 0) return empty(204);

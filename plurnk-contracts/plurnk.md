@@ -35,7 +35,7 @@ A `?` marks an optional slot.
 |------|--------------------------------|--------------|----------------------------|----------------|-----------------------|
 | PLAN | describe intended goals        | -            | -                          | -              | list or prose         |
 | FIND | list matching targets          | filter tags? | target or glob             | result range?  | pattern?              |
-| READ | retrieve target content        | filter tags? | target or glob             | text region?   | pattern?              |
+| READ | retrieve target content        | filter tags? | target                     | text region?   | -                     |
 | EDIT | modify or create file or entry | apply tags?  | file or entry              | text region?   | literal text          |
 | COPY | copy from a target             | apply tags?  | source target              | source region? | destination <region>? |
 | MOVE | move from a target             | apply tags?  | source target              | source region? | destination <region>? |
@@ -47,7 +47,8 @@ A `?` marks an optional slot.
 | KILL | delete or terminate            | code?        | target, including log item | -              | empty                 |
 | SEND | send a message                 | code?        | recipient?                 | timeout, poll? | message               |
 
-* Bodies may span lines; a multiline EXEC input needs no one-line contortions.
+* Files you create are tracked automatically.
+* EXEC creates an output stream visible in subsequent turns.
 
 ### Pattern Filtering
 
@@ -79,7 +80,7 @@ Examples:
 
 ### `(path)`
 
-* Paths address exact targets or shell globs; content patterns belong in `:body:`.
+* Paths address exact targets (or shell globs); content patterns belong in `:body:`.
 * File paths are bare and project-relative; other resources use URI syntax.
 * Log item paths are nested: `log:///1/2/3` is loop/turn/item.
 * Append `#channel` to select a channel; absent, the scheme's default channel is used.
@@ -110,24 +111,25 @@ Examples:
 
 One or more numbers narrow an operation according to its type:
 
-* FIND scopes select inclusive result positions.
+* FIND scopes select inclusive result positions (defaults to <1,16>; use <1,-1> for all).
 * READ and EDIT scopes select text regions.
 * COPY and MOVE scopes select source text; the destination may carry its own scope.
-* Semantic FIND and READ reserve a leading decimal scope component for a similarity threshold. Remaining integers keep the operation's meaning above.
+* Semantic FIND reserves a leading decimal scope component for a similarity threshold. Remaining integers select result positions.
 * EXEC and SEND use `<timeout, poll>` seconds.
 
-Text scope (Line, StartLine, EndLine, StartColumn, EndColumn) has one meaning for every textual mimetype:
+Text scope (Line, StartLine, StartColumn, EndLine, EndColumn) has one meaning for every textual mimetype:
 
-| form            | endpoint rule                | example                                                       |
-|-----------------|------------------------------|---------------------------------------------------------------|
-| `<L>`           | one line                     | `<<EDIT(notes.md)<2>:replacement text:EDIT` replaces line 2  |
+| form            | endpoint rule                  | example                                                       |
+|-----------------|--------------------------------|---------------------------------------------------------------|
+| `<L>`           | one line                       | `<<EDIT(notes.md)<2>:replacement text:EDIT` replaces line 2   |
 | `<SL,EL>`       | lines SL through EL, inclusive | `<<READ(notes.md)<2,3>::READ` reads lines 2 and 3             |
-| `<SL,SC,EL,EC>` | start included, end excluded | `<<READ(notes.md)<2,1,2,5>::READ` reads columns 1-4 of line 2 |
-| `<SL,SC,SL,SC>` | positions, zero-width        | `<<EDIT(notes.md)<2,5,2,5>:inserted text:EDIT` insertion      |
+| `<SL,SC,EL,EC>` | start included, end excluded   | `<<READ(notes.md)<2,1,2,5>::READ` reads columns 1-4 of line 2 |
+| `<SL,SC,SL,SC>` | positions, zero-width          | `<<EDIT(notes.md)<2,5,2,5>:inserted text:EDIT` insertion      |
 
-Lines and Unicode code-point columns are 1-based.
-Rendered `L:` prefixes are reference coordinates, not source content.
-To read exactly line L, use `<L>`; `<L,L+1>` selects both lines.
+* Lines and Unicode code-point columns are 1-based.
+* Rendered `L:` prefixes are reference coordinates, not source content.
+* To read exactly line L, use `<L>`; `<L,L+1>` selects both lines.
+* READ without a defined scope defaults to <1,16>; use <1,-1> for all.
 
 For EDIT and COPY/MOVE destinations, `<0>` and `<-1>` insert before the first and after the final position.
 A scoped COPY/MOVE destination must already exist; omit its scope when creating a new destination channel.
@@ -150,7 +152,6 @@ Other scope examples:
 * Copy lines into a new entry: `<<COPY(worker:///src.md)<2,3>:worker:///slice.md:COPY`
 * Exact source and destination append: `<<COPY(sh:///1/2/3#stderr)<1,1,1,12>:worker:///firstError.txt<-1>:COPY`
 * Semantic FIND threshold and result range: `<<FIND(worker:///**)<0.7,11,20>:~france:FIND`
-* Semantic READ threshold and text range: `<<READ(worker:///**)<0.5,11,20>:~poland:READ`
 
 ### The Log
 
@@ -200,15 +201,16 @@ sequenceDiagram
 ### Turn lifecycle
 
 * Open every turn with a concise PLAN.
-* Close every turn with a SEND.
-* Retrieval results land in the next packet's Log, so SEND[200] never shares a turn with retrieval.
+* Close every turn with a SEND[submit code].
 
-| submit code | meaning                                                                           |
-|-------------|-----------------------------------------------------------------------------------|
-| 102         | Continue after performing operations; the message states what remains.            |
-| 202         | Wait for workers or streams.                                                      |
-| 200         | Conclude only when no results remain unseen and no worker or stream remains live. |
-| 499         | Abort and fail.                                                                       |
+| submit code | meaning                       | message                                     |
+|-------------|-------------------------------|---------------------------------------------|
+| 102         | Retrieve results in next turn | Describe expected or intended next steps    |
+| 202         | Wait for workers or streams.  | Describe expected or intended next steps    |
+| 200         | Successful conclusion         | Describe actions performed or answer prompt |
+| 499         | Abort and fail prompt         | Describe error or issue                     |
+
+* Only conclude (200) if all workers, streams, and retrievals have been concluded, observed, or KILLed.
 
 ### User messages
 

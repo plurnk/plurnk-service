@@ -180,9 +180,9 @@ test("parser: opening/closing tag suffix preserves statement AST (EDIT)", () => 
     assert.deepEqual(stripVolatile(noSuffix), stripVolatile(withSuffix));
 });
 
-test("parser: opening/closing tag suffix preserves statement AST (READ with matcher)", () => {
-    const noSuffix = parseOne("<<READ(worker:///users.json):$.name:READ");
-    const withSuffix = parseOne("<<READa(worker:///users.json):$.name:READa");
+test("parser: opening/closing tag suffix preserves statement AST (FIND with matcher)", () => {
+    const noSuffix = parseOne("<<FIND(worker:///users.json):$.name:FIND");
+    const withSuffix = parseOne("<<FINDa(worker:///users.json):$.name:FINDa");
     assert.deepEqual(stripVolatile(noSuffix), stripVolatile(withSuffix));
 });
 

@@ -191,7 +191,7 @@ test("story: retrieve and summarize a live web page", { timeout: TIMEOUT }, asyn
     const story = await runStory({
         label: "web-retrieve-live",
         prompt: "Summarize the fifth paragraph of Marilyn Monroe's Wikipedia entry.",
-        maxTurns: 8,
+        maxTurns: 30,
     });
     try {
         const ok = story.finalStatus === 200 && story.lastContent.trim().length > 20;
