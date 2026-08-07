@@ -157,6 +157,22 @@ describe("queryGlob", () => {
         }]);
     });
 
+    it("treats a bare word as a fuzzy content search", () => {
+        const text = "hello world hello again\ngoodbye";
+        const out = queryGlob(text, "hello");
+        assert.equal(out.length, 1);
+        assert.equal(out[0].matched, "hello world hello again");
+    });
+
+    it("explicit wildcards keep structural meaning", () => {
+        const text = "hello world\nworld hello";
+        assert.equal(queryGlob(text, "hello*").length, 1);
+        assert.equal(queryGlob(text, "hello*")[0].matched, "hello world");
+        assert.equal(queryGlob(text, "*hello").length, 1);
+        assert.equal(queryGlob(text, "*hello")[0].matched, "world hello");
+        assert.equal(queryGlob(text, "*hello*").length, 2);
+    });
+
     it("does not invent a whole line for empty content", () => {
         assert.deepEqual(queryGlob("", "*"), []);
     });

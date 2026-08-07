@@ -70,8 +70,11 @@ function advanceStringIndex(text: string, index: number, unicode: boolean): numb
 
 // glob applied line-anchored against text body. Under {§mimetype-query}, each
 // matching line is a separate QueryMatch; matched = the full line.
+// A bare word (no glob metacharacters) is a fuzzy content search — the natural
+// intent for "find X in this file." Explicit wildcards keep structural meaning.
 export function queryGlob(text: string, pattern: string): QueryMatch[] {
-    const regex = globToRegex(pattern);
+    const fuzzy = !/[*?[]/.test(pattern);
+    const regex = globToRegex(fuzzy ? `*${pattern}*` : pattern);
     const coordinates = new TextCoordinates(text);
     const lines = coordinates.logicalLines();
     const out: QueryMatch[] = [];
