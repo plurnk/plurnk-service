@@ -12,6 +12,8 @@ interpreted by a shell.
   emitted `git:///<loop>/<turn>/<sequence>` address
   ({§executor-output-address}).
 - `(target)` names the repo directory and maps to Git's `-C` option.
+- Repository-local `GIT_*` variables inherited from a launcher cannot override
+  the selected workspace or `(target)`; normal Git configuration still applies.
 - An unavailable Git binary makes the runtime unavailable; there is no fallback.
 - Every invocation is `host` and therefore proposal-gated
   ({§executor-effect}).

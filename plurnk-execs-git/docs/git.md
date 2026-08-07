@@ -18,7 +18,8 @@ Examples:
 
 `(target)` is the repo directory and maps to `git -C`:
 `<<EXEC[git](./subrepo):status:EXEC`. Without a target, Git runs in the
-workspace.
+workspace. Repository-local `GIT_*` variables inherited from a launcher cannot
+redirect the command away from that selected repository.
 
 ## Availability and authority
 

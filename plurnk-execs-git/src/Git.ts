@@ -1,5 +1,31 @@
 import { SubprocessExecutor, tokenizeArgv } from "@plurnk/plurnk-execs";
-import type { SpawnArgs } from "@plurnk/plurnk-execs";
+import type { ExecArgs, ExecResult, SpawnArgs } from "@plurnk/plurnk-execs";
+
+// Git exports these repository-local variables to hooks. If plurnk is invoked
+// from one of those hooks, they override cwd and `-C` in a nested Git process.
+// Clear only repository identity; normal user config, credentials, SSH, and
+// tracing remain part of the environment handed to the executor.
+const REPOSITORY_ENV = new Set([
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+    "GIT_CONFIG",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_DIR",
+    "GIT_GRAFT_FILE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_PREFIX",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_SHALLOW_FILE",
+    "GIT_WORK_TREE",
+]);
+
+const repositoryEnv = (env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv =>
+    Object.fromEntries(Object.entries(env).filter(([key]) =>
+        !REPOSITORY_ENV.has(key) && !/^GIT_CONFIG_(?:KEY|VALUE)_\d+$/.test(key)));
 
 // Native Git executor. `git` means the installed Git CLI with its normal argv
 // syntax; the command is tokenized but never interpreted by a shell. A target
@@ -22,5 +48,9 @@ export default class Git extends SubprocessExecutor {
             args: [...(target === null ? [] : ["-C", target]), ...tokenizeArgv(command)],
             useShell: false,
         };
+    }
+
+    override run(args: ExecArgs): Promise<ExecResult> {
+        return super.run({ ...args, env: repositoryEnv(args.env) });
     }
 }

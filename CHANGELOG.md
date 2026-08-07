@@ -7,6 +7,8 @@ is published, release notes may include breaking changes.
 
 ## Unreleased
 
+## 1.4.0 - 2026-08-06
+
 ### Changed
 
 - Consolidated bundled packages into the platform monorepo.

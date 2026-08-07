@@ -78,11 +78,11 @@ const TMP_DIR = resolve(PROJECT_ROOT, "test/intg/.tmp");
 // of PRs. Per-test UUID filenames eliminate parallel collisions.
 //
 // DBs are KEPT on close — any test that surfaces something worth review
-// can be tossed straight at `npm run test:digest -- test/intg/.tmp/db-<id>.db`
+// can be tossed straight at `npm run dev:digest -- test/intg/.tmp/db-<id>.db`
 // without rebuilding plumbing. The normal integration runner clears the prior
 // run once before starting, reports this directory, and retains everything
 // created by the current run ({§test-artifact-retention}). A bare `node --test
-// <file>` bypasses that boundary; use `npm run test:clean-tmp` first when
+// <file>` bypasses that boundary; use `npm run artifacts:clean` first when
 // invoking the integration tests directly.
 export const openMigrated = async (atPath?: string): Promise<Db> => {
     const dbPath = atPath ?? join(TMP_DIR, `db-${crypto.randomUUID()}.db`);

@@ -107,7 +107,7 @@ guarantee semantically valid output. See SPEC {§gbnf-turn-shape} and
 ```sh
 npm run build
 npm test
-npm run test:smoke
+npm run test:installation
 ```
 
 Generated parser, schema-type, distribution, and GBNF artifacts are rebuilt by

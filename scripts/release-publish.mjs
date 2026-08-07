@@ -14,13 +14,17 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
+import {
+    RELEASE_PROBE_PORT,
+    resolveClientCheckout,
+} from "./project-topology.mjs";
 
 const run = promisify(execFile);
 const ROOT_PKG = "@plurnk/plurnk-service";
 const CLIENT_PKG = "@plurnk/plurnk";
-const CLIENT_ROOT = path.resolve(import.meta.dirname, "..", "..", "plurnk");
+const CLIENT_ROOT = resolveClientCheckout(process.env);
 const CLIENT_RELEASE = path.join(CLIENT_ROOT, "scripts", "release-publish.mjs");
-const BOOT_PORT = 17821;
+const BOOT_PORT = RELEASE_PROBE_PORT;
 const clientVersion = process.argv[2];
 
 if (!/^\d+\.\d+\.\d+$/.test(clientVersion ?? "")) {
@@ -50,12 +54,8 @@ for (const dir of root.workspaces) {
 const version = order[0].version;
 if (!order.every((p) => p.version === version)) throw new Error("lockstep violated: workspaces disagree on version — stamp before publishing");
 
-await assertClean("before build");
-await runVisible("node", [CLIENT_RELEASE, "--check", clientVersion, version], { cwd: CLIENT_ROOT });
-console.log("release-publish: building and gating the committed stamp");
-await runVisible("npm", ["run", "build"]);
-await runVisible("node", ["scripts/release-gates.mjs"]);
-await assertClean("after gates");
+await runVisible("node", ["scripts/release-check.mjs", clientVersion]);
+await assertClean("before publication");
 
 const served = async (name) => {
     try { return (await run("npm", ["view", name, "version"])).stdout.trim(); }

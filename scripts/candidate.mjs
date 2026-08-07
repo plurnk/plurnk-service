@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { candidateDaemonArgs } from "./candidate-daemon.mjs";
 import { resolveCandidateModel } from "./candidate-model.mjs";
-import { resolveCandidateTopology } from "./candidate-topology.mjs";
+import { resolveCandidateTopology } from "./project-topology.mjs";
 import { parseCandidateClientEnv } from "./candidate-env.mjs";
 
 const root = resolve(import.meta.dirname, "..");

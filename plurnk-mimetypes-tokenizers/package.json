@@ -38,10 +38,12 @@
         "README.md"
     ],
     "scripts": {
-        "test": "node --conditions=plurnk-dev --test index.test.js",
         "fetch:tokenizers": "node --conditions=plurnk-dev scripts/fetch-tokenizers.mjs",
         "verify:tokenizers": "node --conditions=plurnk-dev scripts/verify-tokenizers.mjs",
-        "prepublishOnly": "npm audit --audit-level=moderate && npm run verify:tokenizers && npm test"
+        "pretest:unit": "npm run verify:tokenizers",
+        "test:unit": "node --conditions=plurnk-dev --test index.test.js",
+        "test": "npm run test:unit",
+        "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "peerDependencies": {
         "@plurnk/plurnk-mimetypes": "^1.4.0"

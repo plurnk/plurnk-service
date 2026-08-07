@@ -10,7 +10,7 @@ The optional llama.cpp differential oracle is maintenance and test tooling:
 ```sh
 npm run oracle:fetch
 npm run oracle:build
-npm run test:e2e
+npm run test:llama
 ```
 
 `oracle:fetch` regenerates vendored test sources from the pinned revision.

@@ -203,4 +203,4 @@ Run from a handler package's root.
 npm install && npm run build && npm test
 ```
 
-`test:lint` (`tsc --noEmit` — no biome/eslint), `test:unit`, `test:intg`, `test:conf` separately. License: MIT.
+`test:lint` (`tsc --noEmit` — no biome/eslint), `test:unit`, and `test:intg` are available separately. License: MIT.

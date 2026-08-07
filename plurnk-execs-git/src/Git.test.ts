@@ -1,7 +1,7 @@
 import test, { after } from "node:test";
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Git from "./Git.ts";
@@ -15,7 +15,12 @@ interface Capture {
 
 const present = (): boolean => spawnSync("git", ["--version"]).status === 0;
 const make = (): Git => new Git({ runtime: "git", glyph: "git" });
-const run = async (command: string, cwd: string | null = null, target: string | null = null): Promise<Capture> => {
+const run = async (
+    command: string,
+    cwd: string | null = null,
+    target: string | null = null,
+    env?: NodeJS.ProcessEnv,
+): Promise<Capture> => {
     const out: Record<string, string> = { stdout: "", stderr: "" };
     const states: Record<string, string[]> = { stdout: [], stderr: [] };
     const args: ExecArgs = {
@@ -23,6 +28,7 @@ const run = async (command: string, cwd: string | null = null, target: string | 
         command,
         cwd,
         target,
+        env,
         signal: new AbortController().signal,
         write: (channel, chunk) => { out[channel] = (out[channel] ?? "") + chunk; },
         setState: (channel, state) => { (states[channel] ??= []).push(state); },
@@ -87,6 +93,20 @@ test("malformed quoted argv returns a durable input Problem", async () => {
 
 test("probe reflects native Git availability", async () => {
     assert.equal((await make().probe()).available, present());
+});
+
+test("native Git binds repository identity to cwd despite an inherited hook GIT_DIR", { skip: !present() }, async () => {
+    const victim = await tempDir();
+    const sandbox = await tempDir();
+    assert.equal((await run("init -q", victim)).result.status, 200);
+
+    const inheritedHookEnv = { ...process.env, GIT_DIR: join(victim, ".git") };
+    assert.equal((await run("init -q", sandbox, null, inheritedHookEnv)).result.status, 200);
+    assert.equal((await run("config user.email sandbox@plurnk.invalid", sandbox, null, inheritedHookEnv)).result.status, 200);
+
+    await access(join(sandbox, ".git"));
+    assert.match(await readFile(join(sandbox, ".git", "config"), "utf8"), /sandbox@plurnk\.invalid/);
+    assert.doesNotMatch(await readFile(join(victim, ".git", "config"), "utf8"), /sandbox@plurnk\.invalid/);
 });
 
 test("native checkout -b works through the executor without syntax translation", { skip: !present() }, async () => {

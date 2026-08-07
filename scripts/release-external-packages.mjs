@@ -9,7 +9,7 @@
 // is skipped, so a resumed sweep does exactly the missing leaves). A leaf that never
 // adopted a head rename fails its own build/test and names itself.
 //
-// Usage: node scripts/release-external-packages.mjs [--dry-run]
+// Usage: node scripts/release-external-packages.mjs [--check]
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile, writeFile } from "node:fs/promises";
@@ -18,12 +18,18 @@ import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import { caretRange, compatibleRange, exactVersion, supportsVersion } from "./release-compat.mjs";
+import {
+    assertNpmPublisher,
+    assertReleaseRepository,
+} from "./release-authority.mjs";
+import { resolveExternalReposRoot } from "./project-topology.mjs";
 
 const run = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MONOREPO = resolve(HERE, "..");
-const ROOT = process.env.PLURNK_EXTERNAL_REPOS_ROOT ?? resolve(MONOREPO, "..");
-const DRY = process.argv.includes("--dry-run");
+const ROOT = resolveExternalReposRoot(process.env, MONOREPO);
+const CHECK = process.argv.includes("--check");
+if (!CHECK) await assertNpmPublisher(MONOREPO);
 
 const version = JSON.parse(await readFile(join(MONOREPO, "package.json"), "utf8")).workspaces
     ? JSON.parse(await readFile(join(MONOREPO, "plurnk-meta", "package.json"), "utf8")).version
@@ -81,13 +87,14 @@ const alignManagedPackage = async (repoDir) => {
     return changed;
 };
 
-console.log(`release-externals: ${registry.managed} managed + ${registry.independent} independent, version ${version}${DRY ? " [DRY RUN]" : ""}`);
+console.log(`release-externals: ${registry.managed} managed + ${registry.independent} independent, version ${version}${CHECK ? " [CHECK]" : ""}`);
 let swept = 0, guarded = 0;
-for (const { dir, name, release, owner, platformDependencies } of registry.packages) {
+for (const { dir, name, release, owner, platformDependencies, pushable } of registry.packages) {
     const repo = join(ROOT, dir);
     const tag = `${dir} (${owner ?? "unassigned"})`;
     if (!existsSync(repo)) throw new Error(`${tag}: registry names a repo not on disk — census drift, regenerate`);
     const manifest = JSON.parse(await readFile(join(repo, "package.json"), "utf8"));
+    if (manifest.name !== name) throw new Error(`${tag}: registry expects ${name}, checkout contains ${manifest.name}`);
     const state = contract(manifest, version);
 
     if (release === "independent") {
@@ -97,6 +104,9 @@ for (const { dir, name, release, owner, platformDependencies } of registry.packa
         guarded++;
         continue;
     }
+
+    if (pushable !== true) throw new Error(`${tag}: managed release requires pushable=true in the external registry`);
+    await assertReleaseRepository(repo, dir);
 
     // A compatible artifact survives family releases unchanged. Invalid ranges
     // and genuinely incompatible artifacts are realigned and republished;
@@ -132,6 +142,12 @@ for (const { dir, name, release, owner, platformDependencies } of registry.packa
         .split("\n").filter((l) => l.trim() !== "" && !/\bpackage-lock\.json$/.test(l)).join("\n");
     if (dirty !== "") throw new Error(`${tag}: uncommitted SOURCE work — the lane must land or stash it before the sweep can align+publish:\n${dirty}`);
 
+    if (CHECK) {
+        console.log(`  would align ${tag} [${platformDependencies.join(",")}] → ${version}`);
+        swept++;
+        continue;
+    }
+
     console.log(`  update  ${tag}  [${platformDependencies.join(",")}] → ${version}`);
     await alignManagedPackage(repo);
     // --prefer-online: a head published moments ago is not in npm's local metadata cache yet, so a plain
@@ -140,13 +156,6 @@ for (const { dir, name, release, owner, platformDependencies } of registry.packa
     // inherits via npm_config_omit and would drop the package's peer @plurnk dependencies
     // peer-depends on its engine) → empty node_modules → the leaf's prepare-build hits TS2307. Force peers in.
     await run("npm", ["install", "--prefer-online", "--include=peer"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 });
-    if (DRY) {
-        const scripts = JSON.parse(await readFile(join(repo, "package.json"), "utf8")).scripts ?? {};
-        if (scripts.build) await run("npm", ["run", "build"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 });
-        if (scripts.test) await run("npm", ["test"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 });
-        console.log(`          would commit align + push + publish ${name}@${version}`);
-        swept++; continue;
-    }
     // Idempotent when a lane pre-commits the alignment: commit only when the
     // align/install actually changed the tree — an empty `git commit` exits 1 and would halt a
     // resume on a leaf whose lane already landed the alignment. Push is a safe no-op either way.
@@ -157,4 +166,4 @@ for (const { dir, name, release, owner, platformDependencies } of registry.packa
     for (let i = 0; ; i++) { if (await served(name) === version) break; if (i >= 12) throw new Error(`${tag}: published but registry never served ${version}`); await sleep(10_000); }
     swept++;
 }
-console.log(`release-externals: ${swept} updated, ${guarded} compatible at ${version}${DRY ? " [DRY]" : ""}`);
+console.log(`release-externals: ${swept} ${CHECK ? "would update" : "updated"}, ${guarded} compatible at ${version}${CHECK ? " [CHECK]" : ""}`);

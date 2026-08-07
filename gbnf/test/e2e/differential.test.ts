@@ -1,5 +1,5 @@
 // e2e differential tests. Assumes build/llama-gbnf is compiled (Charter §8):
-//   npm run oracle:build && npm run test:e2e
+//   npm run oracle:build && npm run test:llama
 
 import test from "node:test";
 import assert from "node:assert/strict";

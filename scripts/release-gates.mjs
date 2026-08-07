@@ -1,10 +1,6 @@
-// The committed-candidate gate sweep runs every workspace's own
-// prepublish gate after the stamp is committed but BEFORE the first package is
-// published. A red halts before the train leaves. The drill (lint+unit+intg) is the
-// push gate; the per-package prepublishOnly gates (audit, tests, conformance tiers) are
-// the PUBLISH bar, and until this script they ran for the first time during publish itself.
-// release:publish builds every workspace immediately before this sweep, then
-// uses --ignore-scripts so these complete gates run exactly once.
+// Candidate-only release checks. The caller already built and ran the canonical
+// deterministic test gate; this sweep proves dependency and packed-artifact facts
+// plus the few package-specific checks that have no ordinary test-tier meaning.
 // Usage: node scripts/release-gates.mjs [--only <pkg-dir>]
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -22,15 +18,14 @@ await run("node", ["scripts/package-build-policy.mjs"]);
 const provenanceArgs = ["scripts/package-provenance.mjs", "--pack"];
 if (values.only !== undefined) provenanceArgs.push("--only", values.only);
 await run("node", provenanceArgs, { maxBuffer: 64 * 1024 * 1024 });
+await run("npm", ["audit", "--audit-level=moderate"], { maxBuffer: 64 * 1024 * 1024 });
 
 let gated = 0;
 for (const dir of dirs) {
     const pkg = JSON.parse(await fs.readFile(path.join(dir, "package.json"), "utf8"));
-    if (pkg.scripts?.prepublishOnly === undefined) { console.log(`  no-gate ${pkg.name}`); continue; }
-    console.log(`  gate    ${pkg.name}`);
-    // The workspace's own bar, exactly as publish would run it; a red rejects
-    // and HALTS before the first registry mutation.
-    await run("npm", ["run", "prepublishOnly", "-w", pkg.name], { maxBuffer: 64 * 1024 * 1024 });
+    if (pkg.scripts?.["release:check"] === undefined) continue;
+    console.log(`  release-check ${pkg.name}`);
+    await run("npm", ["run", "release:check", "-w", pkg.name], { maxBuffer: 64 * 1024 * 1024 });
     gated++;
 }
-console.log(`release-gates GREEN: ${gated} publish gates passed pre-stamp`);
+console.log(`release-gates GREEN: dependency audit, packed projection, ${gated} package-specific check(s)`);

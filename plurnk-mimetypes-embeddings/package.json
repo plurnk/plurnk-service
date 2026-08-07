@@ -32,10 +32,10 @@
         "verify:model": "node --conditions=plurnk-dev scripts/verify-model.mjs",
         "vendor:ort": "node --conditions=plurnk-dev scripts/vendor-ort.mjs",
         "verify:ort": "node --conditions=plurnk-dev scripts/verify-ort.mjs",
-        "pretest": "npm run verify:ort",
+        "pretest:unit": "npm run verify:ort",
         "test:unit": "PLURNK_MIMETYPES_EMBED_WORKERS=2 node --experimental-test-module-mocks --conditions=plurnk-dev --test index.test.js lifecycle.test.js remote.test.js",
-        "test:integration": "PLURNK_MIMETYPES_EMBED_WORKERS=2 node --conditions=plurnk-dev --test test/integration/*.test.js",
-        "test": "npm run test:unit && npm run test:integration",
+        "test:intg": "PLURNK_MIMETYPES_EMBED_WORKERS=2 node --conditions=plurnk-dev --test test/integration/*.test.js",
+        "test": "npm run test:unit && npm run test:intg",
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {

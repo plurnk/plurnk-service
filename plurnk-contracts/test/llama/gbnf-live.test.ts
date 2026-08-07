@@ -1,6 +1,6 @@
 /**
  * Live GBNF validation against a local llama.cpp server. Opt-in, NOT part of
- * `test:all` (CI has no server): run with `npm run test:llama`.
+ * The deterministic gate has no server: run explicitly with `npm run test:llama`.
  *
  * Requires a llama-server at PLURNK_LLAMA_URL (default http://127.0.0.1:11435).
  * The server's grammar parser is the authoritative format check — a malformed or

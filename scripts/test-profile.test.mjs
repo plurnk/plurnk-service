@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
+import { liveInvocation } from "../plurnk-core/scripts/live.mjs";
 import { candidateDaemonArgs } from "./candidate-daemon.mjs";
 
 const root = resolve(import.meta.dirname, "..");
@@ -29,9 +30,21 @@ test("the committed real-model profile contains only universal gate invariants",
     assert.deepEqual(parseProfile(readFileSync(profilePath, "utf8")), expectedProfile);
 });
 
-test("live and demo load the shared profile and retain their exact policy owner", () => {
+test("the repository root exposes the service's basic operator lifecycle", () => {
+    const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
+    assert.equal(pkg.scripts.start, "npm start -w @plurnk/plurnk-service");
+    assert.equal(pkg.scripts["test:live"], "npm run test:live -w @plurnk/plurnk-service");
+    assert.equal(pkg.scripts["test:demo"], "npm run test:demo -w @plurnk/plurnk-service");
+});
+
+test("live and demo load the shared profile and retain their exact policy owner", async () => {
     const pkg = JSON.parse(readFileSync(resolve(root, "plurnk-core", "package.json"), "utf8"));
-    for (const name of ["test:live", "test:live:zeropin", "test:demo", "test:demo:zeropin"]) {
+    const live = await liveInvocation();
+    assert.ok(live.args.includes("--env-file-if-exists=.env.test"));
+    assert.equal(live.env.PLURNK_SERVICE_POLICY, "../plurnk-meta/PLURNK_PERSONALITY.md");
+    assert.equal(pkg.scripts["test:live:zeropin"], "PLURNK_ZERO_PIN=1 npm run test:live");
+
+    for (const name of ["test:demo", "test:demo:zeropin"]) {
         const script = pkg.scripts[name];
         assert.match(script, /--env-file-if-exists=\.env\.test(?:\s|$)/, `${name} loads the shared profile`);
         assert.match(script, /PLURNK_SERVICE_POLICY=\.\.\/plurnk-meta\/PLURNK_PERSONALITY\.md/, `${name} selects the gate policy`);

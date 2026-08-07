@@ -1,10 +1,7 @@
-// The gate drill, parallelized (AGENTS one-gate). lint + unit fan out across ALL
-// workspaces every run — fast, deterministic, cross-workspace safety. intg — slow,
-// stateful, the flaky tier — scopes to the CHANGED workspaces when the pre-push
-// hook hands a base (PLURNK_GATE_BASE); a root-level change or no base runs full.
-// So a lane's push gates on its OWN tree (worktree isolation, real at the push
-// boundary), while a release (stamps every workspace) and any manual `npm test`
-// run the full intg. Committing to main is scoped; shipping runs everything.
+// The deterministic gate drill. Applicable lint + unit tiers fan out across all
+// workspaces; intg scopes to changed workspaces only when the pre-push hook hands
+// us PLURNK_GATE_BASE. The package lifecycle policy rejects hidden synonym tiers,
+// so an omitted phase is explicitly inapplicable rather than silently undiscovered.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -68,14 +65,22 @@ const pool = async (jobs) => {
     return results;
 };
 
+export const partitionByScript = (subset, script) => ({
+    included: subset.filter((workspace) => workspace.scripts.includes(script)),
+    excluded: subset.filter((workspace) => !workspace.scripts.includes(script)),
+});
+
 const phase = async (title, script, subset) => {
     const started = Date.now();
-    const jobs = subset
-        .filter((w) => w.scripts.includes(script))
+    const { included, excluded } = partitionByScript(subset, script);
+    const jobs = included
         .map((w) => () => run(w.dir, script));
     const results = await pool(jobs);
     const reds = results.filter((r) => r.code !== 0);
-    console.log(`${title}: ${results.length - reds.length}/${results.length} green in ${Math.round((Date.now() - started) / 1000)}s`);
+    const inapplicable = excluded.length === 0
+        ? ""
+        : `; ${excluded.length} n/a: ${excluded.map((workspace) => workspace.dir).join(", ")}`;
+    console.log(`${title}: ${results.length - reds.length}/${results.length} green in ${Math.round((Date.now() - started) / 1000)}s${inapplicable}`);
     for (const r of reds) {
         console.log(`\n===== RED ${r.dir} (${r.script}) =====`);
         console.log(r.out);

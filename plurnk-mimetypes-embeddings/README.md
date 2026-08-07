@@ -87,5 +87,5 @@ Set `PLURNK_MIMETYPES_EMBED_BASE_URL` (OpenAI-convention `/v1` base; `/embedding
 - `npm run build:model` — re-download the pinned revision into `model/` and regenerate `model/model.sha256`.
 - `npm run verify:model` — check the committed model bytes against the manifest.
 - `npm run vendor:ort` — re-copy the onnxruntime-web runtime from `.ort-pin` into `vendor/` and regenerate `ort.sha256` (re-asserts the protobufjs-phantom invariant).
-- `npm run verify:ort` — check the vendored runtime against its manifest and the phantom invariant (runs in `pretest`).
+- `npm run verify:ort` — check the vendored runtime against its manifest and the phantom invariant (runs before `test:unit`).
 - `npm test` — unit (duck surface, determinism, normalization, cosine sanity, vendoring phantom guard) + integration (real framework loader path).

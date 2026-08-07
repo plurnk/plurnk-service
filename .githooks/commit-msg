@@ -1,36 +1,6 @@
 #!/bin/sh
-# Doctrine gate (POSSUMTECH.md §Git workflow): a commit is one Conventional
-# Commit subject line, at most 80 characters, with no body or attribution
-# trailers. Merges are exempt.
 msg_file="$1"
-subject=$(sed -n '1p' "$msg_file")
-
-case "$subject" in
-    Merge\ *|Revert\ *) : ;; # git-generated shapes pass
-    *)
-        if ! printf '%s' "$subject" | grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|chore|ci|revert)(\([a-z0-9-]+\))?!?: .+'; then
-            echo "commit-msg: subject must be conventional — type(scope): summary" >&2
-            echo "  got: $subject" >&2
-            exit 1
-        fi
-        ;;
-esac
-
-if [ "$(printf '%s' "$subject" | wc -m)" -gt 80 ]; then
-    echo "commit-msg: subject exceeds 80 characters — cite an issue (#N), a commit hash, or a SPEC tag instead" >&2
-    exit 1
-fi
-
-# subject-only: no non-comment content past line 1
-if sed '1d' "$msg_file" | grep -vE '^\s*$' | grep -qvE '^#'; then
-    echo "commit-msg: one-liner doctrine — no body; rationale belongs in SPEC.md or an issue" >&2
-    exit 1
-fi
-
-if grep -qiE '^(Co-Authored-By|Claude-Session):' "$msg_file"; then
-    echo "commit-msg: no Co-Authored-By / Claude-Session trailers (POSSUMTECH.md §Git workflow)" >&2
-    exit 1
-fi
+node scripts/conventional.mjs commit "$msg_file" || exit 1
 
 # chain the operator's global template hook (commitlint) if one exists
 if [ -x "$HOME/.git/templates/hooks/commit-msg" ]; then

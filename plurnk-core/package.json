@@ -64,6 +64,7 @@
         "build:local:uninstall": "node --conditions=plurnk-dev scripts/install-sandbox.mjs uninstall",
         "test:installation": "node --conditions=plurnk-dev scripts/test-installation.mjs",
         "deps:audit": "node --conditions=plurnk-dev scripts/deps-audit.ts",
+        "release:check": "npm run deps:audit && npm run test:installation",
         "prepublishOnly": "npm run deps:audit && npm run test:installation",
         "prepack": "npm run build"
     },

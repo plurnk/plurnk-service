@@ -58,16 +58,11 @@ historical surface.
 git clone https://github.com/plurnk/plurnk-service.git
 cd plurnk-service
 npm ci
-npm run build
-npm run test:lint
-npm run test:unit
+npm test
 ```
 
-Deterministic integration tests are separate:
-
-```sh
-npm run test:intg
-```
+Long-running drills remain explicit as `npm run test:live` and `npm run test:demo`;
+use `npm run config:list` for a value-free configuration inventory.
 
 To launch a source-built daemon and the outside `plurnk` client as one
 reproducible candidate:
@@ -83,6 +78,8 @@ projects, creates an isolated database, reports their provenance, and preserves
 a digest in the shared `../benchmarks` tree unless `PLURNK_BENCHMARKS` selects
 another path. Repeated experiment harnesses may build both checkouts once, then
 set `PLURNK_CANDIDATE_SKIP_BUILD=1` for the frozen build.
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for hooks, test tiers, and maintenance.
 
 ## Packages
 

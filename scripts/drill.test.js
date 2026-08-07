@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { scopeIntg } from "./drill.mjs";
+import { partitionByScript, scopeIntg } from "./drill.mjs";
 
 const DIRS = ["plurnk-contracts", "plurnk-core", "plurnk-mimetypes-text-html"];
 
@@ -26,5 +26,19 @@ describe("drill scopeIntg — changed-workspace intg scoping", () => {
 
     it("an empty diff scopes to nothing (lint+unit already ran full)", () => {
         assert.deepEqual([...scopeIntg([], DIRS)], []);
+    });
+});
+
+describe("drill tier inventory", () => {
+    it("reports applicable and inapplicable workspaces explicitly", () => {
+        const workspaces = [
+            { dir: "unit", scripts: ["test:unit"] },
+            { dir: "integration", scripts: ["test:intg"] },
+            { dir: "both", scripts: ["test:unit", "test:intg"] },
+        ];
+        assert.deepEqual(partitionByScript(workspaces, "test:intg"), {
+            included: [workspaces[1], workspaces[2]],
+            excluded: [workspaces[0]],
+        });
     });
 });

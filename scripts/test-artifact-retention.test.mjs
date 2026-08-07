@@ -55,8 +55,8 @@ test("each file-backed integration lane begins through the shared retention proc
     for (const workspace of ["plurnk-core", "plurnk-agui"]) {
         const packageJson = JSON.parse(await readFile(new URL(`${workspace}/package.json`, root), "utf8"));
         const scripts = packageJson.scripts;
-        assert.equal(scripts["test:artifacts:begin"], "node ../scripts/test-artifacts.mjs begin", workspace);
-        assert.equal(scripts["pretest:intg"], "npm run test:artifacts:begin", workspace);
-        assert.equal(scripts["test:clean-tmp"], "node ../scripts/test-artifacts.mjs clean", workspace);
+        assert.equal(scripts["artifacts:begin"], "node ../scripts/test-artifacts.mjs begin", workspace);
+        assert.equal(scripts["pretest:intg"], "npm run artifacts:begin", workspace);
+        assert.equal(scripts["artifacts:clean"], "node ../scripts/test-artifacts.mjs clean", workspace);
     }
 });

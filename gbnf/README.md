@@ -72,7 +72,5 @@ The optional llama.cpp differential gate requires the pinned oracle sources and 
 ```sh
 npm run oracle:fetch
 npm run oracle:build
-npm run test:e2e
+npm run test:llama
 ```
-
-After the oracle exists, `npm run test:all` runs lint, coverage, and the differential suite.

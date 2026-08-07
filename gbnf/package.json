@@ -49,11 +49,10 @@
         "oracle:build": "scripts/buildLlama.sh",
         "oracle:check": "scripts/checkLlamaGrammar.sh",
         "test:lint": "tsc --noEmit",
-        "test:intg": "node --conditions=plurnk-dev --test test/intg/*.test.ts",
-        "test:e2e": "node --conditions=plurnk-dev --test test/e2e/*.test.ts",
-        "test:coverage": "node --conditions=plurnk-dev --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-lines=50 --test-coverage-branches=50 --test-coverage-functions=50 test/intg/*.test.ts",
-        "test:all": "npm run test:lint && npm run test:coverage && npm run test:e2e",
-        "prepublishOnly": "npm run test:lint && npm run test:intg && npm run build:dist",
+        "test:intg": "node --conditions=plurnk-dev --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-lines=50 --test-coverage-branches=50 --test-coverage-functions=50 test/intg/*.test.ts",
+        "test:llama": "node --conditions=plurnk-dev --test test/e2e/*.test.ts",
+        "test": "npm run test:lint && npm run test:intg",
+        "prepublishOnly": "npm test && npm run build:dist",
         "prepack": "npm run build"
     }
 }
