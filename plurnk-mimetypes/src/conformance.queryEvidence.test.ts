@@ -5,7 +5,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import BaseHandler from "./BaseHandler.ts";
-import { assertQueryEvidenceConformance } from "./conformance.ts";
+import {
+    assertQueryEvidenceConformance,
+    assertQueryLineConformance,
+} from "./conformance.ts";
 import type { MimeSymbol } from "./types.ts";
 
 // A compliant handler: deepJson carries line/endLine, so the framework's
@@ -169,6 +172,47 @@ describe("query-evidence conformance gate", () => {
                 }],
             ),
             /unsupported verdict must throw UnsupportedDialectError/,
+        );
+    });
+});
+
+describe("deprecated query-line conformance adapter", () => {
+    it("runs a legacy leaf-style call through complete region validation", async () => {
+        const h = new BaseHandler(md);
+        await assertQueryLineConformance(h, [{
+            source: "alpha\nbeta",
+            dialect: "regex",
+            pattern: "beta",
+            expectStartLines: [2],
+        }]);
+    });
+
+    it("normalizes the published line-only handler shape", async () => {
+        await assertQueryLineConformance(
+            {
+                query: async () => [{
+                    matched: "beta",
+                    lines: [{ line: 2, endLine: 2 }],
+                }],
+            },
+            [{
+                source: "alpha\nbeta",
+                dialect: "regex",
+                pattern: "beta",
+                expectStartLines: [2],
+            }],
+        );
+    });
+
+    it("preserves computed-scalar absence without inventing coordinates", async () => {
+        await assertQueryLineConformance(
+            { query: async () => [{ matched: 2 }] },
+            [{
+                source: "<a/><a/>",
+                dialect: "xpath",
+                pattern: "count(//a)",
+                scalar: true,
+            }],
         );
     });
 });

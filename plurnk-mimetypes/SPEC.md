@@ -885,6 +885,11 @@ assert either exact coordinates in their readable projection or an honest
 locator-only verdict. The harness validates every reported region through the
 shared `TextRegion` contract before comparing it with the declared verdict.
 
+The 1.x `assertQueryLineConformance` export and its `QueryLineCase` and
+`QueryConformanceHandler` types remain as deprecated source compatibility. The
+adapter normalizes the published line-only shape and delegates validation to
+`assertQueryEvidenceConformance`; new coverage uses complete region verdicts.
+
 ## §mimetype-public-api 15. Public API stability
 
 All exports from the `@plurnk/plurnk-mimetypes` package root and its declared

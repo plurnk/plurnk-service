@@ -225,6 +225,74 @@ export async function assertQueryEvidenceConformance(
     }
 }
 
+/** @deprecated Use QueryEvidenceCase with complete TextRegion expectations. */
+export interface QueryLineCase {
+    source: string;
+    dialect: "jsonpath" | "xpath" | "regex" | "glob";
+    pattern: string;
+    expectStartLines?: readonly number[];
+    scalar?: boolean;
+}
+
+/** @deprecated Use QueryEvidenceConformanceHandler. */
+export interface QueryConformanceHandler {
+    query(
+        content: string,
+        dialect: string,
+        pattern: string,
+        flags?: string,
+    ): Promise<ReadonlyArray<{
+        matched: unknown;
+        matching?: string;
+        regions?: ReadonlyArray<TextRegion>;
+        lines?: ReadonlyArray<{ line: number; endLine: number }>;
+    }>>;
+}
+
+/** @deprecated Use assertQueryEvidenceConformance with complete TextRegion expectations. */
+export async function assertQueryLineConformance(
+    handler: QueryConformanceHandler,
+    cases: readonly QueryLineCase[],
+): Promise<void> {
+    for (const c of cases) {
+        const matches = await handler.query(c.source, c.dialect, c.pattern);
+        const normalized = matches.map((match) => ({
+            matched: match.matched,
+            ...(match.matching !== undefined || c.scalar === true
+                ? { matching: match.matching ?? c.pattern }
+                : {}),
+            ...(match.regions !== undefined
+                ? { regions: match.regions }
+                : match.lines !== undefined
+                    ? { regions: match.lines.map(({ line, endLine }) => ({
+                        startLine: line,
+                        startColumn: 1,
+                        endLine,
+                        endColumn: 1,
+                    })) }
+                    : {}),
+        }));
+        const expectedRegions = normalized.map((match) => match.regions ?? []);
+        await assertQueryEvidenceConformance(
+            { query: async () => normalized },
+            [{
+                source: c.source,
+                dialect: c.dialect,
+                pattern: c.pattern,
+                verdict: c.scalar === true ? "locator-only" : "exact",
+                ...(c.scalar === true ? {} : { expectRegions: expectedRegions }),
+            }],
+        );
+        if (c.expectStartLines !== undefined) {
+            assert.deepEqual(
+                normalized.map((match) => match.regions?.[0]?.startLine),
+                [...c.expectStartLines],
+                `${c.dialect} \`${c.pattern}\`: match start lines mismatch`,
+            );
+        }
+    }
+}
+
 function assertTextRegion(region: TextRegion, label: string): void {
     try {
         Validator.assertTextRegion(region);
