@@ -7,7 +7,7 @@
 // (loop.run via the daemon — liveWorkspace + liveLoop). Seeded pathnames are slash-prefixed (the
 // RFC-3986 path the parser resolves worker:///x.json to), so seed and the model's READ can't drift.
 
-import test from "node:test";
+import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { liveWorkspace, liveLoop, seedEntry } from "../_live-harness.ts";
 

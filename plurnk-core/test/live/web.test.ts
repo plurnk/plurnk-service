@@ -13,7 +13,7 @@
 //    the real fetch into a streamed entry, validated end-to-end here against real network.
 //  - search: REQUIRED in this tier. An unavailable endpoint fails the live gate.
 
-import test from "node:test";
+import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
@@ -25,7 +25,7 @@ import Http from "@plurnk/plurnk-schemes-http";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "../intg/_helpers.ts";
 
 // A stable NON-HTML URL: text/plain streams via raw fetch (an HTML target routes through the
-// http scheme's lazy Chromium renderer — a heavier dependency, exercised separately).
+// HTTP scheme's generic acquisition path, which is exercised separately).
 const HTTP_URL = "https://www.google.com/robots.txt";
 
 test("live web: a discovered http:// READ fetches a real URL into a streamed entry (no model, no mock)",

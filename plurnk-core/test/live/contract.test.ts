@@ -12,7 +12,7 @@
 // liveLoop). Seeding is a precondition (the state the prompt references); the
 // loop is 100% prod, the same path production runs.
 
-import test from "node:test";
+import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { liveWorkspace, liveLoop, seedEntry, readBody, lastRx } from "../_live-harness.ts";
 

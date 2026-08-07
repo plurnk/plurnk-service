@@ -8,7 +8,7 @@
 // longer hand-builds an ExecutorRegistry; the loop's completion implies the
 // backgrounded spawn finished (the model concluded only after reading its result).
 
-import test from "node:test";
+import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 

@@ -6,7 +6,7 @@
 // (packet-assembled, scheme-education); here we assert the LIVE outcome — the model
 // drives the loop to a clean terminal and the right entries land in the db.
 
-import test from "node:test";
+import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { liveWorkspace, liveLoop, seedEntry } from "../_live-harness.ts";
 
