@@ -80,11 +80,6 @@ export type DispatchContext = {
     sequence: number;
     origin: WriterTier;
     onDispatch?: (logEntryId: number) => void;
-    operationConstraint?: {
-        readonly code: string;
-        readonly detail: string;
-        readonly allowedOperations: readonly PlurnkOp[];
-    };
 };
 
 export type DispatchResult = SchemeResult;
@@ -539,25 +534,10 @@ export default class Dispatcher {
             sequence,
             origin,
             onDispatch,
-            operationConstraint,
         } = context;
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin });
         let result: DispatchResult;
-        let denial = operationConstraint !== undefined
-            && !operationConstraint.allowedOperations.includes(statement.op)
-            ? Dispatcher.#failure(
-                "operation-not-allowed",
-                409,
-                `${statement.op} was not executed because ${operationConstraint.detail}.`,
-                {},
-                {
-                    constraint: operationConstraint.code,
-                    allowedOperations: [...operationConstraint.allowedOperations],
-                    retryable: false,
-                },
-            )
-            : null;
-        if (denial === null) denial = this.#checkWritable(statement, origin);
+        let denial = this.#checkWritable(statement, origin);
         if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
         if (denial !== null) {
             result = denial;

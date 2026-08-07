@@ -414,14 +414,14 @@ test("virtual PROMPT_BUDGET resolves per alias without changing the provider env
     }
 });
 
-test("the FIRST hard overflow is a constrained RECOVERY TURN; the SECOND terminates 413", async () => {
+test("the FIRST hard overflow is an informed normal turn; the SECOND terminates 413", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
         // Physically sendable (window 200k >> the packet) but hopelessly over the policy ceiling:
         // the SAFETY pin holds the budget at ~TINY while sendability stays 199,998. The model gets
-        // one constrained recovery turn. A continuing response remains over, so
+        // one informed recovery turn under the ordinary operation contract. A continuing response remains over, so
         // the second hard overflow terminates. A concluding recovery is legitimate.
         const restore = pinSafety(199_990);
         const mock = mockAt(199_998, [response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")])], 200_000);
@@ -437,7 +437,7 @@ test("the FIRST hard overflow is a constrained RECOVERY TURN; the SECOND termina
         assert.doesNotMatch(recoveryErrors, /Prompt budget exceeded|overflow-detection|FOLDing/, "Errors remains a terse index, not a duplicate Problem");
         const recoveryLog = packetSection(recoveryPacket, "log");
         assert.equal(
-            recoveryLog.match(/Curate context by FOLDing or KILLing irrelevant log items to restore working room\./g)?.length,
+            recoveryLog.match(/Restore working room before the next turn: FOLD or KILL irrelevant log items, use smaller retrieval ranges, or conclude if the work is complete\./g)?.length,
             1,
             "the complete recovery instruction appears once on the inline error row",
         );
@@ -452,20 +452,18 @@ test("the FIRST hard overflow is a constrained RECOVERY TURN; the SECOND termina
                     ceiling?: number;
                     deficit?: number;
                     stage?: string;
-                    allowedOperations?: string[];
                     recovery?: string;
                     retryable?: boolean;
                 };
             })
             .find((e) => e.problem?.type === "https://problems.plurnk.dev/engine/grinder/budget-overflow"
-                && Array.isArray(e.problem.allowedOperations))
+                && e.problem.stage === "overflow-detection")
             ?.problem;
-        assert.ok(recovery !== undefined, "the recovery occurrence carries its enforced operation constraint");
+        assert.ok(recovery !== undefined, "the recovery occurrence reports the measured overflow");
         assert.equal(recovery.title, "Prompt budget exceeded");
-        assert.deepEqual(recovery.allowedOperations, ["PLAN", "FOLD", "KILL", "SEND"]);
         assert.equal(
             recovery.recovery,
-            "Curate context by FOLDing or KILLing irrelevant log items to restore working room.",
+            "Restore working room before the next turn: FOLD or KILL irrelevant log items, use smaller retrieval ranges, or conclude if the work is complete.",
         );
         assert.equal(recovery.stage, "overflow-detection");
         assert.equal(recovery.retryable, false);
@@ -475,24 +473,30 @@ test("the FIRST hard overflow is a constrained RECOVERY TURN; the SECOND termina
     } finally { await db.close(); }
 });
 
-test("budget recovery rejects a forbidden op on its own row before scheme dispatch", async () => {
+test("budget recovery preserves the ordinary operation contract", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
+        await seedEntryWithChannel(db, {
+            workspaceId,
+            scheme: "worker",
+            pathname: "/available-during-recovery",
+            content: "ordinary read result",
+        });
         const read: PlurnkStatement = {
             op: "READ",
             suffix: "",
             signal: null,
             target: {
                 kind: "url",
-                raw: "worker:///would-run-outside-recovery",
+                raw: "worker:///available-during-recovery",
                 scheme: "worker",
                 username: null,
                 password: null,
                 hostname: null,
                 port: null,
-                pathname: "/would-run-outside-recovery",
+                pathname: "/available-during-recovery",
                 query: null,
                 fragment: null,
             },
@@ -505,7 +509,7 @@ test("budget recovery rejects a forbidden op on its own row before scheme dispat
             await engine.runTurn({
                 provider: mockAt(
                     199_998,
-                    [response([read, sendStmt(102, "continue")])],
+                    [response([read, sendStmt(200, "done")])],
                     200_000,
                 ),
                 workspaceId,
@@ -524,22 +528,19 @@ test("budget recovery rejects a forbidden op on its own row before scheme dispat
             worker_id: workerId,
             op: "READ",
         });
-        const denied = rows
+        const delivered = rows
             .map((row) => ({
                 ...row,
                 result: JSON.parse(row.rx) as {
                     problem?: {
                         type?: string;
-                        constraint?: string;
-                        allowedOperations?: string[];
                     };
+                    content?: string;
                 },
             }))
-            .find((row) => row.result.problem?.type === "https://problems.plurnk.dev/engine/dispatcher/operation-not-allowed");
-        assert.ok(denied !== undefined, "the original READ row owns the constraint failure");
-        assert.equal(denied.status_rx, 409);
-        assert.equal(denied.result.problem?.constraint, "budget-recovery");
-        assert.deepEqual(denied.result.problem?.allowedOperations, ["PLAN", "FOLD", "KILL", "SEND"]);
+            .find((row) => row.result.content === "ordinary read result");
+        assert.ok(delivered !== undefined, "an ordinary READ executes during the informed recovery turn");
+        assert.equal(delivered.status_rx, 200);
     } finally { await db.close(); }
 });
 
@@ -645,7 +646,7 @@ test("physical admission includes the recovery occurrence added by the final reb
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
-        const recoveryInstruction = "Curate context by FOLDing or KILLing irrelevant log items to restore working room.";
+        const recoveryInstruction = "Restore working room before the next turn: FOLD or KILL irrelevant log items, use smaller retrieval ranges, or conclude if the work is complete.";
         const measuredRequests: string[] = [];
         const mock = Object.assign(
             mockAt(1, [response([sendStmt(200, "must not run")])], 3),

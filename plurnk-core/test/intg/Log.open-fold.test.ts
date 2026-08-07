@@ -268,7 +268,7 @@ test("FOLD(log:///1/1/) folds the turn's rows — the trailing slash means the c
     } finally { await db.close(); }
 });
 
-test("a zero-match sweep is a NO-OP SUCCESS — 204 with matched: 0, never an error (owner ruling)", async () => {
+test("a zero-match sweep is a NO-OP SUCCESS — 204 with matched: 0, never an error", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const r = await new Log().fold(

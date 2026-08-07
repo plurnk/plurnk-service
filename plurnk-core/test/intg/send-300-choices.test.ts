@@ -59,7 +59,7 @@ test("{§send-300-choices}: SEND[300] stops the world and the accepted body beco
 }); });
 
 test("a bare [300] with no choices is an OPEN QUESTION — same proposal, never malformed", async () => { await withAsk(async () => {
-    // Owner ruling: choices are optional chooser sugar; a choiceless [300] simply asks freeform.
+    // Choices are optional chooser sugar; a choiceless [300] simply asks freeform.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `c300o-${crypto.randomUUID()}`);
@@ -85,8 +85,8 @@ test("a bare [300] with no choices is an OPEN QUESTION — same proposal, never 
 }); });
 
 test("e2e: the ask stops the world via loop/proposal; loop.resolve's body IS the answer; the model concludes with it", async () => { await withAsk(async () => {
-    // The full client contract through the real daemon (owner ruling: the SAME proposal system
-    // as file edits): the model asks [300] — even under auto the question stops the world (auto
+    // The full client contract through the real daemon uses the same proposal system as file edits:
+    // the model asks [300] — even under auto the question stops the world (auto
     // never auto-answers a human question) — the client receives loop/proposal carrying
     // {question, choices}, answers via the EXISTING loop.resolve {decision:"accept", body}, the
     // answer lands in the ask's own rx, and the next turn concludes with it.

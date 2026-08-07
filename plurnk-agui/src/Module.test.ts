@@ -920,7 +920,7 @@ test("PLURNK-owned HTTP failures use application/problem+json with stable Proble
     } finally { await mod.close(); }
 });
 
-test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none (operator ruling: not everything is a worker)", async () => {
+test("CONTROL PLANE: a worldless action needs NO workspace and FORGES none", async () => {
     let created = 0, ensured = 0;
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [{ id: 1, name: "a" }, { id: 2, name: "b" }];

@@ -128,7 +128,7 @@ assert that path in the root packed-artifact projection.
   or comparison; otherwise use an itemized list when it is naturally a set of
   distinct items; use prose only when none of those forms fits. Retain only the
   precise normative prose that the chosen form cannot express.
-- When repository teaching conflicts with observed behavior or an owner ruling,
+- When repository teaching conflicts with observed behavior or the owning contract,
   stop consequential implementation. Record the contradiction in the owning
   issue, settle it, update the tagged specification, then update implementation
   and coverage. Remove superseded teaching instead of appending another account.

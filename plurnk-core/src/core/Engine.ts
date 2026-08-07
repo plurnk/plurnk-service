@@ -1215,16 +1215,16 @@ export default class Engine {
         });
         if (enforced.recorded) nextActionIndex += 1; // a fold-to-fit Problem consumed the reserved sequence
         requestPacket = enforced.packet;
-        let operationConstraint: DispatchContext["operationConstraint"];
         if (!enforced.fit) {
             // {§grinder-hard-413-recovery}/{§grinder-hard-413-abort} — admit
-            // one physically sendable constrained recovery turn; a physical
+            // one physically sendable informed recovery turn; a physical
             // overflow or consecutive policy overflow terminates immediately.
             let physicalAdmission = await this.#packets.physicalAdmission(
                 requestPacket,
                 provider,
                 this.#loopAborts.get(loopId)?.signal,
             );
+            let recoveryAdmitted = false;
             if (physicalAdmission.admitted && !this.#hardOverflowRecovery.has(loopId)) {
                 const ceiling = this.#packets.ceilingFor(provider);
                 if (ceiling === null) {
@@ -1252,15 +1252,11 @@ export default class Engine {
                 );
                 if (physicalAdmission.admitted) {
                     this.#hardOverflowRecovery.add(loopId);
-                    operationConstraint = {
-                        code: "budget-recovery",
-                        detail: "budget recovery is active",
-                        allowedOperations: BudgetOverflow.recoveryOperations,
-                    };
+                    recoveryAdmitted = true;
                 }
             }
-            if (operationConstraint === undefined) {
-                // Hard 413: physically unsendable, or still over after the constrained recovery turn.
+            if (!recoveryAdmitted) {
+                // Hard 413: physically unsendable, or still over after the informed recovery turn.
                 const ceiling = this.#packets.ceilingFor(provider);
                 if (ceiling === null) {
                     throw new Error("an unbounded prompt budget cannot hard-stop");
@@ -1712,11 +1708,8 @@ export default class Engine {
         let realCommands = 0;
         const admittedOps = packetAssistant.ops.filter(
             (op) => {
-                const constrained = operationConstraint !== undefined
-                    && !operationConstraint.allowedOperations.includes(op.op);
                 return op.op === "PLAN"
                 || op === sendOp
-                || constrained
                 || realCommands++ < maxCommands;
             },
         );
@@ -1724,9 +1717,7 @@ export default class Engine {
         await this.#dispatcher.prepareEditBatches(
             opsToDispatch.filter(
                 (statement): statement is EditStatement =>
-                    statement.op === "EDIT"
-                    && (operationConstraint === undefined
-                        || operationConstraint.allowedOperations.includes(statement.op)),
+                    statement.op === "EDIT",
             ),
             {
                 workspaceId, workerId, loopId, turnId,
@@ -1786,7 +1777,6 @@ export default class Engine {
                     const dispatchResult = await this.#dispatcher.dispatch({
                         statement, workspaceId, workerId, loopId, turnId,
                         sequence: rowSeq,
-                        ...(operationConstraint === undefined ? {} : { operationConstraint }),
                         origin, onDispatch,
                     });
                     span.setAttribute("status", dispatchResult.status);

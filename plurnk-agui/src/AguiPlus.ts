@@ -19,8 +19,8 @@ export const logEntryIdFromToolCallId = (toolCallId: string): number | null => {
     return m === null ? null : Number(m[1]);
 };
 
-// Tool-call NAME — AG-UI terminology all the way up to the seam (operator ruling,
-// 2026-07-09): the client-facing name is AG-UI-conventional, NOT plurnk-namespaced.
+// Tool-call NAME — AG-UI terminology all the way up to the seam: the client-facing
+// name is AG-UI-conventional, not plurnk-namespaced.
 // A side-effecting proposal is an approval request; a [300] question elicits input.
 // The plurnk correlation rides the opaque toolCallId (`prop:<logEntryId>`), so the
 // generic names carry no plurnk vocabulary upward.

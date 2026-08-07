@@ -3,7 +3,6 @@ import {
     Validator,
     type OperationResult,
 } from "@plurnk/plurnk-contracts";
-import type { PlurnkOp } from "@plurnk/plurnk-contracts";
 
 export interface BudgetOverflowMeasurement {
     readonly usage: number;
@@ -23,17 +22,6 @@ export interface BudgetOverflowPhysicalFailure {
 const formatTokens = (tokens: number): string => tokens.toLocaleString("en-US");
 
 export default class BudgetOverflow {
-    static readonly recoveryOperations = Object.freeze([
-        "PLAN",
-        "FOLD",
-        "KILL",
-        "SEND",
-    ] as const satisfies readonly PlurnkOp[]);
-
-    static permits(operation: PlurnkOp): boolean {
-        return BudgetOverflow.recoveryOperations.some((allowed) => allowed === operation);
-    }
-
     static measure(usage: number, ceiling: number): BudgetOverflowMeasurement {
         return {
             usage,
@@ -70,12 +58,9 @@ export default class BudgetOverflow {
                         ...(physical.tokenKind === undefined ? {} : { physicalTokenKind: physical.tokenKind }),
                         ...(physical.tokenSource === undefined ? {} : { physicalTokenSource: physical.tokenSource }),
                     }),
-                    ...(recovery
-                        ? {
-                            allowedOperations: [...BudgetOverflow.recoveryOperations],
-                            recovery: "Curate context by FOLDing or KILLing irrelevant log items to restore working room.",
-                        }
-                        : {}),
+                    ...(recovery ? {
+                        recovery: "Restore working room before the next turn: FOLD or KILL irrelevant log items, use smaller retrieval ranges, or conclude if the work is complete.",
+                    } : {}),
                 },
                 { title: "Prompt budget exceeded" },
             ),

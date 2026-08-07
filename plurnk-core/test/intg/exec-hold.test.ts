@@ -1,4 +1,4 @@
-// {§exec-hold-until-concluded} — the turn-hold exception (owner ruling): runtimes in
+// {§exec-hold-until-concluded} — runtimes in
 // PLURNK_SERVICE_EXEC_HOLD pause the cycle until their stream concludes, so the model never
 // burns a turn waiting on a result the engine controls end-to-end. Bounded + fail-open.
 

@@ -144,8 +144,7 @@ export default class Module {
 
     // The control plane vs the world. An AG-UI Run lives in a world (a conversation, or an action
     // that reads/writes a workspace's log); a control-plane action (list/create/attach/discover/
-    // auth) does NOT — so it must not bind or forge a workspace (operator ruling 2026-07-10:
-    // "every worker/thread requires a world, not everything"). Only these kinds bind a workspace.
+    // auth) does NOT — so it must not bind or forge a workspace. Only these kinds bind a workspace.
     static #WORLD_SCOPED = Object.freeze(new Set([
         "workspace.workers", "log.read", "loop.inject", "loop.cancel", "workspace.prompts", "workspace.rename",
         "workspace.constrain", "workspace.unconstrain", "workspace.constraints", "entry.read",
@@ -273,8 +272,8 @@ export default class Module {
         }
     }
 
-    // THE PLURNK PARADIGM (operator ruling 2026-07-10): the name IS the identity,
-    // verbatim. The workspace is the world ({§agui-thread-binding}) — selected by name via
+    // The name is the identity, verbatim. The workspace is the world
+    // ({§agui-thread-binding}) — selected by name via
     // `forwardedProps.plurnk.workspace`; attach it if it exists, create it with EXACTLY that
     // name if it doesn't. No prefixes, no forged names, no dual lookup. The workspace is
     // REQUIRED: a worker has no existence without a world, so its absence is a contract
@@ -543,8 +542,7 @@ export default class Module {
     }
 
     // A control-plane AG-UI Run: no world bound. Open the SSE, execute the worldless verb, answer on
-    // our own stream. No Portal thread, no model worker — nothing to forge (operator ruling:
-    // workspace-plane actions must not spin an ephemeral workspace).
+    // our own stream. No Portal thread, no model worker, and no ephemeral workspace.
     async #controlRun(action: ActionRequest, input: RunAgentInput, res: ServerResponse): Promise<void> {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         const emit = (e: AguiEvent): void => { res.write(`data: ${JSON.stringify(e)}\n\n`); };
