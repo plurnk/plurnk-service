@@ -1916,10 +1916,8 @@ export default class Engine {
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];
         // PLAN is an ordinary op — emitted by the model, dispatched, and passed to the
-        // client as a log entry. No special hoisting into the reasoning field (that
-        // only structured operations are executable). Interstitial free text is DROPPED — the prior
-        // #free-text-capture synthesis of SEND[103] log ops was retired as tech debt
-        // (grammar 0.70 forbids free text between ops, so a prose-only turn strikes 422).
+        // client as a log entry. No special hoisting into the reasoning field. Only
+        // structured operations are executable; interstitial text is not an operation.
         // Full PlurnkParseError context is preserved on rejected attempt evidence;
         // warnings remain admissible Notices. {§parse-diagnostics}
         const parseErrors: ParseErrorInfo[] = [];
@@ -1939,7 +1937,6 @@ export default class Engine {
                 if (item.kind === "statement") {
                     ops.push(item.statement);
                 }
-                // Free text (kind "text") is dropped — #free-text-capture retired (above).
                 else if (item.kind === "error") {
                     const err = (item as { error?: PlurnkParseError }).error;
                     if (err instanceof PlurnkParseError) {
