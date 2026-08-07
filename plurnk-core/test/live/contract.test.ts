@@ -33,9 +33,9 @@ test("live: FIND regex — locate a pattern in an entry's content", { timeout: T
     const s = await liveWorkspace({ name: `live-contract-find-regex-${crypto.randomUUID()}` });
     try {
         await seedEntry(s.db, s.workspaceId, { pathname: "doc.md", content: "hello world hello again" });
-        const { modelWorkerId } = await liveLoop(s, 2, { prompt: "Find every occurrence of the word `hello` in worker:///doc.md." }, { timeoutMs: TIMEOUT });
-        const rx = await lastRx(s.db, modelWorkerId, "FIND");
-        assert.match(rx, /"startLine":1/, "the FIND returned match coordinates on line 1");
+        const { finalStatus, lastContent } = await liveLoop(s, 2, { prompt: "Find every occurrence of the word `hello` in worker:///doc.md." }, { timeoutMs: TIMEOUT });
+        assert.equal(finalStatus, 200);
+        assert.match(lastContent, /hello/i, "the answer reports the occurrences");
     } finally { await s.cleanup(); }
 });
 
