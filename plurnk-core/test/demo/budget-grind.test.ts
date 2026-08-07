@@ -16,7 +16,9 @@ const CEILING_FACTOR = 1.6;
 
 test("demo: complete a multi-source briefing under a tight prompt budget", async () => {
     const fixture = await seedDemoFixture("budget");
-    const userPromptText = "Brief me on this project — its codename, the database host it connects to, and the one outstanding TODO in the app code.";
+    // The codename lives in notes.md and nowhere else; naming the record keeps
+    // the briefing a retrieval task rather than a guess at the package name.
+    const userPromptText = "Brief me on this project — the codename recorded in notes.md, the database host it connects to, and the one outstanding TODO in the app code.";
     const floor = await measureFloor({ label: "grind", projectRoot: fixture.workspace, prompt: userPromptText });
     const CEILING = Math.round(floor * CEILING_FACTOR);
     const restore = pinAliasBudget({ PROMPT_BUDGET: String(CEILING) });

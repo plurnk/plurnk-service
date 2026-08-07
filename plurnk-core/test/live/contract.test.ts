@@ -29,12 +29,13 @@ test("live: READ <L> — slice the second line of an entry", { timeout: TIMEOUT 
     } finally { await s.cleanup(); }
 });
 
-test("live: READ regex — extract a pattern from an entry's content", { timeout: TIMEOUT }, async () => {
-    const s = await liveWorkspace({ name: `live-contract-read-regex-${crypto.randomUUID()}` });
+test("live: FIND regex — locate a pattern in an entry's content", { timeout: TIMEOUT }, async () => {
+    const s = await liveWorkspace({ name: `live-contract-find-regex-${crypto.randomUUID()}` });
     try {
         await seedEntry(s.db, s.workspaceId, { pathname: "doc.md", content: "hello world hello again" });
-        const { modelWorkerId } = await liveLoop(s, 2, { prompt: "Read every line containing the word `hello` in worker:///doc.md." }, { timeoutMs: TIMEOUT });
-        assert.match(await lastRx(s.db, modelWorkerId, "READ"), /hello/);
+        const { modelWorkerId } = await liveLoop(s, 2, { prompt: "Find every occurrence of the word `hello` in worker:///doc.md." }, { timeoutMs: TIMEOUT });
+        const rx = await lastRx(s.db, modelWorkerId, "FIND");
+        assert.match(rx, /"startLine":1/, "the FIND returned match coordinates on line 1");
     } finally { await s.cleanup(); }
 });
 
