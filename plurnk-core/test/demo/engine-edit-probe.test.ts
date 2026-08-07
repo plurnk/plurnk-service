@@ -5,11 +5,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, copyFile, mkdtemp, rm } from "node:fs/promises";
-import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
+import { initializeDemoRepository } from "./_git.ts";
 
 // This is a safety ceiling, not the expected duration; maxTurns separately bounds provider calls.
 const TIMEOUT = 420_000;
@@ -18,7 +18,7 @@ const ENGINE_SRC = fileURLToPath(new URL("../../src/core/Engine.ts", import.meta
 test("demo: locate and edit deep in a large source file — coordinate held, no corruption", { timeout: TIMEOUT }, async () => {
     const fixture = await mkdtemp(join(tmpdir(), "plurnk-engine-probe-"));
     await copyFile(ENGINE_SRC, join(fixture, "Engine.ts")); // a copy of the real thing; the source is untouched
-    execSync('git init -q && git config user.email "probe@plurnk.invalid" && git config user.name "probe" && git add . && git commit -q --no-verify -m "fixture"', { cwd: fixture });
+    initializeDemoRepository(fixture, "fixture");
     const original = await readFile(join(fixture, "Engine.ts"), "utf8");
     const origLines = original.split("\n");
 

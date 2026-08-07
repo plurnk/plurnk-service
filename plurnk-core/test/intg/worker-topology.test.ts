@@ -47,15 +47,15 @@ test("a child FAILING (499) also wakes the parent — any conclusion is a wake e
     // 8192 edge; execs-common 0.2.21's second sh teaching line consumed the last margin (the same
     // budget-edge class as the grammar 0.76.4 bumps above). Headroom for the wake, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("<<WORK(worker://flaky):try the risky thing:WORK\n<<SEND[202]<-1>:waiting on flaky:SEND", 10),
-        makeMockResponse("<<SEND[499]:flaky gave up:SEND", 10),
-        makeMockResponse("<<SEND[200]:flaky is done (failed); concluding:SEND", 10),
+        makeMockResponse("<<WORK(worker://doomed):try the risky thing:WORK\n<<SEND[202]<-1>:waiting on doomed:SEND", 10),
+        makeMockResponse("<<SEND[499]:doomed gave up:SEND", 10),
+        makeMockResponse("<<SEND[200]:doomed is done (failed); concluding:SEND", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "child-fail" });
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn flaky, wait", flags: { auto: true } });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "spawn doomed, wait", flags: { auto: true } });
             assert.equal(finalStatus, 200, "the parent woke on the child's 499 and concluded — a failed child is still a wake edge");
         } finally { ws.close(); }
     });
@@ -238,7 +238,7 @@ test("spawn and fork carry the delegating loop's flags — an auto parent's chil
     // state='resolved' (auto resolution inherited), never state='proposed'/'cancelled'.
     // 16Ki (not the 8Ki the sibling tests use): a topology packet carries the child-orientation
     // section for the spawned + forked workers on top of the base system prompt, so it sits well above a
-    // single-worker packet. At 8Ki it rode the budget edge (a ~50% 413/200 flake) and grammar 0.74.55's
+    // single-worker packet. At 8Ki it crossed the budget edge in about half the runs, and grammar 0.74.55's
     // larger delegation teaching tipped it consistently over — the headroom is the fix, not a race.
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Parent turn 1: spawn a worker AND fork self, then park awaiting them.
@@ -271,7 +271,7 @@ test("spawn and fork carry the delegating loop's flags — an auto parent's chil
 });
 
 test("a wake re-queue (100) mid-drain is re-claimed and continued — never returned as a terminal", async () => {
-    // The delegation-flags flake: a conclusion-wake re-queues a parent's loop (202→100) between its
+    // The delegation-flags race: a conclusion-wake re-queues a parent's loop (202→100) between its
     // turn-end and its drain's next status check; pre-fix, runLoop read the queued 100 as an external
     // terminal and broadcast a QUEUED loop as loop/terminated{100}.
     // Under {§wait-obligation-matrix} a loop blocks at 202 only on a live obligation, so the wake is a

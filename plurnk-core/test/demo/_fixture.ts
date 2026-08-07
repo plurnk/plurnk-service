@@ -5,10 +5,10 @@
 
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import Owner from "../../src/core/Owner.ts";
-import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Db } from "../../src/core/Db.ts";
+import { initializeDemoRepository } from "./_git.ts";
 
 export interface DemoFixture {
     workspace: string;
@@ -86,12 +86,8 @@ export const seedDemoFixture = async (label: string): Promise<DemoFixture> => {
         ].join("\n"),
     );
 
-    // git init — some operations rely on the working dir being a git
-    // repository for the workspace boundary to make sense.
-    execSync(
-        'git init -q && git config user.email "demo@plurnk.invalid" && git config user.name "demo" && git add . && git commit -q --no-verify -m "fixture"',
-        { cwd: workspace },
-    );
+    // Some operations rely on Git membership for the workspace boundary.
+    initializeDemoRepository(workspace, "fixture");
 
     return {
         workspace,

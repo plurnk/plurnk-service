@@ -13,19 +13,18 @@
 // Driven through the REAL prod loop (loop.run via the daemon). The ceiling is set
 // before liveWorkspace boots the daemon so its engine captures it at construction
 // (the budget-grind pattern). Stochastic: assert the OUTCOME (the fact surfaces),
-// not a strict terminal — a live test pinning strict 200 is flaky by construction.
+// not a strict terminal — stochastic model output makes a strict 200 assertion invalid.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
-import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Db } from "../../src/core/Db.ts";
-import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { liveWorkspace, liveLoop, pinAliasBudget } from "../_live-harness.ts";
 import { measureFloor } from "./_floor-probe.ts";
 import { seedDemoFixture } from "./_fixture.ts";
+import { initializeDemoRepository } from "./_git.ts";
 
 const TIMEOUT = 480_000; // 8 minutes — matches the storyline timeout.
 // Ceilings are FLOOR-RELATIVE: each worker probes its own fixture's true turn-1 floor (a
@@ -97,7 +96,7 @@ const seedLedgerFixture = async (): Promise<{ workspace: string; cleanup: () => 
     }
     lines[316] = "Entry 0317: the emergency shutdown code for the primary reactor core is CRIMSON-MERIDIAN-84, filed by the audit team and paged to no one.";
     await writeFile(join(workspace, "ledger.md"), `${lines.join("\n")}\n`);
-    execSync('git init -q && git config user.email "demo@plurnk.invalid" && git config user.name "demo" && git add . && git commit -q --no-verify -m "ledger"', { cwd: workspace, env: hermeticGitEnv() });
+    initializeDemoRepository(workspace, "ledger");
     return { workspace, cleanup: async () => { await rm(workspace, { recursive: true, force: true }); } };
 };
 

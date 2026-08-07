@@ -13,12 +13,13 @@ import GitMembership from "../../src/core/git-membership.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { openMigrated, insertWorkspace, rootWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
+import { initializeDemoRepository } from "../demo/_git.ts";
 
 const execFileP = promisify(execFile);
 const git = (args: string[], cwd: string) => execFileP("git", args, { cwd, env: hermeticGitEnv() });
 const seed = (cwd: string) => execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd, env: hermeticGitEnv() });
 
-test("fixture + production git spawns ignore a hook's absolute GIT_DIR — the victim worktree stays untouched", async () => {
+test("demo fixture + production git spawns ignore a hook's absolute GIT_DIR — the victim worktree stays untouched", async () => {
     const base = await mkdtemp(join(tmpdir(), "plurnk-hermetic-"));
     const victim = join(base, "victim");
     const priorGitDir = process.env.GIT_DIR;
@@ -38,15 +39,18 @@ test("fixture + production git spawns ignore a hook's absolute GIT_DIR — the v
         process.env.GIT_DIR = join(victim, ".git", "worktrees", "lane");
 
         // Fixture class: a sandbox init + seed commit must land in the SANDBOX.
-        const sandbox = await mkdtemp(join(tmpdir(), "plurnk-hermetic-sb-"));
-        await git(["init", "-q"], sandbox);
-        await git(["config", "user.email", "fixture@plurnk.invalid"], sandbox);
-        await git(["config", "user.name", "t"], sandbox);
+        const sandbox = join(base, "sandbox");
+        await mkdir(sandbox);
         await writeFile(join(sandbox, "tracked.md"), "# sandbox truth\n");
-        await git(["add", "tracked.md"], sandbox);
-        await seed(sandbox);
+        initializeDemoRepository(sandbox, "seed");
         const sandboxLog = (await git(["log", "--oneline"], sandbox)).stdout;
         assert.match(sandboxLog, /seed/, "the sandbox owns its seed commit");
+
+        const emptySandbox = join(base, "empty-sandbox");
+        await mkdir(emptySandbox);
+        initializeDemoRepository(emptySandbox, "empty seed", false);
+        const emptyLog = (await git(["log", "--oneline"], emptySandbox)).stdout;
+        assert.match(emptyLog, /empty seed/, "the empty-workspace fixture owns its seed commit");
 
         // Production class: membership resolution against the sandbox must read the SANDBOX.
         const workspaceId = await insertWorkspace(db, `hermetic-${crypto.randomUUID()}`);

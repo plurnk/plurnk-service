@@ -107,7 +107,7 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
             // docs push it past the old 250ms guess). The cancel must land on a live,
             // registered exec so it terminates deterministically and the stream concludes
             // 499; otherwise it fires into the spawn gap and asserts on a stream that never
-            // opened (the flake this replaces — the kill path itself is sound).
+            // opened (the timing race this replaces — the kill path itself is sound).
             await waitForDb(
                 async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n > 0,

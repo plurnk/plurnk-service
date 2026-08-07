@@ -15,8 +15,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execFileSync } from "node:child_process";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
+import { initializeDemoRepository } from "./_git.ts";
 
 test("demo: 'write a script that greets me and run it' — script lands in workspace, runs, model reports the greeting", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "plurnk-demo-script-"));
@@ -25,10 +25,7 @@ test("demo: 'write a script that greets me and run it' — script lands in works
         // contract. A plain temp directory has no declared membership, so EDIT
         // correctly refuses new files and a model can appear to pass only by
         // escaping through shell redirection.
-        execFileSync("git", ["init", "-q"], { cwd: workspace });
-        execFileSync("git", ["config", "user.email", "demo@plurnk.invalid"], { cwd: workspace });
-        execFileSync("git", ["config", "user.name", "demo"], { cwd: workspace });
-        execFileSync("git", ["commit", "--allow-empty", "-q", "--no-verify", "-m", "fixture"], { cwd: workspace });
+        initializeDemoRepository(workspace, "fixture", false);
         const s = await liveWorkspace({ name: `demo-script-${crypto.randomUUID()}`, projectRoot: workspace });
         try {
             // Specific marker the script must print so we can verify the model

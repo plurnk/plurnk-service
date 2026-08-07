@@ -125,11 +125,11 @@ test("{§search-gate}: a failed search does not poison its retry", async () => {
         const ids = { workspaceId, workerId, loopId, turnId };
         // Spawns are async: dispatch ACCEPTS (200) before run() fails; the failure arrives at
         // the stream's close, where settle() drops the pending registration.
-        const accepted = await dispatchSearch(engine, ids, "flaky query", 1);
+        const accepted = await dispatchSearch(engine, ids, "retry query", 1);
         assert.ok(accepted.status < 400, `the spawn is accepted at dispatch; got ${accepted.status}`);
         // Once the failed close settles, the retry must NOT be served a dead duplicate.
         await settle(db, workspaceId);
-        const retry = await dispatchSearch(engine, ids, "flaky query", 2);
+        const retry = await dispatchSearch(engine, ids, "retry query", 2);
         assert.notEqual(retry.status, 409, "no dedup hit off a failed spawn — the retry dispatches for real");
     } finally {
         try { await settle(db, workspaceId); } finally { await db.close(); }

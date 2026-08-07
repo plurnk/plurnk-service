@@ -364,7 +364,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
                 `loop.run returns before the spawn finishes (~2.5s); got ${firstElapsed}ms`);
 
             // Event-driven: wait for the ~2.5s countdown spawn to conclude (200) and its
-            // wake to fire, not a fixed sleep that flakes if the spawn runs long under load.
+            // wake to fire, not a fixed sleep that races a slower spawn under load.
             await waitFor(
                 () => concludedEvents() as Array<{ scheme: string; result: { status: number } }>,
                 (cs) => cs.some((c) => c.scheme === "sh" && c.result.status === 200),
@@ -407,7 +407,7 @@ test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-a
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel mid-stream", flags: { auto: true } });
             await flush();
             // Cancel must land on a LIVE exec (sleep 30 mid-run) — wait for its subscription
-            // to open, not a fixed sleep racing the spawn (the flake this replaces).
+            // to open, not a fixed sleep racing the spawn.
             await waitForDb(
                 async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n > 0,

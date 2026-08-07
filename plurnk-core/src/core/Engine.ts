@@ -697,7 +697,7 @@ export default class Engine {
                 // check, {§worker-lifecycle-wake-requeue-not-terminal}). The wake's intent is KEEP
                 // RUNNING: re-claim atomically and continue — the injected prompt is already
                 // this loop's next turn. Returning it as "external" broadcast a QUEUED loop
-                // as a terminal result with status 100 — the delegation-flags flake.
+                // as a terminal result with status 100 — the delegation-flags race.
                 await this.#db.engine_reclaim_queued_loop.run({ loop_id: loopId });
                 continue; // claimed (or a racer flipped it first — the re-read decides)
             }
