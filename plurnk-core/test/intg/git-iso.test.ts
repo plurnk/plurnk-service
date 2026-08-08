@@ -278,14 +278,26 @@ test("native Git is the default; PLURNK_SERVICE_GIT_ISO=1 selects the matching p
     try {
         const workspaceId = await insertWorkspace(db, `iso-flag-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
+        const nestedWorkspaceId = await insertWorkspace(db, `iso-flag-nested-${crypto.randomUUID()}`);
+        await rootWorkspace(db, nestedWorkspaceId, join(root, "newdir"));
         delete process.env.PLURNK_SERVICE_GIT_ISO;
         const nativeMembers = (await GitMembership.resolveGitMembership(db, workspaceId, undefined)).sort();
         const nativeStatus = await GitState.status(db, workspaceId, undefined);
+        const nativeNestedMembers = (await GitMembership.resolveGitMembership(db, nestedWorkspaceId, undefined)).sort();
+        const nativeNestedStatus = await GitState.status(db, nestedWorkspaceId, undefined);
         process.env.PLURNK_SERVICE_GIT_ISO = "1";
         const isoMembers = (await GitMembership.resolveGitMembership(db, workspaceId, undefined)).sort();
         const isoStatus = await GitState.status(db, workspaceId, undefined);
+        const isoNestedMembers = (await GitMembership.resolveGitMembership(db, nestedWorkspaceId, undefined)).sort();
+        const isoNestedStatus = await GitState.status(db, nestedWorkspaceId, undefined);
         assert.deepEqual(nativeMembers, isoMembers, "both backends resolve the identical member set");
         assert.deepEqual(nativeStatus, isoStatus, "both backends report the identical status");
+        assert.deepEqual(nativeNestedMembers, isoNestedMembers, "both backends resolve the same containing-repository namespace from a nested root");
+        assert.deepEqual(nativeNestedStatus, isoNestedStatus, "both backends translate status into the nested workspace namespace");
+        assert.ok(nativeNestedMembers.includes("deep/x.txt"), "a repository path below project_root becomes a bare workspace key");
+        assert.ok(nativeNestedMembers.includes("../a.txt"), "a repository path above project_root becomes a canonical mount key");
+        assert.ok(nativeNestedStatus?.files.some(({ path, status }) => path === "deep/x.txt" && status === "??"));
+        assert.ok(nativeNestedStatus?.files.some(({ path, status }) => path === "../a.txt" && status === " M"));
     } finally {
         if (prior === undefined) delete process.env.PLURNK_SERVICE_GIT_ISO; else process.env.PLURNK_SERVICE_GIT_ISO = prior;
         await db.close(); await rm(root, { recursive: true, force: true });

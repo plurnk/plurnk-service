@@ -339,6 +339,9 @@ export default class PacketWire {
                 && e.attrs !== null && typeof e.attrs === "object"
                 && (e.attrs as { kind?: unknown }).kind === "entry_materialized";
             const renderedOp = materializedEntry ? "READ" : op;
+            const modelEmission = op === null
+                && e.attrs !== null && typeof e.attrs === "object"
+                && (e.attrs as { kind?: unknown }).kind === "model_emission";
             const path = PacketWire.#entryPath(coordinate, renderedOp);
             if (path !== null) meta.path = path;
             if (typeof e.origin === "string") meta.origin = e.origin;
@@ -346,6 +349,14 @@ export default class PacketWire {
             // subsystem token when present; absence means the owning worker.
             if (typeof e.source === "string" && e.source.length > 0) meta.source = e.source;
             if (renderedOp !== null) meta.op = renderedOp;
+            if (modelEmission) meta.kind = "model_emission";
+            if (e.source === "file" && e.attrs !== null && typeof e.attrs === "object" && "git" in e.attrs) {
+                const git = (e.attrs as { git?: unknown }).git;
+                if (typeof git !== "string" || git.length !== 2) {
+                    throw new TypeError("A source=file log row carries malformed Git XY metadata.");
+                }
+                meta.git = git;
+            }
             if (typeof e.status === "number") meta.status = e.status;
             const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
             const target = PacketWire.#renderActionTarget(e.target);
@@ -446,7 +457,8 @@ export default class PacketWire {
             // complete; every pushed, authored, ambient, plugin, and engine body
             // uses this one preview projection.
             const fullBody = LogBody.resolve({
-                op: op ?? "",
+                op,
+                attrs: e.attrs,
                 tx: e.tx,
                 rx: e.rx,
                 mimetypeTx: typeof e.mimetype_tx === "string" ? e.mimetype_tx : undefined,
@@ -533,11 +545,7 @@ export default class PacketWire {
 
     static #renderGitState(git: GitStatus): string {
         const sync = git.ahead > 0 || git.behind > 0 ? ` (↑${git.ahead} ↓${git.behind})` : "";
-        let text = `branch \`${git.branch}\`${sync} — ${git.staged} staged, ${git.unstaged} unstaged, ${git.untracked} untracked`;
-        if (git.files && git.files.length > 0) {
-            text += ":\n" + git.files.map((f) => `  ${f.status} ${f.path}`).join("\n");
-        }
-        return text;
+        return `branch \`${git.branch}\`${sync} — ${git.staged} staged, ${git.unstaged} unstaged, ${git.untracked} untracked`;
     }
 
 }

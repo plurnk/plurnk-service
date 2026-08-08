@@ -588,7 +588,7 @@ export default class PacketBuilder {
         // EDIT/READ delivery rows.
         const rows = await this.#db.engine_render_log.all<{
             loop_seq: number; turn_seq: number; sequence: number;
-            origin: string; op: string; suffix: string; signal: string | null;
+            origin: string; op: string | null; suffix: string; signal: string | null;
             scheme: string | null; username: string | null; password: string | null;
             hostname: string | null; port: number | null; pathname: string | null;
             query: string | null; fragment: string | null;

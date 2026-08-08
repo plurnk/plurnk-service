@@ -357,7 +357,7 @@ test("FOLD[tag] applies + folds; OPEN[tag]/FIND[tag] filter by ALL-tags — name
     } finally { await db.close(); }
 });
 
-test("FOLD/OPEN curate ENGINE-MINTED rows — the lowercase op suffix (error/model) parses, not just model ops (jumbo root cause)", async () => {
+test("FOLD/OPEN curate engine-minted error rows through the same operation coordinate grammar", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         // An engine-minted ERROR row (op='error', LOWERCASE) at seq=2 — the kind that bloats the log

@@ -54,6 +54,12 @@ WHERE workspace_id = $workspace_id AND owner_id = $owner_id AND scheme = $scheme
 -- pass compares against it to skip an unchanged member.
 UPDATE entries SET synced_sig = $synced_sig WHERE id = $entry_id;
 
+-- PREP: crud_mark_member_absent
+-- An observed deletion keeps the Git membership marker but removes its stale
+-- readable/derived representation. `absent` distinguishes that observed state
+-- from a member that has never been synchronized.
+UPDATE entries SET synced_sig = 'absent', deep_hash = NULL WHERE id = $entry_id;
+
 -- PREP: crud_delete_channels
 DELETE FROM entry_channels WHERE entry_id = $entry_id;
 

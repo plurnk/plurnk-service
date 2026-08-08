@@ -1255,7 +1255,7 @@ export default class Dispatcher {
         return this.#deleteEntry(schemeName, entryPathnameOf(path), ctx);
     }
 
-    // {§model-entry} — mirror an admitted model emission back as an actionless `model` log row, so
+    // {§model-entry} — mirror an admitted model emission back as an actionless log row, so
     // the model can inspect and curate its own prior behavior.
     // Born FOLDED by default (budget-neutral until OPENed); the turn-0 exemplar passes folded:false
     // (born open — the one worked example the model orients on, thinning the grammar). text/vnd.plurnk.
@@ -1267,14 +1267,17 @@ export default class Dispatcher {
     }): Promise<number> {
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
-            origin, source: null, op: "model", suffix: "", signal: null,
+            origin, source: null, op: null, suffix: "", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/vnd.plurnk",
             rx: JSON.stringify({ content: verbatim, mimetype: "text/vnd.plurnk" }),
             mimetype_rx: "application/json",
             status_rx: 200, tokens: this.#tokenize(verbatim), state: "resolved", outcome: null,
-            attrs: reasoningItems !== undefined && reasoningItems.length > 0 ? JSON.stringify({ reasoning: reasoningItems }) : "{}",
+            attrs: JSON.stringify({
+                kind: "model_emission",
+                ...(reasoningItems !== undefined && reasoningItems.length > 0 ? { reasoning: reasoningItems } : {}),
+            }),
         });
         if (row === undefined) throw new Error("Dispatcher.writeModelEntry: insert returned no row");
         if (folded) await this.#db.engine_fold_log_entry.run({ id: row.id });

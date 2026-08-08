@@ -210,7 +210,7 @@ test("Engine.runTurn: admitted response does not change packet request-weight se
 
 test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", async () => {
     // Turn-as-container model, 1-based. The worker's first turn opens with sequence=1
-    // reserved for the turn-0 `model` exemplar, the prompt row at 2, then the
+    // reserved for the turn-0 model-emission exemplar, the prompt row at 2, then the
     // three model ops and terminal SEND on the running counter.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
@@ -223,11 +223,11 @@ test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", as
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.deepEqual(result.statuses, [201, 201, 201, 200]);
-        const indices = await db.test_log_entries_by_turn.all<{ sequence: number; op: string }>({ turn_id: result.turnId });
+        const indices = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null }>({ turn_id: result.turnId });
         assert.deepEqual(
             indices.map((r) => ({ idx: r.sequence, op: r.op })),
             [
-                { idx: 1, op: "model" }, // the turn-0 exemplar, mirrored OPEN at sequence 1 ({§model-entry})
+                { idx: 1, op: null }, // the turn-0 exemplar, mirrored OPEN at sequence 1 ({§model-entry})
                 { idx: 2, op: "prompt" }, // the prompt (prompt:///<loop>/1, owner-keyed)
                 { idx: 3, op: "EDIT" },
                 { idx: 4, op: "EDIT" },

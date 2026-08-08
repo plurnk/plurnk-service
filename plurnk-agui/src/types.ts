@@ -20,7 +20,7 @@ export interface LogEntryNotification {
     entry: {
         id: number;
         coordinate?: string;
-        op: string;
+        op: string | null;
         origin: string;
         suffix?: string;
         signal?: unknown;

@@ -22,7 +22,7 @@ import EntryCrud from "../schemes/_entry-crud.ts";
 import SearchIndex from "../schemes/_search-index.ts";
 import { markTerminal } from "../schemes/Worker.ts";
 import GitMembership, { type FsDivergence } from "./git-membership.ts";
-import GitState from "./git-state.ts";
+import GitState, { type GitStatusSnapshot } from "./git-state.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
@@ -1054,7 +1054,10 @@ export default class Engine {
         // The warm materialized membership before deriving. This second pass is the
         // ordinary cheap change detector and captures any drift that landed meanwhile.
         const fsDivergences = await GitMembership.indexGitMembership(systemCtx);
-        await this.#logFsFictions(workspaceId, fsDivergences);
+        // {§packet-git-status} — one post-reconciliation snapshot supplies both
+        // the compact packet summary and each causal file event's exact XY state.
+        const gitStatus = await GitState.status(this.#db, workspaceId, this.#loopAborts.get(loopId)?.signal);
+        await this.#logFsFictions(workspaceId, fsDivergences, gitStatus);
         // The refresh above may have changed bodies (including model/client edits
         // since the startup warm). Re-derive to completion before packet/model
         // construction. Membership is already current, so this pass does not
@@ -1187,10 +1190,8 @@ export default class Engine {
         nextActionIndex += await this.#materializeEnvironmentDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
         nextActionIndex += await this.#materializeStreamDeltas({ workerId, loopId, turnId, fromSequence: nextActionIndex });
 
-        // Git working-tree state is read once for the packet and threaded
-        // (a service-side `git status` shell-out) and threaded into the budget
-        // rebuild too so it isn't re-shelled on overflow.
-        const gitStatus = await GitState.status(this.#db, workspaceId, this.#loopAborts.get(loopId)?.signal);
+        // The post-reconciliation Git snapshot above is threaded into the packet
+        // and every budget rebuild; overflow never shells again.
         // Notices are non-terminal observations, never operation-failure truth.
         // Drain once and thread the same set through every grinder rebuild.
         const notices = this.#notices.drain(loopId)
@@ -1587,7 +1588,7 @@ export default class Engine {
 
         // Non-fatal provider transport notices on an accepted turn. Forward each
         // Notice with a content-offset `line:col`;
-        // the model resolves it against its own emission — READ the folded `model` mirror row at the
+        // the model resolves it against its own emission — READ the folded model-emission row at the
         // cited lines ({§model-entry}) — not an embedded snippet that would duplicate the emission.
         for (const notice of response.notices ?? []) {
             const located = typeof notice.position === "number"
@@ -2190,8 +2191,13 @@ export default class Engine {
 
     // {§env-delta-filesystem-narration} {§membership-emi-divergence-signal}
     // — journal project-file divergence once through the reserved actor.
-    async #logFsFictions(workspaceId: number, divergences: FsDivergence[]): Promise<void> {
+    async #logFsFictions(
+        workspaceId: number,
+        divergences: FsDivergence[],
+        gitStatus: GitStatusSnapshot | null,
+    ): Promise<void> {
         if (divergences.length === 0) return;
+        const gitByPath = new Map(gitStatus?.files.map(({ path, status }) => [path, status] as const) ?? []);
         const worker = await this.#db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" })
             ?? await this.#db.envelope_insert_worker.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk", origin: "plurnk" });
         if (worker === undefined) throw new Error("logFsFictions: plurnk worker resolution returned no row");
@@ -2210,7 +2216,10 @@ export default class Engine {
                 pathname: d.pathname, query: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain",
                 rx: JSON.stringify({ status: 200, entryId: d.entryId, channel: d.channel, span }), mimetype_rx: "application/json",
-                status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
+                status_rx: 200, tokens: 0, state: "resolved", outcome: null,
+                attrs: gitByPath.has(d.pathname)
+                    ? JSON.stringify({ git: gitByPath.get(d.pathname) })
+                    : "{}",
             });
         }
     }

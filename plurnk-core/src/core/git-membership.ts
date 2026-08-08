@@ -30,7 +30,7 @@ import { gitOutputMaxBytes, hermeticGitEnv, isomorphicGitEnabled } from "./git-e
 import GitIso from "./git-iso.ts";
 import { promisify } from "node:util";
 import { readFile, glob, stat } from "node:fs/promises";
-import { resolve, relative, join, matchesGlob } from "node:path";
+import { resolve, join, matchesGlob } from "node:path";
 import {
     MimetypeInputLimitError,
     type Mimetypes,
@@ -42,6 +42,7 @@ import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import Owner from "./Owner.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
+import Namespace from "./namespace.ts";
 
 // {§env-delta} — an ambient disk divergence captured at pre-turn: the entry's content
 // before the git-membership refresh vs its materialized representation after. The plurnk worker narrates
@@ -69,6 +70,13 @@ interface MemberSnapshot {
     synced_sig: string | null;
     attributes: string;
 }
+
+interface MembershipResolution {
+    members: string[];
+    removed: FsDivergence[];
+}
+
+const ABSENT_SIG = "absent";
 
 const sourceProjectionFrom = (encoded: string): SourceProjectionMetadata | null => {
     const attributes = JSON.parse(encoded) as unknown;
@@ -194,11 +202,10 @@ export default class GitMembership {
     static async #projectMembers(root: string, repoRoot: string, signal: AbortSignal | undefined): Promise<string[]> {
         const members = new Set<string>();
         const cache = {};
-        const prefix = relative(root, repoRoot);
         const tracked = await GitMembership.#gitTrackedFiles(repoRoot, signal, cache);
         const untracked = await GitMembership.#gitUntrackedFiles(repoRoot, signal, cache);
         for (const file of [...tracked, ...untracked]) {
-            members.add(join(prefix, file));
+            members.add(Namespace.fromRepositoryPath(file, root, repoRoot));
         }
         return [...members];
     }
@@ -274,13 +281,13 @@ export default class GitMembership {
     //
     // signal-respecting: git shell-outs + the pick scan honor `signal`. Headless
     // (no project_root) yields nothing; a non-git root with pick-globs still resolves.
-    static async resolveGitMembership(
+    static async #reconcileGitMembership(
         db: Db,
         workspaceId: number,
         signal: AbortSignal | undefined,
-    ): Promise<string[]> {
+    ): Promise<MembershipResolution> {
         const inputs = await GitMembership.#resolveOverlayInputs(db, workspaceId, signal);
-        if (inputs === null) return [];   // headless — no disk surface to resolve
+        if (inputs === null) return { members: [], removed: [] };   // headless — no disk surface to resolve
         const { gitMembers: members, picked, hideGlobs } = inputs;
 
         // Compose: (git ∪ pick) − hide ({§membership-overlay-hide}), tracking origin for reconciliation — a path
@@ -294,6 +301,7 @@ export default class GitMembership {
         // so they match the parser's pathname the shared read helper queries by.
         const desired = [...desiredGit, ...desiredPick]; // bare canon keys ({§fs-canonical-name}) — ls-files output IS the canon
         const desiredSet = new Set(desired);
+        const candidateSet = new Set([...members, ...picked]);
 
         // Reconcile so entries == members (the constitutive invariant): register the
         // desired with their origin, then un-register any overlay-owned member ('git'
@@ -307,12 +315,42 @@ export default class GitMembership {
             await db.crud_register_workspace_member.get({ workspace_id: workspaceId, owner_id: commonsId, scheme: "file", pathname, membership_origin: "constraint" });
         }
         const registered = await db.crud_list_reconcilable_members.all<{ id: number; pathname: string }>({ workspace_id: workspaceId });
+        const removed: FsDivergence[] = [];
         for (const m of registered) {
             if (!desiredSet.has(m.pathname)) {
+                // A path that left Git/pick membership also left disk truth (for
+                // example an untracked deletion or staged rename). A hide overlay
+                // is policy, not a filesystem occurrence, and is therefore silent.
+                if (!candidateSet.has(m.pathname)) {
+                    const prior = await db.ops_read_channel.get<{ content: string }>({
+                        workspace_id: workspaceId,
+                        owner_id: commonsId,
+                        scheme: "file",
+                        pathname: m.pathname,
+                        channel: "body",
+                    });
+                    if (prior !== undefined) {
+                        removed.push({
+                            pathname: m.pathname,
+                            entryId: m.id,
+                            channel: "body",
+                            before: prior.content,
+                            after: "",
+                        });
+                    }
+                }
                 await db.crud_delete_entry.run({ entry_id: m.id });
             }
         }
-        return desired;
+        return { members: desired, removed };
+    }
+
+    static async resolveGitMembership(
+        db: Db,
+        workspaceId: number,
+        signal: AbortSignal | undefined,
+    ): Promise<string[]> {
+        return (await GitMembership.#reconcileGitMembership(db, workspaceId, signal)).members;
     }
 
     // Resolve each candidate's membership effect without mutating — a read for clients
@@ -375,8 +413,9 @@ export default class GitMembership {
     // change when their opaque reader identity changes. A binary source persists
     // only derived Unicode when its installed handler provides it, otherwise an
     // empty typed marker ({§membership-source-projection}).
-    // Missing-on-disk (tracked but deleted in the working tree) is
-    // skipped — membership stands, no channel.
+    // A tracked path missing on disk retains membership but loses its stale
+    // readable channels; its explicit absent signature makes a later
+    // reappearance another observable divergence.
     static async #materializeMember(
         pathname: string,
         root: string,
@@ -384,6 +423,10 @@ export default class GitMembership {
         identities: Map<string, Promise<string>>,
     ): Promise<FsDivergence | null> {
         const canonical = join(root, pathname);  // pathname is namespace-absolute (`/src/foo.ts`); join roots it at the workspace
+        const commonsId = await Owner.commonsId(ctx.db, ctx.workspaceId);
+        const known = await ctx.db.crud_get_member_sig.get<MemberSnapshot>({
+            workspace_id: ctx.workspaceId, owner_id: commonsId, scheme: "file", pathname,
+        });
         // SPEC {§membership-change-gated-sync} — the cheap detect is a stat (mtime:size),
         // never a content read: a member whose signature matches its last sync is a
         // no-op (not re-read, re-tokenized, or rewritten). Coverage stays exhaustive
@@ -397,12 +440,27 @@ export default class GitMembership {
             if (st.isDirectory()) return null;
             sig = `${st.mtimeMs}:${st.size}`;
         } catch (err) {
-            if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+            if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+                if (known === undefined || known.synced_sig === ABSENT_SIG) return null;
+                const prior = await ctx.db.ops_read_channel.get<{ content: string }>({
+                    workspace_id: ctx.workspaceId,
+                    owner_id: commonsId,
+                    scheme: "file",
+                    pathname,
+                    channel: "body",
+                });
+                await ctx.db.crud_delete_channels.run({ entry_id: known.id });
+                await ctx.db.crud_mark_member_absent.run({ entry_id: known.id });
+                return prior === undefined ? null : {
+                    pathname,
+                    entryId: known.id,
+                    channel: "body",
+                    before: prior.content,
+                    after: "",
+                };
+            }
             throw err;
         }
-        const known = await ctx.db.crud_get_member_sig.get<MemberSnapshot>({
-            workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname,
-        });
         if (known !== undefined && known.synced_sig === sig) {
             const sourceProjection = sourceProjectionFrom(known.attributes);
             if (sourceProjection === null) return null;
@@ -422,6 +480,7 @@ export default class GitMembership {
                 mimetype,
                 sig,
                 known?.synced_sig !== sig,
+                known?.synced_sig === ABSENT_SIG,
                 ctx,
                 identities,
             );
@@ -444,6 +503,7 @@ export default class GitMembership {
                 "application/octet-stream",
                 sig,
                 known?.synced_sig !== sig,
+                known?.synced_sig === ABSENT_SIG,
                 ctx,
                 identities,
             );
@@ -452,7 +512,7 @@ export default class GitMembership {
         // {§env-delta-filesystem-narration} — capture the prior snapshot before
         // materialization replaces it, then journal the resulting net span.
         const prior = await ctx.db.ops_read_channel.get<{ content: string }>({
-            workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname, channel: "body",
+            workspace_id: ctx.workspaceId, owner_id: commonsId, scheme: "file", pathname, channel: "body",
         });
         const result = await EntryCrud.writeEntry(
             pathname,
@@ -461,8 +521,9 @@ export default class GitMembership {
             "file",
         );
         if (result.entryId !== null) await ctx.db.crud_set_synced_sig.run({ entry_id: result.entryId, synced_sig: sig });
-        if (prior !== undefined && prior.content !== content && result.entryId !== null) {
-            return { pathname, entryId: result.entryId, channel: "body", before: prior.content, after: content };
+        const changed = prior !== undefined && prior.content !== content;
+        if ((changed || known?.synced_sig === ABSENT_SIG) && result.entryId !== null) {
+            return { pathname, entryId: result.entryId, channel: "body", before: prior?.content ?? "", after: content };
         }
         return null;
     }
@@ -473,6 +534,7 @@ export default class GitMembership {
         mimetype: string,
         sig: string,
         diskChanged: boolean,
+        previouslyAbsent: boolean,
         ctx: PlurnkSchemeContext,
         identities: Map<string, Promise<string>>,
     ): Promise<FsDivergence | null> {
@@ -532,12 +594,13 @@ export default class GitMembership {
         if (result.entryId !== null) {
             await ctx.db.crud_set_synced_sig.run({ entry_id: result.entryId, synced_sig: sig });
         }
-        if (prior !== undefined && prior.content !== content && result.entryId !== null) {
+        const changed = prior !== undefined && prior.content !== content;
+        if ((changed || previouslyAbsent) && result.entryId !== null) {
             return {
                 pathname,
                 entryId: result.entryId,
                 channel: "body",
-                before: prior.content,
+                before: prior?.content ?? "",
                 after: content,
             };
         }
@@ -567,10 +630,10 @@ export default class GitMembership {
     static async #indexGitMembershipUnlocked(ctx: PlurnkSchemeContext): Promise<FsDivergence[]> {
         const root = await GitMembership.#loadWorkspaceRoot(ctx.db, ctx.workspaceId);
         if (root === null) return [];
-        const tracked = await GitMembership.resolveGitMembership(ctx.db, ctx.workspaceId, ctx.signal);
-        const divergences: FsDivergence[] = [];
+        const resolution = await GitMembership.#reconcileGitMembership(ctx.db, ctx.workspaceId, ctx.signal);
+        const divergences: FsDivergence[] = [...resolution.removed];
         const identities = new Map<string, Promise<string>>();
-        for (const pathname of tracked) {
+        for (const pathname of resolution.members) {
             const divergence = await GitMembership.#materializeMember(pathname, root, ctx, identities);
             if (divergence !== null) divergences.push(divergence);
         }

@@ -19,7 +19,7 @@ export type LogEntryWire = {
     at: string;
     origin: string;
     source: string | null;
-    op: string;
+    op: string | null;
     suffix: string;
     signal: unknown;
     scheme: string | null;
@@ -42,7 +42,8 @@ export type LogEntryWire = {
 
 export default class LogEntry {
     static #parseJsonOrNull(v: unknown): unknown {
-        // "" is the actionless-row sentinel for "no statement" (error/model rows store tx="");
+        // "" is the actionless-row sentinel for "no statement" (error and
+        // model-emission rows store tx="");
         // JSON.parse("") throws, so an empty string is no-value → null, like NULL itself.
         if (v === null || v === undefined || v === "") return null;
         if (typeof v !== "string") return v;
@@ -63,7 +64,7 @@ export default class LogEntry {
             at: row.at as string,
             origin: row.origin as string,
             source: row.source as string | null,
-            op: row.op as string,
+            op: row.op as string | null,
             suffix: row.suffix as string,
             signal: LogEntry.#parseJsonOrNull(row.signal),
             scheme: row.scheme as string | null,

@@ -801,7 +801,7 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
     seam.readLog = async () => [
         { id: 1, coordinate: "1/1/1/PLAN", op: "PLAN", origin: "model", turn_id: 1, sequence: 1, tx: { body: "inspect, repair, verify" } },
         { id: 2, coordinate: "1/1/2/SEND", op: "SEND", origin: "model", turn_id: 1, sequence: 2, tx: { body: "checkpoint complete" } },
-        { id: 3, coordinate: "1/1/3/model", op: "model", origin: "model", turn_id: 1, sequence: 3, attrs: { reasoning: [
+        { id: 3, coordinate: "1/1/3", op: null, origin: "model", turn_id: 1, sequence: 3, attrs: { kind: "model_emission", reasoning: [
             { id: "provider-detail", subtype: "message", encrypted: [{ data: "OPAQUE", format: "openai-responses-v1" }] },
         ] } },
     ];

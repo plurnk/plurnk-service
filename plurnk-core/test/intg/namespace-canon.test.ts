@@ -50,6 +50,12 @@ test("{§fs-canonical-name}: every spelling of one member resolves to the same r
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
+test("{§fs-canonical-name}: repository paths materialize in the workspace namespace", () => {
+    assert.equal(Namespace.fromRepositoryPath("project/src/main.js", "/repo/project", "/repo"), "src/main.js");
+    assert.equal(Namespace.fromRepositoryPath("sibling/README.md", "/repo/project", "/repo"), "../sibling/README.md");
+    assert.throws(() => Namespace.fromRepositoryPath("../escape", "/repo/project", "/repo"), /escapes its repository/);
+});
+
 test("{§fs-answer-in-canon}: EDIT through an alias answers canonically without minting a shadow row", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     try {

@@ -181,9 +181,10 @@ test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a sta
                 const map = JSON.parse((JSON.parse(commons.rx) as { content: string }).content) as Array<{ path: string; items?: number; tokens?: number }>;
                 assert.deepEqual(map.map((item) => item.path), ["worker:///a.md", "worker:///nested/**"]);
                 assert.equal(map[1]?.items, 1, "the automatic shallow map retains the nested subtree as a complete aggregate");
-                // The worker's first turn opens with the turn-0 `model` exemplar at 1/1/1, born OPEN.
-                const row = await db.log_read_by_coordinate.get<{ op: string; rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
-                assert.equal(row?.op, "model", "the worker's first turn opens with the turn-0 model exemplar");
+                // The worker's first turn opens with the actionless turn-0 exemplar at 1/1/1, born OPEN.
+                const row = await db.log_read_by_coordinate.get<{ op: string | null; rx: string; attrs: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
+                assert.equal(row?.op, null, "the turn-0 exemplar does not fabricate an operation");
+                assert.equal((JSON.parse(row!.attrs) as { kind?: string }).kind, "model_emission");
                 const content = (JSON.parse(row!.rx) as { content: string }).content;
                 // Dynamic - it carries the FIND the foist ACTUALLY dispatched (worker:///*), rendered to
                 // DSL and framed PLAN → SEND. Not a frozen print: feed-as-turn-0, show-in-turn-1 are one act.

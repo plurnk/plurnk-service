@@ -142,7 +142,7 @@ SELECT status FROM turns WHERE id = $id;
 SELECT id, sequence, status, packet FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_turn
-SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, rx
+SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, rx, attrs
 FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_worker
@@ -163,7 +163,7 @@ WHERE l.worker_id = $worker_id ORDER BY coordinate, lt.tag;
 -- ({§connection-lifecycle}), so a test queries by the loopId it holds.
 -- origin is the writer tier (model | client | plurnk) — lets a test assert an engine foist
 -- (origin='plurnk') vs a model op without a second query.
-SELECT id, op, pathname, scheme, hostname, sequence, turn_id, loop_id, status_rx, tx, rx, expanded, origin, lineMarker
+SELECT id, op, pathname, scheme, hostname, sequence, turn_id, loop_id, status_rx, tx, rx, expanded, origin, lineMarker, attrs
 FROM log_entries WHERE loop_id = $loop_id ORDER BY id;
 
 -- PREP: test_get_worker_id_by_loop
@@ -430,6 +430,13 @@ GROUP BY e.pathname;
 
 -- PREP: test_log_entries_by_worker_op
 SELECT pathname, source, tokens, attrs FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
+
+-- PREP: test_model_emission_rows
+SELECT id, turn_id, sequence, op, attrs FROM log_entries
+WHERE worker_id = $worker_id
+  AND op IS NULL
+  AND json_extract(attrs, '$.kind') = 'model_emission'
+ORDER BY id;
 
 -- PREP: test_count_entries_by_scheme
 SELECT count(*) AS n FROM entries WHERE scheme = $scheme;

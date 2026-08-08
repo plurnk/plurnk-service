@@ -96,8 +96,8 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
 
         // The mirror is ALWAYS folded — even on the NOTICE turn (the auto-OPEN trigger is retired);
         // the model READs the folded row at line 2 when it cares.
-        const echo = (await db.test_log_entries_by_loop.all<{ op: string; origin: string; expanded: number; turn_id: number }>({ loop_id: loopId }))
-            .find((r) => r.turn_id === t1.turnId && r.op === "model" && r.origin === "model");
+        const echo = (await db.test_log_entries_by_loop.all<{ op: string | null; origin: string; expanded: number; turn_id: number; attrs: string }>({ loop_id: loopId }))
+            .find((r) => r.turn_id === t1.turnId && r.op === null && r.origin === "model" && JSON.parse(r.attrs).kind === "model_emission");
         assert.ok(echo !== undefined && echo.expanded === 0, "the NOTICE turn's model echo stays folded");
     } finally { await db.close(); }
 });

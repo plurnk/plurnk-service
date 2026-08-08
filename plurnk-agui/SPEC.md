@@ -45,7 +45,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` op=PLAN (model)                | `ACTIVITY_SNAPSHOT` {§agui-plan-activity} |
 | `log/entry` op=SEND (model)                | `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | `log/entry` other op (model)               | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
-| `log/entry` op=model (mirror)              | At most one `REASONING_ENCRYPTED_VALUE`, attached to the same turn's actual SEND assistant message when {§agui-encrypted-reasoning} is satisfied; otherwise nothing beyond the forensic row. |
+| `log/entry` actionless `kind=model_emission` | At most one `REASONING_ENCRYPTED_VALUE`, attached to the same turn's actual SEND assistant message when {§agui-encrypted-reasoning} is satisfied; otherwise nothing beyond the forensic row. |
 | `log/entry` origin≠model                   | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, then `RUN_FINISHED` with an interrupt outcome |
 | `loop/terminated`                          | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` (including the daemon's top-level attribution projection) + `RAW` (the provider's native completion frame, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
@@ -70,7 +70,8 @@ same log identity and verbatim goals:
   `plurnk.ambient`/`TOOL_CALL_RESULT` payloads.
 - §agui-encrypted-reasoning **Encrypted reasoning projects only onto an entity
   AG-UI actually created.** Core supplies the exact normalized provider-detail
-  list on the model mirror row's `attrs.reasoning`. The provider detail `id` is
+  list on the actionless `attrs.kind="model_emission"` row's `attrs.reasoning`.
+  No synthetic operation is introduced. The provider detail `id` is
   forensic identity, not an AG-UI entity ID ({§provider-encrypted-reasoning}).
 
   | Condition                                   | Projection |

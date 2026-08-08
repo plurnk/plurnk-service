@@ -3,7 +3,7 @@
 
 -- PREP: log_read_by_coordinate
 SELECT le.op, le.scheme, le.pathname, le.status_rx,
-       le.tx, le.mimetype_tx, le.rx, le.mimetype_rx
+       le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.attrs
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
@@ -21,13 +21,13 @@ WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn
 -- Return the literal-prefix candidate superset for a log path-glob. TypeScript
 -- applies the authoritative shell-glob match so `*` remains segment-local and
 -- `**` crosses coordinate segments.
-SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate
+SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
   AND ($scope_prefix IS NULL OR substr(
-      (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op),
+      (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END),
       1,
       length($scope_prefix)
   ) = $scope_prefix)
@@ -46,14 +46,14 @@ DELETE FROM log_entries WHERE id = $id;
 -- coordinate-prefix-scoped (the same candidate semantics log_match_coordinates curates by), each with the
 -- fields Log's rx projection renders (FIND must match exactly what READ shows). Coordinate-ordered.
 SELECT
-    (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate,
-    le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash
+    (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate,
+    le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash, le.attrs
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
   AND ($scope_prefix IS NULL OR substr(
-      (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op),
+      (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END),
       1,
       length($scope_prefix)
   ) = $scope_prefix)
@@ -68,13 +68,13 @@ INSERT OR IGNORE INTO log_tags (log_entry_id, tag) VALUES ($log_entry_id, $tag);
 -- {§log-region-tagging} — OPEN[tag]'s resolution: log_match_coordinates PLUS an ALL-tags AND filter
 -- ({§find-tag-filter-and-semantics}), so OPEN[tag] recalls only rows carrying EVERY listed tag. A
 -- targetless OPEN[tag] rides glob '*' (the whole worker log).
-SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate
+SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
   AND ($scope_prefix IS NULL OR substr(
-      (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op),
+      (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END),
       1,
       length($scope_prefix)
   ) = $scope_prefix)
@@ -89,14 +89,14 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- PREP: log_find_candidates_tagged
 -- {§log-region-tagging} — FIND[tag](log): log_find_candidates PLUS the same ALL-tags AND filter.
 SELECT
-    (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate,
-    le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash
+    (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate,
+    le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash, le.attrs
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
   AND ($scope_prefix IS NULL OR substr(
-      (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op),
+      (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END),
       1,
       length($scope_prefix)
   ) = $scope_prefix)
@@ -114,13 +114,14 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- exact body/mimetype READ and FIND expose before hashing or deriving it.
 SELECT
     le.id,
-    (l.sequence || '/' || t.sequence || '/' || le.sequence || '/' || le.op) AS coordinate,
+    (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate,
     le.op,
     le.tx,
     le.mimetype_tx,
     le.rx,
     le.mimetype_rx,
-    le.deep_hash
+    le.deep_hash,
+    le.attrs
 FROM log_entries le
 JOIN workers w ON w.id = le.worker_id
 JOIN turns t ON t.id = le.turn_id

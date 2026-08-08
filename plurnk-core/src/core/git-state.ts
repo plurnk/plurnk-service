@@ -4,6 +4,7 @@ import GitIso from "./git-iso.ts";
 import { promisify } from "node:util";
 import type { Db } from "./Db.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
+import Namespace from "./namespace.ts";
 
 export interface GitFileStatus {
     path: string;
@@ -17,7 +18,10 @@ export interface GitStatus {
     staged: number;
     unstaged: number;
     untracked: number;
-    files?: GitFileStatus[];
+}
+
+export interface GitStatusSnapshot extends GitStatus {
+    files: GitFileStatus[];
 }
 
 // Git working-tree state for the packet: the model's ambient "where am I, what
@@ -36,29 +40,30 @@ export default class GitState {
         return process.env.PLURNK_SERVICE_GIT_ALLOWED === "1";
     }
 
-    static async status(db: Db, workspaceId: number, signal: AbortSignal | undefined): Promise<GitStatus | null> {
+    static async status(db: Db, workspaceId: number, signal: AbortSignal | undefined): Promise<GitStatusSnapshot | null> {
         // {§operator-config-workspace-git} — git:false denies workspace git status.
         if (!GitState.enabled() || (await WorkspaceSettings.read(db, workspaceId)).git === false) return null;
         const row = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const root = row?.project_root ?? null;
         if (root === null) return null;
         if (isomorphicGitEnabled()) {
-            if (await GitIso.repoToplevel(root) === null) return null;
-            return GitIso.status(root);
+            const repository = await GitIso.repoToplevel(root);
+            if (repository === null) return null;
+            return GitIso.status(root, repository);
         }
         let stdout: string;
         try {
-            ({ stdout } = await GitState.#execFileP("git", ["status", "--porcelain", "--branch"], { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() }));
+            ({ stdout } = await GitState.#execFileP("git", ["status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all"], { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() }));
         } catch {
             return null;  // not a git worktree, or git absent — fail closed, no status
         }
-        return GitState.#parse(stdout);
+        return GitState.#parse(stdout, root, await GitIso.repoToplevel(root) ?? root);
     }
 
-    // `git status --porcelain --branch`: a `## branch...remote [ahead N, behind M]`
-    // header, then one XY-prefixed line per change (X=index/staged, Y=worktree/
-    // unstaged; `??` = untracked).
-    static #parse(stdout: string): GitStatus {
+    // `git status --porcelain=v1 -z --branch --untracked-files=all`: one NUL-delimited branch header,
+    // then XY + path records. NUL mode preserves every legal pathname and gives
+    // rename/copy records a second path field without an invented ` -> ` syntax.
+    static #parse(stdout: string, workspaceRoot: string, repositoryRoot: string): GitStatusSnapshot {
         let branch = "";
         let ahead = 0;
         let behind = 0;
@@ -66,16 +71,21 @@ export default class GitState {
         let unstaged = 0;
         let untracked = 0;
         const files: GitFileStatus[] = [];
-        for (const line of stdout.split("\n")) {
-            if (line.length === 0) continue;
-            if (line.startsWith("## ")) {
-                branch = line.slice(3).split(/\.\.\.| /, 1)[0];
-                ahead = Number(line.match(/ahead (\d+)/)?.[1] ?? 0);
-                behind = Number(line.match(/behind (\d+)/)?.[1] ?? 0);
+        const records = stdout.split("\0");
+        for (let i = 0; i < records.length; i++) {
+            const record = records[i];
+            if (record.length === 0) continue;
+            if (record.startsWith("## ")) {
+                branch = record.slice(3).split(/\.\.\.| /, 1)[0];
+                ahead = Number(record.match(/ahead (\d+)/)?.[1] ?? 0);
+                behind = Number(record.match(/behind (\d+)/)?.[1] ?? 0);
                 continue;
             }
-            const xy = line.slice(0, 2);
-            const path = line.slice(3).trim();
+            if (record.length < 4 || record[2] !== " ") {
+                throw new TypeError(`Git status returned a malformed porcelain record: ${JSON.stringify(record)}`);
+            }
+            const xy = record.slice(0, 2);
+            const path = Namespace.fromRepositoryPath(record.slice(3), workspaceRoot, repositoryRoot);
             if (xy === "??") {
                 untracked++;
                 files.push({ path, status: "??" });
@@ -83,9 +93,16 @@ export default class GitState {
             }
             if (xy[0] !== " ") staged++;
             if (xy[1] !== " ") unstaged++;
-            files.push({ path, status: xy.trim() });
+            files.push({ path, status: xy });
+            if (xy[0] === "R" || xy[0] === "C") {
+                const priorRecord = records[++i];
+                if (priorRecord === undefined || priorRecord.length === 0) {
+                    throw new TypeError(`Git status omitted the source path for ${JSON.stringify(record)}`);
+                }
+                files.push({ path: Namespace.fromRepositoryPath(priorRecord, workspaceRoot, repositoryRoot), status: xy });
+            }
         }
-        files.sort((a, b) => a.path.localeCompare(b.path));
+        files.sort((a, b) => a.path.localeCompare(b.path) || a.status.localeCompare(b.status));
         return { branch, ahead, behind, staged, unstaged, untracked, files };
     }
 }

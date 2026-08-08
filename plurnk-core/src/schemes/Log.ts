@@ -28,8 +28,9 @@ type OpenFoldResult = SchemeResultBase & { matched?: number };
 // log:///<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
 // is wire-rendering self-documentation derived from the row's `op` field;
 // parsing accepts it (or omits it) and identifies the row by coordinate. The op
-// suffix is case-INSENSITIVE: model ops render UPPERCASE (READ/EDIT/FIND) but the
-// engine-minted rows are lowercase (`error`, `model`), and both are curatable.
+// suffix is case-INSENSITIVE: model ops render UPPERCASE (READ/EDIT/FIND) while
+// engine-minted selectors such as `error` are lowercase. An actionless model
+// emission has no suffix at all.
 const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Za-z]+))?$/;
 // {§log-coordinate-hierarchy} — a log coordinate is a HIERARCHICAL PREFIX: `1` selects loop 1's rows,
 // `1/2` turn 1/2's rows, `1/2/3` the one row. A full coordinate is always 3 parts, so a 1- or 2-part
@@ -138,7 +139,7 @@ export default class Log extends CoreSchemeAdapterBase {
         }
 
         const row = await db.log_read_by_coordinate.get<{
-            op: string;
+            op: string | null;
             scheme: string | null;
             pathname: string | null;
             status_rx: number;
@@ -146,12 +147,14 @@ export default class Log extends CoreSchemeAdapterBase {
             mimetype_tx: string;
             rx: string;
             mimetype_rx: string;
+            attrs: string;
         }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
 
         if (row === undefined) return failure("entry-not-found", 404, `No log entry exists at log:///${pathname}.`);
 
         const { content: underlyingContent, mimetype: underlyingMimetype } = LogBody.resolve({
             op: row.op,
+            attrs: row.attrs,
             tx: row.tx,
             rx: row.rx,
             mimetypeTx: row.mimetype_tx,
@@ -253,13 +256,14 @@ export default class Log extends CoreSchemeAdapterBase {
         const tags = Array.isArray(statement.signal) ? statement.signal : [];
         type Candidate = {
             coordinate: string;
-            op: string;
+            op: string | null;
             tx: string;
             mimetype_tx: string;
             rx: string;
             mimetype_rx: string;
             tokens: number;
             deep_hash: string | null;
+            attrs: string;
         };
         const candidateRows = tags.length > 0
             ? await db.log_find_candidates_tagged.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix, tags: JSON.stringify(tags) })
@@ -283,6 +287,7 @@ export default class Log extends CoreSchemeAdapterBase {
             key: r.coordinate,
             ...LogBody.resolve({
                 op: r.op,
+                attrs: r.attrs,
                 tx: r.tx,
                 rx: r.rx,
                 mimetypeTx: r.mimetype_tx,
@@ -445,6 +450,7 @@ export default class Log extends CoreSchemeAdapterBase {
             const path = `log:///${m.pathname}`;
             const proj = LogBody.resolve({
                 op: row.op,
+                attrs: row.attrs,
                 tx: row.tx,
                 rx: row.rx,
                 mimetypeTx: row.mimetype_tx,

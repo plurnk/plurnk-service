@@ -38,13 +38,19 @@ const creationReceipt = (context: string) => {
 };
 
 test("LogBody resolves built-in result-backed bodies", () => {
-    for (const op of ["READ", "FIND", "model", "prompt"]) {
+    for (const op of ["READ", "FIND", "prompt"]) {
         assert.deepEqual(
             LogBody.resolve({ op, tx: "", rx: content(`${op} body`) }),
             { content: `${op} body`, mimetype: "text/markdown", startLine: 1 },
             op,
         );
     }
+
+    assert.deepEqual(
+        LogBody.resolve({ op: null, attrs: { kind: "model_emission" }, tx: "", rx: content("model body") }),
+        { content: "model body", mimetype: "text/markdown", startLine: 1 },
+        "the actionless model-emission kind owns its result-backed body without inventing an op",
+    );
 
     assert.deepEqual(
         LogBody.resolve({

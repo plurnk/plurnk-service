@@ -5,7 +5,8 @@ import {
 } from "../content/index.ts";
 
 export interface LogBodyRow {
-    readonly op: string;
+    readonly op: string | null;
+    readonly attrs?: unknown;
     readonly tx: unknown;
     readonly rx: unknown;
     readonly mimetypeTx?: string;
@@ -70,7 +71,17 @@ export default class LogBody {
         const rx = LogBody.#decode(row.rx, row.mimetypeRx);
         const contentBody = LogBody.#contentBody(rx, row.mimetypeRx);
 
-        if (row.op === "READ" || row.op === "FIND" || row.op === "model" || row.op === "prompt") {
+        if (row.op === null) {
+            const attrs = typeof row.attrs === "string"
+                ? LogBody.#decode(row.attrs, "application/json")
+                : row.attrs;
+            if (attrs === null || typeof attrs !== "object" || (attrs as { kind?: unknown }).kind !== "model_emission") {
+                throw new TypeError("An actionless log body must carry attrs.kind=model_emission.");
+            }
+            return contentBody ?? EMPTY_BODY;
+        }
+
+        if (row.op === "READ" || row.op === "FIND" || row.op === "prompt") {
             return contentBody ?? EMPTY_BODY;
         }
 

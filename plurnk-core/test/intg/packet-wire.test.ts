@@ -37,6 +37,17 @@ const creationReceipt = (context: string) => {
     };
 };
 
+test("{§packet-git-status}: Git packet state stays compact and never repeats paths", () => {
+    const out = PacketWire.renderGit({
+        branch: "main", ahead: 1, behind: 0, staged: 1, unstaged: 1, untracked: 1,
+        files: [
+            { path: "staged.txt", status: "A " },
+            { path: "tracked.md", status: " M" },
+        ],
+    });
+    assert.equal(out, "branch `main` (↑1 ↓0) — 1 staged, 1 unstaged, 1 untracked");
+});
+
 // Default-channel convention: when a channel's name matches its scheme's
 // defaultChannel, the heredoc fence is path-only (no `#channel` suffix).
 // The absence of a suffix IS the addressing of the default channel.
@@ -67,8 +78,10 @@ test("environment-delta provenance renders as source, never a fictitious run ent
         status: 200,
         target: { scheme: null, pathname: "/out.txt" },
         rx: "changed",
+        attrs: { git: " M" },
     }], tok);
     assert.match(out, /"source":"file"/);
+    assert.match(out, /"git":" M"/, "the causal row carries the exact staged/worktree coordinates");
     assert.doesNotMatch(out, /"run":/);
 });
 
@@ -687,21 +700,24 @@ test("log render: READ@200 with text/html is line-addressable", () => {
     assert.match(out, /<<BODY\n1:<h1>Hi<\/h1>\nBODY/);
 });
 
-test("a folded model row renders meta-only — the verbatim hides until OPEN", () => {
+test("a folded model-emission row renders meta-only without inventing an operation", () => {
     const out = PacketWire.renderLog([{
-        coordinate: "1/1/1", origin: "model", op: "model", status: 200, folded: true,
+        coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: true,
+        attrs: { kind: "model_emission" },
         rx: { content: "<<PLAN:Initialize:PLAN\n<<SEND[102]:Initialized:SEND", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /\{"display":"folded","lines":2,"op":"model"/, "folded → display:folded, meta only — lines counts the navigable body");
+    assert.match(out, /\{"display":"folded","kind":"model_emission","lines":2,"origin":"model","path":"log:\/\/\/1\/1\/1"/, "the actionless row has an undecorated coordinate and explicit kind");
+    assert.doesNotMatch(out, /"op":"model"/, "an emission artifact never masquerades as a grammar operation");
     assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while folded — budget-neutral");
 });
 
-test("an open model row mirrors the model's own emission back, line-numbered", () => {
+test("an open model-emission row mirrors the model's own emission back, line-numbered", () => {
     const out = PacketWire.renderLog([{
-        coordinate: "1/1/1", origin: "model", op: "model", status: 200, folded: false,
+        coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: false,
+        attrs: { kind: "model_emission" },
         rx: { content: "<<PLAN:Initialize:PLAN\n<<SEND[102]:Initialized:SEND", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /\{"display":"open","lines":2,"op":"model"/, "open → display:open — lines counts the navigable body");
+    assert.match(out, /"display":"open","kind":"model_emission"/, "open → display:open — lines counts the navigable body");
     assert.match(out, /1:<<PLAN:Initialize:PLAN/, "the model sees its own emission — line 1");
     assert.match(out, /2:<<SEND\[102\]:Initialized:SEND/, "line 2, referenceable when reasoning through a syntax error");
 });
@@ -786,7 +802,7 @@ test("every non-retrieval body producer uses the same recoverable preview", () =
     const numbered = Array.from({ length: 30 }, (_, i) => `${i + 1}:producer line ${i + 1}`).join("\n");
     const entries = [
         { op: "prompt", origin: "plurnk", target: { scheme: "prompt", pathname: "/1/1" }, rx: { content: long, mimetype: "text/markdown" } },
-        { op: "model", origin: "model", target: null, rx: { content: long, mimetype: "text/vnd.plurnk" } },
+        { op: null, origin: "model", target: null, attrs: { kind: "model_emission" }, rx: { content: long, mimetype: "text/vnd.plurnk" } },
         { op: "PLAN", origin: "model", target: null, tx: { body: long } },
         { op: "SEND", origin: "model", target: null, tx: { body: { raw: long } } },
         { op: "WORK", origin: "model", target: { scheme: "worker", pathname: "/reviewer" }, tx: { body: long } },
@@ -829,9 +845,10 @@ test("every non-retrieval body producer uses the same recoverable preview", () =
     entries.forEach((entry, index) => {
         const coordinate = `1/2/${index + 1}`;
         const rendered = PacketWire.renderLog([{ coordinate, status: 200, ...entry }], tok);
+        const path = entry.op === null ? `log:///${coordinate}` : `log:///${coordinate}/${entry.op}`;
         assert.doesNotMatch(rendered, /producer line 30/, `${entry.op} cannot bypass the preview`);
         assert.ok(
-            rendered.includes(`"overflow":"Body content truncated. Use READ log:///${coordinate}/${entry.op}<1,-1> to view the full body."`),
+            rendered.includes(`"overflow":"Body content truncated. Use READ ${path}<1,-1> to view the full body."`),
             `${entry.op} exposes the same log recovery contract`,
         );
     });

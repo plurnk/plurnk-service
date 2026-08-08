@@ -164,12 +164,13 @@ export default class SearchIndex {
         const logRows = await db.log_derivation_rows.all<{
             id: number;
             coordinate: string;
-            op: string;
+            op: string | null;
             tx: string;
             mimetype_tx: string;
             rx: string;
             mimetype_rx: string;
             deep_hash: string | null;
+            attrs: string;
         }>({ workspace_id: workspaceId });
         // One resolved plan supplies both chunking and the configuration identity
         // for every entry in this pass ({§semantic-embed-dedup}).
@@ -231,6 +232,7 @@ export default class SearchIndex {
         for (const row of logRows) {
             const projection = LogBody.resolve({
                 op: row.op,
+                attrs: row.attrs,
                 tx: row.tx,
                 rx: row.rx,
                 mimetypeTx: row.mimetype_tx,

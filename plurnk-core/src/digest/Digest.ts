@@ -103,7 +103,7 @@ interface TurnAttemptRow {
 interface LogRow {
     id: number; worker_id: number; loop_id: number; turn_id: number; sequence: number;
     origin: string; source: string | null; attrs: string;
-    op: string; scheme: string | null; hostname: string | null; port: number | null;
+    op: string | null; scheme: string | null; hostname: string | null; port: number | null;
     pathname: string | null; query: string | null; fragment: string | null;
     rx: string | null; status_rx: number; state: string; outcome: string | null;
 }
@@ -218,7 +218,7 @@ export default class Digest {
         return typeof stream === "string" ? stream : null;
     }
 
-    static #renderOpLine(le: LogRow, label: string = le.op): string {
+    static #renderOpLine(le: LogRow, label: string = le.op ?? "model emission"): string {
         const target = Digest.#renderTarget(le) ?? "—";
         const stream = Digest.#renderStream(le);
         const state = le.state !== "resolved" ? ` state=${le.state}` : "";
@@ -238,7 +238,8 @@ export default class Digest {
     static #renderGroupedOpLine(row: LogRow): string {
         const attrs = Digest.#parseJson(row.attrs, {}) as { kind?: unknown };
         const materialized = row.origin === "plurnk" && row.op === "EDIT" && attrs.kind === "entry_materialized";
-        return Digest.#renderOpLine(row, materialized ? "materialized entry" : row.op);
+        const modelEmission = row.op === null && attrs.kind === "model_emission";
+        return Digest.#renderOpLine(row, materialized ? "materialized entry" : modelEmission ? "model emission" : row.op ?? "actionless row");
     }
 
     // Human triage is not a row dump. Preserve every row in digest.json, but

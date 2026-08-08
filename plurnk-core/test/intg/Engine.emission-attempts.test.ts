@@ -104,9 +104,9 @@ test("invalid emissions retry beneath one turn against the identical packet, the
         assert.equal(packet.assistant?.content, "<<PLAN:complete the task:PLAN\n<<SEND[200]:accepted:SEND");
         assert.doesNotMatch(JSON.stringify(packet), /prose without|never ended/, "rejected emissions never enter packet history");
 
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: result.turnId });
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string }>({ turn_id: result.turnId });
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "invalid emissions do not mint model-visible errors");
-        assert.equal(rows.filter((row) => row.op === "model").length, 2, "only the turn-zero exemplar and accepted emission are mirrored");
+        assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "model_emission").length, 2, "only the turn-zero exemplar and accepted emission are mirrored");
 
         const loopUsage = await engine.loopUsage(loopId);
         assert.equal(loopUsage.promptTokens, 60, "aggregate usage includes retries");
@@ -406,9 +406,9 @@ test("three invalid emissions fail the loop below the strike rail", async () => 
         const turn = await db.test_get_turn.get<{ packet: string; status: number }>({ id: turnId });
         assert.equal(turn?.status, 500);
         assert.equal((JSON.parse(turn?.packet ?? "{}") as { assistant?: unknown }).assistant, undefined);
-        const rows = await db.test_log_entries_by_turn.all<{ op: string }>({ turn_id: turnId });
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string }>({ turn_id: turnId });
         assert.equal(rows.filter((row) => row.op === "error").length, 0);
-        assert.equal(rows.filter((row) => row.op === "model").length, 1, "no rejected emission is mirrored");
+        assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "model_emission").length, 1, "no rejected emission is mirrored");
         Digest.run({ dbPath, digestDir });
         const digest = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
             loops: Array<{ result: unknown }>;

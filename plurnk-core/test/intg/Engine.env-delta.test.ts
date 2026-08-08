@@ -15,6 +15,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Log from "../../src/schemes/Log.ts";
+import Owner from "../../src/core/Owner.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { SendStatement, EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
@@ -504,7 +505,7 @@ test("exactly two cross-worker channels — state via the env-delta, a message v
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
         // ENVIRONMENT DOOR — *state*: B's edit to a shared entry crosses to A as a FOLDED delta, not a message.
         await eng.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
-        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
+        const turn2 = await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null }>({ worker_id: workerA });
         assert.ok(
             rows.some((r) => r.op === "EDIT" && r.origin === "plurnk" && r.pathname === "/shared.md" && r.source === "worker://sibling"),
@@ -547,13 +548,51 @@ test("an out-of-band disk change surfaces as a source=file delta narrated by the
         await writeFile(join(root, "notes.md"), "line1\nline2\nline3-external\n");
 
         // Turn 2 — the plurnk worker logs the divergence as a source=file EDIT; A pulls it.
-        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; expanded: number }>({ worker_id: workerA });
+        const turn2 = await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; expanded: number; attrs: string }>({ worker_id: workerA });
         const delta = rows.find((r) => r.origin === "plurnk" && r.op === "EDIT" && r.source === "file");
         assert.ok(delta, "the out-of-band disk change surfaced as a source=file delta");
         assert.equal(delta!.pathname, "notes.md", "the delta names the diverged file");
         assert.equal(delta!.expanded, 0, "the fs delta lands folded");
         assert.match(JSON.parse(delta!.rx).span as string, /line3-external/, "the delta carries the changed span ({§env-delta-filesystem-narration})");
+        assert.equal((JSON.parse(delta!.attrs) as { git?: string }).git, " M", "the event preserves Git's exact unstaged coordinate");
+        const packet = await db.test_get_packet.get<{ packet: string }>({ id: turn2.turnId });
+        const log = (JSON.parse(packet!.packet) as { sections: Array<{ name: string; content: string }> }).sections.find(({ name }) => name === "log")!.content;
+        assert.match(log, /"git":" M"/, "the durable attribute is deliberately projected into model-facing row metadata");
+    } finally {
+        await db.close();
+        await rm(root, { recursive: true, force: true });
+    }
+});
+
+test("{§membership-change-gated-sync}: deletion removes stale readable content and narrates the Git state", async () => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-envdelta-delete-"));
+    const db = await openMigrated();
+    try {
+        await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["config", "user.name", "t"], { cwd: root, env: hermeticGitEnv() });
+        await writeFile(join(root, "removed.md"), "present\n");
+        await execFileP("git", ["add", "removed.md"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env: hermeticGitEnv() });
+
+        const workspaceId = await insertWorkspace(db, `envfs-delete-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, root);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        const engine = makeEngine(db);
+        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
+        await rm(join(root, "removed.md"));
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+
+        const channel = await db.ops_read_channel.get({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", pathname: "removed.md", channel: "body" });
+        assert.equal(channel, undefined, "a deleted file cannot remain READable from a stale body channel");
+        const rows = await db.engine_render_log.all<{ source: string | null; pathname: string; rx: string; attrs: string }>({ worker_id: workerId });
+        const delta = rows.find((row) => row.source === "file" && row.pathname === "removed.md");
+        assert.ok(delta, "the observed deletion is a durable environment event");
+        assert.equal((JSON.parse(delta!.rx) as { span: string }).span, "", "the deleted resource has no resulting text to project");
+        assert.equal((JSON.parse(delta!.attrs) as { git?: string }).git, " D", "Git classifies the observed worktree deletion exactly");
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });

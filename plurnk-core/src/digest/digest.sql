@@ -60,5 +60,6 @@ ORDER BY r.id;
 -- Per-worker op histogram (GROUP BY worker, op), pre-sorted by frequency.
 SELECT worker_id, op, COUNT(*) AS n
 FROM log_entries
+WHERE op IS NOT NULL
 GROUP BY worker_id, op
 ORDER BY worker_id, n DESC, op;

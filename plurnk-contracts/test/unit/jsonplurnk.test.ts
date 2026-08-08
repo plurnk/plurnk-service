@@ -5,7 +5,7 @@ import Jsonplurnk from "../Jsonplurnk.ts";
 // {§jsonplurnk} Three entries, the middle one `open` with a
 // heredoc body whose TAG is a `prompt://` URI (colons and slashes).
 const SAMPLE = `[
-{"op":"model","path":"log:///1/1/1/model","status":200,"tokens":109,"display":"folded"},
+{"kind":"model_emission","path":"log:///1/1/1","status":200,"tokens":109,"display":"folded"},
 {"op":"READ","path":"log:///1/1/3/READ","status":200,"target":"prompt:///2/1","tokens":545,"lines":12,"display":"open","body":
 <<:::prompt:///2/1
 1:\tImprove ABS module loading so \`require()\` remains deterministic
@@ -33,7 +33,7 @@ test("jsonplurnk: the open body recovers verbatim, trailing newline included", (
 
 test("jsonplurnk: a no-body block is already valid JSON and passes through untouched", () => {
     const block = `[
-{"op":"model","path":"log:///1/1/1/model","status":200,"tokens":109,"display":"folded"},
+{"kind":"model_emission","path":"log:///1/1/1","status":200,"tokens":109,"display":"folded"},
 {"op":"FIND","path":"log:///1/1/2/FIND","status":200,"items":0,"tokens":0,"display":"none","body":""}
 ]`;
     assert.equal(Jsonplurnk.strip(block), block);

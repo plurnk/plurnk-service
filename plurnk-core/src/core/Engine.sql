@@ -431,8 +431,8 @@ CREATE TEMP TABLE IF NOT EXISTS engine_grinder_fold_set (id INTEGER PRIMARY KEY)
 DELETE FROM engine_grinder_fold_set;
 INSERT INTO engine_grinder_fold_set (id)
 SELECT id FROM log_entries
-WHERE loop_id = $loop_id AND expanded = 1 AND op NOT IN ('error', 'PLAN')
-  AND COALESCE(scheme, '') != 'prompt'  -- the task frame ({§prompt-self-only}); NULL-safe: a model row's scheme is NULL
+WHERE loop_id = $loop_id AND expanded = 1 AND COALESCE(op, '') NOT IN ('error', 'PLAN')
+  AND COALESCE(scheme, '') != 'prompt'  -- the task frame ({§prompt-self-only}); NULL-safe: a model-emission row's scheme is NULL
   AND (turn_id = $turn_id
        OR turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id));
 
@@ -445,7 +445,7 @@ SELECT id, 'overflow' FROM engine_grinder_fold_set;
 DELETE FROM engine_grinder_fold_set;
 
 -- PREP: engine_fold_log_entry
--- Fold one known log row by id. Model mirror rows use this after insertion so
+-- Fold one known log row by id. Model-emission rows use this after insertion so
 -- the complete admitted emission remains available without opening by default.
 UPDATE log_entries SET expanded = 0 WHERE id = $id;
 
@@ -453,7 +453,7 @@ UPDATE log_entries SET expanded = 0 WHERE id = $id;
 -- Render-time log-section assembly ({§body-projection}).
 -- Yields log_entries for the whole worker — the conversation's working
 -- memory carries across loops within a worker, not just the
--- current loop. Coordinate is log:///<loop_seq>/<turn_seq>/<sequence>/<op>.
+-- current loop. Coordinates append /<op> only for rows that represent an operation.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
 -- `expanded = 0` rows are FOLDED — listed but collapsed to their coordinate
 -- (FOLD); the renderer elides the body. {§open-fold}: folded rows stay listed, re-OPENable.
@@ -481,8 +481,8 @@ JOIN loops l ON l.id = le.loop_id
 -- {§operation-result-uniform-error-channel}.
 WHERE le.worker_id = $worker_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
-  AND NOT (le.op IN ('OPEN', 'FOLD') AND le.status_rx < 400)
-  AND NOT (le.op = 'KILL' AND le.scheme = 'log' AND le.status_rx < 400)
+  AND NOT (COALESCE(le.op, '') IN ('OPEN', 'FOLD') AND le.status_rx < 400)
+  AND NOT (COALESCE(le.op, '') = 'KILL' AND le.scheme = 'log' AND le.status_rx < 400)
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: engine_insert_log_entry

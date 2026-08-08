@@ -10,6 +10,27 @@
 import { posix } from "node:path";
 
 export default class Namespace {
+    // A repository-root-relative Git pathname → the workspace namespace key.
+    // Git reports the containing repository while file:// is rooted at
+    // project_root, so a nested workspace may produce either a bare in-root key
+    // or a canonical ../ mount key for another repository path.
+    static fromRepositoryPath(repositoryPath: string, workspaceRoot: string, repositoryRoot: string): string {
+        if (repositoryPath.length === 0 || repositoryPath.startsWith("/") || repositoryPath.includes("\0")) {
+            throw new TypeError(`Git returned a malformed repository pathname: ${JSON.stringify(repositoryPath)}`);
+        }
+        const repository = posix.resolve("/", repositoryRoot);
+        const absolute = posix.resolve(repository, repositoryPath);
+        if (absolute !== repository && !absolute.startsWith(`${repository}/`)) {
+            throw new TypeError(`Git pathname escapes its repository: ${JSON.stringify(repositoryPath)}`);
+        }
+        const key = posix.relative(posix.resolve("/", workspaceRoot), absolute);
+        const canonical = Namespace.canonicalize(key, workspaceRoot);
+        if (canonical === null) {
+            throw new TypeError(`Git pathname does not name a workspace file: ${JSON.stringify(repositoryPath)}`);
+        }
+        return canonical;
+    }
+
     // Model spelling → canonical member key, or null when the spelling names nothing a
     // file entry can be: empty, NUL-bearing, or resolving to a directory (the root, a bare
     // mount run) — directories are never entries; files only, as git. `root` is the

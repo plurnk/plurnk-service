@@ -377,7 +377,8 @@ CREATE TABLE IF NOT EXISTS entries (
     -- unchanged entry is skipped, never re-metadatafied every turn.
     deep_hash TEXT,
     -- SPEC {§membership-change-gated-sync} — the per-member sync stat-detect:
-    -- "<mtimeMs>:<size>" of the disk file at its last materialization. The pre-turn
+    -- "<mtimeMs>:<size>" of the disk file at its last materialization, or `absent`
+    -- after an observed deletion. The pre-turn
     -- sync stat()s every member but re-reads/re-tokenizes/rewrites only one whose
     -- signature changed; an unchanged member is a no-op. NULL = never synced.
     synced_sig TEXT,
@@ -525,14 +526,13 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- 'error' is an ACTIONLESS row ({§operation-results} — errors are log items): a parse failure that
     -- produced no op still records a log entry (op='error', status_rx≥400, no target) so the model
     -- can fold/kill/recall its own mistakes like any other log row — one budget surface, the log.
-    -- 'model' is an ACTIONLESS row too ({§model-entry}): the model's own verbatim emission, mirrored
-    -- back as a foldable log item so it can finally SEE its prior output (born folded; the turn-0
-    -- exemplar is born open). text/vnd.plurnk-typed; OPEN/FOLD/KILL-able like any row.
+    -- A model-emission artifact ({§model-entry}) carries NULL here and
+    -- attrs.kind='model_emission': no operation was executed or fabricated.
     -- No op enum here: the grammar op set is grammar's contract (PlurnkOp), and this column is written
-    -- only by the PlurnkOp-typed engine (grammar ops) or with the two service markers ('error','model').
+    -- only by the PlurnkOp-typed engine (grammar ops), service row selectors, or NULL for no op.
     -- A SQL enum would be a hand-copy of grammar's op list that silently goes stale on every new verb
     -- (it did — FORK/WORK). Validity lives at the parse + type layer, not duplicated in DDL.
-    op              TEXT    NOT NULL,
+    op              TEXT,
     suffix          TEXT    NOT NULL DEFAULT '',
     signal          TEXT                       CHECK (signal IS NULL OR json_valid(signal)),
 
@@ -563,6 +563,8 @@ CREATE TABLE IF NOT EXISTS log_entries (
     attrs           TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attrs)),
 
     expanded         INTEGER NOT NULL DEFAULT 1 CHECK (expanded IN (0, 1)),
+
+    CHECK ((op IS NULL) = COALESCE(json_extract(attrs, '$.kind') = 'model_emission', 0)),
 
     FOREIGN KEY (worker_id)  REFERENCES workers(id)  ON DELETE CASCADE,
     FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE,

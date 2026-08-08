@@ -9,7 +9,8 @@ import ignore, { type Ignore } from "ignore";
 import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { GitStatus } from "./git-state.ts";
+import type { GitStatusSnapshot } from "./git-state.ts";
+import Namespace from "./namespace.ts";
 
 export class GitIsoError extends Error {
     constructor(root: string, operation: string, cause: unknown) {
@@ -173,27 +174,23 @@ export default class GitIso {
     // Working-tree status — parity with `git status --porcelain --branch`: branch, ahead/behind
     // the configured upstream, and staged/unstaged/untracked counts. Repository incompatibilities
     // surface as GitIsoError; GitState distinguishes the ordinary non-repo case before this call.
-    static async status(root: string): Promise<GitStatus> {
-        return GitIso.#read(root, "reading working-tree status", () => GitIso.#status(root));
+    static async status(workspaceRoot: string, repositoryRoot: string = workspaceRoot): Promise<GitStatusSnapshot> {
+        return GitIso.#read(repositoryRoot, "reading working-tree status", () => GitIso.#status(workspaceRoot, repositoryRoot));
     }
 
-    static async #status(root: string): Promise<GitStatus> {
+    static async #status(workspaceRoot: string, repositoryRoot: string): Promise<GitStatusSnapshot> {
         const cache = {};
-        const branch = await git.currentBranch({ fs, dir: root, fullname: false }) ?? "HEAD";  // detached → HEAD, as porcelain renders it
-        const matrix = await git.statusMatrix({ fs, dir: root, cache });
+        const branch = await git.currentBranch({ fs, dir: repositoryRoot, fullname: false }) ?? "HEAD";  // detached → HEAD, as porcelain renders it
+        const matrix = await git.statusMatrix({ fs, dir: repositoryRoot, cache });
         let staged = 0;
         let unstaged = 0;
         let untracked = 0;
         const files: import("./git-state.ts").GitFileStatus[] = [];
-        const untrackedDirs = new Set<string>();
         for (const [filepath, head, workdir, stage] of matrix) {
+            const path = Namespace.fromRepositoryPath(filepath, workspaceRoot, repositoryRoot);
             if (head === 0 && stage === 0 && workdir === 2) {
                 untracked++;
-                const dir = filepath.includes("/") ? `${filepath.split("/")[0]}/` : filepath;
-                if (!untrackedDirs.has(dir)) {
-                    untrackedDirs.add(dir);
-                    files.push({ path: dir, status: "??" });
-                }
+                files.push({ path, status: "??" });
                 continue;
             }
             const isStaged = head === 1 ? stage !== 1 : stage !== 0;
@@ -201,12 +198,13 @@ export default class GitIso {
             if (isStaged) staged++;
             if (isUnstaged) unstaged++;
             if (isStaged || isUnstaged) {
-                const s = (isStaged ? (head === 0 ? "A" : "M") : "") + (isUnstaged ? "M" : "");
-                files.push({ path: filepath, status: s });
+                const index = isStaged ? (head === 0 ? "A" : stage === 0 ? "D" : "M") : " ";
+                const worktree = isUnstaged ? (workdir === 0 ? "D" : "M") : " ";
+                files.push({ path, status: `${index}${worktree}` });
             }
         }
         files.sort((a, b) => a.path.localeCompare(b.path));
-        const { ahead, behind } = await GitIso.#aheadBehind(root, branch, cache);
+        const { ahead, behind } = await GitIso.#aheadBehind(repositoryRoot, branch, cache);
         return { branch, ahead, behind, staged, unstaged, untracked, files };
     }
 

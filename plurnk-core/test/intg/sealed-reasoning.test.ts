@@ -23,7 +23,7 @@ const projectThroughAgui = async (db: Db, workerId: number, turnId: number) => {
         const row = await LogEntry.fetchLogEntry(db, id);
         events.push(...tr.logEntry({ entry: {
             ...row,
-            coordinate: `${row.loop_seq}/${row.turn_seq}/${row.sequence}/${row.op}`,
+            coordinate: `${row.loop_seq}/${row.turn_seq}/${row.sequence}${row.op === null ? "" : `/${row.op}`}`,
         } as never }));
     }
     return events;
@@ -43,7 +43,7 @@ test("core preserves the normalized item list, AG-UI correlates it, and the pack
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
         // Core preserves the provider-normalized list without reinterpretation.
-        const rows = await db.test_log_entries_by_worker_op.all<{ attrs: string }>({ worker_id: workerId, op: "model" });
+        const rows = await db.test_model_emission_rows.all<{ attrs: string }>({ worker_id: workerId });
         const row = rows.find((r) => (JSON.parse(r.attrs) as { reasoning?: unknown }).reasoning !== undefined);
         assert.ok(row, "the mirror row carries attrs.reasoning");
         const list = (JSON.parse(row!.attrs) as { reasoning: Array<{ id: string | null; subtype: string; encrypted: Array<{ data: string; format: string | null }> }> }).reasoning;
@@ -86,7 +86,7 @@ test("multiple encrypted-reasoning items remain distinct forensic evidence witho
         ] as never });
         const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
-        const rows = await db.test_log_entries_by_worker_op.all<{ attrs: string }>({ worker_id: workerId, op: "model" });
+        const rows = await db.test_model_emission_rows.all<{ attrs: string }>({ worker_id: workerId });
         const row = rows.find((r) => (JSON.parse(r.attrs) as { reasoning?: unknown }).reasoning !== undefined)!;
         const list = (JSON.parse(row.attrs) as { reasoning: Array<{ id: string; encrypted: Array<{ data: string }> }> }).reasoning;
         assert.deepEqual(list.map(({ id, encrypted }) => [id, encrypted[0]?.data]), [["rs_a", A], ["rs_b", B]], "the forensic row retains both provider details distinctly");
