@@ -74,7 +74,7 @@ Each mirrors a `# --- section ---` in the floor; consult the floor for exact def
 
 - **Storage** — `PLURNK_SERVICE_DB_PATH`, and the optional `PLURNK_SERVICE_SQLITE_*` passthroughs (sqlrite already sets a safe WAL posture; tune only for a hot/large DB).
 - **Daemon transport** — bare `PLURNK_HOST`/`PLURNK_PORT`: THE client surface (the AG-UI+ listener, bound by the plurnk-agui module at boot). Production is single-listener; every first-party client rides it.
-- **Model aliases** — bare `PLURNK_MODEL` selects the active provider; `PLURNK_MODEL_<alias>` defines one; `PLURNK_BASEURL_<alias>` overrides its endpoint. The front door — keep these bare and short.
+- **Model aliases** — bare `PLURNK_MODEL` selects the active provider; `PLURNK_MODEL_<alias>` defines one; `PLURNK_BASEURL_<alias>` overrides its endpoint. Optional `PLURNK_MODEL_CHILD=<alias>` selects WORK/FORK descendants; unset inherits the spawning loop's provider. The front door — keep these bare and short.
 - **Loop control / engine rails** — `PLURNK_SERVICE_MAX_TURNS` (−1 = uncapped), `_MAX_COMMANDS`, `_MAX_STRIKES`, `_EMISSION_ATTEMPTS`, `_MIN_CYCLES`, `_MAX_CYCLE_PERIOD`, `_LOOP_TIMEOUT`, `_PROPOSAL_TIMEOUT_MS`, `_EXEC_HOLD`, `_EXEC_WAIT_MS`, `_EXEC_POLL_SEC`/`_TURNS`, `_EXEC_KILL_GRACE_MS`, `_WORKSPACE_WORKERS_MAX_ACTIVE`.
 - **Git** — `PLURNK_SERVICE_GIT_ALLOWED` (0 = hard sandbox lockout), `_GIT_AUTO`.
 - **Packet / reference docs** — `PLURNK_SERVICE_FILES_ITEMS` (turn-0 shallow file-map cap), `_PREVIEW_LINES`/`_PREVIEW_CHARS`, `_EDIT_RECEIPT_REVISION_CHARS`/`_CONTEXT_LINES`, `_BRANCH_RECEIPT_REVISION_CHARS`, `_DOCS_EXCLUDE`, `_PACKET_INJECT` (operator markdown section), `_POLICY`/`_PROJECT`/`_REQUIREMENTS` (policy + footer overrides), `_MD_<alias>` (materialized reference entry).

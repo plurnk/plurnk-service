@@ -37,7 +37,7 @@ WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn
 SELECT status FROM loops WHERE id = $id;
 
 -- PREP: test_get_loop_posture
-SELECT flags, provider_spec, max_turns, orphan_source_loop_id
+SELECT flags, provider_spec, child_provider_spec, max_turns, orphan_source_loop_id
 FROM loops WHERE id = $id;
 
 -- PREP: test_prompt_paths_by_owner
@@ -323,7 +323,7 @@ SELECT cosine($a, $b) AS sim;
 
 -- PREP: test_all_loops
 -- {§worker-delegation-inherits-flags} — every loop's persisted flags, delegation-tree-wide.
-SELECT id, worker_id, flags FROM loops ORDER BY id;
+SELECT id, worker_id, flags, provider_spec, child_provider_spec, status FROM loops ORDER BY id;
 
 -- PREP: test_workers_with_parent
 -- Deterministic topology identity: real child workers, their names, and their parent edge.

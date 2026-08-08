@@ -1,7 +1,7 @@
 -- Channel-write SQL for streaming schemes. SPEC {§channel-state} + {§subscriptions} + {§notifications}.
 
 -- PREP: channel_meta
-SELECT e.workspace_id, e.scheme, e.pathname, ec.state, ec.mimetype, length(ec.content) AS contentLength
+SELECT e.workspace_id, e.owner_id AS workerId, e.scheme, e.pathname, ec.state, ec.mimetype, length(ec.content) AS contentLength
 FROM entry_channels ec
 JOIN entries e ON e.id = ec.entry_id
 WHERE ec.entry_id = $entry_id AND ec.name = $channel;

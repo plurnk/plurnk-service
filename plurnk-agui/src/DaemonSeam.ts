@@ -45,7 +45,7 @@ export interface DaemonSeam {
     ensureModelWorker(workspaceId: number): Promise<number>;
     // Loop control — drive/steer a loop on the model worker (runLoop refuses a client-origin
     // worker loudly). Returns immediately; the outcome arrives on the event source.
-    runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean }; openPaths?: string[]; alias?: string; model?: string }): Promise<OperationResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }>;
+    runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean }; openPaths?: string[]; alias?: string; model?: string; childAlias?: string | null; childModel?: string }): Promise<OperationResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }>;
     // Loop-control — cancel a worker's active drain. Returns whether a drain was cancelled.
     cancelDrain(workerId: number, reason?: string): boolean;
     // One client action journals all of its parsed statements in one internal segment.

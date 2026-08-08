@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS loops (
     prompt   TEXT    NOT NULL,
     flags    TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(flags)),
     provider_spec TEXT NOT NULL DEFAULT 'null' CHECK (json_valid(provider_spec)),
+    child_provider_spec TEXT NOT NULL DEFAULT 'null' CHECK (json_valid(child_provider_spec)),
     max_turns INTEGER NOT NULL DEFAULT 50 CHECK (max_turns >= -1),
     -- {§methods-loop-run-open-paths}: the initial prompt frame's selected paths,
     -- held here until turn 1 materializes that frame (string[] JSON).

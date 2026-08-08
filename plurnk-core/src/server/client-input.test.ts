@@ -181,6 +181,12 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
             field: "alias",
         },
         {
+            run: () => ClientInput.assertOptionalSelector("loop.run", "childModel", ""),
+            code: "child-model-invalid",
+            context: "loop.run",
+            field: "childModel",
+        },
+        {
             run: () => ClientInput.assertLimit("workspace.prompts", 0),
             code: "limit-invalid",
             context: "workspace.prompts",
@@ -210,4 +216,10 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
         assert.equal(result.problem.retryable, false);
         assert.equal(typeof result.problem.recovery, "string");
     }
+});
+
+test("child provider input distinguishes omitted, explicit inherit, and an alias", () => {
+    assert.equal(ClientInput.assertOptionalChildAlias("loop.run", undefined), undefined);
+    assert.equal(ClientInput.assertOptionalChildAlias("loop.run", null), null);
+    assert.equal(ClientInput.assertOptionalChildAlias("loop.run", "fast"), "fast");
 });

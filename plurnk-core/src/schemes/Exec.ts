@@ -857,7 +857,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             if (ctx.wakeWorkerNotify !== undefined) {
                 ctx.wakeWorkerNotify({
                     workspaceId: ctx.workspaceId, workerId: ctx.workerId,
-                    entryId, target: `${runtime}://${pathname}`, subscriptionId, result,
+                    entryOwnerId: ctx.workerId, entryId, target: `${runtime}://${pathname}`, subscriptionId, result,
                     scheme: runtime,
                     summary: `${runtime}://${pathname} completed (${exitLabel}); stdout=${stdoutLength} bytes, stderr=${stderrLength} bytes`,
                     ...coordinate,

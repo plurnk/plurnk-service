@@ -14,14 +14,15 @@ const seedEntryWithChannel = async (channelName: string, channelMime: string, in
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
+    const ownerId = await Owner.commonsId(db, workspaceId);
     const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
-        workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "worker", pathname: "/x",
+        workspace_id: workspaceId, owner_id: ownerId, scheme: "worker", pathname: "/x",
     });
     if (entry === undefined) throw new Error("seed entry failed");
     await db.test_seed_channel.run({
         entry_id: entry.id, name: channelName, content: initialContent, mimetype: channelMime, state: channelState,
     });
-    return { db, workspaceId, workerId, entryId: entry.id };
+    return { db, workspaceId, workerId, ownerId, entryId: entry.id };
 };
 
 test("appendToChannel: appends chunk to existing channel content", async () => {
@@ -57,14 +58,15 @@ test("appendToChannel: no-op on nonexistent channel (silent)", async () => {
     } finally { await db.close(); }
 });
 
-test("appendToChannel: invokes notify with current state + content length", async () => {
-    const { db, workspaceId, entryId } = await seedEntryWithChannel("body", "text/plain", "hi", "active");
+test("appendToChannel: invokes notify with owner, current state, and content length", async () => {
+    const { db, workspaceId, ownerId, entryId } = await seedEntryWithChannel("body", "text/plain", "hi", "active");
     try {
         const events: Array<{ workspaceId: number; event: StreamEventPayload }> = [];
         await ChannelWrite.appendToChannel(db, { entryId, channel: "body", chunk: "!", notify: (sid, ev) => events.push({ workspaceId: sid, event: ev }) });
         assert.equal(events.length, 1);
         assert.equal(events[0].workspaceId, workspaceId);
         assert.equal(events[0].event.entryId, entryId);
+        assert.equal(events[0].event.workerId, ownerId);
         assert.equal(events[0].event.channel, "body");
         assert.equal(events[0].event.state, "active");
         assert.equal(events[0].event.contentLength, 3);

@@ -25,8 +25,8 @@ recompute them.
   conversations are addressable as threads), minted via `createConversationWorker`
   if it doesn't. The core workspace envelope carries only the workspace and selected client
   actor ({§methods-rebind}); AG-UI owns the separate per-thread conversation binding.
-  World-scoped actions (`loop.inject`, `loop.cancel`, `log.read` default,
-  `entry.read`, `run.fork`) operate on the THREAD's conversation, never blindly on the model worker.
+  `loop.inject`, `loop.cancel`, and `run.fork` operate on the THREAD's conversation.
+  `log.read` and `entry.read` default there and may explicitly select another workspace worker.
   Extended context persists across AG-UI Runs because the worker's log does.
 - §agui-run-authority **AG-UI owns the client lifecycle** — `threadId`, `runId`,
   `RUN_STARTED`, `RUN_FINISHED`, `RUN_ERROR`, interrupt outcomes, and `RunAgentInput.resume`
@@ -145,6 +145,11 @@ multi-worker interrupt sets fails before any proposal is released.
 
 Raw `auto`, `noProposals`, operation, attrs, and stale-target facts remain visible evidence but are not re-evaluated here. Reconnect filters by the same disposition, so an internal policy failure cannot silently turn client presentation into an accidental fallback.
 
+§agui-provider-policy-forwarding A textual Run forwards `alias`, `model`,
+`childAlias`, and `childModel` from `forwardedProps.plurnk` unchanged to
+`CoreSeam.runLoop`; an explicit `childAlias: null` remains distinguishable from
+an omitted service-default selection.
+
 ## §agui-management-plane The action surface
 
 PLURNK has three inputs through the one AG-UI Run endpoint. A normal user message
@@ -197,7 +202,7 @@ successfully transported management Run; it does not turn the Run into
 | `workspace.unconstrain`  | Workspace | `effect`, `glob`                                     | `CoreSeam.unconstrain`.                                                                                            |
 | `workspace.constraints`  | Workspace | none                                                 | `CoreSeam.listConstraints`.                                                                                        |
 | `workspace.derivation`   | Workspace | none                                                 | `CoreSeam.workspaceDerivationStatus`.                                                                              |
-| `entry.read`             | Workspace | `target`, `channel?`, `offset?`                      | Calls `CoreSeam.readEntry` with the thread's conversation worker and preserves validated {§entry-read-result}.     |
+| `entry.read`             | Workspace | `target`, `workerId?`, `channel?`, `offset?`         | Calls `CoreSeam.readEntry` from the explicit worker perspective or the thread conversation by default, preserving validated {§entry-read-result}. |
 | `op.exec`                | Workspace | `command`                                            | Constructs one EXEC statement and calls `CoreSeam.dispatchClientAction` on the client worker.                      |
 | `op.parse`               | Workspace | `text`                                               | Parses and projects PLURNK text under {§agui-op-parse}.                                                            |
 | `workspace.members`      | Workspace | none                                                 | `CoreSeam.listMembers`.                                                                                            |

@@ -31,6 +31,7 @@ const enqueueLoop = async (
         sequence,
         prompt,
         provider_spec: JSON.stringify(providerSpec),
+        child_provider_spec: "null",
         max_turns: 50,
     });
     if (row === undefined) throw new Error("recovery fixture failed to enqueue loop");
@@ -106,6 +107,7 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
             prompt: "first orphan",
             flags: "{}",
             provider_spec: JSON.stringify(providerSpec),
+            child_provider_spec: "null",
             max_turns: 50,
             open_paths: "[]",
             orphan_source_loop_id: sourceLoopId,

@@ -29,6 +29,7 @@ export interface StreamCoordinate {
 
 export interface StreamEventPayload {
     entryId: number;
+    workerId: number;                // entry owner and read perspective — {§notifications-stream-event-on-channel-change}
     target: string;                // canonical entry URI — {§notifications-stream-event-on-channel-change}
     channel: string;
     state: ChannelState;
@@ -49,7 +50,8 @@ export type StreamEventNotify = (workspaceId: number, event: StreamEventPayload)
 // actually wake based on engine state; the scheme just announces.
 export interface WakeWorkerPayload {
     workspaceId: number;
-    workerId: number;
+    workerId: number;                // lifecycle worker to wake
+    entryOwnerId: number;            // public stream/concluded read perspective
     entryId: number;
     target: string;                // canonical entry URI — {§notifications-stream-concluded}
     subscriptionId: number;
@@ -75,6 +77,9 @@ export type InjectWorkerNotify = (args: {
     workspaceId: number;
     workerId: number;
     prompt: string;
+    // WORK/FORK name the spawning loop so the daemon can apply its durable
+    // child-provider policy. Other voice-door injections omit it.
+    parentLoopId?: number;
     // {§worker-delegation-inherits-flags} — the SENDING loop's flags. Authority flows down the
     // delegation edge: a spawned/forked child's live loop runs with its delegator's flags,
     // or a non-auto child's every side-effecting op proposes into a resolver-less void
@@ -122,6 +127,7 @@ export type NoticeNotify = (workspaceId: number, payload: NoticePayload) => void
 
 interface ChannelMetaRow {
     workspace_id: number;
+    workerId: number;
     scheme: string;
     pathname: string;
     state: ChannelState;
@@ -159,7 +165,7 @@ export default class ChannelWrite {
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;
-        notify(meta.workspace_id, { entryId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
+        notify(meta.workspace_id, { entryId, workerId: meta.workerId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
     }
 
     // Schemes drive channel state transitions as their connection lifecycle progresses.
@@ -173,7 +179,7 @@ export default class ChannelWrite {
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;
-        notify(meta.workspace_id, { entryId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
+        notify(meta.workspace_id, { entryId, workerId: meta.workerId, target: ChannelWrite.#targetUri(meta.scheme, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
     }
 
     // The durable half of subscription ownership. Its row identifies what is

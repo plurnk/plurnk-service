@@ -38,6 +38,7 @@ type BatchIdentity = Pick<BatchRow, "id" | "workspace_id">;
 export interface EnqueueBranchWorker {
     workspaceId: number;
     parentWorkerId: number;
+    parentLoopId: number;
     op: "WORK" | "FORK";
     name: string;
     prompt: string;
@@ -168,6 +169,7 @@ export default class BranchBatches {
         const child = await this.#deps.createChild({
             workspaceId: args.workspaceId,
             parentWorkerId: args.parentWorkerId,
+            parentLoopId: args.parentLoopId,
             op: args.op,
             name: args.name,
             prompt: args.prompt,

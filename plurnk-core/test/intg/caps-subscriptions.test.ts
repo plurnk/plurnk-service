@@ -7,6 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbSubscriptionCaps from "../../src/core/caps/DbSubscriptionCaps.ts";
+import Owner from "../../src/core/Owner.ts";
 import type { WakeWorkerPayload, StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
 import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
@@ -17,6 +18,7 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
     try {
         const workspaceId = await insertWorkspace(db, `caps-sub-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
+        const entryOwnerId = await Owner.commonsId(db, workspaceId);
         const streamEvents: StreamEventPayload[] = [];
         const wakes: WakeWorkerPayload[] = [];
         const parentAbort = new AbortController();
@@ -58,6 +60,9 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         assert.equal(meta?.state, "closed");
         assert.equal((await entries.read("/run")).entry?.channels.stdout.state, "closed");
         assert.equal(wakes.length, 1);
+        assert.equal(wakes[0].workerId, workerId, "the lifecycle wake still targets the invoking worker");
+        assert.equal(wakes[0].entryOwnerId, entryOwnerId, "the conclusion carries the stored entry owner separately");
+        assert.notEqual(wakes[0].entryOwnerId, wakes[0].workerId);
         assert.deepEqual(wakes[0].result, { status: 200 });
         assert.equal(wakes[0].summary, "exit 0; 11 bytes");
         assert.equal(wakes[0].target, "exec:///run");

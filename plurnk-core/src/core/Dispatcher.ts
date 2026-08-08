@@ -1105,7 +1105,7 @@ export default class Dispatcher {
         if (statement.op === "FORK") {
             // Branch the current worker's log into a named sister.
             const branchWorkerId = await Fork.fork(this.#db, ctx.workerId, name);
-            await ctx.injectWorker({ workspaceId: ctx.workspaceId, workerId: branchWorkerId, prompt, flags });
+            await ctx.injectWorker({ workspaceId: ctx.workspaceId, workerId: branchWorkerId, prompt, flags, parentLoopId: ctx.loopId });
             return { status: 200, body: name };
         }
         // WORK — a fresh worker sister named <name>.
@@ -1113,7 +1113,7 @@ export default class Dispatcher {
             workspace_id: ctx.workspaceId, name, parent_worker_id: ctx.workerId, origin: ctx.writer,
         });
         if (row === undefined) throw new Error("worker spawn: worker insert returned no row");
-        await ctx.injectWorker({ workspaceId: ctx.workspaceId, workerId: row.id, prompt, flags });
+        await ctx.injectWorker({ workspaceId: ctx.workspaceId, workerId: row.id, prompt, flags, parentLoopId: ctx.loopId });
         return { status: 200, body: name };
     }
 

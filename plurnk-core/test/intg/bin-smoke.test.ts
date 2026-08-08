@@ -298,3 +298,28 @@ test("bin: PLURNK_MODEL naming no declared alias fails the boot LOUD — never a
         assert.match(stderrBuf, /declare PLURNK_MODEL_<alias>=plurnk\/jennifer/, "the corrective declaration form is stated");
     } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+test("bin: PLURNK_MODEL_CHILD must name a declared alias", { timeout: 60_000 }, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-bin-child-model-"));
+    try {
+        const missing = `missing-${crypto.randomUUID()}`;
+        const env: NodeJS.ProcessEnv = {
+            ...process.env,
+            HOME: dir,
+            PLURNK_SERVICE_DB_PATH: join(dir, "plurnk.db"),
+            PLURNK_HOST: "127.0.0.1",
+            PLURNK_PORT: "0",
+            PLURNK_MODEL_CHILD: missing,
+        };
+        delete env.PLURNK_MODEL;
+        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, cwd: dir, stdio: ["ignore", "ignore", "pipe"] });
+        let stderr = "";
+        child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+        const code = await new Promise<number | null>((resolvePromise) => { child.on("exit", resolvePromise); });
+        assert.notEqual(code, 0);
+        assert.match(stderr, new RegExp(`PLURNK_MODEL_CHILD=${missing} names no declared alias`));
+        assert.match(stderr, /Unset it to inherit each spawning loop's provider/);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});

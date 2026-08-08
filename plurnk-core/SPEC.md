@@ -1816,7 +1816,7 @@ Node's pre-script env-file form and the executable's post-script form share the 
 
 §operator-config-env-defaults **Every package owns its knobs — `.env.defaults` is the standard.** Each package in the daemon's ecosystem — internal or third-party — ships a `.env.defaults` at its package root declaring its own knobs; the file is the package's configuration reference, traveling in the tarball and changing with the code that reads it. At boot the daemon assembles every installed member's file into one floor (membership = the `@plurnk/*` scope or a `plurnk` package.json field, gated by `PLURNK_PLUGINS_TRUSTED_ONLY` with discover()'s exact semantics), applies it set-if-unset under every operator source, and renders the assembled catalog to `~/.plurnk/.env.defaults`. The catalog is machine-owned, regenerated each boot, and never read back as configuration. A key claimed by two packages fails boot naming both. With the reader-declares discipline, each key has one implementation and one defaults owner.
 
-Model selection: separate alias cascade in `ProviderRegistry` ({§provider-instantiation}). `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares; `PLURNK_MODEL=<alias>` selects. Aliases live in `.env`, not `.env.defaults` (operator-specific).
+Model selection: separate alias cascade in `ProviderRegistry` ({§provider-instantiation}). `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares; `PLURNK_MODEL=<alias>` selects. Optional `PLURNK_MODEL_CHILD=<alias>` selects the default child provider; unset means inherit the spawning loop's provider. Aliases and selections live in `.env`, not `.env.defaults` (operator-specific).
 
 | Var                                                         | Default | Purpose |
 |-------------------------------------------------------------|---------|---------|
@@ -1988,7 +1988,7 @@ Its function names are transport-neutral library calls, not public wire names.
 | §methods-event-subscribe Events                   | `subscribeToEvents(handler) -> unsubscribe` | Subscribes to the raw event source in {§notifications}. A subscriber failure is logged and cannot re-enter engine control flow. |
 | §proposal-list Proposals                          | `pendingProposals(workspaceId)` | Intersects durable proposed rows with the lifecycle owner's live resolution waiters, then returns their validated {§proposal-projection}; persistence alone cannot advertise an unresolvable client interrupt. |
 | §methods-proposal-resolve Proposals               | `resolveProposal(logEntryId, resolution)` | Validates and delivers one accept, reject, or cancel decision to the engine. An unknown or already-resolved id fails; the client protocol owns how the decision arrived. |
-| §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, maxTurns?, flags?, openPaths?, alias?, model? })` | Validates a model worker and provider selection, persists the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
+| §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, maxTurns?, flags?, openPaths?, alias?, model?, childAlias?, childModel? })` | Validates a model worker and provider policy, persists it with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
 | §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)` | Begins durable structured cancellation of the worker tree and reaps its process-local scopes. The boolean reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. |
 | §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, workerId, statements })` | Dispatches already-parsed grammar statements as one client action and one journal segment. Every statement is an ordered turn, and every committed `log/entry` is emitted before the action promise resolves; a proposal may keep that promise and segment open until resolution. Core exposes no per-op method family. |
 | Client observation                                | `look({ workspaceId, workerId, statement })` | Runs an already-parsed READ through the full resolver without a log row. A non-READ statement is rejected ({§op-look}). |
@@ -2061,6 +2061,16 @@ loop with a conflicting selection fails before work is accepted. Provider
 instances are cached; no resume path substitutes a boot default for missing or
 malformed durable selection.
 
+§methods-loop-run-child-provider **Child-provider selection is a durable spawn
+policy.** Optional `childModel` (client-resolved `<provider>/<model>`, wins) or
+`childAlias` selects the provider for every WORK/FORK descendant; omitted uses
+`PLURNK_MODEL_CHILD`, while explicit `childAlias: null` means inherit. Core
+persists the resolved policy on each loop. A child runs on that provider and
+carries the same policy deeper; inherit uses the spawning loop's provider and
+remains inherit. Packet admission is unchanged: a smaller WORK is valid when
+its packet fits, and an oversized inherited FORK terminates through the ordinary
+child-loop result without preflight assembly or provider fallback.
+
 §methods-log-coordinate **Log coordinate.** Every `LogEntry` returned by
 `readLog` or emitted through `log/entry` carries `loop_seq` and `turn_seq`
 beside database ids, so a client can render and resolve the logical `L/T/S`
@@ -2086,8 +2096,8 @@ active lifecycle behind.
 | §notifications-loop-proposal `loop/proposal`                 | contracts-owned `ProposalProjection` | Dispatch pauses on a durable 202 proposal. `disposition` is the sole authority for whether a client presents review UI; live and reconnect share {§proposal-projection}. |
 | §notifications-workspace-created `workspace/created`         | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
 | §notifications-workspace-branch-batch `workspace/branch-batch` | Branch-batch lifecycle payload | A branch batch enters queued, running, completed, failed, or recovery-required state. |
-| §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `target` is the canonical entry URI; the optional coordinate is copied from schemes whose addresses carry one. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channel-mimetype}); the generic plugin notification capability does not require it. It carries metadata, not content; consumers use `readEntry` for bytes. |
-| §notifications-stream-concluded `stream/concluded`           | `{ entryId, target, subscriptionId, scheme, result, summary, wakeAction, wakeLoopId?, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `target` is the canonical entry URI; the optional coordinate is copied from schemes whose addresses carry one, so clients never parse it back out of `target`. Exact result truth is preserved; `wakeAction` records whether core resumed a parked loop, folded into an active loop, skipped an aborted/cancelled worker, or found no loop. |
+| §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, workerId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `workerId` is the entry owner and read perspective; `target` is its canonical URI. The optional coordinate is copied from schemes whose addresses carry one. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channel-mimetype}); the generic plugin notification capability does not require it. It carries metadata, not content; consumers read bytes from the stated worker perspective. |
+| §notifications-stream-concluded `stream/concluded`           | `{ entryId, workerId, target, subscriptionId, scheme, result, summary, wakeAction, wakeLoopId?, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `workerId` identifies the entry owner; `target` is its canonical URI. The optional coordinate is copied from schemes whose addresses carry one, so clients never parse it back out of `target`. Exact result truth is preserved; `wakeAction` records whether core resumed a parked loop, folded into an active loop, skipped an aborted/cancelled worker, or found no loop. |
 | §notifications-notice-event `notice/event`                   | `{ loopId, notice: Notice }` | A transient observation or progress notice occurs. It cannot alter durable history, scheduling, recovery, or model-visible failure truth. |
 
 §notifications-stream-event-failure-isolation The plugin-facing

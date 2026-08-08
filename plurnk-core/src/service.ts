@@ -201,6 +201,17 @@ export default class Service {
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
 
         const alias = resolveActiveAlias();
+        const childAlias = process.env.PLURNK_MODEL_CHILD;
+        if (childAlias !== undefined) {
+            const declared = parseAliasesFromEnv(process.env);
+            if (childAlias.length === 0 || !declared.some(({ alias: name }) => name === childAlias.toLowerCase())) {
+                const names = declared.map(({ alias: name }) => name).join(", ");
+                throw new Error(
+                    `PLURNK_MODEL_CHILD=${childAlias} names no declared alias (declared: ${names.length > 0 ? names : "none"}). `
+                    + "Unset it to inherit each spawning loop's provider, or select a declared alias.",
+                );
+            }
+        }
         // {§operator-config} — an explicit boot alias must resolve; only an
         // unset selector permits modelless boot for per-request selection.
         const selectedModel = process.env.PLURNK_MODEL ?? "";

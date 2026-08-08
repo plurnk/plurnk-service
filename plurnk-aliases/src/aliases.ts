@@ -35,6 +35,7 @@ export const parseAliasesFromEnv = (env: NodeJS.ProcessEnv = process.env): Provi
     for (const [key, value] of Object.entries(env)) {
         if (value === undefined || value.length === 0) continue;
         if (!key.startsWith("PLURNK_MODEL_")) continue;
+        if (key === "PLURNK_MODEL_CHILD") continue;
         const aliasRaw = key.slice("PLURNK_MODEL_".length);
         if (aliasRaw.length === 0) continue;
         const slash = value.indexOf("/");

@@ -512,6 +512,12 @@ export default class Module {
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "model")
                 ? { model: forwarded.model as string }
                 : {}),
+            ...(forwarded !== undefined && Object.hasOwn(forwarded, "childAlias")
+                ? { childAlias: forwarded.childAlias as string | null }
+                : {}),
+            ...(forwarded !== undefined && Object.hasOwn(forwarded, "childModel")
+                ? { childModel: forwarded.childModel as string }
+                : {}),
         });
         // A dropped SSE on a live AG-UI Run cancels the loop (hangup is the abort). A stream we
         // finished ourselves — terminal event or proposal-terminate — leaves the engine
@@ -752,9 +758,20 @@ export default class Module {
                             { field: "target", recovery: "Provide an entry URI." },
                         );
                     }
+                    if (Object.hasOwn(p, "workerId")
+                        && (typeof p.workerId !== "number" || !Number.isSafeInteger(p.workerId) || p.workerId <= 0)) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "entry.read workerId must be a positive integer.",
+                            400,
+                            { field: "workerId", recovery: "Use the workerId supplied with the entry notification." },
+                        );
+                    }
                     const result = Validator.assertEntryReadResult(await this.#seam.readEntry({
                         workspaceId: env.workspaceId,
-                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                        workerId: typeof p.workerId === "number"
+                            ? p.workerId
+                            : conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
                         target: p.target,
                         ...(Object.hasOwn(p, "channel") ? { channel: p.channel as string } : {}),
                         ...(Object.hasOwn(p, "offset") ? { offset: p.offset as number } : {}),

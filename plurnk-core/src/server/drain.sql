@@ -3,8 +3,8 @@
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-worker, 1-based.
-INSERT INTO loops (worker_id, sequence, status, prompt, provider_spec, max_turns)
-VALUES ($worker_id, $sequence, 100, $prompt, $provider_spec, $max_turns)
+INSERT INTO loops (worker_id, sequence, status, prompt, provider_spec, child_provider_spec, max_turns)
+VALUES ($worker_id, $sequence, 100, $prompt, $provider_spec, $child_provider_spec, $max_turns)
 RETURNING id;
 
 -- PREP: drain_claim_next_loop
@@ -96,6 +96,7 @@ ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
 -- $pattern = promptLoopPrefix + '%', $prefix_len = length of that prefix
 -- built JS-side (per the SqlRite LIKE-binding note above).
 SELECT c.content AS body, l.flags AS flags, l.provider_spec AS provider_spec,
+       l.child_provider_spec AS child_provider_spec,
        l.max_turns AS max_turns,
        json_extract(e.attributes, '$.openPaths') AS open_paths
 FROM entries e
@@ -116,11 +117,11 @@ ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
 -- {§prompt-loop-containment}: recovery identity is the concluded source loop.
 -- Retrying returns that same queued loop instead of minting duplicate work.
 INSERT INTO loops (
-    worker_id, sequence, status, prompt, flags, provider_spec, max_turns,
+    worker_id, sequence, status, prompt, flags, provider_spec, child_provider_spec, max_turns,
     open_paths, orphan_source_loop_id
 )
 VALUES (
-    $worker_id, $sequence, 100, $prompt, $flags, $provider_spec, $max_turns,
+    $worker_id, $sequence, 100, $prompt, $flags, $provider_spec, $child_provider_spec, $max_turns,
     $open_paths, $orphan_source_loop_id
 )
 ON CONFLICT (orphan_source_loop_id) DO UPDATE
@@ -163,7 +164,7 @@ RETURNING id, pathname;
 SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequence DESC LIMIT 1;
 
 -- PREP: drain_loop_provider_spec
-SELECT provider_spec FROM loops WHERE id = $loop_id;
+SELECT provider_spec, child_provider_spec FROM loops WHERE id = $loop_id;
 
 -- PREP: drain_worker_min_poll
 -- EXEC `<T,P>` — aggregate each open subscription's policy into one worker timer. A fixed cadence

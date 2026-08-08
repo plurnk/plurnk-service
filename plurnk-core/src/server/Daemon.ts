@@ -191,9 +191,9 @@ export default class Daemon {
         });
         this.#branchBatches = new BranchBatches(db, this.#workspaceGate, {
             settleWorkspace: async (workspaceId) => this.#engine.drainWorkspaceDerivations(workspaceId),
-            createChild: async ({ workspaceId, parentWorkerId, op, name, prompt, flags, origin }) => {
-                const providerSpec = resolveActiveAlias();
-                if (providerSpec === null) throw new Error("Branch worker: active provider has no resolvable alias");
+            createChild: async ({ workspaceId, parentWorkerId, parentLoopId, op, name, prompt, flags, origin }) => {
+                const parentPolicy = await this.#providerPolicyForLoop(parentLoopId);
+                const providerSpec = parentPolicy.childProviderSpec ?? parentPolicy.providerSpec;
                 const workerName = WorkerName.assert(name);
                 const workerId = op === "FORK"
                     ? await Fork.fork(this.#db, parentWorkerId, workerName)
@@ -208,6 +208,7 @@ export default class Daemon {
                     workerId,
                     prompt,
                     providerSpec,
+                    childProviderSpec: parentPolicy.childProviderSpec,
                     flags,
                 });
                 return { workerId, loopId };
@@ -244,12 +245,24 @@ export default class Daemon {
             // daemon owns provider + the law-file system prompt; the worker scheme
             // handler carries neither. Fire-and-forget: the returned drain runs
             // independently (the sister is its own worker). {§machine-processes}
-            injectWorker: async ({ workspaceId, workerId, prompt, flags }) => {
-                if (this.#provider === null) throw new Error("injectWorker: no provider configured");
+            injectWorker: async ({ workspaceId, workerId, prompt, flags, parentLoopId }) => {
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-                const providerSpec = resolveActiveAlias();
+                const parentPolicy = parentLoopId === undefined
+                    ? null
+                    : await this.#providerPolicyForLoop(parentLoopId);
+                const providerSpec = parentPolicy === null
+                    ? resolveActiveAlias()
+                    : parentPolicy.childProviderSpec ?? parentPolicy.providerSpec;
                 if (providerSpec === null) throw new Error("injectWorker: active provider has no resolvable alias");
-                const { action, loopId } = await this.inject({ workspaceId, workerId, prompt, providerSpec, systemPrompt, ...(flags === undefined ? {} : { flags }) });
+                const { action, loopId } = await this.inject({
+                    workspaceId,
+                    workerId,
+                    prompt,
+                    providerSpec,
+                    ...(parentPolicy === null ? {} : { childProviderSpec: parentPolicy.childProviderSpec }),
+                    systemPrompt,
+                    ...(flags === undefined ? {} : { flags }),
+                });
                 return { action, loopId };
             },
             branchWorker: async (args) => this.#branchBatches.enqueue(args),
@@ -300,7 +313,7 @@ export default class Daemon {
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
-    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[]; alias?: string; model?: string }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: Partial<LoopFlags>; openPaths?: string[]; alias?: string; model?: string; childAlias?: string | null; childModel?: string }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         const workspaceId = ClientInput.assertId("runLoop", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("runLoop", "workerId", args.workerId);
         const prompt = ClientInput.assertPrompt("runLoop", args.prompt);
@@ -308,6 +321,17 @@ export default class Daemon {
         const openPaths = ClientInput.assertOpenPaths("runLoop", args.openPaths);
         const alias = ClientInput.assertOptionalSelector("runLoop", "alias", args.alias);
         const model = ClientInput.assertOptionalSelector("runLoop", "model", args.model);
+        const childAlias = ClientInput.assertOptionalChildAlias("runLoop", args.childAlias);
+        const childModel = ClientInput.assertOptionalSelector("runLoop", "childModel", args.childModel);
+        if (childAlias === null && childModel !== undefined) {
+            throw daemonFailure(
+                "daemon:input",
+                "child-provider-conflict",
+                400,
+                "childModel cannot accompany an inherited child provider policy.",
+                { field: "childModel", recovery: "Omit childModel or select a child alias.", retryable: false },
+            );
+        }
         const flags = ClientInput.normalizeLoopFlags("runLoop", args.flags) as Partial<LoopFlags> | undefined;
         // {§methods-loop-run-model} — a client sends alias/model on every loop, so a
         // switch takes effect turn-to-turn. `model` (client-resolved <provider>/<model>) wins
@@ -328,6 +352,14 @@ export default class Daemon {
                 },
             ));
         }
+        // {§methods-loop-run-child-provider}
+        const configuredChildAlias = childAlias === undefined && childModel === undefined
+            ? process.env.PLURNK_MODEL_CHILD
+            : childAlias;
+        const childSelection = configuredChildAlias === null
+            || (configuredChildAlias === undefined && childModel === undefined)
+            ? null
+            : await this.#resolveLoopProvider(configuredChildAlias, childModel);
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
         // {§machine-processes} — the model NEVER runs in a client-origin worker (its packets would carry
         // client-action rows). The module resolves the model worker via ensureModelWorker and passes it (or a
@@ -386,6 +418,7 @@ export default class Daemon {
             ...(openPaths !== undefined ? { openPaths } : {}),
             turnCeiling,
             providerSpec: selection,
+            childProviderSpec: childSelection,
             systemPrompt,
         });
         return { status: 100, action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
@@ -433,23 +466,38 @@ export default class Daemon {
         return spec;
     }
 
-    async #providerSpecForLoop(loopId: number): Promise<ProviderAlias> {
-        const row = await this.#db.drain_loop_provider_spec.get<{ provider_spec: string }>({ loop_id: loopId });
-        if (row === undefined) throw new Error(`loop ${loopId}: provider selection row is missing`);
+    #parseProviderSpec(loopId: number, field: "provider_spec" | "child_provider_spec", encoded: string): ProviderAlias | null {
         let parsed: Partial<ProviderAlias> | null;
         try {
-            parsed = JSON.parse(row.provider_spec) as Partial<ProviderAlias> | null;
+            parsed = JSON.parse(encoded) as Partial<ProviderAlias> | null;
         } catch {
-            throw new Error(`loop ${loopId}: persisted provider selection is malformed — refusing boot-default substitution`);
+            throw new Error(`loop ${loopId}: persisted ${field} is malformed`);
         }
-        if (parsed === null
-            || typeof parsed.alias !== "string" || parsed.alias.length === 0
+        if (parsed === null) return null;
+        if (typeof parsed.alias !== "string" || parsed.alias.length === 0
             || typeof parsed.provider !== "string" || parsed.provider.length === 0
             || typeof parsed.model !== "string" || parsed.model.length === 0
             || (parsed.baseUrl !== undefined && typeof parsed.baseUrl !== "string")) {
-            throw new Error(`loop ${loopId}: persisted provider selection is missing or invalid — refusing boot-default substitution`);
+            throw new Error(`loop ${loopId}: persisted ${field} is invalid`);
         }
         return parsed as ProviderAlias;
+    }
+
+    async #providerPolicyForLoop(loopId: number): Promise<{ providerSpec: ProviderAlias; childProviderSpec: ProviderAlias | null }> {
+        const row = await this.#db.drain_loop_provider_spec.get<{ provider_spec: string; child_provider_spec: string }>({ loop_id: loopId });
+        if (row === undefined) throw new Error(`loop ${loopId}: provider selection row is missing`);
+        const providerSpec = this.#parseProviderSpec(loopId, "provider_spec", row.provider_spec);
+        if (providerSpec === null) {
+            throw new Error(`loop ${loopId}: persisted provider selection is missing or invalid — refusing boot-default substitution`);
+        }
+        return {
+            providerSpec,
+            childProviderSpec: this.#parseProviderSpec(loopId, "child_provider_spec", row.child_provider_spec),
+        };
+    }
+
+    async #providerSpecForLoop(loopId: number): Promise<ProviderAlias> {
+        return (await this.#providerPolicyForLoop(loopId)).providerSpec;
     }
 
     async #providerForLoop(loopId: number): Promise<Provider> {
@@ -472,6 +520,26 @@ export default class Daemon {
                     requestedModel: `${requested.provider}/${requested.model}`,
                     stage: "loop-injection",
                     recovery: "Cancel or conclude the loop before selecting another provider.",
+                    retryable: false,
+                },
+            );
+        }
+    }
+
+    async #assertLoopChildProvider(loopId: number, requested: ProviderAlias | null): Promise<void> {
+        const selected = (await this.#providerPolicyForLoop(loopId)).childProviderSpec;
+        if (JSON.stringify(selected) !== JSON.stringify(requested)) {
+            throw daemonFailure(
+                "daemon:provider",
+                "loop-child-provider-conflict",
+                409,
+                `Loop ${loopId} already has a different child provider policy.`,
+                {
+                    loopId,
+                    selectedChildAlias: selected?.alias ?? null,
+                    requestedChildAlias: requested?.alias ?? null,
+                    stage: "loop-injection",
+                    recovery: "Cancel or conclude the loop before changing its child provider policy.",
                     retryable: false,
                 },
             );
@@ -1389,6 +1457,7 @@ export default class Daemon {
     async inject(args: {
         workspaceId: number; workerId: number; prompt: string;
         providerSpec: ProviderAlias; systemPrompt: string;
+        childProviderSpec?: ProviderAlias | null;
         turnCeiling?: TurnCeilingSelection; flags?: Partial<LoopFlags>; openPaths?: string[];
     }): Promise<{
         action: "injected_next_turn" | "enqueued_new_loop";
@@ -1406,6 +1475,7 @@ export default class Daemon {
             if (active !== undefined) {
                 await this.#assertFoldPosture(workerId, args.flags, active.id); // compare with the exact durable loop
                 await this.#assertLoopProvider(active.id, args.providerSpec);
+                if (args.childProviderSpec !== undefined) await this.#assertLoopChildProvider(active.id, args.childProviderSpec);
                 await this.#assertLoopMaxTurns(
                     active.id,
                     args.turnCeiling?.source === "explicit" ? args.turnCeiling.effective : undefined,
@@ -1427,6 +1497,7 @@ export default class Daemon {
             if (slept !== undefined) {
                 await this.#assertFoldPosture(workerId, args.flags, slept.id); // resume drops nothing silently
                 await this.#assertLoopProvider(slept.id, args.providerSpec);
+                if (args.childProviderSpec !== undefined) await this.#assertLoopChildProvider(slept.id, args.childProviderSpec);
                 await this.#assertLoopMaxTurns(
                     slept.id,
                     args.turnCeiling?.source === "explicit" ? args.turnCeiling.effective : undefined,
@@ -1444,6 +1515,7 @@ export default class Daemon {
             workerId,
             prompt,
             providerSpec: args.providerSpec,
+            childProviderSpec: args.childProviderSpec ?? null,
             maxTurns: args.turnCeiling?.effective,
             flags: args.flags,
             openPaths: args.openPaths,
@@ -1466,6 +1538,7 @@ export default class Daemon {
         workerId: number;
         prompt: string;
         providerSpec: ProviderAlias;
+        childProviderSpec: ProviderAlias | null;
         maxTurns?: number;
         flags?: Partial<LoopFlags>;
         openPaths?: string[];
@@ -1482,6 +1555,7 @@ export default class Daemon {
                 sequence: seqRow.next,
                 prompt: args.prompt,
                 provider_spec: JSON.stringify(args.providerSpec),
+                child_provider_spec: JSON.stringify(args.childProviderSpec),
                 max_turns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
             });
             if (loopRow === undefined) throw new Error("enqueueFreshLoop: loop enqueue returned no row");
@@ -1868,6 +1942,7 @@ export default class Daemon {
                 body: string;
                 flags: string;
                 provider_spec: string;
+                child_provider_spec: string;
                 max_turns: number;
                 open_paths: string | null;
             }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
@@ -1885,6 +1960,7 @@ export default class Daemon {
                 prompt: first.body,
                 flags: first.flags,
                 provider_spec: first.provider_spec,
+                child_provider_spec: first.child_provider_spec,
                 max_turns: first.max_turns,
                 open_paths: first.open_paths ?? "[]",
                 orphan_source_loop_id: endedLoopId,
@@ -1995,23 +2071,24 @@ export default class Daemon {
 
     /**
      * Wake-on-completion handler. Streaming schemes call this when a
-     * subscription closes. If the worker has an active loop, the channel
-     * transition will surface at that loop's next turn boundary — no new
-     * loop needed. Otherwise we open a fresh loop with the synthetic
-     * summary as the user prompt so the model gets a chance to react.
+     * subscription closes. A parked loop resumes in place; an active loop
+     * observes the channel transition at its next turn boundary. No synthetic
+     * prompt or replacement loop is created.
      *
      * Skipped on result.status=499 (aborted): the model already knows about
-     * its own SEND[499], and a forcefully-cancelled loop's spawn-abort
-     * shouldn't resurrect into a wake loop (defeats the cancel).
+     * its own SEND[499], and a forcefully-cancelled loop's spawn-abort must
+     * not resurrect the worker.
      */
     async #handleWakeWorker(payload: WakeWorkerPayload): Promise<void> {
+        const { entryOwnerId, ...wake } = payload;
+        const conclusion = { ...wake, workerId: entryOwnerId };
         // {§search-gate} — settle the dedup registration: promote on a 200 conclusion, drop on
         // failure (a dead search must never serve as a duplicate). No-op for non-search streams.
         this.#engine.searchGate.settle(payload.target.replace(/^[a-z+.-]+:\/\//, "/").replace(/^\/+/, "/"), payload.result.status);
         // Aborted streams don't wake — the abort was deliberate.
         if (payload.result.status === 499) {
             this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
-                ...payload, wakeAction: "skipped-aborted",
+                ...conclusion, wakeAction: "skipped-aborted",
             });
             return;
         }
@@ -2026,7 +2103,7 @@ export default class Daemon {
         const scope = this.#workerAborts.get(payload.workerId);
         if (scope?.signal.aborted === true && !this.#activeDrains.has(payload.workerId)) {
             this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
-                ...payload, wakeAction: "skipped-cancelled",
+                ...conclusion, wakeAction: "skipped-cancelled",
             });
             return;
         }
@@ -2048,7 +2125,7 @@ export default class Daemon {
                     systemPrompt,
                 });
                 this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
-                    ...payload, wakeAction: "resumed-loop", wakeLoopId: slept.id,
+                    ...conclusion, wakeAction: "resumed-loop", wakeLoopId: slept.id,
                 });
                 started?.drainPromise?.catch((err: unknown) => {
                     console.error("wake resume drain failed:", err instanceof Error ? err.message : String(err));
@@ -2062,7 +2139,7 @@ export default class Daemon {
             // synthesis (which clobbered the model's actual goal) is retired; just tell the client.
             if (this.#activeDrains.has(payload.workerId)) {
                 this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
-                    ...payload, wakeAction: "no-op-active-loop",
+                    ...conclusion, wakeAction: "no-op-active-loop",
                 });
                 return;
             }
@@ -2070,7 +2147,7 @@ export default class Daemon {
             // No slept loop, no active drain — nothing to resume (e.g. a SEND[200]-done worker whose
             // streams were swept). Surface the conclusion without opening a loop.
             this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
-                ...payload, wakeAction: "no-loop",
+                ...conclusion, wakeAction: "no-loop",
             });
         } catch (err) {
             console.error("wake-on-completion setup failed:", err instanceof Error ? err.message : String(err));

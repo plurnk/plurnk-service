@@ -38,8 +38,9 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
     }
 
     async open(pathname: string, handle: SubscriptionHandle, options?: { publishedChannel?: string }): Promise<StreamSubscription> {
-        const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
-        if (entryId === null) throw new Error(`subscriptions.open: no entry at ${pathname}`);
+        const entry = await CapsResolve.entry(this.#ctx, this.#scheme, pathname);
+        if (entry === null) throw new Error(`subscriptions.open: no entry at ${pathname}`);
+        const { entryId, workerId: entryOwnerId } = entry;
         const {
             db,
             workerId,
@@ -89,7 +90,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
             liveSubscriptions.unregister(subscriptionId);
             unlink();
             wakeWorkerNotify?.({
-                workspaceId, workerId, entryId,
+                workspaceId, workerId, entryOwnerId, entryId,
                 target: renderAddress(scheme, pathname),
                 subscriptionId, result, scheme, summary: summary ?? "",
             });

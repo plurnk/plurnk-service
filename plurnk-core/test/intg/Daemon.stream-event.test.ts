@@ -3,6 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import ChannelWrite, { type StreamEventPayload } from "../../src/core/ChannelWrite.ts";
+import Owner from "../../src/core/Owner.ts";
 import { seedEntryWithChannel } from "./_helpers.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 test("notifyStreamEvent broadcasts to a workspace's clients, envelope stamped with the scope", async () => {
@@ -14,15 +15,17 @@ test("notifyStreamEvent broadcasts to a workspace's clients, envelope stamped wi
             const captured = subscribeNotifications(ws, "stream/event");
 
             const entryId = await seedEntryWithChannel(db, { workspaceId, content: "hello", state: "active" });
+            const workerId = await Owner.commonsId(db, workspaceId);
             daemon.notifyStreamEvent(workspaceId, {
-                entryId, target: "worker:///x", channel: "body", state: "active", contentLength: 5, mimetype: "text/markdown",
+                entryId, workerId, target: "worker:///x", channel: "body", state: "active", contentLength: 5, mimetype: "text/markdown",
             });
             await flush();
 
             assert.equal(captured().length, 1);
-            const evt = captured()[0] as { workspaceId: number; entryId: number; channel: string; state: string; contentLength: number };
+            const evt = captured()[0] as { workspaceId: number; entryId: number; workerId: number; channel: string; state: string; contentLength: number };
             assert.equal(evt.workspaceId, workspaceId, "the envelope carries its workspace scope so multi-workspace clients can route it");
             assert.equal(evt.entryId, entryId);
+            assert.equal(evt.workerId, workerId);
             assert.equal(evt.channel, "body");
             assert.equal(evt.state, "active");
             assert.equal(evt.contentLength, 5);
@@ -87,13 +90,15 @@ test("stream/event is workspace-scoped — other workspaces don't see it", async
             const bEvents = subscribeNotifications(wsB, "stream/event");
 
             const entryIdA = await seedEntryWithChannel(db, { workspaceId: workspaceA, content: "hi", state: "active" });
+            const workerIdA = await Owner.commonsId(db, workspaceA);
             daemon.notifyStreamEvent(workspaceA, {
-                entryId: entryIdA, target: "worker:///x", channel: "body", state: "active", contentLength: 2, mimetype: "text/markdown",
+                entryId: entryIdA, workerId: workerIdA, target: "worker:///x", channel: "body", state: "active", contentLength: 2, mimetype: "text/markdown",
             });
 
             const entryIdB = await seedEntryWithChannel(db, { workspaceId: workspaceB, content: "yo", state: "active" });
+            const workerIdB = await Owner.commonsId(db, workspaceB);
             daemon.notifyStreamEvent(workspaceB, {
-                entryId: entryIdB, target: "worker:///x", channel: "body", state: "active", contentLength: 2, mimetype: "text/markdown",
+                entryId: entryIdB, workerId: workerIdB, target: "worker:///x", channel: "body", state: "active", contentLength: 2, mimetype: "text/markdown",
             });
 
             await flush();

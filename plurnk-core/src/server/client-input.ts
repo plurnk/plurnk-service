@@ -92,17 +92,23 @@ export default class ClientInput {
         }
     }
 
-    static assertOptionalSelector(context: string, field: "alias" | "model", value: unknown): string | undefined {
+    static assertOptionalSelector(context: string, field: "alias" | "model" | "childAlias" | "childModel", value: unknown): string | undefined {
         if (value === undefined) return undefined;
         if (typeof value !== "string" || value.length === 0) {
+            const codeField = field.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
             ClientInput.#invalid(
                 context,
-                `${field}-invalid`,
+                `${codeField}-invalid`,
                 `${field} is not a non-empty string.`,
                 { field, recovery: `Provide a non-empty provider ${field}.` },
             );
         }
         return value;
+    }
+
+    static assertOptionalChildAlias(context: string, value: unknown): string | null | undefined {
+        if (value === null) return null;
+        return ClientInput.assertOptionalSelector(context, "childAlias", value);
     }
 
     static assertOptionalChannel(context: string, channel: unknown): string | undefined {

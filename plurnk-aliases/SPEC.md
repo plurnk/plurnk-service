@@ -11,6 +11,8 @@ without the provider/tokenizer machinery.
   segment is the **first** `/`-delimited field; the model id is everything after
   that first `/` (it MAY contain further `/`, e.g. `openrouter/anthropic/claude-…`).
 - **`PLURNK_MODEL=<alias>`** selects the active alias at boot.
+- §alias-child-selector-reserved **`PLURNK_MODEL_CHILD=<alias>` is reserved as
+  the child-provider selector** and is never parsed as an alias declaration.
 - **`PLURNK_BASEURL_<alias>`** attaches a per-alias endpoint override — the one
   thing a per-provider base-URL var can't express (two aliases on the same
   provider name pointing at different self-hosted boxes).

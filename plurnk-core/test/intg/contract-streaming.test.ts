@@ -379,7 +379,7 @@ test("state transition fires metadata-only stream/event with new state", async (
             assert.equal(evt.contentLength, "finished".length, "carries the existing content length (8)");
             assert.equal(evt.target, "worker:///x", "carries the entry's canonical target URI");
             // Metadata only — never the content body.
-            assert.deepEqual(Object.keys(evt).toSorted(), ["channel", "contentLength", "entryId", "mimetype", "state", "target", "workspaceId"], "payload is metadata-only (identity/state/length/mimetype + workspace scope); no content field");
+            assert.deepEqual(Object.keys(evt).toSorted(), ["channel", "contentLength", "entryId", "mimetype", "state", "target", "workerId", "workspaceId"], "payload is metadata-only (identity/owner/state/length/mimetype + workspace scope); no content field");
         } finally { ws.close(); }
     });
 });

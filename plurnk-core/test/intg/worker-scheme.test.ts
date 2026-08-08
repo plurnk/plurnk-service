@@ -173,8 +173,8 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
         assert.equal(meta?.workspace_id, workspaceId, "spawned worker shares the workspace (sisters)");
 
         assert.equal(calls.length, 1, "exactly one injectWorker call");
-        const { flags: spawnFlags, ...spawnRest } = calls[0] as { flags?: object; workspaceId: number; workerId: number; prompt: string };
-        assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, prompt: "investigate the bug" }, "the new worker is started with the prompt");
+        const { flags: spawnFlags, ...spawnRest } = calls[0] as { flags?: object; workspaceId: number; workerId: number; prompt: string; parentLoopId: number };
+        assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, prompt: "investigate the bug", parentLoopId: loopId }, "the new worker is started from the delegating loop");
         assert.equal((spawnFlags as { auto?: boolean } | undefined)?.auto, false, "the delegating loop's flags ride the injection ({§worker-delegation-inherits-flags})");
     } finally { await db.close(); }
 });
@@ -603,8 +603,8 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
         const branch = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: branchName });
         if (branch === undefined) throw new Error("fork must create the branch worker in the workspace");
         assert.notEqual(branch.id, workerId, "the branch is a distinct worker");
-        const { flags: forkFlags, ...forkRest } = calls.at(-1) as { flags?: { auto?: boolean }; workspaceId: number; workerId: number; prompt: string };
-        assert.deepEqual(forkRest, { workspaceId, workerId: branch.id, prompt: "take the other branch" }, "the branch is continued with the fork prompt");
+        const { flags: forkFlags, ...forkRest } = calls.at(-1) as { flags?: { auto?: boolean }; workspaceId: number; workerId: number; prompt: string; parentLoopId: number };
+        assert.deepEqual(forkRest, { workspaceId, workerId: branch.id, prompt: "take the other branch", parentLoopId: loopId }, "the branch is continued from the delegating loop");
         assert.equal(forkFlags?.auto, false, "the forking loop's flags ride the injection ({§worker-delegation-inherits-flags})");
     } finally { await db.close(); }
 });

@@ -11,7 +11,7 @@ import { DEFAULT_LOOP_FLAGS, PlurnkParser, Problems, Validator } from "@plurnk/p
 
 const mockSeam = () => {
     const resolves: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
-    const loopRuns: Array<{ alias?: string; model?: string; prompt: string }> = [];
+    const loopRuns: Array<{ alias?: string; model?: string; childAlias?: string | null; childModel?: string; prompt: string }> = [];
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
     const seam: DaemonSeam = {
         listClientDisplayCapabilities: async () => [],
@@ -24,7 +24,7 @@ const mockSeam = () => {
             // The engine's continued loop terminating — closes the resume stream.
             setImmediate(() => handlers.forEach((h) => h(3, "loop/terminated", { loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: { promptTokens: 1, completionTokens: 1, costUsd: 0, costs: [], contextTokens: 2, promptBudget: 1000, meta: {} } })));
         },
-        runLoop: async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.alias !== undefined ? { alias: a.alias } : {}), ...(a.model !== undefined ? { model: a.model } : {}) }); return { status: 100, action: "injected_next_turn" as const, loopId: 9, turnSeq: 2 }; },
+        runLoop: async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.alias !== undefined ? { alias: a.alias } : {}), ...(a.model !== undefined ? { model: a.model } : {}), ...(a.childAlias !== undefined ? { childAlias: a.childAlias } : {}), ...(a.childModel !== undefined ? { childModel: a.childModel } : {}) }); return { status: 100, action: "injected_next_turn" as const, loopId: 9, turnSeq: 2 }; },
         cancelDrain: () => true,
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [{ id: 1, op: "SEND", origin: "model" }],
@@ -174,7 +174,7 @@ test("a management-action AG-UI Run executes via the seam: result custom + RUN_F
     } finally { await mod.close(); }
 });
 
-test("entry.read uses the thread worker and preserves the contracts-owned wire", async () => {
+test("entry.read defaults to the thread worker, honors an explicit owner, and preserves the contracts-owned wire", async () => {
     const { seam } = mockSeam();
     const calls: Array<Parameters<DaemonSeam["readEntry"]>[0]> = [];
     const entry = {
@@ -225,6 +225,25 @@ test("entry.read uses the thread worker and preserves the contracts-owned wire",
         } | undefined;
         assert.equal(event?.value?.ok, true);
         assert.deepEqual(event?.value?.result, { status: 200, entry });
+
+        await post(mod.address().port, {
+            threadId: "entry-wire-thread",
+            forwardedProps: {
+                plurnk: {
+                    workspace: "agui-t",
+                    action: {
+                        kind: "entry.read",
+                        workerId: 91,
+                        target: "worker://~/notes.md",
+                    },
+                },
+            },
+        });
+        assert.deepEqual(calls[1], {
+            workspaceId: 3,
+            workerId: 91,
+            target: "worker://~/notes.md",
+        });
     } finally {
         await mod.close();
     }
@@ -1162,21 +1181,23 @@ test("[{§agui-configuration}] the environment turn default yields to the Run va
 });
 
 
-test("a message AG-UI Run forwards forwardedProps.plurnk alias+model into runLoop", async () => {
+test("a message AG-UI Run forwards parent and child provider selection into runLoop", async () => {
     const { seam, loopRuns, finish } = mockSeam();
     // The worker self-completes: the runLoop override closes the stream for its workspace (the working
     // message-drive pattern above), so the POST resolves.
-    seam.runLoop = async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.alias !== undefined ? { alias: a.alias } : {}), ...(a.model !== undefined ? { model: a.model } : {}) }); finish(a.workspaceId); return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 }; };
+    seam.runLoop = async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.alias !== undefined ? { alias: a.alias } : {}), ...(a.model !== undefined ? { model: a.model } : {}), ...(a.childAlias !== undefined ? { childAlias: a.childAlias } : {}), ...(a.childModel !== undefined ? { childModel: a.childModel } : {}) }); finish(a.workspaceId); return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         await post(mod.address().port, {
             threadId: "t-model", workerId: "r1",
-            forwardedProps: { plurnk: { workspace: "t-model", alias: "fireslow", model: "fireworks/deepseek-v4" } },
+            forwardedProps: { plurnk: { workspace: "t-model", alias: "fireslow", model: "fireworks/deepseek-v4", childAlias: "firefast", childModel: "fireworks/qwen3-coder" } },
             messages: [{ role: "user", content: "hello" }],
         });
         assert.equal(loopRuns.length, 1, "the message drove one runLoop");
         assert.equal(loopRuns[0].alias, "fireslow", "the alias forwarded off forwardedProps.plurnk");
         assert.equal(loopRuns[0].model, "fireworks/deepseek-v4", "the client-resolved model forwarded too (daemon applies precedence)");
+        assert.equal(loopRuns[0].childAlias, "firefast", "the child alias rides the same per-loop wire");
+        assert.equal(loopRuns[0].childModel, "fireworks/qwen3-coder", "the client-resolved child model rides with it");
     } finally { await mod.close(); }
 });
 

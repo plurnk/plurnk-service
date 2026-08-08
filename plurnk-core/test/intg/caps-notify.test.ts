@@ -11,9 +11,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbNotifyCaps from "../../src/core/caps/DbNotifyCaps.ts";
+import Owner from "../../src/core/Owner.ts";
 import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
 
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r));
 // Wall-clock wait for a condition — the emit's entryId lookup goes through the shared
@@ -28,8 +29,10 @@ test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-notify-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ownerId = await Owner.commonsId(db, workspaceId);
         const captured: Array<{ sid: number; payload: StreamEventPayload }> = [];
-        const ctx = makeSchemeCtx({ db, workspaceId, streamEventNotify: (sid, payload) => captured.push({ sid, payload }) });
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, streamEventNotify: (sid, payload) => captured.push({ sid, payload }) });
         const entries = new DbEntryCaps(ctx, "worker", schemeManifest("worker"));
         const notify = new DbNotifyCaps(ctx, "worker");
 
@@ -40,6 +43,8 @@ test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no 
         await waitUntil(() => captured.length >= 1);
         assert.equal(captured.length, 1);
         assert.equal(captured[0].sid, workspaceId);
+        assert.equal(captured[0].payload.workerId, ownerId, "notification carries the stored entry owner, not the invoking worker");
+        assert.notEqual(captured[0].payload.workerId, workerId);
         assert.equal(captured[0].payload.channel, "body");
         assert.equal(captured[0].payload.state, "active");
         assert.equal(captured[0].payload.contentLength, 42);

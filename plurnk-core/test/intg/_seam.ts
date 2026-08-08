@@ -108,6 +108,8 @@ export default class SeamSocket {
                     ...(p.openPaths !== undefined ? { openPaths: p.openPaths as string[] } : {}),
                     ...(p.alias !== undefined ? { alias: p.alias as string } : {}),
                     ...(p.model !== undefined ? { model: p.model as string } : {}),
+                    ...(p.childAlias !== undefined ? { childAlias: p.childAlias as string | null } : {}),
+                    ...(p.childModel !== undefined ? { childModel: p.childModel as string } : {}),
                 });
                 return { ...loop, modelWorkerId };
             }
@@ -135,6 +137,8 @@ export default class SeamSocket {
                     ...(p.flags !== undefined ? { flags: p.flags as { auto?: boolean } } : {}),
                     ...(p.alias !== undefined ? { alias: p.alias as string } : {}),
                     ...(p.model !== undefined ? { model: p.model as string } : {}),
+                    ...(p.childAlias !== undefined ? { childAlias: p.childAlias as string | null } : {}),
+                    ...(p.childModel !== undefined ? { childModel: p.childModel as string } : {}),
                 });
                 return { ...result, modelWorkerId: this.#modelWorkerId };
             }
