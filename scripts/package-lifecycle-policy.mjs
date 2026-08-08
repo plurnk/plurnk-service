@@ -8,6 +8,7 @@ const AUXILIARY_TEST_SCRIPTS = new Set([
     "test:live:zeropin",
     "test:demo",
     "test:demo:zeropin",
+    "test:benchlet",
     "test:llama",
     "test:installation",
 ]);
