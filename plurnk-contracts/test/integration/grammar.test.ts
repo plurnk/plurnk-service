@@ -655,7 +655,7 @@ test("a `/`-leading body that never closes the literal is a visitor ERROR, not a
     const result = PlurnkParser.parseStatements("<<FIND(log://x):/unclosed-regex:FIND");
     const errors = result.items.filter((i) => i.kind === "error");
     assert.equal(errors.length, 1);
-    assert.match(errors[0]!.error.message, /regex matcher must use `\/pattern\/flags`; this matcher has no closing `\/`/);
+    assert.match(errors[0]!.error.message, /regex matcher must use `\/pattern\/flags`; this matcher has no closing `\/`: `\/unclosed-regex`/);
     assert.equal(errors[0]!.error.source, "visitor");
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 0);
 });

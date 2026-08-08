@@ -606,10 +606,14 @@ export default class AstBuilder {
                 && regex.detail.includes("Invalid flags supplied")
                 ? " - use only ECMAScript flags after the closing `/`; escape a literal `/` inside the pattern as `\\/`"
                 : "";
+            // Quote the offending matcher so a multi-op emission's failure is
+            // unambiguous about WHICH body failed (a correct sibling regex must
+            // not take the blame for a broken one).
+            const excerpt = body.length > 80 ? `${body.slice(0, 80)}…` : body;
             throw new PlurnkParseError(pos.line, pos.column, "visitor",
                 regex.reason === "unclosed"
-                    ? "regex matcher must use `/pattern/flags`; this matcher has no closing `/`"
-                    : `pattern leads with \`/\` but is not a valid \`/pattern/flags\` regex - ${regex.detail}${slashRecovery}`);
+                    ? `regex matcher must use \`/pattern/flags\`; this matcher has no closing \`/\`: \`${excerpt}\``
+                    : `pattern leads with \`/\` but is not a valid \`/pattern/flags\` regex - ${regex.detail}${slashRecovery}: \`${excerpt}\``);
         }
         if (body.startsWith("$")) {
             // Compile-only RFC 9535 admission through the shared json-p3 engine.
