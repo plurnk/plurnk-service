@@ -353,9 +353,12 @@ normal value. Retry exhaustion is preserved as `attempts` and
 `retryExhausted`, and the resulting Problem is not marked retryable after the
 provider has consumed its automatic retry budget.
 
-The AI SDK owns attempt scheduling. `PLURNK_PROVIDERS_RETRY_ATTEMPTS` is the
-maximum retry count. Caller cancellation spans the operation. Total and
-stream-chunk deadlines are separately configurable.
+The AI SDK owns one attempt scheduler around the complete generation exchange.
+`PLURNK_PROVIDERS_RETRY_ATTEMPTS` is the maximum retry count, including a
+configured stream-chunk deadline that expires while consuming a response body.
+The total generation deadline and caller cancellation span that scheduler and
+every attempt; neither restarts during replay. Total and stream-chunk deadlines
+are separately configurable.
 
 HTTP 408, 409, 429, and ordinary 5xx responses are retryable unless the endpoint
 explicitly says otherwise. Endpoint control responses 520–527 are final so a

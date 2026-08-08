@@ -158,6 +158,7 @@ export const classifyProviderError = (
         if (status === 401 || status === 403) return { kind: "unauthorized", message };
         if (status === 402) return { kind: "quota_exceeded", message };
         if (status === 429) return { kind: "rate_limit", message };
+        if (status === 0 && err.isRetryable) return { kind: "network_failure", message };
         if (status >= 500) return { kind: "network_failure", message };
         if (status === 422 && wireErrorType(body) === "grammar_invalid") {
             return { kind: "grammar_invalid", message };

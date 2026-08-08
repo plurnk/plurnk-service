@@ -1262,6 +1262,15 @@ test("configured headers and url are sent verbatim", async () => {
 
 const retryCfg = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null } as const };
 
+const stalledStreamResponse = (): Response => new Response(new ReadableStream({
+    start(controller) {
+        controller.enqueue(new TextEncoder().encode(
+            'data: {"id":"stalled","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}\n\n',
+        ));
+        setTimeout(() => controller.close(), 100);
+    },
+}), { status: 200 });
+
 test("retry: a transient failure retries and a later success resolves", async () => {
     const calls = installFetchScript([
         { status: 429, retryAfter: 0 },
@@ -1278,16 +1287,7 @@ test("streamed-body silence retries and returns the retry's complete output", as
     let calls = 0;
     mock.method(globalThis, "fetch", async () => {
         calls++;
-        if (calls === 1) {
-            return new Response(new ReadableStream({
-                start(controller) {
-                    controller.enqueue(new TextEncoder().encode(
-                        'data: {"id":"first","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}\n\n',
-                    ));
-                    setTimeout(() => controller.close(), 100);
-                },
-            }), { status: 200 });
-        }
+        if (calls === 1) return stalledStreamResponse();
         return new Response(new ReadableStream({
             start(controller) {
                 controller.enqueue(new TextEncoder().encode(
@@ -1300,7 +1300,7 @@ test("streamed-body silence retries and returns the retry's complete output", as
     const p = new AiSdkProvider({
         model: "m",
         url: "http://x/v1/chat/completions",
-        fetchTimeoutMs: 1000,
+        fetchTimeoutMs: 5000,
         streamIdleTimeoutMs: 10,
         temperature: 0.2,
         repeatPenalty: 1.15,
@@ -1311,6 +1311,97 @@ test("streamed-body silence retries and returns the retry's complete output", as
     const result = await p.generate({ workerId: "r", messages: [] });
     assert.equal(result.assistant.content, "recovered", "the retry's complete output, not the stalled partial");
     assert.equal(calls, 2, "the stall retried once and the retry succeeded");
+    mock.restoreAll();
+});
+
+test("streamed-body silence does not replay when retries are disabled", async () => {
+    let calls = 0;
+    mock.method(globalThis, "fetch", async () => {
+        calls++;
+        return stalledStreamResponse();
+    });
+    const p = new AiSdkProvider({
+        model: "m",
+        url: "http://x/v1/chat/completions",
+        fetchTimeoutMs: 1000,
+        streamIdleTimeoutMs: 10,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 0,
+        source: "provider:test",
+    });
+    await assert.rejects(
+        p.generate({ workerId: "r", messages: [] }),
+        (error: ProviderError) => error.kind === "network_failure"
+            && /chunk timeout/i.test(error.message),
+    );
+    assert.equal(calls, 1, "zero retries permits exactly one provider request");
+    mock.restoreAll();
+});
+
+test("streamed-body silence exhausts the configured retry budget once", async () => {
+    let calls = 0;
+    mock.method(globalThis, "fetch", async () => {
+        calls++;
+        return stalledStreamResponse();
+    });
+    const p = new AiSdkProvider({
+        model: "m",
+        url: "http://x/v1/chat/completions",
+        fetchTimeoutMs: 5000,
+        streamIdleTimeoutMs: 10,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 1,
+        source: "provider:test",
+    });
+    await assert.rejects(
+        p.generate({ workerId: "r", messages: [] }),
+        (error: ProviderError) => error.kind === "network_failure"
+            && error.problem.attempts === 2
+            && error.problem.retryExhausted === true
+            && error.problem.retryable === false,
+    );
+    assert.equal(calls, 2, "one configured retry permits exactly two provider requests");
+    mock.restoreAll();
+});
+
+test("the total generation deadline spans stalled-stream retry scheduling", async () => {
+    let calls = 0;
+    mock.method(globalThis, "fetch", async () => {
+        calls++;
+        if (calls > 1) {
+            return new Response(new ReadableStream({
+                start(controller) {
+                    controller.enqueue(new TextEncoder().encode(
+                        'data: {"id":"second","object":"chat.completion.chunk","created":2,"model":"m","choices":[{"index":0,"delta":{"content":"late"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+                    ));
+                    controller.close();
+                },
+            }), { status: 200 });
+        }
+        return stalledStreamResponse();
+    });
+    const p = new AiSdkProvider({
+        model: "m",
+        url: "http://x/v1/chat/completions",
+        fetchTimeoutMs: 50,
+        streamIdleTimeoutMs: 10,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 3,
+        source: "provider:test",
+    });
+    const started = Date.now();
+    await assert.rejects(
+        p.generate({ workerId: "r", messages: [] }),
+        (error: ProviderError) => error.kind === "network_failure",
+    );
+    assert.ok(Date.now() - started < 500, "the configured total deadline ends retry scheduling");
+    assert.equal(calls, 1, "the total deadline expires before another request begins");
     mock.restoreAll();
 });
 
