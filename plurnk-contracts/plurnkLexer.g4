@@ -94,6 +94,17 @@ private isExecOp(): boolean { return this.openTag.startsWith("EXEC"); }
 private isKillOp(): boolean { return this.openTag.startsWith("KILL"); }
 private isTurnOp(): boolean { return this.openTag.startsWith("TURN"); }
 
+// FIND and READ bodies are single-line matcher patterns — every dialect is
+// line-anchored, so a newline before the close tag means the closer was
+// forgotten. The newline implicitly closes the body.
+private isSingleLineBodyOp(): boolean {
+    return this.openTag.startsWith("FIND") || this.openTag.startsWith("READ");
+}
+
+// Implicit closes recorded for the parser to surface as recoverable errors.
+private implicitCloses: Array<{ line: number, column: number, op: string }> = [];
+public getImplicitCloses(): ReadonlyArray<{ line: number, column: number, op: string }> { return this.implicitCloses; }
+
 // TURN suffix stack — one entry per open `<<TURN…:` body (pushed by the TURN colon below,
 // popped by `:TURN`). Stack depth doubles as nesting depth: a `:TURN` close only fires inside
 // an open TURN, so a stray `:TURN` at top level (or in preamble prose) stays TEXT.
@@ -280,7 +291,14 @@ TARGET_END   : ')' -> type(RPAREN), mode(SLOTS) ;
 // ============================================================================
 
 mode BODY;
+// FIND and READ bodies are single-line matcher patterns — a newline before the
+// closer means the model forgot it. Close implicitly and record the recovery.
+B_IMPLICIT_CLOSE : { this.isSingleLineBodyOp() }? '\n' {
+    this.implicitCloses.push({ line: this.openTagLine, column: this.openTagColumn, op: this.openTag });
+    this.text = ':' + this.openTag;
+} -> type(CLOSE_TAG), mode(DEFAULT_MODE) ;
 B_CLOSE : { this.atColonCloseTag() }? ':' . { this.consumeRestOfCloseTagAfterColon(); }
            -> type(CLOSE_TAG), mode(DEFAULT_MODE) ;
-B_RUN   : ~[:]+ -> type(BODY_TEXT) ;
+B_RUN   : ~[:\n]+ -> type(BODY_TEXT) ;
+B_NEWLINE_MULTILINE : '\n' -> type(BODY_TEXT) ;
 B_COLON : ':' -> type(BODY_TEXT) ;

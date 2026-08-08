@@ -660,6 +660,21 @@ test("a `/`-leading body that never closes the literal is a visitor ERROR, not a
     assert.equal(result.items.filter((i) => i.kind === "statement").length, 0);
 });
 
+test("an unclosed FIND body implicitly closes at the line boundary; the frame survives", () => {
+    // {§implicit-close}: a forgotten `:FIND` followed by a new op on the next line
+    // closes the body at the newline — the error is recoverable, the frame intact.
+    const result = PlurnkParser.parseStatements(
+        "<<PLAN:p:PLAN\n<<FIND(Engine.ts):/pattern/FIND\n<<SEND[102]:go:SEND",
+    );
+    const errors = result.items.filter((i) => i.kind === "error");
+    const statements = result.items.filter((i) => i.kind === "statement");
+    assert.equal(errors.length, 1, "one implicit-close error");
+    assert.match(errors[0]!.error.message, /body was not closed before the end of its line/);
+    assert.match(errors[0]!.error.message, /:FIND/);
+    assert.equal(errors[0]!.error.source, "lexer");
+    assert.ok(statements.some((i) => i.kind === "statement" && i.statement.op === "SEND"), "the SEND survives the broken FIND");
+});
+
 test("invalid regex pattern is a visitor ERROR, not a silent glob", () => {
     const result = PlurnkParser.parseStatements("<<FIND(log://x):/(abc/:FIND");
     const errors = result.items.filter((i) => i.kind === "error");

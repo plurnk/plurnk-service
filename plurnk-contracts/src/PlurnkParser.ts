@@ -229,6 +229,15 @@ export default class PlurnkParser {
 
         const tree = parseFn(parser);
         PlurnkParser.#dedupeLexerCascade(errors);
+        // Implicit closes: a FIND/READ body that reached a line boundary without
+        // its closer was closed by the lexer. Surface each as a recoverable error
+        // so the model learns the closer rule from the next packet.
+        for (const close of lexer.getImplicitCloses()) {
+            errors.push(new PlurnkParseError(
+                close.line, close.column, "lexer",
+                `\u003c\u003c${close.op} body was not closed before the end of its line — add \`:${close.op}\` to terminate`,
+            ));
+        }
         const unparsedTail = PlurnkParser.#unparsedTail(lexer, input);
 
         const items: ParseItem<S>[] = [];
