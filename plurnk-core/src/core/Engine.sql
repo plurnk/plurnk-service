@@ -507,6 +507,7 @@ UPDATE log_entries SET expanded = 0 WHERE id = $id;
 -- `expanded = 0` rows are FOLDED — listed but collapsed to their coordinate
 -- (FOLD); the renderer elides the body. {§open-fold}: folded rows stay listed, re-OPENable.
 SELECT
+    le.id,
     l.sequence  AS loop_seq,
     t.sequence  AS turn_seq,
     le.sequence,

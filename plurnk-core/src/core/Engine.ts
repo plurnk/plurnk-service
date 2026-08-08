@@ -189,6 +189,7 @@ type EngineTurnResult = {
     steerStruck: boolean;
     emissionAttempts: number;
     emissionExhausted: boolean;
+    rejectedModelEntryId?: number;
     budget?: BudgetOverflowMeasurement;
 };
 
@@ -803,7 +804,7 @@ export default class Engine {
         // Its ceiling therefore counts every prior turn, not merely this process-local
         // execution segment.
         const turnIds = await this.#lifecycle.turnIds(loopId);
-        let invalidEmissionRecoveryPending = false;
+        let invalidEmissionRecoveryEntryId: number | null = null;
         // Per-loop AbortController for scheme-side cancellation propagation.
         // Chained from the caller's `signal` so an external abort cascades.
         const loopAbort = new AbortController();
@@ -943,7 +944,7 @@ export default class Engine {
                         const t = await this.runTurn({
                             provider, messages, requirements, workspaceId, workerId, loopId, origin, signal, onDispatch,
                             turnNumber: turnIds.length + 1, maxTurns,
-                            allowInvalidEmissionRecovery: !invalidEmissionRecoveryPending,
+                            invalidEmissionRecoveryEntryId,
                         });
                         span.setAttribute("turn.id", t.turnId);
                         return t;
@@ -970,8 +971,11 @@ export default class Engine {
             // exposed its bounded lifeline through ordinary next-turn state. A
             // second exhaustion is terminal; an admitted turn clears the sequence.
             if (turn.emissionExhausted) {
-                if (!invalidEmissionRecoveryPending) {
-                    invalidEmissionRecoveryPending = true;
+                if (invalidEmissionRecoveryEntryId === null) {
+                    if (turn.rejectedModelEntryId === undefined) {
+                        throw new Error("an admitted invalid-emission recovery requires its rejected model-entry identity");
+                    }
+                    invalidEmissionRecoveryEntryId = turn.rejectedModelEntryId;
                     continue;
                 }
                 const failure = Results.failure(
@@ -991,7 +995,7 @@ export default class Engine {
                 cleanup("forceful", "invalid_emission");
                 return { turnIds, result, hitMaxTurns: false, reason: "invalid_emission" };
             }
-            invalidEmissionRecoveryPending = false;
+            invalidEmissionRecoveryEntryId = null;
 
             // SPEC {§grinder}: budget hard-stop — packet won't fit even collapsed → abandon.
             if (turn.budgetHardStop) {
@@ -1047,7 +1051,7 @@ export default class Engine {
 
     async runTurn({
         provider, messages, requirements = "", workspaceId, workerId, loopId, origin = "model", signal, onDispatch,
-        turnNumber = 1, maxTurns = 50, allowInvalidEmissionRecovery = false,
+        turnNumber = 1, maxTurns = 50, invalidEmissionRecoveryEntryId,
     }: {
         provider: Provider;
         messages: ChatMessage[];
@@ -1062,8 +1066,14 @@ export default class Engine {
         // are augmented with the durable state (index/log/notices).
         turnNumber?: number;
         maxTurns?: number;
-        allowInvalidEmissionRecovery?: boolean;
+        // Omitted outside loop admission; null grants the first recovery, and
+        // an id identifies the rejected row informing this turn.
+        invalidEmissionRecoveryEntryId?: number | null;
     }): Promise<EngineTurnResult> {
+        const allowInvalidEmissionRecovery = invalidEmissionRecoveryEntryId === null;
+        const transientOpenLogEntryId = typeof invalidEmissionRecoveryEntryId === "number"
+            ? invalidEmissionRecoveryEntryId
+            : null;
         // === Turn-as-container model ===
         //
         // Turn rows are created at runTurn OPEN (status=102, placeholder
@@ -1380,7 +1390,7 @@ export default class Engine {
         // written (if turn 1) is part of that query result.
         let requestPacket = await this.#packets.buildRequestPacket({
             initialMessages: messages, requirements, workspaceId, workerId, loopId,
-            currentTurnSeq: seq, provider, gitStatus, notices,
+            currentTurnSeq: seq, provider, gitStatus, notices, transientOpenLogEntryId,
         });
         // SPEC {§grinder} — budget grinder, pre-LLM: reclaim window on actual overflow.
         const enforced = await this.#packets.enforceBudget({
@@ -1392,7 +1402,7 @@ export default class Engine {
             // set; neither path can duplicate or swallow a product failure.
             rebuild: () => this.#packets.buildRequestPacket({
                 initialMessages: messages, requirements, workspaceId, workerId, loopId,
-                currentTurnSeq: seq, provider, gitStatus, notices,
+                currentTurnSeq: seq, provider, gitStatus, notices, transientOpenLogEntryId,
             }),
         });
         if (enforced.recorded) nextActionIndex += 1; // a fold-to-fit Problem consumed the reserved sequence
@@ -1425,7 +1435,7 @@ export default class Engine {
                 // errors sections (the same re-derive contract the soft grind uses).
                 requestPacket = await this.#packets.buildRequestPacket({
                     initialMessages: messages, requirements, workspaceId, workerId, loopId,
-                    currentTurnSeq: seq, provider, gitStatus, notices,
+                    currentTurnSeq: seq, provider, gitStatus, notices, transientOpenLogEntryId,
                 });
                 physicalAdmission = await this.#packets.physicalAdmission(
                     requestPacket,
@@ -1469,7 +1479,7 @@ export default class Engine {
                     });
                     requestPacket = await this.#packets.buildRequestPacket({
                         initialMessages: messages, requirements, workspaceId, workerId, loopId,
-                        currentTurnSeq: seq, provider, gitStatus, notices,
+                        currentTurnSeq: seq, provider, gitStatus, notices, transientOpenLogEntryId,
                     });
                 }
                 // Skip the LLM, close the turn, and let runLoop abandon.
@@ -1756,14 +1766,15 @@ export default class Engine {
         if (!splitResponse.emissionValid) {
             // {§invalid-emission-attempts} The first consecutive exhaustion
             // publishes only the raw final response and generic recovery fact.
+            let rejectedModelEntryId: number | undefined;
             if (allowInvalidEmissionRecovery) {
-                await this.#dispatcher.writeModelEntry({
+                rejectedModelEntryId = await this.#dispatcher.writeModelEntry({
                     verbatim: splitResponse.packetAssistant.content,
                     workerId,
                     loopId,
                     turnId,
                     sequence: nextActionIndex,
-                    folded: false,
+                    folded: true,
                     admission: "rejected",
                 });
                 this.#notices.push(workspaceId, loopId, {
@@ -1792,6 +1803,7 @@ export default class Engine {
                 steerStruck: false,
                 emissionAttempts,
                 emissionExhausted: true,
+                ...(rejectedModelEntryId === undefined ? {} : { rejectedModelEntryId }),
             };
         }
 

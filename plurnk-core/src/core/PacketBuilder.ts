@@ -244,6 +244,7 @@ export default class PacketBuilder {
     // provider call; complete the same record with the provider response.
     async buildRequestPacket({
         initialMessages, requirements, workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
+        transientOpenLogEntryId = null,
     }: {
         initialMessages: ChatMessage[];
         // Optional requirements override. Empty in practice — callers don't thread it;
@@ -258,6 +259,9 @@ export default class PacketBuilder {
         // build. Operation failures never ride this path; they derive from the
         // durable log below.
         notices?: readonly Notice[];
+        // One packet may project a durably folded row OPEN without mutating its
+        // curation state ({§invalid-emission-attempts}).
+        transientOpenLogEntryId?: number | null;
     }): Promise<RequestPacket> {
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
@@ -296,7 +300,7 @@ export default class PacketBuilder {
                 : await readTeachingSource(Paths.defaultRequirementsTeachingSource);
         // {§emission-admission}: the definition owns PLAN framing, so the packet
         // injects no duplicate syntax or plan directive.
-        const log = await this.#buildLog(workerId);
+        const log = await this.#buildLog(workerId, transientOpenLogEntryId);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
         const countTokens = rulerCount; // {§tokenomics-agnostic-ruler} — the ONE model-facing ruler (chars/2), not the provider
         // {§tools-loop-affinity}: teaching and dispatch resolve the same loop flags.
@@ -578,7 +582,7 @@ export default class PacketBuilder {
     // Snapshot is taken at packet build (pre-dispatch this turn), so it
     // reflects "what has happened before this turn." Each row carries a
     // log:///<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
-    async #buildLog(workerId: number): Promise<object[]> {
+    async #buildLog(workerId: number, transientOpenLogEntryId: number | null): Promise<object[]> {
         // SPEC {§packet-terms}: workers own log entries — log is the worker's history,
         // not the loop's. Span all loops in the worker so the model sees
         // earlier loops' work as conversational memory.
@@ -587,7 +591,7 @@ export default class PacketBuilder {
         // runTurn. They surface naturally in this query without synthetic
         // EDIT/READ delivery rows.
         const rows = await this.#db.engine_render_log.all<{
-            loop_seq: number; turn_seq: number; sequence: number;
+            id: number; loop_seq: number; turn_seq: number; sequence: number;
             origin: string; op: string | null; suffix: string; signal: string | null;
             scheme: string | null; username: string | null; password: string | null;
             hostname: string | null; port: number | null; pathname: string | null;
@@ -614,7 +618,7 @@ export default class PacketBuilder {
             mimetype_rx: r.mimetype_rx,
             tx: r.mimetype_tx === "application/json" ? JSON.parse(r.tx) : r.tx,
             mimetype_tx: r.mimetype_tx,
-            folded: r.expanded === 0,
+            folded: r.expanded === 0 && r.id !== transientOpenLogEntryId,
             source: r.source,
             attrs: r.attrs === null ? null : JSON.parse(r.attrs),
         }));

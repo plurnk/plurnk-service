@@ -19,6 +19,13 @@ const valid = (body = "done", usage?: Partial<ProviderUsage>): MockResponse => (
     },
 });
 
+const continuing = (body = "continue"): MockResponse => ({
+    assistant: {
+        content: `<<PLAN:continue the task:PLAN\n<<FIND(log:///**)<1,1>::FIND\n<<SEND[102]:${body}:SEND`,
+        reasoning: null,
+    },
+});
+
 const invalid = (content: string, usage?: Partial<ProviderUsage>, reasoning: string | null = null): MockResponse => ({
     assistant: { content, reasoning, usage },
 });
@@ -465,9 +472,21 @@ test("{§invalid-emission-attempts} exhausted private attempts expose only the l
                 invalid("first private invalid response"),
                 invalid("second private invalid response"),
                 invalid(latestRejected),
-                valid("recovered"),
+                continuing("recovered"),
+                valid("finished"),
             ],
         });
+        const generate = provider.generate.bind(provider);
+        let providerCalls = 0;
+        provider.generate = async (args) => {
+            providerCalls++;
+            if (providerCalls === 4) {
+                const rows = await db.engine_render_log.all<{ expanded: number; attrs: string }>({ worker_id: workerId });
+                const rejectedMirror = rows.find((row) => JSON.parse(row.attrs).admission === "rejected");
+                assert.equal(rejectedMirror?.expanded, 0, "the recovery packet does not require durably OPEN malformed content");
+            }
+            return await generate(args);
+        };
 
         const result = await engine.runLoop({
             provider,
@@ -480,21 +499,24 @@ test("{§invalid-emission-attempts} exhausted private attempts expose only the l
 
         assert.equal(result.result.status, 200);
         assert.equal(result.reason, "external", "the admitted SEND concludes through the ordinary loop lifecycle");
-        assert.equal(result.turnIds.length, 2, "the lifeline is an honestly stored engine turn");
-        assert.equal(provider.packets.length, 4);
+        assert.equal(result.turnIds.length, 3, "the lifeline is an honestly stored engine turn");
+        assert.equal(provider.packets.length, 5);
         assert.equal(new Set(provider.packets.slice(0, 3)).size, 1, "private attempts retain one exact packet");
         assert.notEqual(provider.packets[3], provider.packets[2], "the informed recovery has its own packet");
         assert.match(provider.packets[3]!, /Your previous response contained an unrecoverable syntax error\. No operations were performed\. Try again\./);
         assert.match(provider.packets[3]!, /<PLAN:inspect the source:PLAN/);
         assert.doesNotMatch(provider.packets[3]!, /first private invalid|second private invalid/);
         assert.doesNotMatch(provider.packets[3]!, /line [0-9]+|missing|expected/i, "no parser diagnosis is manufactured");
+        assert.doesNotMatch(provider.packets[4]!, /<PLAN:inspect the source:PLAN/, "the rejected emission is projected only into its recovery packet");
 
-        const [failedTurnId, recoveryTurnId] = result.turnIds;
+        const [failedTurnId, recoveryTurnId, finalTurnId] = result.turnIds;
         const failedTurn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: failedTurnId });
         assert.equal(failedTurn?.status, 102);
         assert.equal((JSON.parse(failedTurn?.packet ?? "{}") as { assistant?: unknown }).assistant, undefined);
         const recoveryTurn = await db.test_get_turn.get<{ status: number }>({ id: recoveryTurnId });
-        assert.equal(recoveryTurn?.status, 200);
+        assert.equal(recoveryTurn?.status, 102);
+        const finalTurn = await db.test_get_turn.get<{ status: number }>({ id: finalTurnId });
+        assert.equal(finalTurn?.status, 200);
 
         const firstAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: failedTurnId });
         const recoveryAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: recoveryTurnId });
@@ -512,7 +534,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose only the l
         const rejectedMirror = rows.find((row) => JSON.parse(row.attrs).admission === "rejected");
         assert.ok(rejectedMirror !== undefined);
         assert.equal(rejectedMirror.turn_seq, 1);
-        assert.equal(rejectedMirror.expanded, 1, "the rejected model item is born OPEN");
+        assert.equal(rejectedMirror.expanded, 0, "the rejected model item remains durably folded");
         assert.match(rejectedMirror.rx, /<READ\(file:\/\/\/main\.go\)::READ/);
         assert.equal(rows.filter((row) => row.origin === "model" && row.op === "READ").length, 0, "no rejected operation dispatches");
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "the lifeline does not fabricate an operation failure");
@@ -575,6 +597,9 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
         assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "model_emission").length, 0, "the terminal rejection is forensic-only");
         const mirrors = await db.test_model_emission_rows.all<{ turn_id: number; attrs: string }>({ worker_id: workerId });
         assert.equal(mirrors.filter((row) => JSON.parse(row.attrs).admission === "rejected").length, 1, "only the response that informs the bounded recovery is mirrored");
+        const renderedMirrors = await db.engine_render_log.all<{ expanded: number; attrs: string }>({ worker_id: workerId });
+        const rejectedMirror = renderedMirrors.find((row) => JSON.parse(row.attrs).admission === "rejected");
+        assert.equal(rejectedMirror?.expanded, 0, "the rejected model item remains durably folded when recovery exhausts");
         Digest.run({ dbPath, digestDir });
         const digest = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
             loops: Array<{ result: unknown }>;
