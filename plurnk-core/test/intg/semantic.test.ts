@@ -76,18 +76,8 @@ test("~query ranks by real semantic similarity through the full pipeline", async
         assert.deepEqual(r.results.map((f) => f.path).sort(), ["worker:///db.md", "worker:///sql.md"]);
         assert.ok(!r.results.some((f) => f.path === "worker:///cake.md"), "the unrelated recipe never enters the ranking");
         assert.ok(r.results.every((row) => typeof row.channels === "object" && !("extent" in (row as object))), "~semantic FIND returns one catalog row per selected resource");
-        for (const row of r.results) {
-            const body = bodies.get(row.path);
-            assert.ok(body !== undefined);
-            assert.deepEqual(row.matches, [{
-                region: {
-                    startLine: 1,
-                    startColumn: 1,
-                    endLine: 1,
-                    endColumn: [...body].length + 1,
-                },
-            }], "one-chunk semantic evidence is the exact indexed text region");
-        }
+        assert.ok(r.results.every((row) => row.matchLocationCount === 1), "each broad semantic row reports its indexed chunk location");
+        assert.equal(r.matchLocationCount, 3, "complete location metadata includes the unreturned third ranked resource");
     } finally { db.close(); }
 });
 

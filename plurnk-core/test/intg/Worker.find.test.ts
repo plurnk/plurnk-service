@@ -108,7 +108,7 @@ test("a single-star path glob lists one level with actionable recursive folder s
         assert.ok(src !== undefined && "items" in src, "the directory is a scope summary, not a fake entry");
         assert.equal(src.items, 3, "the summary counts every descendant recursively, including dot entries");
         assert.ok((src.tokens ?? 0) > 0, "the summary reports the recursive subtree's READ weight");
-        assert.deepEqual(root.matches.map((match) => match.pathname), ["/.env.defaults", "/README.md"], "folder summaries never become resource matches");
+        assert.equal(root.matchingPathCount, 2, "folder summaries never become matching resource paths");
 
         const drilled = await worker.find(findStmt(url("src/*")), ctx);
         assert.deepEqual(drilled.results.map((item) => item.path), [
@@ -180,7 +180,7 @@ test("Worker.find with glob matcher filters by CONTENT", async () => {
     } finally { db.close(); }
 });
 
-test("a content match emits one item per resource with match coordinates", async () => {
+test("a broad content match emits one item per resource with location counts", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // Multi-line content: the match sits on line 3 of a, line 2 of b; c never matches.
@@ -192,12 +192,9 @@ test("a content match emits one item per resource with match coordinates", async
         const r = await new Worker().find(findStmt(url(""), glob("france*")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
         const byPath = new Map(r.results.map((row) => [row.path, row] as const));
-        assert.deepEqual(byPath.get("worker:///a")?.matches, [{
-            region: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 15 },
-        }]);
-        assert.deepEqual(byPath.get("worker:///b")?.matches, [{
-            region: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 13 },
-        }]);
+        assert.equal(byPath.get("worker:///a")?.matchLocationCount, 1);
+        assert.equal(byPath.get("worker:///b")?.matchLocationCount, 1);
+        assert.equal(r.matchLocationCount, 2);
         assert.equal(byPath.has("worker:///c"), false, "a miss excludes the entry entirely — no item");
     } finally { db.close(); }
 });
@@ -371,13 +368,13 @@ test("Worker.find with no matches returns an empty 204 result", async () => {
             results: [],
             itemsTokenTotal: 0,
             returnedItemsTokenTotal: 0,
-            pathnames: [],
-            matches: [],
+            matchingPathCount: 0,
+            matchLocationCount: 0,
         });
     } finally { db.close(); }
 });
 
-test("Worker.find names a zero-match selection before rejecting its requested range", async () => {
+test("Worker.find reports a matcher miss before applying result pagination", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [["a", "alpha"], ["b", "beta"]]);
@@ -389,25 +386,9 @@ test("Worker.find names a zero-match selection before rejecting its requested ra
             statement,
             makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }),
         );
-        assert.equal(result.status, 416);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/worker/selection-range-unavailable");
-        assert.equal(result.problem?.stage, "selection");
-        assert.equal(result.problem?.dialect, "glob");
-        assert.equal(result.problem?.matchedResources, 0);
-        assert.deepEqual(result.problem?.range, {
-            unit: "result",
-            requested: { first: 30, last: 100 },
-            available: { first: null, last: null, total: 0 },
-        });
-        assert.equal(
-            result.problem?.detail,
-            "The glob matcher selected 0 resources; <30,100> cannot select from an empty result set.",
-        );
-        assert.equal(
-            result.problem?.recovery,
-            "Correct or remove the matcher before choosing a range.",
-        );
-        assert.equal(result.problem?.retryable, false);
+        assert.equal(result.status, 204);
+        assert.deepEqual(result.results, []);
+        assert.equal(result.matchingPathCount, 0);
     } finally { db.close(); }
 });
 

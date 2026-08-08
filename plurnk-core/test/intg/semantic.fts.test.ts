@@ -255,7 +255,7 @@ test("semantic FIND maps a terminal-newline chunk to an addressable TextRegion",
             ctx,
         );
         assert.equal(result.status, 200);
-        assert.deepEqual(result.results[0]?.matches, [{
+        assert.deepEqual(result.results, [{
             region: {
                 startLine: 1,
                 startColumn: 1,
@@ -346,9 +346,8 @@ test("[#fts-fallback] no embedder uses FTS for unthresholded rank; <0.x> stays 5
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }),
         );
         assert.equal(exactHit.status, 200);
-        assert.deepEqual(exactHit.results.map((x) => x.path), ["worker:///heavy.ts"],
-            "an exact target ranks only that entry");
-        assert.deepEqual(exactHit.results[0]?.matches, [{
+        assert.equal(exactHit.matchingPathCount, 1, "an exact target ranks only that entry");
+        assert.deepEqual(exactHit.results, [{
             region: {
                 startLine: 1,
                 startColumn: 1,
@@ -363,7 +362,7 @@ test("[#fts-fallback] no embedder uses FTS for unthresholded rank; <0.x> stays 5
             semanticStmt(url("cr.ts"), "payment", null),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }),
         );
-        assert.deepEqual(crHit.results[0]?.matches, [{
+        assert.deepEqual(crHit.results, [{
             region: {
                 startLine: 1,
                 startColumn: 1,

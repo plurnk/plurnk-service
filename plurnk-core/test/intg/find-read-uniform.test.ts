@@ -1,6 +1,6 @@
-// {§matcher-result-resource-selection}, {§read-exact-target}. FIND selects
-// resources and reports match coordinates; exact READ projects text from one
-// selected resource. These exercise the real dispatch path, not scheme methods
+// {§find-result-projection}, {§read-exact-target}. Broad FIND selects resources;
+// exact-target matcher FIND reports flat match locations. Exact READ projects
+// text from one selected resource. These exercise the real dispatch path, not scheme methods
 // in isolation. Real Mimetypes so
 // jsonpath/xpath/semantic resolve; SearchIndex.maintain makes @graph + embeddings query-ready.
 
@@ -58,7 +58,7 @@ type StoredRead = {
             endLine: number;
             endColumn: number;
         };
-        path?: string;
+        locator?: string;
     }>;
 };
 
@@ -76,9 +76,7 @@ const dispatchRows = async (
     return { result, rows };
 };
 
-// --- FIND selection and navigation evidence ----------------------------------
-
-// --- FIND locates resources across globs and matchers ----------
+// --- FIND projects resources or locations from the authored target shape -----
 
 test("FIND recognizes shell character-class paths as globs", async () => {
     const { db, engine, ctx, ...ids } = await setup();
@@ -91,7 +89,7 @@ test("FIND recognizes shell character-class paths as globs", async () => {
     } finally { await db.close(); }
 });
 
-test("glob FIND returns resources with matched line metadata", async () => {
+test("exact glob-pattern FIND returns flat matched-line locations", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "log.md", "alpha target\nbeta\ngamma target\ndelta target");
@@ -111,7 +109,7 @@ test("regex FIND returns matched resources", async () => {
     } finally { await db.close(); }
 });
 
-test("jsonpath FIND returns JSON resources with locators and exact regions", async () => {
+test("exact jsonpath FIND returns flat locators with exact regions", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "team.json", '{\n  "users": [\n    { "name": "Alice" },\n    { "name": "Bob" },\n    { "name": "Carol" }\n  ]\n}');
@@ -120,7 +118,7 @@ test("jsonpath FIND returns JSON resources with locators and exact regions", asy
     } finally { await db.close(); }
 });
 
-test("two structural matches on one source line remain distinguishable by path", async () => {
+test("two structural matches on one source line remain distinguishable by locator", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "one.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}');
@@ -149,7 +147,7 @@ test("semantic FIND uses ranking to select resources", async () => {
     } finally { await db.close(); }
 });
 
-test("xpath FIND returns HTML resources with locator evidence", async () => {
+test("exact xpath FIND returns flat locator evidence", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "page.html", "<ul>\n  <li>one</li>\n  <li>two</li>\n</ul>");
@@ -158,7 +156,7 @@ test("xpath FIND returns HTML resources with locator evidence", async () => {
     } finally { await db.close(); }
 });
 
-test("@graph FIND returns selected resources with reference coordinates", async () => {
+test("broad @graph FIND returns selected resource rows", async () => {
     const { db, engine, mimetypes, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
@@ -169,7 +167,7 @@ test("@graph FIND returns selected resources with reference coordinates", async 
     } finally { await db.close(); }
 });
 
-test("@graph FIND groups reference coordinates by resource", async () => {
+test("broad @graph FIND reports each resource's location count without nesting coordinates", async () => {
     const { db, workspaceId, workerId, mimetypes, ctx, loopId, turnId } = await setup();
     try {
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
@@ -178,7 +176,9 @@ test("@graph FIND groups reference coordinates by resource", async () => {
         const r = await new Worker().find(parseOp<FindStatement>("<<FIND(worker:///**):@<foo:FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         assert.equal(r.status, 200);
         assert.ok(r.results.length >= 1);
-        assert.ok(r.results.every((x) => (x.matches?.length ?? 0) >= 1));
+        assert.ok(r.results.every((x) => "path" in x && (x.matchLocationCount ?? 0) >= 1));
+        assert.ok(r.results.every((x) => !("matches" in x)));
+        assert.equal(r.range?.unit, "resource");
     } finally { await db.close(); }
 });
 
@@ -218,19 +218,62 @@ test("FIND(folder/) locates the folder's contents", async () => {
     } finally { await db.close(); }
 });
 
-// --- FIND emits one resource row with coordinate evidence --------------------
+// --- FIND projects resources or locations according to target shape ----------
 
-test("FIND with a matcher emits one item per resource with all coordinates", async () => {
+test("broad matcher FIND emits one item per resource with a complete location count", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "log.md", "alpha target\nbeta\ngamma target");
         const r = await new Worker().find(parseOp<FindStatement>("<<FIND(worker:///**):*target*:FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 1);
-        assert.deepEqual(r.results[0].matches, [
-            { region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 13 } },
-            { region: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 13 } },
-        ]);
+        assert.equal(r.results[0]?.path, "worker:///log.md");
+        assert.equal(r.results[0]?.matchLocationCount, 2);
+        assert.equal("matches" in (r.results[0] ?? {}), false);
+        assert.equal(r.matchingPathCount, 1);
+        assert.equal(r.matchLocationCount, 2);
+        assert.equal(r.range?.unit, "resource");
+    } finally { await db.close(); }
+});
+
+test("a glob remains resource mode when it resolves to one matching path", async () => {
+    const { db, workspaceId, workerId, ctx } = await setup();
+    try {
+        await seedRaw(ctx, "only.md", "first target\nsecond target");
+        await seedRaw(ctx, "other.txt", "target");
+        const r = await new Worker().find(
+            parseOp<FindStatement>("<<FIND(worker:///*.md):*target*:FIND", "FIND"),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
+        );
+        assert.deepEqual(r.results.map(({ path, matchLocationCount }) => ({ path, matchLocationCount })), [{
+            path: "worker:///only.md",
+            matchLocationCount: 2,
+        }]);
+        assert.equal(r.range?.unit, "resource");
+    } finally { await db.close(); }
+});
+
+test("markerless exact matcher FIND returns the first 16 locations and <1,-1> returns all", async () => {
+    const { db, workspaceId, workerId, ctx } = await setup();
+    try {
+        await seedRaw(ctx, "many.md", Array.from({ length: 20 }, (_, i) => `target ${i + 1}`).join("\n"));
+        const worker = new Worker();
+        const first = await worker.find(
+            parseOp<FindStatement>("<<FIND(worker:///many.md):*target*:FIND", "FIND"),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
+        );
+        assert.equal(first.results.length, 16);
+        assert.equal(first.matchingPathCount, 1);
+        assert.equal(first.matchLocationCount, 20);
+        assert.equal(first.range?.unit, "matchLocation");
+        assert.deepEqual(first.range?.next, { first: 17, last: 20 });
+
+        const all = await worker.find(
+            parseOp<FindStatement>("<<FIND(worker:///many.md)<1,-1>:*target*:FIND", "FIND"),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
+        );
+        assert.equal(all.results.length, 20);
+        assert.equal(all.range?.complete, true);
     } finally { await db.close(); }
 });
 
@@ -249,9 +292,7 @@ test("FIND on an exact target with a result-position scope", async () => {
     } finally { await db.close(); }
 });
 
-test("FIND on an exact target with a content matcher and result-position scope", async () => {
-    // <<FIND(worker:///doc.md)<1>:/hello/:FIND — the scope selects the first
-    // matching resource; its matches carry both occurrences' coordinates.
+test("FIND on an exact target with a content matcher pages flat match locations", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "doc.md", "hello world hello again");
@@ -260,15 +301,18 @@ test("FIND on an exact target with a content matcher and result-position scope",
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(result.results.length, 1);
-        assert.equal(result.results[0]?.path, "worker:///doc.md");
-        assert.equal(result.results[0]?.matches?.length, 2, "both hello matches carry coordinates");
-        assert.deepEqual(result.results[0]?.matches?.[0]?.region, {
+        assert.deepEqual(result.results[0]?.region, {
             startLine: 1, startColumn: 1, endLine: 1, endColumn: 6,
         });
+        assert.equal("path" in (result.results[0] ?? {}), false);
+        assert.equal(result.matchingPathCount, 1);
+        assert.equal(result.matchLocationCount, 2);
+        assert.equal(result.range?.unit, "matchLocation");
+        assert.deepEqual(result.range?.returned, { first: 1, last: 1, total: 1 });
     } finally { await db.close(); }
 });
 
-test("FIND pagination counts selected resources, not match occurrences", async () => {
+test("broad FIND pagination counts selected resources, not match locations", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "a.md", "target one\ntarget two\ntarget three");
@@ -278,9 +322,10 @@ test("FIND pagination counts selected resources, not match occurrences", async (
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.deepEqual(result.results.map(({ path }) => path), ["worker:///b.md"]);
-        assert.deepEqual(result.results[0]?.matches, [
-            { region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 12 } },
-        ]);
+        assert.equal(result.results[0]?.matchLocationCount, 1);
+        assert.equal(result.matchingPathCount, 2);
+        assert.equal(result.matchLocationCount, 4);
+        assert.equal(result.range?.unit, "resource");
     } finally { await db.close(); }
 });
 
@@ -304,11 +349,11 @@ test("FIND coordinates compose into scoped READ for structured JSON", async () =
             parseOp<FindStatement>('<<FIND(worker:///users.json):$[?(@.role=="admin")]:FIND', "FIND"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
-        assert.deepEqual(found.results[0]?.matches, [{
-            path: "$[0]",
+        assert.deepEqual(found.results, [{
+            locator: "$[0]",
             region: { startLine: 2, startColumn: 3, endLine: 5, endColumn: 4 },
         }]);
-        const span = found.results[0]?.matches?.[0];
+        const span = found.results[0];
         assert.ok(span?.region);
         const read = await worker.read(
             {
@@ -336,6 +381,7 @@ test("body-less FIND is the catalog without match metadata", async () => {
         await seedRaw(ctx, "b.md", "beta");
         const r = await new Worker().find(parseOp<FindStatement>("<<FIND(worker:///**)::FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.results.length, 2, "two entries → two catalog rows");
-        assert.ok(r.results.every((x) => x.matches === undefined));
+        assert.ok(r.results.every((x) => !("matches" in x)));
+        assert.equal(r.range?.unit, "resource");
     } finally { await db.close(); }
 });

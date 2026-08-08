@@ -132,38 +132,38 @@ test("contract: a hash-shaped target addresses that literal path, never a pathna
     });
 });
 
-// {§matcher-result}: matchers select resources and expose navigation coordinates.
+// {§find-result-projection}: exact matcher FIND exposes navigation locations.
 
-test("a regex FIND returns the selected resource and its match coordinate", async () => {
+test("an exact regex FIND returns its flat match location", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "heading\nthe codename is phoenix\ncontext\n");
         await addMember(ctx, "notes.md");
         const stmt = parseOp<FindStatement>("<<FIND(notes.md):/phoenix/:FIND", "FIND");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200);
-        assert.ok((result.matches?.length ?? 0) > 0);
+        assert.ok(result.results.length > 0);
     });
 });
 
-test("contract: a glob FIND preserves every match coordinate on one selected resource", async () => {
+test("contract: an exact FIND returns every match as a flat location", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "log.md"), "alpha\ntarget one\nbeta\ngamma\ntarget two\n");
         await addMember(ctx, "log.md");
         const stmt = parseOp<FindStatement>("<<FIND(log.md):*target*:FIND", "FIND");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200);
-        assert.ok((result.matches?.length ?? 0) > 0);
+        assert.ok(result.results.length > 0);
     });
 });
 
-test("contract: a jsonpath FIND returns the JSON resource with structural coordinates", async () => {
+test("contract: an exact jsonpath FIND returns flat structural locations", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "config.json"), '{\n  "host": "db.internal",\n  "pool": 5\n}\n');
         await addMember(ctx, "config.json");
         const stmt = parseOp<FindStatement>("<<FIND(config.json):$.host:FIND", "FIND");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200);
-        assert.ok((result.matches?.length ?? 0) > 0);
+        assert.ok(result.results.length > 0);
     });
 });
 

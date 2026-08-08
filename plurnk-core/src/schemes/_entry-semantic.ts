@@ -57,11 +57,6 @@ export default class EntrySemantic {
         };
     }
 
-    static hasExplicitResultPage(marker: LineMarker | null): boolean {
-        if (marker === null) return false;
-        return Number.isInteger(marker.marks[0]) || marker.marks.length > 1;
-    }
-
     static maxEmbedSize(): number {
         const raw = process.env.PLURNK_SERVICE_MAX_EMBED_SIZE;
         const value = Number(raw);

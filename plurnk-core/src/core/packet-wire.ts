@@ -71,8 +71,9 @@ interface RxView {
     region?: unknown;
     itemsTokenTotal?: unknown;
     returnedItemsTokenTotal?: unknown;
+    matchingPathCount?: unknown;
+    matchLocationCount?: unknown;
     range?: unknown;
-    omittedItems?: unknown;
     receipt?: unknown;
     effects?: unknown;
 }
@@ -402,15 +403,13 @@ export default class PacketWire {
             }
 
             // READ + FIND enrichment: text/result extent plus FIND matcher,
-            // resource count, and complete/returned content weights.
+            // complete path/location counts, and content weights.
             let items: number | null = null;
             if (op === "READ" || op === "FIND") {
                 if (op === "FIND" && tx !== null && tx !== undefined && typeof tx === "object" && tx.body !== null && typeof tx.body === "object") {
                     if (typeof tx.body.raw === "string") meta.matcher = tx.body.raw;
                 }
-                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.omittedItems === "number") {
-                    items = rx.omittedItems; // {§find-count-not-contents} - selected-resource count, though rows were not enumerated
-                } else if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
+                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
                     const parsed = PacketWire.#safeParse(rx.content);
                     if (Array.isArray(parsed)) items = parsed.length;
                 }
@@ -427,6 +426,12 @@ export default class PacketWire {
                 }
                 if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.returnedItemsTokenTotal === "number") {
                     meta.returnedItemsTokenTotal = rx.returnedItemsTokenTotal;
+                }
+                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.matchingPathCount === "number") {
+                    meta.matchingPathCount = rx.matchingPathCount;
+                }
+                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.matchLocationCount === "number") {
+                    meta.matchLocationCount = rx.matchLocationCount;
                 }
             }
 

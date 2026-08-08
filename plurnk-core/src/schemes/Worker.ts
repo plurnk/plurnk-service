@@ -355,7 +355,8 @@ export default class Worker extends CoreSchemeAdapterBase {
         const authority = Worker.#authority(statement.target);
         if (authority === null) {
             return Results.failure("scheme:worker", "worker-target-required", 400, "FIND requires a worker:// target.", {
-                content: null, mimetype: null, results: [], itemsTokenTotal: 0, returnedItemsTokenTotal: 0, pathnames: [], matches: [],
+                content: null, mimetype: null, results: [], itemsTokenTotal: 0, returnedItemsTokenTotal: 0,
+                matchingPathCount: 0, matchLocationCount: 0,
             }, {
                 recovery: "Provide the worker target.",
                 retryable: false,
@@ -364,7 +365,8 @@ export default class Worker extends CoreSchemeAdapterBase {
         const resolved = await Worker.#resolveAuthority(authority, core);
         if (resolved === null) {
             return Results.failure("scheme:worker", "worker-not-found", 404, `Worker '${authority}' does not exist in this workspace.`, {
-                content: null, mimetype: null, results: [], itemsTokenTotal: 0, returnedItemsTokenTotal: 0, pathnames: [], matches: [],
+                content: null, mimetype: null, results: [], itemsTokenTotal: 0, returnedItemsTokenTotal: 0,
+                matchingPathCount: 0, matchLocationCount: 0,
             }, {
                 worker: authority,
                 retryable: false,
@@ -376,7 +378,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         // is the address it typed (worker://~/x, worker://beta/x).
         if (authority === "") return found;
         const reface = (p: string): string => p.replace(/^worker:\/\/\//, `worker://${authority}/`);
-        const results = found.results.map((r) => ({ ...r, path: reface(r.path) }));
+        const results = found.results.map((r) => typeof r.path === "string" ? { ...r, path: reface(r.path) } : r);
         const content = found.content === null ? null : found.content.replaceAll("worker:///", `worker://${authority}/`);
         return { ...found, results, content };
     }

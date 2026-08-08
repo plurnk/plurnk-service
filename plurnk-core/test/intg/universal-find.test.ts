@@ -99,14 +99,15 @@ test("data schemes inherit standard FIND after their optional preparation hook",
         });
 
         assert.equal(result.status, 200);
-        assert.match(String(result.content), /prepared:\/\/\/fact\.md/);
-        assert.match(String(result.content), /"matches"/);
+        const locations = JSON.parse(String(result.content)) as Array<{ region?: unknown }>;
+        assert.equal(locations.length, 1);
+        assert.ok(locations[0]?.region !== undefined);
     } finally {
         await db.close();
     }
 });
 
-test("matcher FIND invokes preparation, then returns selected resource with navigation evidence", async () => {
+test("exact matcher FIND invokes preparation, then returns flat match locations", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("prepared", new PreparedDataScheme());
@@ -135,7 +136,7 @@ test("matcher FIND invokes preparation, then returns selected resource with navi
         });
         const rx = JSON.parse(row?.rx ?? "{}") as {
             content?: string;
-            matches?: Array<{
+            results?: Array<{
                 region?: {
                     startLine: number;
                     startColumn: number;
@@ -144,7 +145,8 @@ test("matcher FIND invokes preparation, then returns selected resource with navi
                 };
             }>;
         };
-        assert.match(rx.content ?? "", /prepared:\/\/\/fact\.md/);
+        assert.equal(rx.results?.length, 1);
+        assert.ok(rx.results?.[0]?.region !== undefined);
     } finally {
         await db.close();
     }
@@ -186,8 +188,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
 
         assert.equal(result.status, 200);
         assert.deepEqual(requests, [url]);
-        assert.match(String(result.content), new RegExp(url.replaceAll(".", "\\.")));
-        assert.match(String(result.content), /"matches"/);
+        assert.equal((JSON.parse(String(result.content)) as unknown[]).length, 1);
         assert.doesNotMatch(String(result.content), /Zhannetta Nikolaevna Lotnik was his spouse/);
 
         const reused = await engine.dispatch({
@@ -216,7 +217,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
         assert.equal(surveyed.status, 200);
         assert.deepEqual(requests, [url]);
         assert.match(String(surveyed.content), new RegExp(url.replaceAll(".", "\\.")));
-        assert.match(String(surveyed.content), /"matches"/);
+        assert.match(String(surveyed.content), /"matchLocationCount":1/);
         assert.doesNotMatch(String(surveyed.content), /Zhannetta Nikolaevna Lotnik was his spouse/);
 
         const dead = await engine.dispatch({
@@ -284,7 +285,7 @@ test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisitio
         assert.equal((await dispatch(parseSend(`<<SEND[200](${findUrl}):update:SEND`), 3)).status, 102);
         const found = await dispatch(parseFind(`<<FIND(${findUrl}):/current GET/:FIND`), 4);
         assert.equal(found.status, 200);
-        assert.match(String(found.content), /"matches"/);
+        assert.equal((JSON.parse(String(found.content)) as unknown[]).length, 1);
         assert.deepEqual(requests, [
             { url: readUrl, method: "POST" },
             { url: readUrl, method: "GET" },

@@ -82,18 +82,8 @@ test("@<foo finds entries that reference foo, not the definer", async () => {
         const r = await find(db, workspaceId, workerId, "@<foo");
         assert.equal(r.status, 200);
         assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///b.ts"]);
-        assert.deepEqual(r.results[0]?.matches, [
-            {
-                region: {
-                    startLine: 1, startColumn: 1, endLine: 1, endColumn: 27,
-                },
-            },
-            {
-                region: {
-                    startLine: 2, startColumn: 1, endLine: 2, endColumn: 7,
-                },
-            },
-        ], "graph evidence uses honest enclosing source lines for the import and call");
+        assert.equal(r.results[0]?.matchLocationCount, 2, "the broad row counts the import and call locations");
+        assert.equal(r.matchLocationCount, 2);
     } finally { db.close(); }
 });
 
@@ -126,8 +116,8 @@ test("a graph matcher selecting no resources returns 204", async () => {
             results: [],
             itemsTokenTotal: 0,
             returnedItemsTokenTotal: 0,
-            pathnames: [],
-            matches: [],
+            matchingPathCount: 0,
+            matchLocationCount: 0,
         });
     } finally { db.close(); }
 });

@@ -1,22 +1,19 @@
 import {
-    DEFAULT_RETRIEVAL_LIMIT,
     PathSyntax,
     type FindStatement,
     type FoldStatement,
     type OpenStatement,
     type ReadStatement,
 } from "@plurnk/plurnk-contracts";
-import { LineMarkerOps } from "../content/index.ts";
 import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../core/scheme-types.ts";
 import { ReadResolve } from "../content/index.ts";
 import Matcher from "../content/matcher.ts";
 import type { SourceCandidateMatch } from "../content/matcher.ts";
-import { findItemTokens, renderFindContent } from "./_entry-find.ts";
-import type { FindResult, MatchItem, Match, CatalogScope, CatalogMatch } from "./_entry-find.ts";
+import { emptyFindFields, projectFindResult } from "./_entry-find.ts";
+import type { FindResult, Match, CatalogScope, CatalogMatch, FindProjectionResource } from "./_entry-find.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
-import type { RangeExtent } from "@plurnk/plurnk-schemes";
 import LogBody from "../core/LogBody.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import EntryGraph from "./_entry-graph.ts";
@@ -194,13 +191,12 @@ export default class Log extends CoreSchemeAdapterBase {
     // coordinate-scoped rows resolved by LogBody exactly as READ shows them, so every content
     // dialect works on log BY CONSTRUCTION and FIND(log)->READ(coordinate) composes like any scheme.
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
-        return this.#find(statement, this.coreContext(ctx), true);
+        return this.#find(statement, this.coreContext(ctx));
     }
 
     async #find(
         statement: FindStatement,
         core: PlurnkSchemeContext,
-        enforceRenderBudget: boolean,
         allowTargetless = false,
     ): Promise<FindResult> {
         const { db, workerId, mimetypes } = core;
@@ -209,14 +205,14 @@ export default class Log extends CoreSchemeAdapterBase {
             detail?: string,
             extensions: Readonly<Record<string, unknown>> = {},
         ): FindResult => {
-            const fields = { content: null, mimetype: null, results: [], itemsTokenTotal: 0, returnedItemsTokenTotal: 0, pathnames: [], matches: [] };
+            const fields = emptyFindFields();
             if (status >= 400 && detail === undefined) {
                 throw new Error(`Log.find: selection returned status ${status} without Problem Details or a diagnostic`);
             }
             return status >= 400
                 ? Results.failure(
                     "scheme:log",
-                    status === 416 ? "range-not-satisfiable" : status === 501 ? "matcher-not-implemented" : "find-failed",
+                    status === 404 ? "entry-not-found" : status === 416 ? "range-not-satisfiable" : status === 501 ? "matcher-not-implemented" : "find-failed",
                     status,
                     detail!,
                     fields,
@@ -251,6 +247,23 @@ export default class Log extends CoreSchemeAdapterBase {
             );
         }
         const scope = pathScope(glob, false);
+        if (scope.kind === "exact") {
+            const coordinate = parseCoordinate(scope.pathname);
+            if (coordinate === null) throw new Error(`Exact log scope has a malformed coordinate ${JSON.stringify(scope.pathname)}`);
+            const exact = await db.log_id_by_coordinate.get<{ id: number }>({
+                worker_id: workerId,
+                loop_seq: coordinate.loopSeq,
+                turn_seq: coordinate.turnSeq,
+                sequence: coordinate.sequence,
+            });
+            if (exact === undefined) {
+                return empty(
+                    404,
+                    `No log entry exists at ${statement.target?.raw ?? `log:///${scope.pathname}`}.`,
+                    { target: statement.target?.raw ?? `log:///${scope.pathname}` },
+                );
+            }
+        }
         // {§log-region-tagging} — a tag signal AND-filters the candidates ({§find-tag-filter-and-semantics}):
         // a row survives only if it carries EVERY listed tag. No signal → the plain coordinate scope.
         const tags = Array.isArray(statement.signal) ? statement.signal : [];
@@ -424,13 +437,7 @@ export default class Log extends CoreSchemeAdapterBase {
                 return Results.assert({
                     status: r.status,
                     problem: r.problem,
-                    content: null,
-                    mimetype: null,
-                    results: [],
-                    itemsTokenTotal: 0,
-                    returnedItemsTokenTotal: 0,
-                    pathnames: [],
-                    matches: [],
+                    ...emptyFindFields(),
                 }) as FindResult;
             }
             matches = r.matches.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
@@ -438,12 +445,7 @@ export default class Log extends CoreSchemeAdapterBase {
         const folderSummaries = statement.body === null
             ? pathFolderSummaries(scope, candidateRows.map((row) => canonicalCoordinate(row.coordinate)))
             : [];
-        // The result rows mirror the catalog-row shape: one item per selected
-        // resource, with optional match coordinates for a surgical READ.
-        let results: MatchItem[] = [];
-        const seenPath: string[] = [];
-        const seen = new Set<string>();
-        let itemsTokenTotal = 0;
+        const resources: FindProjectionResource[] = [];
         for (const m of matches) {
             const row = byCoord.get(m.pathname);
             if (row === undefined) continue;
@@ -460,9 +462,9 @@ export default class Log extends CoreSchemeAdapterBase {
                 path,
                 channels: { [path]: { mimetype: proj.mimetype, tokens: row.tokens, lines: proj.content.length === 0 ? 0 : proj.content.split("\n").length } },
             };
-            results.push(m.matches.length > 0 ? { ...item, matches: m.matches } : item);
-            if (!seen.has(m.pathname)) { seen.add(m.pathname); seenPath.push(m.pathname); itemsTokenTotal += row.tokens; }
+            resources.push({ item, match: m });
         }
+        const scopes: CatalogScope[] = [];
         for (const folder of folderSummaries) {
             const members = folder.pathnames.map((coordinate) => candidateByCanonicalCoord.get(coordinate)).filter((row): row is Candidate => row !== undefined);
             const item: CatalogScope = {
@@ -470,78 +472,9 @@ export default class Log extends CoreSchemeAdapterBase {
                 items: members.length,
                 tokens: members.reduce((sum, row) => sum + row.tokens, 0),
             };
-            results.push(item);
-            itemsTokenTotal += item.tokens;
+            scopes.push(item);
         }
-        if (folderSummaries.length > 0) {
-            results.sort((a, b) => a.path.localeCompare(b.path));
-        }
-        const marker = statement.body?.dialect === "semantic"
-            ? results.length === 0 && !EntrySemantic.hasExplicitResultPage(statement.lineMarker)
-                ? null
-                : EntrySemantic.resultSelection(statement.lineMarker).page
-            : statement.lineMarker
-                ?? (results.length > 0 ? { marks: [1, DEFAULT_RETRIEVAL_LIMIT] } : null);
-        let range: RangeExtent | undefined;
-        if (marker !== null) {
-            const page = LineMarkerOps.page(results, marker);
-            if (page.status !== 200) {
-                if (page.problem === undefined) throw new Error("Log FIND pagination failed without Problem Details");
-                return Results.assert({
-                    status: page.status,
-                    problem: page.problem,
-                    content: null,
-                    mimetype: null,
-                    results: [],
-                    itemsTokenTotal: 0,
-                    returnedItemsTokenTotal: 0,
-                    pathnames: [],
-                    matches: [],
-                }) as FindResult;
-            }
-            results = page.items ?? [];
-            range = page.range;
-        }
-        if (results.length === 0) return empty(204);
-        const matchesByPath = new Map(matches.map((item) => [`log:///${item.pathname}`, item]));
-        const returnedMatches = results.flatMap((item) => {
-            const selected = matchesByPath.get(item.path);
-            return selected === undefined ? [] : [selected];
-        });
-        const returnedItemsTokenTotal = results.reduce((sum, item) => sum + findItemTokens(item), 0);
-        seenPath.splice(0, seenPath.length, ...returnedMatches.map((match) => match.pathname));
-        // {§find-count-not-contents} is source-agnostic. Count the rendered
-        // catalog items; a shallow map's folder summaries replace, rather than
-        // conceal, their descendants.
-        const budget = Number.parseInt(process.env.PLURNK_SERVICE_FIND_MAX_MATCHES ?? "0", 10);
-        if (enforceRenderBudget && budget > 0 && results.length > budget) {
-            const noun = results.some((item) => item.items !== undefined) ? "catalog items" : "entries";
-            return {
-                status: 200,
-                content: `${results.length} ${noun} match, exceeding the render budget (${budget}) — not enumerated.`,
-                mimetype: "text/markdown",
-                results: [],
-                itemsTokenTotal,
-                returnedItemsTokenTotal,
-                pathnames: [],
-                matches: [],
-                omittedItems: results.length,
-                maximumItems: budget,
-                ...(range === undefined ? {} : { range }),
-            };
-        }
-        const resultMatches = returnedMatches.map((match) => ({ ...match, pathname: `/${match.pathname}` }));
-        return {
-            status: 200,
-            content: renderFindContent(results),
-            mimetype: "application/json",
-            results,
-            itemsTokenTotal,
-            returnedItemsTokenTotal,
-            pathnames: seenPath.map((pathname) => `/${pathname}`),
-            matches: resultMatches,
-            ...(range === undefined ? {} : { range }),
-        };
+        return projectFindResult(statement, scope, resources, scopes);
     }
 
     async open(statement: OpenStatement, ctx: CoreSchemeCallContext): Promise<OpenFoldResult> {
@@ -599,7 +532,7 @@ export default class Log extends CoreSchemeAdapterBase {
     }
 
     // A matcher-bearing curation op reuses FIND's complete source-agnostic selector with
-    // rendering disabled. OPEN's tags filter candidates; FOLD's tags are withheld until
+    // explicit all-results pagination. OPEN's tags filter candidates; FOLD's tags are withheld until
     // after selection because they apply to the rows being folded.
     async #resolveByMatcher(
         statement: OpenStatement | FoldStatement,
@@ -611,17 +544,30 @@ export default class Log extends CoreSchemeAdapterBase {
                 ...statement,
                 op: "FIND",
                 signal: filterTags ? statement.signal : null,
-                lineMarker: null,
+                lineMarker: { marks: [1, -1] },
             },
             ctx,
-            false,
             filterTags && Array.isArray(statement.signal) && statement.signal.length > 0 && statement.target === null,
         );
         if (selected.status !== 200) return { status: selected.status, ids: [], problem: selected.problem };
 
+        let selectedPaths = selected.results.flatMap((item) => typeof item.path === "string" ? [item.path] : []);
+        if (selectedPaths.length === 0) {
+            if (statement.target === null) {
+                throw new Error("A successful broad log matcher selection returned no resource paths");
+            }
+            const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
+            const glob = coordinateGlob(pathname);
+            if (glob === null) throw new Error(`Log matcher selected malformed target ${JSON.stringify(pathname)}`);
+            const scope = pathScope(glob, false);
+            if (scope.kind !== "exact") {
+                throw new Error("A successful broad log matcher selection returned no resource paths");
+            }
+            selectedPaths = [scope.pathname];
+        }
         const ids: number[] = [];
-        for (const { pathname } of selected.matches) {
-            const coordinate = parseCoordinate(pathname.replace(/^\//, ""));
+        for (const pathname of selectedPaths) {
+            const coordinate = parseCoordinate(pathname.replace(/^log:\/\/\//, "").replace(/^\//, ""));
             if (coordinate === null) throw new Error(`Log matcher selected malformed coordinate '${pathname}'`);
             const row = await ctx.db.log_id_by_coordinate.get<{ id: number }>({
                 worker_id: ctx.workerId,

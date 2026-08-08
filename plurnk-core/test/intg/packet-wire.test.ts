@@ -423,14 +423,23 @@ test("log render: a matcher FIND exposes surgical coordinates", () => {
         target: { scheme: null, pathname: "/spec.md" },
         tx: { body: { raw: "/grinder/" } },
         rx: {
-            content: JSON.stringify([{ path: "file:///spec.md", matches }]),
+            content: JSON.stringify(matches),
             mimetype: "application/json",
             startLine: 1,
+            matchingPathCount: 1,
+            matchLocationCount: 2,
+            range: {
+                unit: "matchLocation",
+                requested: { first: 1, last: 16 },
+                available: { first: 1, last: 2, total: 2 },
+            },
         },
     }], tok);
     assert.match(out, /"matcher":"\/grinder\/"/);
-    assert.match(out, /"matches":\[\{"region":\{"startLine":143,"startColumn":1,"endLine":143,"endColumn":8\}\},\{"region":\{"startLine":617,"startColumn":4,"endLine":617,"endColumn":11\}\}\]/);
-    assert.match(out, /<<BODY\n1:\[\{"path":"file:\/\/\/spec\.md"/);
+    assert.match(out, /"matchingPathCount":1/);
+    assert.match(out, /"matchLocationCount":2/);
+    assert.match(out, /"unit":"matchLocation"/);
+    assert.match(out, /<<BODY\n1:\[\{"region":\{"startLine":143/);
 });
 
 test("log render: READ@200 with application/json is line-addressable", () => {

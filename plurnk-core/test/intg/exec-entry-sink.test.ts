@@ -291,7 +291,15 @@ test("search-prefetched https content is matcher-queryable in place — no origi
         });
         assert.equal(delivered?.scheme, "https");
         assert.equal(delivered?.pathname, "/turkeys");
-        assert.match(delivered?.rx ?? "", /https:\/\/example\.org\/turkeys/);
+        const deliveredResult = JSON.parse(delivered?.rx ?? "") as {
+            matchingPathCount: number;
+            matchLocationCount: number;
+            results: Array<{ region?: unknown }>;
+        };
+        assert.equal(deliveredResult.matchingPathCount, 1);
+        assert.equal(deliveredResult.matchLocationCount, 1);
+        assert.equal(deliveredResult.results.length, 1);
+        assert.ok(deliveredResult.results[0]?.region !== undefined);
         const stored = await db.test_entries_by_pathname.get<{ scheme: string }>({ pathname: "/example.org/turkeys" });
         assert.equal(stored?.scheme, "https", "the stored identity retains protocol + authority + path");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }

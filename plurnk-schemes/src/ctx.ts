@@ -58,25 +58,24 @@ export interface EntryCatalogItem {
     readonly seconds?: number;
     readonly tags?: ReadonlyArray<string>;
     readonly channels: Readonly<Record<string, { mimetype: string; tokens: number; lines: number }>>;
-    readonly matches?: ReadonlyArray<MatchEvidence>;
+    readonly matchLocationCount?: number;
 }
 
-export interface EntryMatch {
-    readonly pathname: string;
-    readonly matches: ReadonlyArray<MatchEvidence>;
+export interface EntryCatalogScope {
+    readonly path: string;
+    readonly items: number;
+    readonly tokens: number;
 }
 
 export interface EntryFindResult extends SchemeResult {
     readonly content: string | null;
     readonly mimetype: string | null;
-    readonly results: ReadonlyArray<EntryCatalogItem>;
+    readonly results: ReadonlyArray<EntryCatalogItem | EntryCatalogScope | MatchEvidence>;
     readonly itemsTokenTotal: number;
     readonly returnedItemsTokenTotal: number;
-    readonly pathnames: ReadonlyArray<string>;
-    readonly matches: ReadonlyArray<EntryMatch>;
+    readonly matchingPathCount: number;
+    readonly matchLocationCount: number;
     readonly range?: RangeExtent;
-    readonly omittedItems?: number;
-    readonly maximumItems?: number;
 }
 
 export interface EntryOperationCaps {

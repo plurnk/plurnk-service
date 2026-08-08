@@ -11,6 +11,7 @@ import type {
     LineEditResult as EditResult,
     BatchEdit,
     PageResult,
+    RangeUnit,
     TextReplacement,
 } from "@plurnk/plurnk-schemes";
 import type { LineMarker } from "@plurnk/plurnk-contracts";
@@ -25,6 +26,10 @@ export default class LineMarkerOps {
     static textReplacement(content: string, marker: LineMarker, body: string): TextReplacement | { error: string } {
         return Slicer.textReplacement(content, marker, body);
     }
-    static page<T>(items: readonly T[], marker: LineMarker): PageResult<T> { return Slicer.page(items, marker); }
+    static page<T>(
+        items: readonly T[],
+        marker: LineMarker,
+        options: { readonly unit?: RangeUnit; readonly allowEmpty?: boolean } = {},
+    ): PageResult<T> { return Slicer.page(items, marker, options); }
 
 }

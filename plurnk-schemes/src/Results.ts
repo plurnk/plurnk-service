@@ -27,10 +27,10 @@ export interface SchemeResultBase extends SchemeResult {
 }
 
 // Evidence explaining why a matcher selected a resource. Structural dialects
-// retain their canonical locator in `path`. `region` is present only when the
+// retain their canonical `locator`. `region` is present only when the
 // finding has an honest exact or enclosing mapping into text the model can READ.
 export interface MatchEvidence {
-    readonly path?: string;
+    readonly locator?: string;
     readonly region?: TextRegion;
 }
 
@@ -118,17 +118,17 @@ export default class Results {
             throw new TypeError("invalid match evidence: expected an object");
         }
         const record = evidence as Record<string, unknown>;
-        const extras = Object.keys(record).filter((key) => key !== "path" && key !== "region");
+        const extras = Object.keys(record).filter((key) => key !== "locator" && key !== "region");
         if (extras.length > 0) {
             throw new TypeError(`invalid match evidence: unexpected field ${JSON.stringify(extras[0])}`);
         }
-        const hasPath = Object.hasOwn(record, "path");
+        const hasLocator = Object.hasOwn(record, "locator");
         const hasRegion = Object.hasOwn(record, "region");
-        if (!hasPath && !hasRegion) {
-            throw new TypeError("invalid match evidence: expected path, region, or both");
+        if (!hasLocator && !hasRegion) {
+            throw new TypeError("invalid match evidence: expected locator, region, or both");
         }
-        if (hasPath && (typeof record.path !== "string" || record.path.length === 0)) {
-            throw new TypeError("invalid match evidence: path must be a non-empty string");
+        if (hasLocator && (typeof record.locator !== "string" || record.locator.length === 0)) {
+            throw new TypeError("invalid match evidence: locator must be a non-empty string");
         }
         if (hasRegion) Validator.assertTextRegion(record.region as TextRegion);
         return evidence as MatchEvidence;

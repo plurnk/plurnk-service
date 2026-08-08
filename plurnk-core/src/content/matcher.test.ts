@@ -39,11 +39,11 @@ test("regex hits select the resource and retain readable-text regions", async ()
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches, [
         {
-            path: "#2",
+            locator: "#2",
             region: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 2 },
         },
         {
-            path: "#4",
+            locator: "#4",
             region: { startLine: 4, startColumn: 1, endLine: 4, endColumn: 2 },
         },
     ]);
@@ -67,11 +67,11 @@ test("structural hits expose coordinates rather than extracted values", async ()
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches, [
         {
-            path: "#3",
+            locator: "#3",
             region: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 2 },
         },
         {
-            path: "#4",
+            locator: "#4",
             region: { startLine: 4, startColumn: 1, endLine: 4, endColumn: 2 },
         },
     ]);
@@ -88,11 +88,11 @@ test("two structural matches on one line retain distinct canonical paths", async
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches, [
         {
-            path: "$.users[0].name",
+            locator: "$.users[0].name",
             region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 2 },
         },
         {
-            path: "$.users[1].name",
+            locator: "$.users[1].name",
             region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 2 },
         },
     ]);
@@ -114,7 +114,7 @@ test("a multi-line match remains one coordinate range", async () => {
         }]));
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches, [{
-        path: "(//user)[1]",
+        locator: "(//user)[1]",
         region: {
             startLine: 2,
             startColumn: 1,
@@ -129,7 +129,7 @@ test("a scalar retains its locator without fabricated coordinates", async () => 
         { dialect: "xpath", raw: "count(//user)" } as MatcherBody, "<root><user/><user/></root>", "text/html",
         stubQuery(async () => [{ matched: 2, matching: "count(//user)" }]));
     assert.equal(r.status, 200);
-    assert.deepEqual(r.matches, [{ path: "count(//user)" }]);
+    assert.deepEqual(r.matches, [{ locator: "count(//user)" }]);
 });
 
 test("source unparseable for its mimetype → 203 soft fallback with raw content + reason", async () => {

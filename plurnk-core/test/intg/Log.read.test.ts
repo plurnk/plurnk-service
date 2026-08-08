@@ -151,7 +151,7 @@ test("Log.read: a range miss carries the exact textual line extent", async () =>
     } finally { db.close(); }
 });
 
-test("Log.find: regex body matcher returns the complete projection plus coordinates", async () => {
+test("Log.find: an exact matcher returns flat locations and complete path/location counts", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
@@ -163,8 +163,16 @@ test("Log.find: regex body matcher returns the complete projection plus coordina
         const r = await new Log().find(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
-        assert.match(r.content ?? "", /"path"\s*:\s*"log:\/\/\/1\/1\/2\/READ"/);
-        assert.ok((r.matches?.length ?? 0) > 0);
+        assert.equal(r.results.length, 1);
+        assert.deepEqual(r.results[0]?.region, {
+            startLine: 1,
+            startColumn: 2,
+            endLine: 1,
+            endColumn: 10,
+        });
+        assert.equal(r.matchingPathCount, 1);
+        assert.equal(r.matchLocationCount, 1);
+        assert.equal(r.range?.unit, "matchLocation");
     } finally { db.close(); }
 });
 
@@ -183,8 +191,8 @@ test("Log.find: body matcher selects the full projection before <L> projects tex
     try {
         await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
-        // The matcher qualifies the complete JSON result. <1> then projects its
-        // first rendered line instead of paginating matcher hits.
+        // The matcher qualifies the complete JSON result. Because the target is
+        // exact, <1> selects the first match location.
         const stmt: FindStatement = {
             op: "FIND", suffix: "", signal: null, target: urlPath("log", "/1/1/2"),
             lineMarker: { marks: [1, 1] },
@@ -192,12 +200,14 @@ test("Log.find: body matcher selects the full projection before <L> projects tex
         };
         const r = await new Log().find(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
-        assert.match(r.content ?? "", /"path"\s*:\s*"log:\/\/\/1\/1\/2\/READ"/);
-        assert.ok((r.matches?.length ?? 0) > 0);
+        assert.equal(r.results.length, 1);
+        assert.equal(r.matchingPathCount, 1);
+        assert.ok(r.matchLocationCount > 1);
+        assert.equal(r.range?.unit, "matchLocation");
     } finally { db.close(); }
 });
 
-test("Log.find: a matcher FIND writes one resource row with surgical coordinates", async () => {
+test("Log.find: a matcher FIND writes flat surgical coordinates", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await new Worker().edit(
@@ -218,7 +228,9 @@ test("Log.find: a matcher FIND writes one resource row with surgical coordinates
         const r = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
-        assert.match(r.content ?? "", /worker:\/\/\/notes/);
+        const locations = JSON.parse(r.content ?? "[]") as Array<{ region?: unknown }>;
+        assert.equal(locations.length, 3);
+        assert.ok(locations.every(({ region }) => region !== undefined));
     } finally { db.close(); }
 });
 

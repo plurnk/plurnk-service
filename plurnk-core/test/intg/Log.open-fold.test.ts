@@ -338,7 +338,7 @@ test("FOLD[tag] applies + folds; OPEN[tag]/FIND[tag] filter by ALL-tags — name
         const found = await log.find(findStmt(urlPath("log", "/"), null, ["projectB"]), mk());
         assert.equal(found.status, 200);
         assert.equal(found.results.length, 1, "only the tagged row matches");
-        assert.match(found.results[0].path, /1\/1\/2/, "and it is row 2");
+        assert.match(found.results[0]?.path ?? "", /1\/1\/2/, "and it is row 2");
 
         // RECALL: a TARGETLESS OPEN[projectB] reopens the whole named working-set.
         const open = await log.open({ ...openStmt(null), signal: ["projectB"] }, mk());
@@ -348,12 +348,14 @@ test("FOLD[tag] applies + folds; OPEN[tag]/FIND[tag] filter by ALL-tags — name
 
         // An unknown tag is a no-op success (204), never an error.
         assert.equal((await log.open({ ...openStmt(null), signal: ["ghost"] }, mk())).status, 204, "recalling an unused name steers nothing");
-        assert.equal((await log.find(findStmt(urlPath("log", "/"), null, ["ghost"]), mk())).status, 204);
+        const emptySurvey = await log.find(findStmt(urlPath("log", "/"), null, ["ghost"]), mk());
+        assert.equal(emptySurvey.status, 200);
+        assert.deepEqual(emptySurvey.results, []);
 
         // Additive apply + ALL-tags AND: stamp a second tag on row 2, then FIND[both] matches, FIND[one-missing] doesn't.
         await log.fold({ ...foldStmt(urlPath("log", "/1/1/2")), signal: ["hot"] }, mk());
         assert.equal((await log.find(findStmt(urlPath("log", "/"), null, ["projectB", "hot"]), mk())).results.length, 1, "row 2 carries BOTH tags (additive) — ALL-tags AND matches");
-        assert.equal((await log.find(findStmt(urlPath("log", "/"), null, ["projectB", "cold"]), mk())).status, 204, "missing one ANDed tag → no match");
+        assert.deepEqual((await log.find(findStmt(urlPath("log", "/"), null, ["projectB", "cold"]), mk())).results, [], "missing one ANDed tag → empty catalog survey");
     } finally { await db.close(); }
 });
 

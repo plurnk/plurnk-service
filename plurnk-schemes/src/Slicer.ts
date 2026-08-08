@@ -36,7 +36,7 @@ export interface TextReplacement {
     readonly normalization?: ScopeNormalization;
 }
 
-export type RangeUnit = "line" | "result";
+export type RangeUnit = "line" | "result" | "resource" | "matchLocation";
 export interface RangeExtent {
     readonly unit: RangeUnit;
     readonly requested: { readonly first: number; readonly last: number | null };
@@ -417,9 +417,13 @@ export default class Slicer {
     // `<L>` over an ordered result set uses the same positional contract as
     // READ slicing. The returned extent lets a scheme put exact recovery facts
     // in RFC 9457 Problem Details instead of emitting a bare 416.
-    static page<T>(items: readonly T[], marker: LineMarker): PageResult<T> {
+    static page<T>(
+        items: readonly T[],
+        marker: LineMarker,
+        options: { readonly unit?: RangeUnit; readonly allowEmpty?: boolean } = {},
+    ): PageResult<T> {
         const total = items.length;
-        const extent = Slicer.#extent(marker, total, "result");
+        const extent = Slicer.#extent(marker, total, options.unit ?? "result");
         if (marker.marks.length !== 1 && marker.marks.length !== 2) {
             return Slicer.#failure(
                 "range-not-satisfiable",
@@ -459,6 +463,9 @@ export default class Slicer {
             );
         }
         if (total === 0) {
+            if (options.allowEmpty === true && first === 1 && last !== null && (last === -1 || last >= 1)) {
+                return { status: 200, items: [], range: Slicer.#projectedExtent(extent, null, null) };
+            }
             if ((first === 0 || first === 1) && last === -1) {
                 return { status: 200, items: [], range: Slicer.#projectedExtent(extent, null, null) };
             }

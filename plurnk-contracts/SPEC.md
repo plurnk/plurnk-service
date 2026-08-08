@@ -276,7 +276,7 @@ Mutation semantics:
 
 | OP   | Successful observation                                                            |
 |------|-----------------------------------------------------------------------------------|
-| FIND | Catalog rows plus optional structural locators and text match evidence            |
+| FIND | Resource catalog rows or exact-target match locations                             |
 | READ | Complete or scoped body projections plus optional text match evidence             |
 | EDIT | Status plus a bounded receipt for the effect that landed                          |
 | COPY | Source and destination selections plus ordered destination effects                |
@@ -289,6 +289,12 @@ Mutation semantics:
 | FORK | Spawn acknowledgement; the inherited worker's deliverable arrives through the log |
 | KILL | Status of deletion or termination                                                 |
 | PLAN | Status of durable intended-goals logging                                          |
+
+§find-result-unit For FIND, authored target shape fixes the paginated result
+unit. An exact target with a matcher pages flat match locations; a glob or
+folder target, and every body-less FIND, pages resources. Resolving a glob to
+one resource does not make it exact. The same `<N>`, inclusive `<N,M>`,
+markerless `<1,16>`, and explicit-all `<1,-1>` forms apply to either unit.
 
 §copy-move-observation COPY and MOVE log projections preserve both admitted operand selections,
 including their independent scopes, whether the result changed state, was a
@@ -420,7 +426,7 @@ components, while the operation owner assigns their roles.
 
 | Operation             | Canonical components                         | Meaning                                                      |
 |-----------------------|----------------------------------------------|--------------------------------------------------------------|
-| FIND                  | optional threshold, then 0–2 positions       | Inclusive positions in a deterministic result order (defaults to `<1,16>`) |
+| FIND                  | optional threshold, then 0–2 positions       | Inclusive resource or exact-target location positions ({§find-result-unit}; defaults to `<1,16>`) |
 | READ                  | 0/1/2/4 coordinates                          | Text projection from the exact selected file, entry, or log item           |
 | EDIT                  | text coordinates                             | Text replacement, deletion, prepend, or append               |
 | COPY/MOVE source      | text coordinates                             | Region copied or moved from the selected source              |

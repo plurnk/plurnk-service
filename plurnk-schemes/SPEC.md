@@ -106,8 +106,8 @@ discovery/materialization seam invoked before the consumer's standard resource
 selection when a data scheme has no custom `find()`. Stored schemes omit it.
 FIND invokes it before selecting entries. Acquisition
 schemes use it to make an exact requested resource into an ordinary entry,
-then receive the same catalog, matcher evidence, weight, pagination, and status
-semantics as every other entry-bearing scheme. The consumer resolves the
+then receive the same target-shaped resource/location projection, weight,
+pagination, and status semantics as every other entry-bearing scheme. The consumer resolves the
 standard query through the same canonical entry identity used by
 `ctx.entries`: a URL authority remains part of that identity and cannot be
 dropped between preparation and lookup. A custom `find()` replaces the whole
@@ -227,7 +227,7 @@ effects shown to consumers; plugins do not invent a second effect envelope.
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
 - §executor-scheme-output Executor-scheme ("an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` -> `ReadResolution` is the free exact-target text projection over produced output (reuses `Slicer`). Markerless READ returns lines 1–16 with complete range metadata; `<1,-1>` explicitly returns all. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only EXEC-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
 - Results: `SchemeResult` is the universal operation-result contract. Statuses below 400 carry no `problem`; statuses 400–599 require RFC 9457 `ProblemDetails`, and the legacy `error` member is forbidden. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
-- Standard FIND results may carry `omittedItems` and `maximumItems` when a selected catalog is too large to enumerate. `omittedItems` is the exact selected-resource count and `maximumItems` is the active materialization limit. These names cannot collide with the model-facing string `overflow` metadata used for truncated packet bodies.
+- Standard `EntryFindResult` exposes only its paged `results`, complete `matchingPathCount` / `matchLocationCount`, content weights, and typed range. Resource-mode rows are `EntryCatalogItem` or `EntryCatalogScope`; exact matcher mode returns flat `MatchEvidence` locations. Pagination is the materialization bound; no hidden `matches`, `pathnames`, or overflow-only result collection exists.
 - Capability ctx (see §3.bis): `SchemeCtx`, `StreamSubscription`, and the domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`/`EntryAddress`, and typed standard-operation results. `editBatch` receives every same-turn EDIT for one canonical resource and channel; it validates against one snapshot and commits one revision or none. There is no sequential single-EDIT fallback.
 
 Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules, the barrel, and the frozen `DEFAULT_LOOP_FLAGS` constant are the only non-class files.
@@ -321,8 +321,9 @@ guessed. Start-column overshoot and out-of-range lines remain 416 errors.
 - `Slicer.lineMarkerEdit` applies one replacement.
 - `Slicer.lineMarkerEditBatch` validates all replacements against one snapshot,
   rejects overlaps, and applies all or none.
-- `Slicer.page(items, marker)` is the separate ordered-result pagination
-  helper; it accepts only one or two integer positions.
+- `Slicer.page(items, marker, options?)` is the separate ordered-result
+  pagination helper; it accepts only one or two integer positions and can name
+  an operation-owned range unit.
 
 A line/pagination 416 carries `range: { unit, requested: { first, last },
 available: { first, last, total } }`. An exact-region failure, including a
@@ -342,7 +343,7 @@ endpoints and `total: 0`.
 - `Results.problem(owner, code, status, detail, extensions?)` — build and validate RFC 9457 Problem Details with a stable `https://problems.plurnk.dev/<owner>/<code>` type.
 - `Results.failure(owner, code, status, detail, fields?, extensions?)` — build and validate a failed operation result.
 - `Results.assert(result)` — validate the complete success/failure discrimination and reject malformed plugin output.
-- `Results.assertMatchEvidence(evidence)` / `assertMatchEvidenceList(evidence)` - enforce the exact `{ path?, region? }` shape and shared `TextRegion` contract.
+- `Results.assertMatchEvidence(evidence)` / `assertMatchEvidenceList(evidence)` - enforce the exact `{ locator?, region? }` shape and shared `TextRegion` contract.
 - `Results.assertReadResult(result)` - validate the universal operation result plus any `region` and `matches` it exposes.
 - `Results.attachInstance(result, uri)` — attach the durable occurrence URI to a failed result.
 
@@ -357,10 +358,10 @@ entries, channels, and tags never return a bare failure status.
 
 - `Matcher.matchAgainstContent(body, content, mimetype, mimetypes)` is the body-matcher adapter over `Mimetypes.query` (glob/regex/jsonpath/xpath).
 - A match returns status 200 and `matches: MatchEvidence[]`.
-  `MatchEvidence` is `{path?, region?}`. `path` preserves a structural locator;
+  `MatchEvidence` is `{locator?, region?}`. `locator` preserves a structural locator;
   `region` is a complete four-coordinate `TextRegion` only when the finding has
   an honest exact or nearest-enclosing mapping into the text the model can READ.
-  Each item must contain at least one of `path` or `region`; other fields violate
+  Each item must contain at least one of `locator` or `region`; other fields violate
   the shared evidence contract.
 - The matcher is a boolean resource selector. It does not replace content with matched values or choose a retrieval window. FIND owns selection and pagination; exact READ owns text projection.
 - Empty results return 204 with `matches: []`; `UnsupportedDialectError` maps to 415; `InvalidExpressionError` maps to 400; `QueryParseFailureError` maps to 203 with raw content, text/markdown, and `reason`.

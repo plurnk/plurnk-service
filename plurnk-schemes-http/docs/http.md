@@ -10,7 +10,7 @@ default.
 | --------------------------------- | ------------- | ------------------------------------------------------------------------------ |
 | Unscoped `READ(http(s)://…)`      | GET           | Acquire/reuse the response and publish the selected channel                    |
 | Scoped `READ(http(s)://…)<scope>` | None          | Read a range from the selected already-materialized channel; never refetch     |
-| `FIND(http(s)://…):matcher`       | GET if needed | Prepare an exact URL, then return standard JSON metadata and match coordinates |
+| `FIND(http(s)://…):matcher`       | GET if needed | Prepare an exact URL, then return flat match locations                         |
 | `SEND[200](http(s)://…):body:`    | POST          | Submit the body and stream the response                                        |
 | `EDIT(http(s)://…):body:`         | PUT           | Replace the whole remote resource; do not use a line scope                     |
 | `KILL(http(s)://…)`               | DELETE        | Delete the remote resource and stream the response                             |

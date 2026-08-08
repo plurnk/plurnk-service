@@ -918,9 +918,9 @@ Directed SEND (non-null path) routes to scheme's `send`. Status = intent:
 - `SEND[200](path)` — write body into resource (WS message, exec stdin).
 - `SEND[499](path)` — cancel active subscription ({§stream}).
 
-- §log-uniform-query **Log speaks the universal query contract** — `FIND(log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~semantic` and `@graph` use the same persistent derivation artifacts and candidate rankers as entries. Results are catalog-shaped items keyed `log:///loop/turn/seq/OP`. A tag signal filters candidates by the model's own region tags ({§log-region-tagging}). Log remains an event stream in storage; uniformity begins at its readable projection and search attachment, not by forcing logs into the entries table.
+- §log-uniform-query **Log speaks the universal query contract** — `FIND(log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~semantic` and `@graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are catalog-shaped items keyed `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). A tag signal filters candidates by the model's own region tags ({§log-region-tagging}). Log remains an event stream in storage; uniformity begins at its readable projection and search attachment, not by forcing logs into the entries table.
 - §find-source-agnostic **The content matcher is source-agnostic** — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND works uniformly across schemes by construction: `EntryFind` and `Log.find` run the one shared primitive rather than re-implementing it per scheme. Log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
-- §matcher-selection-signal **Matching carries navigation evidence** - a matcher is a boolean resource predicate. Each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{path?,region?}`. `path` preserves a structural locator. `region` is a complete four-coordinate `TextRegion` only when the finding maps honestly into the exact text the model can READ. Multiple findings on one resource remain one FIND result; exact duplicate evidence deduplicates. Relation findings map their indexed source spans through the same readable text coordinate index. The engine never fabricates a region or guesses which surgical READ the model wants.
+- §matcher-selection-signal **Matching carries navigation evidence** - a matcher is a boolean resource predicate. Internally, each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{locator?,region?}`. `locator` preserves a structural address without overloading the resource row's `path`; `region` is a complete four-coordinate `TextRegion` only when the finding maps honestly into the exact text the model can READ. Exact duplicate evidence deduplicates. Relation findings map their indexed source spans through the same readable text coordinate index. FIND alone decides whether that grouped selection projects as resource rows or flat locations ({§find-result-projection}); the engine never fabricates a region or guesses which surgical READ the model wants.
 
 `SEND[410](path[#fragment])` also deletes the target entry/channel — an implemented side-effect, NOT taught to the model and with no live/demo surface. The model-facing delete idiom is KILL ({§move}).
 
@@ -1240,7 +1240,7 @@ The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of en
 
 - §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional** — a coordinate is `loop/turn/sequence`, and a PARTIAL coordinate selects its descendants: `log:///1` = loop 1's rows, `log:///1/2` = turn 1/2's rows, `log:///1/2/3` = the one row. A full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix — the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with `READ(worker:///docs/)`. Rendered row paths append `/OP` as optional self-documentation, not a fourth resource level: `log:///1/2/*` selects the turn's item rows, while `log:///**/READ` may deliberately filter that decoration.
 - §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — OPEN/FOLD/KILL take a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}), like a folder-scoped FIND: `FOLD(log:///1/2)` folds turn 1/2's rows. A **well-formed glob that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`. 400 remains for a malformed target only (no coordinate, no glob, no slash).
-- §log-region-tagging **Named region tagging: FOLD applies, OPEN/FIND filter** — the log's write-op is **FOLD**, because EDIT can't reach engine-written rows (the OP×resource matrix): `FOLD[tag](region)` folds the region AND stamps the tag on it, additively ({§edit-tags-additive}), via `log_tags` (CASCADE-erased with the row on KILL). The read-ops filter: `OPEN[tag]` and `FIND[tag]` select rows carrying EVERY listed tag ({§find-tag-filter-and-semantics}) — a **targetless** `OPEN[tag]` recalls the whole tagged working-set across the worker, a scoped one filters within its glob; an unknown tag matches nothing (204, no-op success). `[tag]`-applies-on-the-write-op / `[tag]`-filters-on-the-read-ops is the same split entries already use (EDIT vs FIND); FOLD merely stands in for EDIT because the log is not an entry scheme. A fork carries a row's tags with its fold-state ({§machine-processes-fork-copies-the-log}). The model curates named working-sets of its own memory: file-away-under-a-name, recall-by-name.
+- §log-region-tagging **Named region tagging: FOLD applies, OPEN/FIND filter** — the log's write-op is **FOLD**, because EDIT can't reach engine-written rows (the OP×resource matrix): `FOLD[tag](region)` folds the region AND stamps the tag on it, additively ({§edit-tags-additive}), via `log_tags` (CASCADE-erased with the row on KILL). The read-ops filter: `OPEN[tag]` and `FIND[tag]` select rows carrying EVERY listed tag ({§find-tag-filter-and-semantics}) — a **targetless** `OPEN[tag]` recalls the whole tagged working-set across the worker, a scoped one filters within its glob; an unknown OPEN tag is a 204 no-op, while body-less FIND is the ordinary successful empty catalog survey ({§find-result-projection}). `[tag]`-applies-on-the-write-op / `[tag]`-filters-on-the-read-ops is the same split entries already use (EDIT vs FIND); FOLD merely stands in for EDIT because the log is not an entry scheme. A fork carries a row's tags with its fold-state ({§machine-processes-fork-copies-the-log}). The model curates named working-sets of its own memory: file-away-under-a-name, recall-by-name.
 - §log-curation-set-selection **Set selection, never positional curation** — target/glob, optional body matcher, and (for OPEN) tag filters compose into the affected row set. FOLD's tags apply after selection. OPEN and FOLD have no `<L>` marker and never paginate that set; FIND owns result pagination.
 
 The worker's **first** model-emission row is exceptional: a born-OPEN turn-0 **exemplar** — a minimal worked example (`PLAN` → environment `FIND`s → `SEND[102]`) the model always opens on, so the grammar can stay thin (the example teaches the syntax, not a heavy grammar). Its `SEND[102]` names the next action, matching the continuation contract. {§model-entry}
@@ -1321,41 +1321,53 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   identity-bearing: `https://example.com/page` queries
   `(https, /example.com/page)`, never `(https, /page)`.
 - §find-glob-filter-on-content `body` matcher operates on entry content (glob/regex/jsonpath/xpath), per `plurnk.md` "Pattern Filtering"; the path-glob lives in the (target), not the body.
-- §find-semantic-selection Every matcher operates only over the candidate set selected by `(target)` and `[tags]`; relation matchers do not bypass that selection. Semantic ranking is exhaustive within that candidate set, then applies the ordinary FIND result scope. Markerless semantic FIND therefore uses the same `<1,16>` default as every other matcher. Integers retain FIND's positional contract: `<N>` selects result N and `<N,M>` selects the inclusive range. A leading decimal first applies a minimum cosine-similarity threshold; following integers select positions within that ranked threshold set. Thus `<0.7,10,20>` means threshold 0.7 followed by results 10 through 20, while `<0.7>` applies the threshold and the ordinary first-16 page. The independent FIND render budget remains authoritative.
+- §find-semantic-selection Every matcher operates only over the candidate set selected by `(target)` and `[tags]`; relation matchers do not bypass that selection. Semantic ranking is exhaustive within that candidate set, then applies the ordinary FIND result scope. Markerless semantic FIND therefore uses the same `<1,16>` default as every other matcher. Integers retain FIND's positional contract: `<N>` selects result N and `<N,M>` selects the inclusive range. A leading decimal first applies a minimum cosine-similarity threshold; following integers select positions within that ranked threshold set. Thus `<0.7,10,20>` means threshold 0.7 followed by results 10 through 20, while `<0.7>` applies the threshold and the ordinary first-16 page.
 - §find-tag-filter-and-semantics `signal` is a tag filter; entries match if they have ALL listed tags.
 - §find-scoped-isolation Workspace + scheme scoped — no cross-workspace/cross-scheme leakage.
-- §find-result-catalog-rows Returns
-  `FindResult { status, content, mimetype, results, matches, pathnames,
-  range, itemsTokenTotal, returnedItemsTokenTotal }`. A
-  **body-less** FIND is the **catalog**. Ordinary rows are one per resource:
+- §find-result-projection **The authored target shape determines the result unit; result cardinality never changes it** ({§find-result-unit}). Returns `FindResult { status, content, mimetype, results, range, matchingPathCount, matchLocationCount, itemsTokenTotal, returnedItemsTokenTotal }`:
+
+  | Target | Matcher body | `range.unit` | Result rows |
+  |---|---|---|---|
+  | exact | absent | `resource` | the one catalog resource |
+  | glob or folder | absent | `resource` | catalog resources |
+  | glob or folder | present | `resource` | matching catalog resources with `matchLocationCount` |
+  | exact | present | `matchLocation` | flat `{ locator?, region? }` locations |
+
+  A glob or folder remains resource mode when it resolves to one path. An exact
+  target remains location mode when it has many locations. A valid exact match
+  with no addressable location is status 200 with `matchingPathCount: 1`,
+  `matchLocationCount: 0`, and no fabricated row; a matcher selecting no
+  resource is 204. A body-less broad empty catalog survey is status 200; an
+  absent exact resource is 404.
+
+  `matchingPathCount` and `matchLocationCount` describe the complete selection
+  before pagination. `path` is reserved for resource identity; broad results
+  never nest locations, and exact location rows never repeat the resource path.
+  A **body-less** FIND is the **catalog**. Ordinary rows are one per resource:
   `{ path, stream?, tags?, channels: { <uri>: { mimetype, tokens, lines } } }`.
   A terminal single-star path scope is a one-level map: direct entries retain
   that shape, while deeper first-segment directories collapse to
   `{ path: "dir/**", items, tokens }`, where the selector and both aggregates
   describe the exact recursive subtree. Scope summaries are navigation
-  metadata, not resources. A matcher FIND
-  retains the same one-row-per-resource unit and adds
-  `matches: MatchEvidence[]` ({§matcher-selection-signal}). Markerless FIND
-  returns results 1–16; `<1,-1>` explicitly selects all. `range` reports the
+  metadata, not resources. Markerless FIND returns positions 1–16 in the
+  selected unit; `<N,M>` selects an inclusive page and `<1,-1>` explicitly
+  selects all. `range` reports the unit plus the
   requested, available, returned, continuation, completion, and all-results
   facts. `itemsTokenTotal` weighs the complete matched set while
-  `returnedItemsTokenTotal` weighs the returned page. FIND pagination counts
-  selected resources, never occurrences. Resource order is rank for
-  `~`semantic and candidate order otherwise; evidence retains dialect order
-  and exact duplicates deduplicate. `content` is one valid compact JSON array
+  `returnedItemsTokenTotal` weighs the returned resource page; in exact
+  location mode both weigh the one selected resource once. Resource order is
+  rank for `~`semantic and candidate order otherwise; location order is dialect
+  order and exact duplicates deduplicate. The intended drill-down is broad FIND
+  to choose paths, exact-target FIND to choose locations, then exact READ.
+  `content` is one valid compact JSON array
   with exactly one top-level item per physical line: objects carry no
   pretty-print whitespace, the opening bracket shares the first row, the
   closing bracket shares the last, and only the `N-1` item-boundary newlines
   are added. Universal packet numbering therefore makes result ordinal N
   addressable as line N, matching `<N>` pagination without a second coordinate
-  system. Empty and single-item arrays remain one line.
-- §find-count-not-contents **Over the render budget, FIND returns a count, not
-  contents** (`PLURNK_SERVICE_FIND_MAX_MATCHES`). A repo-scale recursive
-  FIND cannot enumerate safely. When the selected-resource count exceeds the
-  budget, `overflow` and `itemsTokenTotal` carry the count and aggregate weight
-  while `results`, `matches`, and `pathnames` are empty; no caller may perform
-  hidden work from content the model was denied. The gate is independent of
-  model window size. `0`/unset disables it.
+  system. Empty and single-item arrays remain one line. Pagination is the only
+  FIND materialization bound; no hidden complete row or location collection is
+  retained behind the public projection.
 
 ### §send SEND
 
@@ -2709,7 +2721,7 @@ contract.
 §packet-catalog **Catalogs are query results, not packet state.** The packet
 stores no materialized manifest. Complete and one-level entry directories,
 their row shape, and their ordering are ordinary FIND projections owned by
-{§find-result-catalog-rows}; persistent search derivation is a separate index.
+{§find-result-projection}; persistent search derivation is a separate index.
 
 ### §operation-results Model-facing failures and notices
 
@@ -2920,10 +2932,11 @@ Glob anchoring (`TODO*` starts-with, `*TODO*` contains, `*.log` ends-with,
 
 §matcher-result-resource-selection **A matcher selects resources; it never extracts a value or chooses a retrieval
 window.** Every dialect answers whether a resource matches and may return
-`MatchEvidence { path?, region? }` ({§matcher-selection-signal}). `path` is a
+`MatchEvidence { locator?, region? }` ({§matcher-selection-signal}). `locator` is a
 canonical structural locator. `region` is a complete `TextRegion` in the exact
 text the model can READ and may be exact or the smallest honest enclosing
-region. A matcher miss is 204. FIND lists each selected resource once.
+region. A matcher miss is 204. FIND's target shape projects the selected
+resources according to {§find-result-projection}.
 
 | Dialect | Selects | Natural use |
 |---|---|---|
@@ -2934,11 +2947,12 @@ region. A matcher miss is 204. FIND lists each selected resource once.
 | `~`semantic `~q` | resources ranked by indexed chunks | chunk text region when available |
 | `@`graph `@<sym` | resources with matching symbol relations | symbol text region when available |
 
-Match evidence is navigation evidence, never an implicit projection. The model
-uses FIND to select and page resources, then emits explicit exact READs—parallel
-in one turn when useful—to retrieve the chosen bodies or regions. A locator-only
-or coordinate-less valid result still selects the resource; the service never
-fabricates coordinates. {§read-exact-target} {§read-selection-projection}
+Match evidence is navigation evidence, never an implicit body projection. The
+model uses broad FIND to select and page resources, exact FIND to page that
+resource's locations, then explicit exact READs—parallel in one turn when
+useful—to retrieve chosen bodies or regions. A locator-only or coordinate-less
+valid result still selects the resource; the service never fabricates
+coordinates. {§read-exact-target} {§read-selection-projection}
 
 ### §text-scope-runtime Text-scope runtime projection
 

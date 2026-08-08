@@ -1,9 +1,7 @@
 // FIND helper for entry-bearing schemes (SPEC {§find}; plurnk.md FIND row).
-// FIND resolves to the scheme's CATALOG ROWS — the very rows the manifest catalogs —
-// filtered to the statement's matches. A matcher (glob/regex/jsonpath/xpath/~semantic/
-// @graph) decides WHICH entries appear. Each selected entry appears once; its
-// optional `matches` metadata records every addressable source/readable range.
-// The content itself remains a READ.
+// FIND resolves one of two questions from the target shape. A broad target
+// returns catalog resources; an exact matcher target returns flat addressable
+// match locations. The content itself remains a READ.
 //
 // FIND slot semantics (contracts SPEC §4/§7):
 //   target  — required scope (path or glob); selects which entries are candidates
@@ -12,7 +10,7 @@
 //             → the mimetypes plugin) and INCLUDES/EXCLUDES the entry — e.g.
 //             `FIND(log:///**/error):/timeout/i` keeps logs whose content matches.
 //   signal  — tag filter: candidate entry must have ALL listed tags
-//   <L>     — results pagination: select results N..M from the matched list
+//   <L>     — result pagination: resource or match-location positions N..M
 
 import { DEFAULT_RETRIEVAL_LIMIT, type FindStatement } from "@plurnk/plurnk-contracts";
 import { LineMarkerOps } from "../content/index.ts";
@@ -31,40 +29,159 @@ import { resolveSearchCandidates } from "./_search-candidate.ts";
 import { pathFolderSummaries, pathScope, pathScopeMatches, type PathScope } from "./_path-scope.ts";
 
 export interface Match { pathname: string; matches: MatchEvidence[]; }
-// A FIND result row: the entry's catalog row plus addressable match evidence
-// (absent for a body-less or source-less match).
 export type CatalogScope = {
     path: string;
     items: number;
     tokens: number;
     channels?: never;
-    matches?: undefined;
+    matchLocationCount?: never;
+    locator?: never;
+    region?: never;
 };
-export type CatalogMatch = CatalogEntry & { matches?: MatchEvidence[]; items?: never; tokens?: never };
-export type MatchItem = CatalogMatch | CatalogScope;
+export type CatalogMatch = CatalogEntry & {
+    matchLocationCount?: number;
+    items?: never;
+    tokens?: never;
+    locator?: never;
+    region?: never;
+};
+export type MatchLocation = MatchEvidence & {
+    path?: never;
+    channels?: never;
+    items?: never;
+    tokens?: never;
+    matchLocationCount?: never;
+};
+export type MatchItem = CatalogMatch | CatalogScope | MatchLocation;
 
 // FIND result ordinals are also packet line coordinates. Keep each top-level
 // item compact, adding only the boundary newline that makes row N addressable
-// as line N while retaining one valid JSON array. {§find-result-catalog-rows}
+// as line N while retaining one valid JSON array. {§find-result-projection}
 export const renderFindContent = (results: readonly MatchItem[]): string =>
     `[${results.map((result) => JSON.stringify(result)).join(",\n")}]`;
 
-export const findItemTokens = (item: MatchItem): number => item.items === undefined
+export const findItemTokens = (item: CatalogMatch | CatalogScope): number => item.items === undefined
     ? Object.values(item.channels).reduce((sum, channel) => sum + channel.tokens, 0)
     : item.tokens;
 
-export interface FindResult extends SchemeResultBase {
+export interface FindFields {
+    readonly [field: string]: unknown;
     content: string | null;
     mimetype: string | null;
-    results: MatchItem[];     // one per selected resource; body-less -> no match evidence
+    results: MatchItem[];
     itemsTokenTotal: number;  // content weight of the complete matched set
     returnedItemsTokenTotal: number; // content weight of the returned page
-    pathnames: string[];      // returned resource pathnames, in result order
-    matches: Match[];         // one per selected resource, in result order
+    matchingPathCount: number;
+    matchLocationCount: number;
     range?: RangeExtent;
-    omittedItems?: number;    // {§find-count-not-contents} - N selected items omitted from an over-budget result
-    maximumItems?: number;
 }
+
+export interface FindResult extends SchemeResultBase, FindFields {}
+
+export interface FindProjectionResource {
+    readonly item: CatalogMatch;
+    readonly match: Match;
+}
+
+export const emptyFindFields = (): FindFields => ({
+    content: null,
+    mimetype: null,
+    results: [],
+    itemsTokenTotal: 0,
+    returnedItemsTokenTotal: 0,
+    matchingPathCount: 0,
+    matchLocationCount: 0,
+});
+
+const uniqueMatchLocations = (locations: readonly MatchEvidence[]): MatchLocation[] => {
+    const seen = new Set<string>();
+    const unique: MatchLocation[] = [];
+    for (const location of locations) {
+        const key = JSON.stringify(location);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(location);
+    }
+    return unique;
+};
+
+// {§find-result-projection} — selection remains grouped internally because
+// schemes and curation operate on resources. This one public projection owns
+// target-shape mode, pagination, counts, and rendering for every FIND source.
+export const projectFindResult = (
+    statement: FindStatement,
+    scope: PathScope,
+    resources: readonly FindProjectionResource[],
+    scopes: readonly CatalogScope[] = [],
+): FindResult => {
+    const resourcePaths = new Set<string>();
+    for (const { item } of resources) {
+        if (resourcePaths.has(item.path)) {
+            throw new Error(`FIND selection contains duplicate resource ${JSON.stringify(item.path)}`);
+        }
+        resourcePaths.add(item.path);
+    }
+
+    const matchingPathCount = resources.length;
+    const matchLocationCount = resources.reduce((sum, { match }) => sum + uniqueMatchLocations(match.matches).length, 0);
+    const itemsTokenTotal = resources.reduce((sum, { item }) => sum + findItemTokens(item), 0)
+        + scopes.reduce((sum, item) => sum + item.tokens, 0);
+    const fields = {
+        content: null,
+        mimetype: null,
+        results: [] as MatchItem[],
+        itemsTokenTotal,
+        returnedItemsTokenTotal: 0,
+        matchingPathCount,
+        matchLocationCount,
+    };
+
+    if (statement.body !== null && matchingPathCount === 0) {
+        return { status: 204, ...fields };
+    }
+
+    const locationMode = statement.body !== null && scope.kind === "exact";
+    const completeItems: MatchItem[] = locationMode
+        ? uniqueMatchLocations(resources.flatMap(({ match }) => match.matches))
+        : [
+            ...resources.map(({ item, match }): CatalogMatch => statement.body === null
+                ? item
+                : { ...item, matchLocationCount: uniqueMatchLocations(match.matches).length }),
+            ...scopes,
+        ];
+    if (!locationMode && scopes.length > 0) {
+        completeItems.sort((a, b) => (a.path ?? "").localeCompare(b.path ?? ""));
+    }
+
+    const marker = statement.body?.dialect === "semantic"
+        ? EntrySemantic.resultSelection(statement.lineMarker).page
+        : statement.lineMarker ?? { marks: [1, DEFAULT_RETRIEVAL_LIMIT] };
+    const unit = locationMode ? "matchLocation" : "resource";
+    const page = LineMarkerOps.page(completeItems, marker, {
+        unit,
+        allowEmpty: statement.lineMarker === null,
+    });
+    if (page.status !== 200) {
+        if (page.problem === undefined) throw new Error("FIND pagination failed without Problem Details");
+        return Results.assert({ status: page.status, problem: page.problem, ...fields, range: page.range }) as FindResult;
+    }
+
+    const results = page.items ?? [];
+    const returnedItemsTokenTotal = locationMode
+        ? itemsTokenTotal
+        : results.reduce((sum, item) => sum + findItemTokens(item as CatalogMatch | CatalogScope), 0);
+    return {
+        status: 200,
+        content: renderFindContent(results),
+        mimetype: "application/json",
+        results,
+        itemsTokenTotal,
+        returnedItemsTokenTotal,
+        matchingPathCount,
+        matchLocationCount,
+        ...(page.range === undefined ? {} : { range: page.range }),
+    };
+};
 
 export default class EntryFind {
     static #scopePathnameOf(statement: FindStatement): string | null {
@@ -83,13 +200,13 @@ export default class EntryFind {
         return out;
     }
 
-    // Resolve a FIND to its matched workspace PATHNAMES — entry-level, unique, in result
+    // Resolve a FIND to its matched workspace resources — entry-level, unique, in result
     // order (rank for ~semantic, candidate order otherwise). Candidate selection (scope +
     // tags) runs in SQL (find_workspace_entry_candidates); a content matcher then runs against
     // each candidate's default-channel CONTENT (Matcher.matchAgainstContent → the mimetypes
     // plugin) and INCLUDES/EXCLUDES the entry - 200 keeps it, 204/203 drop it, and a
-    // 4xx matcher failure ends the whole operation. Path-scoping stays in the (target). Returns the
-    // matched pathnames plus `locations` — each content hit's source line(s), keyed by pathname.
+    // 4xx matcher failure ends the whole operation. Path-scoping stays in the (target). Match
+    // locations remain grouped by resource internally until the target-shaped public projection.
     static async #matchPathnames(
         statement: FindStatement,
         ctx: PlurnkSchemeContext,
@@ -364,10 +481,10 @@ export default class EntryFind {
     // FIND result = the scheme's catalog rows, filtered to the matched entries and kept in
     // match order. A catalog row is exactly what the manifest catalogs (path + per-channel
     // {mimetype, tokens, lines}, tags, stream lifecycle) — FIND is the filtered, navigable slice of
-    // that catalog, rendered as a JSON array (application/json). {§find-result-catalog-rows}
+    // that catalog, rendered as a JSON array (application/json). {§find-result-projection}
     static async findWorkspaceEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<FindResult> {
         const match = await EntryFind.#matchPathnames(statement, ctx, manifest, explicitOwnerId);
-        const empty = { content: null, mimetype: null, results: [], itemsTokenTotal: 0, returnedItemsTokenTotal: 0, pathnames: [], matches: [] };
+        const empty = emptyFindFields();
         if (match.status !== 200) {
             if (match.problem !== undefined) {
                 return Results.assert({
@@ -395,20 +512,17 @@ export default class EntryFind {
         // {§entry-owner} — the alignment draws from the SAME owner the candidates matched, so a
         // match never pairs with a coordinate-twin sibling's catalog metadata.
         const byPath = new Map((await EntryManifest.catalogRowsFor(ctx, scheme, explicitOwnerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId))).map((r) => [r.path, r] as const));
-        let results: MatchItem[] = [];
-        const matches: Match[] = [];
-        let itemsTokenTotal = 0;
+        const resources: FindProjectionResource[] = [];
         for (const m of match.matches) {
             const row = byPath.get(EntryManifest.toPath(scheme, m.pathname));
             if (row === undefined) continue;
-            results.push(m.matches.length > 0 ? { ...row, matches: m.matches } : row);
-            matches.push(m);
-            itemsTokenTotal += Object.values(row.channels).reduce((sum, channel) => sum + channel.tokens, 0);
+            resources.push({ item: row, match: m });
         }
         // A terminal single-star catalog is a one-level map. Keep real entries
         // at that level and collapse deeper descendants into exact, actionable
         // `dir/**` scopes. The summaries are navigation metadata, not hidden
         // resource matches.
+        const scopes: CatalogScope[] = [];
         if (statement.body === null && match.scope !== undefined && match.candidatePathnames !== undefined) {
             for (const folder of pathFolderSummaries(match.scope, match.candidatePathnames)) {
                 let tokens = 0;
@@ -420,96 +534,11 @@ export default class EntryFind {
                     tokens += Object.values(row.channels).reduce((sum, channel) => sum + channel.tokens, 0);
                 }
                 if (items > 0) {
-                    results.push({ path: EntryManifest.toPath(scheme, folder.selector), items, tokens });
-                    itemsTokenTotal += tokens;
+                    scopes.push({ path: EntryManifest.toPath(scheme, folder.selector), items, tokens });
                 }
             }
-            results.sort((a, b) => a.path.localeCompare(b.path));
         }
-        const marker = statement.body?.dialect === "semantic"
-            ? results.length === 0 && !EntrySemantic.hasExplicitResultPage(statement.lineMarker)
-                ? null
-                : EntrySemantic.resultSelection(statement.lineMarker).page
-            : statement.lineMarker
-                ?? (results.length > 0 ? { marks: [1, DEFAULT_RETRIEVAL_LIMIT] } : null);
-        let range: RangeExtent | undefined;
-        if (marker !== null) {
-            const page = LineMarkerOps.page(results, marker);
-            if (page.status !== 200) {
-                if (statement.body !== null && results.length === 0) {
-                    const failure = Results.failure(
-                        `scheme:${manifest.name}`,
-                        "selection-range-unavailable",
-                        416,
-                        `The ${statement.body.dialect} matcher selected 0 resources; <${marker.marks.join(",")}> cannot select from an empty result set.`,
-                        { matches: [], range: page.range },
-                        {
-                            stage: "selection",
-                            dialect: statement.body.dialect,
-                            matchedResources: 0,
-                            range: page.range,
-                            recovery: "Correct or remove the matcher before choosing a range.",
-                            retryable: false,
-                        },
-                    );
-                    if (failure.problem === undefined) {
-                        throw new Error("FIND selection range failure has no Problem Details");
-                    }
-                    return { status: failure.status, problem: failure.problem, ...empty };
-                }
-                if (page.problem === undefined) throw new Error("FIND pagination failed without Problem Details");
-                return Results.assert({ status: page.status, problem: page.problem, ...empty }) as FindResult;
-            }
-            results = page.items ?? [];
-            range = page.range;
-        }
-        // Internal matchers successfully return an empty candidate set. Public
-        // FIND owns its operation status: a matcher miss is 204, while a
-        // body-less empty catalog remains a successful survey. {§matcher-result-resource-selection}
-        if (statement.body !== null && results.length === 0) {
-            return { status: 204, ...empty, ...(range === undefined ? {} : { range }) };
-        }
-        const matchesByPath = new Map(matches.map((item) => [EntryManifest.toPath(scheme, item.pathname), item]));
-        const returnedMatches = results.flatMap((item) => {
-            const selected = matchesByPath.get(item.path);
-            return selected === undefined ? [] : [selected];
-        });
-        const returnedItemsTokenTotal = results.reduce((sum, item) => sum + findItemTokens(item), 0);
-        // {§find-count-not-contents}: over the independent render limit, retain
-        // count and aggregate weight but never the enumerated rows. Zero disables.
-        const budget = Number.parseInt(process.env.PLURNK_SERVICE_FIND_MAX_MATCHES ?? "0", 10);
-        if (budget > 0 && results.length > budget) {
-            const noun = results.some((item) => item.items !== undefined) ? "catalog items" : "entries";
-            const steer = `${results.length} ${noun} match, exceeding the render budget (${budget}) — not enumerated.`;
-            // Count-forward means COUNT ONLY. Retaining the enumerated arrays behind a
-            // terse rendered steer defeated the contract twice: callers could still fan
-            // every hidden match into work, and the full objects stayed resident. The
-            // Omitted count + aggregate weight are the complete bounded result.
-            return {
-                status: 200,
-                content: steer,
-                mimetype: "text/markdown",
-                results: [],
-                itemsTokenTotal,
-                returnedItemsTokenTotal,
-                pathnames: [],
-                matches: [],
-                omittedItems: results.length,
-                maximumItems: budget,
-                ...(range === undefined ? {} : { range }),
-            };
-        }
-
-        return {
-            status: 200,
-            content: renderFindContent(results),
-            mimetype: "application/json",
-            results,
-            itemsTokenTotal,
-            returnedItemsTokenTotal,
-            pathnames: returnedMatches.map(({ pathname }) => pathname),
-            matches: returnedMatches,
-            ...(range === undefined ? {} : { range }),
-        };
+        if (match.scope === undefined) throw new Error("FIND selection succeeded without a path scope");
+        return projectFindResult(statement, match.scope, resources, scopes);
     }
 }

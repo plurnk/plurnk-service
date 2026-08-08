@@ -61,8 +61,8 @@ const findFailure = (
         results: [],
         itemsTokenTotal: 0,
         returnedItemsTokenTotal: 0,
-        pathnames: [],
-        matches: [],
+        matchingPathCount: 0,
+        matchLocationCount: 0,
     },
     {
         server,

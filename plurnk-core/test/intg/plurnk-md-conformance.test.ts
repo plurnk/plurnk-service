@@ -85,7 +85,7 @@ test("[plurnk.md-FIND-glob-on-content] FIND glob body matches entry CONTENT, not
         await seed(db, workspaceId, workerId, [["doc", "alpha\nTODO: ship\nbeta"]]);
         const r = await new Worker().find(findStmt(url("doc"), glob("TODO*")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
-        assert.ok((r.matches?.length ?? 0) > 0);
+        assert.ok(r.results.length > 0);
     } finally { db.close(); }
 });
 
@@ -96,7 +96,7 @@ test("[plurnk.md-FIND-regex-on-content] FIND regex body matches entry CONTENT, n
         await seed(db, workspaceId, workerId, [["doc", "heading\nalpha timeout beta\ncontext"]]);
         const r = await new Worker().find(findStmt(url("doc"), regex("timeout")), makeSchemeCtx({ db, workspaceId }));
         assert.equal(r.status, 200);
-        assert.ok((r.matches?.length ?? 0) > 0);
+        assert.ok(r.results.length > 0);
     } finally { db.close(); }
 });
 

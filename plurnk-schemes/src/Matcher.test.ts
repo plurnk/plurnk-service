@@ -106,7 +106,7 @@ test("matcher: a locator-only match selects without fabricated coordinates", asy
         "irrelevant", "text/html", mts,
     );
     assert.equal(r.status, 200);
-    assert.deepEqual(r.matches, [{ path: "count(//item)" }]);
+    assert.deepEqual(r.matches, [{ locator: "count(//item)" }]);
     assert.equal(r.body, undefined);
 });
 
@@ -118,7 +118,7 @@ test("matcher: framework returns empty array → status 204", async () => {
     assert.equal(r.body, undefined);
 });
 
-test("matcher: structural hit exposes its canonical path as metadata", async () => {
+test("matcher: structural hit exposes its canonical locator as metadata", async () => {
     const json = ['{', '  "users": [', '    { "name": "Alice" },', '    { "name": "Bob" }', '  ]', '}'].join("\n");
     const mts = stubMimetypes(async () => [
         { regions: at(3, 7, 22), matched: "Alice", matching: "$.users[0].name" },
@@ -130,11 +130,11 @@ test("matcher: structural hit exposes its canonical path as metadata", async () 
     );
     assert.deepEqual(r.matches, [
         {
-            path: "$.users[0].name",
+            locator: "$.users[0].name",
             region: { startLine: 3, startColumn: 7, endLine: 3, endColumn: 22 },
         },
         {
-            path: "$.users[1].name",
+            locator: "$.users[1].name",
             region: { startLine: 4, startColumn: 7, endLine: 4, endColumn: 20 },
         },
     ]);
@@ -236,7 +236,7 @@ test("matcher: xpath dialect served by the framework, no local xml engine", asyn
     const r = await Matcher.matchAgainstContent(xpathBody, xml, "text/html", mts);
     assert.equal(r.status, 200);
     assert.deepEqual(r.matches, [
-        { path: "(//item)[1]" },
-        { path: "(//item)[2]" },
+        { locator: "(//item)[1]" },
+        { locator: "(//item)[2]" },
     ]);
 });

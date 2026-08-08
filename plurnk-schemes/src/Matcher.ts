@@ -31,7 +31,7 @@ export default class Matcher {
         for (const match of matches) {
             const regions = match.regions ?? [];
             if (regions.length === 0 && match.matching !== undefined) {
-                const item = Results.assertMatchEvidence({ path: match.matching });
+                const item = Results.assertMatchEvidence({ locator: match.matching });
                 const key = JSON.stringify(item);
                 if (!seen.has(key)) {
                     seen.add(key);
@@ -41,7 +41,7 @@ export default class Matcher {
             }
             for (const region of regions) {
                 const item = Results.assertMatchEvidence({
-                    ...(match.matching === undefined ? {} : { path: match.matching }),
+                    ...(match.matching === undefined ? {} : { locator: match.matching }),
                     region,
                 });
                 const key = JSON.stringify(item);

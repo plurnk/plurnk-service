@@ -97,7 +97,7 @@ export default class Matcher {
                 key,
                 matches: findings.flatMap((match): MatchEvidence[] => {
                     if (match.span === null) {
-                        return match.path === undefined ? [] : [{ path: match.path }];
+                        return match.locator === undefined ? [] : [{ locator: match.locator }];
                     }
                     const region = TextCoordinates.lineRegion(
                         candidate.content,
@@ -110,7 +110,7 @@ export default class Matcher {
                         );
                     }
                     return [{
-                        ...(match.path === undefined ? {} : { path: match.path }),
+                        ...(match.locator === undefined ? {} : { locator: match.locator }),
                         region,
                     }];
                 }),
@@ -128,5 +128,5 @@ export interface CandidateMatch { key: string; matches: MatchEvidence[]; }
 export interface SourceCandidateMatch {
     key: string;
     span: { lineStart: number; lineEnd: number } | null;
-    path?: string;
+    locator?: string;
 }

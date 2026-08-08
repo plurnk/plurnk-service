@@ -214,7 +214,7 @@ test("File.read: lineMarker out of range returns 416", async () => {
     });
 });
 
-test("File.find: matcher returns the selected resource plus match coordinates", async () => {
+test("File.find: an exact matcher returns flat match locations", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "foo\nbar foo");
         await addMember(ctx, "f.txt");
@@ -224,7 +224,8 @@ test("File.find: matcher returns the selected resource plus match coordinates", 
         );
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
-        assert.ok((r.matches?.length ?? 0) > 0);
+        assert.ok(r.results.length > 0);
+        assert.equal(r.matchingPathCount, 1);
     });
 });
 
@@ -281,7 +282,7 @@ test("File.find: an invalid matcher exposes stable cause and recovery facts", as
     });
 });
 
-test("File.find: matcher selects the full resource before <L> projects text", async () => {
+test("File.find: matcher evaluates the full resource before <L> pages locations", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nprojected\nfoo later\n");
         await addMember(ctx, "f.txt");
@@ -290,7 +291,8 @@ test("File.find: matcher selects the full resource before <L> projects text", as
             ctx,
         );
         assert.equal(r.status, 200);
-        assert.ok((r.matches?.length ?? 0) > 0);
+        assert.ok(r.results.length > 0);
+        assert.equal(r.range?.unit, "matchLocation");
     });
 });
 

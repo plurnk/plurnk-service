@@ -143,21 +143,21 @@ test("problem identifiers fail hard instead of minting ambiguous types", () => {
 test("match evidence requires a locator, a complete TextRegion, or both", () => {
     assert.deepEqual(
         Results.assertMatchEvidence({
-            path: "$.users[0]",
+            locator: "$.users[0]",
             region: { startLine: 2, startColumn: 3, endLine: 2, endColumn: 8 },
         }),
         {
-            path: "$.users[0]",
+            locator: "$.users[0]",
             region: { startLine: 2, startColumn: 3, endLine: 2, endColumn: 8 },
         },
     );
     assert.throws(
         () => Results.assertMatchEvidence({}),
-        /expected path, region, or both/,
+        /expected locator, region, or both/,
     );
     assert.throws(
-        () => Results.assertMatchEvidence({ path: "" }),
-        /path must be a non-empty string/,
+        () => Results.assertMatchEvidence({ locator: "" }),
+        /locator must be a non-empty string/,
     );
     assert.throws(
         () => Results.assertMatchEvidence({
@@ -166,24 +166,24 @@ test("match evidence requires a locator, a complete TextRegion, or both", () => 
         /TextRegion/,
     );
     assert.throws(
-        () => Results.assertMatchEvidence({ path: "$", confidence: 0.9 }),
+        () => Results.assertMatchEvidence({ locator: "$", confidence: 0.9 }),
         /unexpected field "confidence"/,
     );
 });
 
 test("match evidence lists validate every plugin-produced item", () => {
     const evidence = [
-        { path: "//item" },
+        { locator: "//item" },
         { region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 5 } },
     ];
     assert.equal(Results.assertMatchEvidenceList(evidence), evidence);
     assert.throws(
-        () => Results.assertMatchEvidenceList({ path: "//item" }),
+        () => Results.assertMatchEvidenceList({ locator: "//item" }),
         /expected an array/,
     );
     assert.throws(
-        () => Results.assertMatchEvidenceList([{ path: "//item" }, {}]),
-        /expected path, region, or both/,
+        () => Results.assertMatchEvidenceList([{ locator: "//item" }, {}]),
+        /expected locator, region, or both/,
     );
 });
 
@@ -192,7 +192,7 @@ test("read-result validation applies the shared evidence contracts", () => {
         status: 200,
         content: "hello",
         region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 6 },
-        matches: [{ path: "$.message" }],
+        matches: [{ locator: "$.message" }],
     };
     assert.equal(Results.assertReadResult(result), result);
     assert.throws(

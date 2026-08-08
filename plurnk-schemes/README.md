@@ -88,7 +88,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 
 - Manifest/flags: `SchemeManifest` (including `example` / `documentation` self-doc and client-only `glyph`), `SchemeFlagAffinity`, and `WriterTier`; contracts-owned `LoopFlags` / `DEFAULT_LOOP_FLAGS` are re-exported.
 - Behavior contract: `SchemeHandler` + optional `PacketSectionTransformer` (`PacketSectionDraft`); the re-exported scheme-facing grammar types (`PlurnkStatement` + per-op statements + `ParsedPath` / `LocalPath` / `UrlPath`).
-- Results: universal `SchemeResult` plus RFC 9457 `ProblemDetails`, optional `EntryResult` / `ProposalResult` / `PassthroughResult` authoring shapes, `SchemeResultBase`, and matcher navigation `MatchEvidence`.
+- Results: universal `SchemeResult` plus RFC 9457 `ProblemDetails`, optional `EntryResult` / `ProposalResult` / `PassthroughResult` authoring shapes, `SchemeResultBase`, matcher navigation `MatchEvidence`, and target-shaped standard `EntryFindResult` pagination/count metadata.
 - Capability ctx: `SchemeCtx` and its entry, channel, tag, notification, projection, and subscription domains. Entry schemes can reuse typed standard operations with semantic commons/worker ownership.
 
 ### Helpers (`export default class`, static methods)

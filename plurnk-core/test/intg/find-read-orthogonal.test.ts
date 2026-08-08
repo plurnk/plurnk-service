@@ -1,5 +1,5 @@
-// {§read-exact-target} and {§matcher-result-resource-selection}: FIND locates
-// resources via globs or matchers; READ retrieves one exact target.
+// {§read-exact-target} and {§find-result-projection}: broad FIND locates
+// resources; READ retrieves one exact target.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -60,9 +60,9 @@ test("FIND locates resources by glob matcher", async () => {
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
 
-        const matches = (r as { matches?: unknown[] }).matches;
         assert.equal(r.status, 200);
-        assert.ok((matches?.length ?? 0) >= 2);
+        assert.equal((r as { matchingPathCount?: number }).matchingPathCount, 2);
+        assert.equal((r as { matchLocationCount?: number }).matchLocationCount, 2);
     } finally { await db.close(); }
 });
 

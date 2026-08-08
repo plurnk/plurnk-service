@@ -38,15 +38,13 @@ const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null): F
 const matchLines = (
     matches: ReadonlyArray<any> | undefined,
 ): number[] => {
-    const list = matches?.[0]?.matches ?? matches ?? [];
-    return list.flatMap((m: any) => m.region?.startLine !== undefined ? [m.region.startLine] : []);
+    return (matches ?? []).flatMap((match: any) => match.region?.startLine !== undefined ? [match.region.startLine] : []);
 };
 
-const matchPaths = (
+const matchLocators = (
     matches: ReadonlyArray<any> | undefined,
 ): string[] => {
-    const list = matches?.[0]?.matches ?? matches ?? [];
-    return list.flatMap((m: any) => m.path !== undefined ? [m.path] : []);
+    return (matches ?? []).flatMap((match: any) => match.locator !== undefined ? [match.locator] : []);
 };
 
 const setup = async () => {
@@ -72,7 +70,7 @@ const seedJson = async (db: Db, workspaceId: number, workerId: number, mimetypes
 
 // --- jsonpath -------------------------------------------------------
 
-test("jsonpath: $.host returns the JSON resource with its match coordinate", async () => {
+test("jsonpath: $.host returns its flat match location", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/config.json", '{\n  "host": "db.internal",\n  "pool": 5\n}');
@@ -83,12 +81,11 @@ test("jsonpath: $.host returns the JSON resource with its match coordinate", asy
 
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
-        assert.match(r.content ?? "", /"path":"worker:\/\/\/config\.json"/);
-        assert.deepEqual(matchLines(r.matches), [2]);
+        assert.deepEqual(matchLines(r.results), [2]);
     } finally { await db.close(); }
 });
 
-test("jsonpath: $.users[*].name reports each match on the selected JSON resource", async () => {
+test("jsonpath: $.users[*].name reports each flat match location", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
@@ -100,12 +97,11 @@ test("jsonpath: $.users[*].name reports each match on the selected JSON resource
 
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
-        assert.deepEqual(matchLines(r.matches), [3, 4]);
-        assert.match(r.content ?? "", /"path":"worker:\/\/\/team\.json"/);
+        assert.deepEqual(matchLines(r.results), [3, 4]);
     } finally { await db.close(); }
 });
 
-test("jsonpath: $.users[*] preserves the original JSON body", async () => {
+test("jsonpath: $.users[*] returns each selected location", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/team.json",
@@ -116,8 +112,7 @@ test("jsonpath: $.users[*] preserves the original JSON body", async () => {
         );
 
         assert.equal(r.status, 200);
-        assert.deepEqual(matchLines(r.matches), [3, 4]);
-        assert.match(r.content ?? "", /"path":"worker:\/\/\/team\.json"/);
+        assert.deepEqual(matchLines(r.results), [3, 4]);
     } finally { await db.close(); }
 });
 
@@ -132,8 +127,7 @@ test("jsonpath filter reports non-sequential match coordinates", async () => {
         );
 
         assert.equal(r.status, 200);
-        assert.deepEqual(matchLines(r.matches), [3, 5]);
-        assert.match(r.content ?? "", /"path":"worker:\/\/\/team\.json"/);
+        assert.deepEqual(matchLines(r.results), [3, 5]);
     } finally { await db.close(); }
 });
 
@@ -147,7 +141,7 @@ test("jsonpath: zero matches returns 204 with empty evidence", async () => {
         );
 
         assert.equal(r.status, 204);
-        assert.deepEqual(r.matches, []);
+        assert.deepEqual(r.results, []);
     } finally { await db.close(); }
 });
 
@@ -160,7 +154,7 @@ test("jsonpath on text/markdown applies against the heading outline (no headings
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
         assert.equal(r.status, 204);
-        assert.deepEqual(r.matches, []);
+        assert.deepEqual(r.results, []);
     } finally { await db.close(); }
 });
 
@@ -177,14 +171,13 @@ test("jsonpath on text/markdown queries the marked-AST deepJson", async () => {
         );
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
-        const content = r.content ?? "";
-        assert.match(content, /"path":"worker:\/\/\/doc\.md"/);
+        assert.ok(r.results.length > 0);
     } finally { await db.close(); }
 });
 
 // --- xpath ----------------------------------------------------------
 
-test("xpath //h1/text(): selects the HTML resource and reports each canonical locator", async () => {
+test("xpath //h1/text(): reports each canonical locator", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/page.html",
@@ -196,8 +189,7 @@ test("xpath //h1/text(): selects the HTML resource and reports each canonical lo
 
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
-        assert.deepEqual(matchPaths(r.matches), ["(//h1/text())[1]", "(//h1/text())[2]"]);
-        assert.match(r.content ?? "", /"path":"worker:\/\/\/page\.html"/);
+        assert.deepEqual(matchLocators(r.results), ["(//h1/text())[1]", "(//h1/text())[2]"]);
     } finally { await db.close(); }
 });
 
@@ -213,12 +205,11 @@ test("xpath //user/@email: attribute matches retain canonical locators", async (
 
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
-        assert.deepEqual(matchPaths(r.matches), ["(//user/@email)[1]", "(//user/@email)[2]"]);
-        assert.match(r.content ?? "", /"path":"worker:\/\/\/users\.html"/);
+        assert.deepEqual(matchLocators(r.results), ["(//user/@email)[1]", "(//user/@email)[2]"]);
     } finally { await db.close(); }
 });
 
-test("xpath //user node selection preserves the complete HTML resource and locators", async () => {
+test("xpath //user node selection returns flat canonical locators", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         await seedJson(db, workspaceId, workerId, mimetypes, "/page.html",
@@ -230,8 +221,7 @@ test("xpath //user node selection preserves the complete HTML resource and locat
 
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
-        assert.deepEqual(matchPaths(r.matches), ["(//user)[1]", "(//user)[2]"]);
-        assert.match(r.content ?? "", /"path":"worker:\/\/\/page\.html"/);
+        assert.deepEqual(matchLocators(r.results), ["(//user)[1]", "(//user)[2]"]);
     } finally { await db.close(); }
 });
 
@@ -247,10 +237,9 @@ test("xpath predicate reports selected locators without dropping unselected cont
 
         assert.equal(r.status, 200);
         assert.deepEqual(
-            matchPaths(r.matches),
+            matchLocators(r.results),
             ["(//user[@role='admin']/text())[1]", "(//user[@role='admin']/text())[2]"],
         );
-        assert.match(r.content ?? "", /"path":"worker:\/\/\/users\.html"/);
     } finally { await db.close(); }
 });
 
@@ -298,8 +287,8 @@ test("jsonpath match coordinates support a model-chosen surgical follow-up READ"
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
         assert.equal(findRes.status, 200);
-        const matches = (findRes.matches?.[0] as { matches?: Array<{ region?: { startLine: number; startColumn: number; endLine: number; endColumn: number } }> })?.matches;
-        assert.ok(matches !== undefined && matches.length === 3);
+        const matches = findRes.results as Array<{ region?: { startLine: number; startColumn: number; endLine: number; endColumn: number } }>;
+        assert.equal(matches.length, 3);
 
         const bob = matches[1]!;
         assert.ok(bob.region !== undefined);
@@ -323,7 +312,7 @@ test("jsonpath match coordinates support a model-chosen surgical follow-up READ"
     } finally { await db.close(); }
 });
 
-test("a matcher FIND stores canonical paths with its coordinate evidence", async () => {
+test("an exact matcher FIND stores canonical locators as flat evidence", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         const loopId = await insertLoop(db, workerId, 1, "sig");
@@ -338,22 +327,10 @@ test("a matcher FIND stores canonical paths with its coordinate evidence", async
         const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: loopId });
         const finds = rows.filter((r) => r.op === "FIND");
         const res = JSON.parse(finds[0]!.rx) as {
-            results: Array<{
-                path?: string;
-                matches?: Array<{
-                    path?: string;
-                    region?: {
-                        startLine: number;
-                        startColumn: number;
-                        endLine: number;
-                        endColumn: number;
-                    };
-                }>;
-            }>;
+            results: Array<{ locator?: string }>;
         };
-        assert.equal(res.results[0]?.path, "worker:///team.json");
         assert.deepEqual(
-            res.results[0]?.matches?.map(({ path }) => path),
+            res.results.map(({ locator }) => locator),
             ["$['users'][0]['name']", "$['users'][1]['name']"],
             "canonical coordinates distinguish hits that share a source line",
         );

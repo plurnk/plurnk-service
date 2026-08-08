@@ -105,8 +105,8 @@ channel and scope to universal READ.
 
 A fragmentless direct operation publishes only `body`. An explicit fragment
 publishes that named channel. Every acquired channel remains durable even when
-it is not published to the requesting loop. FIND returns standard JSON metadata
-and match coordinates. Exact READ returns the selected channel's requested text
+it is not published to the requesting loop. Broad FIND returns standard
+resource metadata; exact matcher FIND returns flat match locations. Exact READ returns the selected channel's requested text
 projection.
 
 ### §http-text-decoding Text response decoding

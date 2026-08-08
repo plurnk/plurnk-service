@@ -115,7 +115,7 @@ test("jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdo
 
 // --- {§slice-semantics-compose-pattern}: matcher evidence guides a later <L> -------------
 
-test("a matcher FIND returns one resource and coordinates for a surgical follow-up READ", async () => {
+test("an exact matcher FIND returns flat coordinates for a surgical follow-up READ", async () => {
     const { db, workspaceId, workerId, mimetypes } = await setup();
     try {
         const loopId = await insertLoop(db, workerId, 1, "compose");
@@ -144,18 +144,16 @@ test("a matcher FIND returns one resource and coordinates for a surgical follow-
         });
         const rx = JSON.parse(row!.rx) as {
             results: Array<{
-                matches: Array<{
-                    region?: {
-                        startLine: number;
-                        startColumn: number;
-                        endLine: number;
-                        endColumn: number;
-                    };
-                }>;
+                region?: {
+                    startLine: number;
+                    startColumn: number;
+                    endLine: number;
+                    endColumn: number;
+                };
             }>;
         };
 
-        const second = rx.results[0]!.matches[1]!;
+        const second = rx.results[1]!;
         assert.ok(second.region);
         const surgical = await new Worker().read(
             {

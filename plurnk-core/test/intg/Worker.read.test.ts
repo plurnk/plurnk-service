@@ -144,11 +144,11 @@ test("Worker.read: an empty exact scope retains its region and matcher evidence"
             makeSchemeCtx({ db, workspaceId }),
         );
         assert.equal(result.status, 200);
-        assert.ok((result.matches?.length ?? 0) > 0);
+        assert.ok(result.results.length > 0);
     } finally { db.close(); }
 });
 
-test("Worker.find: regex matcher selects the resource and reports coordinates", async () => {
+test("Worker.find: exact regex matcher returns flat locations", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -157,11 +157,11 @@ test("Worker.find: regex matcher selects the resource and reports coordinates", 
         const result = await k.find(findStatement({ target: urlPath("worker", "/match"), body: matcher }), makeSchemeCtx({ db, workspaceId }));
         assert.equal(result.status, 200);
         assert.equal(result.mimetype, "application/json");
-        assert.ok((result.matches?.length ?? 0) > 0);
+        assert.ok(result.results.length > 0);
     } finally { db.close(); }
 });
 
-test("Worker.find: glob matcher selects the resource and reports match coordinates", async () => {
+test("Worker.find: exact glob matcher returns flat match locations", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -170,7 +170,7 @@ test("Worker.find: glob matcher selects the resource and reports match coordinat
         const result = await k.find(findStatement({ target: urlPath("worker", "/g"), body: matcher }), makeSchemeCtx({ db, workspaceId }));
         assert.equal(result.status, 200);
         assert.equal(result.mimetype, "application/json");
-        assert.ok((result.matches?.length ?? 0) > 0);
+        assert.ok(result.results.length > 0);
     } finally { db.close(); }
 });
 
@@ -195,7 +195,7 @@ test("Worker.read: tag filter — entry missing requested tag → 404", async ()
     } finally { db.close(); }
 });
 
-test("Worker.find: matcher selects the full resource before scope projects text", async () => {
+test("Worker.find: matcher evaluates the full resource before projecting locations", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -205,7 +205,7 @@ test("Worker.find: matcher selects the full resource before scope projects text"
             body: { dialect: "regex", raw: "/foo/", pattern: "foo", flags: "" },
         }), makeSchemeCtx({ db, workspaceId }));
         assert.equal(result.status, 200);
-        assert.ok((result.matches?.length ?? 0) > 0);
+        assert.ok(result.results.length > 0);
     } finally { db.close(); }
 });
 
