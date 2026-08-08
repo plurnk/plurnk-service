@@ -47,6 +47,20 @@ and request flow.
 - Git
 - a configured local or remote model endpoint for live runs
 
+## Recommended web setup
+
+PLURNK defaults to no proprietary web provider. For capable web research, we
+strongly recommend two complementary operator choices:
+
+- enable the [Brave API engine](https://docs.searxng.org/dev/engines/online/brave.html)
+  in SearXNG and set `PLURNK_EXECS_SEARCH_SEARXNG_URL` for discovery;
+- set `TAVILY_API_KEY` for Tavily Extract page materialization.
+
+Brave finds candidate pages; Tavily turns eligible public HTML into structural
+Markdown. Either may remain unconfigured. See the
+[search executor](./plurnk-execs-search/README.md) and
+[HTTP scheme](./plurnk-schemes-http/README.md) for the owned configuration.
+
 ## Develop
 
 [PossumTech Gitea](https://repo.possumtech.com/plurnk/plurnk-service) is the
