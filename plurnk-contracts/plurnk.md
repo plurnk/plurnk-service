@@ -133,7 +133,7 @@ Text scope (Line, StartLine, StartColumn, EndLine, EndColumn) has one meaning fo
 
 For EDIT and COPY/MOVE destinations, `<0>` and `<-1>` insert before the first and after the final position.
 A scoped COPY/MOVE destination must already exist; omit its scope when creating a new destination channel.
-Insert a line above line L with a zero-width scope at its start; the body ends with a newline:
+Insert a line above line L with a zero-width scope at its start:
 
 ```plurnk
 <<PLAN:Insert a new line above line 3.:PLAN
