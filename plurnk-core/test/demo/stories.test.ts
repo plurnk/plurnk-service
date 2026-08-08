@@ -173,14 +173,14 @@ test("{§search-gate} story: answer a question through live web discovery", { ti
     // Its benchmark artifact remains available for autopsy. {§test-artifact-retention}
     const story = await runStory({
         label: "web-search-live",
-        prompt: "Who is the current president of Colombia?",
+        prompt: "Who is the current United States Federal Reserve Chairman?",
         maxTurns: 8,
     });
     try {
-        const ok = story.finalStatus === 200 && /Espriella/i.test(story.lastContent);
+        const ok = story.finalStatus === 200 && /Warsh/i.test(story.lastContent);
         if (!ok) await story.dump();
         assert.equal(story.finalStatus, 200);
-        assert.match(story.lastContent, /Espriella/i, `the answer names Espriella; got: ${story.lastContent.slice(0, 200)}`);
+        assert.match(story.lastContent, /Warsh/i, `the answer names Warsh; got: ${story.lastContent.slice(0, 200)}`);
     } finally { await story.cleanup(); }
 });
 
