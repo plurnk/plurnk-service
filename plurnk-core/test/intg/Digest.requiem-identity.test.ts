@@ -61,6 +61,12 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
                     finishReason: "stop",
                     model: "mock",
                 },
+                assistantRaw: {
+                    digest: "rejected transport",
+                    rawBody: { chunks: ["same", "body"] },
+                },
+                rawBody: { chunks: ["same", "body"] },
+                meta: { request: "rejected" },
             }),
             parse_errors: JSON.stringify([{ message: "missing PLAN" }]),
             attributions: "[]",
@@ -85,6 +91,12 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
                     finishReason: "stop",
                     model: "mock",
                 },
+                assistantRaw: {
+                    digest: "accepted transport",
+                    rawBody: { chunks: ["different", "nested"] },
+                },
+                rawBody: { chunks: ["canonical", "top-level"] },
+                meta: { request: "accepted" },
             }),
             parse_errors: "[]",
             attributions: "[]",
@@ -112,6 +124,17 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
         }],
     });
     const digestDir = join(TMP_DIR, `requiem-out-${crypto.randomUUID()}`);
+    Digest.run({ dbPath, digestDir });
+    const durableAttempt = JSON.parse(readFileSync(
+        join(digestDir, "packet000.attempt001.rejected.response.json"),
+        "utf8",
+    )) as { assistantRaw?: { rawBody?: unknown }; rawBody?: unknown };
+    assert.deepEqual(durableAttempt.rawBody, { chunks: ["same", "body"] });
+    assert.deepEqual(
+        durableAttempt.assistantRaw?.rawBody,
+        durableAttempt.rawBody,
+        "standalone forensic evidence retains the exact stored raw-body carriers",
+    );
     const { path, reportPath, workers } = await Digest.requiem({ dbPath, digestDir, provider });
 
     assert.equal(workers, 1, "the one model-bearing worker was interviewed");
@@ -126,6 +149,49 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
     assert.match(call.messages[1]?.content ?? "", /accepted bytes/);
     assert.match(call.messages[1]?.content ?? "", /accepted reasoning/);
     assert.match(call.messages[1]?.content ?? "", /what made acting seem unsafe, premature, or unclear/);
+    const evidenceText = call.messages[1]?.content
+        .split("# Verbatim worker evidence\n\n")[1]
+        ?.split("\n\n# Audit request")[0];
+    assert.ok(evidenceText !== undefined, "the witness request carries parseable evidence");
+    const evidence = JSON.parse(evidenceText) as {
+        providerAttempts: Array<{
+            response: {
+                assistantRaw?: { digest?: string; rawBody?: unknown };
+                rawBody?: unknown;
+                meta?: unknown;
+            };
+        }>;
+    };
+    assert.deepEqual(
+        evidence.providerAttempts[0]?.response,
+        {
+            assistant: {
+                content: "rejected bytes",
+                reasoning: "rejected reasoning",
+                usage: { prompt: 2, completion: 2, reasoning: 2, cached: 0, total: 6 },
+                finishReason: "stop",
+                model: "mock",
+            },
+            assistantRaw: { digest: "rejected transport" },
+            meta: { request: "rejected" },
+        },
+        "raw transport is excluded without changing normalized attempt evidence",
+    );
+    assert.deepEqual(
+        evidence.providerAttempts[1]?.response,
+        {
+            assistant: {
+                content: "accepted bytes",
+                reasoning: "accepted reasoning",
+                usage: { prompt: 2, completion: 2, reasoning: 2, cached: 0, total: 6 },
+                finishReason: "stop",
+                model: "mock",
+            },
+            assistantRaw: { digest: "accepted transport" },
+            meta: { request: "accepted" },
+        },
+        "all raw-body carriers are excluded even when their transport records differ",
+    );
 
     const requiem = readFileSync(path, "utf8");
     assert.match(requiem, /the testimony/, "the testimony was written");

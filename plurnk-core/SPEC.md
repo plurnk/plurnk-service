@@ -2812,7 +2812,7 @@ turn.** It cannot execute operations or alter the audited history.
 | Aspect    | Contract                                                                                                                                                        |
 |-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Scope     | One interview for each worker with model-bearing turns; journal-only workers are omitted.                                                                       |
-| Evidence  | The worker's final packet plus every admitted and rejected provider attempt from its history.                                                                   |
+| Evidence  | The worker's final packet plus every attempt's exact normalized response and admission evidence; opaque raw transport remains in durable forensic artifacts. |
 | Witness   | An explicitly supplied provider or the active configured provider; absence fails hard.                                                                          |
 | Identity  | The worker's durable id is sent as both `workerId` and `primaryWorkerId`, making the synthetic interview its own root without asserting a live worker topology. |
 | Attempts  | One call at `PLURNK_SERVICE_REQUIEM_MAX_TOKENS`; only an empty length-limited response receives one retry at `PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS`.         |
