@@ -196,6 +196,7 @@ type EngineTurnResult = {
 // continue after dispatch ({§send}). Every admitted emission itself ends in an
 // explicit disposition SEND ({§emission-admission}).
 const TURN_STATUS_IMPLICIT_CONTINUE = 102;
+const INVALID_EMISSION_RECOVERY_MESSAGE = "Your previous response contained an unrecoverable syntax error. No operations were performed. Try again.";
 
 const DEFAULT_MIN_CYCLES = 3;
 const DEFAULT_MAX_CYCLE_PERIOD = 4;
@@ -634,6 +635,7 @@ export default class Engine {
         // Its ceiling therefore counts every prior turn, not merely this process-local
         // execution segment.
         const turnIds = await this.#lifecycle.turnIds(loopId);
+        let invalidEmissionRecoveryPending = false;
         // Per-loop AbortController for scheme-side cancellation propagation.
         // Chained from the caller's `signal` so an external abort cascades.
         const loopAbort = new AbortController();
@@ -773,6 +775,7 @@ export default class Engine {
                         const t = await this.runTurn({
                             provider, messages, requirements, workspaceId, workerId, loopId, origin, signal, onDispatch,
                             turnNumber: turnIds.length + 1, maxTurns,
+                            allowInvalidEmissionRecovery: !invalidEmissionRecoveryPending,
                         });
                         span.setAttribute("turn.id", t.turnId);
                         return t;
@@ -794,10 +797,15 @@ export default class Engine {
             }
             turnIds.push(turn.turnId);
 
-            // Invalid provider emissions are retried beneath this turn and never
-            // reach the strike rail. Exhausting that inner attempt budget is a
-            // terminal generation failure, not one of the engine's three strikes.
+            // {§invalid-emission-attempts} Invalid provider emissions are retried beneath this turn and never
+            // reach the strike rail. The first consecutive exhaustion has already
+            // exposed its bounded lifeline through ordinary next-turn state. A
+            // second exhaustion is terminal; an admitted turn clears the sequence.
             if (turn.emissionExhausted) {
+                if (!invalidEmissionRecoveryPending) {
+                    invalidEmissionRecoveryPending = true;
+                    continue;
+                }
                 const failure = Results.failure(
                     "engine:generation",
                     "invalid-emission-exhausted",
@@ -815,6 +823,7 @@ export default class Engine {
                 cleanup("forceful", "invalid_emission");
                 return { turnIds, result, hitMaxTurns: false, reason: "invalid_emission" };
             }
+            invalidEmissionRecoveryPending = false;
 
             // SPEC {§grinder}: budget hard-stop — packet won't fit even collapsed → abandon.
             if (turn.budgetHardStop) {
@@ -870,7 +879,7 @@ export default class Engine {
 
     async runTurn({
         provider, messages, requirements = "", workspaceId, workerId, loopId, origin = "model", signal, onDispatch,
-        turnNumber = 1, maxTurns = 50,
+        turnNumber = 1, maxTurns = 50, allowInvalidEmissionRecovery = false,
     }: {
         provider: Provider;
         messages: ChatMessage[];
@@ -885,6 +894,7 @@ export default class Engine {
         // are augmented with the durable state (index/log/notices).
         turnNumber?: number;
         maxTurns?: number;
+        allowInvalidEmissionRecovery?: boolean;
     }): Promise<EngineTurnResult> {
         // === Turn-as-container model ===
         //
@@ -1546,9 +1556,28 @@ export default class Engine {
             throw new Error("provider attempt loop completed without a response");
         }
         if (!splitResponse.emissionValid) {
+            // {§invalid-emission-attempts} The first consecutive exhaustion
+            // publishes only the raw final response and generic recovery fact.
+            if (allowInvalidEmissionRecovery) {
+                await this.#dispatcher.writeModelEntry({
+                    verbatim: splitResponse.packetAssistant.content,
+                    workerId,
+                    loopId,
+                    turnId,
+                    sequence: nextActionIndex,
+                    folded: false,
+                    admission: "rejected",
+                });
+                this.#notices.push(workspaceId, loopId, {
+                    source: "engine:grammar",
+                    kind: "invalid_emission",
+                    level: "error",
+                    message: INVALID_EMISSION_RECOVERY_MESSAGE,
+                });
+            }
             await this.#db.engine_close_turn.run({
                 id: turnId,
-                status: 500,
+                status: allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500,
                 packet: StoredPacket.stringify(requestPacket),
                 usage_prompt: usage.prompt,
                 usage_completion: usage.completion,
@@ -1563,7 +1592,7 @@ export default class Engine {
             });
             return {
                 turnId,
-                status: 500,
+                status: allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500,
                 statuses: [],
                 fingerprint: "",
                 budgetStruck: enforced.struck,

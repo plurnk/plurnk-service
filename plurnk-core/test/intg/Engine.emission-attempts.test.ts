@@ -369,7 +369,77 @@ test("a hard parse error outside the PLAN...SEND frame retries wholesale", async
     }
 });
 
-test("three invalid emissions fail the loop below the strike rail", async () => {
+test("{§invalid-emission-attempts} exhausted private attempts expose only the latest response and generic notice on one recovery turn", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const latestRejected = [
+        "<PLAN:inspect the source:PLAN",
+        "<READ(file:///main.go)::READ",
+        "<SEND[102]:continue after inspection:SEND",
+    ].join("\n");
+    try {
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [
+                invalid("first private invalid response"),
+                invalid("second private invalid response"),
+                invalid(latestRejected),
+                valid("recovered"),
+            ],
+        });
+
+        const result = await engine.runLoop({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            maxStrikes: 1,
+            messages: [{ role: "user", content: "do the task" }],
+        });
+
+        assert.equal(result.result.status, 200);
+        assert.equal(result.reason, "external", "the admitted SEND concludes through the ordinary loop lifecycle");
+        assert.equal(result.turnIds.length, 2, "the lifeline is an honestly stored engine turn");
+        assert.equal(provider.packets.length, 4);
+        assert.equal(new Set(provider.packets.slice(0, 3)).size, 1, "private attempts retain one exact packet");
+        assert.notEqual(provider.packets[3], provider.packets[2], "the informed recovery has its own packet");
+        assert.match(provider.packets[3]!, /Your previous response contained an unrecoverable syntax error\. No operations were performed\. Try again\./);
+        assert.match(provider.packets[3]!, /<PLAN:inspect the source:PLAN/);
+        assert.doesNotMatch(provider.packets[3]!, /first private invalid|second private invalid/);
+        assert.doesNotMatch(provider.packets[3]!, /line [0-9]+|missing|expected/i, "no parser diagnosis is manufactured");
+
+        const [failedTurnId, recoveryTurnId] = result.turnIds;
+        const failedTurn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: failedTurnId });
+        assert.equal(failedTurn?.status, 102);
+        assert.equal((JSON.parse(failedTurn?.packet ?? "{}") as { assistant?: unknown }).assistant, undefined);
+        const recoveryTurn = await db.test_get_turn.get<{ status: number }>({ id: recoveryTurnId });
+        assert.equal(recoveryTurn?.status, 200);
+
+        const firstAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: failedTurnId });
+        const recoveryAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: recoveryTurnId });
+        assert.deepEqual(firstAttempts.map(({ accepted }) => accepted), [0, 0, 0]);
+        assert.deepEqual(recoveryAttempts.map(({ accepted }) => accepted), [1]);
+
+        const rows = await db.engine_render_log.all<{
+            turn_seq: number;
+            origin: string;
+            op: string | null;
+            rx: string;
+            expanded: number;
+            attrs: string;
+        }>({ worker_id: workerId });
+        const rejectedMirror = rows.find((row) => JSON.parse(row.attrs).admission === "rejected");
+        assert.ok(rejectedMirror !== undefined);
+        assert.equal(rejectedMirror.turn_seq, 1);
+        assert.equal(rejectedMirror.expanded, 1, "the rejected model item is born OPEN");
+        assert.match(rejectedMirror.rx, /<READ\(file:\/\/\/main\.go\)::READ/);
+        assert.equal(rows.filter((row) => row.origin === "model" && row.op === "READ").length, 0, "no rejected operation dispatches");
+        assert.equal(rows.filter((row) => row.op === "error").length, 0, "the lifeline does not fabricate an operation failure");
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§invalid-emission-attempts} consecutive exhaustion of the informed recovery turn fails below the strike rail", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-invalid-emission-"));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
@@ -381,6 +451,9 @@ test("three invalid emissions fail the loop below the strike rail", async () => 
                 invalid("first invalid"),
                 invalid("<<PLAN:no terminal:PLAN"),
                 invalid("<<SEND[200]:no plan:SEND"),
+                invalid("recovery invalid one"),
+                invalid("recovery invalid two"),
+                invalid("recovery invalid three"),
             ],
         });
 
@@ -396,19 +469,30 @@ test("three invalid emissions fail the loop below the strike rail", async () => 
         assert.equal(result.reason, "invalid_emission");
         assert.equal(result.result.status, 500);
         assert.equal(result.result.problem?.detail, "No valid PLAN...SEND turn was received after 3 emission attempts.");
-        assert.equal(result.turnIds.length, 1);
-        assert.equal(provider.packets.length, 3, "the inner attempt limit is independent of maxStrikes");
-        assert.equal(new Set(provider.packets).size, 1);
+        assert.equal(result.turnIds.length, 2);
+        assert.equal(provider.packets.length, 6, "each turn receives its independent private attempt budget");
+        assert.equal(new Set(provider.packets.slice(0, 3)).size, 1);
+        assert.equal(new Set(provider.packets.slice(3)).size, 1);
+        assert.notEqual(provider.packets[2], provider.packets[3]);
+        assert.match(provider.packets[3]!, /Your previous response contained an unrecoverable syntax error\. No operations were performed\. Try again\./);
+        assert.match(provider.packets[3]!, /<<SEND\[200\]:no plan:SEND/);
 
-        const turnId = result.turnIds[0]!;
-        const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: turnId });
-        assert.deepEqual(attempts.map((attempt) => attempt.accepted), [0, 0, 0]);
-        const turn = await db.test_get_turn.get<{ packet: string; status: number }>({ id: turnId });
-        assert.equal(turn?.status, 500);
-        assert.equal((JSON.parse(turn?.packet ?? "{}") as { assistant?: unknown }).assistant, undefined);
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string }>({ turn_id: turnId });
+        const [firstTurnId, recoveryTurnId] = result.turnIds;
+        const firstAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: firstTurnId });
+        const recoveryAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: recoveryTurnId });
+        assert.deepEqual(firstAttempts.map((attempt) => attempt.accepted), [0, 0, 0]);
+        assert.deepEqual(recoveryAttempts.map((attempt) => attempt.accepted), [0, 0, 0]);
+        const firstTurn = await db.test_get_turn.get<{ packet: string; status: number }>({ id: firstTurnId });
+        const recoveryTurn = await db.test_get_turn.get<{ packet: string; status: number }>({ id: recoveryTurnId });
+        assert.equal(firstTurn?.status, 102);
+        assert.equal(recoveryTurn?.status, 500);
+        assert.equal((JSON.parse(firstTurn?.packet ?? "{}") as { assistant?: unknown }).assistant, undefined);
+        assert.equal((JSON.parse(recoveryTurn?.packet ?? "{}") as { assistant?: unknown }).assistant, undefined);
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string }>({ turn_id: recoveryTurnId });
         assert.equal(rows.filter((row) => row.op === "error").length, 0);
-        assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "model_emission").length, 1, "no rejected emission is mirrored");
+        assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "model_emission").length, 0, "the terminal rejection is forensic-only");
+        const mirrors = await db.test_model_emission_rows.all<{ turn_id: number; attrs: string }>({ worker_id: workerId });
+        assert.equal(mirrors.filter((row) => JSON.parse(row.attrs).admission === "rejected").length, 1, "only the response that informs the bounded recovery is mirrored");
         Digest.run({ dbPath, digestDir });
         const digest = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
             loops: Array<{ result: unknown }>;
@@ -417,6 +501,17 @@ test("three invalid emissions fail the loop below the strike rail", async () => 
             digest.loops[0]?.result,
             result.result,
             "the digest preserves the exact terminal generation Problem",
+        );
+        const informedPacket = await readFile(join(digestDir, "packet001.user.md"), "utf8");
+        assert.match(informedPacket, /Your previous response contained an unrecoverable syntax error\. No operations were performed\. Try again\./);
+        assert.match(informedPacket, /<<SEND\[200\]:no plan:SEND/);
+        assert.equal(
+            await readFile(join(digestDir, "packet000.attempt003.rejected.assistant.md"), "utf8"),
+            "<<SEND[200]:no plan:SEND",
+        );
+        assert.equal(
+            await readFile(join(digestDir, "packet001.attempt003.rejected.assistant.md"), "utf8"),
+            "recovery invalid three",
         );
     } finally {
         await db.close();

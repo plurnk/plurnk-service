@@ -1255,12 +1255,16 @@ export default class Dispatcher {
         return this.#deleteEntry(schemeName, entryPathnameOf(path), ctx);
     }
 
-    // {§model-entry} — mirror an admitted model emission back as an actionless log row, so
-    // the model can inspect and curate its own prior behavior.
+    // {§model-entry} — mirror a model emission back as an actionless log row, so
+    // the model can inspect and curate its own prior behavior. Ordinary admitted
+    // emissions are folded; the bounded invalid-emission lifeline is the one
+    // born-open rejected item under {§invalid-emission-attempts} and labels
+    // that admission fact structurally.
     // Born FOLDED by default (budget-neutral until OPENed); the turn-0 exemplar passes folded:false
     // (born open — the one worked example the model orients on, thinning the grammar). text/vnd.plurnk.
-    async writeModelEntry({ verbatim, workerId, loopId, turnId, sequence, folded, origin = "model", reasoningItems }: {
+    async writeModelEntry({ verbatim, workerId, loopId, turnId, sequence, folded, origin = "model", admission = "accepted", reasoningItems }: {
         verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number; folded: boolean; origin?: WriterTier;
+        admission?: "accepted" | "rejected";
         // {§encrypted-reasoning-carrier} — relay provider-normalized encrypted
         // reasoning items as opaque mirror-row evidence.
         reasoningItems?: ReadonlyArray<ProviderEncryptedReasoningItem>;
@@ -1276,6 +1280,7 @@ export default class Dispatcher {
             status_rx: 200, tokens: this.#tokenize(verbatim), state: "resolved", outcome: null,
             attrs: JSON.stringify({
                 kind: "model_emission",
+                ...(admission === "rejected" ? { admission } : {}),
                 ...(reasoningItems !== undefined && reasoningItems.length > 0 ? { reasoning: reasoningItems } : {}),
             }),
         });
