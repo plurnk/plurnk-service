@@ -17,7 +17,10 @@ const shippedEnv = async (): Promise<Map<string, string>> => {
     const env = new Map<string, string>();
     for (const line of raw.split("\n")) {
         const m = /^([A-Z_][A-Za-z0-9_]*)=(.*)$/.exec(line);  // configured alias suffixes may be lowercase
-        if (m) env.set(m[1], m[2].replace(/^"|"$/g, ""));
+        if (m) {
+            assert.equal(env.has(m[1]), false, `.env.defaults declares ${m[1]} more than once`);
+            env.set(m[1], m[2].replace(/^"|"$/g, ""));
+        }
     }
     return env;
 };
