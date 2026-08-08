@@ -1274,7 +1274,7 @@ test("retry: a transient failure retries and a later success resolves", async ()
     assert.equal(calls.length, 3); // 429 → 503 → 200
 });
 
-test("streamed-body silence fails the exchange without replaying partial output", async () => {
+test("streamed-body silence retries and returns the retry's complete output", async () => {
     let calls = 0;
     mock.method(globalThis, "fetch", async () => {
         calls++;
@@ -1308,12 +1308,9 @@ test("streamed-body silence fails the exchange without replaying partial output"
         retryAttempts: 1,
         source: "provider:test",
     });
-    await assert.rejects(
-        p.generate({ workerId: "r", messages: [] }),
-        (error: ProviderError) => error.kind === "network_failure"
-            && /chunk timeout/i.test(error.message),
-    );
-    assert.equal(calls, 1);
+    const result = await p.generate({ workerId: "r", messages: [] });
+    assert.equal(result.assistant.content, "recovered", "the retry's complete output, not the stalled partial");
+    assert.equal(calls, 2, "the stall retried once and the retry succeeded");
     mock.restoreAll();
 });
 

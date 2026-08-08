@@ -163,7 +163,48 @@ export type AiSdkModelRequest = Omit<AiSdkTransportRequest, "url" | "model" | "b
     reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "none" | "provider-default";
 };
 
+// A stalled stream (chunk-timeout abort) is a connection failure, not a model
+// failure. Retry with exponential backoff, capped at one hour total. The user's
+// abort signal is never retried — a cancelled operation stays cancelled.
+// NOTE: the chunk timeout's DOMException("TimeoutError") is NOT an instanceof
+// Error in Node.js — match on the name, not the prototype chain.
+const STALL_RETRY_CAP_MS = 3_600_000; // 1 hour
+const STALL_BACKOFF_BASE_MS = 1_000;
+
+const isStallAbort = (err: unknown, userSignal?: AbortSignal): boolean =>
+    userSignal?.aborted !== true
+    && typeof err === "object" && err !== null
+    && ((err as { name?: string }).name === "AbortError" || (err as { name?: string }).name === "TimeoutError");
+
+const withStallRetry = async <T>(fn: () => Promise<T>, userSignal?: AbortSignal): Promise<T> => {
+    const start = Date.now();
+    let attempt = 0;
+    for (;;) {
+        try {
+            return await fn();
+        } catch (err) {
+            if (!isStallAbort(err, userSignal)) throw err;
+            attempt++;
+            const elapsed = Date.now() - start;
+            const backoff = STALL_BACKOFF_BASE_MS * Math.pow(2, attempt - 1);
+            if (elapsed + backoff > STALL_RETRY_CAP_MS) throw err;
+            await new Promise((resolve) => setTimeout(resolve, backoff));
+        }
+    }
+};
+
 const executeModel = async (
+    request: AiSdkModelRequest,
+): Promise<AiSdkTransportResponse> => {
+    // Stall retry only applies when a chunk deadline is configured — without
+    // one there is no stall detection to recover from.
+    if (request.streamIdleTimeoutMs === undefined || request.streamIdleTimeoutMs <= 0) {
+        return executeModelOnce(request);
+    }
+    return withStallRetry(() => executeModelOnce(request), request.signal);
+};
+
+const executeModelOnce = async (
     request: AiSdkModelRequest,
 ): Promise<AiSdkTransportResponse> => {
     const {

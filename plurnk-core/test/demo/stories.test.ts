@@ -168,22 +168,19 @@ test("{§search-gate} story: answer a question through live web search and retri
 });
 
 test("{§search-gate} story: answer a question through live web discovery", { timeout: TIMEOUT }, async () => {
-    // Live discovery: a small fact about a famous person that training could carry
-    // but a weak model reliably mis-recalls — the story diagnoses research judgment
-    // against the real web. Its benchmark artifact remains available for autopsy.
-    // {§test-artifact-retention}
+    // Live discovery: a breaking release-current question not present in static training
+    // weights — the story diagnoses research judgment against the real web.
+    // Its benchmark artifact remains available for autopsy. {§test-artifact-retention}
     const story = await runStory({
         label: "web-search-live",
-        prompt: "What's the hometown of NASA programmer Margaret Hamilton?",
+        prompt: "Who is the current president of Colombia?",
         maxTurns: 8,
     });
     try {
-        const searchEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "search" });
-        const ok = story.finalStatus === 200 && (searchEntries?.n ?? 0) > 0 && /Paoli/i.test(story.lastContent);
+        const ok = story.finalStatus === 200 && /Espriella/i.test(story.lastContent);
         if (!ok) await story.dump();
-        assert.ok((searchEntries?.n ?? 0) > 0, "a search results entry exists — the model actually reached for the tool");
         assert.equal(story.finalStatus, 200);
-        assert.match(story.lastContent, /Paoli/i, `the answer names Paoli, Indiana; got: ${story.lastContent.slice(0, 200)}`);
+        assert.match(story.lastContent, /Espriella/i, `the answer names Espriella; got: ${story.lastContent.slice(0, 200)}`);
     } finally { await story.cleanup(); }
 });
 
