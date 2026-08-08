@@ -114,7 +114,7 @@ One or more numbers narrow an operation according to its type:
 * FIND scopes select inclusive result positions (defaults to <1,16>; use <1,-1> for all).
 * READ and EDIT scopes select text regions.
 * COPY and MOVE scopes select source text; the destination may carry its own scope.
-* Semantic FIND reserves a leading decimal scope component for a similarity threshold. Remaining integers select result positions.
+* Semantic FIND may prefix result positions with a decimal similarity threshold.
 * EXEC and SEND use `<timeout, poll>` seconds.
 
 Text scope (Line, StartLine, StartColumn, EndLine, EndColumn) has one meaning for every textual mimetype:
@@ -130,23 +130,14 @@ Text scope (Line, StartLine, StartColumn, EndLine, EndColumn) has one meaning fo
 * Rendered `L:` prefixes are reference coordinates, not source content.
 * To read exactly line L, use `<L>`; `<L,L+1>` selects both lines.
 * READ without a defined scope defaults to <1,16>; use <1,-1> for all.
+* `<0>` prepends and `<-1>` appends for EDIT and COPY/MOVE destinations.
+* A scoped COPY/MOVE destination must already exist; omit its scope when creating a new destination channel.
+* An empty EDIT body deletes its selection.
+* Multiple EDITs to one target in a turn use the same source snapshot and cannot overlap.
+* YOU MUST use a text scope when editing an existing file or entry.
+* Use precise, current positions from recent READ results when modifying existing content.
 
-For EDIT and COPY/MOVE destinations, `<0>` and `<-1>` insert before the first and after the final position.
-A scoped COPY/MOVE destination must already exist; omit its scope when creating a new destination channel.
-Insert a line above line L with a zero-width scope at its start:
-
-```plurnk
-<<PLAN:Insert a new line above line 3.:PLAN
-<<EDIT(notes.md)<3,1,3,1>:// new line
-:EDIT
-<<SEND[102]:Line inserted.:SEND
-```
-`<1,-1>` selects all content; an empty EDIT body deletes its selection.
-Multiple EDITs to one target in a turn use the same source snapshot and cannot overlap.
-YOU MUST use a text scope when editing an existing file or entry.
-Use precise, current positions from recent READ results when modifying existing content.
-
-Other scope examples:
+Scope examples:
 
 * FIND result range: `<<FIND(src/**)<10,20>::FIND`
 * Copy lines into a new entry: `<<COPY(worker:///src.md)<2,3>:worker:///slice.md:COPY`
