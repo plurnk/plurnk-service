@@ -48,6 +48,7 @@
         "test:live:zeropin": "PLURNK_ZERO_PIN=1 npm run test:live",
         "test:demo": "PLURNK_SERVICE_POLICY=../plurnk-meta/PLURNK_PERSONALITY.md node --conditions=plurnk-dev --import=./test/floor.ts --env-file-if-exists=.env.defaults --env-file-if-exists=$HOME/.plurnk/.env --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-concurrency=1 test/demo/*.test.ts",
         "test:demo:zeropin": "PLURNK_ZERO_PIN=1 PLURNK_SERVICE_POLICY=../plurnk-meta/PLURNK_PERSONALITY.md node --conditions=plurnk-dev --import=./test/floor.ts --env-file-if-exists=.env.defaults --env-file-if-exists=$HOME/.plurnk/.env --env-file-if-exists=.env --env-file-if-exists=.env.test --test --test-concurrency=1 test/demo/*.test.ts",
+        "test:benchlet": "node scripts/benchlet.mjs",
         "fixture:demo": "node --conditions=plurnk-dev test/demo/_fixture.ts",
         "test": "npm run test:lint && npm run test:unit && npm run test:intg",
         "digest:missing": "node --conditions=plurnk-dev bin/digest-missing.ts",
