@@ -34,7 +34,7 @@ A `?` marks an optional slot.
 | OP   | purpose                        | `[signal]`   | `(path)`                   | `<scope>`      | `body`                |
 |------|--------------------------------|--------------|----------------------------|----------------|-----------------------|
 | PLAN | describe intended goals        | -            | -                          | -              | list or prose         |
-| FIND | list resources or locations    | filter tags? | target or glob             | result range?  | pattern?              |
+| FIND | list matching targets          | filter tags? | target or glob             | result range?  | pattern?              |
 | READ | retrieve target content        | filter tags? | target                     | text region?   | -                     |
 | EDIT | modify or create file or entry | apply tags?  | file or entry              | text region?   | literal text          |
 | COPY | copy from a target             | apply tags?  | source target              | source region? | destination <region>? |
@@ -67,9 +67,7 @@ Matcher bodies select treemapped resources by their content.
 * In path targets, `*` maps one level and `**` crosses directories.
 * Filters bracket directly: `$[?(@.role=="admin")]`, never `$.[?(...)]`.
 * Mapping is universal: JSONPath can query XML and XPath can query JSON.
-* FIND on a glob or folder returns matching resource rows with each row's `matchLocationCount`.
-* FIND on an exact target with a pattern returns flat `{locator?,region?}` locations.
-* Drill down broad FIND → exact-target FIND → exact READ or EDIT.
+* Patterned FIND returns resources for broad targets and locations for exact targets.
 
 Examples:
 
@@ -113,7 +111,7 @@ Examples:
 
 One or more numbers narrow an operation according to its type:
 
-* FIND scopes select inclusive resource or exact-target location positions (defaults to <1,16>; use <1,-1> for all).
+* FIND scopes select inclusive result positions (defaults to <1,16>; use <1,-1> for all).
 * READ and EDIT scopes select text regions.
 * COPY and MOVE scopes select source text; the destination may carry its own scope.
 * Semantic FIND may prefix result positions with a decimal similarity threshold.
