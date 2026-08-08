@@ -8,16 +8,15 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { homedir } from "node:os";
 
-const benchRoot = process.env.PLURNK_BENCH_ROOT ?? resolve(homedir(), "prj/repo/plurnk-bench");
+const serviceRoot = resolve(import.meta.dirname, "../..");
+const benchRoot = process.env.PLURNK_BENCH_ROOT ?? resolve(serviceRoot, "../plurnk-bench");
 if (!existsSync(resolve(benchRoot, "deepswe/benchlet.ts"))) {
     console.error(`benchlet not found at ${benchRoot} — set PLURNK_BENCH_ROOT to the plurnk-bench checkout`);
     process.exit(2);
 }
 
-const serviceRoot = resolve(import.meta.dirname, "../..");
-const clientRoot = process.env.PLURNK_CLIENT_ROOT ?? resolve(homedir(), "ptl/plurnk");
+const clientRoot = process.env.PLURNK_CLIENT_ROOT ?? resolve(serviceRoot, "../plurnk");
 
 const result = spawnSync(process.execPath, [
     "--conditions=plurnk-dev",
