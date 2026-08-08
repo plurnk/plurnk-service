@@ -78,13 +78,13 @@ test("a worker without pending interrupts drives the loop, then live events fan 
         },
         hitMaxTurns: false,
         turnIds: [],
-        usage: { promptTokens: 0, completionTokens: 0, costUsd: 0, costs: [], contextTokens: 0, promptBudget: 1000, meta: {} },
+        usage: { promptTokens: 0, completionTokens: 0, costUsd: 0, projectedCostUsd: 0, costs: [], contextTokens: 0, promptBudget: 1000, meta: {} },
     });
     assert.equal(seen.length, 0, "a foreign loop terminal cannot end this AG-UI Run");
 
     m.fire(3, "loop/terminated", {
         loopId: 77, result: { status: 200 }, hitMaxTurns: false, turnIds: [1],
-        usage: { promptTokens: 1, completionTokens: 1, costUsd: 0, costs: [], contextTokens: 2, promptBudget: 1000, meta: {} },
+        usage: { promptTokens: 1, completionTokens: 1, costUsd: 0, projectedCostUsd: 0, costs: [], contextTokens: 2, promptBudget: 1000, meta: {} },
     });
     assert.ok(seen.some((e) => e.type === "RUN_FINISHED"), "the bound loop terminal ends this AG-UI Run");
 
@@ -109,7 +109,7 @@ test("a terminal arriving before the loop acknowledgement settles only its match
 
     const termination = (loopId: number) => ({
         loopId, result: { status: 200 }, hitMaxTurns: false, turnIds: [],
-        usage: { promptTokens: 0, completionTokens: 0, costUsd: 0, costs: [], contextTokens: 0, promptBudget: 1000, meta: {} },
+        usage: { promptTokens: 0, completionTokens: 0, costUsd: 0, projectedCostUsd: 0, costs: [], contextTokens: 0, promptBudget: 1000, meta: {} },
     });
     m.fire(3, "loop/terminated", termination(88));
     m.fire(3, "loop/terminated", termination(77));

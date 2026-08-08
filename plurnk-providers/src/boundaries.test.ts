@@ -30,6 +30,7 @@ test("the OpenAI-compatible entrypoint excludes Node-owned provider machinery", 
     const allowed = new Set([
         "AiSdkProvider.ts",
         "aiSdkTransport.ts",
+        "cost.ts",
         "env.ts",
         "errors.ts",
         "notices.ts",

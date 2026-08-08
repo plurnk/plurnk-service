@@ -11,7 +11,9 @@ SELECT * FROM workspaces ORDER BY id;
 SELECT * FROM workers ORDER BY id;
 
 -- PREP: digest_loops
-SELECT id, worker_id, sequence, status, prompt, flags, terminal_message, terminated_by, terminal_result
+SELECT id, worker_id, sequence, status, prompt, flags, terminal_message, terminated_by, terminal_result,
+       accounting_scope_id, accounting_state, accounting_charge, accounting_cost_usd,
+       accounting_detail, accounting_evaluated_at
 FROM loops ORDER BY worker_id, sequence;
 
 -- PREP: digest_turns
@@ -21,9 +23,10 @@ SELECT id, loop_id, sequence, status, packet,
 FROM turns ORDER BY loop_id, sequence;
 
 -- PREP: digest_turn_attempts
-SELECT id, turn_id, sequence, accepted, response, parse_errors, attributions,
+SELECT id, turn_id, sequence, accounting_id, state, accepted, response, failure,
+       parse_errors, attributions,
        usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost, usage_cost_usd,
-       finish_reason, model, timestamp
+       finish_reason, model, timestamp, completed_at
 FROM turn_attempts
 ORDER BY turn_id, sequence;
 
@@ -46,8 +49,10 @@ SELECT
     COALESCE(SUM(t.usage_completion), 0) AS total_completion,
     COALESCE(SUM(t.usage_reasoning), 0) AS total_reasoning,
     COALESCE(SUM(t.usage_cached), 0) AS total_cached,
-    CASE WHEN COUNT(t.id) FILTER (WHERE t.usage_cost_usd IS NULL) > 0
-         THEN NULL ELSE COALESCE(SUM(t.usage_cost_usd), 0) END AS total_cost_usd,
+    (SELECT CASE WHEN COUNT(*) FILTER (WHERE lc.cost_usd IS NULL) > 0
+                 THEN NULL ELSE COALESCE(SUM(lc.cost_usd), 0) END
+       FROM loop_costs lc
+      WHERE lc.worker_id = r.id) AS total_cost_usd,
     (SELECT t2.status FROM turns t2 JOIN loops l2 ON t2.loop_id = l2.id
      WHERE l2.worker_id = r.id ORDER BY l2.sequence DESC, t2.sequence DESC LIMIT 1) AS last_status
 FROM workers r

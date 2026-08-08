@@ -45,6 +45,7 @@ interface Provider {
   calculateCost(usage: ProviderUsage): number;
   calculateCharge?(usage: ProviderUsage): Exclude<ProviderCost, { kind: "authoritative" }>;
   generate(args: GenerateArgs): Promise<ProviderResponse>;
+  reconcileAccounting?(scope: ProviderAccountingScope, signal?: AbortSignal): Promise<ProviderAccountingResult>;
 }
 ```
 
@@ -74,12 +75,34 @@ hard; consumers do not reinterpret it as ordinary unavailability.
 endpoint exposes its real vocabulary. Content tokenization does not substitute
 for complete-request measurement.
 
-§provider-monetary-evidence A provider response may carry an authoritative
-settled `charge`; it wins over every local calculation. Otherwise
+§provider-monetary-evidence Monetary evidence has one normalization boundary
+and two acquisition modes:
+
+| Mode | Provider responsibility | Consumer responsibility |
+| --- | --- | --- |
+| Response-native | Extract a documented settled charge from the represented call and return `ProviderResponse.charge`. | Preserve the charge beside that call. |
+| Correlated ledger | Map the opaque accounting scope onto vendor correlation, query the provider's billing authority, and return settled or pending. | Create durable scope/call identities before I/O and preserve the scope result separately from call evidence. |
+
+A response charge wins over every local calculation. Otherwise
 `calculateCharge` returns estimated, explicitly free, or unknown evidence under
 {§provider-cost}. The numeric `calculateCost` method remains only as a frozen
 1.x compatibility surface: a positive value adapts to an estimate, while zero
-adapts to unknown because it cannot prove free.
+adapts to unknown because it cannot prove free. `providerCostUsd` projects only
+settled authoritative/free evidence; `providerProjectedCostUsd` is the distinct
+best-known operational projection that may include estimates.
+
+§provider-accounting-reconciliation A correlated scope is stable across every
+generation operation and transport retry in one consumer loop. Its calls have
+separate durable identities. `reconcileAccounting` receives only those opaque
+identities, timestamps, normalized usage, model, and attempt count; provider
+adapters alone know vendor headers, credentials, account discovery, billing
+endpoints, ingestion polling, and response fields. A settled scope total is not
+allocated across calls and supersedes their monetary sum only at scope and
+higher rollups. It is the provider's exact rated usage subtotal at the recorded
+evaluation time, not a claim of invoice finality. `pending` is explicit and
+never becomes zero merely because issued calls have not appeared in the ledger;
+provider-declared incomplete attribution cannot settle. A provider without a
+documented scoped billing authority omits the capability.
 
 ### Generation
 
@@ -89,7 +112,8 @@ adapts to unknown because it cannot prove free.
 - caller cancellation through `signal`;
 - optional `grammar` and `maxTokens`;
 - standard `sampling` intent;
-- opaque attribution tags plus client, strike, workspace, loop, and turn metadata.
+- opaque attribution tags plus client, strike, workspace, loop, and turn metadata;
+- optional opaque durable accounting scope and call identities.
 
 A successful return carries the model's raw content and reasoning, normalized
 usage, normalized finish reason, model identity, opaque evidence, optional
@@ -238,6 +262,11 @@ plugin.
 Model IDs resolve exactly first. A unique catalog suffix is accepted to avoid
 forcing a vendor-owned resource prefix into PLURNK aliases. Ambiguous suffixes
 fail to resolve.
+
+The catalog package identifies the protocol family, not a mandatory client
+implementation. xAI uses its documented OpenAI-compatible response directly
+because that wire includes exact cost ticks the corresponding AI SDK projection
+omits.
 
 Provider declarations configure facts, not credentials:
 

@@ -21,22 +21,34 @@ RETURNING id;
 INSERT INTO turn_attempts (
     turn_id,
     sequence,
+    state,
     accepted,
     response,
     parse_errors,
     usage_prompt,
+    usage_completion,
+    usage_reasoning,
+    usage_cached,
     usage_cost,
     usage_cost_usd,
-    model
+    finish_reason,
+    model,
+    completed_at
 )
 VALUES (
     $turn_id,
     1,
+    'response',
     1,
     '{"assistant":{"content":"fixture"}}',
     '[]',
     $prompt,
+    0,
+    0,
+    0,
     '{"kind":"free","source":"context gauge fixture"}',
     0,
-    'fixture'
+    'stop',
+    'fixture',
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 );

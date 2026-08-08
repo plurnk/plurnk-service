@@ -2,6 +2,8 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import AiSdkProvider, { effortFromBudget } from "./AiSdkProvider.ts";
 import { ProviderError } from "./errors.ts";
+import { authoritativeChargeNormalizer } from "./accounting.ts";
+import type { LanguageModel } from "ai";
 
 // Build a fake fetch returning a one-chunk SSE stream, capturing the request
 // so tests can assert what the spine sent on the wire.
@@ -307,6 +309,139 @@ test("generate maps a streamed response into ProviderResponse", async () => {
     assert.deepEqual(assistant.usage, { prompt: 3, completion: 2, reasoning: 0, cached: 1, total: 5 });
     assert.equal(assistant.reasoning, null); // none emitted
     assert.notEqual(assistantRaw, undefined);
+});
+
+test("native SDK accounting metadata becomes a normalized charge in buffered and streamed responses", async (t) => {
+    const usage = {
+        inputTokens: { total: 2, noCache: 2, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+    };
+    const providerMetadata = { openrouter: { usage: { cost: 0.00154935 } } };
+    const charge = {
+        kind: "authoritative",
+        amount: { amount: "0.00154935", currency: "USD" },
+        usdEquivalent: "0.00154935",
+        source: "OpenRouter response usage.cost",
+    };
+    const languageModel = {
+        specificationVersion: "v4",
+        provider: "openrouter.chat",
+        modelId: "router-test",
+        supportedUrls: {},
+        doGenerate: async () => ({
+            content: [{ type: "text", text: "ok" }],
+            finishReason: { unified: "stop", raw: "completed" },
+            usage,
+            providerMetadata,
+            response: { id: "response-buffered", modelId: "router-test" },
+            warnings: [],
+        }),
+        doStream: async () => ({
+            stream: new ReadableStream({
+                start(controller) {
+                    controller.enqueue({ type: "stream-start", warnings: [] });
+                    controller.enqueue({ type: "response-metadata", id: "response-streamed", modelId: "router-test" });
+                    controller.enqueue({ type: "text-start", id: "text-1" });
+                    controller.enqueue({ type: "text-delta", id: "text-1", delta: "ok" });
+                    controller.enqueue({ type: "text-end", id: "text-1" });
+                    controller.enqueue({
+                        type: "finish",
+                        finishReason: { unified: "stop", raw: "completed" },
+                        usage,
+                        providerMetadata,
+                    });
+                    controller.close();
+                },
+            }),
+            response: {},
+        }),
+    } as unknown as LanguageModel;
+    const config = {
+        model: "router-test",
+        languageModel,
+        fetchTimeoutMs: 5_000,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off" as const, budget: null },
+        retryAttempts: 0,
+        normalizeCharge: authoritativeChargeNormalizer("@openrouter/ai-sdk-provider"),
+    };
+
+    await t.test("buffered", async () => {
+        const response = await new AiSdkProvider({ ...config, streaming: false })
+            .generate({ workerId: "buffered", messages: [] });
+        assert.deepEqual(response.charge, charge);
+    });
+    await t.test("streamed", async () => {
+        const response = await new AiSdkProvider(config)
+            .generate({ workerId: "streamed", messages: [] });
+        assert.deepEqual(response.charge, charge);
+    });
+});
+
+test("compatible xAI wire usage becomes an exact tick charge without raw-body capture", async () => {
+    const p = new AiSdkProvider({
+        model: "grok-test",
+        url: "http://x/v1/chat/completions",
+        fetchTimeoutMs: 5_000,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 0,
+        streaming: false,
+        normalizeCharge: authoritativeChargeNormalizer("@ai-sdk/xai"),
+    });
+    installFetchJson({
+        id: "response-1",
+        model: "grok-test",
+        choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
+        usage: {
+            prompt_tokens: 2,
+            completion_tokens: 1,
+            total_tokens: 3,
+            cost_in_usd_ticks: 15_493_500,
+        },
+    });
+    const response = await p.generate({ workerId: "xai", messages: [] });
+    assert.deepEqual(response.charge, {
+        kind: "authoritative",
+        amount: { amount: "15493500", currency: "USDTICK" },
+        usdEquivalent: "0.00154935",
+        source: "xAI response usage.cost_in_usd_ticks",
+    });
+    assert.equal(response.rawBody, undefined);
+});
+
+test("streamed xAI final usage retains its exact tick charge", async () => {
+    const p = new AiSdkProvider({
+        model: "grok-test",
+        url: "http://x/v1/chat/completions",
+        fetchTimeoutMs: 5_000,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 0,
+        normalizeCharge: authoritativeChargeNormalizer("@ai-sdk/xai"),
+    });
+    installFetch([
+        { choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] },
+        {
+            choices: [],
+            usage: {
+                prompt_tokens: 2,
+                completion_tokens: 1,
+                total_tokens: 3,
+                cost_in_usd_ticks: 15_493_500,
+            },
+        },
+    ]);
+    const response = await p.generate({ workerId: "xai", messages: [] });
+    assert.deepEqual(response.charge, {
+        kind: "authoritative",
+        amount: { amount: "15493500", currency: "USDTICK" },
+        usdEquivalent: "0.00154935",
+        source: "xAI response usage.cost_in_usd_ticks",
+    });
 });
 
 test("generate surfaces and normalizes an out-of-set finish_reason", async () => {

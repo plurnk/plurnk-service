@@ -13,8 +13,8 @@ import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } f
 const execFileP = promisify(execFile);
 
 interface DigestJson {
-    workspaces: Array<{ id: number; cost_usd: number }>;
-    workers: Array<{ id: number; workspace_id: number; cost_usd: number }>;
+    workspaces: Array<{ id: number; cost_usd: number | null }>;
+    workers: Array<{ id: number; workspace_id: number; cost_usd: number | null }>;
     loops: Array<{ id: number; worker_id: number; prompt: string }>;
     turns: Array<{ id: number; loop_id: number; usage_prompt: number }>;
     turn_attempts: Array<{ turn_id: number; model: string }>;
@@ -37,31 +37,40 @@ const seedWorkerEvidence = async (
         id: turnId,
         status: 200,
         packet: turn.packet,
-        usage_prompt: ordinal * 100,
-        usage_completion: ordinal * 10,
-        usage_reasoning: ordinal,
-        usage_cached: 0,
-        usage_cost: JSON.stringify([{ kind: "estimated", usd: String(ordinal / 1000), source: "digest fixture" }]),
-        usage_cost_usd: ordinal / 1000,
         finish_reason: "stop",
         model: `model-${marker}`,
         meta: "{}",
     });
-    await db.engine_record_turn_attempt.run({
+    const attempt = await db.engine_open_turn_attempt.get<{ id: number }>({
         turn_id: turnId,
         sequence: 1,
-        accepted: 1,
-        response: JSON.stringify({ assistant: { reasoning: `reason-${marker}` } }),
-        parse_errors: "[]",
         attributions: "[]",
+        model: `model-${marker}`,
+    });
+    if (attempt === undefined) throw new Error("digest fixture attempt did not open");
+    await db.engine_observe_turn_attempt_response.run({
+        id: attempt.id,
+        response: JSON.stringify({ assistant: { reasoning: `reason-${marker}` } }),
         usage_prompt: ordinal * 100,
         usage_completion: ordinal * 10,
         usage_reasoning: ordinal,
         usage_cached: 0,
-        usage_cost: JSON.stringify({ kind: "estimated", usd: String(ordinal / 1000), source: "digest fixture" }),
-        usage_cost_usd: ordinal / 1000,
+        usage_cost: JSON.stringify({ kind: "unknown", reason: "awaiting classification" }),
         finish_reason: "stop",
         model: `model-${marker}`,
+    });
+    await db.engine_classify_turn_attempt_response.run({
+        id: attempt.id,
+        accepted: 1,
+        parse_errors: "[]",
+        failure: null,
+        usage_cost: JSON.stringify({
+            kind: "authoritative",
+            amount: { amount: String(ordinal / 1000), currency: "USD" },
+            usdEquivalent: String(ordinal / 1000),
+            source: "digest fixture",
+        }),
+        usage_cost_usd: ordinal / 1000,
     });
     await db.engine_insert_log_entry.run({
         worker_id: workerId,

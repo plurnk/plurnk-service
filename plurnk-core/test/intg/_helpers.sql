@@ -53,10 +53,10 @@ SELECT id, loop_id, sequence, status,
 FROM turns WHERE id = $id;
 
 -- PREP: test_turn_attempts
-SELECT sequence, accepted, response, parse_errors,
+SELECT id, sequence, accounting_id, state, accepted, response, failure, parse_errors,
        attributions,
        usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost_usd,
-       finish_reason, model
+       usage_cost, finish_reason, model, timestamp, completed_at
 FROM turn_attempts
 WHERE turn_id = $turn_id
 ORDER BY sequence;

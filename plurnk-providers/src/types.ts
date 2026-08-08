@@ -46,6 +46,56 @@ export interface ProviderUsage {
 
 export type AuthoritativeCharge = Extract<ProviderCost, { kind: "authoritative" }>;
 
+// Evidence exposed by the transport to the provider adapter that owns its
+// vendor protocol. Core and downstream consumers receive only the normalized
+// charge, never a requirement to understand provider metadata fields.
+export interface ProviderAccountingEvidence {
+    readonly providerMetadata?: unknown;
+    // Provider-owned raw usage projection retained independently of optional
+    // full-body capture. Accounting fields cannot disappear merely because
+    // forensic raw-body capture is disabled.
+    readonly usage?: unknown;
+    readonly response: {
+        readonly id: string;
+        readonly headers?: Readonly<Record<string, string>>;
+    };
+}
+
+export interface ProviderAccountingScope {
+    readonly id: string;
+    readonly startedAt: string;
+    readonly endedAt: string;
+    readonly model: string;
+    readonly attempts: number;
+    readonly usage: ProviderUsage;
+}
+
+export type ProviderAccountingResult =
+    | {
+        readonly status: "settled";
+        readonly charge: AuthoritativeCharge;
+        readonly evaluatedAt: string;
+    }
+    | {
+        readonly status: "pending";
+        readonly reason: string;
+        readonly evaluatedAt?: string;
+    };
+
+export interface ProviderCallAccounting {
+    readonly scopeId: string;
+    readonly callId: string;
+}
+
+export type AuthoritativeChargeNormalizer = (
+    evidence: ProviderAccountingEvidence,
+) => AuthoritativeCharge | undefined;
+
+export interface ProviderAccountingAdapter {
+    headers(accounting: ProviderCallAccounting): Readonly<Record<string, string>>;
+    reconcile(scope: ProviderAccountingScope, signal?: AbortSignal): Promise<ProviderAccountingResult>;
+}
+
 // A successful exchange's closed finish set. ProviderAttemptFinishReason adds
 // the failed disposition that may occur only on ProviderError attempt evidence.
 export type FinishReason = "stop" | "length" | "tool_calls" | "content_filter" | null;
@@ -187,7 +237,11 @@ export interface Provider {
     // `Plurnk-Turn` ONLY under the same firstPartyMetadata gate; dropped
     // everywhere else. Coordinates are 1-based: absent/0 emits no header (no
     // strikes-style zero exception). Headers only, never the packet.
-    generate(args: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
+    generate(args: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown>; accounting?: ProviderCallAccounting }): Promise<ProviderResponse>;
+    // Optional provider-owned settlement of a complete correlated scope. Core
+    // supplies durable identity and normalized observations; the adapter owns
+    // every vendor header, endpoint, credential, and response field.
+    reconcileAccounting?(scope: ProviderAccountingScope, signal?: AbortSignal): Promise<ProviderAccountingResult>;
     // {§model-fact-resolution} — effective physical context in tokens. `null`
     // means unknown; under llama-server parallelism the probed value is per slot.
     readonly contextWindow: number | null;

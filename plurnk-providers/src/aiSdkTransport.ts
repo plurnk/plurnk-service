@@ -2,7 +2,7 @@ import { createOpenAICompatible, type ProviderErrorStructure } from "@ai-sdk/ope
 import { APICallError, generateText, streamText, type JSONValue, type LanguageModel, type LanguageModelUsage } from "ai";
 import { prepareRetries } from "ai/internal";
 import { z } from "zod/v4";
-import type { ChatMessage, ProviderAttemptFinishReason, ProviderUsage, TokenLogprob } from "./types.ts";
+import type { ChatMessage, ProviderAccountingEvidence, ProviderAttemptFinishReason, ProviderUsage, TokenLogprob } from "./types.ts";
 import { normalizeUsage, type RawUsage } from "./usage.ts";
 import { emitWarningOnce } from "./warnings.ts";
 
@@ -65,6 +65,14 @@ const wireUsageOf = (
         }
     }
     return null;
+};
+
+const wireUsageEvidenceOf = (values: readonly unknown[]): unknown => {
+    for (let index = values.length - 1; index >= 0; index -= 1) {
+        const record = recordOf(values[index]);
+        if (record !== null && record.usage !== undefined) return record.usage;
+    }
+    return undefined;
 };
 
 const finishReasonOf = (reason: string | undefined): ProviderAttemptFinishReason => {
@@ -147,6 +155,7 @@ export type AiSdkTransportResponse = {
         encrypted: Array<{ data: string; format: string | null }>;
     }>;
     logprobs: TokenLogprob[];
+    accounting: ProviderAccountingEvidence;
     rawBody?: unknown;
 };
 
@@ -266,6 +275,7 @@ const executeModelOnce = async (
         const rawBody = result.response.body;
         const values = [rawBody];
         const evidence = extractEvidence(values);
+        const accountingUsage = wireUsageEvidenceOf(values);
         const reasoningText = evidence.reasoning || result.reasoningText || "";
         const rawFinishReason = result.rawFinishReason;
         return {
@@ -280,6 +290,18 @@ const executeModelOnce = async (
             metadata: metadataOf(values),
             reasoningEncrypted: evidence.reasoningEncrypted,
             logprobs: evidence.logprobs,
+            accounting: {
+                ...(accountingUsage === undefined ? {} : { usage: accountingUsage }),
+                ...(result.providerMetadata === undefined
+                    ? {}
+                    : { providerMetadata: result.providerMetadata }),
+                response: {
+                    id: result.response.id,
+                    ...(result.response.headers === undefined
+                        ? {}
+                        : { headers: result.response.headers }),
+                },
+            },
             ...(request.captureRawBody ? { rawBody } : {}),
         };
     }
@@ -297,11 +319,16 @@ const executeModelOnce = async (
     }
     if (streamError !== undefined) throw streamError;
     const evidence = extractEvidence(rawChunks);
+    const accountingUsage = wireUsageEvidenceOf(rawChunks);
     const content = await result.text;
     const reasoningText = evidence.reasoning || (await result.reasoningText) || "";
     const rawFinishReason = await result.rawFinishReason;
+    const [response, providerMetadata] = await Promise.all([
+        result.response,
+        result.providerMetadata,
+    ]);
     return {
-        model: (await result.response).modelId,
+        model: response.modelId,
         content,
         reasoning: reasoningText,
         reasoningProjected: evidence.reasoningProjected,
@@ -312,6 +339,14 @@ const executeModelOnce = async (
         metadata: metadataOf(rawChunks),
         reasoningEncrypted: evidence.reasoningEncrypted,
         logprobs: evidence.logprobs,
+        accounting: {
+            ...(accountingUsage === undefined ? {} : { usage: accountingUsage }),
+            ...(providerMetadata === undefined ? {} : { providerMetadata }),
+            response: {
+                id: response.id,
+                ...(response.headers === undefined ? {} : { headers: response.headers }),
+            },
+        },
         ...(request.captureRawBody ? { rawBody: rawChunks } : {}),
     };
 };

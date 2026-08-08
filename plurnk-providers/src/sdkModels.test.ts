@@ -19,9 +19,12 @@ test("createSdkModel uses Models.dev provider facts and operator credentials", (
     const sdk = createSdkModel("xai", "grok-build-0.1", { XAI_API_KEY: "test-key" });
     assert.notEqual(sdk, null);
     assert.equal(sdk?.catalog?.npm, "@ai-sdk/xai");
-    const languageModel = sdk?.languageModel as { provider: string; modelId: string };
-    assert.equal(languageModel.provider, "xai.responses");
-    assert.equal(languageModel.modelId, "grok-build-0.1");
+    assert.equal(sdk?.languageModel, undefined);
+    assert.deepEqual(sdk?.compatible, {
+        url: "https://api.x.ai/v1/chat/completions",
+        headers: { Authorization: "Bearer test-key" },
+    });
+    assert.notEqual(sdk?.normalizeCharge, undefined);
 });
 
 test("createSdkModel expands catalog endpoint variables without treating them as credentials", () => {

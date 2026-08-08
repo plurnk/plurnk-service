@@ -7,6 +7,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import SeamSocket from "./_seam.ts";
 import type { MockResponse, Provider } from "@plurnk/plurnk-providers";
 import type { Db } from "../../src/core/Db.ts";
+import type { LoopUsage } from "../../src/core/Engine.ts";
 import { openMigrated } from "./_helpers.ts";
 
 export interface RpcResponse {
@@ -113,7 +114,7 @@ export const runLoopToTerminal = async (
     loopId: number; finalStatus: number; accepted: number; action?: string; modelWorkerId?: number;
     result: OperationResult;
     hitMaxTurns?: boolean; turnIds?: number[]; attributions?: string[];
-    usage?: { promptTokens: number; completionTokens: number; costUsd: number | null; costs: import("@plurnk/plurnk-contracts").ProviderCost[] };
+    usage?: LoopUsage;
 }> => {
     const terminated = subscribeNotifications(ws, "loop/terminated");
     const response = await rpcCall(ws, id, "loop.run", params);
@@ -128,7 +129,7 @@ export const runLoopToTerminal = async (
     );
     const term = seen.find((t) => t.loopId === loopId) as {
         loopId: number; result: OperationResult; hitMaxTurns?: boolean; turnIds?: number[]; attributions?: string[];
-        usage?: { promptTokens: number; completionTokens: number; costUsd: number | null; costs: import("@plurnk/plurnk-contracts").ProviderCost[] };
+        usage?: LoopUsage;
     };
     return { ...term, finalStatus: term.result.status, accepted, action, modelWorkerId };
 };

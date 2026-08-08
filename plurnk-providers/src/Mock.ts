@@ -5,7 +5,7 @@
 // Provider contract. Production providers don't expose the `ops` escape
 // hatch — that's an intg-only convenience.
 
-import type { ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderEncryptedReasoningItem, ProviderResponse, ProviderUsage } from "./types.ts";
+import type { AuthoritativeCharge, ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderEncryptedReasoningItem, ProviderResponse, ProviderUsage } from "./types.ts";
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
 import { resolveEnvelopeFromEnv } from "./env.ts";
 
@@ -28,6 +28,7 @@ export type MockAssistant = {
 export type MockResponse = {
     assistant: MockAssistant;
     assistantRaw?: unknown;
+    charge?: AuthoritativeCharge;
     grammarEvidence?: GrammarEvidence;
 };
 
@@ -36,6 +37,7 @@ export type MockReturnedAssistant = ProviderAssistant & { ops?: unknown[] };
 export type MockReturnedResponse = ProviderResponse & { assistant: MockReturnedAssistant };
 
 const DEFAULT_USAGE: ProviderUsage = { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 };
+type MockGenerateArgs = Omit<Parameters<Provider["generate"]>[0], "workerId"> & { workerId?: string };
 
 export default class Mock implements Provider {
     #contextWindow: number | null;
@@ -79,7 +81,7 @@ export default class Mock implements Provider {
     calculateCost(_usage: ProviderUsage): number { return 0; }
     calculateCharge(_usage: ProviderUsage): Exclude<ProviderCost, { kind: "authoritative" }> { return { kind: "free", source: "mock provider" }; }
 
-    async generate({ signal, grammar }: { messages: ChatMessage[]; workerId?: string; signal?: AbortSignal; grammar?: string }): Promise<MockReturnedResponse> {
+    async generate({ signal, grammar }: MockGenerateArgs): Promise<MockReturnedResponse> {
         // Honor abort before consuming the queue — an aborted call makes no
         // "wire call" and must not exhaust a queued response
         // ({§provider-failure-normalization}).
@@ -103,6 +105,7 @@ export default class Mock implements Provider {
         return {
             assistant,
             assistantRaw: next.assistantRaw ?? null,
+            ...(next.charge === undefined ? {} : { charge: next.charge }),
             ...(grammarEvidence !== undefined ? { grammarEvidence } : {}),
         };
     }

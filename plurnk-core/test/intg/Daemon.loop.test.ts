@@ -1,8 +1,26 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Mock } from "@plurnk/plurnk-providers";
+import { Mock, type ProviderAccountingScope } from "@plurnk/plurnk-providers";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitFor } from "./_rpc.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+
+class SettledAccountingMock extends Mock {
+    readonly scopes: ProviderAccountingScope[] = [];
+
+    async reconcileAccounting(scope: ProviderAccountingScope) {
+        this.scopes.push(scope);
+        return {
+            status: "settled" as const,
+            charge: {
+                kind: "authoritative" as const,
+                amount: { amount: "0.031941728", currency: "USD" },
+                usdEquivalent: "0.031941728",
+                source: "daemon accounting fixture",
+            },
+            evaluatedAt: "2026-08-08T12:00:00.000Z",
+        };
+    }
+}
 
 test("loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
     const dsl = "<<EDIT(worker:///france/capital):Paris:EDIT\n<<SEND[200]:Paris is the capital.:SEND";
@@ -33,6 +51,37 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
             // executor docs the execs family ships. Configured protocol modules add their own
             // runtime docs only when present. 2 + 10 = 12.
             assert.equal(entryCount, 12);
+        } finally { ws.close(); }
+    });
+});
+
+test("loop termination reconciles correlated provider accounting before notification", async () => {
+    const mock = new SettledAccountingMock({
+        contextWindow: 16384,
+        responses: [makeMockResponse("<<SEND[200]:done:SEND", 42)],
+    });
+
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "loop-accounting" });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "account for this" });
+            assert.equal(result.usage?.costUsd, 0.031941728);
+            assert.equal(result.usage?.projectedCostUsd, 0, "attempt projection remains separate from scope settlement");
+            assert.deepEqual(result.usage?.accounting, {
+                scopeId: mock.scopes[0]!.id,
+                status: "settled",
+                charge: {
+                    kind: "authoritative",
+                    amount: { amount: "0.031941728", currency: "USD" },
+                    usdEquivalent: "0.031941728",
+                    source: "daemon accounting fixture",
+                },
+                evaluatedAt: "2026-08-08T12:00:00.000Z",
+            });
+            assert.equal(mock.scopes.length, 1);
+            assert.equal(mock.scopes[0]!.attempts, 1);
+            assert.equal(mock.scopes[0]!.usage.completion, 42);
         } finally { ws.close(); }
     });
 });
@@ -171,7 +220,7 @@ test("loop.run fires loop/terminated notification on completion", async () => {
             const ack = accept.result as { loopId: number; status: number };
             assert.equal(ack.status, 100, "loop.run accepts immediately, not the terminal");
             const captured = await waitFor(
-                () => terminated() as Array<{ workerId: number; loopId: number; result: { status: number }; hitMaxTurns: boolean; attributions: string[]; usage: { promptTokens: number; completionTokens: number; costUsd: number | null; costs: import("@plurnk/plurnk-contracts").ProviderCost[] } }>,
+                () => terminated() as Array<{ workerId: number; loopId: number; result: { status: number }; hitMaxTurns: boolean; attributions: string[]; usage: { promptTokens: number; completionTokens: number; costUsd: number | null; projectedCostUsd: number | null; costs: import("@plurnk/plurnk-contracts").ProviderCost[] } }>,
                 (ts) => ts.length >= 1,
             );
             assert.equal(captured.length, 1);

@@ -156,8 +156,8 @@ const readFilesItems = (): number | null => {
 };
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type { GrammarEvidence, Provider, ProviderAttempt, ProviderAttemptFinishReason, ProviderCost, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
-import { ProviderError, providerCostFor, providerCostUsd, validateProviderCost, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
+import type { AuthoritativeCharge, GrammarEvidence, Provider, ProviderAccountingResult, ProviderAttempt, ProviderAttemptFinishReason, ProviderCost, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
+import { ProviderError, providerCostFor, providerCostUsd, providerProjectedCostUsd, validateAuthoritativeCharge, validateProviderAccountingResult, validateProviderCost, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { validateGbnf } from "@plurnk/gbnf";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
@@ -190,6 +190,36 @@ type EngineTurnResult = {
     emissionAttempts: number;
     emissionExhausted: boolean;
     budget?: BudgetOverflowMeasurement;
+};
+
+export type LoopScopeAccounting =
+    | {
+        scopeId: string;
+        status: "open";
+    }
+    | {
+        scopeId: string;
+        status: "pending";
+        reason: string;
+        evaluatedAt?: string;
+    }
+    | {
+        scopeId: string;
+        status: "settled";
+        charge: AuthoritativeCharge;
+        evaluatedAt: string;
+    };
+
+export type LoopUsage = {
+    promptTokens: number;
+    completionTokens: number;
+    costUsd: number | null;
+    projectedCostUsd: number | null;
+    costs: ProviderCost[];
+    accounting: LoopScopeAccounting | null;
+    contextTokens: number;
+    promptBudget: number | null;
+    meta: Record<string, unknown>;
 };
 
 // Runtime normalization for a disposition the engine refuses or resolves as a
@@ -576,15 +606,73 @@ export default class Engine {
 
     // Loop totals are billing evidence; the latest-turn pair is the client
     // occupancy gauge. {§tokenomics-client-gauge}, {§notifications-loop-terminated}
-    async loopUsage(loopId: number): Promise<{ promptTokens: number; completionTokens: number; costUsd: number | null; costs: ProviderCost[]; contextTokens: number; promptBudget: number | null; meta: Record<string, unknown> }> {
-        const row = await this.#db.engine_loop_usage.get<{ prompt: number; completion: number; cost_usd: number | null; costs: string | null; context: number | null; context_size: number | null; meta: string | null }>({ loop_id: loopId });
+    async loopUsage(loopId: number): Promise<LoopUsage> {
+        const row = await this.#db.engine_loop_usage.get<{
+            prompt: number;
+            completion: number;
+            cost_usd: number | null;
+            costs: string | null;
+            context: number | null;
+            context_size: number | null;
+            meta: string | null;
+            accounting_scope_id: string;
+            accounting_state: "unscoped" | "open" | "pending" | "settled";
+            accounting_charge: string | null;
+            accounting_detail: string | null;
+            accounting_evaluated_at: string | null;
+        }>({ loop_id: loopId });
+        if (row === undefined) throw new Error(`loopUsage: loop ${loopId} does not exist`);
         const parsedCosts: unknown = JSON.parse(row?.costs ?? "[]");
         if (!Array.isArray(parsedCosts)) throw new TypeError(`loop ${loopId} monetary evidence is not an array`);
+        const costs = parsedCosts.map((cost) => validateProviderCost(cost as ProviderCost));
+        const projectedCosts = costs.map(providerProjectedCostUsd);
+        let accounting: LoopScopeAccounting | null;
+        switch (row.accounting_state) {
+            case "unscoped":
+                accounting = null;
+                break;
+            case "open":
+                accounting = { scopeId: row.accounting_scope_id, status: "open" };
+                break;
+            case "pending":
+                if (row.accounting_detail === null) {
+                    throw new TypeError(`loop ${loopId} pending accounting has no reason`);
+                }
+                accounting = {
+                    scopeId: row.accounting_scope_id,
+                    status: "pending",
+                    reason: row.accounting_detail,
+                    ...(row.accounting_evaluated_at === null ? {} : { evaluatedAt: row.accounting_evaluated_at }),
+                };
+                break;
+            case "settled": {
+                if (row.accounting_charge === null || row.accounting_evaluated_at === null) {
+                    throw new TypeError(`loop ${loopId} settled accounting lacks charge evidence`);
+                }
+                const charge = validateAuthoritativeCharge(JSON.parse(row.accounting_charge) as AuthoritativeCharge);
+                if (providerCostUsd(charge) !== row.cost_usd) {
+                    throw new TypeError(`loop ${loopId} settled accounting disagrees with its USD rollup`);
+                }
+                accounting = {
+                    scopeId: row.accounting_scope_id,
+                    status: "settled",
+                    charge,
+                    evaluatedAt: row.accounting_evaluated_at,
+                };
+                break;
+            }
+            default:
+                throw new TypeError(`loop ${loopId} has invalid accounting state ${String(row.accounting_state)}`);
+        }
         return {
             promptTokens: row?.prompt ?? 0,
             completionTokens: row?.completion ?? 0,
             costUsd: row?.cost_usd ?? null,
-            costs: parsedCosts.map((cost) => validateProviderCost(cost as ProviderCost)),
+            projectedCostUsd: projectedCosts.some((cost) => cost === null)
+                ? null
+                : projectedCosts.reduce<number>((sum, cost) => sum + cost!, 0),
+            costs,
+            accounting,
             // Latest provider attempt on the latest turn, not the billed total.
             contextTokens: row?.context ?? 0,
             // Latest effective packet allowance; null when uncapped or unknown.
@@ -592,6 +680,86 @@ export default class Engine {
             // Latest turn's opaque provider metadata. {§meta-passthrough}
             meta: JSON.parse(row?.meta ?? "{}") as Record<string, unknown>,
         };
+    }
+
+    async beginLoopAccounting(loopId: number, provider: Provider): Promise<string> {
+        if (provider.reconcileAccounting !== undefined) {
+            await this.#db.engine_begin_loop_accounting.run({ loop_id: loopId });
+        }
+        const row = await this.#db.engine_loop_accounting_identity.get<{
+            accounting_scope_id: string;
+            accounting_state: "unscoped" | "open" | "pending" | "settled";
+        }>({ loop_id: loopId });
+        if (row === undefined) throw new Error(`beginLoopAccounting: loop ${loopId} does not exist`);
+        if (provider.reconcileAccounting !== undefined && row.accounting_state !== "open") {
+            throw new Error(`beginLoopAccounting: loop ${loopId} cannot issue a call from ${row.accounting_state} accounting state`);
+        }
+        return row.accounting_scope_id;
+    }
+
+    async reconcileLoopAccounting(loopId: number, provider: Provider, signal?: AbortSignal): Promise<ProviderAccountingResult | null> {
+        if (provider.reconcileAccounting === undefined) return null;
+        const row = await this.#db.engine_loop_accounting_scope.get<{
+            accounting_scope_id: string;
+            accounting_started_at: string;
+            terminated_at: string | null;
+            accounting_state: "unscoped" | "open" | "pending" | "settled";
+            accounting_charge: string | null;
+            accounting_evaluated_at: string | null;
+            attempts: number;
+            usage_prompt: number;
+            usage_completion: number;
+            usage_reasoning: number;
+            usage_cached: number;
+        }>({ loop_id: loopId });
+        if (row === undefined) throw new Error(`reconcileLoopAccounting: loop ${loopId} does not exist`);
+        if (row.accounting_state === "unscoped") return null;
+        if (row.accounting_state === "settled") {
+            if (row.accounting_charge === null || row.accounting_evaluated_at === null) {
+                throw new TypeError(`reconcileLoopAccounting: loop ${loopId} has incomplete settled evidence`);
+            }
+            return {
+                status: "settled",
+                charge: validateAuthoritativeCharge(JSON.parse(row.accounting_charge) as AuthoritativeCharge),
+                evaluatedAt: row.accounting_evaluated_at,
+            };
+        }
+        if (row.terminated_at === null) {
+            throw new Error(`reconcileLoopAccounting: loop ${loopId} is not terminal`);
+        }
+        const usage: ProviderUsage = {
+            prompt: row.usage_prompt,
+            completion: row.usage_completion,
+            reasoning: row.usage_reasoning,
+            cached: row.usage_cached,
+            total: row.usage_prompt + row.usage_completion + row.usage_reasoning,
+        };
+        const result = validateProviderAccountingResult(await provider.reconcileAccounting({
+            id: row.accounting_scope_id,
+            startedAt: row.accounting_started_at,
+            endedAt: row.terminated_at,
+            model: provider.model,
+            attempts: row.attempts,
+            usage,
+        }, signal));
+        if (result.status === "pending") {
+            await this.#db.engine_set_loop_accounting_pending.run({
+                loop_id: loopId,
+                detail: result.reason,
+                evaluated_at: result.evaluatedAt ?? null,
+            });
+            return result;
+        }
+        const charge = result.charge;
+        const costUsd = providerCostUsd(charge);
+        if (costUsd === null) throw new TypeError(`provider returned a non-settling charge for loop ${loopId}`);
+        await this.#db.engine_set_loop_accounting_settled.run({
+            loop_id: loopId,
+            charge: JSON.stringify(charge),
+            cost_usd: costUsd,
+            evaluated_at: result.evaluatedAt,
+        });
+        return { status: "settled", charge, evaluatedAt: result.evaluatedAt };
     }
 
     // A mapped rail divergence is a CODE-POINT offset into the model's content;
@@ -1307,8 +1475,6 @@ export default class Engine {
                 // Skip the LLM, close the turn, and let runLoop abandon.
                 await this.#db.engine_close_turn.run({
                     id: turnId, status: 413, packet: StoredPacket.stringify(requestPacket),
-                    usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0,
-                    usage_cost: "[]", usage_cost_usd: 0,
                     // The attempted turn retains its effective allowance even
                     // when no provider exchange completed. {§tokenomics-client-gauge}
                     usage_prompt_budget: this.#packets.promptBudgetFor(provider),
@@ -1341,49 +1507,52 @@ export default class Engine {
         let railGrammar: string | undefined;
         let railEvidence: GrammarEvidence | undefined;
         let emissionAttempts = 0;
-        const usage = { prompt: 0, completion: 0, reasoning: 0, cached: 0 };
-        let usageCostUsd: number | null = 0;
-        const providerCosts: ProviderCost[] = [];
         let providerCallInFlight = false;
         let providerAttemptSequence = 0;
+        let providerAttemptId: number | null = null;
         let providerAttemptAttributions: string[] = [];
         const providerSignal = this.#loopAborts.get(loopId)?.signal ?? signal;
         // {§client-metadata}
         const { client } = await WorkspaceSettings.read(this.#db, workspaceId);
-        const recordProviderAttempt = async (
+        const observeProviderAttempt = async (
+            id: number,
             attemptResponse: ProviderAttempt,
-            attemptSplit: SplitProviderResponse,
-            sequence: number,
-            accepted: boolean,
-            attributions: readonly string[],
         ): Promise<void> => {
-            const attemptUsage = attemptSplit.callMetadata.usage;
-            const attemptCost = providerCostFor(provider, attemptUsage, attemptResponse.charge);
-            const attemptCostUsd = providerCostUsd(attemptCost);
-            await this.#db.engine_record_turn_attempt.run({
-                turn_id: turnId,
-                sequence,
-                accepted: accepted ? 1 : 0,
+            const attemptUsage = attemptResponse.assistant.usage;
+            await this.#db.engine_observe_turn_attempt_response.run({
+                id,
                 response: JSON.stringify(attemptResponse),
-                parse_errors: JSON.stringify(attemptSplit.parseErrors),
-                attributions: JSON.stringify(attributions),
                 usage_prompt: attemptUsage.prompt,
                 usage_completion: attemptUsage.completion,
                 usage_reasoning: attemptUsage.reasoning,
                 usage_cached: attemptUsage.cached,
+                usage_cost: JSON.stringify({
+                    kind: "unknown",
+                    reason: "provider response retained before monetary classification",
+                } satisfies ProviderCost),
+                finish_reason: attemptResponse.assistant.finishReason,
+                model: attemptResponse.assistant.model,
+            });
+        };
+        const classifyProviderAttempt = async (
+            id: number,
+            attemptResponse: ProviderAttempt,
+            attemptSplit: SplitProviderResponse,
+            sequence: number,
+            accepted: boolean,
+            failure: SchemeResult | null = null,
+        ): Promise<void> => {
+            const attemptUsage = attemptSplit.callMetadata.usage;
+            const attemptCost = providerCostFor(provider, attemptUsage, attemptResponse.charge);
+            const attemptCostUsd = providerCostUsd(attemptCost);
+            await this.#db.engine_classify_turn_attempt_response.run({
+                id,
+                accepted: accepted ? 1 : 0,
+                parse_errors: JSON.stringify(attemptSplit.parseErrors),
+                failure: failure === null ? null : JSON.stringify(failure),
                 usage_cost: JSON.stringify(attemptCost),
                 usage_cost_usd: attemptCostUsd,
-                finish_reason: attemptSplit.callMetadata.finishReason,
-                model: attemptSplit.callMetadata.model,
             });
-            usage.prompt += attemptUsage.prompt;
-            usage.completion += attemptUsage.completion;
-            usage.reasoning += attemptUsage.reasoning;
-            usage.cached += attemptUsage.cached;
-            providerCosts.push(attemptCost);
-            usageCostUsd = usageCostUsd === null || attemptCostUsd === null
-                ? null
-                : usageCostUsd + attemptCostUsd;
             emissionAttempts = sequence;
         };
         try {
@@ -1395,6 +1564,7 @@ export default class Engine {
             const attemptLimit = readEmissionAttempts();
             const maxTokens = this.#packets.maxTokensFor(provider) ?? undefined;
             const strikeStreak = this.#strikes.streak(loopId);
+            const accountingScopeId = await this.beginLoopAccounting(loopId, provider);
             for (let attempt = 1; attempt <= attemptLimit; attempt++) {
                 // Every attempt carries the exact same model packet, coordinates,
                 // limits, and engine-strike state. Plugin-authored tags are pulled
@@ -1411,6 +1581,19 @@ export default class Engine {
                 });
                 providerAttemptAttributions = await this.#attemptAttributions(provider, attributionContext);
                 requestPacket = { ...requestPacket, attributions: providerAttemptAttributions };
+                const attemptRow = await this.#db.engine_open_turn_attempt.get<{
+                    id: number;
+                    accounting_id: string;
+                }>({
+                    turn_id: turnId,
+                    sequence: attempt,
+                    attributions: JSON.stringify(providerAttemptAttributions),
+                    model: provider.model,
+                });
+                if (attemptRow === undefined) {
+                    throw new Error(`Engine.runTurn: provider attempt ${attempt} did not open`);
+                }
+                providerAttemptId = attemptRow.id;
                 providerCallInFlight = true;
                 const completedResponse = await observed( // {§observability-boundary}
                     "provider.generate",
@@ -1431,7 +1614,12 @@ export default class Engine {
                             workspaceId: String(workspaceId),
                             loop: loopSeq,
                             turn: seq,
+                            accounting: {
+                                scopeId: accountingScopeId,
+                                callId: attemptRow.accounting_id,
+                            },
                         }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
+                        providerCallInFlight = false;
                         recordCounter(PROVIDER_CALLS, {
                             model: provider.model,
                             attempt,
@@ -1442,17 +1630,17 @@ export default class Engine {
                     },
                 );
                 response = completedResponse;
-                providerCallInFlight = false;
+                await observeProviderAttempt(attemptRow.id, completedResponse);
                 railEvidence = railGrammar === undefined
                     ? undefined
                     : Engine.#requireGrammarEvidence(completedResponse);
                 splitResponse = this.#splitResponse(completedResponse);
-                await recordProviderAttempt(
+                await classifyProviderAttempt(
+                    attemptRow.id,
                     completedResponse,
                     splitResponse,
                     attempt,
                     splitResponse.emissionValid,
-                    providerAttemptAttributions,
                 );
                 if (splitResponse.emissionValid) break;
             }
@@ -1461,25 +1649,63 @@ export default class Engine {
             // This handler owns only provider-call failures. Parser, cost, SQL,
             // and engine-contract failures retain their original source.
             if (!providerCallInFlight) throw err;
+            providerCallInFlight = false;
+            if (providerAttemptId === null) {
+                throw new Error("provider call failed without a durable attempt identity", { cause: err });
+            }
+            const failure: SchemeResult = err instanceof ProviderError
+                ? { status: err.problem.status, problem: err.problem }
+                : providerSignal?.aborted === true
+                    ? Results.failure(
+                        "engine:provider",
+                        providerSignal.reason === LOOP_TIMEOUT_REASON ? "provider-call-timeout" : "provider-call-cancelled",
+                        providerSignal.reason === LOOP_TIMEOUT_REASON ? 504 : 499,
+                        providerSignal.reason === LOOP_TIMEOUT_REASON
+                            ? "The provider call was interrupted by the loop deadline."
+                            : "The provider call was interrupted by loop cancellation.",
+                        {},
+                        { stage: "provider-request", retryable: false },
+                    )
+                    : (() => {
+                        console.error("Provider failed outside its Problem Details contract:", err);
+                        return Results.failure(
+                            "engine:provider",
+                            "provider-contract-violation",
+                            502,
+                            "The provider failed without returning its required Problem Details.",
+                            {},
+                            {
+                                stage: "provider-request",
+                                retryable: false,
+                            },
+                        );
+                    })();
             // {§provider-interrupted-attempt} — a provider-declared interruption
             // carries response evidence without becoming a completed exchange.
             // Persist it as an unaccepted attempt before settling the failure.
             if (err instanceof ProviderError && err.attempt !== undefined) {
                 response = err.attempt;
+                await observeProviderAttempt(providerAttemptId, response);
                 splitResponse = this.#splitResponse(response);
-                await recordProviderAttempt(
+                await classifyProviderAttempt(
+                    providerAttemptId,
                     response,
                     splitResponse,
                     providerAttemptSequence,
                     false,
-                    providerAttemptAttributions,
+                    failure,
                 );
             } else {
-                providerCosts.push({
+                const unknownCost: ProviderCost = {
                     kind: "unknown",
                     reason: "provider call failed without response-bearing charge evidence",
+                };
+                await this.#db.engine_fail_turn_attempt.run({
+                    id: providerAttemptId,
+                    failure: JSON.stringify(failure),
+                    usage_cost: JSON.stringify(unknownCost),
                 });
-                usageCostUsd = null;
+                emissionAttempts = providerAttemptSequence;
             }
             // {§turn-never-blank} — a ProviderError means no completed exchange exists.
             // Persist its exact RFC 9457 result before propagating it. Grammar evidence
@@ -1493,12 +1719,6 @@ export default class Engine {
                     id: turnId,
                     status: providerSignal.reason === LOOP_TIMEOUT_REASON ? 504 : 499,
                     packet: StoredPacket.stringify(requestPacket),
-                    usage_prompt: usage.prompt,
-                    usage_completion: usage.completion,
-                    usage_reasoning: usage.reasoning,
-                    usage_cached: usage.cached,
-                    usage_cost: JSON.stringify(providerCosts),
-                    usage_cost_usd: usageCostUsd,
                     usage_prompt_budget: this.#packets.promptBudgetFor(provider),
                     finish_reason: splitResponse?.callMetadata.finishReason ?? null,
                     model: splitResponse?.callMetadata.model ?? provider.model,
@@ -1506,22 +1726,6 @@ export default class Engine {
                 });
                 throw err;
             }
-            const failure = err instanceof ProviderError
-                ? { status: err.problem.status, problem: err.problem }
-                : (() => {
-                    console.error("Provider failed outside its Problem Details contract:", err);
-                    return Results.failure(
-                        "engine:provider",
-                        "provider-contract-violation",
-                        502,
-                        "The provider failed without returning its required Problem Details.",
-                        {},
-                        {
-                            stage: "provider-request",
-                            retryable: false,
-                        },
-                    );
-                })();
             const recorded = await this.#problems.record({
                 workerId,
                 loopId,
@@ -1538,12 +1742,6 @@ export default class Engine {
                 id: turnId,
                 status: recorded.result.status,
                 packet: StoredPacket.stringify(requestPacket),
-                usage_prompt: usage.prompt,
-                usage_completion: usage.completion,
-                usage_reasoning: usage.reasoning,
-                usage_cached: usage.cached,
-                usage_cost: JSON.stringify(providerCosts),
-                usage_cost_usd: usageCostUsd,
                 usage_prompt_budget: this.#packets.promptBudgetFor(provider),
                 finish_reason: splitResponse?.callMetadata.finishReason ?? null,
                 model: splitResponse?.callMetadata.model ?? provider.model,
@@ -1579,12 +1777,6 @@ export default class Engine {
                 id: turnId,
                 status: allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500,
                 packet: StoredPacket.stringify(requestPacket),
-                usage_prompt: usage.prompt,
-                usage_completion: usage.completion,
-                usage_reasoning: usage.reasoning,
-                usage_cached: usage.cached,
-                usage_cost: JSON.stringify(providerCosts),
-                usage_cost_usd: usageCostUsd,
                 usage_prompt_budget: this.#packets.promptBudgetFor(provider),
                 finish_reason: splitResponse.callMetadata.finishReason,
                 model: splitResponse.callMetadata.model,
@@ -1710,12 +1902,6 @@ export default class Engine {
             id: turnId,
             status: turnStatus,
             packet: StoredPacket.stringify(packet),
-            usage_prompt: usage.prompt,
-            usage_completion: usage.completion,
-            usage_reasoning: usage.reasoning,
-            usage_cached: usage.cached,
-            usage_cost: JSON.stringify(providerCosts),
-            usage_cost_usd: usageCostUsd,
             usage_prompt_budget: this.#packets.promptBudgetFor(provider), // {§tokenomics-client-gauge}
             finish_reason: callMetadata.finishReason,
             model: callMetadata.model,

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
     providerCostFor,
+    providerProjectedCostUsd,
     providerCostUsd,
     validateAuthoritativeCharge,
 } from "./cost.ts";
@@ -28,6 +29,7 @@ test("authoritative provider charge wins over a local estimate", () => {
     } as const;
     assert.deepEqual(providerCostFor(provider, usage, charge), charge);
     assert.equal(providerCostUsd(charge), 0.73);
+    assert.equal(providerProjectedCostUsd(charge), 0.73);
 });
 
 test("explicit free remains distinguishable from unknown", () => {
@@ -43,14 +45,19 @@ test("explicit free remains distinguishable from unknown", () => {
     });
     assert.equal(providerCostUsd(free), 0);
     assert.equal(providerCostUsd(unknown), null);
+    assert.equal(providerProjectedCostUsd(free), 0);
+    assert.equal(providerProjectedCostUsd(unknown), null);
 });
 
 test("positive legacy cost remains an estimated USD compatibility result", () => {
-    assert.deepEqual(providerCostFor({ calculateCost: () => 0.25 }, usage), {
+    const estimated = providerCostFor({ calculateCost: () => 0.25 }, usage);
+    assert.deepEqual(estimated, {
         kind: "estimated",
         usd: "0.25",
         source: "legacy calculateCost",
     });
+    assert.equal(providerCostUsd(estimated), null, "an estimate is not provider-authoritative money");
+    assert.equal(providerProjectedCostUsd(estimated), 0.25);
 });
 
 test("rejects malformed money instead of mining or coercing it", () => {

@@ -32,8 +32,9 @@
 // the sync CLI/script facade). Each PREP block is read through its own accessor.
 
 import { DatabaseSync } from "node:sqlite";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
@@ -47,7 +48,7 @@ import PacketWire from "../core/packet-wire.ts";
 import StoredPacket, { type DurablePacket } from "../core/StoredPacket.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
-import { providerCostFor, providerCostUsd, validateProviderCost, type ChatMessage, type Provider, type ProviderResponse, type ProviderUsage } from "@plurnk/plurnk-providers";
+import { ProviderError, providerCostFor, providerCostUsd, providerProjectedCostUsd, validateProviderAccountingResult, validateProviderCost, type ChatMessage, type Provider, type ProviderAccountingResult, type ProviderAttempt, type ProviderResponse, type ProviderUsage } from "@plurnk/plurnk-providers";
 import {
     Validator,
     type OperationResult,
@@ -79,6 +80,27 @@ const readPositiveInt = (name: string): number => {
     return value;
 };
 
+const writeJsonDurably = (path: string, value: unknown): void => {
+    const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
+    const descriptor = openSync(temporary, "wx", 0o666);
+    try {
+        writeFileSync(descriptor, `${JSON.stringify(value, null, 2)}\n`);
+        fsyncSync(descriptor);
+    } catch (cause) {
+        closeSync(descriptor);
+        unlinkSync(temporary);
+        throw cause;
+    }
+    closeSync(descriptor);
+    renameSync(temporary, path);
+    const directory = openSync(dirname(path), "r");
+    try {
+        fsyncSync(directory);
+    } finally {
+        closeSync(directory);
+    }
+};
+
 // DB row shapes — only the columns this tool reads. JSON columns (packet,
 // flags, rx) arrive as strings, parsed on use.
 interface WorkspaceRow { id: number; name: string; cost_usd: number | null }
@@ -93,6 +115,12 @@ interface LoopRow {
     terminal_message: string | null;
     terminated_by: string | null;
     terminal_result: string | null;
+    accounting_scope_id: string;
+    accounting_state: "unscoped" | "open" | "pending" | "settled";
+    accounting_charge: string | null;
+    accounting_cost_usd: number | null;
+    accounting_detail: string | null;
+    accounting_evaluated_at: string | null;
 }
 interface TurnRow {
     id: number; loop_id: number; sequence: number; status: number; packet: DurablePacket | null;
@@ -103,11 +131,12 @@ interface TurnRow {
 }
 type StoredTurnRow = Omit<TurnRow, "packet"> & { packet: string | null };
 interface TurnAttemptRow {
-    id: number; turn_id: number; sequence: number; accepted: number;
-    response: string; parse_errors: string; attributions: string;
-    usage_prompt: number; usage_completion: number; usage_reasoning: number;
-    usage_cached: number; usage_cost: string; usage_cost_usd: number | null;
-    finish_reason: string | null; model: string; timestamp: string;
+    id: number; turn_id: number; sequence: number; accounting_id: string;
+    state: "pending" | "response" | "error"; accepted: number | null;
+    response: string | null; failure: string | null; parse_errors: string; attributions: string;
+    usage_prompt: number | null; usage_completion: number | null; usage_reasoning: number | null;
+    usage_cached: number | null; usage_cost: string | null; usage_cost_usd: number | null;
+    finish_reason: string | null; model: string; timestamp: string; completed_at: string | null;
 }
 interface LogRow {
     id: number; worker_id: number; loop_id: number; turn_id: number; sequence: number;
@@ -172,6 +201,32 @@ interface DigestOptions {
     workspaceId?: number;
 }
 
+type RequiemCallRecord = {
+    callId: string;
+    openedAt: string;
+    completedAt: string | null;
+    state: "open" | "response" | "error";
+    usage: ProviderUsage | null;
+    cost: ProviderCost;
+    failure: unknown;
+};
+
+type RequiemWorkerReport = {
+    workerId: number;
+    workerName: string;
+    messages: ChatMessage[];
+    responses: ProviderAttempt[];
+    calls: RequiemCallRecord[];
+    usage: ProviderUsage;
+    costs: ProviderCost[];
+    costUsd: number | null;
+    projectedCostUsd: number | null;
+    accounting: ({ scopeId: string; startedAt: string; endedAt: string; model: string } & ProviderAccountingResult)
+        | { scopeId: string; startedAt: string; endedAt: null; model: string; status: "open" }
+        | null;
+    testimony: string | null;
+};
+
 export default class Digest {
     static #summarize(text: unknown, n = 80): string {
         if (text === null || text === undefined) return "";
@@ -193,6 +248,16 @@ export default class Digest {
 
     static #providerCost(raw: unknown, subject: string): ProviderCost {
         return validateProviderCost(Digest.#parseJson(raw) as ProviderCost);
+    }
+
+    static #costProjection(
+        costs: readonly ProviderCost[],
+        project: (cost: ProviderCost) => number | null,
+    ): number | null {
+        const values = costs.map(project);
+        return values.some((value) => value === null)
+            ? null
+            : values.reduce<number>((total, value) => total + (value ?? 0), 0);
     }
 
     static #operationResult(raw: unknown, subject: string): OperationResult {
@@ -298,8 +363,10 @@ export default class Digest {
         const content = assistant?.content ?? "";
         const reasoning = assistant?.reasoning ?? null;
         const tokens = `prompt=${turn.usage_prompt} completion=${turn.usage_completion} reasoning=${turn.usage_reasoning} cached=${turn.usage_cached}`;
+        const costs = Digest.#providerCosts(turn.usage_cost, `turn ${turn.id}`);
+        const projectedCostUsd = Digest.#costProjection(costs, providerProjectedCostUsd);
         const cost = turn.usage_cost_usd === null
-            ? " cost=unknown"
+            ? ` cost=unsettled${projectedCostUsd === null ? "" : ` projected=$${projectedCostUsd.toFixed(6)}`}`
             : ` cost=$${turn.usage_cost_usd.toFixed(6)}`;
         const finishReason = turn.finish_reason ?? "—";
         // Render only observed constraint metadata; absence makes no claim
@@ -313,7 +380,16 @@ export default class Digest {
         const errBadge = errs > 0 ? `  ⚠ errs=${errs}` : "";
         const attempts = m.attemptsByTurn.get(turn.id) ?? [];
         const rejected = attempts.filter((attempt) => attempt.accepted === 0).length;
-        const attemptBadge = rejected > 0 ? `  ⚠ rejected-emissions=${rejected}/${attempts.length}` : "";
+        const errored = attempts.filter((attempt) => attempt.state === "error").length;
+        const pending = attempts.filter((attempt) => attempt.state === "pending").length;
+        const attemptConditions = [
+            rejected > 0 ? `rejected-emissions=${rejected}` : null,
+            errored > 0 ? `call-errors=${errored}` : null,
+            pending > 0 ? `open-calls=${pending}` : null,
+        ].filter((part) => part !== null);
+        const attemptBadge = attemptConditions.length === 0
+            ? ""
+            : `  ⚠ ${attemptConditions.join(" ")}/${attempts.length}`;
         const head = `T${turn.sequence}: status=${turn.status} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${errBadge}${attemptBadge}`;
         const summary = packet === null
             ? "  ↳ model packet: (none)"
@@ -352,7 +428,9 @@ export default class Digest {
         lines.push("");
         lines.push(`DB: ${m.dbPath}`);
         const rejectedAttempts = m.turnAttempts.filter((attempt) => attempt.accepted === 0).length;
-        lines.push(`Workspaces: ${m.workspaces.length}  Workers: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Provider attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected)  Log entries: ${m.logEntries.length}`);
+        const erroredAttempts = m.turnAttempts.filter((attempt) => attempt.state === "error").length;
+        const pendingAttempts = m.turnAttempts.filter((attempt) => attempt.state === "pending").length;
+        lines.push(`Workspaces: ${m.workspaces.length}  Workers: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Provider attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected, ${erroredAttempts} errored, ${pendingAttempts} open)  Log entries: ${m.logEntries.length}`);
         lines.push(`Semantic:  body=${m.embeddings.body_entries} attached=${m.embeddings.derivation_complete} (vector=${m.embeddings.vector_complete} lexical=${m.embeddings.lexical} excluded=${m.embeddings.excluded} nonsemantic=${m.embeddings.nonsemantic} failed=${m.embeddings.failed}) unattached=${m.embeddings.unfinished} artifacts=${m.embeddings.derivation_artifacts_complete} complete/${m.embeddings.derivation_artifacts_building} building chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
         if (m.embeddings.dispositions.length > 0) {
             lines.push("Semantic dispositions:");
@@ -432,9 +510,19 @@ export default class Digest {
                 };
                 const parseErrors = Digest.#parseJson(attempt.parse_errors, []) as Array<{ message?: unknown }>;
                 lines.push("");
-                lines.push(`### Attempt ${attempt.sequence} - ${attempt.accepted === 1 ? "admitted" : "rejected"}`);
+                const disposition = attempt.state === "error"
+                    ? "call error"
+                    : attempt.state === "pending"
+                        ? "open at capture"
+                        : attempt.accepted === 1
+                            ? "admitted"
+                            : "rejected";
+                lines.push(`### Attempt ${attempt.sequence} - ${disposition}`);
                 const attributions = Digest.#parseJson(attempt.attributions, []) as unknown[];
                 lines.push(`Attributions: ${attributions.length === 0 ? "(none)" : attributions.join(", ")}`);
+                if (attempt.failure !== null) {
+                    lines.push(`Failure: ${JSON.stringify(Digest.#parseJson(attempt.failure, attempt.failure))}`);
+                }
                 if (attempt.accepted !== 1) {
                     for (const error of parseErrors) {
                         if (typeof error.message === "string") lines.push(`- ${error.message}`);
@@ -487,10 +575,23 @@ export default class Digest {
             }
             for (const attempt of m.attemptsByTurn.get(t.id) ?? []) {
                 if (attempt.accepted === 1) continue;
+                const attemptPadded = String(attempt.sequence).padStart(3, "0");
+                if (attempt.state !== "response") {
+                    const file = `packet${padded}.attempt${attemptPadded}.${attempt.state}.json`;
+                    writeFileSync(join(m.digestDir, file), JSON.stringify({
+                        accountingId: attempt.accounting_id,
+                        state: attempt.state,
+                        failure: Digest.#parseJson(attempt.failure),
+                        attributions: Digest.#parseJson(attempt.attributions, []),
+                        openedAt: attempt.timestamp,
+                        completedAt: attempt.completed_at,
+                    }, null, 2));
+                    written.push(file);
+                    continue;
+                }
                 const response = Digest.#parseJson(attempt.response, {}) as {
                     assistant?: { content?: unknown };
                 };
-                const attemptPadded = String(attempt.sequence).padStart(3, "0");
                 const prefix = `packet${padded}.attempt${attemptPadded}.rejected`;
                 const attemptFiles: Array<[string, string]> = [
                     [
@@ -521,36 +622,61 @@ export default class Digest {
                 prompt: l.prompt, flags: Digest.#parseJson(l.flags, {}),
                 terminal_message: l.terminal_message, terminated_by: l.terminated_by,
                 result: Digest.#terminalResult(l),
+                accounting: l.accounting_state === "unscoped"
+                    ? null
+                    : {
+                        scopeId: l.accounting_scope_id,
+                        status: l.accounting_state,
+                        charge: Digest.#parseJson(l.accounting_charge),
+                        costUsd: l.accounting_cost_usd,
+                        reason: l.accounting_detail,
+                        evaluatedAt: l.accounting_evaluated_at,
+                    },
             })),
-            turns: m.turns.map((t) => ({
-                id: t.id, loop_id: t.loop_id, sequence: t.sequence, status: t.status,
-                usage_prompt: t.usage_prompt, usage_completion: t.usage_completion,
-                usage_reasoning: t.usage_reasoning, usage_cached: t.usage_cached,
-                usage_cost: Digest.#providerCosts(t.usage_cost, `turn ${t.id}`),
-                usage_cost_usd: t.usage_cost_usd,
-                finish_reason: t.finish_reason, model: t.model,
-                attributions: t.packet?.attributions ?? [],
-                // Preserve the opaque provider and engine metadata for aggregate
-                // tooling. {§meta-passthrough}, {§rail-truth-engine-verdict}
-                meta: Digest.#parseJson(t.meta ?? "null", null),
-            })),
-            turn_attempts: m.turnAttempts.map((attempt) => ({
-                id: attempt.id,
-                turn_id: attempt.turn_id,
-                sequence: attempt.sequence,
-                accepted: attempt.accepted === 1,
-                parse_errors: Digest.#parseJson(attempt.parse_errors, []),
-                attributions: Digest.#parseJson(attempt.attributions, []),
-                usage_prompt: attempt.usage_prompt,
-                usage_completion: attempt.usage_completion,
-                usage_reasoning: attempt.usage_reasoning,
-                usage_cached: attempt.usage_cached,
-                usage_cost: Digest.#providerCost(attempt.usage_cost, `attempt ${attempt.id}`),
-                usage_cost_usd: attempt.usage_cost_usd,
-                finish_reason: attempt.finish_reason,
-                model: attempt.model,
-                timestamp: attempt.timestamp,
-            })),
+            turns: m.turns.map((t) => {
+                const costs = Digest.#providerCosts(t.usage_cost, `turn ${t.id}`);
+                return {
+                    id: t.id, loop_id: t.loop_id, sequence: t.sequence, status: t.status,
+                    usage_prompt: t.usage_prompt, usage_completion: t.usage_completion,
+                    usage_reasoning: t.usage_reasoning, usage_cached: t.usage_cached,
+                    usage_cost: costs,
+                    usage_cost_usd: t.usage_cost_usd,
+                    usage_projected_cost_usd: Digest.#costProjection(costs, providerProjectedCostUsd),
+                    finish_reason: t.finish_reason, model: t.model,
+                    attributions: t.packet?.attributions ?? [],
+                    // Preserve the opaque provider and engine metadata for aggregate
+                    // tooling. {§meta-passthrough}, {§rail-truth-engine-verdict}
+                    meta: Digest.#parseJson(t.meta ?? "null", null),
+                };
+            }),
+            turn_attempts: m.turnAttempts.map((attempt) => {
+                const cost = attempt.usage_cost === null
+                    ? null
+                    : Digest.#providerCost(attempt.usage_cost, `attempt ${attempt.id}`);
+                return {
+                    id: attempt.id,
+                    turn_id: attempt.turn_id,
+                    sequence: attempt.sequence,
+                    accounting_id: attempt.accounting_id,
+                    state: attempt.state,
+                    accepted: attempt.accepted === null ? null : attempt.accepted === 1,
+                    response: Digest.#parseJson(attempt.response),
+                    failure: Digest.#parseJson(attempt.failure),
+                    parse_errors: Digest.#parseJson(attempt.parse_errors, []),
+                    attributions: Digest.#parseJson(attempt.attributions, []),
+                    usage_prompt: attempt.usage_prompt,
+                    usage_completion: attempt.usage_completion,
+                    usage_reasoning: attempt.usage_reasoning,
+                    usage_cached: attempt.usage_cached,
+                    usage_cost: cost,
+                    usage_cost_usd: attempt.usage_cost_usd,
+                    usage_projected_cost_usd: cost === null ? null : providerProjectedCostUsd(cost),
+                    finish_reason: attempt.finish_reason,
+                    model: attempt.model,
+                    timestamp: attempt.timestamp,
+                    completed_at: attempt.completed_at,
+                };
+            }),
             log_entries: m.logEntries.map((le) => ({
                 id: le.id, worker_id: le.worker_id, loop_id: le.loop_id,
                 turn_id: le.turn_id, sequence: le.sequence, origin: le.origin,
@@ -614,8 +740,11 @@ export default class Digest {
             assistant: string;
             providerAttempts: Array<{
                 sequence: number;
-                accepted: boolean;
+                accountingId: string;
+                state: TurnAttemptRow["state"];
+                accepted: boolean | null;
                 response: unknown;
+                failure: unknown;
                 parseErrors: unknown;
                 attributions: unknown;
             }>;
@@ -634,8 +763,11 @@ export default class Digest {
                 providerAttempts: (attemptsByTurn.get(t.id) ?? [])
                     .map((attempt) => ({
                         sequence: attempt.sequence,
-                        accepted: attempt.accepted === 1,
+                        accountingId: attempt.accounting_id,
+                        state: attempt.state,
+                        accepted: attempt.accepted === null ? null : attempt.accepted === 1,
                         response: requiemResponseEvidence(Digest.#parseJson(attempt.response, {})),
+                        failure: Digest.#parseJson(attempt.failure),
                         parseErrors: Digest.#parseJson(attempt.parse_errors, []),
                         attributions: Digest.#parseJson(attempt.attributions, []),
                     })),
@@ -652,16 +784,10 @@ export default class Digest {
             "recurring, specific complaint across many requiems. Triage adversarially.",
             "",
         ];
-        const reports: Array<{
-            workerId: number;
-            workerName: string;
-            messages: ChatMessage[];
-            responses: ProviderResponse[];
-            usage: ProviderUsage;
-            costs: ProviderCost[];
-            costUsd: number | null;
-            testimony: string;
-        }> = [];
+        const reportPath = join(digestDir, "requiem.json");
+        const reports: RequiemWorkerReport[] = [];
+        const persistReports = (): void => writeJsonDurably(reportPath, { workers: reports });
+        persistReports();
         for (const worker of workers) {
             const entries = byWorker.get(worker.id);
             if (entries === undefined || entries.length === 0) continue;
@@ -672,8 +798,11 @@ export default class Digest {
                     loop: entry.loopSeq,
                     turn: entry.turnSeq,
                     attempt: attempt.sequence,
+                    accountingId: attempt.accountingId,
+                    state: attempt.state,
                     accepted: attempt.accepted,
                     response: attempt.response,
+                    failure: attempt.failure,
                     parseErrors: attempt.parseErrors,
                 })));
             const evidence = {
@@ -694,41 +823,163 @@ export default class Digest {
                 },
             ];
             const id = String(worker.id);
-            const responses: ProviderResponse[] = [];
-            let resp = await provider.generate({ messages, workerId: id, primaryWorkerId: id, maxTokens, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
-            responses.push(resp);
-            if (resp.assistant.content.trim() === "" && resp.assistant.finishReason === "length") {
-                resp = await provider.generate({ messages, workerId: id, primaryWorkerId: id, maxTokens: retryMaxTokens, ...(opts.signal !== undefined ? { signal: opts.signal } : {}) });
-                responses.push(resp);
-            }
-            const testimony = resp.assistant.content.trim()
-                || `(no testimony - ${resp.assistant.usage.completion} visible completion tokens after ${responses.length} provider attempt(s))`;
-            const usage = responses.reduce<ProviderUsage>((total, response) => ({
-                prompt: total.prompt + response.assistant.usage.prompt,
-                completion: total.completion + response.assistant.usage.completion,
-                reasoning: total.reasoning + response.assistant.usage.reasoning,
-                cached: total.cached + response.assistant.usage.cached,
-                total: total.total + response.assistant.usage.total,
-            }), { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 });
-            const costs = responses.map((response) => providerCostFor(provider, response.assistant.usage, response.charge));
-            const usdValues = costs.map(providerCostUsd);
-            const costUsd = usdValues.some((value) => value === null)
-                ? null
-                : usdValues.reduce<number>((total, value) => total + (value ?? 0), 0);
-            reports.push({
+            const accountingScopeId = randomUUID();
+            const accountingStartedAt = new Date().toISOString();
+            const report: RequiemWorkerReport = {
                 workerId: worker.id,
                 workerName: worker.name,
                 messages,
-                responses,
-                usage,
-                costs,
-                costUsd,
-                testimony,
-            });
+                responses: [],
+                calls: [],
+                usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
+                costs: [],
+                costUsd: null,
+                projectedCostUsd: null,
+                accounting: provider.reconcileAccounting === undefined
+                    ? null
+                    : {
+                        scopeId: accountingScopeId,
+                        startedAt: accountingStartedAt,
+                        endedAt: null,
+                        model: provider.model,
+                        status: "open",
+                    },
+                testimony: null,
+            };
+            reports.push(report);
+            const updateObservedTotals = (): void => {
+                report.usage = report.calls.reduce<ProviderUsage>((total, call) => {
+                    if (call.usage === null) return total;
+                    return {
+                        prompt: total.prompt + call.usage.prompt,
+                        completion: total.completion + call.usage.completion,
+                        reasoning: total.reasoning + call.usage.reasoning,
+                        cached: total.cached + call.usage.cached,
+                        total: total.total + call.usage.total,
+                    };
+                }, { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 });
+                report.costs = report.calls.map((call) => call.cost);
+                report.projectedCostUsd = Digest.#costProjection(report.costs, providerProjectedCostUsd);
+                if (provider.reconcileAccounting === undefined) {
+                    report.costUsd = Digest.#costProjection(report.costs, providerCostUsd);
+                }
+                persistReports();
+            };
+            const issue = async (outputTokens: number): Promise<ProviderResponse> => {
+                const call: RequiemCallRecord = {
+                    callId: randomUUID(),
+                    openedAt: new Date().toISOString(),
+                    completedAt: null,
+                    state: "open",
+                    usage: null,
+                    cost: { kind: "unknown", reason: "requiem provider call is open" },
+                    failure: null,
+                };
+                report.calls.push(call);
+                updateObservedTotals();
+                try {
+                    const response = await provider.generate({
+                        messages,
+                        workerId: id,
+                        primaryWorkerId: id,
+                        maxTokens: outputTokens,
+                        accounting: { scopeId: accountingScopeId, callId: call.callId },
+                        ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
+                    });
+                    call.state = "response";
+                    call.completedAt = new Date().toISOString();
+                    call.usage = response.assistant.usage;
+                    call.cost = providerCostFor(provider, response.assistant.usage, response.charge);
+                    report.responses.push(response);
+                    updateObservedTotals();
+                    return response;
+                } catch (cause) {
+                    call.state = "error";
+                    call.completedAt = new Date().toISOString();
+                    call.failure = cause instanceof ProviderError
+                        ? cause.problem
+                        : cause instanceof Error
+                            ? { name: cause.name, message: cause.message }
+                            : String(cause);
+                    if (cause instanceof ProviderError && cause.attempt !== undefined) {
+                        call.usage = cause.attempt.assistant.usage;
+                        call.cost = providerCostFor(provider, cause.attempt.assistant.usage, cause.attempt.charge);
+                        report.responses.push(cause.attempt);
+                    } else {
+                        call.cost = {
+                            kind: "unknown",
+                            reason: "requiem provider call failed without response-bearing charge evidence",
+                        };
+                    }
+                    updateObservedTotals();
+                    throw cause;
+                }
+            };
+            let resp: ProviderResponse | undefined;
+            let generationFailure: unknown;
+            try {
+                resp = await issue(maxTokens);
+                if (resp.assistant.content.trim() === "" && resp.assistant.finishReason === "length") {
+                    resp = await issue(retryMaxTokens);
+                }
+            } catch (cause) {
+                generationFailure = cause;
+            }
+            const accountingEndedAt = new Date().toISOString();
+            let reconciliationFailure: unknown;
+            if (provider.reconcileAccounting !== undefined) {
+                try {
+                    const settlement = validateProviderAccountingResult(await provider.reconcileAccounting({
+                        id: accountingScopeId,
+                        startedAt: accountingStartedAt,
+                        endedAt: accountingEndedAt,
+                        model: provider.model,
+                        attempts: report.calls.length,
+                        usage: report.usage,
+                    }, opts.signal));
+                    report.accounting = {
+                        scopeId: accountingScopeId,
+                        startedAt: accountingStartedAt,
+                        endedAt: accountingEndedAt,
+                        model: provider.model,
+                        ...settlement,
+                    };
+                    report.costUsd = settlement.status === "settled"
+                        ? providerCostUsd(settlement.charge)
+                        : null;
+                } catch (cause) {
+                    reconciliationFailure = cause;
+                    report.accounting = {
+                        scopeId: accountingScopeId,
+                        startedAt: accountingStartedAt,
+                        endedAt: accountingEndedAt,
+                        model: provider.model,
+                        status: "pending",
+                        reason: cause instanceof Error ? cause.message : String(cause),
+                    };
+                    report.costUsd = null;
+                }
+                persistReports();
+            }
+            if (generationFailure !== undefined || reconciliationFailure !== undefined) {
+                const failures = [generationFailure, reconciliationFailure]
+                    .filter((failure) => failure !== undefined);
+                throw failures.length === 1
+                    ? failures[0]
+                    : new AggregateError(failures, `requiem worker ${worker.id} generation and accounting failed`);
+            }
+            if (resp === undefined) throw new Error(`requiem worker ${worker.id} completed without a provider response`);
+            const testimony = resp.assistant.content.trim()
+                || `(no testimony - ${resp.assistant.usage.completion} visible completion tokens after ${report.calls.length} provider attempt(s))`;
+            report.testimony = testimony;
+            persistReports();
+            const costSummary = report.costUsd === null
+                ? `cost USD unsettled${report.projectedCostUsd === null ? "" : `, projected ${report.projectedCostUsd}`}`
+                : `cost USD ${report.costUsd}`;
             out.push(
                 `## Worker #${worker.id} - ${worker.name}`,
                 "",
-                `_(${resp.assistant.model}, ${resp.assistant.finishReason ?? "?"}, attempts ${responses.length}, prompt ${usage.prompt}, completion ${usage.completion}, reasoning ${usage.reasoning}, cached ${usage.cached}, cost USD ${costUsd ?? "unknown"})_`,
+                `_(${resp.assistant.model}, ${resp.assistant.finishReason ?? "?"}, attempts ${report.calls.length}, prompt ${report.usage.prompt}, completion ${report.usage.completion}, reasoning ${report.usage.reasoning}, cached ${report.usage.cached}, ${costSummary})_`,
                 "",
                 testimony,
                 "",
@@ -736,9 +987,8 @@ export default class Digest {
         }
 
         const path = join(digestDir, "requiem.md");
-        const reportPath = join(digestDir, "requiem.json");
         writeFileSync(path, out.join("\n"));
-        writeFileSync(reportPath, `${JSON.stringify({ workers: reports }, null, 2)}\n`);
+        persistReports();
         return { path, reportPath, workers: reports.length };
     }
 

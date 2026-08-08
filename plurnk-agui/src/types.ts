@@ -49,7 +49,22 @@ export interface TerminatedNotification {
         promptTokens: number;
         completionTokens: number;
         costUsd: number | null;
+        projectedCostUsd: number | null;
         costs: ProviderCost[];
+        accounting: null | {
+            scopeId: string;
+            status: "open";
+        } | {
+            scopeId: string;
+            status: "pending";
+            reason: string;
+            evaluatedAt?: string;
+        } | {
+            scopeId: string;
+            status: "settled";
+            charge: Extract<ProviderCost, { kind: "authoritative" }>;
+            evaluatedAt: string;
+        };
         contextTokens: number;
         promptBudget: number | null;
         meta: Record<string, unknown>;

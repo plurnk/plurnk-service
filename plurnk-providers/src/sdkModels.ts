@@ -6,13 +6,20 @@ import { createGroq } from "@ai-sdk/groq";
 import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createTogetherAI } from "@ai-sdk/togetherai";
-import { createXai } from "@ai-sdk/xai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { lookupProvider, type ProviderInfo } from "@plurnk/plurnk-models";
 import type { LanguageModel } from "ai";
+import {
+    authoritativeChargeNormalizer,
+    fireworksAccounting,
+} from "./accounting.ts";
+import { parseRequiredInt } from "./env.ts";
+import type { AuthoritativeChargeNormalizer, ProviderAccountingAdapter } from "./types.ts";
 
 export type SdkModel = {
     readonly languageModel?: LanguageModel;
+    readonly normalizeCharge?: AuthoritativeChargeNormalizer;
+    readonly accounting?: ProviderAccountingAdapter;
     readonly compatible?: {
         readonly url: string;
         readonly headers: Readonly<Record<string, string>>;
@@ -105,6 +112,7 @@ export const createSdkModel = (
     const catalog = lookupProvider(provider) ?? configuredProviderInfo(provider, env);
     if (catalog === null) return null;
     const url = baseUrl(provider, env, catalog, baseUrlOverride);
+    const normalizeCharge = authoritativeChargeNormalizer(catalog.npm);
 
     switch (catalog.npm) {
         case "@ai-sdk/openai":
@@ -137,11 +145,18 @@ export const createSdkModel = (
                 languageModel: createGoogle({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).languageModel(model),
                 catalog,
             };
-        case "@ai-sdk/xai":
+        case "@ai-sdk/xai": {
+            const key = requireApiKey(provider, env, catalog);
+            const compatibleBase = url ?? "https://api.x.ai/v1";
             return {
-                languageModel: createXai({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).languageModel(model),
+                compatible: {
+                    url: `${compatibleBase}/chat/completions`,
+                    headers: { Authorization: `Bearer ${key}` },
+                },
+                ...(normalizeCharge === undefined ? {} : { normalizeCharge }),
                 catalog,
             };
+        }
         case "@ai-sdk/anthropic":
             return {
                 languageModel: createAnthropic({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).languageModel(model),
@@ -169,12 +184,25 @@ export const createSdkModel = (
                         ...(env.OPENROUTER_X_TITLE === undefined ? {} : { "X-Title": env.OPENROUTER_X_TITLE }),
                     },
                 }).languageModel(model),
+                ...(normalizeCharge === undefined ? {} : { normalizeCharge }),
                 catalog,
             };
         case "@ai-sdk/openai-compatible":
             if (url === undefined) throw new Error(`${provider} provider: Models.dev supplies no API URL and no base URL was configured`);
             const keyNames = configuredKeyNames(provider, env, catalog);
             const key = keyNames.length === 0 ? undefined : requireApiKey(provider, env, catalog);
+            let accounting: ProviderAccountingAdapter | undefined;
+            if (catalog.id === "fireworks-ai") {
+                if (key === undefined) {
+                    throw new Error(`${provider} provider: Fireworks accounting requires a configured API key`);
+                }
+                accounting = fireworksAccounting({
+                    apiKey: key,
+                    ...(env.FIREWORKS_ACCOUNT_ID === undefined ? {} : { accountId: env.FIREWORKS_ACCOUNT_ID }),
+                    timeoutMs: parseRequiredInt(env.PLURNK_PROVIDERS_ACCOUNTING_TIMEOUT, "PLURNK_PROVIDERS_ACCOUNTING_TIMEOUT", provider),
+                    pollIntervalMs: parseRequiredInt(env.PLURNK_PROVIDERS_ACCOUNTING_POLL_INTERVAL, "PLURNK_PROVIDERS_ACCOUNTING_POLL_INTERVAL", provider),
+                });
+            }
             return {
                 compatible: {
                     url: `${url}/chat/completions`,
@@ -182,6 +210,7 @@ export const createSdkModel = (
                         ? {}
                         : { Authorization: `Bearer ${key}` },
                 },
+                ...(accounting === undefined ? {} : { accounting }),
                 catalog,
             };
         default:

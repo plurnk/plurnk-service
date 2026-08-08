@@ -16,7 +16,7 @@ import {
 import AiSdkProvider, { type ReasoningStyle } from "./AiSdkProvider.ts";
 import { configuredProviderInfo, createSdkModel } from "./sdkModels.ts";
 import { providerSource } from "./notices.ts";
-import type { Provider, ProviderUsage } from "./types.ts";
+import type { AuthoritativeChargeNormalizer, Provider, ProviderAccountingAdapter, ProviderUsage } from "./types.ts";
 import { calculateCostUsd } from "./usage.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import type { LanguageModel } from "ai";
@@ -45,6 +45,8 @@ export const providerFromSdkModel = ({
     env,
     model,
     languageModel,
+    normalizeCharge,
+    accounting,
     url,
     headers,
     contextWindow,
@@ -55,6 +57,8 @@ export const providerFromSdkModel = ({
     env: NodeJS.ProcessEnv;
     model: string;
     languageModel?: LanguageModel;
+    normalizeCharge?: AuthoritativeChargeNormalizer;
+    accounting?: ProviderAccountingAdapter;
     url?: string;
     headers?: Readonly<Record<string, string>>;
     contextWindow: number;
@@ -107,6 +111,8 @@ export const providerFromSdkModel = ({
         model,
         ...(attributions === undefined ? {} : { attributions }),
         ...(languageModel === undefined ? {} : { languageModel }),
+        ...(normalizeCharge === undefined ? {} : { normalizeCharge }),
+        ...(accounting === undefined ? {} : { accounting }),
         ...(url === undefined ? {} : { url }),
         ...(headers === undefined ? {} : { headers: { ...headers } }),
         contextWindow,
@@ -165,6 +171,8 @@ export const catalogProviderFromEnv = (
         env,
         model: wireModel,
         languageModel: sdk.languageModel,
+        normalizeCharge: sdk.normalizeCharge,
+        accounting: sdk.accounting,
         url: sdk.compatible?.url,
         headers: sdk.compatible?.headers,
         contextWindow,

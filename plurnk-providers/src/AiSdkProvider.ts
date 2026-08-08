@@ -6,7 +6,7 @@
 // ordinary vendor protocol. The compatible URL path remains only for PLURNK
 // extensions and local endpoint probes the SDK cannot represent.
 
-import type { ChatMessage, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
+import type { AuthoritativeChargeNormalizer, ChatMessage, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAccountingAdapter, ProviderAccountingResult, ProviderAccountingScope, ProviderCallAccounting, ProviderResponse, ProviderUsage } from "./types.ts";
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
 import type { Reasoning, ReasoningResponseStyle, ReserveSpec } from "./env.ts";
 import { executeAiSdkModel, executeOpenAICompatible } from "./aiSdkTransport.ts";
@@ -18,6 +18,7 @@ import { validateGbnf } from "@plurnk/gbnf";
 import { assertPromptTokenMeasurement, estimatePromptTokens } from "./promptTokens.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk-meta";
+import { validateAuthoritativeCharge } from "./cost.ts";
 
 export type ProviderFetch = typeof globalThis.fetch;
 
@@ -44,6 +45,8 @@ export type AiSdkProviderConfig = {
     countPromptTokens?: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     calculateCost?: (usage: ProviderUsage) => number; // default () => 0
     calculateCharge?: (usage: ProviderUsage) => Exclude<ProviderCost, { kind: "authoritative" }>;
+    normalizeCharge?: AuthoritativeChargeNormalizer;
+    accounting?: ProviderAccountingAdapter;
     source?: string;                           // notice/problem source, e.g. "provider:openai"; default "provider"
     grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
     // Send the OpenAI-standard `prompt_cache_key` set to workerId, so a
@@ -243,6 +246,8 @@ export default class AiSdkProvider implements Provider {
     #promptTokensUrl: string | undefined;
     #calculateCost: (usage: ProviderUsage) => number;
     #calculateCharge?: (usage: ProviderUsage) => Exclude<ProviderCost, { kind: "authoritative" }>;
+    #normalizeCharge?: AuthoritativeChargeNormalizer;
+    #accounting?: ProviderAccountingAdapter;
     #source: string;
     #grammarStyle: GrammarStyle;
     #promptCacheKey: boolean;
@@ -268,6 +273,7 @@ export default class AiSdkProvider implements Provider {
     // tokenizeUrl (llama-server), so `provider.tokenize === undefined` remains
     // the honest capability signal for every other backend.
     tokenize?: (text: string) => Promise<number[]>;
+    reconcileAccounting?: (scope: ProviderAccountingScope, signal?: AbortSignal) => Promise<ProviderAccountingResult>;
 
     constructor(config: AiSdkProviderConfig) {
         this.#model = config.model;
@@ -307,6 +313,11 @@ export default class AiSdkProvider implements Provider {
         this.#promptTokensUrl = config.promptTokensUrl;
         this.#calculateCost = config.calculateCost ?? (() => 0);
         this.#calculateCharge = config.calculateCharge;
+        this.#normalizeCharge = config.normalizeCharge;
+        this.#accounting = config.accounting;
+        if (this.#accounting !== undefined) {
+            this.reconcileAccounting = (scope, signal) => this.#accounting!.reconcile(scope, signal);
+        }
         this.#source = config.source ?? "provider";
         this.#grammarStyle = config.grammarStyle ?? "none";
         this.#promptCacheKey = config.promptCacheKey ?? false;
@@ -609,7 +620,7 @@ export default class AiSdkProvider implements Provider {
         return out;
     }
 
-    async generate({ messages, workerId, primaryWorkerId, signal, grammar, maxTokens, attributions, client, strikes, workspaceId, loop, turn, sampling }: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse> {
+    async generate({ messages, workerId, primaryWorkerId, signal, grammar, maxTokens, attributions, client, strikes, workspaceId, loop, turn, sampling, accounting }: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown>; accounting?: ProviderCallAccounting }): Promise<ProviderResponse> {
         // {§provider-interface} The worker identity is required.
         if (workerId === undefined || workerId.length === 0) throw new Error("generate: workerId is required — the worker's stable, opaque identity");
         // Reject before any wire call when already aborted
@@ -649,7 +660,10 @@ export default class AiSdkProvider implements Provider {
 
         // Per-request headers = static auth/routing + any first-party telemetry.
         const metaHeaders = this.#metadataHeaders(attributions, client, strikes, workerId, primaryWorkerId, workspaceId, loop, turn);
-        const headers = Object.keys(metaHeaders).length > 0 ? { ...this.#headers, ...metaHeaders } : this.#headers;
+        const accountingHeaders = accounting === undefined ? {} : this.#accounting?.headers(accounting) ?? {};
+        const headers = Object.keys(metaHeaders).length === 0 && Object.keys(accountingHeaders).length === 0
+            ? this.#headers
+            : { ...this.#headers, ...metaHeaders, ...accountingHeaders };
         let raw;
         try {
             raw = this.#languageModel === undefined
@@ -804,8 +818,13 @@ export default class AiSdkProvider implements Provider {
             model: raw.model,
             ...(logprobs !== undefined ? { logprobs, meanLogprob } : {}),
         };
+        const normalizedCharge = this.#normalizeCharge?.(raw.accounting);
+        const charge = normalizedCharge === undefined
+            ? undefined
+            : validateAuthoritativeCharge(normalizedCharge);
         const evidence = {
             assistantRaw: raw,
+            ...(charge === undefined ? {} : { charge }),
             ...(grammarEvidence !== undefined ? { grammarEvidence } : {}),
             ...(raw.rawBody !== undefined ? { rawBody: raw.rawBody } : {}),
             ...(meta !== undefined ? { meta } : {}),
@@ -837,4 +856,5 @@ export default class AiSdkProvider implements Provider {
             ...evidence,
         };
     }
+
 }

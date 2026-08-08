@@ -20,6 +20,50 @@ SET status = 500,
     )
 WHERE status = 102;
 
+-- PREP: recovery_fail_open_provider_attempts
+-- A pre-I/O call identity can survive a crash without a durable response.
+-- Close that occurrence as unknown before querying the correlated provider
+-- ledger; leaving it pending would erase an issued call from reconciliation.
+UPDATE turn_attempts
+SET state = 'error',
+    failure = json_object(
+        'status', 500,
+        'problem', json_object(
+            'type', 'https://problems.plurnk.dev/lifecycle/recovery/owner-vanished',
+            'title', 'Owner vanished',
+            'status', 500,
+            'detail', 'The daemon restarted before this provider response was durably observed; whether the provider completed the call is unknown.'
+        )
+    ),
+    usage_prompt = 0,
+    usage_completion = 0,
+    usage_reasoning = 0,
+    usage_cached = 0,
+    usage_cost = json_object(
+        'kind', 'unknown',
+        'reason', 'daemon restarted before provider response evidence was durably observed'
+    ),
+    usage_cost_usd = NULL,
+    completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE state = 'pending'
+  AND EXISTS (
+      SELECT 1
+      FROM turns t
+      JOIN loops l ON l.id = t.loop_id
+      WHERE t.id = turn_attempts.turn_id
+        AND l.terminated_at IS NOT NULL
+  );
+
+-- PREP: recovery_unsettled_accounting
+-- A provider call may have completed before the prior process vanished. Once
+-- active loops are terminal, retry every provider-owned scope that has not
+-- reached authoritative settlement.
+SELECT id AS loop_id
+FROM loops
+WHERE terminated_at IS NOT NULL
+  AND accounting_state IN ('open', 'pending')
+ORDER BY id;
+
 -- PREP: recovery_fail_ownerless_proposals
 -- {§worker-lifecycle-restart-recovery} Every proposed row depended on a
 -- process-local resolution waiter. At boot that owner is necessarily gone, so

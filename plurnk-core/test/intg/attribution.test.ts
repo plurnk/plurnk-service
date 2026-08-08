@@ -91,7 +91,7 @@ test("each emission attempt composes opaque family hooks and records exactly wha
                 { sequence: 1, attributions: first },
                 { sequence: 2, attributions: second },
             ],
-            "response-bearing attempt evidence retains each exact forwarded set",
+            "attempt evidence retains each exact forwarded set",
         );
 
         const row = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });

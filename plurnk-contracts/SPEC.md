@@ -82,7 +82,10 @@ currency plus its decimal USD equivalent; an estimate carries a decimal USD
 amount; free requires an explicit source; unknown requires a reason. Decimal
 strings preserve evidence without binary floating-point rewriting. Unknown is
 not zero, and no consumer may infer free from absent rates or a legacy numeric
-zero.
+zero. A numeric `costUsd` projection is settled money: it includes only
+authoritative and explicitly free evidence and is `null` when any contributing
+result is estimated or unknown. A separately named `projectedCostUsd` may use
+estimates; it is never accounting authority.
 
 The parser returns ordered statement, error, and text items. It recovers at a
 trustworthy statement boundary when possible and sets `unparsedTail` when a

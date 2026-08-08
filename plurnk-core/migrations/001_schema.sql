@@ -104,6 +104,16 @@ CREATE TABLE IF NOT EXISTS loops (
     provider_spec TEXT NOT NULL DEFAULT 'null' CHECK (json_valid(provider_spec)),
     child_provider_spec TEXT NOT NULL DEFAULT 'null' CHECK (json_valid(child_provider_spec)),
     max_turns INTEGER NOT NULL DEFAULT 50 CHECK (max_turns >= -1),
+    -- {§tokenomics-provider-usage}: a globally unique opaque scope exists before
+    -- provider I/O. `unscoped` means per-call evidence is authoritative;
+    -- open/pending reserve the aggregate for provider-ledger settlement.
+    accounting_scope_id TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))) CHECK (length(accounting_scope_id) = 32),
+    accounting_started_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    accounting_state TEXT NOT NULL DEFAULT 'unscoped' CHECK (accounting_state IN ('unscoped', 'open', 'pending', 'settled')),
+    accounting_charge TEXT CHECK (accounting_charge IS NULL OR (json_valid(accounting_charge) AND json_type(accounting_charge) = 'object')),
+    accounting_cost_usd REAL CHECK (accounting_cost_usd IS NULL OR accounting_cost_usd >= 0),
+    accounting_detail TEXT CHECK (accounting_detail IS NULL OR length(accounting_detail) > 0),
+    accounting_evaluated_at TEXT,
     -- {§methods-loop-run-open-paths}: the initial prompt frame's selected paths,
     -- held here until turn 1 materializes that frame (string[] JSON).
     open_paths TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(open_paths)),
@@ -120,12 +130,44 @@ CREATE TABLE IF NOT EXISTS loops (
     -- {§loop-terminal-authorship}: 'cancel' names an external loop.cancel;
     -- NULL covers model terminals and engine verdicts whose result carries the story.
     terminated_by    TEXT                      CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
+    CHECK (
+        (accounting_state IN ('unscoped', 'open')
+            AND accounting_charge IS NULL AND accounting_cost_usd IS NULL
+            AND accounting_detail IS NULL AND accounting_evaluated_at IS NULL)
+        OR
+        (accounting_state = 'pending'
+            AND accounting_charge IS NULL AND accounting_cost_usd IS NULL
+            AND accounting_detail IS NOT NULL)
+        OR
+        (accounting_state = 'settled'
+            AND accounting_charge IS NOT NULL AND accounting_cost_usd IS NOT NULL
+            AND accounting_detail IS NULL AND accounting_evaluated_at IS NOT NULL)
+    ),
     FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE,
     FOREIGN KEY (orphan_source_loop_id) REFERENCES loops(id)
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS loops_worker_id_sequence ON loops (worker_id, sequence);
 CREATE UNIQUE INDEX IF NOT EXISTS loops_orphan_source_loop_id ON loops (orphan_source_loop_id);
+CREATE UNIQUE INDEX IF NOT EXISTS loops_accounting_scope_id ON loops (accounting_scope_id);
+
+CREATE TRIGGER IF NOT EXISTS loops_accounting_identity_immutable
+BEFORE UPDATE OF accounting_scope_id, accounting_started_at ON loops
+BEGIN
+    SELECT RAISE(ABORT, 'loop accounting identity is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS loops_accounting_state_forward_only
+BEFORE UPDATE OF accounting_state ON loops
+WHEN NOT (
+    NEW.accounting_state = OLD.accounting_state
+    OR (OLD.accounting_state = 'unscoped' AND NEW.accounting_state = 'open')
+    OR (OLD.accounting_state = 'open' AND NEW.accounting_state IN ('pending', 'settled'))
+    OR (OLD.accounting_state = 'pending' AND NEW.accounting_state = 'settled')
+)
+BEGIN
+    SELECT RAISE(ABORT, 'loop accounting state may only advance');
+END;
 
 -- {§worker-scheme}: a loop crossing into a terminal status stamps terminated_at, so sibling
 -- workers pull the termination as a folded ambient delta — caught uniformly across every
@@ -306,24 +348,49 @@ CREATE TABLE IF NOT EXISTS turn_attempts (
     id               INTEGER NOT NULL PRIMARY KEY,
     turn_id          INTEGER NOT NULL,
     sequence         INTEGER NOT NULL CHECK (sequence >= 1),
-    accepted         INTEGER NOT NULL CHECK (accepted IN (0, 1)),
-    response         TEXT    NOT NULL CHECK (json_valid(response)),
+    accounting_id    TEXT    NOT NULL DEFAULT (lower(hex(randomblob(16)))) CHECK (length(accounting_id) = 32),
+    state            TEXT    NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'response', 'error')),
+    accepted         INTEGER          CHECK (accepted IS NULL OR accepted IN (0, 1)),
+    response         TEXT             CHECK (response IS NULL OR json_valid(response)),
+    failure          TEXT             CHECK (failure IS NULL OR json_valid(failure)),
     parse_errors     TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(parse_errors)),
-    -- Exact opaque tag set forwarded with this response-bearing provider call.
+    -- Exact opaque tag set forwarded with this provider call.
     -- {§attribution}
     attributions     TEXT    NOT NULL DEFAULT '[]' CHECK (
         json_valid(attributions) AND json_type(attributions) = 'array'
     ),
-    usage_prompt     INTEGER NOT NULL DEFAULT 0 CHECK (usage_prompt >= 0),
-    usage_completion INTEGER NOT NULL DEFAULT 0 CHECK (usage_completion >= 0),
-    usage_reasoning  INTEGER NOT NULL DEFAULT 0 CHECK (usage_reasoning >= 0),
-    usage_cached     INTEGER NOT NULL DEFAULT 0 CHECK (usage_cached >= 0),
-    usage_cost       TEXT    NOT NULL CHECK (json_valid(usage_cost) AND json_type(usage_cost) = 'object'),
+    usage_prompt     INTEGER          CHECK (usage_prompt IS NULL OR usage_prompt >= 0),
+    usage_completion INTEGER          CHECK (usage_completion IS NULL OR usage_completion >= 0),
+    usage_reasoning  INTEGER          CHECK (usage_reasoning IS NULL OR usage_reasoning >= 0),
+    usage_cached     INTEGER          CHECK (usage_cached IS NULL OR usage_cached >= 0),
+    usage_cost       TEXT             CHECK (usage_cost IS NULL OR (json_valid(usage_cost) AND json_type(usage_cost) = 'object')),
     usage_cost_usd   REAL             CHECK (usage_cost_usd IS NULL OR usage_cost_usd >= 0),
     finish_reason    TEXT,
     model            TEXT    NOT NULL CHECK (length(model) >= 1),
     timestamp        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    completed_at     TEXT,
+    CHECK (
+        (state = 'pending'
+            AND accepted IS NULL AND response IS NULL AND failure IS NULL
+            AND usage_prompt IS NULL AND usage_completion IS NULL
+            AND usage_reasoning IS NULL AND usage_cached IS NULL
+            AND usage_cost IS NULL AND usage_cost_usd IS NULL
+            AND finish_reason IS NULL AND completed_at IS NULL)
+        OR
+        (state = 'response'
+            AND response IS NOT NULL
+            AND usage_prompt IS NOT NULL AND usage_completion IS NOT NULL
+            AND usage_reasoning IS NOT NULL AND usage_cached IS NOT NULL
+            AND usage_cost IS NOT NULL AND completed_at IS NOT NULL)
+        OR
+        (state = 'error'
+            AND accepted IS NULL AND response IS NULL AND failure IS NOT NULL
+            AND usage_prompt = 0 AND usage_completion = 0
+            AND usage_reasoning = 0 AND usage_cached = 0
+            AND usage_cost IS NOT NULL AND completed_at IS NOT NULL)
+    ),
     UNIQUE (turn_id, sequence),
+    UNIQUE (accounting_id),
     FOREIGN KEY (turn_id) REFERENCES turns(id) ON DELETE CASCADE
 ) STRICT;
 
@@ -331,6 +398,94 @@ CREATE INDEX IF NOT EXISTS turn_attempts_turn_id ON turn_attempts (turn_id);
 CREATE UNIQUE INDEX IF NOT EXISTS turn_attempts_one_accepted_per_turn
     ON turn_attempts (turn_id)
     WHERE accepted = 1;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_request_identity_immutable
+BEFORE UPDATE OF turn_id, sequence, accounting_id, attributions, timestamp ON turn_attempts
+BEGIN
+    SELECT RAISE(ABORT, 'provider attempt request identity is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_state_forward_only
+BEFORE UPDATE OF state ON turn_attempts
+WHEN NOT (
+    NEW.state = OLD.state
+    OR (OLD.state = 'pending' AND NEW.state IN ('response', 'error'))
+)
+BEGIN
+    SELECT RAISE(ABORT, 'provider attempt state may only close once');
+END;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_observation_immutable
+BEFORE UPDATE OF response, usage_prompt, usage_completion, usage_reasoning,
+                 usage_cached, finish_reason, model, completed_at
+ON turn_attempts
+WHEN OLD.state != 'pending'
+BEGIN
+    SELECT RAISE(ABORT, 'provider attempt observation is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_classification_once
+BEFORE UPDATE OF accepted, parse_errors, failure, usage_cost, usage_cost_usd
+ON turn_attempts
+WHEN OLD.state = 'error' OR (OLD.state = 'response' AND OLD.accepted IS NOT NULL)
+BEGIN
+    SELECT RAISE(ABORT, 'provider attempt classification is immutable');
+END;
+
+-- Attempt rows are the monetary and provider-usage authority. Turns retain a
+-- denormalized projection for their public read contract, maintained here so a
+-- crash between provider I/O and engine closure cannot leave a false zero.
+CREATE VIEW IF NOT EXISTS turn_attempt_rollups AS
+SELECT t.id AS turn_id,
+       COALESCE(SUM(a.usage_prompt), 0) AS usage_prompt,
+       COALESCE(SUM(a.usage_completion), 0) AS usage_completion,
+       COALESCE(SUM(a.usage_reasoning), 0) AS usage_reasoning,
+       COALESCE(SUM(a.usage_cached), 0) AS usage_cached,
+       COALESCE((
+           SELECT json_group_array(json(ordered.usage_cost))
+           FROM (
+               SELECT observed.usage_cost
+               FROM turn_attempts observed
+               WHERE observed.turn_id = t.id AND observed.usage_cost IS NOT NULL
+               ORDER BY observed.sequence
+           ) ordered
+       ), '[]') AS usage_cost,
+       CASE
+           WHEN COUNT(a.id) = 0 THEN 0
+           WHEN COUNT(a.id) FILTER (WHERE a.usage_cost_usd IS NULL) > 0 THEN NULL
+           ELSE COALESCE(SUM(a.usage_cost_usd), 0)
+       END AS usage_cost_usd
+FROM turns t
+LEFT JOIN turn_attempts a ON a.turn_id = t.id
+GROUP BY t.id;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_rollup_insert
+AFTER INSERT ON turn_attempts
+BEGIN
+    UPDATE turns SET
+        usage_prompt = (SELECT usage_prompt FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
+        usage_completion = (SELECT usage_completion FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
+        usage_reasoning = (SELECT usage_reasoning FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
+        usage_cached = (SELECT usage_cached FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
+        usage_cost = (SELECT usage_cost FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
+        usage_cost_usd = (SELECT usage_cost_usd FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id)
+    WHERE id = NEW.turn_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_rollup_update
+AFTER UPDATE OF state, usage_prompt, usage_completion, usage_reasoning,
+                usage_cached, usage_cost, usage_cost_usd
+ON turn_attempts
+BEGIN
+    UPDATE turns SET
+        usage_prompt = (SELECT usage_prompt FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
+        usage_completion = (SELECT usage_completion FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
+        usage_reasoning = (SELECT usage_reasoning FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
+        usage_cached = (SELECT usage_cached FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
+        usage_cost = (SELECT usage_cost FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
+        usage_cost_usd = (SELECT usage_cost_usd FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id)
+    WHERE id = NEW.turn_id;
+END;
 
 -- derivations
 -- Content-addressed deep projections. Entries point at a COMPLETE artifact by
@@ -670,6 +825,21 @@ BEGIN
     UPDATE log_entries SET ambient_event_id = last_insert_rowid() WHERE id = NEW.id;
 END;
 
+-- One loop has exactly one aggregate monetary interpretation. A correlated
+-- provider settlement supersedes its call evidence; pending settlement is
+-- unknown; otherwise the settled per-turn sum applies.
+CREATE VIEW IF NOT EXISTS loop_costs AS
+SELECT l.id, l.worker_id,
+       CASE
+           WHEN l.accounting_state = 'settled' THEN l.accounting_cost_usd
+           WHEN l.accounting_state IN ('open', 'pending') THEN NULL
+           WHEN COUNT(t.id) FILTER (WHERE t.usage_cost_usd IS NULL) > 0 THEN NULL
+           ELSE COALESCE(SUM(t.usage_cost_usd), 0)
+       END AS cost_usd
+FROM loops l
+LEFT JOIN turns t ON t.loop_id = l.id
+GROUP BY l.id;
+
 -- cost_rollups
 -- Triggers maintaining denormalized USD totals on workers and workspaces
 -- as turns insert/update. Pure denormalization (textbook trigger use);
@@ -679,10 +849,10 @@ AFTER INSERT ON turns
 BEGIN
     UPDATE workers
        SET cost_usd = (
-           SELECT CASE WHEN COUNT(*) FILTER (WHERE t.usage_cost_usd IS NULL) > 0
-                       THEN NULL ELSE COALESCE(SUM(t.usage_cost_usd), 0) END
-             FROM turns t JOIN loops l ON l.id = t.loop_id
-            WHERE l.worker_id = workers.id
+           SELECT CASE WHEN COUNT(*) FILTER (WHERE lc.cost_usd IS NULL) > 0
+                       THEN NULL ELSE COALESCE(SUM(lc.cost_usd), 0) END
+             FROM loop_costs lc
+            WHERE lc.worker_id = workers.id
        )
      WHERE id = (SELECT worker_id FROM loops WHERE id = NEW.loop_id);
 END;
@@ -692,11 +862,10 @@ AFTER INSERT ON turns
 BEGIN
     UPDATE workspaces
        SET cost_usd = (
-           SELECT CASE WHEN COUNT(*) FILTER (WHERE t.usage_cost_usd IS NULL) > 0
-                       THEN NULL ELSE COALESCE(SUM(t.usage_cost_usd), 0) END
-             FROM turns t
-             JOIN loops l ON l.id = t.loop_id
-             JOIN workers r ON r.id = l.worker_id
+           SELECT CASE WHEN COUNT(*) FILTER (WHERE lc.cost_usd IS NULL) > 0
+                       THEN NULL ELSE COALESCE(SUM(lc.cost_usd), 0) END
+             FROM loop_costs lc
+             JOIN workers r ON r.id = lc.worker_id
             WHERE r.workspace_id = workspaces.id
        )
      WHERE id = (
@@ -713,10 +882,10 @@ WHEN NEW.usage_cost_usd IS NOT OLD.usage_cost_usd
 BEGIN
     UPDATE workers
        SET cost_usd = (
-           SELECT CASE WHEN COUNT(*) FILTER (WHERE t.usage_cost_usd IS NULL) > 0
-                       THEN NULL ELSE COALESCE(SUM(t.usage_cost_usd), 0) END
-             FROM turns t JOIN loops l ON l.id = t.loop_id
-            WHERE l.worker_id = workers.id
+           SELECT CASE WHEN COUNT(*) FILTER (WHERE lc.cost_usd IS NULL) > 0
+                       THEN NULL ELSE COALESCE(SUM(lc.cost_usd), 0) END
+             FROM loop_costs lc
+            WHERE lc.worker_id = workers.id
        )
      WHERE id = (SELECT worker_id FROM loops WHERE id = NEW.loop_id);
 END;
@@ -727,11 +896,10 @@ WHEN NEW.usage_cost_usd IS NOT OLD.usage_cost_usd
 BEGIN
     UPDATE workspaces
        SET cost_usd = (
-           SELECT CASE WHEN COUNT(*) FILTER (WHERE t.usage_cost_usd IS NULL) > 0
-                       THEN NULL ELSE COALESCE(SUM(t.usage_cost_usd), 0) END
-             FROM turns t
-             JOIN loops l ON l.id = t.loop_id
-             JOIN workers r ON r.id = l.worker_id
+           SELECT CASE WHEN COUNT(*) FILTER (WHERE lc.cost_usd IS NULL) > 0
+                       THEN NULL ELSE COALESCE(SUM(lc.cost_usd), 0) END
+             FROM loop_costs lc
+             JOIN workers r ON r.id = lc.worker_id
             WHERE r.workspace_id = workspaces.id
        )
      WHERE id = (
@@ -740,6 +908,37 @@ BEGIN
            JOIN loops l ON l.worker_id = r.id
           WHERE l.id = NEW.loop_id
      );
+END;
+
+CREATE TRIGGER IF NOT EXISTS loops_cost_rollup_accounting_worker
+AFTER UPDATE OF accounting_state, accounting_cost_usd ON loops
+WHEN NEW.accounting_state IS NOT OLD.accounting_state
+  OR NEW.accounting_cost_usd IS NOT OLD.accounting_cost_usd
+BEGIN
+    UPDATE workers
+       SET cost_usd = (
+           SELECT CASE WHEN COUNT(*) FILTER (WHERE lc.cost_usd IS NULL) > 0
+                       THEN NULL ELSE COALESCE(SUM(lc.cost_usd), 0) END
+             FROM loop_costs lc
+            WHERE lc.worker_id = workers.id
+       )
+     WHERE id = NEW.worker_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS loops_cost_rollup_accounting_workspace
+AFTER UPDATE OF accounting_state, accounting_cost_usd ON loops
+WHEN NEW.accounting_state IS NOT OLD.accounting_state
+  OR NEW.accounting_cost_usd IS NOT OLD.accounting_cost_usd
+BEGIN
+    UPDATE workspaces
+       SET cost_usd = (
+           SELECT CASE WHEN COUNT(*) FILTER (WHERE lc.cost_usd IS NULL) > 0
+                       THEN NULL ELSE COALESCE(SUM(lc.cost_usd), 0) END
+             FROM loop_costs lc
+             JOIN workers r ON r.id = lc.worker_id
+            WHERE r.workspace_id = workspaces.id
+       )
+     WHERE id = (SELECT workspace_id FROM workers WHERE id = NEW.worker_id);
 END;
 
 -- subscriptions

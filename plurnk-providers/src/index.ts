@@ -15,6 +15,9 @@ export type {
     TokenLogprob,
     TokenAlternative,
     AuthoritativeCharge,
+    ProviderAccountingResult,
+    ProviderAccountingScope,
+    ProviderCallAccounting,
 } from "./types.ts";
 export type { ProviderCost } from "@plurnk/plurnk-contracts";
 export { assertPromptTokenMeasurement } from "./promptTokens.ts";
@@ -48,9 +51,11 @@ export type { Reasoning, ReasoningMode, ReasoningResponseStyle, ReserveSpec } fr
 export { normalizeUsage, calculateCostUsd } from "./usage.ts";
 export {
     providerCostFor,
+    providerProjectedCostUsd,
     providerCostUsd,
     resolveProviderCost,
     validateAuthoritativeCharge,
+    validateProviderAccountingResult,
     validateProviderCost,
 } from "./cost.ts";
 export type { RawUsage, TokenRates } from "./usage.ts";
