@@ -49,8 +49,8 @@ test("a long prompt renders an honest recoverable preview and the section lists 
             const promptSection = (packet.sections ?? []).find((sec) => sec.name === "prompt");
             assert.match(logSection?.content ?? "", /prompt line 1/, "the prompt preview reaches the model");
             assert.doesNotMatch(logSection?.content ?? "", /prompt line 30/, "content beyond the preview is withheld");
-            assert.match(logSection?.content ?? "", /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/\d+\/prompt to view the full body\."/, "the preview names its complete durable body");
-            const recoveryTarget = /"overflow":"Body content truncated\. Use READ (log:\/\/\/[^"]+) to view the full body\."/
+            assert.match(logSection?.content ?? "", /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/\d+\/prompt<1,-1> to view the full body\."/, "the preview names its complete durable body");
+            const recoveryTarget = /"overflow":"Body content truncated\. Use READ (log:\/\/\/[^"]+)<1,-1> to view the full body\."/
                 .exec(logSection?.content ?? "")?.[1];
             assert.ok(recoveryTarget, "the emitted recovery target is present");
             const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId });
@@ -80,7 +80,7 @@ test("an oversized deliverable renders the universal preview and log recovery ad
     const rendered = PacketWire.renderLog([row], countTokens);
     assert.ok(rendered.includes("deranged output line 1"), "the preview head is visible");
     assert.ok(!rendered.includes("deranged output line 30"), "content beyond the preview is withheld");
-    assert.match(rendered, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/2\/1\/SEND to view the full body\."/, "the canonical overflow contract names the log body");
+    assert.match(rendered, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/2\/1\/SEND<1,-1> to view the full body\."/, "the canonical overflow contract names the log body");
 });
 
 test("a single-line body is constrained by the independent character bound", () => {
@@ -94,7 +94,7 @@ test("a single-line body is constrained by the independent character bound", () 
     const rendered = PacketWire.renderLog([row], countTokens);
     const bodyChars = (rendered.match(/x+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0);
     assert.ok(bodyChars <= Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS), `the character knob bounds the single-line body (longest run ${bodyChars})`);
-    assert.match(rendered, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/2\/1\/SEND to view the full body\."/, "the cut is explicit and recoverable");
+    assert.match(rendered, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/2\/1\/SEND<1,-1> to view the full body\."/, "the cut is explicit and recoverable");
 });
 
 test("a small deliverable rides whole — whole-when-small is the common case, untouched", () => {
@@ -122,7 +122,7 @@ test("a single-line prompt cannot bypass the character bound", async () => {
             const log = (packet.sections ?? []).find((sec) => sec.name === "log")?.content ?? "";
             const longestHayRun = (log.match(/(?:hay )+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0);
             assert.ok(longestHayRun <= Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS), "the prompt obeys the character bound");
-            assert.match(log, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/\d+\/prompt to view the full body\."/, "the complete prompt remains explicitly retrievable");
+            assert.match(log, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/\d+\/prompt<1,-1> to view the full body\."/, "the complete prompt remains explicitly retrievable");
         } finally { ws.close(); }
     });
 });

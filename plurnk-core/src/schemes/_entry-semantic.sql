@@ -44,8 +44,8 @@ ORDER BY score DESC
 LIMIT $k;
 
 -- PREP: semantic_rank_candidates_threshold
--- {§find-semantic-default-top-k}: threshold the exhaustive cosine rank, then
--- retain the requested ordered prefix; -1 keeps the threshold set unbounded.
+-- {§find-semantic-selection}: threshold the exhaustive cosine rank before the
+-- shared FIND pager selects its ordered result page.
 WITH candidates AS (
     SELECT json_extract(value, '$.key') AS key,
            json_extract(value, '$.deepHash') AS deep_hash

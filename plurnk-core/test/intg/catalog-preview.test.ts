@@ -188,7 +188,7 @@ test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a sta
                 // Dynamic - it carries the FIND the foist ACTUALLY dispatched (worker:///*), rendered to
                 // DSL and framed PLAN → SEND. Not a frozen print: feed-as-turn-0, show-in-turn-1 are one act.
                 assert.match(content, /^<<PLAN:Initialize:PLAN/, "opens with intended goals");
-                assert.match(content, /<<FIND\(worker:\/\/\/\*\)::FIND/, "the real shallow survey, rendered back to DSL");
+                assert.match(content, /<<FIND\(worker:\/\/\/\*\)<1,-1>::FIND/, "the explicit complete shallow survey, rendered back to DSL");
                 assert.match(
                     content,
                     /<<SEND\[102\]:Next, address the prompt from the initialized context\.:SEND$/,
@@ -228,10 +228,10 @@ test("an empty workspace executes all four orienting FINDs and preserves empty-s
                 }
                 const exemplar = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 const content = (JSON.parse(exemplar!.rx) as { content: string }).content;
-                assert.match(content, /<<FIND\(\*\)::FIND/, "the empty project survey does not synthesize an invalid <1,0> range");
-                assert.match(content, /<<FIND\(worker:\/\/\/\*\)::FIND/, "the exemplar includes workspace commons");
-                assert.match(content, /<<FIND\(worker:\/\/~\/\*\)::FIND/, "the exemplar includes own space");
-                assert.match(content, /<<FIND\(worker:\/\/plurnk\/docs\/\*\*\)::FIND/, "the exemplar includes kernel docs");
+                assert.match(content, /<<FIND\(\*\)<1,-1>::FIND/, "the empty project survey explicitly requests the complete empty set");
+                assert.match(content, /<<FIND\(worker:\/\/\/\*\)<1,-1>::FIND/, "the exemplar includes complete workspace commons");
+                assert.match(content, /<<FIND\(worker:\/\/~\/\*\)<1,-1>::FIND/, "the exemplar includes complete own space");
+                assert.match(content, /<<FIND\(worker:\/\/plurnk\/docs\/\*\*\)<1,-1>::FIND/, "the exemplar includes complete kernel docs");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }

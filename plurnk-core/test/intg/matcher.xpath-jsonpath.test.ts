@@ -1,6 +1,6 @@
 // xpath / jsonpath matcher coverage — asserts the matcher contract: status
 // mapping, dialect dispatch (through plurnk-mimetypes), and the model-facing
-// result shape. A matcher selects a resource; READ returns its complete/scoped
+// result shape. A matcher selects a resource; exact READ returns its scoped
 // content and reports honest readable-text regions or structural locators.
 
 import test from "node:test";

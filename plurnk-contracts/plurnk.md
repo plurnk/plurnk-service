@@ -80,7 +80,7 @@ Examples:
 
 ### `(path)`
 
-* Paths address exact targets (or shell globs); content patterns belong in `:body:`.
+* READ paths address exact targets; FIND paths may use shell globs. Content patterns belong in FIND's `:body:`.
 * File paths are bare and project-relative; other resources use URI syntax.
 * Log item paths are nested: `log:///1/2/3` is loop/turn/item.
 * Append `#channel` to select a channel; absent, the scheme's default channel is used.

@@ -57,7 +57,7 @@ const makeCtx = () => {
             },
             async find() {
                 return failure("operation-not-implemented", 501, "FIND is not implemented.", {
-                    content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [],
+                    content: null, mimetype: null, results: [], itemsTokenTotal: 0, returnedItemsTokenTotal: 0, pathnames: [], matches: [],
                 });
             },
             async send() {

@@ -536,8 +536,8 @@ The framework neither tokenizes nor budgets content for its own projection pipel
 
 ## §mimetype-query 11. Body-matcher query
 
-The standard `@plurnk/plurnk-schemes` matcher adapter dispatches FIND and READ
-content matchers through `Mimetypes.query(input, matcher)` and maps typed
+The standard `@plurnk/plurnk-schemes` matcher adapter dispatches FIND content
+matchers through `Mimetypes.query(input, matcher)` and maps typed
 framework outcomes into operation results. Core composes that adapter across
 candidate sets and owns the indexed semantic/graph dialects. Standalone
 framework consumers may pass raw matcher syntax; PLURNK passes the grammar's

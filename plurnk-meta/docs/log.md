@@ -1,6 +1,6 @@
 # `log://` - your worker's event history
 
-Every operation is recorded at `log:///<loop>/<turn>/<seq>`. The row identifies what happened and what came back. READ a row to retrieve its result body or apply a content matcher.
+Every operation is recorded at `log:///<loop>/<turn>/<seq>`. The row identifies what happened and what came back. READ one exact row to retrieve its result body; use FIND to match across rows.
 
 ## Log and catalog
 

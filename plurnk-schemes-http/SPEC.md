@@ -40,7 +40,7 @@ pathnames, `%28` and `%29` canonicalize to literal parentheses.
 | --------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------ |
 | Unscoped `READ(url)`              | GET unless a fresh GET copy is usable | Seed, subscribe, materialize every channel, publish the selected channel, and return `102` |
 | Scoped `READ(url)<scope>`         | None                                  | Delegate selected-channel presence and scope projection to universal READ; never acquire   |
-| `FIND(url)` / matcher `READ(url)` | GET only when acquisition is required | Prepare an exact entry, then use universal query, matcher, weighting, and pagination       |
+| Exact `FIND(url)`                 | GET only when acquisition is required | Prepare an exact entry, then use universal query, matcher, weighting, and pagination       |
 | `FIND(pattern-url)`               | None                                  | Query already-materialized web entries; a path pattern does not discover the remote web    |
 | `SEND[200](url):body:`            | POST                                  | Stream and persist the response under the addressed URL                                    |
 | `EDIT(url):body:`                 | PUT                                   | Replace the whole remote resource; a line marker is invalid                                |
@@ -106,8 +106,8 @@ channel and scope to universal READ.
 A fragmentless direct operation publishes only `body`. An explicit fragment
 publishes that named channel. Every acquired channel remains durable even when
 it is not published to the requesting loop. FIND returns standard JSON metadata
-and match coordinates; matcher READ returns selected content and navigation
-evidence.
+and match coordinates. Exact READ returns the selected channel's requested text
+projection.
 
 ### §http-text-decoding Text response decoding
 
@@ -207,7 +207,7 @@ successful empty representation.
 | Outcome                                                       | Operation status                                      |
 | ------------------------------------------------------------- | ----------------------------------------------------- |
 | Scoped READ                                                   | Exact universal selected-channel READ result          |
-| Exact FIND / matcher READ after preparation                   | Exact universal query result                          |
+| Exact FIND after preparation                                  | Exact universal query result                          |
 | Exact acquisition returns no WebFetcher value                 | `404` (`not-materialized`)                            |
 | Selected HTML-page channel succeeds                           | Direct READ `102`; terminal selected-channel result   |
 | Selected HTML-page channel fails                              | That channel's exact producer Problem                 |
@@ -300,7 +300,7 @@ check therefore makes no DNS-rebinding or total-egress claim.
 
 Only acquisition GETs are eligible for host rewriting. A GitHub
 `…/blob/…` address uses the corresponding `raw.githubusercontent.com` source for
-byte transport. Direct READ, exact FIND, matcher READ, and
+byte transport. Direct READ, exact FIND, and
 WebFetcher prefetch share that rule. The originally addressed GitHub URL remains
 entry identity. POST, PUT, and DELETE are never retargeted. Rewritten targets
 are checked under {§automatic-fetch-check} only when `WebFetcher` acquires them.

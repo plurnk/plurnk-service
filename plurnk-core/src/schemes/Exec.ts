@@ -883,7 +883,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         const owner = await resolveStreamStatement(statement, core);
         if (owner === null) {
             return Results.failure("scheme:exec", "stream-not-found", 404, "No visible stream exists at the requested address.", {
-                content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [],
+                content: null, mimetype: null, results: [], itemsTokenTotal: 0, returnedItemsTokenTotal: 0, pathnames: [], matches: [],
             }) as FindResult;
         }
         return EntryFind.findWorkspaceEntries(owner.statement, core, Exec.manifest, owner.ownerId);

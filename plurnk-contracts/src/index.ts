@@ -21,6 +21,6 @@ export { default as PathSyntax } from "./PathSyntax.ts";
 export const parsePath = (raw: string) => AstBuilder.parsePath(raw);
 export const parseResourceSelection = (raw: string) => AstBuilder.parseResourceSelection(raw);
 
-export { DEFAULT_LOOP_FLAGS, PLURNK_OPS, WORKER_NAME, RESERVED_AUTHORITIES, UNKNOWN_POSITION } from "./types.ts";
+export { DEFAULT_LOOP_FLAGS, DEFAULT_RETRIEVAL_LIMIT, PLURNK_OPS, WORKER_NAME, RESERVED_AUTHORITIES, UNKNOWN_POSITION } from "./types.ts";
 export type * from "./types.ts";
 export type { ErrorSource, Severity } from "./PlurnkParseError.ts";

@@ -13,6 +13,10 @@ export const PLURNK_OPS = [
     "FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "WORK", "FORK", "KILL", "PLAN",
 ] as const;
 
+// Markerless model-facing retrievals share one fixed first page. Producers use
+// an explicit <1,-1> when they deliberately require the complete projection.
+export const DEFAULT_RETRIEVAL_LIMIT = 16;
+
 export type PlurnkOp = (typeof PLURNK_OPS)[number];
 
 export const DEFAULT_LOOP_FLAGS: LoopFlags = Object.freeze({

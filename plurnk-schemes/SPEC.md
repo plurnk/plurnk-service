@@ -39,7 +39,7 @@ class Notes {
 | `writableBy` | Subset of `["model", "client", "plurnk", "plugin"]`; empty declares an immutable scheme. Consumer returns 403 for outside-set writes. |
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
-| `folderScopes?` | `true` declares that a trailing slash on FIND or READ is a collection scope. Absent/false means `/` is ordinary resource syntax. Matcher bodies and explicit globs remain queries independently. |
+| `folderScopes?` | `true` declares that a trailing slash on FIND is a collection scope. Absent/false means `/` is ordinary resource syntax. |
 | `flags?` | Optional exact `SchemeFlagAffinity`; see {§manifest-flag-affinity}. |
 | `example?` | The scheme's terse **hot-path** one-liner (e.g. `"READ(foo://thing/42)"`) — renders in the live catalogue every turn, so keep it to one canonical usage line. Omit → not advertised. Depth goes in `documentation`. |
 | `documentation?` | The **deep doc** (semantics / channels / edge cases). Consumer materializes it as a pull-able `worker://plurnk/docs/<name>.md` entry READ on demand; never hits the hot path. Mirrors `ExecInfo.documentation`. |
@@ -104,7 +104,7 @@ export interface SchemeHandler {
 `prepareFind?` is not a second query implementation. It is the optional
 discovery/materialization seam invoked before the consumer's standard resource
 selection when a data scheme has no custom `find()`. Stored schemes omit it.
-FIND and matcher READ both invoke it before selecting entries. Acquisition
+FIND invokes it before selecting entries. Acquisition
 schemes use it to make an exact requested resource into an ordinary entry,
 then receive the same catalog, matcher evidence, weight, pagination, and status
 semantics as every other entry-bearing scheme. The consumer resolves the
@@ -225,7 +225,7 @@ effects shown to consumers; plugins do not invent a second effect envelope.
 - Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `EditStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`).
 - Target syntax: contracts-owned `PathSyntax` is re-exported for the shared exact-versus-path-glob classifier {§path-glob}.
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
-- §executor-scheme-output Executor-scheme ("an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` -> `ReadResolution` is the free text-scope/matcher read over produced output (reuses `Slicer`/`Matcher`). A matcher selects the complete output resource before `<scope>` projects text; without a scope, READ returns the complete resource. Match evidence remains metadata for a model-chosen follow-up READ. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only EXEC-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
+- §executor-scheme-output Executor-scheme ("an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` -> `ReadResolution` is the free exact-target text projection over produced output (reuses `Slicer`). Markerless READ returns lines 1–16 with complete range metadata; `<1,-1>` explicitly returns all. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only EXEC-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
 - Results: `SchemeResult` is the universal operation-result contract. Statuses below 400 carry no `problem`; statuses 400–599 require RFC 9457 `ProblemDetails`, and the legacy `error` member is forbidden. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
 - Standard FIND results may carry `omittedItems` and `maximumItems` when a selected catalog is too large to enumerate. `omittedItems` is the exact selected-resource count and `maximumItems` is the active materialization limit. These names cannot collide with the model-facing string `overflow` metadata used for truncated packet bodies.
 - Capability ctx (see §3.bis): `SchemeCtx`, `StreamSubscription`, and the domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`/`EntryAddress`, and typed standard-operation results. `editBatch` receives every same-turn EDIT for one canonical resource and channel; it validates against one snapshot and commits one revision or none. There is no sequential single-EDIT fallback.
@@ -362,7 +362,7 @@ entries, channels, and tags never return a bare failure status.
   an honest exact or nearest-enclosing mapping into the text the model can READ.
   Each item must contain at least one of `path` or `region`; other fields violate
   the shared evidence contract.
-- The matcher is a boolean resource selector. It does not replace content with matched values or choose a retrieval window. `DefaultRead` returns the complete selected resource unless the authored READ supplies `<L>`.
+- The matcher is a boolean resource selector. It does not replace content with matched values or choose a retrieval window. FIND owns selection and pagination; exact READ owns text projection.
 - Empty results return 204 with `matches: []`; `UnsupportedDialectError` maps to 415; `InvalidExpressionError` maps to 400; `QueryParseFailureError` maps to 203 with raw content, text/markdown, and `reason`.
 - A multi-resource matcher omits candidates that return 415 when at least one candidate supports the dialect. If no candidate supports it, the matcher returns the first exact 415 Problem. An unreadable binary marker therefore cannot poison a repository-wide text search or masquerade as a match.
 
@@ -385,8 +385,8 @@ its implementation.
   Standard operations are bound to the handler's manifest. Their optional
   owner is semantic: `"commons"` (default) or the current `"worker"`; database
   owner IDs are not part of the plugin contract. A handler may implement its
-  own op method instead. In particular, a handler with `find()` owns FIND and
-  fan-out; one without it receives the standard stored-entry behavior.
+  own op method instead. In particular, a handler with `find()` owns FIND; one
+  without it receives the standard stored-entry behavior.
 - `channels` — content writes + state (`append`/`replace`/`setState`).
 - `tags` — entry tags (`add`/`remove`/`list`).
 - `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the worker wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a worker, always via close.)

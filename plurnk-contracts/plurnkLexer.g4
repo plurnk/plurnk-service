@@ -94,9 +94,9 @@ private isExecOp(): boolean { return this.openTag.startsWith("EXEC"); }
 private isKillOp(): boolean { return this.openTag.startsWith("KILL"); }
 private isTurnOp(): boolean { return this.openTag.startsWith("TURN"); }
 
-// FIND and READ bodies are single-line matcher patterns — every dialect is
-// line-anchored, so a newline before the close tag means the closer was
-// forgotten. The newline implicitly closes the body.
+// FIND matcher bodies and forbidden READ body spellings are single-line. A
+// newline before the close tag means the closer was forgotten, so it closes
+// the body implicitly before operation-specific AST validation.
 private isSingleLineBodyOp(): boolean {
     return this.openTag.startsWith("FIND") || this.openTag.startsWith("READ");
 }
@@ -291,8 +291,8 @@ TARGET_END   : ')' -> type(RPAREN), mode(SLOTS) ;
 // ============================================================================
 
 mode BODY;
-// FIND and READ bodies are single-line matcher patterns — a newline before the
-// closer means the model forgot it. Close implicitly and record the recovery.
+// FIND bodies and forbidden READ body spellings close at a newline so the AST
+// layer receives one recoverable statement and can enforce operation semantics.
 B_IMPLICIT_CLOSE : { this.isSingleLineBodyOp() }? '\n' {
     this.implicitCloses.push({ line: this.openTagLine, column: this.openTagColumn, op: this.openTag });
     this.text = ':' + this.openTag;

@@ -918,9 +918,9 @@ Directed SEND (non-null path) routes to scheme's `send`. Status = intent:
 - `SEND[200](path)` — write body into resource (WS message, exec stdin).
 - `SEND[499](path)` — cancel active subscription ({§stream}).
 
-- §log-uniform-query **Log speaks the universal query contract** — `FIND(log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~semantic` and `@graph` use the same persistent derivation artifacts and candidate rankers as entries. Results are catalog-shaped items keyed `log:///loop/turn/seq/OP`, and matcher READ retargets per-row READs exactly as entry schemes do. A tag signal filters candidates by the model's own region tags ({§log-region-tagging}). Log remains an event stream in storage; uniformity begins at its readable projection and search attachment, not by forcing logs into the entries table.
-- §find-source-agnostic **The content matcher is source-agnostic** — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND/READ with every content dialect works uniformly across schemes BY CONSTRUCTION — `EntryFind` and `Log.find` run the ONE shared primitive rather than re-implementing per scheme. This is the query-layer half of the log-uniformity decision (Q3, Option B): log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
-- §matcher-selection-signal **Matching carries navigation evidence** - a matcher is a boolean resource predicate. Each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{path?,region?}`. `path` preserves a structural locator. `region` is a complete four-coordinate `TextRegion` only when the finding maps honestly into the exact text the model can READ. Multiple findings on one resource remain one FIND/READ result; exact duplicate evidence deduplicates. Relation findings map their indexed source spans through the same readable text coordinate index. The engine never fabricates a region or guesses which surgical READ the model wants.
+- §log-uniform-query **Log speaks the universal query contract** — `FIND(log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~semantic` and `@graph` use the same persistent derivation artifacts and candidate rankers as entries. Results are catalog-shaped items keyed `log:///loop/turn/seq/OP`. A tag signal filters candidates by the model's own region tags ({§log-region-tagging}). Log remains an event stream in storage; uniformity begins at its readable projection and search attachment, not by forcing logs into the entries table.
+- §find-source-agnostic **The content matcher is source-agnostic** — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND works uniformly across schemes by construction: `EntryFind` and `Log.find` run the one shared primitive rather than re-implementing it per scheme. Log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
+- §matcher-selection-signal **Matching carries navigation evidence** - a matcher is a boolean resource predicate. Each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{path?,region?}`. `path` preserves a structural locator. `region` is a complete four-coordinate `TextRegion` only when the finding maps honestly into the exact text the model can READ. Multiple findings on one resource remain one FIND result; exact duplicate evidence deduplicates. Relation findings map their indexed source spans through the same readable text coordinate index. The engine never fabricates a region or guesses which surgical READ the model wants.
 
 `SEND[410](path[#fragment])` also deletes the target entry/channel — an implemented side-effect, NOT taught to the model and with no live/demo surface. The model-facing delete idiom is KILL ({§move}).
 
@@ -957,7 +957,7 @@ The optional engine-/daemon-populated capabilities (the notifiers, `injectWorker
 Engine → scheme guarantees:
 
 - `ctx` is fresh per call. No mutation across calls.
-- FIND or matcher READ on a `category: "data"` scheme with no custom `find()`
+- FIND on a `category: "data"` scheme with no custom `find()`
   invokes its optional `prepareFind()` and then the standard entry selection.
   Preparation owns discovery/materialization only; query semantics remain
   universal. The prepared write and the query resolve through one canonical
@@ -1212,23 +1212,25 @@ A `file:///` member EDIT diverges from this immediate-write contract: it diffs a
 
 ### §read READ
 
-AST: `{ op: "READ", target, body: MatcherBody | null, signal: tags | null, lineMarker? }`.
+AST: `{ op: "READ", target, body: null, signal: tags | null, lineMarker? }`.
 
 - §read-read-content Returns channel content and mimetype.
 - §read-read-404 Returns 404 when the channel is absent.
-- `body` is a resource predicate dispatched per {§matcher-dispatch}.
-- §read-selection-projection `lineMarker` projects text through {§text-region} after selection. It never limits the content searched or paginates match occurrences. Without a marker, READ returns each selected resource's complete readable content. A miss is 204 before projection; an invalid text region is 416.
-- Semantic READ uses a leading decimal as its optional similarity threshold. The remaining one, two, or four integers are the text projection. Without a leading decimal, semantic selection uses the configured default and every integer component belongs to READ projection. Direct FIND instead applies remaining integers to ranked result positions; only a markerless semantic FIND uses the configured default top-K ({§find-semantic-default-top-k}).
+- §read-selection-projection READ applies `lineMarker` as text coordinates to one
+  exact target under {§read-exact-target}. Markerless READ synthesizes
+  `<1,16>`; `<1,-1>` explicitly selects all text. Successful positional reads
+  carry the requested, available, returned, continuation, completion, and
+  all-text range facts. An invalid text region is 416.
 
 ### §open-fold OPEN / FOLD
 
 AST: `{ op: "OPEN"|"FOLD", target, body: MatcherBody | null, signal: tags | null, lineMarker: null }`.
 
-OPEN/FOLD operate on the **log** (`log:///`) - the model's context-curation surface ({§packet}). FOLD collapses a log row to its path; OPEN restores its ordinary packet projection, including any preview bound ({§body-projection}). The canonical full body remains available through READ of the log URI. Non-destructive: rows and bodies persist. On any valid row, applying its current state again or targeting a bodyless row is a successful visibility no-op; malformed targets and nonexistent exact coordinates still fail at their addressing boundary. Entries carry no visibility ({§no-visibility}), so OPEN/FOLD against an entry scheme returns 501.
+OPEN/FOLD operate on the **log** (`log:///`) - the model's context-curation surface ({§packet}). FOLD collapses a log row to its path; OPEN restores its ordinary packet projection, including any preview bound ({§body-projection}). The canonical full body remains available through READ of the log URI with `<1,-1>`. Non-destructive: rows and bodies persist. On any valid row, applying its current state again or targeting a bodyless row is a successful visibility no-op; malformed targets and nonexistent exact coordinates still fail at their addressing boundary. Entries carry no visibility ({§no-visibility}), so OPEN/FOLD against an entry scheme returns 501.
 
 ### §jsonplurnk The Log's wire format
 
-The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw HEREDOC (`<<:::TAG ... :::TAG`, TAG = the entry's target/log URI), rendered with universal `N:` line prefixes, never as a JSON-escaped string. The carve-out is localized to `body`, so the strip-parser is trivial: after `"body":`, `<<:::TAG` opens and `:::TAG` at column 0 closes; replacing that block with an escaped string recovers strict JSON through `@plurnk/plurnk-contracts`. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":HEREDOC` with it shown. A bounded projection also carries `"overflow":"Body content truncated. Use READ log:///<coordinate>/<op> to view the full body."` whether open or folded. The block is data only - no prose leads the fence. `tokens` is the ruler-weight of the row's ordinary packet body: the room OPEN adds and FOLD saves. A FIND's `itemsTokenTotal` is the ruler-weight of the matched entries themselves: the room READing them takes. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/numbered bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
+The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw HEREDOC (`<<:::TAG ... :::TAG`, TAG = the entry's target/log URI), rendered with universal `N:` line prefixes, never as a JSON-escaped string. The carve-out is localized to `body`, so the strip-parser is trivial: after `"body":`, `<<:::TAG` opens and `:::TAG` at column 0 closes; replacing that block with an escaped string recovers strict JSON through `@plurnk/plurnk-contracts`. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":HEREDOC` with it shown. A bounded projection also carries `"overflow":"Body content truncated. Use READ log:///<coordinate>/<op><1,-1> to view the full body."` whether open or folded. The block is data only - no prose leads the fence. `tokens` is the ruler-weight of the row's ordinary packet body: the room OPEN adds and FOLD saves. A FIND's `itemsTokenTotal` weighs the complete matched set; `returnedItemsTokenTotal` weighs the returned page. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/numbered bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
 
 §jsonplurnk-dynamic-fence The opening fence length is **dynamic**: one backtick longer than the longest backtick run in the rendered entries (floor 3). A body can carry arbitrary content — a READ of a doc whose own text opens a column-0 triple-backtick fence — which a fixed opener would let close the block early; a dynamic opener can never be closed by its own body content (CommonMark closes a fence only on a line of at least its own length), independent of the `N:` numbering that incidentally keeps text bodies off column 0.
 
@@ -1237,7 +1239,7 @@ The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of en
 §model-entry-log-curation A `model` log row is the model's **verbatim admitted emission**, mirrored back so it can inspect and curate its own behavior. Actionless, like an `op='error'` row ({§operation-results}): no target, no op executed; `tx` is empty and the emission lives in `rx.content`, typed `text/vnd.plurnk`. **Always born FOLDED** (budget-neutral), line-numbered like all content, and OPEN/FOLD/KILL-able like any log row. Log-KILL clears the `writableBy` gate for the model (the DB-storage curation lever plurnk.md teaches; Log's handler surface — kill only — keeps every other mutating op at 501). The engine writes one after each admitted model turn. Rejected attempts never create model rows.
 
 - §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional** — a coordinate is `loop/turn/sequence`, and a PARTIAL coordinate selects its descendants: `log:///1` = loop 1's rows, `log:///1/2` = turn 1/2's rows, `log:///1/2/3` = the one row. A full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix — the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with `READ(worker:///docs/)`. Rendered row paths append `/OP` as optional self-documentation, not a fourth resource level: `log:///1/2/*` selects the turn's item rows, while `log:///**/READ` may deliberately filter that decoration.
-- §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — OPEN/FOLD/KILL take a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}) exactly as `READ(worker:///docs/)` fans out a folder: `FOLD(log:///1/2)` folds turn 1/2's rows. A **well-formed glob that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`. 400 remains for a malformed target only (no coordinate, no glob, no slash).
+- §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — OPEN/FOLD/KILL take a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}), like a folder-scoped FIND: `FOLD(log:///1/2)` folds turn 1/2's rows. A **well-formed glob that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`. 400 remains for a malformed target only (no coordinate, no glob, no slash).
 - §log-region-tagging **Named region tagging: FOLD applies, OPEN/FIND filter** — the log's write-op is **FOLD**, because EDIT can't reach engine-written rows (the OP×resource matrix): `FOLD[tag](region)` folds the region AND stamps the tag on it, additively ({§edit-tags-additive}), via `log_tags` (CASCADE-erased with the row on KILL). The read-ops filter: `OPEN[tag]` and `FIND[tag]` select rows carrying EVERY listed tag ({§find-tag-filter-and-semantics}) — a **targetless** `OPEN[tag]` recalls the whole tagged working-set across the worker, a scoped one filters within its glob; an unknown tag matches nothing (204, no-op success). `[tag]`-applies-on-the-write-op / `[tag]`-filters-on-the-read-ops is the same split entries already use (EDIT vs FIND); FOLD merely stands in for EDIT because the log is not an entry scheme. A fork carries a row's tags with its fold-state ({§machine-processes-fork-copies-the-log}). The model curates named working-sets of its own memory: file-away-under-a-name, recall-by-name.
 - §log-curation-set-selection **Set selection, never positional curation** — target/glob, optional body matcher, and (for OPEN) tag filters compose into the affected row set. FOLD's tags apply after selection. OPEN and FOLD have no `<L>` marker and never paginate that set; FIND owns result pagination.
 
@@ -1313,27 +1315,32 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 
 AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal: tags | null, lineMarker? }`.
 
-- §find-scope-prefix-filter Filters entries within scope. A **bare** path is the exact entry; an explicit **shell glob**, classified once by {§path-glob}, expands to a scope. Path globs use segment semantics: `*` and `?` never cross `/`; `**` does. Terminal `*` and `**` are structural catalog selectors and include dot-prefixed entries, so a complete map does not hide `.env.defaults` or `.github`; richer patterns retain native shell behavior. SQLite prefix queries may reduce the candidate set but never decide the match. A trailing slash is a recursive folder scope only for a scheme whose manifest declares `folderScopes: true`; otherwise it is ordinary resource syntax and READ dispatches it directly. This is an explicit plugin contract, never inferred from URL punctuation: new schemes cannot accidentally turn a root resource into unbounded fan-out. For declared folder schemes the same target contract governs FIND and READ - bare = the entry, folder/glob = a scope.
+- §find-scope-prefix-filter Filters entries within scope. A **bare** path is the exact entry; an explicit **shell glob**, classified once by {§path-glob}, expands to a scope. Path globs use segment semantics: `*` and `?` never cross `/`; `**` does. Terminal `*` and `**` are structural catalog selectors and include dot-prefixed entries, so a complete map does not hide `.env.defaults` or `.github`; richer patterns retain native shell behavior. SQLite prefix queries may reduce the candidate set but never decide the match. A trailing slash is a recursive FIND scope only for a scheme whose manifest declares `folderScopes: true`; otherwise it is ordinary resource syntax. This is an explicit plugin contract, never inferred from URL punctuation.
 - An exact target resolves to the same canonical `(scheme, pathname)` identity
   as READ, entry CRUD, and any preceding `prepareFind()`. URI authorities are
   identity-bearing: `https://example.com/page` queries
   `(https, /example.com/page)`, never `(https, /page)`.
 - §find-glob-filter-on-content `body` matcher operates on entry content (glob/regex/jsonpath/xpath), per `plurnk.md` "Pattern Filtering"; the path-glob lives in the (target), not the body.
-- §find-semantic-default-top-k Every matcher operates only over the candidate set selected by `(target)` and `[tags]`; relation matchers do not bypass that selection. Semantic ranking is exhaustive within that candidate set, then applies the ordinary FIND result scope - never rank the wider corpus and discard out-of-scope hits afterward, which changes ranking meaning and leaks entries across an exact target. A semantic matcher with no `<scope>` returns the configured `PLURNK_SERVICE_SEMANTIC_TOP_K` highest-ranked results. Otherwise integers retain FIND's positional contract: `<N>` selects result N and `<N,M>` selects the inclusive range. A leading decimal first applies a minimum cosine-similarity threshold; following integers select positions within that ranked threshold set. Thus `<0.7,10,20>` means threshold 0.7 followed by results 10 through 20, while positions 1 through K use the ordinary `<1,K>` range. The FIND render budget remains independent of semantic ranking.
+- §find-semantic-selection Every matcher operates only over the candidate set selected by `(target)` and `[tags]`; relation matchers do not bypass that selection. Semantic ranking is exhaustive within that candidate set, then applies the ordinary FIND result scope. Markerless semantic FIND therefore uses the same `<1,16>` default as every other matcher. Integers retain FIND's positional contract: `<N>` selects result N and `<N,M>` selects the inclusive range. A leading decimal first applies a minimum cosine-similarity threshold; following integers select positions within that ranked threshold set. Thus `<0.7,10,20>` means threshold 0.7 followed by results 10 through 20, while `<0.7>` applies the threshold and the ordinary first-16 page. The independent FIND render budget remains authoritative.
 - §find-tag-filter-and-semantics `signal` is a tag filter; entries match if they have ALL listed tags.
 - §find-scoped-isolation Workspace + scheme scoped — no cross-workspace/cross-scheme leakage.
 - §find-result-catalog-rows Returns
-  `FindResult { status, content, mimetype, results, matches, pathnames }`. A
+  `FindResult { status, content, mimetype, results, matches, pathnames,
+  range, itemsTokenTotal, returnedItemsTokenTotal }`. A
   **body-less** FIND is the **catalog**. Ordinary rows are one per resource:
   `{ path, stream?, tags?, channels: { <uri>: { mimetype, tokens, lines } } }`.
   A terminal single-star path scope is a one-level map: direct entries retain
   that shape, while deeper first-segment directories collapse to
   `{ path: "dir/**", items, tokens }`, where the selector and both aggregates
   describe the exact recursive subtree. Scope summaries are navigation
-  metadata, not resources or hidden READ fan-out matches. A matcher FIND
+  metadata, not resources. A matcher FIND
   retains the same one-row-per-resource unit and adds
-  `matches: MatchEvidence[]` ({§matcher-selection-signal}). FIND pagination
-  counts selected resources, never occurrences. Resource order is rank for
+  `matches: MatchEvidence[]` ({§matcher-selection-signal}). Markerless FIND
+  returns results 1–16; `<1,-1>` explicitly selects all. `range` reports the
+  requested, available, returned, continuation, completion, and all-results
+  facts. `itemsTokenTotal` weighs the complete matched set while
+  `returnedItemsTokenTotal` weighs the returned page. FIND pagination counts
+  selected resources, never occurrences. Resource order is rank for
   `~`semantic and candidate order otherwise; evidence retains dialect order
   and exact duplicates deduplicate. `content` is one valid compact JSON array
   with exactly one top-level item per physical line: objects carry no
@@ -2267,13 +2274,13 @@ media type, and projection identity remain explicit auxiliary evidence. A
 normal
 `READ(https://host/path?query)` therefore publishes only the sanitized body
 under that exact URL—never raw HTML, response headers, or a channel-selection
-lesson. FIND, matcher READ, and embeddings consume the same stored readable
+lesson. FIND and embeddings consume the same stored readable
 projection and never re-fetch each match. Because the search family is in
 `PLURNK_SERVICE_EXEC_HOLD`, the cycle holds until acquisition concludes
 ({§exec-hold-until-concluded}), so the next packet contains final
 materialization verdicts and folded ambient rows for every acquired page.
 
-§search-gate Coverage protects the composition at distinct seams: HTTP unit tests pin fragmentless-body publication and explicit auxiliary selection; integration tests pin search→materialize→FIND/matcher READ and persistence/publication separation. Model web demos run the live composition end to end — real SearXNG, real pages; stubbed acquisition is confined to unit and integration seams and never appears in a demo. A live positive-control demo requires a materialized HTTPS body and a substantive answer from a real sanitized page. Live discovery demos remain diagnostic and may expose model judgment failures without weakening these assertions. **The search gates** are rail-family accounting — in-memory per-loop state cleaned at the same seam as strikes, restart-drop accepted (a post-restart duplicate re-fetches; the TTL makes it cheap): an IDENTICAL duplicate (same runtime + command in one loop) **strikes and serves** — status 409 (the strike rail counts the turn failure) carrying the prior ranked digest re-read live from the original exec entry, no re-fetch, no provenance prose; the per-turn CAP (`PLURNK_SERVICE_SEARCH_MAX_PER_TURN`) is flood control — 429 with a legible steer, nothing served.
+§search-gate Coverage protects the composition at distinct seams: HTTP unit tests pin fragmentless-body publication and explicit auxiliary selection; integration tests pin search→materialize→FIND and persistence/publication separation. Model web demos run the live composition end to end — real SearXNG, real pages; stubbed acquisition is confined to unit and integration seams and never appears in a demo. A live positive-control demo requires a materialized HTTPS body and a substantive answer from a real sanitized page. Live discovery demos remain diagnostic and may expose model judgment failures without weakening these assertions. **The search gates** are rail-family accounting — in-memory per-loop state cleaned at the same seam as strikes, restart-drop accepted (a post-restart duplicate re-fetches; the TTL makes it cheap): an IDENTICAL duplicate (same runtime + command in one loop) **strikes and serves** — status 409 (the strike rail counts the turn failure) carrying the prior ranked digest re-read live from the original exec entry, no re-fetch, no provenance prose; the per-turn CAP (`PLURNK_SERVICE_SEARCH_MAX_PER_TURN`) is flood control — 429 with a legible steer, nothing served.
 
 **Git is the substrate and the repository is the boundary:**
 
@@ -2680,7 +2687,7 @@ evidence when a downstream standard cannot represent the complete list.
 | every other nonempty body | head bounded independently by `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS` |
 | bodyless row | `"display":"none","body":""` |
 
-The exemption is provenance plus operation, not the overloaded operation label: an engine-pushed stream delta shaped as READ remains bounded. Prompts, model mirrors, PLAN/SEND/WORK/FORK bodies, EXEC commands, mutation receipts, ambient deltas, and extension-produced bodies cannot create a second preview policy. A bounded row carries the exact `overflow` message defined by {§jsonplurnk} and names its own `log:///` address. `READ(log:///<coordinate>/<op>)` returns the canonical full body and then applies the authored matcher/range; `FIND(log:///...)` and search match that same full body. FOLD hides the ordinary projection, and OPEN restores it without bypassing the bound. System/policy sections are not log bodies. Notices are transient non-log observations; they share the line/character bounds but have no durable body or recovery URI.
+The exemption is provenance plus operation, not the overloaded operation label: an engine-pushed stream delta shaped as READ remains bounded. Prompts, model mirrors, PLAN/SEND/WORK/FORK bodies, EXEC commands, mutation receipts, ambient deltas, and extension-produced bodies cannot create a second preview policy. A bounded row carries the exact `overflow` message defined by {§jsonplurnk} and names its own `log:///` address. `READ(log:///<coordinate>/<op>)` applies its default or explicit text range to the canonical body; `FIND(log:///...)` and search match that same full body. FOLD hides the ordinary projection, and OPEN restores it without bypassing the bound. System/policy sections are not log bodies. Notices are transient non-log observations; they share the line/character bounds but have no durable body or recovery URI.
 
 §prompt-entry **Prompt as a first-class entry and log row.** Each prompt is stored once at `prompt:///<loop>/<N>` as an owner-keyed text/markdown entry, then published to its turn as one actionless lowercase `prompt` log row. No synthetic EDIT or READ operation is invented. The row is born OPEN and obeys {§body-projection}. The **User Prompts** section closes the user-slot status clump as a paths-only list (`* prompt:///<loop>/<N>`), so every frame remains directly READable even after its log row is folded or killed.
 
@@ -2906,9 +2913,7 @@ window.** Every dialect answers whether a resource matches and may return
 `MatchEvidence { path?, region? }` ({§matcher-selection-signal}). `path` is a
 canonical structural locator. `region` is a complete `TextRegion` in the exact
 text the model can READ and may be exact or the smallest honest enclosing
-region. A matcher miss is 204. FIND lists a selected resource
-once; READ returns it once, complete unless the authored READ supplied a text
-scope.
+region. A matcher miss is 204. FIND lists each selected resource once.
 
 | Dialect | Selects | Natural use |
 |---|---|---|
@@ -2919,15 +2924,11 @@ scope.
 | `~`semantic `~q` | resources ranked by indexed chunks | chunk text region when available |
 | `@`graph `@<sym` | resources with matching symbol relations | symbol text region when available |
 
-§read-multi-file-fanout **READ uses the FIND contract as a selector, not as a visible intermediate operation.** A READ over a glob, folder, relation matcher, or acquisition-scheme matcher writes one READ log row per selected resource. It does not write a synthetic FIND row. Every matcher delivery carries all of that resource's match evidence. A body-less folder/glob uses the same resource unit. An exact stored-resource content matcher may resolve directly with the same visible contract, preserving content-level outcomes such as the 203 raw-source fallback. A bare body-less entry remains one direct READ. Zero selections write one 204 row. If selection exceeds {§find-count-not-contents}, READ writes one 413 refusal and no hidden deliveries. Fan-out checks cancellation between resources.
-
-**Selection and projection are ordered and independent.** The matcher evaluates
-the complete readable candidate. The READ marker then projects text from each
-selected resource. Match evidence is never an implicit projection: it gives the
-model enough information to author a surgical follow-up READ without the engine
-guessing which occurrence or context window it wants. A locator-only or
-coordinate-less valid result still selects the resource; the service never
-fabricates coordinates. {§read-selection-projection}
+Match evidence is navigation evidence, never an implicit projection. The model
+uses FIND to select and page resources, then emits explicit exact READs—parallel
+in one turn when useful—to retrieve the chosen bodies or regions. A locator-only
+or coordinate-less valid result still selects the resource; the service never
+fabricates coordinates. {§read-exact-target} {§read-selection-projection}
 
 ### §text-scope-runtime Text-scope runtime projection
 

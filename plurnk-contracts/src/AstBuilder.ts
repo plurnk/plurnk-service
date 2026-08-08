@@ -138,9 +138,8 @@ export default class AstBuilder {
         throw new Error("clientStatement context has no recognized alternative");
     }
 
-    // LOOK / BUFF are read-shaped — identical extraction to READ (tag slots + matcher body). The
-    // op discriminant is the only difference; the buffer/round-trip/write-back lifecycle is the
-    // client runtime's, not the grammar's.
+    // LOOK / BUFF are client-tier matcher observations. They share the tag slots
+    // but deliberately retain matcher bodies that exact-target READ forbids.
     static #buildLook(ctx: LookStatementContext): LookStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
@@ -171,15 +170,16 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
-        if (raw !== null && raw.trim() !== "") {
-            return {
-                op: "FIND",
-                suffix: AstBuilder.#splitSuffix(ctx.OPEN_READ().getText(), "READ"),
-                ...slots,
-                body: AstBuilder.#parseMatcherBody(raw, position),
-                position,
-                coercedFromRead: true,
-            } as unknown as ReadStatement;
+        const targetPath = slots.target?.kind === "url"
+            ? slots.target.pathname
+            : slots.target?.raw;
+        if ((raw !== null && raw.trim() !== "") || (targetPath !== undefined && PathSyntax.hasGlob(targetPath))) {
+            throw new PlurnkParseError(
+                position.line,
+                position.column,
+                "visitor",
+                "READ requires one exact target with an empty body; use FIND for path globs or content matchers",
+            );
         }
         return {
             op: "READ",

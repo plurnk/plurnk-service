@@ -1,4 +1,4 @@
-// {§find-semantic-default-top-k} semantic search end-to-end with the real embedding model
+// {§find-semantic-selection} semantic search end-to-end with the real embedding model
 // (all-MiniLM-L6-v2 via @plurnk/plurnk-mimetypes-embeddings). Runs in test:intg —
 // semantics is NORMAL integration coverage, not a special live-only track; the
 // model load is an accepted cost. The test builds its OWN embeddings-enabled
@@ -120,7 +120,7 @@ test("{§derivation-dedup-parallel} multi-resource warming reports aggregate pro
     } finally { db.close(); }
 });
 
-test("{§find-semantic-default-top-k}: a decimal threshold composes with FIND result positions", async () => {
+test("{§find-semantic-selection}: a decimal threshold composes with FIND result positions", async () => {
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     const db = await openMigrated();

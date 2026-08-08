@@ -1,5 +1,5 @@
-// {§exact-target-read} and {§orthogonal-find-matcher}: FIND locates resources via globs/matchers,
-// while READ retrieves content for exact targets.
+// {§read-exact-target} and {§matcher-result-resource-selection}: FIND locates
+// resources via globs or matchers; READ retrieves one exact target.
 
 import test from "node:test";
 import assert from "node:assert/strict";

@@ -121,9 +121,9 @@ killStatement : OPEN_KILL intOpModifiers? COLON? body? CLOSE_TAG ;
 // tolerance. {§plan-intended-goals}
 planStatement : OPEN_PLAN tagOpModifiers? COLON? body? CLOSE_TAG ;
 
-// LOOK / BUFF — client-tier utility ops, read-shaped (identical signature to readStatement:
-// tag-CSV + target + lineMarker permutation, matcher body). LOOK is READ minus logging; BUFF
-// pulls an editable entry into a buffer (the write-back is a later plain EDIT, not part of BUFF).
+// LOOK / BUFF — client-tier utility ops with tag, target, scope, and matcher
+// slots. LOOK observes client-visible matches; BUFF pulls an editable entry into
+// a buffer (the write-back is a later plain EDIT, not part of BUFF).
 lookStatement : OPEN_LOOK tagOpModifiers? COLON? body? CLOSE_TAG ;
 buffStatement : OPEN_BUFF tagOpModifiers? COLON? body? CLOSE_TAG ;
 

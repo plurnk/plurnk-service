@@ -15,6 +15,15 @@ test("LineMarkerOps exposes universal line and exact text selection", () => {
                 endLine: 2,
                 endColumn: 5,
             },
+            range: {
+                unit: "line",
+                requested: { first: 2, last: null },
+                available: { first: 1, last: 2, total: 2 },
+                returned: { first: 2, last: 2, total: 1 },
+                complete: false,
+                next: null,
+                all: { first: 1, last: -1 },
+            },
         },
     );
     assert.deepEqual(
@@ -43,6 +52,18 @@ test("LineMarkerOps applies exact text edits without structural JSON dispatch", 
 test("LineMarkerOps pages ordered result catalogs independently of text scope", () => {
     assert.deepEqual(
         LineMarkerOps.page(["a", "b", "c"], { marks: [2, 3] }),
-        { status: 200, items: ["b", "c"] },
+        {
+            status: 200,
+            items: ["b", "c"],
+            range: {
+                unit: "result",
+                requested: { first: 2, last: 3 },
+                available: { first: 1, last: 3, total: 3 },
+                returned: { first: 2, last: 3, total: 2 },
+                complete: false,
+                next: null,
+                all: { first: 1, last: -1 },
+            },
+        },
     );
 });

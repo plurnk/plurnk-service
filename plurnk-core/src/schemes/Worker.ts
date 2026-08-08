@@ -355,7 +355,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         const authority = Worker.#authority(statement.target);
         if (authority === null) {
             return Results.failure("scheme:worker", "worker-target-required", 400, "FIND requires a worker:// target.", {
-                content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [],
+                content: null, mimetype: null, results: [], itemsTokenTotal: 0, returnedItemsTokenTotal: 0, pathnames: [], matches: [],
             }, {
                 recovery: "Provide the worker target.",
                 retryable: false,
@@ -364,7 +364,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         const resolved = await Worker.#resolveAuthority(authority, core);
         if (resolved === null) {
             return Results.failure("scheme:worker", "worker-not-found", 404, `Worker '${authority}' does not exist in this workspace.`, {
-                content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [],
+                content: null, mimetype: null, results: [], itemsTokenTotal: 0, returnedItemsTokenTotal: 0, pathnames: [], matches: [],
             }, {
                 worker: authority,
                 retryable: false,

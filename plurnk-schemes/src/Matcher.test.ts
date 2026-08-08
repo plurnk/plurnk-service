@@ -31,7 +31,7 @@ const at = (line: number, startColumn = 1, endColumn = 2) => [{
     endColumn,
 }];
 
-// {§matcher-dispatch} The matcher SELECTS a line; READ returns that line's
+// {§matcher-dispatch} The matcher SELECTS a line; FIND returns that line's
 // CONTENT, not the matched token.
 const doc = [
     "# Title",          // 1

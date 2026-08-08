@@ -1,10 +1,7 @@
-// {§matcher-result-resource-selection}, {§read-multi-file-fanout}. The uniform
-// matcher contract end-to-end through the engine. A matcher selects
-// resources; FIND lists each resource with match coordinates, while READ
-// returns one whole/scoped body per resource with the same evidence.
-//
-// These exercise the real dispatch path (engine.dispatch -> #handleReadFanout / scheme.find),
-// not the scheme methods in isolation. Real Mimetypes so
+// {§matcher-result-resource-selection}, {§read-exact-target}. FIND selects
+// resources and reports match coordinates; exact READ projects text from one
+// selected resource. These exercise the real dispatch path, not scheme methods
+// in isolation. Real Mimetypes so
 // jsonpath/xpath/semantic resolve; SearchIndex.maintain makes @graph + embeddings query-ready.
 
 import test from "node:test";
@@ -19,7 +16,7 @@ import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 
-// A ~semantic READ-honors-FIND case asserts real vector ranking — re-enable the embedder the
+// Semantic FIND asserts real vector ranking, so re-enable the embedder that the
 // Mock bootstrap turns off; --test-isolation scopes this to this file.
 process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
@@ -79,7 +76,7 @@ const dispatchRows = async (
     return { result, rows };
 };
 
-// --- READ honors FIND: one row per resource, coordinates as evidence ----------
+// --- FIND selection and navigation evidence ----------------------------------
 
 // --- FIND locates resources across globs and matchers ----------
 
@@ -340,21 +337,5 @@ test("body-less FIND is the catalog without match metadata", async () => {
         const r = await new Worker().find(parseOp<FindStatement>("<<FIND(worker:///**)::FIND", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.results.length, 2, "two entries → two catalog rows");
         assert.ok(r.results.every((x) => x.matches === undefined));
-    } finally { await db.close(); }
-});
-
-test("READ with matcher body (including path globs) coerces cleanly to FIND and dispatches end-to-end", async () => {
-    const { db, workspaceId, workerId, ctx } = await setup();
-    try {
-        await seedRaw(ctx, "src/app.js", "const token = 'SECRET';\n// TODO: clean up\n");
-        await seedRaw(ctx, "src/helper.js", "// TODO: implement helper\n");
-        await seedRaw(ctx, "README.md", "Docs with no todo\n");
-
-        const parsed = parseOp<FindStatement>("<<READ(worker:///src/**):*TODO*:READ", "FIND");
-        assert.equal(parsed.op, "FIND");
-        assert.equal(parsed.body?.dialect, "glob");
-        const r = await new Worker().find(parsed, ctx);
-        assert.equal(r.status, 200);
-        assert.equal(r.results.length, 2);
     } finally { await db.close(); }
 });

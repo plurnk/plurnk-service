@@ -125,6 +125,7 @@ test("a graph matcher selecting no resources returns 204", async () => {
             mimetype: null,
             results: [],
             itemsTokenTotal: 0,
+            returnedItemsTokenTotal: 0,
             pathnames: [],
             matches: [],
         });

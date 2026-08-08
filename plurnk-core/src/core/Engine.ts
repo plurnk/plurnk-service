@@ -1090,9 +1090,12 @@ export default class Engine {
                     const isFile = scheme === "file";
                     const pattern = this.#schemes.manifestFor(scheme)?.folderScopes === true ? "*" : "**";
                     // Only the file map takes PLURNK_SERVICE_FILES_ITEMS as a first-N cap;
-                    // other schemes always render their complete one-level map. An empty file
-                    // survey has no range: `<1,0>` would turn useful orientation into an error.
+                    // other system-authored surveys explicitly request all results rather than
+                    // relying on the markerless model default.
                     const cap = isFile && filesItems > 0 && shallowItems > 0 ? Math.min(filesItems, shallowItems) : null;
+                    const catalogMarker = cap === null
+                        ? { marks: [1, -1] as [number, number] }
+                        : { marks: [1, cap] as [number, number] };
                     // The file survey foists as the BARE relative glob — the path shape plurnk.md
                     // teaches (`*`, `src/**`, `**/notes.md`; bare = project-relative) — so the turn-0
                     // exemplar and the log rows the model reads never train a leading-slash or
@@ -1108,7 +1111,7 @@ export default class Engine {
                             query: null, fragment: null,
                         },
                         body: null,
-                        lineMarker: cap === null ? null : { marks: [1, cap] },
+                        lineMarker: catalogMarker,
                         position: UNKNOWN_POSITION,
                     };
                     await this.dispatch({
@@ -1118,7 +1121,7 @@ export default class Engine {
                     nextActionIndex++;
                     // {§model-entry} — the same FIND, rendered back to DSL for the turn-0 echo (the model's
                     // own survey, mirrored OPEN). The <L> cap rides as `<1,N>`, exactly as the model would type it.
-                    turnZeroMoves.push(`<<FIND(${isFile ? pattern : `${scheme}:///${pattern}`})${cap === null ? "" : `<1,${cap}>`}::FIND`);
+                    turnZeroMoves.push(`<<FIND(${isFile ? pattern : `${scheme}:///${pattern}`})<1,${cap ?? -1}>::FIND`);
                 }
                 // The kernel's self-documenting surface — FIND(worker://plurnk/docs/**), uncapped,
                 // always ({§schemes-directory}, published under {§entry-owner}).
@@ -1126,22 +1129,22 @@ export default class Engine {
                 const kernelDocsFind: FindStatement = {
                     op: "FIND", suffix: "", signal: null,
                     target: { kind: "url", raw: "worker://plurnk/docs/**", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/docs/**", query: null, fragment: null },
-                    body: null, lineMarker: null, position: UNKNOWN_POSITION,
+                    body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                 };
                 await this.dispatch({ statement: kernelDocsFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                 nextActionIndex++;
-                turnZeroMoves.push("<<FIND(worker://plurnk/docs/**)::FIND");
+                turnZeroMoves.push("<<FIND(worker://plurnk/docs/**)<1,-1>::FIND");
                 // {§worker-scheme} — the building worker's own scratch gets the same complete
                 // one-level map in its perspective alone. It always executes: an empty private
                 // space is useful orientation, not grounds to hide the surface.
                 const ownFind: FindStatement = {
                     op: "FIND", suffix: "", signal: null,
                     target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", query: null, fragment: null },
-                    body: null, lineMarker: null, position: UNKNOWN_POSITION,
+                    body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                 };
                 await this.dispatch({ statement: ownFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                 nextActionIndex++;
-                turnZeroMoves.push("<<FIND(worker://~/*)::FIND");  // {§model-entry} — the own-space survey, into the turn-0 echo
+                turnZeroMoves.push("<<FIND(worker://~/*)<1,-1>::FIND");  // {§model-entry} — the own-space survey, into the turn-0 echo
             }
             // {§model-entry} — mirror the model's turn-0 OPEN at sequence 1: PLAN → the FINDs actually
             // foisted above (real, their results already in the log) → SEND[102]. Dynamic — it reflects

@@ -108,7 +108,7 @@ test("a single-star path glob lists one level with actionable recursive folder s
         assert.ok(src !== undefined && "items" in src, "the directory is a scope summary, not a fake entry");
         assert.equal(src.items, 3, "the summary counts every descendant recursively, including dot entries");
         assert.ok((src.tokens ?? 0) > 0, "the summary reports the recursive subtree's READ weight");
-        assert.deepEqual(root.matches.map((match) => match.pathname), ["/.env.defaults", "/README.md"], "folder summaries never become hidden READ fan-out matches");
+        assert.deepEqual(root.matches.map((match) => match.pathname), ["/.env.defaults", "/README.md"], "folder summaries never become resource matches");
 
         const drilled = await worker.find(findStmt(url("src/*")), ctx);
         assert.deepEqual(drilled.results.map((item) => item.path), [
@@ -332,6 +332,33 @@ test("Worker.find with <L> paginates results", async () => {
     } finally { db.close(); }
 });
 
+test("Worker.find markerless selection returns the first 16 with complete selection facts", async () => {
+    const { db, workspaceId, workerId } = await setup();
+    try {
+        const entries = Array.from({ length: 20 }, (_, index): [string, string] => [
+            `entry-${String(index + 1).padStart(2, "0")}`,
+            `content ${index + 1}`,
+        ]);
+        await seedEntries(db, workspaceId, workerId, entries);
+        const worker = new Worker();
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 });
+        const bounded = await worker.find(findStmt(url("")), ctx);
+        assert.equal(bounded.results.length, 16);
+        assert.equal(bounded.range?.available.total, 20);
+        assert.equal(bounded.range?.returned?.total, 16);
+        assert.deepEqual(bounded.range?.next, { first: 17, last: 20 });
+        assert.ok(bounded.itemsTokenTotal > bounded.returnedItemsTokenTotal);
+
+        const all = await worker.find(
+            { ...findStmt(url("")), lineMarker: { marks: [1, -1] } },
+            ctx,
+        );
+        assert.equal(all.results.length, 20);
+        assert.equal(all.range?.complete, true);
+        assert.equal(all.itemsTokenTotal, all.returnedItemsTokenTotal);
+    } finally { db.close(); }
+});
+
 test("Worker.find with no matches returns an empty 204 result", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
@@ -343,6 +370,7 @@ test("Worker.find with no matches returns an empty 204 result", async () => {
             mimetype: null,
             results: [],
             itemsTokenTotal: 0,
+            returnedItemsTokenTotal: 0,
             pathnames: [],
             matches: [],
         });

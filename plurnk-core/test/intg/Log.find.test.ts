@@ -3,7 +3,7 @@
 // `FIND(log:///**):/engine/i` six times — a canon-documented gesture — and got a
 // bare 501 from the one scheme that sat outside the universal paradigm. These pin the uniform
 // contract through the REAL dispatch: FIND(log) with content dialects, the hierarchy as scope, and
-// the FIND→READ fan-out composition.
+// exact FIND→READ navigation.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -66,6 +66,38 @@ test("a body-less FIND(log:///1/1) lists the turn's rows — the hierarchy is th
         assert.equal(r.content!.split("\n").length, r.results.length, "log FIND uses the same one-item-per-line rendering as entry FIND");
         assert.ok(r.results.every((x) => /^log:\/\/\/1\/1\/\d+\//.test(x.path)), "each item keyed log:///loop/turn/seq/OP");
         assert.ok(r.results.every((x) => x.channels !== undefined && Object.values(x.channels)[0]!.tokens >= 0), "each carries {mimetype, tokens, lines} — the model budgets its READs");
+    } finally { await db.close(); }
+});
+
+test("markerless log FIND returns the first 16 rows with complete selection facts", async () => {
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        for (let sequence = 4; sequence <= 20; sequence++) {
+            await engine.dispatch({
+                statement: editStmt(`/entry-${sequence}.md`, `row ${sequence}`),
+                workspaceId,
+                workerId,
+                loopId,
+                turnId,
+                sequence,
+                origin: "model",
+            });
+        }
+        const log = new Log();
+        const ctx = makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const bounded = await log.find(findStmt(urlPath("log", "/1/1")), ctx);
+        assert.equal(bounded.results.length, 16);
+        assert.equal(bounded.range?.available.total, 20);
+        assert.deepEqual(bounded.range?.next, { first: 17, last: 20 });
+        assert.ok(bounded.itemsTokenTotal > bounded.returnedItemsTokenTotal);
+
+        const all = await log.find({
+            ...findStmt(urlPath("log", "/1/1")),
+            lineMarker: { marks: [1, -1] },
+        }, ctx);
+        assert.equal(all.results.length, 20);
+        assert.equal(all.range?.complete, true);
+        assert.equal(all.itemsTokenTotal, all.returnedItemsTokenTotal);
     } finally { await db.close(); }
 });
 
@@ -149,7 +181,7 @@ test("FIND(log:///**):/pattern/ — FIND locates matching log entries", async ()
     } finally { await db.close(); }
 });
 
-test("READ(log://) returns a composed row's complete canonical body", async () => {
+test("READ(log://)<1,-1> returns a composed row's complete canonical body", async () => {
     const { db, workerId, loopId, turnId } = await setup();
     try {
         const full = Array.from({ length: 30 }, (_, i) => `plan line ${i + 1}`).join("\n");
@@ -184,7 +216,7 @@ test("READ(log://) returns a composed row's complete canonical body", async () =
         });
 
         const result = await new Log().read(
-            readStmt(urlPath("log", "/1/1/4/PLAN")),
+            { ...readStmt(urlPath("log", "/1/1/4/PLAN")), lineMarker: { marks: [1, -1] } },
             makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 200);

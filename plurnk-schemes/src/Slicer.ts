@@ -41,6 +41,10 @@ export interface RangeExtent {
     readonly unit: RangeUnit;
     readonly requested: { readonly first: number; readonly last: number | null };
     readonly available: { readonly first: number | null; readonly last: number | null; readonly total: number };
+    readonly returned?: { readonly first: number | null; readonly last: number | null; readonly total: number };
+    readonly complete?: boolean;
+    readonly next?: { readonly first: number; readonly last: number } | null;
+    readonly all?: { readonly first: 1; readonly last: -1 };
 }
 export interface SliceResult extends SchemeResult {
     text?: string;
@@ -115,6 +119,30 @@ export default class Slicer {
                 last: total === 0 ? null : total,
                 total,
             },
+        };
+    }
+
+    static #projectedExtent(
+        extent: RangeExtent,
+        first: number | null,
+        last: number | null,
+    ): RangeExtent {
+        const returnedTotal = first === null || last === null ? 0 : last - first + 1;
+        const availableTotal = extent.available.total;
+        const complete = availableTotal === 0
+            || (first === 1 && last === availableTotal);
+        const next = last !== null && last < availableTotal
+            ? {
+                first: last + 1,
+                last: Math.min(availableTotal, last + Math.max(returnedTotal, 1)),
+            }
+            : null;
+        return {
+            ...extent,
+            returned: { first, last, total: returnedTotal },
+            complete,
+            next,
+            all: { first: 1, last: -1 },
         };
     }
 
@@ -284,7 +312,9 @@ export default class Slicer {
         // entry would 416. start>end here yields an empty slice for READ and a
         // full replacement for EDIT.
         if (totalLines === 0) {
-            if ((first === 0 || first === 1) && last === -1) return { kind: "range", start: 1, end: 0 };
+            if ((first === 0 || first === 1) && (last === -1 || last > 0)) {
+                return { kind: "range", start: 1, end: 0 };
+            }
             return { error: `Range ${first},${last} cannot select from empty content.` };
         }
         let n = first;
@@ -346,13 +376,27 @@ export default class Slicer {
         if ("error" in norm) {
             return Slicer.#rangeFailure(norm.error, Slicer.#extent(marker, lines.length, "line"));
         }
-        if (norm.kind !== "range") return { status: 200, text: "", startLine: undefined };
+        const extent = Slicer.#extent(marker, lines.length, "line");
+        if (norm.kind !== "range") {
+            return {
+                status: 200,
+                text: "",
+                startLine: undefined,
+                range: Slicer.#projectedExtent(extent, null, null),
+            };
+        }
         if (lines.length === 0) {
             const region = TextCoordinates.regionFromOffsets(content, 0, 0);
             if (region === null) {
                 throw new Error("Slicer could not address an empty text resource.");
             }
-            return { status: 200, text: "", startLine: 1, region };
+            return {
+                status: 200,
+                text: "",
+                startLine: 1,
+                region,
+                range: Slicer.#projectedExtent(extent, null, null),
+            };
         }
         const selected = lines
             .slice(norm.start - 1, norm.end)
@@ -366,6 +410,7 @@ export default class Slicer {
             text: selected.join("\n"),
             startLine: norm.start,
             region,
+            range: Slicer.#projectedExtent(extent, norm.start, norm.end),
         };
     }
 
@@ -398,15 +443,25 @@ export default class Slicer {
             );
         }
         if (last === null) {
-            if (first === 0 || first === -1) return { status: 200, items: [] };
-            if (first > 0 && first <= total) return { status: 200, items: [items[first - 1]] };
+            if (first === 0 || first === -1) {
+                return { status: 200, items: [], range: Slicer.#projectedExtent(extent, null, null) };
+            }
+            if (first > 0 && first <= total) {
+                return {
+                    status: 200,
+                    items: [items[first - 1]],
+                    range: Slicer.#projectedExtent(extent, first, first),
+                };
+            }
             return Slicer.#rangeFailure(
                 `Result ${first} is out of range; available positions are 1..${total}.`,
                 extent,
             );
         }
         if (total === 0) {
-            if ((first === 0 || first === 1) && last === -1) return { status: 200, items: [] };
+            if ((first === 0 || first === 1) && last === -1) {
+                return { status: 200, items: [], range: Slicer.#projectedExtent(extent, null, null) };
+            }
             return Slicer.#rangeFailure(
                 `Result range ${first},${last} cannot select from an empty result set.`,
                 extent,
@@ -426,7 +481,11 @@ export default class Slicer {
             `Result range start ${first} exceeds end ${last}.`,
             extent,
         );
-        return { status: 200, items: items.slice(n - 1, m) };
+        return {
+            status: 200,
+            items: items.slice(n - 1, m),
+            range: Slicer.#projectedExtent(extent, n, m),
+        };
     }
 
     // COPY-style raw slice. Returns the selected source bytes verbatim (no

@@ -13,10 +13,34 @@ const stmt = (over: Partial<ReadStatement>): ReadStatement => ({
 });
 
 test("DefaultRead: no marker defaults to <1,16>", async () => {
-    const r = await DefaultRead.read("hello\nworld", "text/plain", stmt({}), mimetypes);
+    const content = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n");
+    const r = await DefaultRead.read(content, "text/plain", stmt({}), mimetypes);
     assert.equal(r.status, 200);
-    assert.equal(r.body, "hello\nworld");
+    assert.equal(r.body, Array.from({ length: 16 }, (_, index) => `line ${index + 1}`).join("\n"));
     assert.equal(r.startLine, 1);
+    assert.deepEqual(r.range, {
+        unit: "line",
+        requested: { first: 1, last: 16 },
+        available: { first: 1, last: 20, total: 20 },
+        returned: { first: 1, last: 16, total: 16 },
+        complete: false,
+        next: { first: 17, last: 20 },
+        all: { first: 1, last: -1 },
+    });
+});
+
+test("DefaultRead: a complete implicit window preserves source separators", async () => {
+    const r = await DefaultRead.read("hello\n", "text/plain", stmt({}), mimetypes);
+    assert.equal(r.status, 200);
+    assert.equal(r.body, "hello\n");
+    assert.equal(r.range?.complete, true);
+});
+
+test("DefaultRead: an empty resource is a complete empty implicit window", async () => {
+    const r = await DefaultRead.read("", "text/plain", stmt({}), mimetypes);
+    assert.equal(r.status, 204);
+    assert.equal(r.body, "");
+    assert.equal(r.range?.complete, true);
 });
 
 test("DefaultRead: explicit <1,-1> reads the complete blob", async () => {

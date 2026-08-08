@@ -31,7 +31,7 @@ export type PlurnkStatement = (FindStatement | ReadStatement | OpenStatement | F
 
 export type ParsedPath = (LocalPath | UrlPath)
 /**
- * Parsed body of a FIND/READ/OPEN/FOLD statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` semantic, `@` graph, else glob). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
+ * Parsed body of a FIND/OPEN/FOLD statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` semantic, `@` graph, else glob). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
  */
 
 export type MatcherBody = (XPathBody | RegexBody | JsonPathBody | SemanticBody | GraphBody | GlobBody)
@@ -52,7 +52,6 @@ target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
 body: (MatcherBody | null)
 position: Position
-coercedFromRead?: boolean
 }
 /**
  * A bare local path with no `scheme://` prefix. The raw string is stored verbatim; resolution is the runtime's job.

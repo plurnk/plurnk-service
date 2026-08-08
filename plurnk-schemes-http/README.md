@@ -20,7 +20,7 @@ authored against the DB-free
 | `SEND[410](http(s)://…)`          | Delete the local stored response entry                                                    |
 
 A path-pattern FIND surveys already-materialized web entries; it does not crawl
-or discover the remote web. Exact FIND and matcher READ share the standard
+or discover the remote web. Exact FIND shares the standard
 catalog, matcher evidence, weighting, pagination, and status contract.
 
 ## HTTP channels

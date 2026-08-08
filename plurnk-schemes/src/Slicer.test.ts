@@ -4,9 +4,14 @@ import Slicer from "./Slicer.ts";
 
 const TEXT = "alpha\nbeta\ngamma\ndelta\n";
 
+const withoutRange = (result: ReturnType<typeof Slicer.lines>): Omit<ReturnType<typeof Slicer.lines>, "range"> => {
+    const { range: _range, ...selection } = result;
+    return selection;
+};
+
 test("lines selects line shorthand with stable source numbering", () => {
     assert.deepEqual(
-        Slicer.lines(TEXT, { marks: [2] }),
+        withoutRange(Slicer.lines(TEXT, { marks: [2] })),
         {
             status: 200,
             text: "beta",
@@ -20,7 +25,7 @@ test("lines selects line shorthand with stable source numbering", () => {
         },
     );
     assert.deepEqual(
-        Slicer.lines(TEXT, { marks: [2, 3] }),
+        withoutRange(Slicer.lines(TEXT, { marks: [2, 3] })),
         {
             status: 200,
             text: "beta\ngamma",
@@ -34,7 +39,7 @@ test("lines selects line shorthand with stable source numbering", () => {
         },
     );
     assert.deepEqual(
-        Slicer.lines(TEXT, { marks: [1, -1] }),
+        withoutRange(Slicer.lines(TEXT, { marks: [1, -1] })),
         {
             status: 200,
             text: "alpha\nbeta\ngamma\ndelta",
@@ -48,7 +53,7 @@ test("lines selects line shorthand with stable source numbering", () => {
         },
     );
     assert.deepEqual(
-        Slicer.lines("", { marks: [1, -1] }),
+        withoutRange(Slicer.lines("", { marks: [1, -1] })),
         {
             status: 200,
             text: "",
@@ -65,11 +70,11 @@ test("lines selects line shorthand with stable source numbering", () => {
 
 test("lines treats insertion sentinels as empty selections", () => {
     assert.deepEqual(
-        Slicer.lines(TEXT, { marks: [0] }),
+        withoutRange(Slicer.lines(TEXT, { marks: [0] })),
         { status: 200, text: "", startLine: undefined },
     );
     assert.deepEqual(
-        Slicer.lines(TEXT, { marks: [-1] }),
+        withoutRange(Slicer.lines(TEXT, { marks: [-1] })),
         { status: 200, text: "", startLine: undefined },
     );
 });
@@ -84,6 +89,23 @@ test("lines reports the requested and available extent on failure", () => {
     });
     assert.deepEqual(result.problem?.range, result.range);
     assert.equal(result.problem?.retryable, false);
+});
+
+test("a first-page line range selects an empty text resource completely", () => {
+    const result = Slicer.lines("", { marks: [1, 16] });
+    assert.equal(result.status, 200);
+    assert.equal(result.text, "");
+    assert.deepEqual(result.range, {
+        unit: "line",
+        requested: { first: 1, last: 16 },
+        available: { first: null, last: null, total: 0 },
+        returned: { first: null, last: null, total: 0 },
+        complete: true,
+        next: null,
+        all: { first: 1, last: -1 },
+    });
+    assert.equal(Slicer.lines("", { marks: [1] }).status, 416);
+    assert.equal(Slicer.lines("", { marks: [2, 16] }).status, 416);
 });
 
 test("lines addresses exact regions in Unicode code points", () => {
@@ -255,14 +277,28 @@ test("lineMarkerEdit inserts and replaces exact regions without line coercion", 
 });
 
 test("page keeps ordered-result pagination distinct from text coordinates", () => {
-    assert.deepEqual(
-        Slicer.page(["a", "b", "c"], { marks: [2, 3] }),
-        { status: 200, items: ["b", "c"] },
-    );
-    assert.deepEqual(
-        Slicer.page([], { marks: [1, -1] }),
-        { status: 200, items: [] },
-    );
+    const bounded = Slicer.page(["a", "b", "c", "d"], { marks: [1, 2] });
+    assert.deepEqual(bounded.items, ["a", "b"]);
+    assert.deepEqual(bounded.range, {
+        unit: "result",
+        requested: { first: 1, last: 2 },
+        available: { first: 1, last: 4, total: 4 },
+        returned: { first: 1, last: 2, total: 2 },
+        complete: false,
+        next: { first: 3, last: 4 },
+        all: { first: 1, last: -1 },
+    });
+    const allEmpty = Slicer.page([], { marks: [1, -1] });
+    assert.deepEqual(allEmpty.items, []);
+    assert.deepEqual(allEmpty.range, {
+        unit: "result",
+        requested: { first: 1, last: -1 },
+        available: { first: null, last: null, total: 0 },
+        returned: { first: null, last: null, total: 0 },
+        complete: true,
+        next: null,
+        all: { first: 1, last: -1 },
+    });
 
     const failure = Slicer.page(["a", "b", "c"], { marks: [4, -1] });
     assert.equal(failure.status, 416);

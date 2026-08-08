@@ -1,4 +1,5 @@
 import {
+    DEFAULT_RETRIEVAL_LIMIT,
     PathSyntax,
     type FindStatement,
     type FoldStatement,
@@ -10,11 +11,12 @@ import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../c
 import { ReadResolve } from "../content/index.ts";
 import Matcher from "../content/matcher.ts";
 import type { SourceCandidateMatch } from "../content/matcher.ts";
-import { renderFindContent } from "./_entry-find.ts";
+import { findItemTokens, renderFindContent } from "./_entry-find.ts";
 import type { FindResult, MatchItem, Match, CatalogScope, CatalogMatch } from "./_entry-find.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
+import type { RangeExtent } from "@plurnk/plurnk-schemes";
 import LogBody from "../core/LogBody.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import EntryGraph from "./_entry-graph.ts";
@@ -160,8 +162,6 @@ export default class Log extends CoreSchemeAdapterBase {
             content: underlyingContent,
             mimetype: underlyingMimetype,
             lineMarker: statement.lineMarker,
-            body: statement.body,
-            mimetypes: core.mimetypes,
         });
         if (resolved.status >= 400) {
             if (resolved.problem !== undefined) {
@@ -175,11 +175,7 @@ export default class Log extends CoreSchemeAdapterBase {
                 throw new Error(`Log.read: ReadResolve returned status ${resolved.status} without Problem Details or a diagnostic`);
             }
             return failure(
-                resolved.status === 416
-                    ? "range-not-satisfiable"
-                    : resolved.status === 501
-                        ? "matcher-unavailable"
-                        : "read-resolution-failed",
+                resolved.status === 416 ? "range-not-satisfiable" : "read-resolution-failed",
                 resolved.status,
                 resolved.reason,
                 {
@@ -210,7 +206,7 @@ export default class Log extends CoreSchemeAdapterBase {
             detail?: string,
             extensions: Readonly<Record<string, unknown>> = {},
         ): FindResult => {
-            const fields = { content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] };
+            const fields = { content: null, mimetype: null, results: [], itemsTokenTotal: 0, returnedItemsTokenTotal: 0, pathnames: [], matches: [] };
             if (status >= 400 && detail === undefined) {
                 throw new Error(`Log.find: selection returned status ${status} without Problem Details or a diagnostic`);
             }
@@ -343,25 +339,7 @@ export default class Log extends CoreSchemeAdapterBase {
                     },
                 );
             }
-            let selected = ranked.results;
-            if (selection.page !== null) {
-                const page = LineMarkerOps.page(selected, selection.page);
-                if (page.status !== 200) {
-                    if (page.problem === undefined) throw new Error("Log semantic FIND pagination failed without Problem Details");
-                    return Results.assert({
-                        status: page.status,
-                        problem: page.problem,
-                        content: null,
-                        mimetype: null,
-                        results: [],
-                        itemsTokenTotal: 0,
-                        pathnames: [],
-                        matches: [],
-                    }) as FindResult;
-                }
-                selected = page.items ?? [];
-            }
-            const sourceMatches = selected.map(({ key, lineStart, lineEnd }): SourceCandidateMatch => ({
+            const sourceMatches = ranked.results.map(({ key, lineStart, lineEnd }): SourceCandidateMatch => ({
                 key,
                 span: { lineStart, lineEnd },
             }));
@@ -445,6 +423,7 @@ export default class Log extends CoreSchemeAdapterBase {
                     mimetype: null,
                     results: [],
                     itemsTokenTotal: 0,
+                    returnedItemsTokenTotal: 0,
                     pathnames: [],
                     matches: [],
                 }) as FindResult;
@@ -454,24 +433,6 @@ export default class Log extends CoreSchemeAdapterBase {
         const folderSummaries = statement.body === null
             ? pathFolderSummaries(scope, candidateRows.map((row) => canonicalCoordinate(row.coordinate)))
             : [];
-        const marker = statement.lineMarker ?? (matches.length > 0 ? { marks: [1, 16] } : null);
-        if (marker !== null && statement.body?.dialect !== "semantic" && folderSummaries.length === 0) {
-            const page = LineMarkerOps.page(matches, marker);
-            if (page.status !== 200) {
-                if (page.problem === undefined) throw new Error("Log FIND pagination failed without Problem Details");
-                return Results.assert({
-                    status: page.status,
-                    problem: page.problem,
-                    content: null,
-                    mimetype: null,
-                    results: [],
-                    itemsTokenTotal: 0,
-                    pathnames: [],
-                    matches: [],
-                }) as FindResult;
-            }
-            matches = page.items ?? [];
-        }
         // The result rows mirror the catalog-row shape: one item per selected
         // resource, with optional match coordinates for a surgical READ.
         let results: MatchItem[] = [];
@@ -508,9 +469,16 @@ export default class Log extends CoreSchemeAdapterBase {
         }
         if (folderSummaries.length > 0) {
             results.sort((a, b) => a.path.localeCompare(b.path));
-            const pageMarker = statement.lineMarker ?? (results.length > 0 ? { marks: [1, 16] } : null);
-            if (pageMarker !== null) {
-                const page = LineMarkerOps.page(results, pageMarker);
+        }
+        const marker = statement.body?.dialect === "semantic"
+            ? results.length === 0 && !EntrySemantic.hasExplicitResultPage(statement.lineMarker)
+                ? null
+                : EntrySemantic.resultSelection(statement.lineMarker).page
+            : statement.lineMarker
+                ?? (results.length > 0 ? { marks: [1, DEFAULT_RETRIEVAL_LIMIT] } : null);
+        let range: RangeExtent | undefined;
+        if (marker !== null) {
+            const page = LineMarkerOps.page(results, marker);
             if (page.status !== 200) {
                 if (page.problem === undefined) throw new Error("Log FIND pagination failed without Problem Details");
                 return Results.assert({
@@ -520,20 +488,22 @@ export default class Log extends CoreSchemeAdapterBase {
                     mimetype: null,
                     results: [],
                     itemsTokenTotal: 0,
+                    returnedItemsTokenTotal: 0,
                     pathnames: [],
                     matches: [],
                 }) as FindResult;
             }
             results = page.items ?? [];
-            const retained = new Set(results.filter((item) => item.items === undefined).map((item) => item.path.replace(/^log:\/\/\//, "").replace(/^\//, "")));
-            matches = matches.filter((match) => retained.has(match.pathname));
-            seenPath.splice(0, seenPath.length, ...matches.map((match) => match.pathname).filter((coordinate, i, all) => all.indexOf(coordinate) === i));
-            itemsTokenTotal = results.reduce((sum, item) => sum + (item.items === undefined
-                ? Object.values(item.channels).reduce((channelSum, channel) => channelSum + channel.tokens, 0)
-                : item.tokens ?? 0), 0);
-            }
+            range = page.range;
         }
         if (results.length === 0) return empty(204);
+        const matchesByPath = new Map(matches.map((item) => [`log:///${item.pathname}`, item]));
+        const returnedMatches = results.flatMap((item) => {
+            const selected = matchesByPath.get(item.path);
+            return selected === undefined ? [] : [selected];
+        });
+        const returnedItemsTokenTotal = results.reduce((sum, item) => sum + findItemTokens(item), 0);
+        seenPath.splice(0, seenPath.length, ...returnedMatches.map((match) => match.pathname));
         // {§find-count-not-contents} is source-agnostic. Count the rendered
         // catalog items; a shallow map's folder summaries replace, rather than
         // conceal, their descendants.
@@ -546,16 +516,26 @@ export default class Log extends CoreSchemeAdapterBase {
                 mimetype: "text/markdown",
                 results: [],
                 itemsTokenTotal,
+                returnedItemsTokenTotal,
                 pathnames: [],
                 matches: [],
                 omittedItems: results.length,
                 maximumItems: budget,
+                ...(range === undefined ? {} : { range }),
             };
         }
-        // matches[].pathname is the fan-out's retarget key — `/loop/turn/seq/OP` re-parses as a
-        // coordinate (the /OP suffix is accepted), so READ(log://)<matcher> fan-out delivers rows.
-        const fanMatches = matches.map((m) => ({ ...m, pathname: `/${m.pathname}` }));
-        return { status: 200, content: renderFindContent(results), mimetype: "application/json", results, itemsTokenTotal, pathnames: seenPath.map((p) => `/${p}`), matches: fanMatches };
+        const resultMatches = returnedMatches.map((match) => ({ ...match, pathname: `/${match.pathname}` }));
+        return {
+            status: 200,
+            content: renderFindContent(results),
+            mimetype: "application/json",
+            results,
+            itemsTokenTotal,
+            returnedItemsTokenTotal,
+            pathnames: seenPath.map((pathname) => `/${pathname}`),
+            matches: resultMatches,
+            ...(range === undefined ? {} : { range }),
+        };
     }
 
     async open(statement: OpenStatement, ctx: CoreSchemeCallContext): Promise<OpenFoldResult> {

@@ -355,6 +355,25 @@ test("File.read: bare relative path (no leading slash) normalizes to the member 
     });
 });
 
+test("File.read: markerless exact READ returns 16 lines and explicit <1,-1> returns all", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        const content = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n");
+        await writeFile(join(root, "bounded.txt"), content);
+        await addMember(ctx, "bounded.txt");
+
+        const bounded = await new File().read(parseRead("<<READ(bounded.txt)::READ"), ctx);
+        assert.equal(bounded.status, 200);
+        assert.equal(bounded.content, Array.from({ length: 16 }, (_, index) => `line ${index + 1}`).join("\n"));
+        assert.equal(bounded.range?.available.total, 20);
+        assert.deepEqual(bounded.range?.next, { first: 17, last: 20 });
+
+        const all = await new File().read(parseRead("<<READ(bounded.txt)<1,-1>::READ"), ctx);
+        assert.equal(all.status, 200);
+        assert.equal(all.content, content);
+        assert.equal(all.range?.complete, true);
+    });
+});
+
 test("File.read: bare nested relative path resolves to its member key too", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await mkdir(join(root, "src"));

@@ -3,7 +3,7 @@
 // vector in scope; FTS is only the explicit no-embedder fallback.
 
 import type { Db } from "../core/Db.ts";
-import type { LineMarker, Notice } from "@plurnk/plurnk-contracts";
+import { DEFAULT_RETRIEVAL_LIMIT, type LineMarker, type Notice } from "@plurnk/plurnk-contracts";
 import {
     EmbeddingVector,
     TextCoordinates,
@@ -27,20 +27,10 @@ export interface SemanticPlan {
 
 type SemanticResultSelection = {
     threshold: number | null;
-    page: LineMarker | null;
-    limit: number;
+    page: LineMarker;
 };
 
 export default class EntrySemantic {
-    static defaultTopK(): number {
-        const raw = process.env.PLURNK_SERVICE_SEMANTIC_TOP_K;
-        const value = Number(raw);
-        if (!Number.isSafeInteger(value) || value < 1) {
-            throw new Error(`PLURNK_SERVICE_SEMANTIC_TOP_K must be a positive safe integer, got ${JSON.stringify(raw)}`);
-        }
-        return value;
-    }
-
     // FIND owns result positions uniformly across matcher dialects. Semantic
     // search adds only an optional leading decimal threshold; any remaining
     // integers retain the ordinary FIND positional meaning. The rank query
@@ -49,34 +39,27 @@ export default class EntrySemantic {
     // authoritative result extent.
     static resultSelection(marker: LineMarker | null): SemanticResultSelection {
         if (marker === null) {
-            return { threshold: null, page: null, limit: EntrySemantic.defaultTopK() };
+            return { threshold: null, page: { marks: [1, DEFAULT_RETRIEVAL_LIMIT] } };
         }
         const [first, ...remaining] = marker.marks;
         if (Number.isInteger(first)) {
             return {
                 threshold: null,
                 page: marker,
-                limit: EntrySemantic.#pageLimit(marker),
             };
         }
         const page = remaining.length === 0
-            ? null
+            ? { marks: [1, DEFAULT_RETRIEVAL_LIMIT] as [number, ...number[]] }
             : { marks: remaining as [number, ...number[]] };
         return {
             threshold: first,
             page,
-            limit: page === null ? -1 : EntrySemantic.#pageLimit(page),
         };
     }
 
-    static #pageLimit(marker: LineMarker): number {
-        if (marker.marks.length !== 1 && marker.marks.length !== 2) return -1;
-        const [first, last] = marker.marks;
-        if (!Number.isInteger(first) || (last !== undefined && !Number.isInteger(last))) return -1;
-        if (last === undefined) return first >= 0 ? first : -1;
-        if (last === -1) return -1;
-        if (first < 0 || first > last || last < 1) return -1;
-        return last;
+    static hasExplicitResultPage(marker: LineMarker | null): boolean {
+        if (marker === null) return false;
+        return Number.isInteger(marker.marks[0]) || marker.marks.length > 1;
     }
 
     static maxEmbedSize(): number {
@@ -279,9 +262,9 @@ export default class EntrySemantic {
         candidates: readonly SearchCandidate[],
         mimetypes: Mimetypes,
         queryText: string,
-        selection: Pick<SemanticResultSelection, "threshold" | "limit">,
+        selection: Pick<SemanticResultSelection, "threshold">,
     ): Promise<{ status: number; results: Array<{ key: string; lineStart: number; lineEnd: number }> }> {
-        const { threshold, limit } = selection;
+        const { threshold } = selection;
         const toResult = (x: { key: string; line_start: number; line_end: number }) => ({
             key: x.key,
             lineStart: x.line_start,
@@ -312,7 +295,7 @@ export default class EntrySemantic {
             const rows = await db.semantic_rank_candidates_fts.all<{ key: string; line_start: number; line_end: number }>({
                 fts_query: ftsQuery,
                 candidates: serializedCandidates,
-                k: limit,
+                k: -1,
             });
             return { status: 200, results: rows.map(toResult) };
         }
@@ -321,7 +304,7 @@ export default class EntrySemantic {
                 candidates: serializedCandidates,
                 query_vector: r.embedding,
                 embedding_model: r.embeddingModel,
-                k: limit,
+                k: -1,
             });
             return { status: 200, results: rows.map(toResult) };
         }
@@ -330,7 +313,7 @@ export default class EntrySemantic {
             query_vector: r.embedding,
             embedding_model: r.embeddingModel,
             threshold,
-            cap: limit,
+            cap: -1,
         });
         return { status: 200, results: rows.map(toResult) };
     }

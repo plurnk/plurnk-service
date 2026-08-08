@@ -61,7 +61,7 @@ test("identical entries attach one complete semantic artifact and both remain ad
             rows.map(({ pathname, deep_hash }) => ({ key: pathname, deepHash: deep_hash })),
             mimetypes,
             "shared artifact",
-            { threshold: null, limit: 10 },
+            { threshold: null },
         );
         assert.deepEqual(ranked.results.map((r) => r.key).sort(), ["/a.md", "/b.md"],
             "artifact sharing never collapses the independently addressable entries");

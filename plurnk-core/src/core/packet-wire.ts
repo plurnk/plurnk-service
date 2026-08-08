@@ -8,7 +8,6 @@
 // supply names and typed content; this projection preserves their ordered evidence.
 
 import { Validator, type LineMarker, type ProblemDetails, type TextRegion } from "@plurnk/plurnk-contracts";
-import { Results as SchemeResults } from "@plurnk/plurnk-schemes";
 import { renderTarget } from "./plurnk-uri.ts";
 import type { GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
@@ -70,8 +69,9 @@ interface RxView {
     mimetype?: unknown;
     startLine?: unknown;
     region?: unknown;
-    matches?: unknown;
     itemsTokenTotal?: unknown;
+    returnedItemsTokenTotal?: unknown;
+    range?: unknown;
     omittedItems?: unknown;
     receipt?: unknown;
     effects?: unknown;
@@ -390,12 +390,11 @@ export default class PacketWire {
                 meta.problem = problem;
             }
 
-            // READ + FIND enrichment: the matcher body, READ match coordinates,
-            // and FIND resource count. Match coordinates let the model choose a
-            // surgical follow-up READ without silently narrowing this result.
+            // READ + FIND enrichment: text/result extent plus FIND matcher,
+            // resource count, and complete/returned content weights.
             let items: number | null = null;
             if (op === "READ" || op === "FIND") {
-                if (tx !== null && tx !== undefined && typeof tx === "object" && tx.body !== null && typeof tx.body === "object") {
+                if (op === "FIND" && tx !== null && tx !== undefined && typeof tx === "object" && tx.body !== null && typeof tx.body === "object") {
                     if (typeof tx.body.raw === "string") meta.matcher = tx.body.raw;
                 }
                 if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.omittedItems === "number") {
@@ -404,16 +403,19 @@ export default class PacketWire {
                     const parsed = PacketWire.#safeParse(rx.content);
                     if (Array.isArray(parsed)) items = parsed.length;
                 }
-                if (op === "READ" && rx !== null && typeof rx === "object" && rx.matches !== undefined) {
-                    meta.matches = SchemeResults.assertMatchEvidenceList(rx.matches);
-                }
                 if (op === "READ" && rx !== null && typeof rx === "object" && rx.region !== undefined) {
                     meta.region = Validator.assertTextRegion(rx.region as TextRegion);
+                }
+                if (rx !== null && typeof rx === "object" && rx.range !== undefined) {
+                    meta.range = rx.range;
                 }
                 // The matched set's content weight (sum of the entries' live channel tokens) — the
                 // FIND self-describes its hits' READ-weight; carries the per-scheme roll-up in the foist.
                 if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.itemsTokenTotal === "number") {
                     meta.itemsTokenTotal = rx.itemsTokenTotal;
+                }
+                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.returnedItemsTokenTotal === "number") {
+                    meta.returnedItemsTokenTotal = rx.returnedItemsTokenTotal;
                 }
             }
 
@@ -462,7 +464,7 @@ export default class PacketWire {
                 throw new Error("a previewed log body requires an addressable log path");
             }
             if (projection.cut) {
-                meta.overflow = `Body content truncated. Use READ ${path} to view the full body.`;
+                meta.overflow = `Body content truncated. Use READ ${path}<1,-1> to view the full body.`;
             }
             const body = emptyFind || projection.text.length === 0
                 ? ""

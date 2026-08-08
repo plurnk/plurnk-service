@@ -60,6 +60,7 @@ const findFailure = (
         mimetype: null,
         results: [],
         itemsTokenTotal: 0,
+        returnedItemsTokenTotal: 0,
         pathnames: [],
         matches: [],
     },

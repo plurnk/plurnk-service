@@ -255,7 +255,12 @@ four-coordinate region ending after the final code point of `endLine`.
 Producers never emit that form. Other arities and decimal text coordinates are
 runtime 416 failures.
 
-READ targets an exact resource (a local path or scheme URL, with optional `#channel` fragment or `{header: value}` metadata). READ does not admit globs or matcher bodies; pattern matching belongs to FIND. A `<scope>` on READ selects a text region from that exact target. Decimal scope components are invalid on READ.
+§read-exact-target READ targets one exact resource (a local path or scheme URL,
+with optional `#channel` fragment or `{header: value}` metadata). READ does not
+admit globs or matcher bodies; pattern matching belongs to FIND. A `<scope>` on
+READ selects a text region from that exact target. Without a scope, READ
+defaults to `<1,16>`; `<1,-1>` explicitly selects all text. Decimal scope
+components are invalid on READ.
 
 Mutation semantics:
 
@@ -400,7 +405,9 @@ statements remain recoverable when their boundaries are trustworthy.
 
 - §pattern-body-single-line The GBNF rail permits only single-line matcher
   bodies. A regex that matches a newline uses the two-character `\n` escape.
-  ANTLR tolerates multiline matcher bodies during ingestion.
+  During ingestion, a FIND body that reaches a physical newline without its
+  close tag closes at that boundary with one recoverable lexer diagnostic, so
+  the following statement remains independently parseable.
 - §pattern-body-leading-colon The GBNF rail forbids `:` as the first matcher
   character. Empty matchers and later colons remain valid; a regex such as
   `/^:needle/` expresses a pattern beginning with a literal colon.

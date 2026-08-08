@@ -9,8 +9,8 @@ import EntryManifest from "./_entry-manifest.ts";
 import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editReceipt } from "../content/index.ts";
 import type { EditBatchReceipt } from "../content/index.ts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
-import Results, { type MatchEvidence, type SchemeResultBase } from "../core/results.ts";
-import type { ScopeNormalization } from "@plurnk/plurnk-schemes";
+import Results, { type SchemeResultBase } from "../core/results.ts";
+import type { RangeExtent, ScopeNormalization } from "@plurnk/plurnk-schemes";
 
 // Shared static-method helpers for owner-addressed entry-bearing schemes.
 // Each scheme passes its manifest; helpers extract scheme name, channels,
@@ -25,17 +25,13 @@ export type EditResult = SchemeResultBase & { entryId: number | null; channel: s
 // source. Lets the render layer prefix N: correctly for both full
 // reads (start=1) and <L> slices (start=N). Null when not line-relevant
 // (errors).
-// matches = addressable matcher coordinates. They explain why the resource
-// qualified and let the model choose a surgical follow-up READ.
-// reason — surfaced on 203 dialect-fallback so the model sees why the
-// structured parse failed and got raw content instead.
 export type ReadResult = SchemeResultBase & {
     content: string | null;
     mimetype: string | null;
     channel: string | null;
     startLine?: number | null;
     region?: TextRegion;
-    matches?: ReadonlyArray<MatchEvidence>;
+    range?: RangeExtent;
     reason?: string;
     awaitWorker?: string;
 };
@@ -374,14 +370,7 @@ export default class EntryOps {
         }
 
         const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx);
-        // An xpath is a question about the DOM — a fragmentless xpath READ routes to the raw `html`
-        // channel (the archive the decisive markdown body was projected from). A fragment still wins.
-        let readChannel = targetChannel;
-        const bodyDialect = (statement.body as { dialect?: string } | null)?.dialect;
-        if (fragment === null && bodyDialect === "xpath") {
-            const html = await db.ops_read_channel.get<{ content: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: "html" }, owner_id: ownerId });
-            if (html !== undefined) readChannel = "html";
-        }
+        const readChannel = targetChannel;
         const row = await db.ops_read_channel.get<{ content: string; mimetype: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: readChannel }, owner_id: ownerId });
         // {§read-read-404} + {§fs-errno} — ENOENT carries its fact, the RESOLVED name in wire
         // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
@@ -407,8 +396,6 @@ export default class EntryOps {
             content: row.content,
             mimetype: row.mimetype,
             lineMarker: statement.lineMarker,
-            body: statement.body,
-            mimetypes: ctx.mimetypes,
         });
         if (r.status >= 400) {
             if (r.problem !== undefined) {
@@ -422,26 +409,12 @@ export default class EntryOps {
                 throw new Error(`EntryOps.readWorkspaceEntry: ReadResolve returned status ${r.status} without Problem Details or a diagnostic`);
             }
             return failure(
-                r.status === 416
-                    ? "range-not-satisfiable"
-                    : r.status === 501
-                        ? "matcher-unavailable"
-                        : "read-resolution-failed",
+                r.status === 416 ? "range-not-satisfiable" : "read-resolution-failed",
                 r.status,
                 r.reason,
                 { content: null, mimetype: r.mimetype, channel: readChannel },
                 {
                     ...(r.range === undefined ? {} : { range: r.range, stage: "projection" }),
-                    ...(statement.body === null || r.status === 416
-                        ? {}
-                        : {
-                            stage: "matcher",
-                            dialect: bodyDialect,
-                            recovery: r.status === 501
-                                ? "Retry the READ without a content matcher."
-                                : "Correct or remove the matcher.",
-                            retryable: false,
-                        }),
                 },
             );
         }

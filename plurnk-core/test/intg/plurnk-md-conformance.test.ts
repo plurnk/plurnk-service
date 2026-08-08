@@ -74,7 +74,7 @@ const seed = async (
     }
 };
 
-// --- READ: body matcher runs against CONTENT (the contract; READ honors it) ---
+// --- READ: exact-target text projection ----------------------------------
 // Anchors "correct." The matched token appears ONLY in the content; the
 // pathname shares no character with it, so a pathname-matcher returns nothing.
 
@@ -216,7 +216,7 @@ test("[plurnk.md-ex-FIND-jsonpath-on-xml] FIND jsonpath selects XML entries by s
 });
 
 // plurnk.md: `<<FIND(worker:///**):~constitutional history:FIND`
-// — markerless RAG semantic similarity, using the service-owned default top-K. Runs against the REAL embedder
+// — markerless RAG semantic similarity, using the universal first-16 page. Runs against the REAL embedder
 // (all-MiniLM-L6-v2 via @plurnk/plurnk-mimetypes-embeddings) — the production tile+embed
 // path, not a model-free stub. Semantics is normal intg coverage; the model load is an
 // accepted cost (AGENTS: no fast-tier carve-out that hides a working feature). The body

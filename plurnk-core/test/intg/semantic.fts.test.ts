@@ -1,4 +1,4 @@
-// {§persistent-search-index}, {§find-semantic-default-top-k}. FTS is the
+// {§persistent-search-index}, {§find-semantic-selection}. FTS is the
 // explicit no-embedder fallback;
 // when vectors exist, exhaustive cosine ranking has no lexical eligibility gate.
 
@@ -219,7 +219,7 @@ test("[#semantic-e2e] chunked ~query full pipeline: tile → embed → store →
             await searchCandidates(db, workspaceId),
             embedder,
             "photosynthesis chloroplasts",
-            { threshold: null, limit: 5 },
+            { threshold: null },
         );
         const hit = r.results.find((x) => x.key === "/bio.md");
         assert.ok(hit, "the deep chunk was embedded + stored, and ~query retrieved its entry via max-pool");
@@ -309,11 +309,11 @@ test("[#fts-fallback] no embedder uses FTS for unthresholded rank; <0.x> stays 5
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }));
         const candidates = await searchCandidates(db, workspaceId);
 
-        const topK = await EntrySemantic.rankCandidates(db, candidates, noEmbedder, "payment", { threshold: null, limit: 5 });
-        assert.equal(topK.status, 200, "no embedder retains the unthresholded ranked path");
-        assert.deepEqual(topK.results.map((x) => x.key), ["/heavy.ts", "/light.ts"],
+        const ranked = await EntrySemantic.rankCandidates(db, candidates, noEmbedder, "payment", { threshold: null });
+        assert.equal(ranked.status, 200, "no embedder retains the unthresholded ranked path");
+        assert.deepEqual(ranked.results.map((x) => x.key), ["/heavy.ts", "/light.ts"],
             "BM25 ranks heavy (two hits) above light (one); auth (no keyword) excluded by the narrow");
-        const heavy = topK.results.find((x) => x.key === "/heavy.ts");
+        const heavy = ranked.results.find((x) => x.key === "/heavy.ts");
         assert.ok(heavy && heavy.lineStart === 1 && heavy.lineEnd === 2, `whole-entry span, no chunk vectors (got ${heavy?.lineStart}-${heavy?.lineEnd})`);
 
         const firstTwo = await new Worker().find(
@@ -373,7 +373,7 @@ test("[#fts-fallback] no embedder uses FTS for unthresholded rank; <0.x> stays 5
         }], "FTS fallback uses the universal CR/CRLF/LF physical-line model");
 
         // The similarity-threshold form needs a cosine score the FTS half can't supply.
-        const thresh = await EntrySemantic.rankCandidates(db, candidates, noEmbedder, "payment", { threshold: 0.5, limit: -1 });
+        const thresh = await EntrySemantic.rankCandidates(db, candidates, noEmbedder, "payment", { threshold: 0.5 });
         assert.equal(thresh.status, 501, "the <0.x> threshold form is cosine-intrinsic → 501 without an embedder");
     } finally { db.close(); }
 });

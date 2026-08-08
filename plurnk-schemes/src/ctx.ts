@@ -9,6 +9,7 @@ import type { EditStatement, FindStatement, ReadStatement, SendStatement } from 
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import type { MatchEvidence, SchemeResult } from "./Results.ts";
 import type { EditBatchReceipt, EditBatchResult } from "./edit-receipt.ts";
+import type { RangeExtent } from "./Slicer.ts";
 // Channel streaming-lifecycle state. Metadata, not an engine gate
 // (service SPEC {§channel-state}).
 export type TerminalChannelState = "closed" | "errored";
@@ -70,8 +71,10 @@ export interface EntryFindResult extends SchemeResult {
     readonly mimetype: string | null;
     readonly results: ReadonlyArray<EntryCatalogItem>;
     readonly itemsTokenTotal: number;
+    readonly returnedItemsTokenTotal: number;
     readonly pathnames: ReadonlyArray<string>;
     readonly matches: ReadonlyArray<EntryMatch>;
+    readonly range?: RangeExtent;
     readonly omittedItems?: number;
     readonly maximumItems?: number;
 }

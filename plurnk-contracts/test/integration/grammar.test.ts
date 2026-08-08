@@ -661,7 +661,7 @@ test("a `/`-leading body that never closes the literal is a visitor ERROR, not a
 });
 
 test("an unclosed FIND body implicitly closes at the line boundary; the frame survives", () => {
-    // {§implicit-close}: a forgotten `:FIND` followed by a new op on the next line
+    // {§pattern-body-single-line}: a forgotten `:FIND` followed by a new op on the next line
     // closes the body at the newline — the error is recoverable, the frame intact.
     const result = PlurnkParser.parseStatements(
         "<<PLAN:p:PLAN\n<<FIND(Engine.ts):/pattern/FIND\n<<SEND[102]:go:SEND",
@@ -1369,33 +1369,20 @@ test("MatcherBody: valid xpath still dispatches xpath even after disambiguation"
     assert.equal(b.raw, "//h1/text()");
 });
 
-test("READ statement coerces matcher bodies to FIND and validates against JSON Schema", () => {
-    const regexResult = PlurnkParser.parseStatements("<<READ(page.html):/header/:READ");
-    const regexSt = regexResult.items[0];
-    assert.equal(regexSt?.kind, "statement");
-    assert.equal(regexSt?.statement.op, "FIND");
-    assert.equal((regexSt?.statement as any).coercedFromRead, true);
-    assert.equal(regexSt?.statement.body?.dialect, "regex");
-    const regexVal = Validator.validatePlurnkStatement(regexSt.statement);
-    assert.equal(regexVal.valid, true, `regex coerced FIND AST must be schema-valid: ${JSON.stringify(regexVal.errors)}`);
-
-    const globResult = PlurnkParser.parseStatements("<<READ(package.json):TODO:READ");
-    const globSt = globResult.items[0];
-    assert.equal(globSt?.kind, "statement");
-    assert.equal(globSt?.statement.op, "FIND");
-    assert.equal((globSt?.statement as any).coercedFromRead, true);
-    assert.equal(globSt?.statement.body?.dialect, "glob");
-    const globVal = Validator.validatePlurnkStatement(globSt.statement);
-    assert.equal(globVal.valid, true, `glob coerced FIND AST must be schema-valid: ${JSON.stringify(globVal.errors)}`);
-
-    const pathGlobResult = PlurnkParser.parseStatements("<<READ(src/**/*.ts):TODO:READ");
-    const pathGlobSt = pathGlobResult.items[0];
-    assert.equal(pathGlobSt?.kind, "statement");
-    assert.equal(pathGlobSt?.statement.op, "FIND");
-    assert.equal((pathGlobSt?.statement as any).coercedFromRead, true);
-    assert.equal(pathGlobSt?.statement.body?.dialect, "glob");
-    const pathGlobVal = Validator.validatePlurnkStatement(pathGlobSt.statement);
-    assert.equal(pathGlobVal.valid, true, `path glob coerced FIND AST must be schema-valid: ${JSON.stringify(pathGlobVal.errors)}`);
+test("READ rejects matcher bodies and path globs instead of changing operations", () => {
+    for (const input of [
+        "<<READ(page.html):/header/:READ",
+        "<<READ(package.json):TODO:READ",
+        "<<READ(src/**/*.ts)::READ",
+        "<<READ(worker:///src/**/*.ts)::READ",
+    ]) {
+        const result = PlurnkParser.parseStatements(input);
+        assert.equal(result.items.some((item) => item.kind === "statement"), false);
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 1, `one actionable diagnostic for ${input}`);
+        assert.equal(errors[0]?.error.source, "visitor");
+        assert.match(errors[0]?.error.message ?? "", /READ requires one exact target.*use FIND/i);
+    }
 });
 
 test("COPY body carries a destination selection", () => {

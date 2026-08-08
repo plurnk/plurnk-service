@@ -110,7 +110,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
                 if (overrides.operationRead !== undefined) return overrides.operationRead(statement);
                 return { status: 200, content: "selected lines", mimetype: "text/markdown", channel: "body" };
             },
-            async find() { return { status: 501, content: null, mimetype: null, results: [], itemsTokenTotal: 0, pathnames: [], matches: [] }; },
+            async find() { return { status: 501, content: null, mimetype: null, results: [], itemsTokenTotal: 0, returnedItemsTokenTotal: 0, pathnames: [], matches: [] }; },
             async send() { return { status: 501 }; },
         },
         async read(pathname) {

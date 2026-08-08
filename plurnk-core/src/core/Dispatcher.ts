@@ -27,7 +27,7 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import Fork from "./fork.ts";
 import WorkerCap from "./worker-cap.ts";
-import { parsePath, PathSyntax } from "@plurnk/plurnk-contracts";
+import { PathSyntax } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import LoopFlagsReader from "./LoopFlagsReader.ts";
@@ -47,7 +47,6 @@ import {
 } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
-import EntryFind from "../schemes/_entry-find.ts";
 import EntryOps from "../schemes/_entry-ops.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -60,7 +59,6 @@ import {
     type EntryAddress,
     InvalidOperationResultError,
     NetworkAddress,
-    type MatchEvidence,
     type ScopeNormalization,
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
@@ -165,7 +163,7 @@ type OrchestrationProposalAttrs = {
 };
 
 // Op dispatch ({§op-methods-op-dispatch}): gates (writableBy, loop flags), the
-// engine-owned op orchestrations (COPY/MOVE/KILL/SEND/READ-fanout), scheme
+// engine-owned op orchestrations (COPY/MOVE/KILL/SEND), scheme
 // routing, the durable log write, and the proposal pause.
 export default class Dispatcher {
     static #failure(
@@ -541,12 +539,6 @@ export default class Dispatcher {
         if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
         if (denial !== null) {
             result = denial;
-        } else if (this.#readFansOut(statement)) {
-            // Multi-resource scopes, relation matchers, and acquisition-scheme
-            // matchers use FIND for selection and write their own rows. An exact
-            // stored-resource content matcher remains a direct READ, preserving
-            // content-level outcomes such as 203.
-            return await this.#handleReadFanout(statement, schemeCtx, { workerId, loopId, turnId, sequence, origin, onDispatch });
         } else {
             // {§scheme-surface-exception-500} Scheme-handler
             // exceptions become the action-entry's outcome (status 500), not a
@@ -1261,166 +1253,6 @@ export default class Dispatcher {
         // A host-effecting delete (file) returns 202 to PROPOSE — pass its attrs through so the proposal
         // carries the delete target to review (#isProposal fires on 202). Plurnk-internal deletes execute inline.
         return this.#deleteEntry(schemeName, entryPathnameOf(path), ctx);
-    }
-
-    // A multi-resource READ uses FIND as its resource selector, then writes one
-    // READ row per selected resource. Match coordinates remain metadata on that
-    // resource; they never create extra rows or replace its content.
-    #readFansOut(statement: PlurnkStatement): boolean {
-        return false;
-    }
-
-    static #retargetRead(
-        statement: PlurnkStatement,
-        pathname: string,
-        lineMarker: LineMarker | null,
-        body: ReadStatement["body"],
-    ): PlurnkStatement {
-        const t = statement.target;
-        const target = t !== null && t.kind === "url"
-            ? { ...t, pathname, raw: `${t.scheme}://${pathname}` }
-            : { ...(t as { raw: string }), raw: pathname };
-        return { ...statement, target: target as PlurnkStatement["target"], lineMarker, body } as PlurnkStatement;
-    }
-
-    // READ scope always projects text.
-    static #readMarkers(statement: ReadStatement): {
-        selection: LineMarker | null;
-        projection: LineMarker | null;
-    } {
-        return { selection: null, projection: statement.lineMarker };
-    }
-
-    #standardEntryManifest(schemeName: string, statement: PlurnkStatement): SchemeManifest | null {
-        const handler = this.#schemes.get(schemeName) as { find?: unknown } | undefined;
-        if (typeof handler?.find === "function") return null;
-        const target = statement.target;
-        if (target === null || target.kind !== "url" || target.scheme === null) return null;
-        const manifest = this.#schemes.manifestFor(schemeName);
-        return manifest === undefined ? null : { ...manifest, name: target.scheme };
-    }
-
-    static #storedEntryRead(
-        statement: PlurnkStatement,
-        pathname: string,
-        lineMarker: LineMarker | null,
-        body: ReadStatement["body"],
-        storage: boolean,
-    ): PlurnkStatement {
-        const target = statement.target;
-        if (target === null || target.kind !== "url") return Dispatcher.#retargetRead(statement, pathname, lineMarker, body);
-        if (NetworkAddress.supports(target.scheme)) {
-            const parsed = parsePath(renderAddress(target.scheme, pathname));
-            if (parsed === null || parsed.kind !== "url") {
-                throw new Error(`failed to reconstruct network entry target for ${target.scheme}:${pathname}`);
-            }
-            const reconstructed = { ...parsed, fragment: target.fragment };
-            const raw = renderTarget(reconstructed);
-            if (raw === null) throw new Error(`failed to render network entry target for ${target.scheme}:${pathname}`);
-            return {
-                ...statement,
-                target: { ...reconstructed, raw },
-                lineMarker,
-                body,
-            } as PlurnkStatement;
-        }
-        const hostPrefix = target.hostname === null ? null : `/${target.hostname}`;
-        const displayPath = hostPrefix !== null && pathname.startsWith(`${hostPrefix}/`)
-            ? pathname.slice(hostPrefix.length)
-            : pathname;
-        return {
-            ...statement,
-            target: storage
-                ? { ...target, hostname: null, pathname, raw: `${target.scheme}://${pathname}` }
-                : { ...target, pathname: displayPath, raw: `${target.scheme}://${target.hostname ?? ""}${displayPath}` },
-            lineMarker,
-            body,
-        } as PlurnkStatement;
-    }
-
-    async #handleReadFanout(
-        statement: PlurnkStatement,
-        ctx: PlurnkSchemeContext,
-        ids: { workerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier; onDispatch?: (id: number) => void },
-    ): Promise<DispatchResult> {
-        const { workerId, loopId, turnId, sequence, origin, onDispatch } = ids;
-        const schemeName = schemeNameOf(statement.target);
-        const read = statement as ReadStatement;
-        const markers = Dispatcher.#readMarkers(read);
-        const findStatement = {
-            ...statement,
-            op: "FIND",
-            lineMarker: markers.selection,
-        } as PlurnkStatement;
-        const standardEntryManifest = schemeName === null ? null : this.#standardEntryManifest(schemeName, statement);
-        const found = await this.#run(schemeName, findStatement, ctx);
-        const matches = (found.matches as Array<{
-            pathname: string;
-            matches: ReadonlyArray<MatchEvidence>;
-        }> | undefined) ?? [];
-        const omittedItems = typeof found.omittedItems === "number" ? found.omittedItems : null;
-        if (omittedItems !== null) {
-            const maximumItems = typeof found.maximumItems === "number" ? found.maximumItems : null;
-            const result = Dispatcher.#failure(
-                "read-materialization-too-large",
-                413,
-                `READ selected ${omittedItems} resources, exceeding the materialization limit${maximumItems === null ? "" : ` of ${maximumItems}`}.`,
-                {},
-                {
-                    resources: omittedItems,
-                    ...(maximumItems === null ? {} : { maximumResources: maximumItems }),
-                    stage: "materialization",
-                    recovery: "Narrow the target or matcher.",
-                    retryable: false,
-                },
-            );
-            const readRowId = await this.#writeLog({ statement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence, origin });
-            onDispatch?.(readRowId);
-            return { ...result, rowsWritten: 1 };
-        }
-        // Find-less scheme, a matcher/scope error, or zero matches → a single row carrying the
-        // status, exactly like a non-fanned READ. The model sees the empty/failed result, not silence.
-        if (found.status !== 200 || matches.length === 0) {
-            const result: DispatchResult = found.status === 200
-                ? { status: 204, ...(read.body === null ? {} : { matches: [] }) }
-                : found;
-            const id = await this.#writeLog({ statement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence, origin });
-            onDispatch?.(id);
-            return { ...result, rowsWritten: 1 };
-        }
-        const fannedStatuses: number[] = [];
-        const scopeNormalizations: ScopeNormalization[] = [];
-        let written = 0;
-        for (const match of matches) {
-            ctx.signal?.throwIfAborted();
-            const executionStatement = standardEntryManifest === null
-                ? Dispatcher.#retargetRead(statement, match.pathname, markers.projection, null)
-                : Dispatcher.#storedEntryRead(statement, match.pathname, markers.projection, null, true);
-            const readResult = standardEntryManifest === null
-                ? await this.#run(schemeName, executionStatement, ctx)
-                : await EntryOps.readWorkspaceEntry(
-                    executionStatement as ReadStatement,
-                    ctx,
-                    standardEntryManifest,
-                ) as DispatchResult;
-            const result: DispatchResult = read.body === null
-                ? readResult
-                : { ...readResult, matches: match.matches };
-            const loggedStatement = standardEntryManifest === null
-                ? Dispatcher.#retargetRead(statement, match.pathname, statement.lineMarker, read.body)
-                : Dispatcher.#storedEntryRead(statement, match.pathname, statement.lineMarker, read.body, false);
-            const id = await this.#writeLog({ statement: loggedStatement, result, workspaceId: ctx.workspaceId, workerId, loopId, turnId, sequence: sequence + written, origin });
-            onDispatch?.(id);
-            fannedStatuses.push(result.status);
-            scopeNormalizations.push(...(result.scopeNormalizations ?? []));
-            written++;
-        }
-        return {
-            status: 200,
-            rowsWritten: written,
-            fannedStatuses,
-            ...(scopeNormalizations.length === 0 ? {} : { scopeNormalizations }),
-        };
     }
 
     // {§model-entry} — mirror an admitted model emission back as an actionless `model` log row, so

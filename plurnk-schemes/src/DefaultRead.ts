@@ -6,7 +6,7 @@
 // executor-scheme delivers them. READ-purity holds: this reads already-produced
 // output, it never triggers EXEC.
 
-import type { ReadStatement } from "@plurnk/plurnk-contracts";
+import { DEFAULT_RETRIEVAL_LIMIT, type ReadStatement } from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Slicer from "./Slicer.ts";
@@ -23,21 +23,22 @@ export interface ReadResolution extends SchemeResult {
 export default class DefaultRead {
     // Resolve an exact READ against an output blob:
     //   <L> text scope -> project text from the blob
-    //   no <L>         -> return the complete blob
+    //   no <L>         -> return lines 1–16
     static async read(
         content: string,
         mimetype: string,
         statement: ReadStatement,
         mimetypes: Mimetypes,
     ): Promise<ReadResolution> {
-        const defaultLines = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES ?? "16");
-        const limit = Number.isInteger(defaultLines) && defaultLines > 0 ? defaultLines : 16;
-        const marker = statement.lineMarker ?? { marks: [1, limit] };
+        const marker = statement.lineMarker ?? { marks: [1, DEFAULT_RETRIEVAL_LIMIT] };
         const s = Slicer.lines(content, marker);
         if (s.status >= 400) return s;
+        const body = statement.lineMarker === null && s.range?.complete === true
+            ? content
+            : s.text;
         return {
-            status: s.text === "" ? 204 : s.status,
-            body: s.text,
+            status: body === "" ? 204 : s.status,
+            body,
             ...(s.startLine === undefined ? {} : { startLine: s.startLine }),
             ...(s.region === undefined ? {} : { region: s.region }),
             ...(s.range === undefined ? {} : { range: s.range }),

@@ -105,7 +105,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
     }
 });
 
-test("assembled packet: matcher READ shows the resource and surgical coordinates together", async () => {
+test("assembled packet: matcher FIND shows the resource and surgical coordinates together", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-matches-${crypto.randomUUID()}`);

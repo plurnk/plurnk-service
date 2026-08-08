@@ -397,7 +397,7 @@ test("a failed content-bearing READ renders both its Problem and diagnostic body
     assert.match(out, /1:main\.go:17: undefined: os/, "failure status never erases diagnostic content");
 });
 
-test("log render: a matcher READ keeps the resource body and exposes surgical coordinates", () => {
+test("log render: a matcher FIND exposes surgical coordinates", () => {
     const matches = [
         { region: { startLine: 143, startColumn: 1, endLine: 143, endColumn: 8 } },
         { region: { startLine: 617, startColumn: 4, endLine: 617, endColumn: 11 } },
@@ -405,35 +405,19 @@ test("log render: a matcher READ keeps the resource body and exposes surgical co
     const out = PacketWire.renderLog([{
         coordinate: "1/1/3",
         origin: "model",
-        op: "READ",
+        op: "FIND",
         status: 200,
         target: { scheme: null, pathname: "/spec.md" },
         tx: { body: { raw: "/grinder/" } },
         rx: {
-            content: "intro\ngrinder\ncontext",
-            mimetype: "text/markdown",
+            content: JSON.stringify([{ path: "file:///spec.md", matches }]),
+            mimetype: "application/json",
             startLine: 1,
-            matches,
         },
     }], tok);
     assert.match(out, /"matcher":"\/grinder\/"/);
     assert.match(out, /"matches":\[\{"region":\{"startLine":143,"startColumn":1,"endLine":143,"endColumn":8\}\},\{"region":\{"startLine":617,"startColumn":4,"endLine":617,"endColumn":11\}\}\]/);
-    assert.match(out, /<<BODY\n1:intro\n2:grinder\n3:context\nBODY/);
-});
-
-test("log render: malformed matcher evidence cannot reach the model packet", () => {
-    assert.throws(() => PacketWire.renderLog([{
-        coordinate: "1/1/3",
-        origin: "model",
-        op: "READ",
-        status: 200,
-        target: { scheme: null, pathname: "/spec.md" },
-        rx: {
-            content: "text",
-            mimetype: "text/markdown",
-            matches: [{ path: "" }],
-        },
-    }], tok), /path must be a non-empty string/);
+    assert.match(out, /<<BODY\n1:\[\{"path":"file:\/\/\/spec\.md"/);
 });
 
 test("log render: READ@200 with application/json is line-addressable", () => {
@@ -584,7 +568,7 @@ test("an oversized auto-opened terminal stream uses the universal log-body previ
     assert.doesNotMatch(rendered, /stream line 30/, "the pushed tail cannot bypass the arrival bound");
     assert.match(
         rendered,
-        /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/2\/1\/READ to view the full body\."/,
+        /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/2\/1\/READ<1,-1> to view the full body\."/,
         "the cut points at the canonical complete log body",
     );
 });
@@ -766,7 +750,7 @@ test("only worker-issued READ/FIND bodies bypass the universal preview", () => {
     const planOut = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: long } },
     ], tok);
-    assert.match(planOut, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/1\/PLAN to view the full body\."/, "the PLAN preview is recoverable");
+    assert.match(planOut, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/1\/PLAN<1,-1> to view the full body\."/, "the PLAN preview is recoverable");
     assert.doesNotMatch(planOut, /line 20 of a runaway/, "content past the 16-line preview is cut from the render");
 
     // Mutation receipts are generated results, not deliberate retrievals.
@@ -775,7 +759,7 @@ test("only worker-issued READ/FIND bodies bypass the universal preview", () => {
         { coordinate: "1/1/2", origin: "model", op: "EDIT", status: 200, target: { scheme: "worker", pathname: "/x" }, rx: { span: numberedSpan } },
     ], tok);
     assert.doesNotMatch(editOut, /span line 30/, "an EDIT receipt cannot bypass the preview");
-    assert.match(editOut, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/2\/EDIT to view the full body\."/, "the complete receipt remains retrievable");
+    assert.match(editOut, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/2\/EDIT<1,-1> to view the full body\."/, "the complete receipt remains retrievable");
 
     // READ and FIND deliver RETRIEVED content — full, even when long (the exemption).
     const readOut = PacketWire.renderLog([
@@ -794,7 +778,7 @@ test("only worker-issued READ/FIND bodies bypass the universal preview", () => {
         { coordinate: "1/1/5", origin: "plurnk", op: "READ", status: 200, target: { scheme: "sh", pathname: "/1/1/1" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
     ], tok);
     assert.doesNotMatch(pushedRead, /line 30 of a runaway/, "a READ-shaped engine push is still previewed");
-    assert.match(pushedRead, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/5\/READ to view the full body\."/, "provenance, not the overloaded op label, controls the exemption");
+    assert.match(pushedRead, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/5\/READ<1,-1> to view the full body\."/, "provenance, not the overloaded op label, controls the exemption");
 });
 
 test("every non-retrieval body producer uses the same recoverable preview", () => {
@@ -847,7 +831,7 @@ test("every non-retrieval body producer uses the same recoverable preview", () =
         const rendered = PacketWire.renderLog([{ coordinate, status: 200, ...entry }], tok);
         assert.doesNotMatch(rendered, /producer line 30/, `${entry.op} cannot bypass the preview`);
         assert.ok(
-            rendered.includes(`"overflow":"Body content truncated. Use READ log:///${coordinate}/${entry.op} to view the full body."`),
+            rendered.includes(`"overflow":"Body content truncated. Use READ log:///${coordinate}/${entry.op}<1,-1> to view the full body."`),
             `${entry.op} exposes the same log recovery contract`,
         );
     });
