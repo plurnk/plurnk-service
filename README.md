@@ -61,6 +61,14 @@ Markdown. Either may remain unconfigured. See the
 [search executor](./plurnk-execs-search/README.md) and
 [HTTP scheme](./plurnk-schemes-http/README.md) for the owned configuration.
 
+## Lifecycle hooks
+
+PLURNK can deliver selected core events to one exact local command as JSON on
+stdin. Configure `PLURNK_HOOKS_COMMAND`, JSON `PLURNK_HOOKS_ARGS`, and the
+explicit `PLURNK_HOOKS_EVENTS` selection; no shell command is interpreted.
+See [`@plurnk/plurnk-hooks`](./plurnk-hooks/README.md) for the event inventory
+and a copy-pasteable test hook.
+
 ## Develop
 
 [PossumTech Gitea](https://repo.possumtech.com/plurnk/plurnk-service) is the

@@ -18,6 +18,7 @@ command-line client and editor integrations are separate repositories.
   results, Notices, and text coordinates.
 - `plurnk-agui` owns the external client protocol and translates between AG-UI
   and daemon operations.
+- `plurnk-hooks` owns exact-command delivery of selected core lifecycle events.
 - `plurnk-providers*`, `plurnk-schemes*`, `plurnk-mimetypes*`, and
   `plurnk-execs*` own their respective plugin contracts and implementations.
 - `plurnk-meta` contains shared package discovery and model-facing reference

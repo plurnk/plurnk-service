@@ -15,6 +15,7 @@ import ProviderInstantiate from "./core/ProviderInstantiate.ts";
 import Meta, { TEACHING_CORPUS } from "@plurnk/plurnk-meta";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
+import { Module as HooksModule } from "@plurnk/plurnk-hooks";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
@@ -224,9 +225,11 @@ export default class Service {
             // {§observability-boundary} — config is normalized before any SDK
             // implementation loads; teardown already owns the admitted DB.
             observability = await startObservability();
+            const hooksModule = HooksModule.init();
             const provider = alias === null ? null : await ProviderInstantiate.loadActiveProvider();
             daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
             daemon.registerModule(McpModule.init());
+            daemon.registerModule(hooksModule);
             // {§rpc} — the AG-UI plugin module is the client surface; its init runs at boot with the
             // seam handle and binds PLURNK_HOST:PLURNK_PORT. The module owns its knobs' semantics.
             const aguiModule = AguiModule.init({

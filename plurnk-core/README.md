@@ -47,6 +47,7 @@ imports `@plurnk/plurnk-service/digest`.
 - `@plurnk/plurnk-schemes` — addressable resource contract.
 - `@plurnk/plurnk-mimetypes` — content handling contract.
 - `@plurnk/plurnk-execs` — executable capability contract.
+- `@plurnk/plurnk-hooks` — selected lifecycle events delivered to exact commands.
 
 ## Observability
 

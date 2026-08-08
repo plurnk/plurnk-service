@@ -37,6 +37,7 @@
         "plurnk-execs-common",
         "plurnk-execs-search",
         "plurnk-mcp",
+        "plurnk-hooks",
         "plurnk-execs-git",
         "plurnk-execs-isogit",
         "plurnk-execs-jq",

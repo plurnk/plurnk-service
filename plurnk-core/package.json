@@ -87,6 +87,7 @@
         "@plurnk/plurnk-execs-search": "1.4.0",
         "@plurnk/plurnk-execs-sqlite": "1.4.0",
         "@plurnk/plurnk-execs-wasm": "1.4.0",
+        "@plurnk/plurnk-hooks": "1.4.0",
         "@plurnk/plurnk-mcp": "1.4.0",
         "@plurnk/plurnk-meta": "1.4.0",
         "@plurnk/plurnk-mimetypes": "1.4.0",

@@ -37,6 +37,7 @@ flowchart LR
     providers["Provider family"] --> core
     capabilities["Scheme / executor / mimetype families"] --> core
     mcp["MCP daemon module<br/>contract deferred"] -.-> core
+    hooks["plurnk-hooks<br/>exact command events"] --> core
     core["plurnk-service<br/>composed daemon"]
     core --> agui["plurnk-agui<br/>client interface"]
     agui --> clients["CLI / TUI / Neovim / web clients"]
@@ -61,6 +62,7 @@ document does not restate their teaching.
 | Content detection and projection                          | `@plurnk/plurnk-mimetypes` and installed handler packages    | [`plurnk-mimetypes/SPEC.md`](./plurnk-mimetypes/SPEC.md)                                                       |
 | Persistence, workers, turns, dispatch                     | `@plurnk/plurnk-service`                                     | [`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md)                                                                 |
 | External HTTP/SSE client protocol                         | `@plurnk/plurnk-agui`                                        | [`plurnk-agui/SPEC.md`](./plurnk-agui/SPEC.md)                                                                 |
+| Exact-command lifecycle hooks                             | `@plurnk/plurnk-hooks`                                       | [`plurnk-hooks/SPEC.md`](./plurnk-hooks/SPEC.md)                                                               |
 | MCP host module                                           | `@plurnk/plurnk-mcp`                                         | MCP epic deferred; this document makes no call-syntax claim.                                                   |
 | CLI, TUI, Neovim, and web presentation                    | Separate open-client repositories                            | Consume AG-UI; they do not own daemon scheduling or persisted truth.                                           |
 
