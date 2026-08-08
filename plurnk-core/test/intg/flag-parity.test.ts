@@ -14,7 +14,7 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 
 // The four partition flags are read via a `PLURNK_SERVICE_${k}` template literal, and MD_* via a
 // startsWith prefix — a literal-token scan can't see them, so they're declared-dynamic here.
-const DYNAMIC_READS = new Set(["PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_SAFETY"]);
+const DYNAMIC_READS = new Set(["PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_SAFETY", "PLURNK_SERVICE_LIVE_TIMEOUT"]);
 const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_MD_", "PLURNK_SERVICE_SQLITE_", "PLURNK_SERVICE_PROMPT_BUDGET_", "PLURNK_SERVICE_SAFETY_"];
 
 test("every PLURNK_SERVICE_* the code reads is in .env.defaults, and vice versa", () => {

@@ -100,12 +100,13 @@ export const liveLoop = async (
     s: { ws: SeamSocket; db: Db },
     id: number,
     params: { prompt: string; maxTurns?: number; flags?: Record<string, unknown> },
-    opts: { timeoutMs: number },
+    opts?: { timeoutMs?: number },
 ): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelWorkerId: number; lastContent: string }> => {
+    const timeoutMs = opts?.timeoutMs ?? Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
     const term = await runLoopToTerminal(s.ws, id, {
         prompt: params.prompt, flags: { auto: true, ...params.flags },
         ...(params.maxTurns !== undefined ? { maxTurns: params.maxTurns } : {}),
-    }, opts);
+    }, { timeoutMs });
     if (term.modelWorkerId === undefined) throw new Error("liveLoop: loop.run returned no modelWorkerId");
     const lastContent = await lastReply(s.db, term.turnIds);
     return {

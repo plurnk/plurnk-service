@@ -12,7 +12,7 @@ import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { initializeDemoRepository } from "./_git.ts";
 
 // This is a safety ceiling, not the expected duration; maxTurns separately bounds provider calls.
-const TIMEOUT = 420_000;
+const TIMEOUT = Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
 const ENGINE_SRC = fileURLToPath(new URL("../../src/core/Engine.ts", import.meta.url));
 
 test("demo: locate and edit deep in a large source file — coordinate held, no corruption", { timeout: TIMEOUT }, async () => {

@@ -26,7 +26,7 @@ import { measureFloor } from "./_floor-probe.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 import { initializeDemoRepository } from "./_git.ts";
 
-const TIMEOUT = 480_000; // 8 minutes — matches the storyline timeout.
+const TIMEOUT = Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
 // Ceilings are FLOOR-RELATIVE: each worker probes its own fixture's true turn-1 floor (a
 // zero-cost pre-generate hard-413, _floor-probe.ts) and pins ceiling = floor × factor —
 // teaching growth re-calibrates the pin instead of breaking it. TIGHT keeps the small

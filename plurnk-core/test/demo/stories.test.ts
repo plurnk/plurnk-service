@@ -28,7 +28,7 @@ import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 import WorldState from "../intg/world-state.ts";
 
-const TIMEOUT = 480_000; // 8-minute model-story ceiling.
+const TIMEOUT = Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
 
 interface StoryOpts {
     label: string;
