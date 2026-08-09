@@ -7,7 +7,6 @@
 -- replaying its provider turn could duplicate effects whose commit boundary is unknown.
 UPDATE loops
 SET status = 500,
-    terminal_message = 'The daemon restarted while this loop was active; its process-local owner no longer exists.',
     terminal_result = json_object(
         'status', 500,
         'problem', json_object(

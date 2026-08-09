@@ -11,7 +11,7 @@ SELECT * FROM workspaces ORDER BY id;
 SELECT * FROM workers ORDER BY id;
 
 -- PREP: digest_loops
-SELECT id, worker_id, sequence, status, prompt, flags, terminal_message, terminated_by, terminal_result,
+SELECT id, worker_id, sequence, status, prompt, flags, terminated_by, terminal_result,
        accounting_scope_id, accounting_state, accounting_charge, accounting_cost_usd,
        accounting_detail, accounting_evaluated_at
 FROM loops ORDER BY worker_id, sequence;

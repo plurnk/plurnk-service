@@ -601,10 +601,10 @@ test("{§membership-change-gated-sync}: deletion removes stale readable content 
 
 // {§worker-scheme-collect} loop-termination rides the same ambient log rail: when a sibling's loop
 // reaches a terminal status, the observer pulls it at pre-turn as a FOLDED SEND from
-// worker://<name> carrying the loop's deliverable — the SEND[200] body or, for an
-// abandonment, the reason. The terminated_at trigger stamps every death-path uniformly,
-// so a graceful 200 and a budget 413 surface through the same mechanism.
-test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + awakening, an abandonment folded", async () => {
+// worker://<name> carrying the loop's exact terminal result. The terminated_at
+// trigger stamps every death-path uniformly, so a graceful 200 and an uncommon
+// failure status surface through the same mechanism.
+test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + awakening, a failure folded", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loopterm-${crypto.randomUUID()}`);
@@ -612,28 +612,28 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
         const loopA = await insertLoop(db, workerA, 1, "go");
         const worker = await insertWorker(db, workspaceId, null, "worker");      // finishes gracefully
         const workerLoop = await insertLoop(db, worker, 1, "investigate the bug");
-        const grinder = await insertWorker(db, workspaceId, null, "grinder");    // gets abandoned
-        const grinderLoop = await insertLoop(db, grinder, 1, "grind forever");
+        const failedWorker = await insertWorker(db, workspaceId, null, "failed-worker");
+        const failedLoop = await insertLoop(db, failedWorker, 1, "call provider");
         const eng = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         // A's turn 1 sets its "last looked" boundary; the siblings are still running.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
-        // worker SENDs[200] its result (its deliverable); grinder is abandoned (budget).
+        // One worker delivers successfully; the other retains an uncommon exact
+        // provider status even though the scheduler projects it to lifecycle 500.
         const lifecycle = new LoopLifecycle(db);
-        assert.deepEqual(
-            await lifecycle.finish(workerLoop, { status: 200 }, { message: "the answer is 42" }),
-            { status: 200 },
-        );
+        const deliverable = { status: 200, content: "the answer is 42", mimetype: "text/markdown" };
+        assert.deepEqual(await lifecycle.finish(workerLoop, deliverable), deliverable);
         assert.equal(
             (await lifecycle.finish(
-                grinderLoop,
-                Results.failure("engine:budget", "budget-overflow", 413, "budget_overflow"),
+                failedLoop,
+                Results.failure("engine:provider", "provider-failed", 502, "provider_failure"),
             ))?.status,
-            413,
+            502,
         );
 
-        // A's turn 2 pulls both terminations from the shared log: the 2xx deliverable born open, the abandonment folded.
+        // A's turn 2 pulls both terminations from the shared log: the 2xx
+        // deliverable born open, the failure folded.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; expanded: number }>({ worker_id: workerA });
 
@@ -642,15 +642,17 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
         assert.equal(win!.origin, "plurnk", "the termination delta is the engine's narration");
         assert.equal(win!.source, "worker://worker", "attributed with the terminating worker's control identity");
         assert.equal(win!.status_rx, 200, "the terminal status rides");
-        assert.equal(win!.rx, "the answer is 42", "the SEND body — the loop's deliverable — rides the delta");
+        assert.deepEqual(JSON.parse(win!.rx), deliverable, "the exact terminal result rides the parent edge");
         assert.equal(win!.expanded, 1, "born OPEN — a child's 2xx deliverable reaches the parent open + awakening, not hidden behind a fold");
 
-        const grind = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/grinder");
-        assert.ok(grind, "the abandoned loop surfaced too — every death-path stamps terminated_at uniformly");
-        assert.equal(grind!.status_rx, 413, "budget abandonment is a 413 Content Too Large termination");
-        assert.equal(grind!.rx, "budget_overflow", "the abandon reason rides as the terminal message");
-        assert.equal(grind!.source, "worker://grinder", "attributed with the abandoned worker's control identity");
-        assert.equal(grind!.expanded, 0, "an abandonment (non-2xx) stays folded — only a 2xx deliverable is born open");
+        const failed = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/failed-worker");
+        assert.ok(failed, "the failed loop surfaced too — every death-path stamps terminated_at uniformly");
+        assert.equal(failed!.status_rx, 502, "the parent edge carries the exact status, not scheduler class 500");
+        const failure = JSON.parse(failed!.rx) as { status: number; problem?: { detail?: string } };
+        assert.equal(failure.status, 502, "the exact failure status survives the parent edge");
+        assert.equal(failure.problem?.detail, "provider_failure", "the exact Problem survives the parent edge");
+        assert.equal(failed!.source, "worker://failed-worker", "attributed with the failed worker's control identity");
+        assert.equal(failed!.expanded, 0, "a failure stays folded — only a 2xx deliverable is born open");
     } finally {
         await db.close();
     }

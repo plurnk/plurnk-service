@@ -454,7 +454,8 @@ SELECT published_channel FROM subscriptions WHERE id = $id;
 SELECT signal FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
 
 -- PREP: test_log_entries_by_worker_op_full
-SELECT pathname, tx, rx, status_rx FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
+SELECT pathname, tx, rx, mimetype_rx, status_rx, attrs
+FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
 
 -- PREP: test_error_rows_for_worker
 SELECT rx FROM log_entries WHERE worker_id = $worker_id AND op = 'error';
@@ -482,7 +483,7 @@ SELECT COUNT(*) n FROM log_entries WHERE op = $op;
 UPDATE workspaces SET project_root = $project_root WHERE id = $id;
 
 -- PREP: test_list_loops_all
-SELECT id, worker_id, status, terminated_at, terminal_message, terminated_by FROM loops ORDER BY id;
+SELECT id, worker_id, status, terminated_at, terminal_result, terminated_by FROM loops ORDER BY id;
 
 -- PREP: test_get_entry_attributes
 SELECT attributes FROM entries WHERE workspace_id = $workspace_id AND scheme = $scheme AND pathname = $pathname;

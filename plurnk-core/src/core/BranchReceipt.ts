@@ -32,8 +32,4 @@ export default class BranchReceipt {
             : ` at \`${first.result_commit.slice(0, revisionChars)}\` (${first.changed === 1 ? "changed" : "unchanged"})`;
         return `Branch receipt: \`${first.branch}\` ${first.item_state}${tip} (batch ${first.batch_id} ${first.batch_state}).`;
     }
-
-    static append(deliverable: string, receipt: string | null): string {
-        return receipt === null ? deliverable : `${deliverable}\n\n${receipt}`;
-    }
 }

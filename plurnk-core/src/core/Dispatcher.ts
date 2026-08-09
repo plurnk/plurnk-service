@@ -51,6 +51,7 @@ import EntryOps from "../schemes/_entry-ops.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
+import TerminalResult from "./TerminalResult.ts";
 import Results from "./results.ts";
 import { OperationFailureError } from "./results.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
@@ -2536,7 +2537,7 @@ export default class Dispatcher {
         // indefinite park. {§join-blocking-collect}
         const joinArmed = this.#joinTargets.delete(loopId);
         if (status === 102 && statement.lineMarker === null && joinArmed) {
-            if (!await this.#lifecycle.park(loopId, raw.length > 0 ? raw : "parked — awaiting a worker's result (blocking collect)")) {
+            if (!await this.#lifecycle.park(loopId)) {
                 return Dispatcher.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to park it.");
             }
             this.#parkDeadlines.set(loopId, -1); // indefinite: the bounded child's terminal is the wake edge
@@ -2552,7 +2553,7 @@ export default class Dispatcher {
             const marks = statement.lineMarker?.marks[0];
             const seconds = typeof marks === "number" ? marks : -1; // bare 202 / absent T = indefinite, bounded by the join
             if (await this.#hasLiveWork(workerId)) {
-                if (!await this.#lifecycle.park(loopId, raw.length > 0 ? raw : "waiting on live work")) {
+                if (!await this.#lifecycle.park(loopId)) {
                     return Dispatcher.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when SEND attempted to wait.");
                 }
                 this.#parkDeadlines.set(loopId, seconds);
@@ -2574,8 +2575,7 @@ export default class Dispatcher {
             // immediately; it never parks and needs no corrective model turn.
             const finished = await this.#lifecycle.finish(
                 loopId,
-                { status: 200 },
-                { message: raw === "" ? null : raw },
+                TerminalResult.success(raw),
             );
             return {
                 status: finished !== null ? 200 : await this.#lifecycle.status(loopId),
@@ -2654,8 +2654,7 @@ export default class Dispatcher {
             if (branchDenial !== null) return branchDenial;
             const finished = await this.#lifecycle.finish(
                 loopId,
-                { status: 200 },
-                { message: raw === "" ? null : raw },
+                TerminalResult.success(raw),
             );
             return Dispatcher.#statusResult(
                 finished !== null ? 200 : await this.#lifecycle.status(loopId),

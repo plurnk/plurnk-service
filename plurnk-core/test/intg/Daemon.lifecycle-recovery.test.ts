@@ -373,7 +373,7 @@ test("boot settles vanished owners and resumes the now-unblocked parent topology
         const childId = await insertWorker(db, workspaceId, parentId, "child");
         const parentLoopId = await enqueueLoop(db, parentId, 1, "wait for child");
         await db.engine_reclaim_queued_loop.run({ loop_id: parentLoopId });
-        assert.equal(await new LoopLifecycle(db).park(parentLoopId, "waiting for child"), true);
+        assert.equal(await new LoopLifecycle(db).park(parentLoopId), true);
         const childLoopId = await enqueueLoop(db, childId, 1, "interrupted child");
         await db.engine_reclaim_queued_loop.run({ loop_id: childLoopId });
 
@@ -398,11 +398,14 @@ test("boot settles vanished owners and resumes the now-unblocked parent topology
             () => db.test_list_loops_all.all<{
                 id: number;
                 status: number;
-                terminal_message: string | null;
+                terminal_result: string | null;
             }>({}).then((rows) => rows.find((row) => row.id === childLoopId)),
             (row) => row?.status === 500,
         );
-        assert.match(child?.terminal_message ?? "", /daemon restarted/);
+        const childResult = JSON.parse(child?.terminal_result ?? "null") as {
+            problem?: { detail?: string };
+        } | null;
+        assert.match(childResult?.problem?.detail ?? "", /daemon restarted/);
 
         const subscription = await db.test_get_subscription.get<{
             close_status: number | null;
@@ -457,7 +460,7 @@ test("a child drain exception still propagates the parent wake edge", async () =
         const childId = await insertWorker(db, workspaceId, parentId, "child");
         const parentLoopId = await enqueueLoop(db, parentId, 1, "wait for child");
         await db.engine_reclaim_queued_loop.run({ loop_id: parentLoopId });
-        assert.equal(await new LoopLifecycle(db).park(parentLoopId, "waiting for child"), true);
+        assert.equal(await new LoopLifecycle(db).park(parentLoopId), true);
         const childLoopId = await enqueueLoop(db, childId, 1, "fail while running");
 
         await daemon.start();

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
 import Engine from "../../src/core/Engine.ts";
+import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock, type ProviderAccountingResult, type ProviderAccountingScope } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
@@ -367,7 +368,15 @@ test("cost rollups: reconciliation counts every durable provider call identity",
         await db.test_set_loop_status.run({
             id: loopId,
             status: 500,
-            terminal_result: JSON.stringify({ status: 500 }),
+            terminal_result: JSON.stringify(Results.attachInstance(
+                Results.failure(
+                    "test:accounting",
+                    "open-attempt",
+                    500,
+                    "The accounting fixture ended with an open provider attempt.",
+                ),
+                `loop:///${loopId}`,
+            )),
         });
 
         await engine.reconcileLoopAccounting(loopId, provider);

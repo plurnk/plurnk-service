@@ -68,8 +68,7 @@ RETURNING id, sequence;
 -- PREP: envelope_close_client_loop
 UPDATE loops
 SET status = $status,
-    terminal_result = $result,
-    terminal_message = $message
+    terminal_result = $result
 WHERE id = $loop_id AND status = 102;
 
 -- PREP: envelope_list_workspaces

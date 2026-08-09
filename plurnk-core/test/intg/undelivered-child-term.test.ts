@@ -17,7 +17,11 @@ async function raceScenario(db: Awaited<ReturnType<typeof openMigrated>>) {
     // A child spawned by the parent concludes after the parent's turn opened.
     const child = await insertWorker(db, workspaceId, parent, "worker-x");
     const childLoop = await insertLoop(db, child, 1, "fetch the value");
-    await new LoopLifecycle(db).finish(childLoop, { status: 200 }, { message: "the value is 42" });
+    await new LoopLifecycle(db).finish(childLoop, {
+        status: 200,
+        content: "the value is 42",
+        mimetype: "text/markdown",
+    });
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     return { workspaceId, parent, parentLoop, parentTurn, engine };
 }

@@ -9,6 +9,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import GitBranch from "../../src/core/GitBranch.ts";
+import LogBody from "../../src/core/LogBody.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -281,10 +282,19 @@ test("tagged sibling workers execute through the complete daemon topology", asyn
                 );
                 assert.ok(result.modelWorkerId);
                 const sends = await db.test_log_entries_by_worker_op_full.all<{
+                    tx: string;
                     rx: string;
+                    mimetype_rx: string;
+                    attrs: string;
                 }>({ worker_id: result.modelWorkerId, op: "SEND" });
                 assert.ok(
-                    sends.some(({ rx }) => rx.includes("Branch receipt: `feature/one` succeeded")),
+                    sends.some((row) => LogBody.resolve({
+                        op: "SEND",
+                        attrs: row.attrs,
+                        tx: row.tx,
+                        rx: row.rx,
+                        mimetypeRx: row.mimetype_rx,
+                    }).content.includes("Branch receipt: `feature/one` succeeded")),
                     "the parent receives branch receipts through its ordinary child-termination delta",
                 );
             } finally {

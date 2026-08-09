@@ -5,7 +5,18 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, flush, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, waitForDb } from "./_rpc.ts";
 import { insertLoop, insertTurn, insertWorker } from "./_helpers.ts";
 
-type LoopRow = { id: number; status: number; terminal_message: string | null; terminated_by: string | null };
+type LoopRow = { id: number; status: number; terminal_result: string | null; terminated_by: string | null };
+
+const terminalResult = (row: LoopRow): {
+    status: number;
+    problem?: { detail?: string; reason?: string };
+} => {
+    assert.notEqual(row.terminal_result, null, "a terminal loop carries its exact result");
+    return JSON.parse(row.terminal_result!) as {
+        status: number;
+        problem?: { detail?: string; reason?: string };
+    };
+};
 
 test("{§loop-terminal-authorship}: cancelling a live loop records who and why", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
@@ -31,7 +42,7 @@ test("{§loop-terminal-authorship}: cancelling a live loop records who and why",
                 (l) => l !== undefined,
             );
             assert.equal(row!.terminated_by, "cancel", "the external act is named on the terminal record");
-            assert.equal(row!.terminal_message, "operator redirected the task", "the client's reason is the abandonment message");
+            assert.equal(terminalResult(row!).problem?.reason, "operator redirected the task", "the client's reason remains in the exact cancellation Problem");
             // The broadcast carries the same why.
             const notes = await waitFor(
                 () => terminated() as Array<{ result: { status: number; problem?: {
@@ -91,7 +102,7 @@ test("{§methods-loop-cancel}: cancelling a parked loop terminalizes it", async 
             );
             assert.equal(row!.status, 499, "the parked loop went terminal — never a zombie 202");
             assert.equal(row!.terminated_by, "cancel");
-            assert.equal(row!.terminal_message, "shutting down the request");
+            assert.equal(terminalResult(row!).problem?.reason, "shutting down the request");
             const sh = await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" });
             assert.ok(sh !== undefined, "workspace still readable"); // the reap itself is pinned elsewhere ({§notifications-stream-concluded})
         } finally { ws.close(); }
@@ -126,8 +137,9 @@ test("{§worker-lifecycle-total-reap}: external cancellation terminalizes the du
             );
             for (const loopId of [rootLoop, childLoop, grandchildLoop]) {
                 const row = rows.find(({ id }) => id === loopId);
+                assert.ok(row);
                 assert.equal(row?.terminated_by, "cancel");
-                assert.equal(row?.terminal_message, "operator cancelled the scope");
+                assert.equal(terminalResult(row!).problem?.reason, "operator cancelled the scope");
             }
 
             const notes = await waitFor(

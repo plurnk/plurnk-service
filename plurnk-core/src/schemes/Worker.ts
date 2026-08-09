@@ -13,14 +13,8 @@ import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreEntryAddress, CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 import BranchReceipt from "../core/BranchReceipt.ts";
+import TerminalResult from "../core/TerminalResult.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
-
-// {§loop-terminal-authorship}: an external cancellation is marked as state;
-// model terminals and engine verdicts already carry their own exact result.
-export const markTerminal = (terminatedBy: string | null, message: string | null): string | null => {
-    if (terminatedBy === "cancel") return `[ cancelled from outside the worker ]${message === null ? "" : ` ${message}`}`;
-    return message;
-};
 
 // {§worker-scheme} — worker:// is the knowledgebase plus inter-worker control (irc=SEND; WORK/FORK are
 // Dispatcher.#handleWorkerControl). The authority names the OWNER ({§worker-authority-carving}):
@@ -271,7 +265,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         }
         const entryPath = Worker.#entryPath(statement.target);
         // Path-absent READ(worker://<name>) COLLECTS the worker's deliverable ({§worker-scheme-collect}, pull side):
-        // its latest loop's terminal message — the SEND[200] result, or an abandonment reason. A worker
+        // its latest loop's exact terminal result. A worker
         // still running hasn't delivered yet → 425 steers the model to park until it does (the
         // same deliverable the wake/collect-delta will push). The pull complements the push; neither is lost.
         if (entryPath === "") {
@@ -292,7 +286,12 @@ export default class Worker extends CoreSchemeAdapterBase {
                     },
                 );
             } // collect names a WORKER
-            const row = await core.db.worker_deliverable_by_name.get<{ worker_id: number; status: number; terminal_message: string | null; terminated_by: string | null }>({ workspace_id: core.workspaceId, name: controlAuthority });
+            const row = await core.db.worker_deliverable_by_name.get<{
+                worker_id: number;
+                status: number;
+                terminal_result: string | null;
+                terminated_by: string | null;
+            }>({ workspace_id: core.workspaceId, name: controlAuthority });
             if (row === undefined) {
                 return failure(
                     "worker-not-found",
@@ -319,14 +318,24 @@ export default class Worker extends CoreSchemeAdapterBase {
                     retryable: false,
                 });
             }
-            const deliverable = markTerminal(row.terminated_by, row.terminal_message)
-                ?? `[ worker '${controlAuthority}' concluded with no deliverable (status ${row.status}) ]`;
-            return {
-                status: 200,
-                content: BranchReceipt.append(deliverable, await BranchReceipt.render(core.db, row.worker_id)),
-                mimetype: "text/markdown",
+            if (row.terminal_result === null) {
+                throw new Error(`terminal worker '${controlAuthority}' has no terminal result`);
+            }
+            const exact = TerminalResult.parse(
+                row.terminal_result,
+                `terminal worker '${controlAuthority}'`,
+            );
+            const presentation = TerminalResult.present(exact, {
+                terminatedBy: row.terminated_by,
+                receipt: await BranchReceipt.render(core.db, row.worker_id),
+                fallback: `[ worker '${controlAuthority}' concluded with no deliverable (status ${exact.status}) ]`,
+            });
+            return Results.assertReadResult({
+                ...exact,
+                content: presentation?.content ?? "",
+                mimetype: presentation?.mimetype ?? "text/markdown",
                 channel: null,
-            };
+            }) as ReadResult;
         }
         // Path-present: an entry read — commons / own / ancestry-gated named space.
         const resolved = await Worker.#resolveAuthority(authority, core);

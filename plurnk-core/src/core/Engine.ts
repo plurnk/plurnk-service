@@ -20,7 +20,6 @@ import type { Db } from "./Db.ts";
 import type { EntryData } from "../schemes/_entry-crud.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import SearchIndex from "../schemes/_search-index.ts";
-import { markTerminal } from "../schemes/Worker.ts";
 import GitMembership, { type FsDivergence } from "./git-membership.ts";
 import GitState, { type GitStatusSnapshot } from "./git-state.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
@@ -43,6 +42,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import PacketWire from "./packet-wire.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
 import BranchReceipt from "./BranchReceipt.ts";
+import TerminalResult from "./TerminalResult.ts";
 import BudgetOverflow, { type BudgetOverflowMeasurement } from "./BudgetOverflow.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
 import JournalTurn from "./JournalTurn.ts";
@@ -2311,7 +2311,6 @@ export default class Engine {
             rx: string | null;
             attrs: string | null;
             status_rx: number | null;
-            prompt: string | null;
             terminated_by: string | null;
         }>({ workspace_id: workspaceId, worker_id: workerId });
         const window = rows[0];
@@ -2321,13 +2320,27 @@ export default class Engine {
             if (r.event_id === null || r.producer_worker_id === null || r.producer_worker_name === null || r.kind === null
                 || r.op === null || r.status_rx === null) continue;
             const termination = r.kind === "loop_termination";
-            const rx = termination
-                ? BranchReceipt.append(
-                    markTerminal(r.terminated_by, r.rx) ?? `loop "${r.prompt ?? ""}" ended (${r.status_rx})`,
-                    await BranchReceipt.render(this.#db, r.producer_worker_id),
-                )
-                : r.rx;
-            if (rx === null) throw new Error(`ambient event ${r.event_id} has no materializable result`);
+            if (r.rx === null) throw new Error(`ambient event ${r.event_id} has no materializable result`);
+            const terminal = termination
+                ? TerminalResult.parse(r.rx, `ambient loop-termination event ${r.event_id}`)
+                : null;
+            if (terminal !== null && terminal.status !== r.status_rx) {
+                throw new Error(`ambient loop-termination event ${r.event_id} status ${r.status_rx} does not match its terminal result status ${terminal.status}`);
+            }
+            let attrs = r.attrs ?? "{}";
+            if (terminal !== null) {
+                const inherited = JSON.parse(attrs) as unknown;
+                if (inherited === null || typeof inherited !== "object" || Array.isArray(inherited)) {
+                    throw new TypeError(`ambient loop-termination event ${r.event_id} attrs must be an object`);
+                }
+                const receipt = await BranchReceipt.render(this.#db, r.producer_worker_id);
+                attrs = JSON.stringify({
+                    ...inherited,
+                    kind: "loop_termination",
+                    ...(r.terminated_by === null ? {} : { terminatedBy: r.terminated_by }),
+                    ...(receipt === null ? {} : { receipt }),
+                });
+            }
             const inserted = await this.#db.engine_insert_ambient_delta.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + written,
                 event_id: r.event_id,
@@ -2336,11 +2349,11 @@ export default class Engine {
                 scheme: r.scheme,
                 hostname: r.hostname,
                 pathname: r.pathname,
-                rx,
-                mimetype_rx: termination ? "text/markdown" : "application/json",
+                rx: r.rx,
+                mimetype_rx: "application/json",
                 status: r.status_rx,
-                expanded: termination && r.status_rx >= 200 && r.status_rx < 300 ? 1 : 0,
-                attrs: r.attrs ?? "{}",
+                expanded: terminal !== null && terminal.status >= 200 && terminal.status < 300 ? 1 : 0,
+                attrs,
             });
             if (inserted !== undefined) written++;
         }

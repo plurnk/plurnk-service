@@ -112,7 +112,6 @@ interface LoopRow {
     status: number;
     prompt: string;
     flags: string;
-    terminal_message: string | null;
     terminated_by: string | null;
     terminal_result: string | null;
     accounting_scope_id: string;
@@ -460,6 +459,7 @@ export default class Digest {
                 lines.push("```");
                 const workerLoops = m.loopsByWorker.get(worker.id) ?? [];
                 for (const loop of workerLoops) {
+                    const terminal = Digest.#terminalResult(loop);
                     lines.push("");
                     const h = Digest.#loopHealth(loop, m);
                     const badge = h.verdict === "CLEAN"
@@ -468,8 +468,8 @@ export default class Digest {
                     lines.push(`#### Loop ${loop.sequence} (id=${loop.id}, status=${loop.status})${badge}`);
                     lines.push("");
                     lines.push(`Prompt: ${Digest.#summarize(loop.prompt, 160)}`);
-                    if (loop.status !== 200 && loop.terminal_message !== null && loop.terminal_message.length > 0) {
-                        lines.push(`Terminal${loop.terminated_by !== null ? ` (${loop.terminated_by})` : ""}: ${Digest.#summarize(loop.terminal_message, 400)}`);
+                    if (loop.status !== 200 && terminal?.problem?.detail !== undefined) {
+                        lines.push(`Terminal${loop.terminated_by !== null ? ` (${loop.terminated_by})` : ""}: ${Digest.#summarize(terminal.problem.detail, 400)}`);
                     }
                     const flags = Digest.#parseJson(loop.flags, {}) as Record<string, unknown>;
                     const flagSummary = Object.entries(flags).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join(" ");
@@ -620,7 +620,7 @@ export default class Digest {
             loops: m.loops.map((l) => ({
                 id: l.id, worker_id: l.worker_id, sequence: l.sequence, status: l.status,
                 prompt: l.prompt, flags: Digest.#parseJson(l.flags, {}),
-                terminal_message: l.terminal_message, terminated_by: l.terminated_by,
+                terminated_by: l.terminated_by,
                 result: Digest.#terminalResult(l),
                 accounting: l.accounting_state === "unscoped"
                     ? null

@@ -247,7 +247,6 @@ export default class Envelope {
         await db.envelope_close_client_loop.run({
             status: LoopLifecycle.projectStatus(exact.status),
             result: JSON.stringify(exact),
-            message: exact.problem?.detail ?? null,
             loop_id: loopId,
         });
     }

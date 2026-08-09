@@ -3,8 +3,7 @@
 
 -- PREP: lifecycle_park_loop
 UPDATE loops
-SET status = 202,
-    terminal_message = $message
+SET status = 202
 WHERE id = $loop_id AND status = 102
 RETURNING id;
 
@@ -17,7 +16,6 @@ RETURNING id;
 -- PREP: lifecycle_finish_loop
 UPDATE loops
 SET status = $status,
-    terminal_message = $message,
     terminal_result = $result,
     terminated_by = $terminated_by
 WHERE id = $loop_id AND status IN (100, 102, 202)
@@ -52,7 +50,6 @@ WITH RECURSIVE tree(id) AS (
 )
 UPDATE loops
 SET status = 499,
-    terminal_message = $message,
     terminal_result = json_set(
         $result,
         '$.problem.instance',

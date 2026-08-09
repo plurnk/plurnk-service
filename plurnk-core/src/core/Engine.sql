@@ -348,7 +348,7 @@ SELECT o.cursor, o.boundary,
        ae.id AS event_id, ae.producer_worker_id, producer.name AS producer_worker_name,
        ae.kind, ae.source,
        ae.op, ae.scheme, ae.hostname, ae.pathname, ae.rx, ae.attrs,
-       ae.status_rx, ae.prompt, ae.terminated_by
+       ae.status_rx, ae.terminated_by
 FROM observation o
 LEFT JOIN ambient_events ae
   ON ae.workspace_id = $workspace_id

@@ -469,7 +469,7 @@ sequenceDiagram
 
 The active direct child's `Git Status` names its assigned branch and states the commit-and-clean return condition. No ordinary worker receives ambient commit or authorship policy; commit identity remains host-owned and outside model teaching. {§packet-git-status}
 
-§worker-branch-batch-receipt **The parent reconciles; the engine does not merge.** The ordinary child deliverable remains the model's exact SEND body. Its pushed termination delta and pull-side `READ(worker://child)` append a bounded branch receipt: branch, item outcome, and the abbreviated result commit (`PLURNK_SERVICE_BRANCH_RECEIPT_REVISION_CHARS`; the database retains the full id). Branch refs remain after the batch. The parent chooses inspection, cherry-pick, merge, rejection, or deletion with ordinary Git tools.
+§worker-branch-batch-receipt **The parent reconciles; the engine does not merge.** The ordinary child deliverable remains the model's exact SEND result. Its pushed termination delta and pull-side `READ(worker://child)` append a bounded branch receipt to the presented body without changing that result: branch, item outcome, and the abbreviated result commit (`PLURNK_SERVICE_BRANCH_RECEIPT_REVISION_CHARS`; the database retains the full id). Branch refs remain after the batch. The parent chooses inspection, cherry-pick, merge, rejection, or deletion with ordinary Git tools.
 
 §worker-branch-batch-recovery **Recovery follows durable ownership.** `branch_batches`, their ordered items, the project-repository snapshot, and result tips are schema state, not process memory. Generic boot recovery never starts their queued loops. A crash before sealing fails the unstarted batch. A queued partial preflight is rolled back only when every created ref still equals its frozen base, then retried. A running child is never replayed: its loop settles under the ordinary owner-loss rule; if the checkout is clean and either on the assigned branch or the exact original position, the committed tip is retained, the original restored, that item marked interrupted, and queued siblings continue. Any mismatch becomes `recovery_required` and keeps the workspace stopped for operator correction.
 
@@ -480,15 +480,14 @@ The remaining worker surfaces are:
 - §worker-scheme-cap **Cap** — `PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE` ceilings the *concurrent* active workers per workspace (a worker with a non-terminal loop); a spawn or fork past it fails hard (508 — no queue, no retry), irc exempt; `-1` disables it. The fork-bomb brake, sized for workspaces that live for months.
 - §worker-scheme-collect **Collect** — a worker's loop reaching a terminal status
   surfaces to its sisters as an ambient delta ({§env-delta}): a `SEND` from
-  `worker://<name>` carrying the loop's deliverable — the `SEND[200]` body, or
-  for an abandonment the reason. A **2xx deliverable is born OPEN** (its body
+  `worker://<name>` carrying the loop's exact terminal operation result. A
+  **2xx deliverable is born OPEN** (its body
   materialized into the parent's packet, not hidden behind a fold): a child's
   success must reach the parent open and awakening, never a bodyless row. An
-  abandonment (non-2xx) surfaces folded. Every death-path is stamped uniformly,
+  non-2xx result surfaces folded; a failure retains its exact status and Problem. Every death-path is stamped uniformly,
   so no termination is silent; collection is the shared world moving, never a
   verb. The **pull** side mirrors the push: a path-absent
-  `READ(worker://<name>)` collects the same deliverable on demand — the latest
-  loop's terminal message (the result, or the abandonment reason) for a
+  `READ(worker://<name>)` collects that same result on demand for a
   concluded worker; a worker **still running** has not delivered, so the READ
   returns **425** (Too Early) and the turn's bare `SEND[102]` **becomes a
   parked loop (202) on the join** ({§join-blocking-collect}) until the worker
@@ -607,7 +606,9 @@ parent edge as the child's result.
 §worker-lifecycle-terminal-result **Terminal truth is a result, not a lifecycle code.** `loops.terminal_result`
 stores the exact universal operation result. A failure therefore retains its
 RFC 9457 Problem Details and exact status through persistence, restart,
-parent collection, and `loop/terminated`. The older constrained `loops.status`
+parent collection, and `loop/terminated`; successful terminal SEND content and
+mimetype remain in the same result. Cancellation markers and branch receipts
+are derived presentation, never a second stored outcome. The constrained `loops.status`
 column remains only the scheduler's compact lifecycle projection: known
 terminal classes remain themselves, other 2xx/3xx statuses project to `200`,
 and other 4xx/5xx statuses project to `500`; exact `202` is forbidden because
@@ -1394,7 +1395,7 @@ AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, signal: nu
 | `terminated_by` | Meaning | Presentation |
 |---|---|---|
 | `NULL` | The model's own terminal or an engine verdict whose exact result already carries the story. An already-drained join is the model's own successful terminal. | No authorship marker. |
-| `cancel` | An external client cancelled the structured scope ({§methods-loop-cancel}). | COLLECT and the termination delta prepend a cancellation marker to the recorded reason, so cancellation cannot masquerade as a deliverable. The model's prior log rows remain untouched. |
+| `cancel` | An external client cancelled the structured scope ({§methods-loop-cancel}). | COLLECT and the termination delta prepend a cancellation marker to the exact Problem's presentation, so cancellation cannot masquerade as a deliverable. The model's prior log rows remain untouched. |
 
 The engine's failure terminals — **500** (strike threshold) and **508** (cycle), {§engine-rails} — are never the model's to pick; they are the engine ruling the loop failed. The surface is small on purpose: the model says done, waiting, or giving up, and is never asked to hold a correct opinion about *how* it failed or *whether* it can be woken — the engine decides those from state.
 

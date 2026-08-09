@@ -71,13 +71,19 @@ CREATE TABLE IF NOT EXISTS ambient_events (
     rx                 TEXT,
     attrs              TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attrs)),
     status_rx          INTEGER NOT NULL CHECK (status_rx BETWEEN 100 AND 599),
-    prompt             TEXT,
     terminated_by      TEXT             CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
     created_at         TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     CHECK (
-        (kind = 'edit' AND op = 'EDIT' AND rx IS NOT NULL AND prompt IS NULL AND terminated_by IS NULL)
+        (kind = 'edit' AND op = 'EDIT' AND rx IS NOT NULL AND terminated_by IS NULL)
         OR
-        (kind = 'loop_termination' AND op = 'SEND' AND scheme = 'worker' AND prompt IS NOT NULL)
+        (kind = 'loop_termination'
+            AND op = 'SEND'
+            AND scheme = 'worker'
+            AND rx IS NOT NULL
+            AND json_valid(rx)
+            AND json_type(rx) = 'object'
+            AND json_type(rx, '$.status') = 'integer'
+            AND json_extract(rx, '$.status') = status_rx)
     ),
     FOREIGN KEY (workspace_id)       REFERENCES workspaces(id) ON DELETE CASCADE,
     FOREIGN KEY (producer_worker_id) REFERENCES workers(id)    ON DELETE CASCADE
@@ -121,15 +127,50 @@ CREATE TABLE IF NOT EXISTS loops (
     -- complete orphan frame set of one concluded source loop.
     orphan_source_loop_id INTEGER,
     -- {§worker-scheme} loop-termination delta: terminated_at is stamped by the trigger
-    -- below when status crosses into terminal (every death-path, uniformly);
-    -- terminal_message is the deliverable — the SEND[200] body or the abandonment
-    -- reason — set by the guarded terminal lifecycle transition.
+    -- below when status crosses into terminal (every death-path, uniformly).
     terminated_at    TEXT,
-    terminal_message TEXT,
-    terminal_result  TEXT                      CHECK (terminal_result IS NULL OR json_valid(terminal_result)),
+    terminal_result  TEXT,
     -- {§loop-terminal-authorship}: 'cancel' names an external loop.cancel;
     -- NULL covers model terminals and engine verdicts whose result carries the story.
     terminated_by    TEXT                      CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
+    CONSTRAINT loops_terminal_result_contract CHECK (
+        CASE
+            WHEN status IN (100, 102, 202) THEN terminal_result IS NULL
+            WHEN terminal_result IS NULL OR NOT json_valid(terminal_result) THEN 0
+            ELSE
+                json_type(terminal_result) IS 'object'
+                AND json_type(terminal_result, '$.status') IS 'integer'
+                AND (
+                    json_extract(terminal_result, '$.status') = status
+                    OR (
+                        status = 200
+                        AND json_extract(terminal_result, '$.status') BETWEEN 200 AND 399
+                        AND json_extract(terminal_result, '$.status') != 202
+                    )
+                    OR (
+                        status = 500
+                        AND json_extract(terminal_result, '$.status') BETWEEN 400 AND 599
+                    )
+                )
+                AND CASE
+                    WHEN json_extract(terminal_result, '$.status') < 400 THEN
+                        json_type(terminal_result, '$.problem') IS NULL
+                    ELSE
+                        json_type(terminal_result, '$.problem') IS 'object'
+                        AND json_type(terminal_result, '$.problem.status') IS 'integer'
+                        AND json_extract(terminal_result, '$.problem.status')
+                            = json_extract(terminal_result, '$.status')
+                        AND json_type(terminal_result, '$.problem.type') IS 'text'
+                        AND length(json_extract(terminal_result, '$.problem.type')) > 0
+                        AND json_type(terminal_result, '$.problem.title') IS 'text'
+                        AND length(json_extract(terminal_result, '$.problem.title')) > 0
+                        AND json_type(terminal_result, '$.problem.detail') IS 'text'
+                        AND length(json_extract(terminal_result, '$.problem.detail')) > 0
+                        AND json_type(terminal_result, '$.problem.instance') IS 'text'
+                        AND length(json_extract(terminal_result, '$.problem.instance')) > 0
+                END
+        END
+    ),
     CHECK (
         (accounting_state IN ('unscoped', 'open')
             AND accounting_charge IS NULL AND accounting_cost_usd IS NULL
@@ -190,94 +231,13 @@ WHEN NEW.status IN (200, 413, 429, 499, 500, 504, 508) AND OLD.status NOT IN (20
 BEGIN
     INSERT INTO ambient_events (
         workspace_id, producer_worker_id, kind, source_record_id, source,
-        op, scheme, pathname, rx, status_rx, prompt, terminated_by
+        op, scheme, pathname, rx, status_rx, terminated_by
     )
     SELECT w.workspace_id, NEW.worker_id, 'loop_termination', NEW.id, NULL,
-           'SEND', 'worker', '/' || w.name, NEW.terminal_message, NEW.status, NEW.prompt, NEW.terminated_by
+           'SEND', 'worker', '/' || w.name, NEW.terminal_result,
+           json_extract(NEW.terminal_result, '$.status'), NEW.terminated_by
     FROM workers w
     WHERE w.id = NEW.worker_id;
-END;
-
-CREATE TRIGGER IF NOT EXISTS loops_result_contract_insert
-BEFORE INSERT ON loops
-WHEN NEW.status IN (100, 102, 200, 202, 413, 429, 499, 500, 504, 508)
-AND NOT (
-    (NEW.status IN (100, 102, 202) AND NEW.terminal_result IS NULL)
-    OR (
-        NEW.status IN (200, 413, 429, 499, 500, 504, 508)
-        AND NEW.terminal_result IS NOT NULL
-        AND json_valid(NEW.terminal_result)
-        AND json_type(NEW.terminal_result, '$.status') = 'integer'
-        AND (
-            json_extract(NEW.terminal_result, '$.status') = NEW.status
-            OR (
-                NEW.status = 200
-                AND json_extract(NEW.terminal_result, '$.status') BETWEEN 200 AND 399
-                AND json_extract(NEW.terminal_result, '$.status') != 202
-            )
-            OR (
-                NEW.status = 500
-                AND json_extract(NEW.terminal_result, '$.status') BETWEEN 400 AND 599
-            )
-        )
-        AND (
-            (NEW.status < 400 AND json_type(NEW.terminal_result, '$.problem') IS NULL)
-            OR (
-                NEW.status >= 400
-                AND json_type(NEW.terminal_result, '$.problem') = 'object'
-                AND json_extract(NEW.terminal_result, '$.problem.status')
-                    = json_extract(NEW.terminal_result, '$.status')
-                AND length(json_extract(NEW.terminal_result, '$.problem.type')) > 0
-                AND length(json_extract(NEW.terminal_result, '$.problem.title')) > 0
-                AND length(json_extract(NEW.terminal_result, '$.problem.detail')) > 0
-                AND length(json_extract(NEW.terminal_result, '$.problem.instance')) > 0
-            )
-        )
-    )
-)
-BEGIN
-    SELECT RAISE(ABORT, 'loop terminal result violates the operation-result contract');
-END;
-
-CREATE TRIGGER IF NOT EXISTS loops_result_contract_update
-BEFORE UPDATE OF status, terminal_result ON loops
-WHEN NEW.status IN (100, 102, 200, 202, 413, 429, 499, 500, 504, 508)
-AND NOT (
-    (NEW.status IN (100, 102, 202) AND NEW.terminal_result IS NULL)
-    OR (
-        NEW.status IN (200, 413, 429, 499, 500, 504, 508)
-        AND NEW.terminal_result IS NOT NULL
-        AND json_valid(NEW.terminal_result)
-        AND json_type(NEW.terminal_result, '$.status') = 'integer'
-        AND (
-            json_extract(NEW.terminal_result, '$.status') = NEW.status
-            OR (
-                NEW.status = 200
-                AND json_extract(NEW.terminal_result, '$.status') BETWEEN 200 AND 399
-                AND json_extract(NEW.terminal_result, '$.status') != 202
-            )
-            OR (
-                NEW.status = 500
-                AND json_extract(NEW.terminal_result, '$.status') BETWEEN 400 AND 599
-            )
-        )
-        AND (
-            (NEW.status < 400 AND json_type(NEW.terminal_result, '$.problem') IS NULL)
-            OR (
-                NEW.status >= 400
-                AND json_type(NEW.terminal_result, '$.problem') = 'object'
-                AND json_extract(NEW.terminal_result, '$.problem.status')
-                    = json_extract(NEW.terminal_result, '$.status')
-                AND length(json_extract(NEW.terminal_result, '$.problem.type')) > 0
-                AND length(json_extract(NEW.terminal_result, '$.problem.title')) > 0
-                AND length(json_extract(NEW.terminal_result, '$.problem.detail')) > 0
-                AND length(json_extract(NEW.terminal_result, '$.problem.instance')) > 0
-            )
-        )
-    )
-)
-BEGIN
-    SELECT RAISE(ABORT, 'loop terminal result violates the operation-result contract');
 END;
 
 -- turns

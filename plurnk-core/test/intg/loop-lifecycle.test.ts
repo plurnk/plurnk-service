@@ -13,12 +13,13 @@ test("loop transitions are guarded and terminal state is immutable", async () =>
         const lifecycle = new LoopLifecycle(db);
 
         assert.equal(await lifecycle.wake(loopId), false, "an active loop cannot be woken");
-        assert.equal(await lifecycle.park(loopId, "waiting"), true);
-        assert.equal(await lifecycle.park(loopId, "waiting twice"), false, "a parked loop cannot be parked twice");
+        assert.equal(await lifecycle.park(loopId), true);
+        assert.equal(await lifecycle.park(loopId), false, "a parked loop cannot be parked twice");
         assert.equal(await lifecycle.wake(loopId), true);
+        const deliverable = { status: 200, content: "done", mimetype: "text/markdown" };
         assert.deepEqual(
-            await lifecycle.finish(loopId, { status: 200 }, { message: "done" }),
-            { status: 200 },
+            await lifecycle.finish(loopId, deliverable),
+            deliverable,
         );
         assert.equal(
             await lifecycle.finish(
@@ -29,10 +30,10 @@ test("loop transitions are guarded and terminal state is immutable", async () =>
             null,
             "a terminal winner cannot be rewritten",
         );
-        assert.equal(await lifecycle.park(loopId, "late park"), false);
+        assert.equal(await lifecycle.park(loopId), false);
         assert.equal(await lifecycle.wake(loopId), false);
         assert.equal(await lifecycle.status(loopId), 200);
-        assert.deepEqual(await lifecycle.result(loopId), { status: 200 });
+        assert.deepEqual(await lifecycle.result(loopId), deliverable);
     } finally {
         await db.close();
     }

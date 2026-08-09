@@ -34,10 +34,9 @@ export default class LoopLifecycle {
         throw new TypeError(`loop terminal result must have status 200 through 599; got ${status}`);
     }
 
-    async park(loopId: number, message: string): Promise<boolean> {
+    async park(loopId: number): Promise<boolean> {
         return (await this.#db.lifecycle_park_loop.get<{ id: number }>({
             loop_id: loopId,
-            message,
         })) !== undefined;
     }
 
@@ -50,7 +49,7 @@ export default class LoopLifecycle {
     async finish(
         loopId: number,
         result: SchemeResult,
-        options: { message?: string | null; terminatedBy?: "cancel" | null } = {},
+        options: { terminatedBy?: "cancel" | null } = {},
     ): Promise<SchemeResult | null> {
         const exact = structuredClone(Results.assert(result));
         if (exact.problem !== undefined && exact.problem.instance === undefined) {
@@ -59,7 +58,6 @@ export default class LoopLifecycle {
         const row = await this.#db.lifecycle_finish_loop.get<{ terminal_result: string }>({
             loop_id: loopId,
             status: LoopLifecycle.projectStatus(exact.status),
-            message: exact.problem?.detail ?? options.message ?? null,
             result: JSON.stringify(exact),
             terminated_by: options.terminatedBy ?? null,
         });
@@ -97,7 +95,6 @@ export default class LoopLifecycle {
         const params = {
             worker_id: workerId,
             include_root: includeRoot ? 1 : 0,
-            message: boundedReason,
         };
         const workers = await this.#db.lifecycle_worker_tree.all<{ worker_id: number }>({
             worker_id: params.worker_id,

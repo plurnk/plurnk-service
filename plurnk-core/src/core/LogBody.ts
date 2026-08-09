@@ -3,6 +3,7 @@ import {
     assertResourceEffects,
     type EditReceipt,
 } from "../content/index.ts";
+import TerminalResult from "./TerminalResult.ts";
 
 export interface LogBodyRow {
     readonly op: string | null;
@@ -67,14 +68,14 @@ export default class LogBody {
     }
 
     static resolve(row: LogBodyRow): ResolvedLogBody {
+        const attrs = typeof row.attrs === "string"
+            ? LogBody.#decode(row.attrs, "application/json")
+            : row.attrs;
         const tx = LogBody.#decode(row.tx, row.mimetypeTx);
         const rx = LogBody.#decode(row.rx, row.mimetypeRx);
         const contentBody = LogBody.#contentBody(rx, row.mimetypeRx);
 
         if (row.op === null) {
-            const attrs = typeof row.attrs === "string"
-                ? LogBody.#decode(row.attrs, "application/json")
-                : row.attrs;
             if (attrs === null || typeof attrs !== "object" || (attrs as { kind?: unknown }).kind !== "model_emission") {
                 throw new TypeError("An actionless log body must carry attrs.kind=model_emission.");
             }
@@ -125,6 +126,30 @@ export default class LogBody {
                     startLine: 1,
                 };
             }
+        }
+
+        if (
+            row.op === "SEND"
+            && attrs !== null
+            && typeof attrs === "object"
+            && !Array.isArray(attrs)
+            && (attrs as { kind?: unknown }).kind === "loop_termination"
+        ) {
+            const context = attrs as { terminatedBy?: unknown; receipt?: unknown };
+            if (context.terminatedBy !== undefined && context.terminatedBy !== "cancel") {
+                throw new TypeError("A loop-termination log body carries malformed terminal authorship.");
+            }
+            if (context.receipt !== undefined && typeof context.receipt !== "string") {
+                throw new TypeError("A loop-termination log body carries a malformed branch receipt.");
+            }
+            const exact = TerminalResult.assert(rx, "loop-termination log body");
+            const presentation = TerminalResult.present(exact, {
+                terminatedBy: context.terminatedBy,
+                receipt: context.receipt,
+                fallback: `[ worker concluded with no deliverable (status ${exact.status}) ]`,
+            });
+            if (presentation === null) return EMPTY_BODY;
+            return { ...presentation, startLine: 1 };
         }
 
         if (row.op === "PLAN" || row.op === "SEND" || row.op === "WORK" || row.op === "FORK") {

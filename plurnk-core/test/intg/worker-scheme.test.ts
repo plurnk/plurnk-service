@@ -20,6 +20,7 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import Fork from "../../src/core/fork.ts";
@@ -431,7 +432,7 @@ test("a TERMINATED sister's name is reclaimed — spawn succeeds, newest wins", 
     } finally { await db.close(); }
 });
 
-test("READ(worker://name) collects the deliverable — message done, 425 running, 404 absent", async () => {
+test("READ(worker://name) collects the exact terminal result — 425 running, 404 absent", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `worker-collect-${crypto.randomUUID()}`);
@@ -451,13 +452,28 @@ test("READ(worker://name) collects the deliverable — message done, 425 running
         assert.match(String(running.content), /still running|SEND\[202\]/, "the 425 steers the model to hibernate and await");
 
         // It concludes 200 with a deliverable → READing the worker yields the deliverable (the pull side of collect).
+        const deliverable = { status: 200, content: "postgres", mimetype: "text/markdown" };
         assert.deepEqual(
-            await new LoopLifecycle(db).finish(wLoop, { status: 200 }, { message: "postgres" }),
-            { status: 200 },
+            await new LoopLifecycle(db).finish(wLoop, deliverable),
+            deliverable,
         );
         const done = await workerScheme.read(readStmt(workerPath("worker-db")), ctx);
         assert.equal(done.status, 200, "a concluded worker's READ succeeds");
-        assert.equal(done.content, "postgres", "the deliverable (terminal message) is collected by READing the worker itself — no scratch-path guessing");
+        assert.equal(done.content, "postgres", "the exact terminal result is collected by READing the worker itself — no scratch-path guessing");
+
+        const failedWorker = await insertWorker(db, workspaceId, null, "worker-failed");
+        const failedLoop = await insertLoop(db, failedWorker, 1, "call provider");
+        const failure = Results.failure(
+            "test:worker",
+            "provider-failed",
+            502,
+            "The child provider failed.",
+        );
+        await new LoopLifecycle(db).finish(failedLoop, failure);
+        const failed = await workerScheme.read(readStmt(workerPath("worker-failed")), ctx);
+        assert.equal(failed.status, 502, "READ preserves the child's exact failure status");
+        assert.equal(failed.problem?.detail, "The child provider failed.", "READ preserves the child's exact Problem");
+        assert.equal(failed.content, "The child provider failed.", "READ derives a readable body from the exact Problem");
     } finally { await db.close(); }
 });
 

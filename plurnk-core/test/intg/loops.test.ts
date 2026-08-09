@@ -87,6 +87,41 @@ test("loops: status enum accepts 100 (queued) — drain prerequisite", async () 
     } finally { await db.close(); }
 });
 
+test("loops: one terminal-result constraint rejects incomplete failures on insert and update", async () => {
+    const db = await openMigrated();
+    try {
+        const workerId = await seedWorker(db, "ws-loops-terminal-result");
+        await assert.rejects(
+            () => db.test_loops_insert_with_status.run({
+                worker_id: workerId,
+                sequence: 1,
+                status: 500,
+                prompt: "invalid insert",
+                terminal_result: JSON.stringify({ status: 500 }),
+            }),
+            /loops_terminal_result_contract/,
+            "a failed result cannot omit its Problem",
+        );
+
+        await db.test_loops_insert.run({
+            worker_id: workerId,
+            sequence: 2,
+            prompt: "invalid update",
+        });
+        const loop = await db.test_loops_get_by_worker.get<{ id: number }>({ worker_id: workerId });
+        assert.ok(loop);
+        await assert.rejects(
+            () => db.test_set_loop_status.run({
+                id: loop!.id,
+                status: 500,
+                terminal_result: JSON.stringify({ status: 500 }),
+            }),
+            /loops_terminal_result_contract/,
+            "an update cannot exploit SQLite NULL truth to omit its Problem",
+        );
+    } finally { await db.close(); }
+});
+
 test("loops: status enum rejects non-enum values (e.g. 201, 300, 0, -1)", async () => {
     const db = await openMigrated();
     try {
