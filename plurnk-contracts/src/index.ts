@@ -17,6 +17,8 @@ export type { ValidationResult } from "./Validator.ts";
 export { default as PlurnkParser } from "./PlurnkParser.ts";
 export { default as PlurnkParseError } from "./PlurnkParseError.ts";
 export { default as PathSyntax } from "./PathSyntax.ts";
+export { renderJsonResult } from "./JsonResult.ts";
+export type { JsonReplacer } from "./JsonResult.ts";
 
 export const parsePath = (raw: string) => AstBuilder.parsePath(raw);
 export const parseResourceSelection = (raw: string) => AstBuilder.parseResourceSelection(raw);

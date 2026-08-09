@@ -26,6 +26,7 @@ export { default as Advertise } from "./advertise.ts";
 // schemes; the consuming daemon validates it at the plugin boundary.
 export { Results } from "@plurnk/plurnk-schemes";
 export type { ProblemDetails, SchemeResult } from "@plurnk/plurnk-schemes";
+export { renderJsonResult } from "@plurnk/plurnk-contracts";
 
 // Contract types
 export type {

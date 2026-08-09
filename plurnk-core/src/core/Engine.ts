@@ -84,6 +84,24 @@ export type WorkspaceTurnCompleted = (args: {
 }) => Promise<void>;
 
 const DEFAULT_MAX_STRIKES = 3;
+const RECORD_STREAM_MIMETYPES = new Set(["application/jsonl", "application/x-ndjson"]);
+
+const baseMimetype = (mimetype: string): string =>
+    mimetype.split(";", 1)[0]!.trim().toLowerCase();
+
+// {§exec-stream} Active streams publish only independently meaningful units.
+// Atomic documents wait for close; JSONL stops after its last complete record.
+const streamPublicationEnd = (
+    content: string,
+    mimetype: string,
+    cursor: number,
+    closed: boolean,
+): number => {
+    const type = baseMimetype(mimetype);
+    if (closed || type.startsWith("text/")) return content.length;
+    if (!RECORD_STREAM_MIMETYPES.has(type)) return cursor;
+    return Math.max(cursor, content.lastIndexOf("\n") + 1);
+};
 
 const ENGINE_PROBLEMS = Object.freeze({
     max_commands_exceeded: {
@@ -2351,18 +2369,17 @@ export default class Engine {
     }
 
     // {§env-delta} — exec streams as an instance of the ambient-observe machine:
-    // each turn, emit each owned channel's unshown byte-delta as a foisted READ row. It is 200
-    // while the channel streams and preserves the exact terminal result when closed. Ongoing
-    // deltas fold; the terminal delta auto-OPENs. The cursor is the
-    // streamEnd recorded on the channel's prior delta — no exec-specific surfacing, just the
-    // env-observe loop with a byte cursor where env-delta uses a timestamp. {§exec-stream}
+    // each turn, emit each owned channel's next publishable content as a foisted READ row. It is
+    // 200 while the channel streams and preserves the exact terminal result when closed. Ongoing
+    // observations fold; the terminal observation auto-OPENs. The cursor is the streamEnd recorded
+    // on the channel's prior observation. {§exec-stream}
     async #materializeStreamDeltas(args: {
         workerId: number; loopId: number; turnId: number; fromSequence: number;
     }): Promise<number> {
         const { workerId, loopId, turnId, fromSequence } = args;
         const channels = await this.#db.engine_worker_stream_channels.all<{
             subscription_id: number; runtime: string; coord: string; channel: string; content: string;
-            state: string; close_status: number | null; close_result: string | null; published_channel: string | null;
+            mimetype: string; state: string; close_status: number | null; close_result: string | null; published_channel: string | null;
         }>({ worker_id: workerId });
         let written = 0;
         for (const ch of channels) {
@@ -2400,14 +2417,15 @@ export default class Engine {
                 }
                 return result;
             };
-            if (ch.content.length <= cursor) {
-                // The cursor-terminal race (owner's dogfood find): a channel written in one final
+            const publishEnd = streamPublicationEnd(ch.content, ch.mimetype, cursor, closed);
+            if (publishEnd <= cursor) {
+                // The cursor-terminal race: a channel written in one final
                 // burst gets fully shown FOLDED while still active; the close then has zero new
-                // bytes and the auto-OPEN terminal delta never fired — the model was never shown
+                // content and the auto-OPEN terminal observation never fired — the model was never shown
                 // the conclusion of a stream whose result it already holds folded. The same
-                // observation is required when the stream produced zero bytes: completion is
-                // information independently of payload. Emit the terminal marker ONCE: open,
-                // terse, carrying the close status ({§tokenomics-fetch-fits-free}).
+                // observation is required when the channel produced no publishable content:
+                // completion is information independently of payload. Text streams retain their
+                // terse marker; structured channels emit a bodyless typed conclusion.
                 if (closed && priorAttrs.terminal !== true) {
                     const streamTarget = renderTarget({
                         scheme: ch.runtime,
@@ -2419,12 +2437,15 @@ export default class Engine {
                         ? `full output already delivered above; READ ${streamTarget} to revisit`
                         : "stream produced no output";
                     const sequence = fromSequence + written;
+                    const content = baseMimetype(ch.mimetype).startsWith("text/")
+                        ? `[ stream closed (${ch.close_status ?? 200}) - ${pointer} ]`
+                        : "";
                     await this.#db.engine_insert_stream_delta.run({
                         worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                         scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
                         rx: JSON.stringify(await terminalResult({
-                            content: `[ stream closed (${ch.close_status ?? 200}) - ${pointer} ]`,
-                            mimetype: "text/stream",
+                            content,
+                            mimetype: ch.mimetype,
                         }, sequence)),
                         status: terminal?.status ?? 200,
                         attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: true }),
@@ -2438,16 +2459,19 @@ export default class Engine {
             // into one sequence (lines N..M, then M+1..), not N independent "1:" restarts. {§exec-stream}
             const startLine = (ch.content.slice(0, cursor).match(/\n/g)?.length ?? 0) + 1;
             const sequence = fromSequence + written;
-            const result = closed
-                ? await terminalResult({ content: ch.content.slice(cursor), mimetype: "text/stream", startLine }, sequence)
-                : { status: 200, content: ch.content.slice(cursor), mimetype: "text/stream", startLine };
+            const content = ch.content.slice(cursor, publishEnd);
+            const terminalDelivery = closed && publishEnd === ch.content.length;
+            const fields = { content, mimetype: ch.mimetype, startLine };
+            const result = terminalDelivery
+                ? await terminalResult(fields, sequence)
+                : { status: 200, ...fields };
             await this.#db.engine_insert_stream_delta.run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
                 rx: JSON.stringify(result),
                 status: result.status,
-                attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: closed }),
-                expanded: closed ? 1 : 0,  // {§exec-stream} — terminal delta auto-OPENs; ongoing folds
+                attrs: JSON.stringify({ streamEnd: publishEnd, terminal: terminalDelivery }),
+                expanded: terminalDelivery ? 1 : 0,  // {§exec-stream} — terminal observation auto-OPENs; ongoing folds
             });
             written++;
         }

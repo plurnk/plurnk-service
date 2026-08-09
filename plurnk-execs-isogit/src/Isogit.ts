@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import git from "isomorphic-git";
-import { BaseExecutor, ErrorDetail, Results, tokenizeArgv } from "@plurnk/plurnk-execs";
+import { BaseExecutor, ErrorDetail, renderJsonResult, Results, tokenizeArgv } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 const OPERATIONS = ["init", "status", "add", "commit", "log", "branch", "checkout"] as const;
@@ -44,7 +44,7 @@ export default class Isogit extends BaseExecutor {
             );
         };
         const ok = (result: unknown): ExecResult => {
-            write("results", JSON.stringify(result));
+            write("results", renderJsonResult(result));
             setState("results", "closed");
             return { status: 200 };
         };

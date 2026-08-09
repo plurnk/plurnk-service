@@ -2,6 +2,7 @@ import {
     BaseExecutor,
     ErrorDetail,
     ERROR_DETAIL_LIMIT,
+    renderJsonResult,
     Results,
 } from "@plurnk/plurnk-execs";
 import type {
@@ -159,7 +160,7 @@ export default class McpExecutor extends BaseExecutor {
 
         try {
             const result = await this.#connection.callTool(target, args, signal);
-            write(CHANNEL, JSON.stringify(result), "application/json");
+            write(CHANNEL, renderJsonResult(result), "application/json");
             if (result.isError === true) {
                 return fail(
                     "tool-reported-error",

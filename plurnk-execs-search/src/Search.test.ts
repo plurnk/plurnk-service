@@ -154,6 +154,7 @@ test("search: queries SearXNG, digests candidates, closes channel, status 200", 
         { title: "a", url: "https://8.8.8.8/a" },
         { title: "b", url: "https://8.8.8.9/b" },
     ]);
+    assert.equal(writes[0].chunk.split("\n").length, 2, "each generated result occupies one physical line");
     assert.deepEqual(states, [{ channel: "results", state: "closed" }]);
     assert.equal(events.length, 0);
     assert.deepEqual(fetched, [fetched[0]], "only the SearXNG /search url is ever fetched");
@@ -171,7 +172,7 @@ test("digest: emits only {title,url,snippet}, dropping SearXNG noise", async () 
     ], "template/engine/score/parsed_url/positions all dropped — a ~10-20x shrink");
 });
 
-test("digest: SNIPPET bounds the snippet; RAW restores the verbatim payload and skips prefetch", async () => {
+test("digest: SNIPPET bounds the snippet; RAW preserves upstream rows and skips prefetch", async () => {
     const raw = { title: "t", url: "https://8.8.8.8/t", content: "abcdefghij", engine: "x" };
 
     process.env.PLURNK_EXECS_SEARCH_SNIPPET = "4";
@@ -184,7 +185,7 @@ test("digest: SNIPPET bounds the snippet; RAW restores the verbatim payload and 
     const calls: string[] = [];
     routes([raw]);
     cap = await invoke("search", "q", { entry: async (path) => { calls.push(path); return path; } });
-    assert.deepEqual(JSON.parse(cap.writes[0].chunk), [raw], "RAW → verbatim upstream, engine field intact");
+    assert.deepEqual(JSON.parse(cap.writes[0].chunk), [raw], "RAW → upstream row fields remain intact");
     assert.equal(calls.length, 0, "RAW skips the prefetch pass — entry() never called");
     delete process.env.PLURNK_EXECS_SEARCH_RAW;
 });

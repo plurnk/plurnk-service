@@ -52,6 +52,52 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
     });
 });
 
+test("a generated JSON result stays typed, item-addressable, and complete through the next-turn packet", async () => {
+    const query = "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 30) SELECT n, printf('%0100d', n) AS payload FROM seq";
+    const mock = new Mock({ contextWindow: 100000, responses: [
+        makeMockResponse("<<EXEC[sqlite]:" + query + ":EXEC\n<<SEND[202]:waiting:SEND", 10),
+        makeMockResponse("<<SEND[200]:done:SEND", 10),
+    ] });
+
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "structured-exec-surface" });
+            const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, {
+                prompt: "run the query",
+                flags: { auto: true },
+            });
+            assert.equal(finalStatus, 200);
+
+            const turn2 = turnIds![1]!;
+            const rows = await db.test_log_entries_by_turn.all<{
+                scheme: string;
+                op: string;
+                origin: string;
+                rx: string;
+            }>({ turn_id: turn2 });
+            const observation = rows.find((row) =>
+                row.scheme === "sqlite" && row.op === "READ" && row.origin === "plurnk");
+            assert.ok(observation, "the structured executor result reaches the ambient READ path");
+
+            const result = JSON.parse(observation.rx) as { content: string; mimetype: string };
+            assert.equal(result.mimetype, "application/json", "ambient delivery preserves the channel type");
+            assert.equal(result.content.split("\n").length, 30, "each generated array item retains one physical line");
+            assert.equal((JSON.parse(result.content) as unknown[]).length, 30, "the complete output remains valid JSON");
+
+            const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
+            const packet = JSON.parse(packetRow!.packet);
+            const entry = logEntries(packet).find((candidate) =>
+                candidate.op === "READ" && String(candidate.target ?? "").startsWith("sqlite:///"));
+            assert.ok(entry, "the model-facing packet contains the structured observation");
+            assert.equal(entry.overflow, undefined, "READ receives no second hidden preview bound");
+            assert.match(packetSection(packet, "log"), /30:\{"n":30,/, "the last selected result survives into the packet");
+        } finally {
+            ws.close();
+        }
+    });
+});
+
 test("a failed EXEC reaches the model as the executor's exact Problem on its terminal ambient READ", async () => {
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("<<EXEC[sh]:printf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3:EXEC\n<<SEND[202]:waiting:SEND", 10),
@@ -118,9 +164,9 @@ test("a failed EXEC reaches the model as the executor's exact Problem on its ter
 });
 
 test("the cursor-terminal race: a one-burst stream fully shown FOLDED before its close still gets an OPEN terminal delta", async () => {
-    // The owner's dogfood find (the search digest): a channel written in one final burst is
-    // fully shown (folded) on an interim turn while still ACTIVE; the close arrives with zero
-    // new bytes, and the auto-OPEN terminal never fired — the model never saw the stream
+    // A channel written in one final burst is fully shown (folded) on an interim turn while
+    // still ACTIVE; the close arrives with no new content, and the auto-OPEN terminal never
+    // fired — the model never saw the stream
     // conclude. Turn 1: EXEC a slow-close command + [102]. Turn 2 (stream active, content
     // complete): the delta shows folded. Turn 3 (closed, nothing new): the terminal marker
     // MUST land, open, carrying the close status — never a silent skip.
@@ -144,7 +190,7 @@ test("the cursor-terminal race: a one-burst stream fully shown FOLDED before its
             assert.ok(deltas.length >= 1, "the stream's deltas surfaced");
             const log = packetSection(packet, "log");
             assert.match(log, /burst-payload/, "the burst content was delivered");
-            assert.match(log, /stream closed \(200\)/, "the OPEN terminal marker landed even though the close brought zero new bytes — the model SEES the conclusion");
+            assert.match(log, /stream closed \(200\)/, "the OPEN terminal marker landed even though the close brought no new content — the model SEES the conclusion");
         } finally { ws.close(); }
     });
 });

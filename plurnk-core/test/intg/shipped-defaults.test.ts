@@ -46,8 +46,8 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     assert.ok(Number.isFinite(safety) && safety > 0, "SAFETY ships as a positive int — core's one partition knob");
     const previewLines = Number(env.get("PLURNK_SERVICE_PREVIEW_LINES"));
     const previewChars = Number(env.get("PLURNK_SERVICE_PREVIEW_CHARS"));
-    assert.ok(Number.isSafeInteger(previewLines) && previewLines > 0, "the universal preview line limit is explicit and positive");
-    assert.ok(Number.isSafeInteger(previewChars) && previewChars > 0, "the universal preview character limit is explicit and positive");
+    assert.equal(previewLines, 16, "the shipped ordinary preview retains sixteen lines");
+    assert.equal(previewChars, 2560, "the independent single-line allowance ships at 2560 characters");
     // {§tokenomics-window-partition} — the bare partition is cloud-generous:
     // 163840 − 16384 − 49152 − 1024 = 97280 prompt
     // budget with a 65536 decode envelope the backend self-clamps (the local per-alias template

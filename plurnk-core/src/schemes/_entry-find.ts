@@ -12,7 +12,7 @@
 //   signal  — tag filter: candidate entry must have ALL listed tags
 //   <L>     — result pagination: resource or match-location positions N..M
 
-import { DEFAULT_RETRIEVAL_LIMIT, type FindStatement } from "@plurnk/plurnk-contracts";
+import { DEFAULT_RETRIEVAL_LIMIT, renderJsonResult, type FindStatement } from "@plurnk/plurnk-contracts";
 import { LineMarkerOps } from "../content/index.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
@@ -53,12 +53,6 @@ export type MatchLocation = MatchEvidence & {
     matchLocationCount?: never;
 };
 export type MatchItem = CatalogMatch | CatalogScope | MatchLocation;
-
-// FIND result ordinals are also packet line coordinates. Keep each top-level
-// item compact, adding only the boundary newline that makes row N addressable
-// as line N while retaining one valid JSON array. {§find-result-projection}
-export const renderFindContent = (results: readonly MatchItem[]): string =>
-    `[${results.map((result) => JSON.stringify(result)).join(",\n")}]`;
 
 export const findItemTokens = (item: CatalogMatch | CatalogScope): number => item.items === undefined
     ? Object.values(item.channels).reduce((sum, channel) => sum + channel.tokens, 0)
@@ -172,7 +166,7 @@ export const projectFindResult = (
         : results.reduce((sum, item) => sum + findItemTokens(item as CatalogMatch | CatalogScope), 0);
     return {
         status: 200,
-        content: renderFindContent(results),
+        content: renderJsonResult(results), // {§find-result-projection} {§json-result-rendering}
         mimetype: "application/json",
         results,
         itemsTokenTotal,

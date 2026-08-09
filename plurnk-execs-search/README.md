@@ -37,7 +37,7 @@ Every tunable is an **optional env override** — no code default hides a magic 
 | `PLURNK_EXECS_SEARCH_SAFESEARCH`    | no       | Instance default; accepted values are `0`, `1`, or `2`.                                        |
 | `PLURNK_EXECS_SEARCH_SNIPPET`       | no       | Snippets are unbounded.                                                                        |
 | `PLURNK_EXECS_SEARCH_QUERY_PREVIEW` | no       | `.env.defaults` supplies 120 characters for error facts.                                       |
-| `PLURNK_EXECS_SEARCH_RAW`           | no       | Digest mode; truthy emits the SearXNG payload and skips prefetch for debugging.                |
+| `PLURNK_EXECS_SEARCH_RAW`           | no       | Truthy emits capped upstream result rows and skips projection and prefetch for debugging.      |
 
 Page-fetch knobs belong to the consumer and schemes-http because the executor
 does not fetch result pages ({§executor-entry-sink}).

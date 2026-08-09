@@ -1236,7 +1236,7 @@ OPEN/FOLD operate on the **log** (`log:///`) - the model's context-curation surf
 
 ### §jsonplurnk The Log's wire format
 
-The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw HEREDOC (`<<:::TAG ... :::TAG`, TAG = the entry's target/log URI), rendered with universal `N:` line prefixes, never as a JSON-escaped string. The carve-out is localized to `body`, so the strip-parser is trivial: after `"body":`, `<<:::TAG` opens and `:::TAG` at column 0 closes; replacing that block with an escaped string recovers strict JSON through `@plurnk/plurnk-contracts`. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":HEREDOC` with it shown. A bounded projection also carries an `overflow` message naming the row's exact `log:///` path and an explicit `<1,-1>` READ. The block is data only - no prose leads the fence. `tokens` is the ruler-weight of the row's ordinary packet body: the room OPEN adds and FOLD saves. A FIND's `itemsTokenTotal` weighs the complete matched set; `returnedItemsTokenTotal` weighs the returned page. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/numbered bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
+The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw HEREDOC (`<<:::TAG ... :::TAG`, TAG = the entry's target/log URI), rendered with universal `N:` line prefixes, never as a JSON-escaped string. The carve-out is localized to `body`, so the strip-parser is trivial: after `"body":`, `<<:::TAG` opens and `:::TAG` at column 0 closes; replacing that block with an escaped string recovers strict JSON through `@plurnk/plurnk-contracts`. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":HEREDOC` with it shown. A bounded projection also carries `"overflow":"Body content truncated. Full body: <log path>"`, naming the row's exact canonical body without prescribing an unbounded retrieval. The block is data only - no prose leads the fence. `tokens` is the ruler-weight of the row's ordinary packet body: the room OPEN adds and FOLD saves. A FIND's `itemsTokenTotal` weighs the complete matched set; `returnedItemsTokenTotal` weighs the returned page. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/numbered bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
 
 §jsonplurnk-dynamic-fence The opening fence length is **dynamic**: one backtick longer than the longest backtick run in the rendered entries (floor 3). A body can carry arbitrary content — a READ of a doc whose own text opens a column-0 triple-backtick fence — which a fixed opener would let close the block early; a dynamic opener can never be closed by its own body content (CommonMark closes a fence only on a line of at least its own length), independent of the `N:` numbering that incidentally keeps text bodies off column 0.
 
@@ -1365,15 +1365,12 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   rank for `~`semantic and candidate order otherwise; location order is dialect
   order and exact duplicates deduplicate. The intended drill-down is broad FIND
   to choose paths, exact-target FIND to choose locations, then exact READ.
-  `content` is one valid compact JSON array
-  with exactly one top-level item per physical line: objects carry no
-  pretty-print whitespace, the opening bracket shares the first row, the
-  closing bracket shares the last, and only the `N-1` item-boundary newlines
-  are added. Universal packet numbering therefore makes result ordinal N
-  addressable as line N, matching `<N>` pagination without a second coordinate
-  system. Empty and single-item arrays remain one line. Pagination is the only
-  FIND materialization bound; no hidden complete row or location collection is
-  retained behind the public projection.
+  `content` uses the shared generated-JSON projection
+  ({§json-result-rendering}), so universal packet numbering makes result
+  ordinal N addressable as line N, matching `<N>` pagination without a second
+  coordinate system. Pagination is the only FIND materialization bound; no
+  hidden complete row or location collection is retained behind the public
+  projection.
 
 ### §send SEND
 
@@ -1538,11 +1535,29 @@ edge. Stream closure remains a wake edge under every poll policy.
 
 §worker-auto-name **Auto-names are id-free ordinals** — worker names are the addressable authority, so an auto-name is `<prefix>-<N>` (per-workspace monotonic count, the fork `<parent>-fork-<N>` pattern), never a timestamp-hash that would leak machine identity through the hostname. The semantic suffix remains intact; when the complete name would exceed `WORKER_NAME`, generation shortens only the inherited prefix until the predicate admits it. Auto-names never reuse an existing literal and pass through {§worker-name-minting} like explicit names. Name selection and worker creation are one atomic claim: concurrent allocators receive distinct literals, while concurrent ensures of a workspace's default conversation converge on one root worker.
 
-§exec-readpure-ungated A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect, e.g. `:memory:` sqlite) is side-effect-free → **auto-run**: no proposal, no human gate, no notification. Core persists the prepared operation before applying it; that write-ahead staging has no resolution waiter and therefore cannot enter proposal discovery ({§proposal-list}). It skips the gate a host command faces, but it does NOT resolve in-band — like every exec it backgrounds and streams, its output reaching the model through the environment-observation injector (a foisted READ of the stream's new bytes each turn, {§exec-stream}), never a same-turn receipt.
+§exec-readpure-ungated A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect, e.g. `:memory:` sqlite) is side-effect-free → **auto-run**: no proposal, no human gate, no notification. Core persists the prepared operation before applying it; that write-ahead staging has no resolution waiter and therefore cannot enter proposal discovery ({§proposal-list}). It skips the gate a host command faces, but it does NOT resolve in-band — like every exec it backgrounds and streams, its output reaching the model through the environment-observation injector (a foisted READ of newly publishable stream content each turn, {§exec-stream}), never a same-turn receipt.
 
 §exec-optimistic-settlement **Optimistic stream settlement.** After all non-SEND operations dispatch, the initiating turn waits up to `PLURNK_SERVICE_EXEC_WAIT_MS` for only the EXEC streams it started, then dispatches its terminal SEND against the refreshed lifecycle state. The shipped cap is five seconds, zero disables it, and settlement ends immediately when those streams conclude. A survivor follows the ordinary monitored-stream park/wake contract; an older stream receives no renewed opportunity merely because another turn began. This is a settlement barrier before disposition, not sibling-operation serialization: dependent EXECs remain separate observed turns.
 
-§exec-stream **Stream surfacing.** An exec's output is *observed, not fetched*. Each turn the environment-observation injector reads each owned channel from its byte cursor and publishes the new bytes as an `origin=plurnk` READ at `<runtime>:///<coord>#<channel>`. Streaming deltas are folded; the terminal delta is born OPEN. The row obeys the universal body projection ({§body-projection}): its packet body is bounded and its exact canonical body remains READable through the row's log URI. A stream that closes before a same-turn wait remains pending until this terminal READ crosses the next packet boundary. The EXEC row separately records the command.
+§exec-stream **Stream surfacing.** An exec's output is *observed, not fetched*.
+Each turn the environment-observation injector publishes newly publishable content
+from each owned channel as an `origin=plurnk` READ at
+`<runtime>:///<coord>#<channel>`, preserving the channel's current mimetype:
+
+| channel mimetype | while active | at terminal state |
+|---|---|---|
+| `text/*` (including `text/stream`) | every new text segment | every remaining segment |
+| `application/jsonl` or `application/x-ndjson` | complete newline-terminated records | every remaining record |
+| every other mimetype | nothing | the complete atomic document |
+
+The per-channel cursor advances only through content actually published, so an
+active atomic document or trailing partial JSONL record never reaches the model
+as malformed structured data. Ongoing observations are folded and a terminal
+observation is born OPEN; a terminal state with no newly publishable body still
+produces one conclusion row. Every READ then obeys {§body-projection} and
+therefore renders its selected result complete. A stream that closes before a
+same-turn wait remains pending until this terminal READ crosses the next packet
+boundary. The EXEC row separately records the command.
 
 `KILL(<runtime>:///<loop>/<turn>/<seq>)` cancels an active subprocess via
 the subscription registry's stored controller. A terminal stream is immutable:
@@ -1838,7 +1853,7 @@ Model selection: separate alias cascade in `ProviderRegistry` ({§provider-insta
 | `PLURNK_SERVICE_MAX_STRIKES`                                | `3` | Consecutive admitted-turn strike threshold ({§engine-rails}). |
 | `PLURNK_SERVICE_EMISSION_ATTEMPTS`                          | `3` | Completed provider responses allowed beneath one engine turn before an untrustworthy model-turn frame exhausts admission. Bounded interior operation errors are admitted and do not spend this budget. Consecutive exhaustion after the one informed recovery turn terminates independently of strikes. |
 | `PLURNK_SERVICE_PREVIEW_LINES`                              | `16` | Maximum lines in an ordinary bounded log-body projection ({§body-projection}). |
-| `PLURNK_SERVICE_PREVIEW_CHARS`                              | `1280` | Maximum characters in an ordinary bounded log-body projection; independently contains single-line bodies ({§body-projection}). |
+| `PLURNK_SERVICE_PREVIEW_CHARS`                              | `2560` | Maximum characters in an ordinary bounded log-body projection; independently contains single-line bodies ({§body-projection}). |
 | `PLURNK_SERVICE_MIN_CYCLES`                                 | `3` | Min repetitions before cycle detection fires ({§engine-rails}). |
 | `PLURNK_SERVICE_MAX_CYCLE_PERIOD`                           | `4` | Max period length cycle detection examines ({§engine-rails}). |
 | `PLURNK_SERVICE_REQUIEM_MAX_TOKENS`                         | `16384` | Initial forensic witness output allowance ({§digest-requiem}). |
@@ -2715,11 +2730,11 @@ evidence when a downstream standard cannot represent the complete list.
 
 | row producer | ordinary OPEN projection |
 |---|---|
-| model-origin `READ` or `FIND` | complete result explicitly retrieved by the model |
+| any `READ` or `FIND` | complete selected operation result |
 | every other nonempty body | head bounded independently by `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS` |
 | bodyless row | `"display":"none","body":""` |
 
-The exemption is provenance plus operation, not the overloaded operation label: an engine-pushed stream delta shaped as READ remains bounded. Prompts, model-emission mirrors, PLAN/SEND/WORK/FORK bodies, EXEC commands, mutation receipts, ambient deltas, and extension-produced bodies cannot create a second preview policy. A bounded row carries the exact `overflow` message defined by {§jsonplurnk} and names its own `log:///` address. `READ(log:///<coordinate>)`, with the optional self-documenting `/<op>` suffix when one exists, applies its default or explicit text range to the canonical body; `FIND(log:///...)` and search match that same full body. FOLD hides the ordinary projection, and OPEN restores it without bypassing the bound. System/policy sections are not log bodies. Notices are transient non-log observations; they share the line/character bounds but have no durable body or recovery URI.
+READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. Prompts, model-emission mirrors, PLAN/SEND/WORK/FORK bodies, EXEC commands, mutation receipts, and extension-produced bodies use the bounded projection. A bounded row carries the exact neutral `overflow` message defined by {§jsonplurnk} and names its own `log:///` address. `READ(log:///<coordinate>)`, with the optional self-documenting `/<op>` suffix when one exists, applies its default or explicit text range to the canonical body; `FIND(log:///...)` and search match that same full body. FOLD hides the ordinary projection, and OPEN restores it without bypassing the bound. System/policy sections are not log bodies. Notices are transient non-log observations; they share the line/character bounds but have no durable body or recovery URI.
 
 §prompt-entry **Prompt as a first-class entry and log row.** Each prompt is stored once at `prompt:///<loop>/<N>` as an owner-keyed text/markdown entry, then published to its turn as one actionless lowercase `prompt` log row. No synthetic EDIT or READ operation is invented. The row is born OPEN and obeys {§body-projection}. The **User Prompts** section closes the user-slot status clump as a paths-only list (`* prompt:///<loop>/<N>`), so every frame remains directly READable even after its log row is folded or killed.
 

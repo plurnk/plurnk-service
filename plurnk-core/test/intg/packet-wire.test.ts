@@ -586,7 +586,7 @@ test("render guard: every content-emitting op applies the N: convention uniforml
     }
 });
 
-test("an oversized auto-opened terminal stream uses the universal log-body preview", () => {
+test("an oversized auto-opened terminal stream READ renders its complete observation", () => {
     const output = Array.from({ length: 40 }, (_, i) => `stream line ${i + 1}`).join("\n");
     const rendered = PacketWire.renderLog([{
         coordinate: "1/2/1",
@@ -598,12 +598,8 @@ test("an oversized auto-opened terminal stream uses the universal log-body previ
         folded: false,
     }], tok);
     assert.match(rendered, /1:stream line 1/, "the terminal output arrives OPEN");
-    assert.doesNotMatch(rendered, /stream line 30/, "the pushed tail cannot bypass the arrival bound");
-    assert.match(
-        rendered,
-        /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/2\/1\/READ<1,-1> to view the full body\."/,
-        "the cut points at the canonical complete log body",
-    );
+    assert.match(rendered, /40:stream line 40/, "READ observations are never silently projected again");
+    assert.doesNotMatch(rendered, /"overflow"/, "READ owns its selected result bound");
 });
 
 test("log render: EDIT@200 with no tx → meta line only (defensive — tx is always written in practice)", () => {
@@ -772,7 +768,7 @@ test("the opening fence outgrows any backtick run a body carries — a code samp
     assert.ok(opener.length >= 4, `fence opens with ${opener.length} backticks — longer than the body's 3-run, so the body cannot close it`);
 });
 
-test("only worker-issued READ/FIND bodies bypass the universal preview", () => {
+test("every READ/FIND body bypasses the ordinary preview", () => {
     const long = Array.from({ length: 30 }, (_, i) => `line ${i + 1} of a runaway emission`).join("\n");
 
     // A short PLAN renders whole — no behavior change for a well-formed op.
@@ -786,7 +782,7 @@ test("only worker-issued READ/FIND bodies bypass the universal preview", () => {
     const planOut = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: long } },
     ], tok);
-    assert.match(planOut, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/1\/PLAN<1,-1> to view the full body\."/, "the PLAN preview is recoverable");
+    assert.match(planOut, /"overflow":"Body content truncated\. Full body: log:\/\/\/1\/1\/1\/PLAN"/, "the PLAN preview names its canonical body");
     assert.doesNotMatch(planOut, /line 20 of a runaway/, "content past the 16-line preview is cut from the render");
 
     // Mutation receipts are generated results, not deliberate retrievals.
@@ -795,29 +791,29 @@ test("only worker-issued READ/FIND bodies bypass the universal preview", () => {
         { coordinate: "1/1/2", origin: "model", op: "EDIT", status: 200, target: { scheme: "worker", pathname: "/x" }, rx: { span: numberedSpan } },
     ], tok);
     assert.doesNotMatch(editOut, /span line 30/, "an EDIT receipt cannot bypass the preview");
-    assert.match(editOut, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/2\/EDIT<1,-1> to view the full body\."/, "the complete receipt remains retrievable");
+    assert.match(editOut, /"overflow":"Body content truncated\. Full body: log:\/\/\/1\/1\/2\/EDIT"/, "the complete receipt remains addressable");
 
     // READ and FIND deliver RETRIEVED content — full, even when long (the exemption).
     const readOut = PacketWire.renderLog([
         { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, target: { scheme: null, pathname: "/big.txt" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
     ], tok);
     assert.match(readOut, /line 30 of a runaway/, "a long READ delivers full content — retrieval is exempt");
-    assert.doesNotMatch(readOut, /"overflow"/, "no preview cut on a worker-issued READ");
+    assert.doesNotMatch(readOut, /"overflow"/, "no preview cut on READ");
 
     const findOut = PacketWire.renderLog([
         { coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, target: { scheme: null, pathname: "" }, rx: { content: long, mimetype: "text/plain", startLine: null } },
     ], tok);
     assert.match(findOut, /line 30 of a runaway/, "a long FIND renders its full result — retrieval is exempt");
-    assert.doesNotMatch(findOut, /"overflow"/, "no preview cut on a worker-issued FIND");
+    assert.doesNotMatch(findOut, /"overflow"/, "no preview cut on FIND");
 
     const pushedRead = PacketWire.renderLog([
         { coordinate: "1/1/5", origin: "plurnk", op: "READ", status: 200, target: { scheme: "sh", pathname: "/1/1/1" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
     ], tok);
-    assert.doesNotMatch(pushedRead, /line 30 of a runaway/, "a READ-shaped engine push is still previewed");
-    assert.match(pushedRead, /"overflow":"Body content truncated\. Use READ log:\/\/\/1\/1\/5\/READ<1,-1> to view the full body\."/, "provenance, not the overloaded op label, controls the exemption");
+    assert.match(pushedRead, /line 30 of a runaway/, "an engine-observed READ receives the same complete projection");
+    assert.doesNotMatch(pushedRead, /"overflow"/, "provenance does not introduce a hidden READ bound");
 });
 
-test("every non-retrieval body producer uses the same recoverable preview", () => {
+test("every non-retrieval body producer uses the same addressable preview", () => {
     const long = Array.from({ length: 30 }, (_, i) => `producer line ${i + 1}`).join("\n");
     const numbered = Array.from({ length: 30 }, (_, i) => `${i + 1}:producer line ${i + 1}`).join("\n");
     const entries = [
@@ -857,8 +853,6 @@ test("every non-retrieval body producer uses the same recoverable preview", () =
             },
             rx: { effects: [{ target: "worker:///c", action: "update", receipt: receipt(numbered) }] },
         },
-        { op: "READ", origin: "plurnk", target: { scheme: "sh", pathname: "/1/1/1" }, rx: { content: long, mimetype: "text/plain" } },
-        { op: "FIND", origin: "plurnk", target: { scheme: "worker", pathname: "/**" }, rx: { content: long, mimetype: "text/plain" } },
         { op: "extension", origin: "plugin", target: { scheme: "custom", pathname: "/result" }, rx: { content: long, mimetype: "text/plain" } },
     ];
 
@@ -868,8 +862,8 @@ test("every non-retrieval body producer uses the same recoverable preview", () =
         const path = entry.op === null ? `log:///${coordinate}` : `log:///${coordinate}/${entry.op}`;
         assert.doesNotMatch(rendered, /producer line 30/, `${entry.op} cannot bypass the preview`);
         assert.ok(
-            rendered.includes(`"overflow":"Body content truncated. Use READ ${path}<1,-1> to view the full body."`),
-            `${entry.op} exposes the same log recovery contract`,
+            rendered.includes(`"overflow":"Body content truncated. Full body: ${path}"`),
+            `${entry.op} exposes the same neutral canonical-body pointer`,
         );
     });
 });

@@ -1,6 +1,6 @@
 import { isAbsolute, resolve } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import { BaseExecutor, ErrorDetail, Results } from "@plurnk/plurnk-execs";
+import { BaseExecutor, ErrorDetail, renderJsonResult, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 const MEMORY = ":memory:";
@@ -149,7 +149,7 @@ export default class Sqlite extends BaseExecutor {
             }
             // Non-empty columns ⇒ a row-returning statement; empty ⇒ a mutation.
             const output: unknown = stmt.columns().length > 0 ? stmt.all() : stmt.run();
-            write("results", JSON.stringify(output, jsonReplacer));
+            write("results", renderJsonResult(output, jsonReplacer));
             setState("results", "closed");
             return { status: 200 };
         } catch (err) {

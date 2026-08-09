@@ -462,9 +462,8 @@ export default class PacketWire {
             }
 
             // The canonical full body is shared with READ(log://), FIND(log://),
-            // and search derivation. Only a worker-issued READ/FIND result renders
-            // complete; every pushed, authored, ambient, plugin, and engine body
-            // uses this one preview projection.
+            // and search derivation. READ/FIND already own selection bounds and
+            // render complete; every other body uses this one preview projection.
             const fullBody = LogBody.resolve({
                 op,
                 attrs: e.attrs,
@@ -474,7 +473,7 @@ export default class PacketWire {
                 mimetypeRx: typeof e.mimetype_rx === "string" ? e.mimetype_rx : undefined,
             });
             const emptyFind = op === "FIND" && e.status === 200 && items === 0;
-            const previewExempt = e.origin === "model" && (op === "READ" || op === "FIND");
+            const previewExempt = op === "READ" || op === "FIND";
             const projection = previewExempt
                 ? { text: fullBody.content, cut: false }
                 : PacketWire.#preview(fullBody.content);
@@ -485,7 +484,7 @@ export default class PacketWire {
                 throw new Error("a previewed log body requires an addressable log path");
             }
             if (projection.cut) {
-                meta.overflow = `Body content truncated. Use READ ${path}<1,-1> to view the full body.`;
+                meta.overflow = `Body content truncated. Full body: ${path}`;
             }
             const body = emptyFind || projection.text.length === 0
                 ? ""

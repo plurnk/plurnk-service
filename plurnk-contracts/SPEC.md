@@ -13,12 +13,20 @@ is the single code API for those contracts.
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
+| Generated JSON result rendering                                                 | `renderJsonResult`                                  |
 | Local-model rail                                                                | `@plurnk/plurnk-contracts/plurnk.gbnf`              |
 | Model language reference                                                        | `plurnk.md` in the package                          |
 
 §contract-representations JSON Schema is authoritative for shared data shapes. TypeScript types are
 generated from the schemas; ANTLR is authoritative for accepted model-language
 syntax; GBNF remains the bounded generation aid described in §1.2.
+
+§json-result-rendering `renderJsonResult` is the one presentation serializer
+for generated JSON operation results. A top-level array remains one valid,
+compact JSON value but places each item on its own physical line by adding only
+item-boundary newlines; an empty or single-item array and every non-array value
+remain one line. It never rewrites arbitrary stored JSON, whose original lines
+remain source coordinates.
 
 ## §contract-layers 1.1 Contract layers and admission boundary
 

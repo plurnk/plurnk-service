@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import wabtInit from "wabt";
-import { BaseExecutor, ErrorDetail, Results } from "@plurnk/plurnk-execs";
+import { BaseExecutor, ErrorDetail, renderJsonResult, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 // `WebAssembly` is a Node/JS global; declare the subset we use so the build
@@ -218,7 +218,7 @@ export default class Wasm extends BaseExecutor {
             }
         }
 
-        write("results", JSON.stringify({ returned, log, exports: funcs }, jsonReplacer));
+        write("results", renderJsonResult({ returned, log, exports: funcs }, jsonReplacer));
         setState("results", "closed");
         return { status: 200 };
     }

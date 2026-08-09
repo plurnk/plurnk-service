@@ -31,6 +31,7 @@ test("the package root exposes exactly the supported runtime values", () => {
         "WORKER_NAME",
         "parsePath",
         "parseResourceSelection",
+        "renderJsonResult",
     ]);
 });
 

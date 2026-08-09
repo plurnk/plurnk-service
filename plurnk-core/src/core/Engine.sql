@@ -387,10 +387,11 @@ RETURNING ambient_event_cursor;
 
 -- PREP: engine_worker_stream_channels
 -- {§exec-stream} — every stream channel the worker owns (an EXEC's stdout/stderr live on the
--- runtime-tag entry), with content + state + coordinate, so the per-turn injector can emit the
--- channel's unshown byte-delta. Stays listed until its last delta is shown (cursor == content len).
+-- runtime-tag entry), with content + mimetype + state + coordinate, so the per-turn injector can
+-- publish the channel's next complete unit. Stays listed until its terminal observation is shown.
 SELECT s.id AS subscription_id, e.scheme AS runtime, e.pathname AS coord,
-    ec.name AS channel, ec.content AS content, ec.state AS state, s.close_status AS close_status,
+    ec.name AS channel, ec.content AS content, ec.mimetype AS mimetype,
+    ec.state AS state, s.close_status AS close_status,
     s.close_result AS close_result, s.published_channel AS published_channel
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
@@ -400,8 +401,8 @@ WHERE s.worker_id = $worker_id
 ORDER BY s.id, ec.name;
 
 -- PREP: engine_stream_cursor
--- {§exec-stream} — bytes of this channel already shown to the worker: the streamEnd recorded on its
--- latest foisted delta (the caller defaults to 0 when none exists yet).
+-- {§exec-stream} — content offset already shown to the worker: the streamEnd recorded on its latest
+-- foisted observation (the caller defaults to 0 when none exists yet).
 SELECT attrs
 FROM log_entries
 WHERE worker_id = $worker_id AND origin = 'plurnk' AND op = 'READ'
@@ -409,10 +410,10 @@ WHERE worker_id = $worker_id AND origin = 'plurnk' AND op = 'READ'
 ORDER BY id DESC LIMIT 1;
 
 -- PREP: engine_insert_stream_delta
--- {§exec-stream} / {§env-delta} — materialize a channel's unshown byte-delta as a
+-- {§exec-stream} / {§env-delta} — materialize a channel's next publishable content as a
 -- foisted READ row (the model READs the stream it never typed). origin=plurnk; fragment is
--- the channel; attrs.streamEnd is the next turn's cursor; expanded=1 when the channel has CLOSED
--- (the terminal delta auto-OPENs), 0 while it streams (ongoing deltas fold). {§exec-stream}
+-- the channel; attrs.streamEnd is the next turn's cursor; expanded=1 for a terminal
+-- observation, 0 for an ongoing observation. {§exec-stream}
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source,
     op, scheme, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, attrs, expanded

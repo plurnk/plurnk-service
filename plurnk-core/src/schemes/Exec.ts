@@ -772,8 +772,8 @@ export default class Exec extends CoreSchemeAdapterBase {
                     runtime, command, cwd, target, signal,
                     entry: entrySink,
                     env: ExecEnv.scoped(),  // SPEC {§exec} {§exec-env-scoped} — never plurnk's own secrets
-                    write: (channel, chunk) => enqueue(() => ChannelWrite.appendToChannel(db, {
-                        entryId, channel, chunk, notify: ctx.streamEventNotify, coordinate,
+                    write: (channel, chunk, mimetype) => enqueue(() => ChannelWrite.appendToChannel(db, {
+                        entryId, channel, chunk, mimetype, notify: ctx.streamEventNotify, coordinate,
                     })),
                     setState: (channel, state: ChannelState) => enqueue(() => ChannelWrite.setChannelState(db, {
                         entryId, channel, state, notify: ctx.streamEventNotify, coordinate,

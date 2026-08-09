@@ -146,6 +146,16 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         // it drains the tail INCLUDING the entry()/narration writes, so both narration rows are
         // committed and no write is left in flight to race the db.close below.
         await quiesceExecs(schemes);
+        const resultChannel = await db.test_get_channel_by_pathname_scheme.get<{
+            content: string;
+            mimetype: string;
+        }>({ pathname: "/1/1/1", scheme: "stubsearch", name: "results" });
+        assert.equal(resultChannel?.mimetype, "application/json", "the consumer persists the executor's per-write output type");
+        assert.deepEqual(JSON.parse(resultChannel?.content ?? "null"), [{
+            title: "Turkeys",
+            url: "https://example.org/turkeys",
+            pruned: true,
+        }]);
         // The entry exists, with the SECOND write's content and BOTH tags (union, not replace).
         const entry = await db.test_entries_by_pathname.get<{ id: number; scheme: string }>({ pathname: "/example.org/turkeys" });
         assert.ok(entry !== undefined, "the https entry materialized (authority folded into the pathname)");

@@ -106,7 +106,14 @@ entry from that declaration and rejects writes or state transitions for an
 undeclared channel. `defaultChannel` is the fragmentless READ channel and
 defaults to the first declared channel. Subprocess executors declare
 `stdout` and `stderr`, with `stdout` first; logical runtimes commonly declare
-`results`.
+`results`. The declared or per-write mimetype remains the channel's content
+type through storage and model observation; the consumer derives incremental
+versus atomic publication from that type under {§exec-stream}.
+
+An executor that produces a generated JSON value uses the contracts-owned
+`renderJsonResult` projection ({§json-result-rendering}). This gives a
+top-level result array one addressable item per physical line without
+reformatting arbitrary source JSON read from an entry.
 
 ### §executor-results Results, failures, and notices
 

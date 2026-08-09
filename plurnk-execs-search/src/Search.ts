@@ -1,4 +1,4 @@
-import { BaseExecutor, ErrorDetail, Results } from "@plurnk/plurnk-execs";
+import { BaseExecutor, ErrorDetail, renderJsonResult, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
 // Runtime tag → SearXNG `categories=` value. The flat tag set this sibling
@@ -350,9 +350,9 @@ export default class Search extends BaseExecutor {
         }
         const capped = (data.results ?? []).slice(0, limit ?? undefined);
 
-        // Debug escape hatch: the verbatim SearXNG payload, no prefetch pass.
+        // Debug escape hatch: capped upstream result rows, no projection or prefetch pass.
         if (process.env.PLURNK_EXECS_SEARCH_RAW) {
-            write("results", JSON.stringify(capped));
+            write("results", renderJsonResult(capped));
             setState("results", "closed");
             return { status: 200 };
         }
@@ -431,7 +431,7 @@ export default class Search extends BaseExecutor {
             ...(publishedDate ? { publishedDate } : {}),
             ...(entry ? { materialized: verdicts[i] !== null } : {}),
         })).filter((result) => !entry || result.materialized);
-        write("results", JSON.stringify(results));
+        write("results", renderJsonResult(results)); // {§json-result-rendering}
         setState("results", "closed");
         return { status: 200 };
     }
