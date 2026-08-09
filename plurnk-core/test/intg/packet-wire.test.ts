@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { resolve as resolveTokenizer } from "@plurnk/plurnk-mimetypes-tokenizers";
 import PacketWire from "../../src/core/packet-wire.ts";
 
-// These render tests assert on bodies/substrings, never on token VALUES — any
-// deterministic tokenizer satisfies renderLog's signature (tokens land on the
-// body-bearing meta lines, measured by this fn).
+// Per-row `tokens` tests assert on bodies/substrings, not tokenizer-specific
+// values; the metadata-budget contract below separately uses the bundled exact
+// tokenizer to make packet-weight drift reviewable.
 const tok = (s: string): number => Math.ceil(s.length / 4);
 const revision = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 const receipt = (context: string, requested = "<2>") => ({
@@ -441,16 +442,171 @@ test("log render: a matcher FIND exposes surgical coordinates", () => {
             matchLocationCount: 2,
             range: {
                 unit: "matchLocation",
-                requested: { first: 1, last: 16 },
-                available: { first: 1, last: 2, total: 2 },
+                total: 2,
+                requested: [1, 16],
+                returned: [1, 2],
             },
         },
     }], tok);
     assert.match(out, /"matcher":"\/grinder\/"/);
-    assert.match(out, /"matchingPathCount":1/);
-    assert.match(out, /"matchLocationCount":2/);
+    assert.doesNotMatch(out, /"matchingPathCount":/);
+    assert.doesNotMatch(out, /"matchLocationCount":/);
+    assert.doesNotMatch(out, /"items":|"lines":/);
     assert.match(out, /"unit":"matchLocation"/);
     assert.match(out, /<<BODY\n1:\[\{"region":\{"startLine":143/);
+});
+
+test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metadata owner", async () => {
+    const region = { startLine: 2, startColumn: 1, endLine: 2, endColumn: 6 };
+    const lineRegion = { startLine: 17, startColumn: 1, endLine: 18, endColumn: 1 };
+    const rows = [
+        {
+            coordinate: "1/1/1", origin: "model", op: "READ", status: 200, folded: true,
+            target: { scheme: null, pathname: "/lines.md" },
+            rx: {
+                content: "alpha\n\n", mimetype: "text/markdown", startLine: 17, region: lineRegion,
+                range: { unit: "line", total: 600, requested: [17, 18], returned: [17, 18] },
+            },
+        },
+        {
+            coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: true,
+            target: { scheme: null, pathname: "/exact.md" },
+            rx: { content: "alpha", mimetype: "text/markdown", startLine: 2, region },
+        },
+        {
+            coordinate: "1/1/3", origin: "model", op: "FIND", status: 200, folded: true,
+            target: { scheme: "worker", pathname: "/**" }, tx: { body: null },
+            rx: {
+                content: '[{"path":"worker:///a"}]', mimetype: "application/json",
+                itemsTokenTotal: 80, returnedItemsTokenTotal: 80,
+                matchingPathCount: 1, matchLocationCount: 0,
+                range: { unit: "resource", total: 1, requested: [1, 16], returned: [1, 1] },
+            },
+        },
+        {
+            coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, folded: true,
+            target: { scheme: "worker", pathname: "/**" }, tx: { body: { raw: "/target/" } },
+            rx: {
+                content: '[{"path":"worker:///a","matchLocationCount":2}]', mimetype: "application/json",
+                itemsTokenTotal: 1_000, returnedItemsTokenTotal: 400,
+                matchingPathCount: 20, matchLocationCount: 42,
+                range: { unit: "resource", total: 20, requested: [1, 16], returned: [1, 16] },
+            },
+        },
+        {
+            coordinate: "1/1/5", origin: "model", op: "FIND", status: 200, folded: true,
+            target: { scheme: null, pathname: "/exact.md" }, tx: { body: { raw: "/target/" } },
+            rx: {
+                content: `[${JSON.stringify({ region })}]`, mimetype: "application/json",
+                itemsTokenTotal: 80, returnedItemsTokenTotal: 80,
+                matchingPathCount: 1, matchLocationCount: 1,
+                range: { unit: "matchLocation", total: 1, requested: [1, 16], returned: [1, 1] },
+            },
+        },
+        {
+            coordinate: "1/1/6", origin: "plurnk", op: "FIND", status: 200, folded: true,
+            target: { scheme: "worker", pathname: "/missing/**" }, tx: { body: null },
+            rx: {
+                content: "[]", mimetype: "application/json",
+                itemsTokenTotal: 0, returnedItemsTokenTotal: 0,
+                matchingPathCount: 0, matchLocationCount: 0,
+                range: { unit: "resource", total: 0, requested: [1, 16] },
+            },
+        },
+        {
+            coordinate: "1/1/7", origin: "model", op: "READ", status: 416, folded: true,
+            target: { scheme: null, pathname: "/lines.md" },
+            rx: {
+                content: null,
+                mimetype: "text/markdown",
+                range: { unit: "line", total: 8, requested: [99, 99] },
+                problem: {
+                    type: "https://problems.plurnk.dev/schemes/slicer/range-not-satisfiable",
+                    title: "Range Not Satisfiable",
+                    status: 416,
+                    detail: "Line 99 is outside the available line range 1..8.",
+                    range: { unit: "line", total: 8, requested: [99, 99] },
+                    stage: "projection",
+                    recovery: "Choose a range within the available extent.",
+                    retryable: false,
+                },
+            },
+        },
+    ];
+    const metadata = rows.map((row) => {
+        const rendered = PacketWire.renderLog([row], tok);
+        const metaLine = rendered.split("\n").find((line) => line.startsWith("{"));
+        if (metaLine === undefined) throw new Error("A folded retrieval row did not render JSON metadata.");
+        return JSON.parse(metaLine) as Record<string, unknown>;
+    });
+    const [lineRead, exactRead, catalogFind, broadFind, exactFind, emptyFind, failedRead] = metadata;
+
+    assert.deepEqual(lineRead?.range, { unit: "line", total: 600, requested: [17, 18], returned: [17, 18] });
+    assert.equal(Object.hasOwn(lineRead ?? {}, "region"), false, "a whole-line region does not compete with its range");
+    assert.equal(Object.hasOwn(lineRead ?? {}, "lines"), false, "a terminal blank line cannot create a second visible count");
+    assert.deepEqual(exactRead?.region, region);
+    assert.equal(Object.hasOwn(exactRead ?? {}, "range"), false);
+    assert.equal(Object.hasOwn(exactRead ?? {}, "lines"), false);
+
+    assert.deepEqual(catalogFind?.range, {
+        unit: "resource", total: 1, requested: [1, 16], returned: [1, 1],
+    });
+    assert.equal(catalogFind?.itemsTokenTotal, 80);
+    assert.equal(Object.hasOwn(catalogFind ?? {}, "returnedItemsTokenTotal"), false);
+    assert.deepEqual(broadFind?.range, {
+        unit: "resource", total: 20, requested: [1, 16], returned: [1, 16],
+    });
+    assert.equal(broadFind?.matchLocationCount, 42);
+    assert.equal(broadFind?.returnedItemsTokenTotal, 400);
+    assert.deepEqual(exactFind?.range, {
+        unit: "matchLocation", total: 1, requested: [1, 16], returned: [1, 1],
+    });
+    assert.equal(Object.hasOwn(exactFind ?? {}, "matchLocationCount"), false);
+    assert.equal(Object.hasOwn(exactFind ?? {}, "returnedItemsTokenTotal"), false);
+    assert.deepEqual(emptyFind?.range, { unit: "resource", total: 0, requested: [1, 16] });
+    for (const find of [catalogFind, broadFind, exactFind, emptyFind]) {
+        assert.equal(Object.hasOwn(find ?? {}, "items"), false);
+        assert.equal(Object.hasOwn(find ?? {}, "lines"), false);
+        assert.equal(Object.hasOwn(find ?? {}, "matchingPathCount"), false);
+    }
+    for (const field of ["itemsTokenTotal", "returnedItemsTokenTotal", "matchLocationCount"]) {
+        assert.equal(Object.hasOwn(emptyFind ?? {}, field), false);
+    }
+    assert.deepEqual((failedRead?.problem as { range?: unknown } | undefined)?.range, {
+        unit: "line", total: 8, requested: [99, 99],
+    });
+    assert.equal(Object.hasOwn(failedRead ?? {}, "range"), false, "the Problem owns a failed retrieval's extent");
+    for (const extent of [
+        lineRead?.range,
+        catalogFind?.range,
+        broadFind?.range,
+        exactFind?.range,
+        emptyFind?.range,
+        (failedRead?.problem as { range?: unknown } | undefined)?.range,
+    ]) {
+        assert.equal(extent !== null && typeof extent === "object", true);
+        for (const redundant of ["available", "complete", "next", "all"]) {
+            assert.equal(Object.hasOwn(extent as object, redundant), false);
+        }
+    }
+
+    const tokenizer = await resolveTokenizer("gemma");
+    if (tokenizer === null) throw new Error("The bundled Gemma tokenizer is required for the metadata budget contract.");
+    assert.equal(tokenizer.tokenizerId, "5f7eee611703c5ce");
+    const metadataTokens = await tokenizer.countTokens(metadata.map((row) => JSON.stringify(row)).join("\n"));
+    assert.equal(metadataTokens, 596, "canonical retrieval metadata has one reviewed Gemma-token weight");
+
+    assert.throws(
+        () => PacketWire.renderLog([{
+            ...rows[0],
+            rx: {
+                content: "alpha",
+                range: { unit: "line", total: 1, requested: [1, 16], returned: [1, 2] },
+            },
+        }], tok),
+        /RangeExtent returned positions must be ordered within total/,
+        "a malformed producer extent cannot enter the model packet",
+    );
 });
 
 test("log render: READ@200 with application/json is line-addressable", () => {

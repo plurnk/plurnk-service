@@ -45,12 +45,8 @@ test("{§find-result-projection}: a valid exact match without an addressable loc
     assert.equal(result.matchLocationCount, 0);
     assert.deepEqual(result.range, {
         unit: "matchLocation",
-        requested: { first: 1, last: 16 },
-        available: { first: null, last: null, total: 0 },
-        returned: { first: null, last: null, total: 0 },
-        complete: true,
-        next: null,
-        all: { first: 1, last: -1 },
+        total: 0,
+        requested: [1, 16],
     });
 });
 

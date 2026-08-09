@@ -266,14 +266,15 @@ test("markerless exact matcher FIND returns the first 16 locations and <1,-1> re
         assert.equal(first.matchingPathCount, 1);
         assert.equal(first.matchLocationCount, 20);
         assert.equal(first.range?.unit, "matchLocation");
-        assert.deepEqual(first.range?.next, { first: 17, last: 20 });
+        assert.equal(first.range?.total, 20);
+        assert.deepEqual(first.range?.returned, [1, 16]);
 
         const all = await worker.find(
             parseOp<FindStatement>("<<FIND(worker:///many.md)<1,-1>:*target*:FIND", "FIND"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(all.results.length, 20);
-        assert.equal(all.range?.complete, true);
+        assert.deepEqual(all.range?.returned, [1, 20]);
     } finally { await db.close(); }
 });
 
@@ -308,7 +309,7 @@ test("FIND on an exact target with a content matcher pages flat match locations"
         assert.equal(result.matchingPathCount, 1);
         assert.equal(result.matchLocationCount, 2);
         assert.equal(result.range?.unit, "matchLocation");
-        assert.deepEqual(result.range?.returned, { first: 1, last: 1, total: 1 });
+        assert.deepEqual(result.range?.returned, [1, 1]);
     } finally { await db.close(); }
 });
 

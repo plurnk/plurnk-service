@@ -5,11 +5,10 @@
 // consumer injects their implementation.
 
 import type { WriterTier } from "./types.ts";
-import type { EditStatement, FindStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
+import type { EditStatement, FindStatement, RangeExtent, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import type { MatchEvidence, SchemeResult } from "./Results.ts";
 import type { EditBatchReceipt, EditBatchResult } from "./edit-receipt.ts";
-import type { RangeExtent } from "./Slicer.ts";
 // Channel streaming-lifecycle state. Metadata, not an engine gate
 // (service SPEC {§channel-state}).
 export type TerminalChannelState = "closed" | "errored";

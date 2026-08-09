@@ -1,5 +1,5 @@
 // {§find-result-projection}: FIND bounds materialization through its ordinary
-// result pagination, with complete counts and explicit continuation metadata.
+// result pagination, with one compact extent over the selected result unit.
 import test from "node:test";
 import assert from "node:assert/strict";
 import EntryFind from "../../src/schemes/_entry-find.ts";
@@ -28,19 +28,16 @@ test("{§find-result-projection}: markerless FIND returns the first 16 resources
         assert.equal(r.mimetype, "application/json");
         assert.deepEqual(r.range, {
             unit: "resource",
-            requested: { first: 1, last: 16 },
-            available: { first: 1, last: 20, total: 20 },
-            returned: { first: 1, last: 16, total: 16 },
-            complete: false,
-            next: { first: 17, last: 20 },
-            all: { first: 1, last: -1 },
+            total: 20,
+            requested: [1, 16],
+            returned: [1, 16],
         });
     } finally {
         await db.close();
     }
 });
 
-test("{§find-result-projection}: explicit continuation and all-results pages use the same resource unit", async () => {
+test("{§find-result-projection}: explicit later and all-results pages use the same resource unit", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `find-explicit-page-${crypto.randomUUID()}`);
@@ -54,7 +51,7 @@ test("{§find-result-projection}: explicit continuation and all-results pages us
 
         const all = await EntryFind.findWorkspaceEntries(findAll([1, -1]), ctx, Worker.manifest);
         assert.equal(all.results.length, 20);
-        assert.equal(all.range?.complete, true);
+        assert.deepEqual(all.range?.returned, [1, 20]);
         assert.equal(all.matchingPathCount, 20);
     } finally {
         await db.close();

@@ -3,6 +3,7 @@ import { strict as assert } from "node:assert";
 import type { ReadStatement, MatcherBody } from "@plurnk/plurnk-contracts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import DefaultRead from "./DefaultRead.ts";
+import Slicer from "./Slicer.ts";
 
 const mimetypes = new Mimetypes({ defaultMimetype: "text/markdown" });
 await mimetypes.ready();
@@ -20,12 +21,9 @@ test("DefaultRead: no marker defaults to <1,16>", async () => {
     assert.equal(r.startLine, 1);
     assert.deepEqual(r.range, {
         unit: "line",
-        requested: { first: 1, last: 16 },
-        available: { first: 1, last: 20, total: 20 },
-        returned: { first: 1, last: 16, total: 16 },
-        complete: false,
-        next: { first: 17, last: 20 },
-        all: { first: 1, last: -1 },
+        total: 20,
+        requested: [1, 16],
+        returned: [1, 16],
     });
 });
 
@@ -33,14 +31,14 @@ test("DefaultRead: a complete implicit window preserves source separators", asyn
     const r = await DefaultRead.read("hello\n", "text/plain", stmt({}), mimetypes);
     assert.equal(r.status, 200);
     assert.equal(r.body, "hello\n");
-    assert.equal(r.range?.complete, true);
+    assert.equal(r.range === undefined ? false : Slicer.coversAvailable(r.range), true);
 });
 
 test("DefaultRead: an empty resource is a complete empty implicit window", async () => {
     const r = await DefaultRead.read("", "text/plain", stmt({}), mimetypes);
     assert.equal(r.status, 204);
     assert.equal(r.body, "");
-    assert.equal(r.range?.complete, true);
+    assert.equal(r.range === undefined ? false : Slicer.coversAvailable(r.range), true);
 });
 
 test("DefaultRead: explicit <1,-1> reads the complete blob", async () => {
@@ -74,7 +72,7 @@ test("DefaultRead: failed slices preserve the structured source extent", async (
     assert.equal(r.status, 416);
     assert.deepEqual(r.range, {
         unit: "line",
-        requested: { first: 9, last: null },
-        available: { first: 1, last: 2, total: 2 },
+        total: 2,
+        requested: [9, 9],
     });
 });

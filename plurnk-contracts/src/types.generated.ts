@@ -431,15 +431,35 @@ op?: string
 export type OperationResult = ({
 status: number
 problem?: ProblemDetails
+range?: RangeExtent
 error?: never
 [k: string]: unknown
 } & {
 status?: number
 })
+/**
+ * @minItems 2
+ * @maxItems 2
+ */
+
+export type RequestedRange = [number, number]
+/**
+ * @minItems 2
+ * @maxItems 2
+ */
+
+export type ReturnedRange = [number, number]
 
 /**
  * PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.
  */
+
+export interface RangeExtent {
+unit: ("line" | "result" | "resource" | "matchLocation")
+total: number
+requested: RequestedRange
+returned?: ReturnedRange
+}
 
 export type ResourceSelectionOrNull = (ResourceSelection | null)
 

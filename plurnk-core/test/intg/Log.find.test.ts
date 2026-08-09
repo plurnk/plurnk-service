@@ -82,7 +82,7 @@ test("an exact body-less log FIND returns 404 when the resource does not exist",
     } finally { await db.close(); }
 });
 
-test("markerless log FIND returns the first 16 rows with complete selection facts", async () => {
+test("markerless log FIND returns the first 16 rows with a compact selection extent", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         for (let sequence = 4; sequence <= 20; sequence++) {
@@ -100,8 +100,8 @@ test("markerless log FIND returns the first 16 rows with complete selection fact
         const ctx = makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES });
         const bounded = await log.find(findStmt(urlPath("log", "/1/1")), ctx);
         assert.equal(bounded.results.length, 16);
-        assert.equal(bounded.range?.available.total, 20);
-        assert.deepEqual(bounded.range?.next, { first: 17, last: 20 });
+        assert.equal(bounded.range?.total, 20);
+        assert.deepEqual(bounded.range?.returned, [1, 16]);
         assert.ok(bounded.itemsTokenTotal > bounded.returnedItemsTokenTotal);
 
         const all = await log.find({
@@ -109,7 +109,7 @@ test("markerless log FIND returns the first 16 rows with complete selection fact
             lineMarker: { marks: [1, -1] },
         }, ctx);
         assert.equal(all.results.length, 20);
-        assert.equal(all.range?.complete, true);
+        assert.deepEqual(all.range?.returned, [1, 20]);
         assert.equal(all.itemsTokenTotal, all.returnedItemsTokenTotal);
     } finally { await db.close(); }
 });
@@ -150,8 +150,8 @@ test("FIND pagination misses carry the exact result extent", async () => {
         assert.equal(r.status, 416);
         assert.deepEqual(r.problem?.range, {
             unit: "resource",
-            requested: { first: 9, last: null },
-            available: { first: 1, last: 3, total: 3 },
+            total: 3,
+            requested: [9, 9],
         });
     } finally { await db.close(); }
 });

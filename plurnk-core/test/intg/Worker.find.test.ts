@@ -329,7 +329,7 @@ test("Worker.find with <L> paginates results", async () => {
     } finally { db.close(); }
 });
 
-test("Worker.find markerless selection returns the first 16 with complete selection facts", async () => {
+test("Worker.find markerless selection returns the first 16 with a compact selection extent", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         const entries = Array.from({ length: 20 }, (_, index): [string, string] => [
@@ -341,9 +341,8 @@ test("Worker.find markerless selection returns the first 16 with complete select
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 });
         const bounded = await worker.find(findStmt(url("")), ctx);
         assert.equal(bounded.results.length, 16);
-        assert.equal(bounded.range?.available.total, 20);
-        assert.equal(bounded.range?.returned?.total, 16);
-        assert.deepEqual(bounded.range?.next, { first: 17, last: 20 });
+        assert.equal(bounded.range?.total, 20);
+        assert.deepEqual(bounded.range?.returned, [1, 16]);
         assert.ok(bounded.itemsTokenTotal > bounded.returnedItemsTokenTotal);
 
         const all = await worker.find(
@@ -351,7 +350,7 @@ test("Worker.find markerless selection returns the first 16 with complete select
             ctx,
         );
         assert.equal(all.results.length, 20);
-        assert.equal(all.range?.complete, true);
+        assert.deepEqual(all.range?.returned, [1, 20]);
         assert.equal(all.itemsTokenTotal, all.returnedItemsTokenTotal);
     } finally { db.close(); }
 });
@@ -370,6 +369,11 @@ test("Worker.find with no matches returns an empty 204 result", async () => {
             returnedItemsTokenTotal: 0,
             matchingPathCount: 0,
             matchLocationCount: 0,
+            range: {
+                unit: "resource",
+                total: 0,
+                requested: [1, 16],
+            },
         });
     } finally { db.close(); }
 });
@@ -389,6 +393,11 @@ test("Worker.find reports a matcher miss before applying result pagination", asy
         assert.equal(result.status, 204);
         assert.deepEqual(result.results, []);
         assert.equal(result.matchingPathCount, 0);
+        assert.deepEqual(result.range, {
+            unit: "resource",
+            total: 0,
+            requested: [30, 100],
+        });
     } finally { db.close(); }
 });
 

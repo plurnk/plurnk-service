@@ -1,9 +1,8 @@
 // Shared exact-target READ projection for entry-bearing schemes, File, and Log.
 // READ owns text coordinates only; FIND owns every aggregate or matcher selection.
 
-import { DEFAULT_RETRIEVAL_LIMIT, type LineMarker } from "@plurnk/plurnk-contracts";
-import type { TextRegion } from "@plurnk/plurnk-contracts";
-import type { RangeExtent, SchemeResultBase, ScopeNormalization } from "@plurnk/plurnk-schemes";
+import { DEFAULT_RETRIEVAL_LIMIT, type LineMarker, type RangeExtent, type TextRegion } from "@plurnk/plurnk-contracts";
+import type { SchemeResultBase, ScopeNormalization } from "@plurnk/plurnk-schemes";
 import LineMarkerOps from "./line-marker.ts";
 import MimetypeBinary from "./mimetype-binary.ts";
 
@@ -42,7 +41,9 @@ export default class ReadResolve {
         const selectedMimetype = lineMarker === null
             ? mimetype
             : MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
-        const selectedContent = lineMarker === null && sliced.range?.complete === true
+        const selectedContent = lineMarker === null
+            && sliced.range !== undefined
+            && LineMarkerOps.coversAvailable(sliced.range)
             ? content
             : sliced.text ?? "";
         return {

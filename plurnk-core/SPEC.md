@@ -290,7 +290,7 @@ the `plurnk` worker's log; the model sees the shared entry through its own READ.
 Client-provided workspace documents union with the operator set at the same
 entry surface.
 
-§actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS` foists turn-0 FINDs into the worker's first turn, so a worker opens with a navigable map instead of blank. An enabled preview always executes four orienting surveys: project files (`FIND(*)`), workspace commons (`FIND(worker:///*)`), the worker's own space (`FIND(worker://~/*)`), and kernel docs (`FIND(worker://plurnk/docs/**)<1,-1>`). Folder-capable entry plugins use the same shallow form; a scheme without folder scopes remains recursive. A shallow result renders direct entries normally and every deeper first-segment directory as an actionable `dir/**` summary with its recursive `items` and `tokens`. Ordinary surveys use FIND's markerless first-16 page, whose range metadata reports the complete selection and continuation; only the small curated kernel-doc surface explicitly selects all. The opening exemplar therefore demonstrates both `*` and `**` without normalizing an all-results override. Every survey executes even when empty because zero results are useful orientation. A positive `N` explicitly caps only the file map's rendered rows, using the map's actual direct-entry-plus-directory count; `-1` enables the ordinary markerless page; unset / `0` disables previews. `log://` is absent because the current worker's log already renders in present mode.
+§actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS` foists turn-0 FINDs into the worker's first turn, so a worker opens with a navigable map instead of blank. An enabled preview always executes four orienting surveys: project files (`FIND(*)`), workspace commons (`FIND(worker:///*)`), the worker's own space (`FIND(worker://~/*)`), and kernel docs (`FIND(worker://plurnk/docs/**)<1,-1>`). Folder-capable entry plugins use the same shallow form; a scheme without folder scopes remains recursive. A shallow result renders direct entries normally and every deeper first-segment directory as an actionable `dir/**` summary with its recursive `items` and `tokens`. Ordinary surveys use FIND's markerless first-16 page, whose range metadata reports the requested and returned page against the complete result total; only the small curated kernel-doc surface explicitly selects all. The opening exemplar therefore demonstrates both `*` and `**` without normalizing an all-results override. Every survey executes even when empty because zero results are useful orientation. A positive `N` explicitly caps only the file map's rendered rows, using the map's actual direct-entry-plus-directory count; `-1` enables the ordinary markerless page; unset / `0` disables previews. `log://` is absent because the current worker's log already renders in present mode.
 
 ### §machine-processes The machine and its processes: workspace, worker, fork
 
@@ -1230,8 +1230,8 @@ AST: `{ op: "READ", target, body: null, signal: tags | null, lineMarker? }`.
 - §read-selection-projection READ applies `lineMarker` as text coordinates to one
   exact target under {§read-exact-target}. Markerless READ synthesizes
   `<1,16>`; `<1,-1>` explicitly selects all text. Successful positional reads
-  carry the requested, available, returned, continuation, completion, and
-  all-text range facts. An invalid text region is 416.
+  carry the compact requested/returned extent and available total
+  ({§range-extent}). An invalid text region is 416.
 
 ### §open-fold OPEN / FOLD
 
@@ -1241,9 +1241,35 @@ OPEN/FOLD operate on the **log** (`log:///`) - the model's context-curation surf
 
 ### §jsonplurnk The Log's wire format
 
-The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw HEREDOC (`<<:::TAG ... :::TAG`, TAG = the entry's target/log URI), rendered with universal `N:` line prefixes, never as a JSON-escaped string. The carve-out is localized to `body`, so the strip-parser is trivial: after `"body":`, `<<:::TAG` opens and `:::TAG` at column 0 closes; replacing that block with an escaped string recovers strict JSON through `@plurnk/plurnk-contracts`. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":HEREDOC` with it shown. A bounded projection also carries `"overflow":"Body content truncated. Full body: <log path>"`, naming the row's exact canonical body without prescribing an unbounded retrieval. The block is data only - no prose leads the fence. `tokens` is the ruler-weight of the row's ordinary packet body: the room OPEN adds and FOLD saves. A FIND's `itemsTokenTotal` weighs the complete matched set; `returnedItemsTokenTotal` weighs the returned page. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/numbered bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
+The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw HEREDOC (`<<:::TAG ... :::TAG`, TAG = the entry's target/log URI), rendered with universal `N:` line prefixes, never as a JSON-escaped string. The carve-out is localized to `body`, so the strip-parser is trivial: after `"body":`, `<<:::TAG` opens and `:::TAG` at column 0 closes; replacing that block with an escaped string recovers strict JSON through `@plurnk/plurnk-contracts`. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":HEREDOC` with it shown. A bounded projection also carries `"overflow":"Body content truncated. Full body: <log path>"`, naming the row's exact canonical body without prescribing an unbounded retrieval. The block is data only - no prose leads the fence. `tokens` is the ruler-weight of the row's ordinary packet body: the room OPEN adds and FOLD saves. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page has a different weight. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/numbered bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
 
 §jsonplurnk-dynamic-fence The opening fence length is **dynamic**: one backtick longer than the longest backtick run in the rendered entries (floor 3). A body can carry arbitrary content — a READ of a doc whose own text opens a column-0 triple-backtick fence — which a fixed opener would let close the block early; a dynamic opener can never be closed by its own body content (CommonMark closes a fence only on a line of at least its own length), independent of the `N:` numbering that incidentally keeps text bodies off column 0.
+
+### §retrieval-packet-metadata READ/FIND packet metadata
+
+The packet projects one actionable owner for each retrieval fact:
+
+| Result mode | Extent | Result-body evidence | Additional aggregate fact |
+|---|---|---|---|
+| line READ | compact `line` range | none | none |
+| exact-coordinate READ | none | top-level `region` | none |
+| READ-shaped materialization notice | none | none | generic body `lines` |
+| catalog/path FIND | compact `resource` range | none | none |
+| broad matcher FIND | compact `resource` range | per-resource match-location counts | nonzero complete `matchLocationCount` |
+| exact matcher FIND | compact `matchLocation` range | each row's locator/region | none |
+
+The compact range is `{ unit, total, requested: [first,last], returned?:
+[first,last] }` ({§range-extent}); empty results omit `returned`. Transparent
+coordinates let the model determine whether more material exists and choose
+its own next request, so packet metadata never prescribes `next`, `complete`,
+or `all`. FIND range cardinality replaces top-level `items`, `lines`, and
+`matchingPathCount`; line READ likewise omits the rendered-body `lines` count
+and its internally resolved whole-line region. Exact READ retains only its
+region. A failed retrieval's Problem owns its range extension rather than
+repeating it at top level. Generic `tokens` always weighs the rendered body;
+generic body `lines` remains available on READ-shaped materialization notices
+that have no retrieval extent. FIND content weights follow {§jsonplurnk}; body
+truncation remains the independent addressable `overflow` contract.
 
 ### §model-entry The model's own emission, mirrored back
 
@@ -1351,8 +1377,9 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   resource is 204. A body-less broad empty catalog survey is status 200; an
   absent exact resource is 404.
 
-  `matchingPathCount` and `matchLocationCount` describe the complete selection
-  before pagination. `path` is reserved for resource identity; broad results
+  Inside `FindResult`, `matchingPathCount` and `matchLocationCount` describe the
+  complete selection before pagination; the packet curates those facts under
+  {§retrieval-packet-metadata}. `path` is reserved for resource identity; broad results
   never nest locations, and exact location rows never repeat the resource path.
   A **body-less** FIND is the **catalog**. Ordinary rows are one per resource:
   `{ path, stream?, tags?, channels: { <uri>: { mimetype, tokens, lines } } }`.
@@ -1362,9 +1389,8 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   describe the exact recursive subtree. Scope summaries are navigation
   metadata, not resources. Markerless FIND returns positions 1–16 in the
   selected unit; `<N,M>` selects an inclusive page and `<1,-1>` explicitly
-  selects all. `range` reports the unit plus the
-  requested, available, returned, continuation, completion, and all-results
-  facts. `itemsTokenTotal` weighs the complete matched set while
+  selects all. `range` reports the unit, complete result total, normalized
+  request, and returned positions ({§range-extent}). `itemsTokenTotal` weighs the complete matched set while
   `returnedItemsTokenTotal` weighs the returned resource page; in exact
   location mode both weigh the one selected resource once. Resource order is
   rank for `~`semantic and candidate order otherwise; location order is dialect

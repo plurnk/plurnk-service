@@ -207,8 +207,8 @@ test("File.read: lineMarker out of range returns 416", async () => {
         assert.equal(r.status, 416);
         assert.deepEqual(r.problem?.range, {
             unit: "line",
-            requested: { first: 99, last: null },
-            available: { first: 1, last: 2, total: 2 },
+            total: 2,
+            requested: [99, 99],
         });
         assert.equal(r.content, null);
     });
@@ -366,13 +366,13 @@ test("File.read: markerless exact READ returns 16 lines and explicit <1,-1> retu
         const bounded = await new File().read(parseRead("<<READ(bounded.txt)::READ"), ctx);
         assert.equal(bounded.status, 200);
         assert.equal(bounded.content, Array.from({ length: 16 }, (_, index) => `line ${index + 1}`).join("\n"));
-        assert.equal(bounded.range?.available.total, 20);
-        assert.deepEqual(bounded.range?.next, { first: 17, last: 20 });
+        assert.equal(bounded.range?.total, 20);
+        assert.deepEqual(bounded.range?.returned, [1, 16]);
 
         const all = await new File().read(parseRead("<<READ(bounded.txt)<1,-1>::READ"), ctx);
         assert.equal(all.status, 200);
         assert.equal(all.content, content);
-        assert.equal(all.range?.complete, true);
+        assert.deepEqual(all.range?.returned, [1, 20]);
     });
 });
 
@@ -424,7 +424,7 @@ test("{§membership-change-gated-sync}: a grown file exposes newly valid lines a
         // advertised extent and the slicer's actual address space are identical.
         const over = await new File().read(readStmt(urlPath("file", "/grow.txt"), { lineMarker: { marks: [99] } }), ctx);
         assert.equal(over.status, 416);
-        const range = over.problem?.range as { available?: { total?: number } };
-        assert.equal(range.available?.total, 8, "the range fact carries the refreshed line count");
+        const range = over.problem?.range as { total?: number };
+        assert.equal(range.total, 8, "the range fact carries the refreshed line count");
     });
 });

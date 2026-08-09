@@ -105,7 +105,7 @@ test("@foo is the union of definitions, referrers, and referents", async () => {
     } finally { db.close(); }
 });
 
-test("a graph matcher selecting no resources returns 204", async () => {
+test("{§range-extent}: a graph matcher selecting no resources returns 204 with its empty extent", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         const r = await find(db, workspaceId, workerId, "@<nope");
@@ -118,6 +118,11 @@ test("a graph matcher selecting no resources returns 204", async () => {
             returnedItemsTokenTotal: 0,
             matchingPathCount: 0,
             matchLocationCount: 0,
+            range: {
+                unit: "resource",
+                total: 0,
+                requested: [1, 16],
+            },
         });
     } finally { db.close(); }
 });

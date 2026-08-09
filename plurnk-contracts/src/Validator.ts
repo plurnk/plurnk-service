@@ -12,11 +12,12 @@ import problemDetailsSchema from "../schema/ProblemDetails.json" with { type: "j
 import operationResultSchema from "../schema/OperationResult.json" with { type: "json" };
 import entryReadResultSchema from "../schema/EntryReadResult.json" with { type: "json" };
 import textRegionSchema from "../schema/TextRegion.json" with { type: "json" };
+import rangeExtentSchema from "../schema/RangeExtent.json" with { type: "json" };
 import proposalProjectionSchema from "../schema/ProposalProjection.json" with { type: "json" };
 import proposalDispositionSchema from "../schema/ProposalDisposition.json" with { type: "json" };
 import loopFlagsSchema from "../schema/LoopFlags.json" with { type: "json" };
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
-import type { ClientDisplayCapabilities, EntryReadResult, LoopFlags, Notice, OperationResult, ProblemDetails, ProposalProjection, TextRegion } from "./types.generated.ts";
+import type { ClientDisplayCapabilities, EntryReadResult, LoopFlags, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, TextRegion } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
@@ -25,6 +26,7 @@ export class InvalidProblemDetailsError extends TypeError {}
 export class InvalidOperationResultError extends TypeError {}
 export class InvalidEntryReadResultError extends TypeError {}
 export class InvalidTextRegionError extends TypeError {}
+export class InvalidRangeExtentError extends TypeError {}
 export class InvalidLoopFlagsError extends TypeError {}
 export class InvalidProposalProjectionError extends TypeError {}
 export class InvalidClientDisplayCapabilitiesError extends TypeError {}
@@ -60,9 +62,10 @@ export default class Validator {
     );
     static #notice = new CfValidator(noticeSchema as Schema, "2020-12");
     static #problemDetails = new CfValidator(problemDetailsSchema as Schema, "2020-12");
-    static #operationResult = Validator.#withRefs(operationResultSchema, [problemDetailsSchema]);
+    static #operationResult = Validator.#withRefs(operationResultSchema, [problemDetailsSchema, rangeExtentSchema]);
     static #entryReadResult = Validator.#withRefs(entryReadResultSchema, [problemDetailsSchema]);
     static #textRegion = new CfValidator(textRegionSchema as Schema, "2020-12");
+    static #rangeExtent = new CfValidator(rangeExtentSchema as Schema, "2020-12");
     static #loopFlags = new CfValidator(loopFlagsSchema as Schema, "2020-12");
     static #proposalProjection = Validator.#withRefs(
         proposalProjectionSchema,
@@ -149,6 +152,10 @@ export default class Validator {
         return Validator.#validate(Validator.#textRegion, value);
     }
 
+    static validateRangeExtent(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#rangeExtent, value);
+    }
+
     static validateLoopFlags(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#loopFlags, value);
     }
@@ -185,6 +192,13 @@ export default class Validator {
                 `operation result status ${value.status} does not match problem status ${value.problem.status}`,
             );
         }
+        if (value.range !== undefined) {
+            try {
+                Validator.assertRangeExtent(value.range);
+            } catch (cause) {
+                throw new InvalidOperationResultError("operation result contains an invalid RangeExtent", { cause });
+            }
+        }
         return value;
     }
 
@@ -213,6 +227,20 @@ export default class Validator {
             || (value.endLine === value.startLine && value.endColumn < value.startColumn)
         ) {
             throw new InvalidTextRegionError("TextRegion ends before it starts");
+        }
+        return value;
+    }
+
+    static assertRangeExtent<T extends RangeExtent>(value: T): T {
+        const result = Validator.validateRangeExtent(value);
+        if (!result.valid) {
+            throw new InvalidRangeExtentError(`invalid RangeExtent: ${JSON.stringify(result.errors)}`);
+        }
+        if (value.returned !== undefined) {
+            const [first, last] = value.returned;
+            if (first > last || last > value.total) {
+                throw new InvalidRangeExtentError("RangeExtent returned positions must be ordered within total");
+            }
         }
         return value;
     }

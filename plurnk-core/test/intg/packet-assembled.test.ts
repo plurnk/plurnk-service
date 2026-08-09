@@ -160,7 +160,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
     }
 });
 
-test("assembled packet: exact matcher FIND shows flat surgical coordinates with complete counts", async () => {
+test("{§retrieval-packet-metadata}: exact matcher FIND shows flat surgical coordinates with one compact extent", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-matches-${crypto.randomUUID()}`);
@@ -192,8 +192,9 @@ test("assembled packet: exact matcher FIND shows flat surgical coordinates with 
         const log = packetSection(await getPacket(db, second.turnId), "log");
 
         assert.match(log, /"matcher":"\/target\/"/);
-        assert.match(log, /"matchLocationCount":2/);
-        assert.match(log, /"matchingPathCount":1/);
+        assert.match(log, /"range":\{"unit":"matchLocation","total":2,"requested":\[1,16\],"returned":\[1,2\]\}/);
+        assert.doesNotMatch(log, /"matchLocationCount":2/);
+        assert.doesNotMatch(log, /"matchingPathCount":1/);
         assert.match(log, /1:\[\{"region":\{"startLine":2,"startColumn":1,"endLine":2,"endColumn":7\}\},/);
         assert.match(log, /2:\{"region":\{"startLine":4,"startColumn":1,"endLine":4,"endColumn":7\}\}\]/);
         assert.match(log, /worker:\/\/\/notes\.md/);

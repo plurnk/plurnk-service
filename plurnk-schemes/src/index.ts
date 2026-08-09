@@ -24,7 +24,6 @@ export type {
     BatchEdit,
     EditResult as LineEditResult,
     PageResult,
-    RangeExtent,
     RangeUnit,
     SliceResult,
     TextReplacement,

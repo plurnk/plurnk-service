@@ -225,7 +225,7 @@ effects shown to consumers; plugins do not invent a second effect envelope.
 - Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `EditStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`).
 - Target syntax: contracts-owned `PathSyntax` is re-exported for the shared exact-versus-path-glob classifier {§path-glob}.
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
-- §executor-scheme-output Executor-scheme ("an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` -> `ReadResolution` is the free exact-target text projection over produced output (reuses `Slicer`). Markerless READ returns lines 1–16 with complete range metadata; `<1,-1>` explicitly returns all. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only EXEC-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
+- §executor-scheme-output Executor-scheme ("an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` -> `ReadResolution` is the free exact-target text projection over produced output (reuses `Slicer`). Markerless READ returns lines 1–16 with compact range metadata; `<1,-1>` explicitly returns all. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only EXEC-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
 - Results: `SchemeResult` is the universal operation-result contract. Statuses below 400 carry no `problem`; statuses 400–599 require RFC 9457 `ProblemDetails`, and the legacy `error` member is forbidden. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
 - Standard `EntryFindResult` exposes only its paged `results`, complete `matchingPathCount` / `matchLocationCount`, content weights, and typed range. Resource-mode rows are `EntryCatalogItem` or `EntryCatalogScope`; exact matcher mode returns flat `MatchEvidence` locations. Pagination is the materialization bound; no hidden `matches`, `pathnames`, or overflow-only result collection exists.
 - Capability ctx (see §3.bis): `SchemeCtx`, `StreamSubscription`, and the domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`/`EntryAddress`, and typed standard-operation results. `editBatch` receives every same-turn EDIT for one canonical resource and channel; it validates against one snapshot and commits one revision or none. There is no sequential single-EDIT fallback.
@@ -323,14 +323,17 @@ guessed. Start-column overshoot and out-of-range lines remain 416 errors.
   rejects overlaps, and applies all or none.
 - `Slicer.page(items, marker, options?)` is the separate ordered-result
   pagination helper; it accepts only one or two integer positions and can name
-  an operation-owned range unit.
+  an operation-owned range unit. `allowEmpty` preserves an otherwise valid
+  positive request when an upstream filter yields no items.
+- `Slicer.coversAvailable(range)` derives whether a successful range selected
+  the complete available extent; that fact is never serialized separately.
 
-A line/pagination 416 carries `range: { unit, requested: { first, last },
-available: { first, last, total } }`. An exact-region failure, including a
-failed tolerated three-coordinate scope, carries `requestedCoordinates`
-exactly as authored; an invalid-arity text scope does likewise. Both carry
-`columnKind: "unicodeCodePoints"`. Empty sources use `null` line-range
-endpoints and `total: 0`.
+A successful line or pagination selection carries the contracts-owned
+`RangeExtent` {§range-extent}; a 416 carries the same extent without
+`returned`. Exact regions use `region` instead. An exact-region failure,
+including a failed tolerated three-coordinate scope, carries
+`requestedCoordinates` exactly as authored; an invalid-arity text scope does
+likewise. Both carry `columnKind: "unicodeCodePoints"`.
 
 ### §path-extension-mimetype Path-extension mimetype — `PathMimetype`
 
