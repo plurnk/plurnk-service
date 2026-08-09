@@ -1,6 +1,6 @@
 import EntrySemantic from "./_entry-semantic.ts";
 import EntryCrud from "./_entry-crud.ts";
-import type { EditStatement, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { EditStatement, RangeExtent, ReadStatement, TextRegion } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import { entryPathnameOf } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
@@ -8,9 +8,8 @@ import Owner from "../core/Owner.ts";
 import EntryManifest from "./_entry-manifest.ts";
 import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editReceipt } from "../content/index.ts";
 import type { EditBatchReceipt } from "../content/index.ts";
-import type { TextRegion } from "@plurnk/plurnk-contracts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
-import type { RangeExtent, ScopeNormalization } from "@plurnk/plurnk-schemes";
+import type { ScopeNormalization } from "@plurnk/plurnk-schemes";
 
 // Shared static-method helpers for owner-addressed entry-bearing schemes.
 // Each scheme passes its manifest; helpers extract scheme name, channels,

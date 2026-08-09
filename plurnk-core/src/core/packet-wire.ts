@@ -7,7 +7,7 @@
 // Format and omission rules are owned by {§packet-markdown}. Section producers
 // supply names and typed content; this projection preserves their ordered evidence.
 
-import { Validator, type LineMarker, type ProblemDetails, type TextRegion } from "@plurnk/plurnk-contracts";
+import { Validator, type LineMarker, type ProblemDetails, type RangeExtent, type TextRegion } from "@plurnk/plurnk-contracts";
 import { renderTarget } from "./plurnk-uri.ts";
 import type { GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
@@ -71,7 +71,6 @@ interface RxView {
     region?: unknown;
     itemsTokenTotal?: unknown;
     returnedItemsTokenTotal?: unknown;
-    matchingPathCount?: unknown;
     matchLocationCount?: unknown;
     range?: unknown;
     receipt?: unknown;
@@ -406,35 +405,67 @@ export default class PacketWire {
                 meta.problem = problem;
             }
 
-            // READ + FIND enrichment: text/result extent plus FIND matcher,
-            // complete path/location counts, and content weights.
-            let items: number | null = null;
+            // {§retrieval-packet-metadata}: one extent/coordinate owner plus
+            // only FIND aggregates that add information beyond that extent.
+            let findItems: number | null = null;
             if (op === "READ" || op === "FIND") {
-                if (op === "FIND" && tx !== null && tx !== undefined && typeof tx === "object" && tx.body !== null && typeof tx.body === "object") {
-                    if (typeof tx.body.raw === "string") meta.matcher = tx.body.raw;
+                const findMatcher = op === "FIND"
+                    && tx !== null
+                    && tx !== undefined
+                    && typeof tx === "object"
+                    && tx.body !== null
+                    && typeof tx.body === "object";
+                if (findMatcher) {
+                    const body = tx?.body;
+                    if (body !== null && typeof body === "object" && typeof body.raw === "string") {
+                        meta.matcher = body.raw;
+                    }
                 }
                 if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.content === "string") {
                     const parsed = PacketWire.#safeParse(rx.content);
-                    if (Array.isArray(parsed)) items = parsed.length;
+                    if (Array.isArray(parsed)) findItems = parsed.length;
                 }
-                if (op === "READ" && rx !== null && typeof rx === "object" && rx.region !== undefined) {
+                const range = rx !== null && typeof rx === "object" && rx.range !== undefined
+                    ? rx.range
+                    : undefined;
+                const problemOwnsRange = typeof e.status === "number"
+                    && e.status >= 400
+                    && meta.problem !== null
+                    && typeof meta.problem === "object"
+                    && Object.hasOwn(meta.problem, "range");
+                if (problemOwnsRange) {
+                    Validator.assertRangeExtent((meta.problem as { range: RangeExtent }).range);
+                }
+                if (range !== undefined && !problemOwnsRange) {
+                    meta.range = Validator.assertRangeExtent(range as RangeExtent);
+                } else if (op === "READ" && rx !== null && typeof rx === "object" && rx.region !== undefined) {
                     meta.region = Validator.assertTextRegion(rx.region as TextRegion);
                 }
-                if (rx !== null && typeof rx === "object" && rx.range !== undefined) {
-                    meta.range = rx.range;
-                }
-                // The matched set's content weight (sum of the entries' live channel tokens) — the
-                // FIND self-describes its hits' READ-weight; carries the per-scheme roll-up in the foist.
-                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.itemsTokenTotal === "number") {
+                // These are underlying selected-content weights, distinct from
+                // the emitted body's generic `tokens` measurement.
+                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.itemsTokenTotal === "number" && rx.itemsTokenTotal > 0) {
                     meta.itemsTokenTotal = rx.itemsTokenTotal;
                 }
-                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.returnedItemsTokenTotal === "number") {
+                if (
+                    op === "FIND"
+                    && rx !== null
+                    && typeof rx === "object"
+                    && typeof rx.returnedItemsTokenTotal === "number"
+                    && rx.returnedItemsTokenTotal > 0
+                    && rx.returnedItemsTokenTotal !== rx.itemsTokenTotal
+                ) {
                     meta.returnedItemsTokenTotal = rx.returnedItemsTokenTotal;
                 }
-                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.matchingPathCount === "number") {
-                    meta.matchingPathCount = rx.matchingPathCount;
-                }
-                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.matchLocationCount === "number") {
+                if (
+                    findMatcher
+                    && range !== null
+                    && typeof range === "object"
+                    && (range as { unit?: unknown }).unit === "resource"
+                    && rx !== null
+                    && typeof rx === "object"
+                    && typeof rx.matchLocationCount === "number"
+                    && rx.matchLocationCount > 0
+                ) {
                     meta.matchLocationCount = rx.matchLocationCount;
                 }
             }
@@ -472,7 +503,7 @@ export default class PacketWire {
                 mimetypeTx: typeof e.mimetype_tx === "string" ? e.mimetype_tx : undefined,
                 mimetypeRx: typeof e.mimetype_rx === "string" ? e.mimetype_rx : undefined,
             });
-            const emptyFind = op === "FIND" && e.status === 200 && items === 0;
+            const emptyFind = op === "FIND" && e.status === 200 && findItems === 0;
             const previewExempt = op === "READ" || op === "FIND";
             const projection = previewExempt
                 ? { text: fullBody.content, cut: false }
@@ -495,15 +526,14 @@ export default class PacketWire {
                 );
 
             // tokens on EVERY row (0 when there's genuinely no body) so the model can always weigh
-            // it; for a folded row this is the room an OPEN would add. items present even at 0.
-            if (items !== null) meta.items = items;
+            // it; for a folded row this is the room an OPEN would add.
             // 0 for a genuinely empty body — never call countTokens("") (some providers return
             // undefined for it, which JSON.stringify would drop, leaving the row with no tokens).
             meta.tokens = body.length > 0 ? countTokens(body) : 0;
-            // lines beside tokens on any row with a navigable body — the count of `N:`-numbered
-            // lines (fences and unnumbered prose don't count), so the model can plan a <start,end>
-            // slice before paying for an OPEN. Omitted when the body isn't line-addressable.
-            if (body.length > 0) {
+            // lines beside tokens on a non-retrieval row with a navigable body — the count of
+            // `N:`-numbered lines (fences and unnumbered prose don't count), so the model can plan
+            // a <start,end> slice before paying for an OPEN. READ/FIND own typed extents instead.
+            if (body.length > 0 && op !== "READ" && op !== "FIND") {
                 const navigable = body.split("\n").filter((l) => /^\d+:/.test(l)).length;
                 if (navigable > 0) meta.lines = navigable;
             }

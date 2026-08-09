@@ -14,7 +14,7 @@ import type {
     RangeUnit,
     TextReplacement,
 } from "@plurnk/plurnk-schemes";
-import type { LineMarker } from "@plurnk/plurnk-contracts";
+import type { LineMarker, RangeExtent } from "@plurnk/plurnk-contracts";
 
 export type { SliceResult, EditResult };
 
@@ -31,5 +31,7 @@ export default class LineMarkerOps {
         marker: LineMarker,
         options: { readonly unit?: RangeUnit; readonly allowEmpty?: boolean } = {},
     ): PageResult<T> { return Slicer.page(items, marker, options); }
+
+    static coversAvailable(range: RangeExtent): boolean { return Slicer.coversAvailable(range); }
 
 }

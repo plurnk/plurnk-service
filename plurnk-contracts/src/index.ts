@@ -8,6 +8,7 @@ export {
     InvalidEntryReadResultError,
     InvalidProblemDetailsError,
     InvalidProposalProjectionError,
+    InvalidRangeExtentError,
     InvalidTextRegionError,
     InvalidClientDisplayCapabilitiesError,
 } from "./Validator.ts";

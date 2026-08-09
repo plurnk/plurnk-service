@@ -6,11 +6,9 @@
 // executor-scheme delivers them. READ-purity holds: this reads already-produced
 // output, it never triggers EXEC.
 
-import { DEFAULT_RETRIEVAL_LIMIT, type ReadStatement } from "@plurnk/plurnk-contracts";
-import type { TextRegion } from "@plurnk/plurnk-contracts";
+import { DEFAULT_RETRIEVAL_LIMIT, type RangeExtent, type ReadStatement, type TextRegion } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Slicer from "./Slicer.ts";
-import type { RangeExtent } from "./Slicer.ts";
 import type { SchemeResult } from "./Results.ts";
 
 export interface ReadResolution extends SchemeResult {
@@ -33,7 +31,9 @@ export default class DefaultRead {
         const marker = statement.lineMarker ?? { marks: [1, DEFAULT_RETRIEVAL_LIMIT] };
         const s = Slicer.lines(content, marker);
         if (s.status >= 400) return s;
-        const body = statement.lineMarker === null && s.range?.complete === true
+        const body = statement.lineMarker === null
+            && s.range !== undefined
+            && Slicer.coversAvailable(s.range)
             ? content
             : s.text;
         return {

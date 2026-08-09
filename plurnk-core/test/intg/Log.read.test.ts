@@ -142,12 +142,12 @@ test("Log.read: a range miss carries the exact textual line extent", async () =>
         assert.equal(r.content, null);
         const range = r.problem?.range as {
             unit?: string;
-            requested?: { first?: number };
-            available?: { total?: number };
+            requested?: [number, number];
+            total?: number;
         };
         assert.equal(range.unit, "line");
-        assert.equal(range.requested?.first, 99);
-        assert.ok(Number(range.available?.total) > 0);
+        assert.equal(range.requested?.[0], 99);
+        assert.ok(Number(range.total) > 0);
     } finally { db.close(); }
 });
 

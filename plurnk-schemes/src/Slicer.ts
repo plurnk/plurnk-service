@@ -16,8 +16,7 @@
 // specified and rejected as 416. Within a range, -1 as the M endpoint
 // means "include through the last line" (so <1,-1> is whole content).
 
-import type { LineMarker } from "@plurnk/plurnk-contracts";
-import type { TextRegion } from "@plurnk/plurnk-contracts";
+import type { LineMarker, RangeExtent, TextRegion } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
 import Results, { type SchemeResult, type ScopeNormalization } from "./Results.ts";
 
@@ -36,16 +35,7 @@ export interface TextReplacement {
     readonly normalization?: ScopeNormalization;
 }
 
-export type RangeUnit = "line" | "result" | "resource" | "matchLocation";
-export interface RangeExtent {
-    readonly unit: RangeUnit;
-    readonly requested: { readonly first: number; readonly last: number | null };
-    readonly available: { readonly first: number | null; readonly last: number | null; readonly total: number };
-    readonly returned?: { readonly first: number | null; readonly last: number | null; readonly total: number };
-    readonly complete?: boolean;
-    readonly next?: { readonly first: number; readonly last: number } | null;
-    readonly all?: { readonly first: 1; readonly last: -1 };
-}
+export type RangeUnit = RangeExtent["unit"];
 export interface SliceResult extends SchemeResult {
     text?: string;
     startLine?: number;
@@ -108,17 +98,11 @@ export default class Slicer {
     }
 
     static #extent(marker: LineMarker, total: number, unit: RangeUnit): RangeExtent {
+        const first = marker.marks[0];
         return {
             unit,
-            requested: {
-                first: marker.marks[0],
-                last: marker.marks.length > 1 ? marker.marks[1] : null,
-            },
-            available: {
-                first: total === 0 ? null : 1,
-                last: total === 0 ? null : total,
-                total,
-            },
+            total,
+            requested: [first, marker.marks[1] ?? first],
         };
     }
 
@@ -127,23 +111,14 @@ export default class Slicer {
         first: number | null,
         last: number | null,
     ): RangeExtent {
-        const returnedTotal = first === null || last === null ? 0 : last - first + 1;
-        const availableTotal = extent.available.total;
-        const complete = availableTotal === 0
-            || (first === 1 && last === availableTotal);
-        const next = last !== null && last < availableTotal
-            ? {
-                first: last + 1,
-                last: Math.min(availableTotal, last + Math.max(returnedTotal, 1)),
-            }
-            : null;
-        return {
-            ...extent,
-            returned: { first, last, total: returnedTotal },
-            complete,
-            next,
-            all: { first: 1, last: -1 },
-        };
+        return first === null || last === null
+            ? extent
+            : { ...extent, returned: [first, last] };
+    }
+
+    static coversAvailable(range: RangeExtent): boolean {
+        return range.total === 0
+            || (range.returned?.[0] === 1 && range.returned[1] === range.total);
     }
 
     static #exactTextReplacement(
@@ -439,15 +414,18 @@ export default class Slicer {
                 },
             );
         }
-        const { first, last } = extent.requested;
-        if (!Number.isInteger(first) || (last !== null && !Number.isInteger(last))) {
+        const [first, last] = extent.requested;
+        if (!Number.isInteger(first) || !Number.isInteger(last)) {
             return Slicer.#rangeFailure(
                 `Result ranges require integer positions; the result set contains ${total} item(s).`,
                 extent,
             );
         }
-        if (last === null) {
+        if (marker.marks.length === 1) {
             if (first === 0 || first === -1) {
+                return { status: 200, items: [], range: Slicer.#projectedExtent(extent, null, null) };
+            }
+            if (total === 0 && options.allowEmpty === true && first > 0) {
                 return { status: 200, items: [], range: Slicer.#projectedExtent(extent, null, null) };
             }
             if (first > 0 && first <= total) {
@@ -463,7 +441,7 @@ export default class Slicer {
             );
         }
         if (total === 0) {
-            if (options.allowEmpty === true && first === 1 && last !== null && (last === -1 || last >= 1)) {
+            if (options.allowEmpty === true && first > 0 && (last === -1 || last >= first)) {
                 return { status: 200, items: [], range: Slicer.#projectedExtent(extent, null, null) };
             }
             if ((first === 0 || first === 1) && last === -1) {

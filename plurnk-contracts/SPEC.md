@@ -8,7 +8,7 @@ is the single code API for those contracts.
 
 | Surface                                                                         | Canonical export or artifact                        |
 | ------------------------------------------------------------------------------- | --------------------------------------------------- |
-| Parser, AST, validators, Problems, results, Notices, text regions               | `@plurnk/plurnk-contracts`                          |
+| Parser, AST, validators, Problems, results, Notices, text regions and extents   | `@plurnk/plurnk-contracts`                          |
 | Effective loop policy and its default                                           | `LoopFlags`, `DEFAULT_LOOP_FLAGS`                   |
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
@@ -673,6 +673,7 @@ following supported consumer values. All other root exports are TypeScript types
 | `InvalidProblemDetailsError`          | Typed failure from `Validator.assertProblemDetails`                 | {§problem-details}                          |
 | `InvalidOperationResultError`         | Typed failure from `Validator.assertOperationResult`                | {§operation-result}                         |
 | `InvalidTextRegionError`              | Typed failure from `Validator.assertTextRegion`                     | {§text-region}                              |
+| `InvalidRangeExtentError`             | Typed failure from `Validator.assertRangeExtent`                    | {§range-extent}                             |
 | `Problems`                            | RFC 9457 Problem construction                                       | {§problem-details}                          |
 | `PLURNK_OPS`                          | Runtime tuple from which the closed `PlurnkOp` union is derived     | {§canonical-statement}                      |
 | `WORKER_NAME`, `RESERVED_AUTHORITIES` | Authority minting predicate and internal reserved names             | {§worker-name}                              |
@@ -722,7 +723,24 @@ point. A producer supplies all four coordinates or omits the region. It never
 substitutes UTF-16 offsets, readable-row indices, or partial coordinates.
 `Validator.assertTextRegion` rejects an end before its start.
 
-### §entry-read-result 13.2 Client entry reads
+### §range-extent 13.2 Range extents
+
+`RangeExtent` is the compact wire projection of one line or ordered-result
+selection: `{ unit, total, requested: [first,last], returned?: [first,last] }`.
+`requested` preserves the numeric request, including invalid fractional
+evidence on a failed selection; a one-position request therefore repeats its
+endpoint. Successful selection endpoints are integers. `total` is the complete
+available cardinality.
+`returned` names the inclusive positions actually projected and is absent for
+an empty selection or a failed request. Its endpoints are positive, ordered,
+and no greater than `total`.
+
+The transparent coordinates make completion and continuation derivable. The
+shape has no separate `complete`, `next`, or all-results instruction. Exact
+text-coordinate selections use {§text-region} instead. `Validator.assertRangeExtent`
+enforces both the schema and the relational endpoint invariants.
+
+### §entry-read-result 13.3 Client entry reads
 
 `EntryReadResult` is the exact transport-neutral projection of one entry. It
 does not expose workspace IDs, storage owner IDs, split scheme/pathname fields,
@@ -755,7 +773,7 @@ offset beyond the current end returns empty content at `contentLength`, not the
 unbounded requested offset. `Validator.assertEntryReadResult` enforces the
 schema, this suffix invariant, and Problem status equality.
 
-### 13.3 Operation results
+### 13.4 Operation results
 
 §operation-result Every public PLURNK operation returns one `OperationResult`:
 
@@ -769,7 +787,7 @@ fields and Problem Details extension members remain open. A malformed result is
 an internal producer contract violation; it is not converted into a second
 model-facing failure envelope.
 
-### 13.4 Problem Details
+### 13.5 Problem Details
 
 §problem-details `ProblemDetails` requires `type`, `title`, `status`, and `detail`;
 `instance` is optional until a durable host can attach the occurrence URI.
@@ -799,13 +817,13 @@ Internal invariant violations throw and preserve their cause. An external
 protocol may require its own error envelope; its adapter maps that envelope to
 or from the canonical Problem without creating another PLURNK failure contract.
 
-### 13.5 Notices
+### 13.6 Notices
 
 §notice A `Notice` is a transient, nonterminal observation. It cannot determine durable
 failure truth, lifecycle, scheduling, or recovery. Sharing a renderer with
 Problems does not merge their semantics.
 
-### §client-display-capabilities 13.6 Client display capabilities
+### §client-display-capabilities 13.7 Client display capabilities
 
 `ClientDisplayCapabilities` is the transport-neutral installed-capability
 projection used by external clients. It is an ordered array of closed,

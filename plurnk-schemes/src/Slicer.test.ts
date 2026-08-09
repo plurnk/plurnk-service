@@ -84,8 +84,8 @@ test("lines reports the requested and available extent on failure", () => {
     assert.equal(result.status, 416);
     assert.deepEqual(result.range, {
         unit: "line",
-        requested: { first: 99, last: null },
-        available: { first: 1, last: 4, total: 4 },
+        total: 4,
+        requested: [99, 99],
     });
     assert.deepEqual(result.problem?.range, result.range);
     assert.equal(result.problem?.retryable, false);
@@ -97,12 +97,8 @@ test("a first-page line range selects an empty text resource completely", () => 
     assert.equal(result.text, "");
     assert.deepEqual(result.range, {
         unit: "line",
-        requested: { first: 1, last: 16 },
-        available: { first: null, last: null, total: 0 },
-        returned: { first: null, last: null, total: 0 },
-        complete: true,
-        next: null,
-        all: { first: 1, last: -1 },
+        total: 0,
+        requested: [1, 16],
     });
     assert.equal(Slicer.lines("", { marks: [1] }).status, 416);
     assert.equal(Slicer.lines("", { marks: [2, 16] }).status, 416);
@@ -281,38 +277,38 @@ test("page keeps ordered-result pagination distinct from text coordinates", () =
     assert.deepEqual(bounded.items, ["a", "b"]);
     assert.deepEqual(bounded.range, {
         unit: "result",
-        requested: { first: 1, last: 2 },
-        available: { first: 1, last: 4, total: 4 },
-        returned: { first: 1, last: 2, total: 2 },
-        complete: false,
-        next: { first: 3, last: 4 },
-        all: { first: 1, last: -1 },
+        total: 4,
+        requested: [1, 2],
+        returned: [1, 2],
     });
     const allEmpty = Slicer.page([], { marks: [1, -1] });
     assert.deepEqual(allEmpty.items, []);
     assert.deepEqual(allEmpty.range, {
         unit: "result",
-        requested: { first: 1, last: -1 },
-        available: { first: null, last: null, total: 0 },
-        returned: { first: null, last: null, total: 0 },
-        complete: true,
-        next: null,
-        all: { first: 1, last: -1 },
+        total: 0,
+        requested: [1, -1],
+    });
+    const allowedEmpty = Slicer.page([], { marks: [30, 100] }, { allowEmpty: true });
+    assert.deepEqual(allowedEmpty.items, []);
+    assert.deepEqual(allowedEmpty.range, {
+        unit: "result",
+        total: 0,
+        requested: [30, 100],
     });
 
     const failure = Slicer.page(["a", "b", "c"], { marks: [4, -1] });
     assert.equal(failure.status, 416);
     assert.deepEqual(failure.range, {
         unit: "result",
-        requested: { first: 4, last: -1 },
-        available: { first: 1, last: 3, total: 3 },
+        total: 3,
+        requested: [4, -1],
     });
 });
 
 test("page rejects fractional result positions instead of rounding", () => {
     const result = Slicer.page(["a", "b"], { marks: [0.5] });
     assert.equal(result.status, 416);
-    assert.equal(result.range?.requested.first, 0.5);
+    assert.equal(result.range?.requested[0], 0.5);
 });
 
 test("page rejects text-shaped and threshold-prefixed coordinate lists", () => {

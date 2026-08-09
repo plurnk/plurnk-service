@@ -12,7 +12,7 @@
 //   signal  — tag filter: candidate entry must have ALL listed tags
 //   <L>     — result pagination: resource or match-location positions N..M
 
-import { DEFAULT_RETRIEVAL_LIMIT, renderJsonResult, type FindStatement } from "@plurnk/plurnk-contracts";
+import { DEFAULT_RETRIEVAL_LIMIT, renderJsonResult, type FindStatement, type RangeExtent } from "@plurnk/plurnk-contracts";
 import { LineMarkerOps } from "../content/index.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
@@ -24,7 +24,7 @@ import EntryManifest, { type CatalogEntry } from "./_entry-manifest.ts";
 import Owner from "../core/Owner.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
-import type { MatchEvidence, RangeExtent } from "@plurnk/plurnk-schemes";
+import type { MatchEvidence } from "@plurnk/plurnk-schemes";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
 import { pathFolderSummaries, pathScope, pathScopeMatches, type PathScope } from "./_path-scope.ts";
 
@@ -130,10 +130,6 @@ export const projectFindResult = (
         matchLocationCount,
     };
 
-    if (statement.body !== null && matchingPathCount === 0) {
-        return { status: 204, ...fields };
-    }
-
     const locationMode = statement.body !== null && scope.kind === "exact";
     const completeItems: MatchItem[] = locationMode
         ? uniqueMatchLocations(resources.flatMap(({ match }) => match.matches))
@@ -153,11 +149,19 @@ export const projectFindResult = (
     const unit = locationMode ? "matchLocation" : "resource";
     const page = LineMarkerOps.page(completeItems, marker, {
         unit,
-        allowEmpty: statement.lineMarker === null,
+        allowEmpty: statement.body !== null || statement.lineMarker === null,
     });
     if (page.status !== 200) {
         if (page.problem === undefined) throw new Error("FIND pagination failed without Problem Details");
         return Results.assert({ status: page.status, problem: page.problem, ...fields, range: page.range }) as FindResult;
+    }
+
+    if (statement.body !== null && matchingPathCount === 0) {
+        return {
+            status: 204,
+            ...fields,
+            ...(page.range === undefined ? {} : { range: page.range }),
+        };
     }
 
     const results = page.items ?? [];

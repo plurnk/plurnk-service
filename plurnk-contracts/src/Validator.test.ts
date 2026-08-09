@@ -7,10 +7,11 @@ import Validator, {
     InvalidOperationResultError,
     InvalidProblemDetailsError,
     InvalidProposalProjectionError,
+    InvalidRangeExtentError,
     InvalidTextRegionError,
 } from "./Validator.ts";
 import Problems from "./Problems.ts";
-import type { ClientDisplayCapabilities } from "./types.generated.ts";
+import type { ClientDisplayCapabilities, RangeExtent } from "./types.generated.ts";
 
 test("ClientDisplayCapabilities admits only discriminated client display metadata", () => {
     const capabilities: ClientDisplayCapabilities = [
@@ -51,6 +52,35 @@ test("TextRegion requires complete ordered Unicode text coordinates", () => {
         assert.throws(
             () => Validator.assertTextRegion(invalid as never),
             InvalidTextRegionError,
+        );
+    }
+});
+
+test("{§range-extent}: RangeExtent has one compact, bounded selection shape", () => {
+    const extent: RangeExtent = {
+        unit: "resource",
+        total: 20,
+        requested: [1, 16],
+        returned: [1, 16],
+    };
+    assert.equal(Validator.validateRangeExtent(extent).valid, true);
+    assert.equal(Validator.assertRangeExtent(extent), extent);
+    assert.deepEqual(
+        Validator.assertRangeExtent({ unit: "line", total: 20, requested: [0.5, 0.5] }),
+        { unit: "line", total: 20, requested: [0.5, 0.5] },
+        "a failed selection preserves the invalid numeric request as evidence",
+    );
+    for (const invalid of [
+        { ...extent, unit: "item" },
+        { ...extent, complete: false },
+        { ...extent, requested: [1] },
+        { ...extent, total: 0, returned: [1, 1] },
+        { ...extent, returned: [17, 16] },
+        { ...extent, returned: [1, 21] },
+    ]) {
+        assert.throws(
+            () => Validator.assertRangeExtent(invalid as never),
+            InvalidRangeExtentError,
         );
     }
 });
@@ -208,6 +238,7 @@ test("OperationResult discriminates successes and RFC 9457 failures", () => {
             },
         },
         { status: 404, error: "legacy" },
+        { status: 200, range: { unit: "line", total: 2, requested: [1, 16], complete: true } },
     ]) {
         assert.equal(Validator.validateOperationResult(invalid).valid, false);
         assert.throws(() => Validator.assertOperationResult(invalid as never), InvalidOperationResultError);
@@ -225,6 +256,17 @@ test("OperationResult rejects mismatched envelope and Problem statuses", () => {
         },
     };
     assert.throws(() => Validator.assertOperationResult(mismatch), InvalidOperationResultError);
+
+    const malformedRange = {
+        status: 200,
+        range: { unit: "line", total: 2, requested: [1, 16], returned: [1, 3] },
+    };
+    assert.equal(Validator.validateOperationResult(malformedRange).valid, true);
+    assert.throws(
+        () => Validator.assertOperationResult(malformedRange as never),
+        (error: unknown) => error instanceof InvalidOperationResultError
+            && error.cause instanceof InvalidRangeExtentError,
+    );
 });
 
 test("LoopFlags accepts only one complete effective policy shape", () => {
