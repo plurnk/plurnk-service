@@ -319,6 +319,7 @@ export default class Engine {
         dirty: boolean;
         materialize: boolean;
         ctx: PlurnkSchemeContext;
+        abort: AbortController;
         promise: Promise<void>;
     }>();
     #workspaceWarmStatus = new Map<number, WorkspaceDerivationStatus>();
@@ -336,7 +337,13 @@ export default class Engine {
             return Promise.resolve();
         }
 
-        const state = { dirty: false, materialize, ctx, promise: Promise.resolve() };
+        const state = {
+            dirty: false,
+            materialize,
+            ctx,
+            abort: new AbortController(),
+            promise: Promise.resolve(),
+        };
         // Register before publishing the first synchronous Notice. A
         // listener may request another warm from that callback; it must join
         // this state rather than opening a second pump in the re-entrant gap.
@@ -359,9 +366,13 @@ export default class Engine {
                     completed: 0, total: 1, percent: 0, level: "info",
                 });
                 try {
-                    if (shouldMaterialize) await GitMembership.indexGitMembership(current);
+                    const signal = current.signal === undefined
+                        ? state.abort.signal
+                        : AbortSignal.any([current.signal, state.abort.signal]);
+                    const cancellable = { ...current, signal };
+                    if (shouldMaterialize) await GitMembership.indexGitMembership(cancellable);
                     await SearchIndex.maintain({
-                        ...current,
+                        ...cancellable,
                         pushNotice: (notice) => {
                             if (notice.kind === "embed_progress"
                                 && typeof notice.completed === "number"
@@ -405,9 +416,26 @@ export default class Engine {
         return this.#workspaceWarmStatus.get(workspaceId) ?? null;
     }
 
-    // Awaited by Daemon.stop before the db closes.
-    async drainDerivations(): Promise<void> {
-        await Promise.all([...this.#workspaceWarms.values()].map((state) => state.promise));
+    cancelDerivations(reason: unknown = new DOMException("derivations cancelled", "AbortError")): void {
+        for (const state of this.#workspaceWarms.values()) {
+            if (!state.abort.signal.aborted) state.abort.abort(reason);
+        }
+    }
+
+    // Awaited by Daemon.stop before the db closes. Shutdown supplies the exact
+    // cancellation reason it owns; every unrelated failure remains visible.
+    async drainDerivations(ignoredReason?: unknown): Promise<void> {
+        const results = await Promise.allSettled(
+            [...this.#workspaceWarms.values()].map((state) => state.promise),
+        );
+        const errors = results
+            .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+            .flatMap((result) => result.reason instanceof AggregateError
+                ? [...result.reason.errors]
+                : [result.reason])
+            .filter((error) => error !== ignoredReason);
+        if (errors.length === 1) throw errors[0];
+        if (errors.length > 1) throw new AggregateError(errors, "derivation drain failed");
     }
 
     async drainWorkspaceDerivations(workspaceId: number): Promise<void> {

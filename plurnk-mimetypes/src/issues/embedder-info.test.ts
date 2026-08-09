@@ -29,6 +29,7 @@ function makeDiscovery(): Discovery {
 
 // Full surface: declares the chunking facts. countTokens just returns the
 // char length so the test can prove delegation reaches THIS function.
+let countSignal: AbortSignal | undefined;
 const fullEmbedder = {
     dimension: 4,
     model: "fake@1",
@@ -39,7 +40,8 @@ const fullEmbedder = {
     async embedBatch(texts: readonly string[]): Promise<Uint8Array[]> {
         return texts.map(() => EmbeddingVector.encode([0, 0, 0, 0]));
     },
-    async countTokens(text: string): Promise<number> {
+    async countTokens(text: string, options?: { signal?: AbortSignal }): Promise<number> {
+        countSignal = options?.signal;
         return text.length;
     },
 };
@@ -88,12 +90,15 @@ describe("embedderInfo()", () => {
     });
 
     it("E3: surfaces dimension + contextWindow + a delegating countTokens", async () => {
+        countSignal = undefined;
+        const controller = new AbortController();
         const info = await mk(fullEmbedder).embedderInfo();
         assert.ok(info, "expected non-null info");
         assert.equal(info.dimension, 4);
         assert.equal(info.contextWindow, 512);
         assert.ok(info.countTokens, "full surface has a counter");
-        assert.equal(await info.countTokens("hello"), 5, "delegates to the embedder's counter");
+        assert.equal(await info.countTokens("hello", { signal: controller.signal }), 5, "delegates to the embedder's counter");
+        assert.equal(countSignal, controller.signal, "preserves planning cancellation at the artifact boundary");
     });
 
     it("E4: surfaces the model id when the embedder declares it ({§mimetype-embedding})", async () => {

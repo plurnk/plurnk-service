@@ -7,6 +7,7 @@ import BaseHandler from "../BaseHandler.ts";
 import type { Discovery, HandlerInfo, Registry } from "../types.ts";
 
 const TOK_PKG = "@plurnk/plurnk-mimetypes-tokenizers";
+let countSignal: AbortSignal | undefined;
 
 const INFO: HandlerInfo = {
     mimetype: "text/plain",
@@ -33,7 +34,8 @@ const fakeArtifact = {
         if (!/gemma/i.test(modelRef)) return null;
         return {
             tokenizerId: "abc123def4567890",
-            async countTokens(text: string): Promise<number> {
+            async countTokens(text: string, options?: { signal?: AbortSignal }): Promise<number> {
+                countSignal = options?.signal;
                 return text.split(/\s+/).filter(Boolean).length;
             },
         };
@@ -64,12 +66,15 @@ function mk(artifact: unknown | null, loadError?: Error) {
 
 describe("{§mimetype-tokenizer} — T1: bundled match resolves exact", () => {
     it("returns the artifact's counter and vocab-sha id, exact:true", async () => {
+        countSignal = undefined;
+        const controller = new AbortController();
         const { m } = mk(fakeArtifact);
         const r = await m.tokenizer("gemma-4-26b");
         assert.equal(r.exact, true);
         assert.equal(r.tokenizerId, "abc123def4567890");
         assert.equal(r.notices, undefined);
-        assert.equal(await r.countTokens("one two three"), 3, "delegates to the artifact's tokenizer");
+        assert.equal(await r.countTokens("one two three", { signal: controller.signal }), 3, "delegates to the artifact's tokenizer");
+        assert.equal(countSignal, controller.signal, "preserves consumer cancellation through the tokenizer seam");
     });
 });
 

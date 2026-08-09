@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 
-const localEnvironment = (t) => {
+const localEnvironment = (t, workers = "2") => {
     const names = [
         "PLURNK_MIMETYPES_EMBED_BASE_URL",
         "PLURNK_MIMETYPES_EMBED_MODEL",
@@ -13,7 +13,7 @@ const localEnvironment = (t) => {
     delete process.env.PLURNK_MIMETYPES_EMBED_BASE_URL;
     delete process.env.PLURNK_MIMETYPES_EMBED_MODEL;
     delete process.env.PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW;
-    process.env.PLURNK_MIMETYPES_EMBED_WORKERS = "2";
+    process.env.PLURNK_MIMETYPES_EMBED_WORKERS = workers;
     t.after(() => {
         for (const [name, value] of prior) {
             if (value === undefined) delete process.env[name];
@@ -21,6 +21,23 @@ const localEnvironment = (t) => {
         }
     });
 };
+
+async function settleWithin(promise, milliseconds = 250) {
+    let timer;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise((_, reject) => {
+                timer = setTimeout(
+                    () => reject(new Error(`operation did not settle within ${milliseconds}ms`)),
+                    milliseconds,
+                );
+            }),
+        ]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
 
 const embedCore = (releaseRuntime) => ({
     dimension: 2,
@@ -137,4 +154,209 @@ test("a worker constructor failure releases workers constructed earlier in the p
     assert.equal(workers.length, 1);
     assert.equal(workers[0].terminations, 1, "the partially constructed pool retains no worker");
     await assert.doesNotReject(dispose);
+});
+
+test("{§mimetype-embedding-terminality}: cancellation and teardown settle work accepted during worker startup", async (t) => {
+    localEnvironment(t);
+    const workers = [];
+    let allConstructed;
+    const constructed = new Promise((resolve) => { allConstructed = resolve; });
+    class StartingWorker extends EventEmitter {
+        constructor() {
+            super();
+            this.terminations = 0;
+            workers.push(this);
+            if (workers.length === 2) allConstructed();
+        }
+
+        ref() {}
+        unref() {}
+        postMessage() {}
+
+        async terminate() {
+            this.terminations += 1;
+        }
+    }
+    t.mock.module("node:worker_threads", { exports: { Worker: StartingWorker } });
+    t.mock.module("./embed-core.js", { exports: embedCore(async () => {}) });
+    const { countTokens, dispose } = await import("./index.js?worker-startup-cancellation");
+    const controller = new AbortController();
+    const blocked = countTokens("startup never completes", { signal: controller.signal });
+    await constructed;
+    const reason = new DOMException("planning cancelled", "AbortError");
+    controller.abort(reason);
+
+    await assert.rejects(settleWithin(blocked), (error) => error === reason);
+    await settleWithin(dispose());
+    assert.deepEqual(
+        workers.map((worker) => worker.terminations),
+        [1, 1],
+        "teardown releases every partially started worker without waiting for readiness",
+    );
+});
+
+test("{§mimetype-embedding-terminality}: an active worker exit rejects its job while queued work and replacement capacity survive", async (t) => {
+    localEnvironment(t);
+    const workers = [];
+    let firstPosted;
+    const posted = new Promise((resolve) => { firstPosted = resolve; });
+    class ExitWorker extends EventEmitter {
+        constructor() {
+            super();
+            this.index = workers.length;
+            this.terminations = 0;
+            workers.push(this);
+            queueMicrotask(() => this.emit("message", { ready: true }));
+        }
+
+        ref() {}
+        unref() {}
+
+        postMessage({ text }) {
+            if (this.index === 0) {
+                firstPosted();
+                setImmediate(() => this.emit("exit", 23));
+                return;
+            }
+            queueMicrotask(() => this.emit("message", { count: text.length }));
+        }
+
+        async terminate() {
+            this.terminations += 1;
+        }
+    }
+    t.mock.module("node:worker_threads", { exports: { Worker: ExitWorker } });
+    t.mock.module("./embed-core.js", { exports: embedCore(async () => {}) });
+    const { countTokens, dispose } = await import("./index.js?active-worker-exit");
+    try {
+        const failed = countTokens("crash");
+        await posted;
+        const surviving = countTokens("healthy");
+        const queued = countTokens("queued");
+        const results = await settleWithin(Promise.allSettled([failed, surviving, queued]));
+
+        assert.equal(results[0].status, "rejected");
+        assert.match(String(results[0].reason), /embed worker exited unexpectedly.*23/);
+        assert.deepEqual(results.slice(1), [
+            { status: "fulfilled", value: 7 },
+            { status: "fulfilled", value: 6 },
+        ]);
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(workers.length, 3, "the exited worker is replaced to restore configured capacity");
+    } finally {
+        await dispose();
+    }
+});
+
+test("{§mimetype-embedding-terminality}: aborting an active token count retires it before later work is scheduled", async (t) => {
+    localEnvironment(t, "1");
+    const workers = [];
+    let firstPosted;
+    const posted = new Promise((resolve) => { firstPosted = resolve; });
+    class HungWorker extends EventEmitter {
+        constructor() {
+            super();
+            this.index = workers.length;
+            this.terminations = 0;
+            workers.push(this);
+            queueMicrotask(() => this.emit("message", { ready: true }));
+        }
+
+        ref() {}
+        unref() {}
+
+        postMessage({ kind, text }) {
+            if (this.index === 0) {
+                firstPosted();
+                return;
+            }
+            queueMicrotask(() => this.emit(
+                "message",
+                kind === "count"
+                    ? { count: text.length }
+                    : { buffer: new Float32Array([text.length, 0]).buffer },
+            ));
+        }
+
+        async terminate() {
+            this.terminations += 1;
+        }
+    }
+    t.mock.module("node:worker_threads", { exports: { Worker: HungWorker } });
+    t.mock.module("./embed-core.js", { exports: embedCore(async () => {}) });
+    const { countTokens, dispose } = await import("./index.js?active-worker-abort");
+    try {
+        const controller = new AbortController();
+        const blocked = countTokens("never returns", { signal: controller.signal });
+        await posted;
+        const reason = new DOMException("planning cancelled", "AbortError");
+        controller.abort(reason);
+
+        await assert.rejects(settleWithin(blocked), (error) => error === reason);
+        assert.equal(
+            await settleWithin(countTokens("replacement")),
+            11,
+            "later work runs on replacement capacity instead of queueing behind the abandoned call",
+        );
+        assert.equal(workers.length, 2);
+        assert.equal(workers[0].terminations, 1);
+    } finally {
+        await dispose();
+    }
+});
+
+test("{§mimetype-embedding-terminality}: bounded non-response rejects and replaces the active worker", async (t) => {
+    localEnvironment(t, "1");
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const workers = [];
+    let firstPosted;
+    const posted = new Promise((resolve) => { firstPosted = resolve; });
+    class TimedOutWorker extends EventEmitter {
+        constructor() {
+            super();
+            this.index = workers.length;
+            workers.push(this);
+            queueMicrotask(() => this.emit("message", { ready: true }));
+        }
+
+        ref() {}
+        unref() {}
+
+        postMessage({ text }) {
+            if (this.index === 0) {
+                firstPosted();
+                return;
+            }
+            queueMicrotask(() => this.emit("message", { count: text.length }));
+        }
+
+        async terminate() {}
+    }
+    t.mock.module("node:worker_threads", { exports: { Worker: TimedOutWorker } });
+    t.mock.module("./embed-core.js", { exports: embedCore(async () => {}) });
+    const { countTokens, dispose, embedBatch } = await import("./index.js?active-worker-timeout");
+    try {
+        const blocked = embedBatch(["never returns"]);
+        await posted;
+        t.mock.timers.tick(300_000);
+        const outcome = await Promise.race([
+            blocked.then(
+                (value) => ({ status: "fulfilled", value }),
+                (reason) => ({ status: "rejected", reason }),
+            ),
+            new Promise((resolve) => setImmediate(() => resolve({ status: "pending" }))),
+        ]);
+        assert.equal(outcome.status, "rejected");
+        assert.equal(outcome.reason.name, "TimeoutError");
+        assert.match(outcome.reason.message, /exceeded 300000ms/);
+
+        const replacement = await Promise.race([
+            countTokens("replacement").then((value) => ({ status: "fulfilled", value })),
+            new Promise((resolve) => setImmediate(() => resolve({ status: "pending" }))),
+        ]);
+        assert.deepEqual(replacement, { status: "fulfilled", value: 11 });
+        assert.equal(workers.length, 2);
+    } finally {
+        await dispose();
+    }
 });

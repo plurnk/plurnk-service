@@ -193,94 +193,259 @@ export async function embed(text) {
 // decoy would read as the former.
 export const countTokens = REMOTE
     ? undefined
-    : async function countTokens(text) {
-        return enqueueWorkerJob("count", text);
+    : async function countTokens(text, { signal } = {}) {
+        return enqueueWorkerJob("count", text, signal);
     };
 
-let poolPromise = null;
+// A local worker executes one isolated unit: model startup, one exact token
+// count, or one at-most-window embedding. Five minutes is a deliberately wide
+// internal liveness rail, not an operator throughput target. Cancellation and
+// teardown remain immediate and do not wait for this deadline.
+const WORKER_OPERATION_TIMEOUT_MS = 300_000;
+
+let poolState = null;
 function pool() {
-    poolPromise ??= (async () => {
-        const url = new URL("./embed-worker.js", import.meta.url);
-        // execArgv: [] — don't inherit the parent's entry-point flags (--eval,
-        // --input-type, --test, --watch); they don't apply to a file-based worker
-        // and ERR_INPUT_TYPE_NOT_ALLOWED if --input-type leaks through.
-        const workers = [];
-        try {
-            for (let index = 0; index < WORKERS; index += 1) {
-                workers.push(new Worker(url, { execArgv: [] }));
-            }
-        } catch (cause) {
-            const errors = await workerTerminationErrors(workers);
-            if (errors.length > 0) {
-                throw new AggregateError([cause, ...errors], "embed worker pool construction cleanup failed");
-            }
-            throw cause;
-        }
-        const readiness = workers.map((worker) => {
-            let cleanup = () => {};
-            const promise = new Promise((resolve, reject) => {
-                const ready = (message) => {
-                    cleanup();
-                    if (message?.ready) resolve();
-                    else reject(new Error(`embed worker failed to load: ${message?.error ?? "unknown"}`));
-                };
-                const failed = (error) => {
-                    cleanup();
-                    reject(error);
-                };
-                cleanup = () => {
-                    worker.off("message", ready);
-                    worker.off("error", failed);
-                };
-                worker.once("message", ready);
-                worker.once("error", failed);
+    if (poolState !== null) return poolState;
+    const state = {
+        url: new URL("./embed-worker.js", import.meta.url),
+        workers: [],
+        owned: new Set(),
+        queue: [],
+        active: new Map(),
+        handlers: new Map(),
+        starting: new Set(),
+        startupCancels: new Map(),
+        terminations: new Map(),
+        closing: false,
+        failure: null,
+        initializationFailure: null,
+        closeReason: new Error("embed worker pool closing"),
+    };
+    poolState = state;
+    const starts = Array.from({ length: WORKERS }, () => trackWorkerStart(state));
+    void initializePool(state, starts);
+    return state;
+}
+
+async function initializePool(state, starts) {
+    try {
+        await Promise.all(starts);
+        dispatchPool(state);
+        return;
+    } catch (cause) {
+        if (state.closing) return;
+        state.closing = true;
+        cancelWorkerStarts(state);
+        const terminationErrors = await terminateWorkers(state, [...state.owned]);
+        const startErrors = rejectedReasons(await Promise.allSettled(starts))
+            .filter((error) => error !== cause && error !== state.closeReason);
+        const errors = uniqueErrors([cause, ...startErrors, ...terminationErrors]);
+        state.initializationFailure = errors.length > 1
+            ? new AggregateError(errors, "embed worker pool startup cleanup failed")
+            : cause;
+        rejectQueued(state, state.initializationFailure);
+    }
+}
+
+async function startPoolWorker(state) {
+    // Don't inherit parent entry-point flags (--eval, --input-type, --test,
+    // --watch); they do not apply to this file-based worker.
+    const worker = new Worker(state.url, { execArgv: [] });
+    state.owned.add(worker);
+    try {
+        await new Promise((resolve, reject) => {
+            let settled = false;
+            let deadline;
+            let cancel;
+            const cleanup = () => {
+                clearTimeout(deadline);
+                worker.off("message", ready);
+                worker.off("error", failed);
+                worker.off("exit", exited);
+                if (state.startupCancels.get(worker) === cancel) state.startupCancels.delete(worker);
+            };
+            const settle = (action) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                action();
+            };
+            const ready = (message) => settle(() => {
+                if (state.closing) reject(state.closeReason);
+                else if (message?.ready === true) resolve();
+                else reject(new Error(`embed worker failed to load: ${message?.error ?? "unknown"}`));
             });
-            return { cleanup, promise };
+            const failed = (error) => settle(() => reject(asError(error, "embed worker startup failed")));
+            const exited = (code) => settle(() => reject(
+                state.closing ? state.closeReason : workerExitError(code, " during startup"),
+            ));
+            worker.on("message", ready);
+            worker.on("error", failed);
+            worker.on("exit", exited);
+            cancel = () => settle(() => reject(state.closeReason));
+            state.startupCancels.set(worker, cancel);
+            deadline = setTimeout(
+                () => settle(() => reject(workerTimeoutError("startup"))),
+                WORKER_OPERATION_TIMEOUT_MS,
+            );
+            deadline.unref?.();
         });
-        try {
-            await Promise.all(readiness.map(({ promise }) => promise));
-        } catch (cause) {
-            for (const { cleanup } of readiness) cleanup();
-            const errors = await workerTerminationErrors(workers);
-            if (errors.length > 0) {
-                throw new AggregateError([cause, ...errors], "embed worker pool startup cleanup failed");
+    } catch (cause) {
+        const errors = await terminateWorkers(state, [worker]);
+        if (errors.length > 0) {
+            throw new AggregateError([cause, ...errors], "embed worker startup cleanup failed");
+        }
+        throw cause;
+    }
+    activateWorker(state, worker);
+    return worker;
+}
+
+function cancelWorkerStarts(state) {
+    for (const cancel of [...state.startupCancels.values()]) cancel();
+}
+
+function trackWorkerStart(state) {
+    const started = startPoolWorker(state);
+    state.starting.add(started);
+    void started.then(
+        () => state.starting.delete(started),
+        () => state.starting.delete(started),
+    );
+    return started;
+}
+
+function restorePoolCapacity(state) {
+    if (state.closing || state.failure !== null || state.initializationFailure !== null) return;
+    const missing = WORKERS - state.workers.length - state.starting.size;
+    for (let index = 0; index < missing; index += 1) {
+        const started = trackWorkerStart(state);
+        void started.then(
+            () => {
+                dispatchPool(state);
+                restorePoolCapacity(state);
+            },
+            (error) => {
+                if (!state.closing && state.workers.length === 0 && state.starting.size === 0) {
+                    rejectQueued(state, error);
+                }
+            },
+        );
+    }
+}
+
+function activateWorker(state, worker) {
+    const message = (value) => workerMessage(state, worker, value);
+    const error = (cause) => retireWorker(
+        state,
+        worker,
+        asError(cause, "embed worker failed"),
+        true,
+    );
+    const exit = (code) => retireWorker(state, worker, workerExitError(code), false);
+    state.handlers.set(worker, { message, error, exit });
+    state.workers.push(worker);
+    worker.on("message", message);
+    worker.on("error", error);
+    worker.on("exit", exit);
+    worker.unref();
+}
+
+function workerMessage(state, worker, message) {
+    const job = state.active.get(worker);
+    if (job === undefined) {
+        retireWorker(
+            state,
+            worker,
+            new Error("embed worker returned a result without an active job"),
+            true,
+        );
+        return;
+    }
+    if (message !== null && typeof message === "object" && "error" in message) {
+        state.active.delete(worker);
+        worker.unref();
+        settleJob(job, "reject", new Error(message.error ?? "embed worker operation failed"));
+        dispatchPool(state);
+        return;
+    }
+    let value;
+    try {
+        if (job.kind === "count") {
+            if (!Number.isSafeInteger(message?.count) || message.count < 0) {
+                throw new TypeError(`expected a non-negative safe-integer count, got ${JSON.stringify(message?.count)}`);
             }
-            throw cause;
+            value = message.count;
+        } else {
+            if (!(message?.buffer instanceof ArrayBuffer)) {
+                throw new TypeError("expected an ArrayBuffer embedding result");
+            }
+            value = EmbeddingVector.encode(
+                new Float32Array(message.buffer),
+                dimension,
+                "local batch embedding",
+            );
         }
-        const state = { workers, queue: [], active: new Map() };
-        for (const worker of workers) {
-            worker.on("message", (message) => {
-                const job = state.active.get(worker);
-                if (job === undefined) return;
-                state.active.delete(worker);
-                worker.unref();
-                if (!job.settled) {
-                    job.settled = true;
-                    job.cleanup();
-                    if (message.error) job.reject(new Error(message.error));
-                    else if (job.kind === "count") job.resolve(message.count);
-                    else {
-                        const values = new Float32Array(message.buffer);
-                        job.resolve(EmbeddingVector.encode(values, dimension, "local batch embedding"));
-                    }
-                }
-                dispatchPool(state);
-            });
-            worker.on("error", (error) => {
-                const job = state.active.get(worker);
-                state.active.delete(worker);
-                worker.unref();
-                if (job !== undefined && !job.settled) {
-                    job.settled = true;
-                    job.cleanup();
-                    job.reject(error);
-                }
-                dispatchPool(state);
-            });
-        }
-        return state;
-    })();
-    return poolPromise;
+    } catch (cause) {
+        retireWorker(
+            state,
+            worker,
+            new Error("embed worker returned an invalid result", { cause }),
+            true,
+        );
+        return;
+    }
+    state.active.delete(worker);
+    worker.unref();
+    settleJob(job, "resolve", value);
+    dispatchPool(state);
+}
+
+function retireWorker(state, worker, cause, terminate) {
+    const handlers = state.handlers.get(worker);
+    if (handlers === undefined) return;
+    state.handlers.delete(worker);
+    worker.off("message", handlers.message);
+    worker.off("error", handlers.error);
+    worker.off("exit", handlers.exit);
+    const index = state.workers.indexOf(worker);
+    if (index >= 0) state.workers.splice(index, 1);
+    const job = state.active.get(worker);
+    state.active.delete(worker);
+    worker.unref();
+    if (job !== undefined) settleJob(job, "reject", cause);
+    dispatchPool(state);
+    if (!terminate) {
+        state.owned.delete(worker);
+        restorePoolCapacity(state);
+        return;
+    }
+    void terminateWorker(state, worker).then(
+        () => restorePoolCapacity(state),
+        (terminationError) => {
+            if (state.closing) return;
+            state.failure = new AggregateError(
+                [cause, terminationError],
+                "embed worker retirement failed",
+            );
+            rejectQueued(state, state.failure);
+        },
+    );
+}
+
+function workerExitError(code, stage = "") {
+    return new Error(`embed worker exited unexpectedly${stage} with code ${String(code)}`);
+}
+
+function workerTimeoutError(operation) {
+    return new DOMException(
+        `embed worker ${operation} exceeded ${WORKER_OPERATION_TIMEOUT_MS}ms`,
+        "TimeoutError",
+    );
+}
+
+function asError(value, fallback) {
+    return value instanceof Error ? value : new Error(`${fallback}: ${String(value)}`);
 }
 
 // One global queue owns each worker's single in-flight message. Multiple callers
@@ -289,33 +454,86 @@ function pool() {
 // text→vector association. The shared scheduler distributes those calls across
 // the pool while preserving each caller's input order.
 function dispatchPool(state) {
-    for (const worker of state.workers) {
+    const failure = state.failure ?? state.initializationFailure;
+    if (failure !== null) {
+        rejectQueued(state, failure);
+        return;
+    }
+    for (const worker of [...state.workers]) {
         if (state.active.has(worker)) continue;
         let job;
         while ((job = state.queue.shift()) !== undefined && job.settled) { /* skip cancelled queued jobs */ }
         if (job === undefined) return;
         state.active.set(worker, job);
-        worker.ref();
-        worker.postMessage({ kind: job.kind, text: job.text });
+        job.worker = worker;
+        try {
+            worker.ref();
+            job.deadline = setTimeout(
+                () => retireWorker(state, worker, workerTimeoutError(`${job.kind} job`), true),
+                WORKER_OPERATION_TIMEOUT_MS,
+            );
+            job.deadline.unref?.();
+            worker.postMessage({ kind: job.kind, text: job.text });
+        } catch (cause) {
+            retireWorker(
+                state,
+                worker,
+                new Error("embed worker dispatch failed", { cause }),
+                true,
+            );
+        }
     }
 }
 
 async function enqueueWorkerJob(kind, text, signal) {
-    const state = await pool();
+    const state = pool();
+    const failure = state.failure ?? state.initializationFailure;
+    if (failure !== null) throw failure;
+    if (state.closing) throw new Error("embedder disposed");
     return new Promise((resolve, reject) => {
-        const job = { kind, text, resolve, reject, settled: false, cleanup: () => {} };
+        const job = {
+            kind,
+            text,
+            resolve,
+            reject,
+            settled: false,
+            worker: null,
+            deadline: undefined,
+            cleanup: () => {},
+        };
         const abort = () => {
             if (job.settled) return;
-            job.settled = true;
-            job.cleanup();
-            reject(new DOMException("embedBatch aborted", "AbortError"));
+            const reason = signal?.reason
+                ?? new DOMException("embedding worker operation aborted", "AbortError");
+            const worker = job.worker;
+            settleJob(job, "reject", reason);
+            if (worker !== null) retireWorker(state, worker, reason, true);
         };
-        job.cleanup = () => signal?.removeEventListener("abort", abort);
+        job.cleanup = () => {
+            clearTimeout(job.deadline);
+            signal?.removeEventListener("abort", abort);
+        };
         if (signal?.aborted) { abort(); return; }
         signal?.addEventListener("abort", abort, { once: true });
         state.queue.push(job);
+        restorePoolCapacity(state);
         dispatchPool(state);
     });
+}
+
+function settleJob(job, disposition, value) {
+    if (job.settled) return false;
+    job.settled = true;
+    job.cleanup();
+    job.worker = null;
+    if (disposition === "resolve") job.resolve(value);
+    else job.reject(value);
+    return true;
+}
+
+function rejectQueued(state, error) {
+    for (const job of state.queue) settleJob(job, "reject", error);
+    state.queue.length = 0;
 }
 
 // Embed many texts, returning vectors in input order. Local: data-parallel
@@ -334,10 +552,14 @@ export async function embedBatch(texts, { onProgress, signal } = {}) {
     const results = new Array(texts.length);
     let completed = 0;
     let next = 0;
+    const batchAbort = new AbortController();
+    const batchSignal = signal === undefined
+        ? batchAbort.signal
+        : AbortSignal.any([signal, batchAbort.signal]);
     const producer = async () => {
         while (next < texts.length) {
             const index = next++;
-            results[index] = await enqueueWorkerJob("embed", texts[index], signal);
+            results[index] = await enqueueWorkerJob("embed", texts[index], batchSignal);
             completed += 1;
             onProgress?.({ completed, total: texts.length });
         }
@@ -345,33 +567,72 @@ export async function embedBatch(texts, { onProgress, signal } = {}) {
     // The pool itself is the concurrency bound. Do not retain one Promise and
     // queued closure per chunk: legitimate tokenizer assets can contain tens of
     // thousands of chunks, and several entries may overlap.
-    await Promise.all(Array.from(
+    const producers = Array.from(
         { length: Math.min(texts.length, WORKERS) },
         () => producer(),
-    ));
+    );
+    try {
+        await Promise.all(producers);
+    } catch (error) {
+        if (!batchAbort.signal.aborted) batchAbort.abort(error);
+        await Promise.allSettled(producers);
+        throw error;
+    }
     return results;
 }
 
 async function disposePool(state) {
+    state.closing = true;
+    cancelWorkerStarts(state);
     const error = new Error("embedder disposed");
     for (const job of [...state.queue, ...state.active.values()]) {
-        if (!job.settled) {
-            job.settled = true;
-            job.cleanup();
-            job.reject(error);
-        }
+        settleJob(job, "reject", error);
     }
     state.queue.length = 0;
     state.active.clear();
-    const errors = await workerTerminationErrors(state.workers);
+    for (const [worker, handlers] of state.handlers) {
+        worker.off("message", handlers.message);
+        worker.off("error", handlers.error);
+        worker.off("exit", handlers.exit);
+        worker.unref();
+    }
+    state.handlers.clear();
+    state.workers.length = 0;
+    const starts = [...state.starting];
+    const terminationErrors = await terminateWorkers(state, [...state.owned]);
+    const startErrors = rejectedReasons(await Promise.allSettled(starts))
+        .filter((cause) => cause !== state.closeReason);
+    const errors = uniqueErrors([
+        ...(state.failure === null ? [] : [state.failure]),
+        ...startErrors,
+        ...terminationErrors,
+    ]);
     if (errors.length > 0) throw new AggregateError(errors, "embed worker pool shutdown failed");
 }
 
-async function workerTerminationErrors(workers) {
+async function terminateWorker(state, worker) {
+    const pending = state.terminations.get(worker);
+    if (pending !== undefined) return pending;
+    const termination = Promise.resolve().then(() => worker.terminate());
+    state.terminations.set(worker, termination);
+    try {
+        const result = await termination;
+        state.owned.delete(worker);
+        return result;
+    } finally {
+        if (state.terminations.get(worker) === termination) state.terminations.delete(worker);
+    }
+}
+
+async function terminateWorkers(state, workers) {
     const results = await Promise.allSettled(
-        workers.map((worker) => Promise.resolve().then(() => worker.terminate())),
+        workers.map((worker) => terminateWorker(state, worker)),
     );
     return rejectedReasons(results);
+}
+
+function uniqueErrors(errors) {
+    return [...new Set(errors)];
 }
 
 function rejectedReasons(results) {
@@ -398,15 +659,15 @@ export async function dispose() {
 
 async function disposeResources() {
     const runtime = runtimePromise;
-    const workerPool = poolPromise;
+    const workerPool = poolState;
     runtimePromise = null;
-    poolPromise = null;
+    poolState = null;
     // Initialization failures are already delivered to the operation that
     // created each promise. Pool initialization also releases partial workers;
     // only failures from releasing an acquired resource belong to teardown.
     const results = await Promise.allSettled([
         runtime === null ? Promise.resolve() : runtime.then(releaseRuntime, () => undefined),
-        workerPool === null ? Promise.resolve() : workerPool.then(disposePool, () => undefined),
+        workerPool === null ? Promise.resolve() : disposePool(workerPool),
     ]);
     const errors = rejectedReasons(results);
     if (errors.length > 0) throw new AggregateError(errors, "embedder shutdown failed");

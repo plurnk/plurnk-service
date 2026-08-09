@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, makeMockResponse } from "./_rpc.ts";
-import { insertWorkspace, insertWorker, insertLoop, insertTurn, openMigrated, viableWindow } from "./_helpers.ts";
+import { insertWorkspace, insertWorker, insertLoop, insertTurn, openMigrated, seedEntryWithChannel, viableWindow } from "./_helpers.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import type { CoreSeam } from "../../src/server/Daemon.ts";
 import Dsl from "./dsl.ts";
@@ -1073,6 +1073,93 @@ test("Daemon.stop disposes its owned mimetypes after derivations exactly once", 
     } finally {
         await daemon.stop();
         await db.close();
+    }
+});
+
+test("{§mimetype-owned-lifecycle}: Daemon.stop cancels nonresponsive planning and embedding before derivation drain", async (t) => {
+    const priorEmbedDisable = process.env.PLURNK_SERVICE_EMBED_DISABLE;
+    process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
+    t.after(() => {
+        if (priorEmbedDisable === undefined) delete process.env.PLURNK_SERVICE_EMBED_DISABLE;
+        else process.env.PLURNK_SERVICE_EMBED_DISABLE = priorEmbedDisable;
+    });
+    for (const blockedPhase of ["planning", "embedding"] as const) {
+        const db = await openMigrated();
+        const daemon = new Daemon({ db, provider: null });
+        let release = () => {};
+        try {
+            await daemon.start();
+            const workspaceId = await insertWorkspace(db, `stop-${blockedPhase}-${crypto.randomUUID()}`);
+            const pathname = `/${blockedPhase}-blocked.md`;
+            await seedEntryWithChannel(db, {
+                workspaceId,
+                pathname,
+                content: `shutdown must not wait forever for ${blockedPhase}`,
+                mimetype: "text/markdown",
+            });
+            let entered!: () => void;
+            const blocked = new Promise<void>((resolve) => { entered = resolve; });
+            daemon.mimetypes.embedderInfo = async () => ({
+                dimension: 2,
+                contextWindow: 128,
+                countTokens: async (_text, options) => {
+                    if (blockedPhase !== "planning") return 8;
+                    return new Promise((resolve, reject) => {
+                        entered();
+                        release = () => resolve(8);
+                        options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
+                    });
+                },
+                model: "stub@shutdown",
+            });
+            daemon.mimetypes.embedBatch = async (texts, options) => {
+                if (blockedPhase !== "embedding") {
+                    return texts.map(() => new Uint8Array(new Float32Array([1, 0]).buffer));
+                }
+                return new Promise((resolve, reject) => {
+                    entered();
+                    release = () => resolve(texts.map(() => new Uint8Array(new Float32Array([1, 0]).buffer)));
+                    options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
+                });
+            };
+
+            const warm = daemon.engine.warmWorkspaceDerivations(workspaceId);
+            void warm.catch(() => {});
+            await blocked;
+            const stop = daemon.stop();
+            let timer;
+            const outcome = await Promise.race<"fulfilled" | "rejected" | "pending">([
+                stop.then(
+                    () => "fulfilled" as const,
+                    () => "rejected" as const,
+                ),
+                new Promise<"pending">((resolve) => {
+                    timer = setTimeout(() => resolve("pending"), 2_000);
+                }),
+            ]);
+            clearTimeout(timer);
+            if (outcome === "pending") release();
+            await Promise.allSettled([warm, stop]);
+
+            assert.equal(outcome, "fulfilled", `shutdown cancels nonresponsive ${blockedPhase}`);
+            const [entry] = await db.test_entries_with_hash_by_scheme_prefix.all<{
+                pathname: string;
+                deep_hash: string | null;
+            }>({ workspace_id: workspaceId, scheme: "worker", prefix: pathname });
+            const counts = await db.test_derivation_state_counts.get<{
+                building: number;
+                complete: number;
+            }>({});
+            assert.deepEqual(
+                { deep_hash: entry?.deep_hash, ...counts },
+                { deep_hash: null, building: 1, complete: 0 },
+                `${blockedPhase} cancellation leaves the interrupted artifact unattached and retryable`,
+            );
+        } finally {
+            release();
+            await daemon.stop();
+            await db.close();
+        }
     }
 });
 

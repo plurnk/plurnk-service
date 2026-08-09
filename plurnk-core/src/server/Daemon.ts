@@ -1378,7 +1378,9 @@ export default class Daemon {
         // Settle the stopped world FIRST: a drain paused at a pending proposal awaits a resolution
         // that will never arrive once clients are gone — allSettled(drains) below would deadlock
         // the stop forever (a daemon with a pending HITL proposal could not shut down).
+        const derivationAbort = new DOMException("daemon stopping", "AbortError");
         this.#engine.cancelAllProposals("daemon_stopping");
+        this.#engine.cancelDerivations(derivationAbort);
         this.#branchBatches.beginStop();
         for (const scope of this.#workerAborts.values()) { if (!scope.signal.aborted) scope.abort("daemon_stopping"); }
         for (const t of this.#pollTimers.values()) clearTimeout(t); // drop pending hibernation poll-wakes
@@ -1396,7 +1398,7 @@ export default class Daemon {
         const closeResults = await moduleClose;
         const [streamingResult] = await Promise.allSettled([this.#drainStreamingSchemes()]);
         const [derivationResult] = await Promise.allSettled([
-            this.#engine.drainDerivations(), // active workspace warms finish before the db closes upstream
+            this.#engine.drainDerivations(derivationAbort), // active workspace warms settle before the db closes upstream
         ]);
         const mimetypeResults = this.#ownsMimetypes
             ? await Promise.allSettled([this.#mimetypes.dispose()])

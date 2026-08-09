@@ -1,5 +1,6 @@
 import type BaseHandler from "./BaseHandler.ts";
 import type { HandlerLoader } from "./Mimetypes.ts";
+import type { TokenCountOptions } from "./Tokenizers.ts";
 import { isExactModuleAbsent } from "./module-absence.ts";
 import EmbeddingVector from "./EmbeddingVector.ts";
 import { UnsupportedDialectError } from "./QueryError.ts";
@@ -29,7 +30,7 @@ interface Embedder {
     readonly model?: string;
     // Optional consumer chunk-planning facts.
     readonly contextWindow?: number;
-    countTokens?(text: string): Promise<number>;
+    countTokens?(text: string, options?: TokenCountOptions): Promise<number>;
     dispose?(): Promise<void> | void;
 }
 
@@ -40,7 +41,7 @@ export interface EmbedderInfo {
     // The input context window, or null = unknown.
     contextWindow: number | null;
     // The model's own counter, or null = no counter available.
-    countTokens: ((text: string) => Promise<number>) | null;
+    countTokens: ((text: string, options?: TokenCountOptions) => Promise<number>) | null;
     // Model-space identity; omitted when the artifact does not declare one.
     model?: string;
 }
@@ -138,7 +139,7 @@ export default class Embeddings {
             dimension,
             contextWindow: typeof contextWindow === "number" ? contextWindow : null,
             countTokens: typeof countTokens === "function"
-                ? (text) => countTokens.call(embedder, text)
+                ? (text, options) => countTokens.call(embedder, text, options)
                 : null,
             ...(typeof model === "string" && { model }),
         };

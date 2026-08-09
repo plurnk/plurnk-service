@@ -22,7 +22,7 @@ surface fails hard.
 
 ## surface
 
-- `resolve(modelRef) → Promise<{ countTokens(text): Promise<number>, tokenizerId } | null>` — a manifest family key or its exact pinned source ref selects a vocabulary; `remote:<ref>@d<N>` unwraps to that same exact ref. Every other value returns `null` (a data gap the seam degrades on, never a close-enough guess).
+- `resolve(modelRef) → Promise<{ countTokens(text, { signal? }): Promise<number>, tokenizerId } | null>` — a manifest family key or its exact pinned source ref selects a vocabulary; `remote:<ref>@d<N>` unwraps to that same exact ref. Every other value returns `null` (a data gap the seam degrades on, never a close-enough guess).
 - `tokenizerId` — the **vocab** identity (tokenizer.json sha256 prefix), never a model id: refs sharing a vocabulary share the id, so a vocab-preserving model swap never invalidates stored counts keyed on `(content_hash, tokenizer_id)`.
 - `countTokens` counts **content** tokens (`add_special_tokens: false`, the llama-server `/tokenize` semantics); BOS/EOS/chat-template framing is per-request overhead the host budgets separately.
 - `dispose()` — drop constructed engines; re-lazy-init on next resolve.

@@ -1040,10 +1040,10 @@ plurnk-service is mimetype-illiterate. Engine hands channel content + mimetype l
 
 §mimetype-owned-lifecycle `Daemon` owns and disposes the `Mimetypes` instance
 it constructs. A constructor-injected instance remains caller-owned. Shutdown
-quiesces model work, awaits derivation warming, then disposes the daemon-owned
-instance exactly once; mimetype teardown failures retain their causes and join
-the same aggregate as module and scheme shutdown failures. A pre-start or
-repeated stop does not acquire or dispose resources.
+quiesces model work, cancels and settles active derivation warming, then
+disposes the daemon-owned instance exactly once; mimetype teardown failures
+retain their causes and join the same aggregate as module and scheme shutdown
+failures. A pre-start or repeated stop does not acquire or dispose resources.
 
 §mimetype-classification-consumption Every engine-owned binary decision uses
 the configured `Mimetypes.classify()` path. An installed handler declaration
@@ -2356,7 +2356,7 @@ identity, and terminal disposition without exposing raw bytes or a base64 lane.
 | Binary with readable projection    | Derived Unicode as `text/markdown`                   | READ uses the projection; source-aware EDIT remains 415.                         |
 | Binary without projection/over cap | Empty marker under the source binary mimetype        | READ and EDIT return 415; private metadata distinguishes unavailable from limit. |
 
-§derivation-dedup-parallel **The index dedups then parallelizes.** The derivation identity hashes the exact READ body, mimetype, reader behavior, embedding configuration, and applicable search exclusion. A resource attaches the immutable artifact only after it is complete; identical entry and log bodies therefore share one FTS row, one symbol graph, and one vector set without copying. Distinct artifacts run with bounded producer concurrency (`PLURNK_SERVICE_DERIVE_CONCURRENCY`). Pending artifacts sort by readable content length before entering that pool, so small resources start first while every outlier still derives fully. Unset uses a host-relative square-root fan-out; a positive integer is an exact operator budget and `-1` claims every core. Token-count and embedding batches retain only a pool-sized promise window; graph persistence writes at most `PLURNK_SERVICE_DERIVE_STORE_BATCH` definitions or references per SQLite statement. Every pending resource attaches a terminal classified artifact, identical at concurrency 1 and N. Multi-item warming reports aggregate milestones and heartbeat notices according to `PLURNK_SERVICE_DERIVE_PROGRESS_STEPS` and `PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS`.
+§derivation-dedup-parallel **The index dedups then parallelizes.** The derivation identity hashes the exact READ body, mimetype, reader behavior, embedding configuration, and applicable search exclusion. A resource attaches the immutable artifact only after it is complete; identical entry and log bodies therefore share one FTS row, one symbol graph, and one vector set without copying. Distinct artifacts run with bounded producer concurrency (`PLURNK_SERVICE_DERIVE_CONCURRENCY`). Pending artifacts sort by readable content length before entering that pool, so small resources start first while every outlier still derives fully. Unset uses a host-relative square-root fan-out; a positive integer is an exact operator budget and `-1` claims every core. Token-count and embedding batches retain only a pool-sized promise window; graph persistence writes at most `PLURNK_SERVICE_DERIVE_STORE_BATCH` definitions or references per SQLite statement. Every resource completed by a successful pass attaches a terminal classified artifact, identically at concurrency 1 and N. Multi-item warming reports aggregate milestones and heartbeat notices according to `PLURNK_SERVICE_DERIVE_PROGRESS_STEPS` and `PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS`.
 
 Every completed artifact records one terminal disposition: `vector`, `lexical`
 (only no embedder or an operator size ceiling), `excluded` (the configured

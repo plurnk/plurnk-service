@@ -118,6 +118,7 @@ export default class SearchIndex {
             await attachComplete("failed", error instanceof Error ? error.message : String(error));
             return;
         }
+        ctx.signal?.throwIfAborted();
         for (const notice of result.notices ?? []) callbacks.onNotice?.(notice);
         // Persistence and embedding operations are outside typed input-failure
         // containment. An internal/operational failure leaves the artifact
@@ -149,6 +150,7 @@ export default class SearchIndex {
     static async maintain(ctx: PlurnkSchemeContext): Promise<void> {
         const { db, workspaceId, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("SearchIndex.maintain: ctx.mimetypes is required");
+        ctx.signal?.throwIfAborted();
         const progressSteps = Number(process.env.PLURNK_SERVICE_DERIVE_PROGRESS_STEPS);
         if (!Number.isInteger(progressSteps) || progressSteps <= 0) {
             throw new RangeError(`PLURNK_SERVICE_DERIVE_PROGRESS_STEPS must be a positive integer; got ${JSON.stringify(process.env.PLURNK_SERVICE_DERIVE_PROGRESS_STEPS)}`);
@@ -318,10 +320,10 @@ export default class SearchIndex {
             let next = 0;
             const worker = async (): Promise<void> => {
                 while (next < work.length) {
-                    if (ctx.signal?.aborted === true) return;
+                    ctx.signal?.throwIfAborted();
                     const group = work[next++];
                     for (const { r, hash, searchExcluded, binary } of group) {
-                        if (Boolean(ctx.signal?.aborted)) return;
+                        ctx.signal?.throwIfAborted();
                         await SearchIndex.#deriveOne(ctx, r, hash, semanticPlan, searchExcluded, binary, {
                             onNotice: forwardProjectionNotice,
                             onProgress: (progress) => {
@@ -353,6 +355,7 @@ export default class SearchIndex {
         };
         // Each group stays on one worker: its representative completes the artifact, then every
         // sibling attaches that same immutable result.
+        ctx.signal?.throwIfAborted();
         await workerPool([...groups.values()]);
     }
 

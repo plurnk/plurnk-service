@@ -8,14 +8,21 @@ const TOKENIZERS_PACKAGE = "@plurnk/plurnk-mimetypes-tokenizers";
 // Internal artifact boundary; the public surface is TokenizerResolution.
 interface TokenizersArtifact {
     // null means the artifact has no matching vocabulary.
-    resolve(modelRef: string): Promise<{ countTokens(text: string): Promise<number>; tokenizerId: string } | null>;
+    resolve(modelRef: string): Promise<{
+        countTokens(text: string, options?: TokenCountOptions): Promise<number>;
+        tokenizerId: string;
+    } | null>;
     dispose?(): Promise<void> | void;
+}
+
+export interface TokenCountOptions {
+    signal?: AbortSignal;
 }
 
 // Exactness and vocabulary identity remain explicit on every resolution
 // ({§mimetype-tokenizer}).
 export interface TokenizerResolution {
-    countTokens(text: string): Promise<number>;
+    countTokens(text: string, options?: TokenCountOptions): Promise<number>;
     // Vocabulary identity, or the stable degraded-estimator identity.
     readonly tokenizerId: string;
     readonly exact: boolean;
@@ -30,7 +37,10 @@ function charsEstimate(text: string): number {
 
 function degraded(modelRef: string, reason: string, extra: Record<string, unknown>): TokenizerResolution {
     return {
-        countTokens: (text) => Promise.resolve(charsEstimate(text)),
+        countTokens: (text, options) => {
+            options?.signal?.throwIfAborted();
+            return Promise.resolve(charsEstimate(text));
+        },
         tokenizerId: "heuristic:chars2",
         exact: false,
         notices: [{
@@ -80,7 +90,7 @@ export default class Tokenizers {
             return degraded(modelRef, "no bundled tokenizer matches", {});
         }
         return {
-            countTokens: (text) => hit.countTokens(text),
+            countTokens: (text, countOptions) => hit.countTokens(text, countOptions),
             tokenizerId: hit.tokenizerId,
             exact: true,
         };

@@ -961,7 +961,7 @@ configured OpenAI-compatible endpoint without changing this seam.
 |----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------|
 | `process(...embedding...)` | Embeds `content()` when present, then `toText()`; an honestly unsupported readable projection yields empty bytes, while projection defects propagate. | Non-strict returns empty bytes plus `embeddingMissing`; strict throws. |
 | `embedBatch(texts, ...)`   | Returns one vector per input in input order and honors progress/cancellation through the artifact.                                                    | Throws.                                                                |
-| `embedderInfo()`           | Returns dimension plus optional model, context-window, and exact-counter facts; unknown facts are `null`.                                             | Returns `null`.                                                        |
+| `embedderInfo()`           | Returns dimension plus optional model, context-window, and exact-counter facts; the counter honors an optional `AbortSignal`; unknown facts are `null`. | Returns `null`.                                                        |
 
 An installed artifact must expose `embed()`, `embedBatch()`, and a positive
 safe-integer `dimension`; an incompatible surface fails hard rather than
@@ -969,6 +969,13 @@ masquerading as an absent artifact. The framework owns artifact resolution,
 lifecycle, and result shape; the artifact owns model execution, model-space
 identity, dimension, and optional token-counting facts. Chunk planning,
 persistence, and re-derivation policy are consumer responsibilities.
+
+§mimetype-embedding-terminality The local worker pool settles every accepted
+embedding or token-count job exactly once. Cancellation requested through a
+job's `AbortSignal` is terminal. Worker errors, exits, protocol defects, and
+bounded non-response reject the affected job and retire the unhealthy worker
+before queued or later work can use its capacity. Teardown settles queued and
+active work before releasing the execution generation.
 
 §mimetype-embedding-wire `EmbeddingVector` owns one portable vector wire:
 
@@ -1027,7 +1034,7 @@ the framework owns resolution, lifecycle, and explicit degradation.
 
 The exported `TokenizerResolution` type owns the surface:
 
-| Resolution                  | `countTokens`                     | `tokenizerId`        | `exact` | `notices`                         |
+| Resolution                  | `countTokens(text, { signal? })`  | `tokenizerId`        | `exact` | `notices`                         |
 |-----------------------------|-----------------------------------|----------------------|---------|-----------------------------------|
 | Artifact matches `modelRef` | Matching vocabulary counter.      | Vocabulary identity. | `true`  | Absent.                           |
 | Artifact absent or no match | `ceil(text.length / 2)` estimate. | `heuristic:chars2`   | `false` | One `tokenizer_unavailable` warn. |

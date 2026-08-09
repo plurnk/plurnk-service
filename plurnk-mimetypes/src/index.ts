@@ -107,8 +107,8 @@ export type { MimeClassification } from "./classify.ts";
 // Public embedding seam types ({§mimetype-embedding}).
 export type { EmbedderInfo, EmbedProgress, EmbedBatchOptions } from "./Embeddings.ts";
 
-// Public tokenizer seam type ({§mimetype-tokenizer}).
-export type { TokenizerResolution } from "./Tokenizers.ts";
+// Public tokenizer seam types ({§mimetype-tokenizer}).
+export type { TokenCountOptions, TokenizerResolution } from "./Tokenizers.ts";
 
 // Grammar compilation utilities (for handler authors building their own pipeline)
 export { injectBaseImports, rewriteImports, runCompile } from "./compile.ts";

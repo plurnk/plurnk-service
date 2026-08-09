@@ -8,6 +8,7 @@ import {
     EmbeddingVector,
     TextCoordinates,
     type Mimetypes,
+    type TokenCountOptions,
     type TokenizerResolution,
 } from "@plurnk/plurnk-mimetypes";
 
@@ -20,7 +21,7 @@ import type { SearchCandidate } from "./_search-candidate.ts";
 export interface SemanticPlan {
     readonly mimetypes: Mimetypes;
     readonly info: EmbedderInfo | null;
-    readonly countTokens: ((text: string) => Promise<number>) | null;
+    readonly countTokens: ((text: string, options?: TokenCountOptions) => Promise<number>) | null;
     readonly tokenizer: TokenizerResolution | null;
     readonly signature: string;
 }
@@ -145,15 +146,17 @@ export default class EntrySemantic {
         if (info.contextWindow === null) throw new Error("remote embedder reports no input context window — set PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW to the endpoint's limit");
         const counter = plan.countTokens;
         if (counter === null) throw new Error("semantic plan has no token counter for an embedder with a declared context window");
+        signal?.throwIfAborted();
         const budget = EntrySemantic.#chunkBudget(info.contextWindow);
         let specs = await EntryChunk.tile(
             content,
             boundaries,
             budget,
             EntrySemantic.#chunkOverlap(),
-            counter,
+            (text) => counter(text, { signal }),
             (progress) => onProgress?.({ phase: "planning", ...progress }),
         );
+        signal?.throwIfAborted();
         if (specs.length === 0) return { chunks: [], model: undefined };
         // Tiles cross the ordered batch seam as raw fragment text, never as
         // standalone documents requiring format validation.

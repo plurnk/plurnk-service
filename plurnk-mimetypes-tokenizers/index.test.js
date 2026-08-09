@@ -39,6 +39,14 @@ describe("exact selection and honesty", () => {
         const hit = await resolve("remote:Qwen/Qwen2.5-7B-Instruct@d768");
         assert.equal(hit.tokenizerId, manifest.qwen.tokenizerId);
     });
+    it("an aborted count is terminal before vocabulary work begins", async () => {
+        const hit = await resolve("gemma");
+        const reason = new DOMException("planning cancelled", "AbortError");
+        await assert.rejects(
+            hit.countTokens("never counted", { signal: AbortSignal.abort(reason) }),
+            (error) => error === reason,
+        );
+    });
     it("an unknown ref is an honest null, never a close-enough guess", async () => {
         assert.equal(await resolve("claude-fable-5"), null);
         assert.equal(await resolve("roberta-base"), null, "roberta is not bert");

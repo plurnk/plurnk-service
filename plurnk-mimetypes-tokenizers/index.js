@@ -6,7 +6,7 @@
 // fetch/verify scripts). Hermetic: only local files are read, never a network.
 //
 // Duck contract consumed by the framework's Tokenizers seam:
-//   resolve(modelRef) → Promise<{ countTokens(text), tokenizerId } | null>
+//   resolve(modelRef) → Promise<{ countTokens(text, { signal? }), tokenizerId } | null>
 // null = no bundled vocab matches the ref (a data gap; the framework degrades
 // explicitly according to {§mimetype-tokenizer}). tokenizerId is the VOCAB
 // identity — the tokenizer.json sha256 prefix from the manifest — never a model
@@ -64,8 +64,11 @@ export async function resolve(modelRef) {
     const engine = engineFor(family);
     return {
         tokenizerId: manifest[family].tokenizerId,
-        async countTokens(text) {
-            return engine.encode(text, { add_special_tokens: false }).ids.length;
+        async countTokens(text, { signal } = {}) {
+            signal?.throwIfAborted();
+            const count = engine.encode(text, { add_special_tokens: false }).ids.length;
+            signal?.throwIfAborted();
+            return count;
         },
     };
 }
