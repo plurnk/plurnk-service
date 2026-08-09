@@ -29,8 +29,6 @@ A turn concatenates complete OPs; reference examples are alternatives unless sho
 
 ### OPs
 
-A `?` marks an optional slot.
-
 | OP   | purpose                        | `[signal]`   | `(path)`                   | `<scope>`      | `body`                |
 |------|--------------------------------|--------------|----------------------------|----------------|-----------------------|
 | PLAN | open turn with intended goals  | -            | -                          | -              | goals                 |
@@ -86,7 +84,6 @@ Examples:
 * Append `#channel` to select a channel; absent, the scheme's default channel is used.
 * A file or entry suffix such as `.json`, `.md`, or `.txt` declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28`, `)` becomes `%29`, and `<` becomes `%3C`.
-* Escape literal target syntax as `\\`, `\(`, and `\)` to preserve exact query and `#channel` spelling.
 
 Examples:
 
@@ -99,7 +96,6 @@ Examples:
 * `worker://~/` is your private space; `worker:///` is shared across the workspace.
 * Named worker authorities address another worker's available entries.
 * Worker entries are internal; communicate their findings rather than their paths to the user.
-* Signals apply or filter folksonomic tags as the operation table specifies.
 
 Examples:
 
