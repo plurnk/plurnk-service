@@ -49,13 +49,19 @@ test("every ```plurnk fenced turn in plurnk.md parses clean", () => {
     assert.equal(failures.length, 0, `plurnk fenced blocks that do not parse:\n${failures.join("\n")}`);
 });
 
-test("{§text-scope-semantics}{§whitespace-contract} model reference teaches literal whole-line EDIT", () => {
-    assert.ok(plurnkMd.includes("`<<EDIT(notes.md)<2>:replacement text:EDIT` replaces line 2"));
+test("{§turn-shape} model reference teaches the complete turn frame", () => {
+    assert.ok(plurnkMd.includes("A turn concatenates complete OPs;"));
+    assert.match(plurnkMd, /^\| PLAN \| open turn with intended goals /m);
+    assert.match(plurnkMd, /^\| SEND \| close turn with submit code /m);
+});
+
+test("{§text-scope-semantics}{§whitespace-contract} model reference teaches whole-line deletion", () => {
+    assert.ok(plurnkMd.includes("`<<EDIT(notes.md)<2>::EDIT` deletes line 2"));
     assert.ok(plurnkMd.includes("PLURNK does not decode body escapes: `\\n` is backslash plus `n`."));
 });
 
 test("{§copy} model reference teaches unscoped COPY creation", () => {
-    assert.ok(plurnkMd.includes("A scoped COPY/MOVE destination must already exist; omit its scope when creating a new destination channel."));
+    assert.ok(plurnkMd.includes("A scoped COPY/MOVE destination must already exist. Omit its scope to create a new destination channel:"));
     assert.ok(plurnkMd.includes("`<<COPY(worker:///src.md)<2,3>:worker:///slice.md:COPY`"));
 });
 

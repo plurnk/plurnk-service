@@ -2880,8 +2880,8 @@ reconciliation and uses it for both projections; no per-file Git process exists.
 Contains a compact, recency-biased recap of operational law already owned by
 `plurnk.md`: the op shape, one complete turn, and the SEND[200] completion
 condition. This duplication is deliberate; it is the user-slot footer closest
-to generation, not a second contract. PLAN remains mandated by `plurnk.md`
-"Imperatives", so the service injects no additional plan directive.
+to generation, not a second contract. PLAN remains mandated by `plurnk.md`'s
+turn frame, so the service injects no additional plan directive.
 
 **Sourcing:** a non-empty `runLoop({ requirements })` / `runTurn({ requirements })` value overrides the default. Otherwise `Paths.defaultRequirements` resolves `PLURNK_SERVICE_REQUIREMENTS` or the required `@plurnk/plurnk-meta/requirements.md` source ({§teaching-corpus}). The engine reads that file for every packet; a failed read fails the build with its cause, and requirements are not persisted or cascaded through the database.
 

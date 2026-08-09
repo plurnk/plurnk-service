@@ -25,7 +25,7 @@ An empty body retains both delimiters: `<<READ(AGENTS.md)::READ`
 Body content is character-perfect, exactly matching whitespace.
 PLURNK does not decode body escapes: `\n` is backslash plus `n`.
 Emit a physical newline when literal body content needs one.
-Reference examples are alternatives unless explicitly presented as a turn.
+A turn concatenates complete OPs; reference examples are alternatives unless shown together in a `plurnk` block.
 
 ### OPs
 
@@ -33,10 +33,10 @@ A `?` marks an optional slot.
 
 | OP   | purpose                        | `[signal]`   | `(path)`                   | `<scope>`      | `body`                |
 |------|--------------------------------|--------------|----------------------------|----------------|-----------------------|
-| PLAN | describe intended goals        | -            | -                          | -              | list or prose         |
+| PLAN | open turn with intended goals  | -            | -                          | -              | list or prose         |
 | FIND | list matching targets          | filter tags? | target or glob             | result range?  | pattern?              |
 | READ | retrieve target content        | filter tags? | target                     | text region?   | -                     |
-| EDIT | modify or create file or entry | apply tags?  | file or entry              | text region?   | literal text          |
+| EDIT | create or edit scoped content  | apply tags?  | file or entry              | text region?   | literal text          |
 | COPY | copy from a target             | apply tags?  | source target              | source region? | destination <region>? |
 | MOVE | move from a target             | apply tags?  | source target              | source region? | destination <region>? |
 | FOLD | hide matching log bodies       | apply tags?  | log item(s)                | -              | pattern?              |
@@ -45,7 +45,7 @@ A `?` marks an optional slot.
 | WORK | spawn a child worker           | branch?      | `worker://name`            | -              | prompt                |
 | FORK | fork current worker            | branch?      | `worker://name`            | -              | prompt                |
 | KILL | delete or terminate            | code?        | target, including log item | -              | empty                 |
-| SEND | send a message                 | code?        | recipient?                 | timeout, poll? | message               |
+| SEND | close turn with submit code    | code?        | recipient?                 | timeout, poll? | message               |
 
 * Files you create are tracked automatically.
 * EXEC creates an output stream visible in subsequent turns.
@@ -74,7 +74,7 @@ Examples:
 * Regex: `<<FIND(src/**/*.ts):/createCoder/i:FIND`
 * XPath: `<<FIND(config/**/*.xml)://user[@role='admin']:FIND`
 * JSONPath: `<<FIND(data/users.json):$[?(@.role=="admin")]:FIND`
-* Semantic: `<<FIND(worker:///**):~french revolutionary history:FIND`
+* Semantic threshold/range: `<<FIND(worker:///**)<0.7,1,16>:~french revolutionary history:FIND`
 * Graph: `<<FIND(src/**):@<createCoder:FIND`
 * Glob body: `<<FIND(worker:///**):*revolution*:FIND`
 
@@ -109,40 +109,22 @@ Examples:
 
 ### `<scope>`
 
-One or more numbers narrow an operation according to its type:
-
-* FIND scopes select inclusive result positions (defaults to <1,16>; use <1,-1> for all).
-* READ and EDIT scopes select text regions.
-* COPY and MOVE scopes select source text; the destination may carry its own scope.
-* Semantic FIND may prefix result positions with a decimal similarity threshold.
-* EXEC and SEND use `<timeout, poll>` seconds.
+FIND scopes select inclusive result positions: `<1,16>` by default and `<1,-1>` for all.
 
 Text scope (Line, StartLine, StartColumn, EndLine, EndColumn) has one meaning for every textual mimetype:
 
 | form            | endpoint rule                  | example                                                       |
 |-----------------|--------------------------------|---------------------------------------------------------------|
-| `<L>`           | one line                       | `<<EDIT(notes.md)<2>:replacement text:EDIT` replaces line 2   |
+| `<L>`           | one line                       | `<<EDIT(notes.md)<2>::EDIT` deletes line 2                    |
 | `<SL,EL>`       | lines SL through EL, inclusive | `<<READ(notes.md)<2,3>::READ` reads lines 2 and 3             |
 | `<SL,SC,EL,EC>` | start included, end excluded   | `<<READ(notes.md)<2,1,2,5>::READ` reads columns 1-4 of line 2 |
 | `<SL,SC,SL,SC>` | positions, zero-width          | `<<EDIT(notes.md)<2,5,2,5>:inserted text:EDIT` insertion      |
 
-* Lines and Unicode code-point columns are 1-based.
-* Rendered `L:` prefixes are reference coordinates, not source content.
-* To read exactly line L, use `<L>`; `<L,L+1>` selects both lines.
-* READ without a defined scope defaults to <1,16>; use <1,-1> for all.
+* Lines and Unicode code-point columns are 1-based. Rendered `L:` prefixes are coordinates, not content; edit from a recent READ.
+* Unscoped READ returns lines 1–16; use `<1,-1>` for all.
 * `<0>` prepends and `<-1>` appends for EDIT and COPY/MOVE destinations.
-* A scoped COPY/MOVE destination must already exist; omit its scope when creating a new destination channel.
-* An empty EDIT body deletes its selection.
-* Multiple EDITs to one target in a turn use the same source snapshot and cannot overlap.
-* YOU MUST use a text scope when editing an existing file or entry.
-* Use precise, current positions from recent READ results when modifying existing content.
-
-Scope examples:
-
-* FIND result range: `<<FIND(src/**)<10,20>::FIND`
-* Copy lines into a new entry: `<<COPY(worker:///src.md)<2,3>:worker:///slice.md:COPY`
-* Exact source and destination append: `<<COPY(sh:///1/2/3#stderr)<1,1,1,12>:worker:///firstError.txt<-1>:COPY`
-* Semantic FIND threshold and result range: `<<FIND(worker:///**)<0.7,11,20>:~france:FIND`
+* A scoped COPY/MOVE destination must already exist. Omit its scope to create a new destination channel: `<<COPY(worker:///src.md)<2,3>:worker:///slice.md:COPY`
+* Multiple EDITs to one target in a turn share its pre-turn snapshot and cannot overlap.
 
 ### The Log
 
@@ -189,10 +171,7 @@ sequenceDiagram
 
 ## Imperatives
 
-### Turn lifecycle
-
-* Open every turn with a concise PLAN.
-* Close every turn with a SEND[submit code].
+### Submit codes
 
 | submit code | meaning                       | message                                     |
 |-------------|-------------------------------|---------------------------------------------|
