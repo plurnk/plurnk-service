@@ -62,6 +62,7 @@ import type { DispatchContext, DispatchResult, ResolvedClientEntryAddress } from
 import { observed, observedSync } from "../observe/spans.ts";
 import { OPS_DISPATCHED, PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
+import { readExecSettlementMs } from "./exec-settlement.ts";
 
 // Proposal types are part of Engine's public API (resolveProposal/onProposalPending);
 // their definitions live with the lifecycle.
@@ -913,11 +914,7 @@ export default class Engine {
                 return { turnIds, result, hitMaxTurns: true, reason: "max_turns" };
             }
 
-            // PLURNK_SERVICE_EXEC_WAIT_MS — a post-EXEC breath: if a spawn from the prior turn
-            // is still in flight, give it a tunable beat to land in THIS turn's packet
-            // before we assemble it. A fixed grace beat, never a wait-for-completion;
-            // 0/unset = off. Abortable with the loop signal.
-            const execHandler = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean; hasActiveHoldSpawns?: (workerId: number, holdSet: ReadonlySet<string>) => boolean } | undefined;
+            const execHandler = this.#schemes.get("exec") as { hasActiveHoldSpawns?: (workerId: number, holdSet: ReadonlySet<string>) => boolean } | undefined;
             // {§exec-hold-until-concluded} — hold matching runtime/effect
             // streams until conclusion or the fail-open cap, then resume the
             // ordinary cycle without altering stream state.
@@ -929,11 +926,6 @@ export default class Engine {
                     await delay(150, undefined, { signal });
                 }
             }
-            const execWaitMs = Number(process.env.PLURNK_SERVICE_EXEC_WAIT_MS ?? "0");
-            if (execWaitMs > 0) {
-                if (execHandler?.hasActiveSpawns?.(workerId) === true) await delay(execWaitMs, undefined, { signal });
-            }
-
             let turn;
             const releaseWorkspace = await this.#acquireWorkspaceTurn(workspaceId, workerId);
             try {
@@ -2000,6 +1992,24 @@ export default class Engine {
                 && TERMINAL_SEND_SIGNALS.has(statement.signal)
             ) {
                 await recordRecoverableParseErrors();
+                // {§exec-optimistic-settlement} — SEND judges the refreshed
+                // lifecycle after this turn's own fast streams receive one
+                // bounded opportunity to conclude. This is not a sleep and
+                // does not delay a later turn for older monitored streams.
+                const execHandler = this.#schemes.get("exec") as {
+                    settleTurnSpawns?: (
+                        workerId: number,
+                        turnId: number,
+                        timeoutMs: number,
+                        signal?: AbortSignal,
+                    ) => Promise<boolean>;
+                } | undefined;
+                await execHandler?.settleTurnSpawns?.(
+                    workerId,
+                    turnId,
+                    readExecSettlementMs(),
+                    providerSignal,
+                );
             }
             const result = await observed( // {§observability-boundary}
                 "op.dispatch",

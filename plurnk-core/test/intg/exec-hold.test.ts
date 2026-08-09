@@ -7,9 +7,15 @@ import assert from "node:assert/strict";
 import type { ExecStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import type Exec from "../../src/schemes/Exec.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
+
+// This file isolates the hold decision after ordinary optimistic settlement:
+// disabling the latter keeps the selected-vs-unselected runtime distinction as
+// the only variable under test.
+process.env.PLURNK_SERVICE_EXEC_WAIT_MS = "0";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime, target: null,
@@ -47,7 +53,7 @@ const wire = async (finishAfterMs: number, effect: "read" | "host" | "pure" = "p
     const workspaceId = await insertWorkspace(db, `hold-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "hold test");
-    return { db, engine, workspaceId, workerId, loopId, tag };
+    return { db, engine, schemes, workspaceId, workerId, loopId, tag };
 };
 
 const streamsSection = (packetJson: string): string => {
@@ -56,13 +62,13 @@ const streamsSection = (packetJson: string): string => {
 };
 
 const driveLoop = async (finishAfterMs: number, midTurns: number, effect: "read" | "host" | "pure" = "pure", holdSuffix?: string) => {
-    const { db, engine, workspaceId, workerId, loopId, tag } = await wire(finishAfterMs, effect);
+    const { db, engine, schemes, workspaceId, workerId, loopId, tag } = await wire(finishAfterMs, effect);
     // The effect-qualified selector uses the runtime's actual registered tag.
     if (holdSuffix !== undefined) process.env.PLURNK_SERVICE_EXEC_HOLD = `${tag}${holdSuffix}`;
     try {
         const responses = [
             { assistant: { content: "", reasoning: null, ops: [execStmt(tag, "go"), sendStmt(102, null, "searching")] } },
-            ...Array.from({ length: midTurns }, () => ({ assistant: { content: "", reasoning: null, ops: [sendStmt(102, null, "the standard-cycle waiting turn")] } })),
+            ...Array.from({ length: midTurns }, () => ({ assistant: { content: "", reasoning: null, ops: [sendStmt(202, null, "waiting on the monitored stream")] } })),
             { assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done")] } },
         ];
         const provider = new Mock({ contextWindow: 100000, responses: responses as never });
@@ -71,7 +77,10 @@ const driveLoop = async (finishAfterMs: number, midTurns: number, effect: "read"
         const elapsed = Date.now() - t0;
         const turn2 = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds[1] });
         return { result, elapsed, streams: streamsSection(turn2?.packet ?? "{}"), tag };
-    } finally { await db.close(); }
+    } finally {
+        await (schemes.get("exec") as Exec).idle();
+        await db.close();
+    }
 };
 
 test("a HOLD runtime pauses the cycle — turn 2 assembles AFTER the stream concludes", async () => {
@@ -91,10 +100,10 @@ test("a runtime OUTSIDE the hold set keeps the standard cycle — turn 2 sees th
     const prevHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
     process.env.PLURNK_SERVICE_EXEC_HOLD = "some-other-runtime";
     try {
-        // The standard cycle: T2 assembles IMMEDIATELY (stream live), continues; T3 concludes
-        // after the stream finished — the pending set never falsely blocks a concluded world.
+        // The standard cycle: T2 assembles immediately with the live stream
+        // and parks on it (this direct Engine fixture has no daemon wake owner).
         const { result, streams } = await driveLoop(1200, 1);
-        assert.equal(result.result.status, 200);
+        assert.equal(result.result.status, 202, "the unheld stream enters the ordinary monitored lifecycle");
         assert.ok(/holdstub2/.test(streams), "turn 2's packet LISTS the live stream — no hold applied outside the set");
     } finally {
         if (prevHold === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = prevHold;
@@ -113,7 +122,8 @@ test("{§exec-hold-until-concluded}: a `:read` suffix holds a read-effect spawn"
 test("{§exec-hold-until-concluded}: a `:host` suffix does not hold a read-effect spawn", async () => {
     const prior = process.env.PLURNK_SERVICE_EXEC_HOLD;
     try {
-        const { streams } = await driveLoop(2000, 1, "read", ":host");
+        const { result, streams } = await driveLoop(2000, 1, "read", ":host");
+        assert.equal(result.result.status, 202, "the mismatched selector leaves the stream monitored");
         assert.ok(/holdstub/.test(streams), "turn 2 saw the LIVE stream — a read spawn is not held by a :host suffix");
     } finally { if (prior === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = prior; }
 });

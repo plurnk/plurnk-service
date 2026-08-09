@@ -48,6 +48,17 @@ test("{§packet-git-status}: Git packet state stays compact and never repeats pa
     assert.equal(out, "branch `main` (↑1 ↓0) — 1 staged, 1 unstaged, 1 untracked");
 });
 
+test("{§packet-git-status}: an assigned branch child alone receives its commit-and-clean return condition", () => {
+    const out = PacketWire.renderGit({
+        branch: "feature/recheck", ahead: 0, behind: 0, staged: 0, unstaged: 1, untracked: 0,
+    }, "feature/recheck");
+    assert.equal(
+        out,
+        "branch `feature/recheck` — 0 staged, 1 unstaged, 0 untracked\n"
+        + "assigned branch `feature/recheck` — commit any project changes and leave the checkout clean before concluding",
+    );
+});
+
 // Default-channel convention: when a channel's name matches its scheme's
 // defaultChannel, the heredoc fence is path-only (no `#channel` suffix).
 // The absence of a suffix IS the addressing of the default channel.

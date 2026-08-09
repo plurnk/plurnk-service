@@ -8,6 +8,10 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
+// Polling begins only after optimistic settlement declines to keep waiting.
+// This file isolates the parked poll policy itself.
+process.env.PLURNK_SERVICE_EXEC_WAIT_MS = "0";
+
 test("a polled EXEC <T,P> wakes a hibernating (202) loop every P seconds", async () => {
     // 16384: base-packet growth (grammar 0.76.5 + sibling teaching) crested this accumulation's 8192 edge — headroom scaffolding, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [

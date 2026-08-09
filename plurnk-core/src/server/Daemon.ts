@@ -62,6 +62,7 @@ import type {
 } from "./DaemonModule.ts";
 import { observed, observedSync } from "../observe/spans.ts";
 import { LOOP_TERMINALS, recordCounter } from "../observe/metrics.ts";
+import { readExecSettlementMs } from "../core/exec-settlement.ts";
 
 const clientActionFailure = (error: unknown): SchemeResult => {
     if (error instanceof OperationFailureError) return error.result;
@@ -2228,9 +2229,9 @@ export default class Daemon {
             delayMs = execPollBackoffMs(step, base, turns);
             this.#pollBackoff.set(workerId, step + 1);
         }
-        // Floored by the post-EXEC breath (PLURNK_SERVICE_EXEC_WAIT_MS) so a `<…,1>` can't wake the loop
-        // faster than a turn settles — {§exec-poll}.
-        const execWaitMs = Number(process.env.PLURNK_SERVICE_EXEC_WAIT_MS ?? "0");
+        // Floored by the optimistic settlement cap so a `<…,1>` cannot wake a
+        // parked loop faster than the preceding turn's settlement scale.
+        const execWaitMs = readExecSettlementMs();
         const timer = setTimeout(() => {
             this.#pollTimers.delete(workerId);
             void this.#wakeParkedWorker(workspaceId, workerId, systemPrompt);

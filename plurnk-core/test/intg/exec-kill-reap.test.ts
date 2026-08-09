@@ -9,6 +9,10 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, subscribeNotifications, connect, withDaemon, waitFor, waitForDb } from "./_rpc.ts";
 
+// The reap fixture requires an already-monitored stream; settlement behavior
+// is covered independently.
+process.env.PLURNK_SERVICE_EXEC_WAIT_MS = "0";
+
 const mockTurn = (dsl: string) => ({
     assistant: { content: `<<PLAN::PLAN\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
     assistantRaw: null,

@@ -18,6 +18,11 @@ import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_helpers.ts";
 
+// These fixtures exercise the lifecycle after a stream genuinely becomes
+// monitored. Optimistic settlement has its own matrix; disable it here so the
+// park/wake decision remains the controlled variable.
+process.env.PLURNK_SERVICE_EXEC_WAIT_MS = "0";
+
 const execDsl = (command: string): string =>
     `<<EXEC[sh]:${command}:EXEC\n<<SEND[202]<-1>:done:SEND`;
 
@@ -186,7 +191,7 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse(execDsl("echo hi")),
+            mockResponse(execDsl("sleep 0.05; echo hi")),
             mockResponse("<<SEND[200]:saw the wake:SEND"),
         ],
     });
@@ -255,7 +260,7 @@ test("wake-on-completion preserves the durable loop's cumulative maxTurns ceilin
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse(execDsl("echo ceiling")),
+            mockResponse(execDsl("sleep 0.05; echo ceiling")),
             mockResponse("<<SEND[200]:must not receive a second model turn:SEND"),
         ],
     });

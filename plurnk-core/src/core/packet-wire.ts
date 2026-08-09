@@ -166,8 +166,12 @@ export default class PacketWire {
     }
 
     // The git section content: the working-tree summary. "" when absent.
-    static renderGit(git: unknown): string {
-        return git === null || git === undefined ? "" : PacketWire.#renderGitState(git as GitStatus);
+    static renderGit(git: unknown, assignedBranch: string | null = null): string {
+        const status = git === null || git === undefined ? "" : PacketWire.#renderGitState(git as GitStatus);
+        const assignment = assignedBranch === null
+            ? ""
+            : `assigned branch \`${assignedBranch}\` — commit any project changes and leave the checkout clean before concluding`;
+        return [status, assignment].filter((line) => line.length > 0).join("\n");
     }
 
     // The log section's content: the model's curated rows as a fenced `jsonplurnk` array ({§jsonplurnk}).

@@ -35,6 +35,7 @@ import { InvalidOperationResultError, NetworkAddress } from "@plurnk/plurnk-sche
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import JournalTurn from "../core/JournalTurn.ts";
+import { setTimeout as delay } from "node:timers/promises";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
 
@@ -158,7 +159,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         }
     }
 
-    #activeAborts = new Map<number, { workerId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; unlink: () => void }>();
+    #activeAborts = new Map<number, { workerId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; unlink: () => void }>();
     #activeSpawns = new Map<number, Promise<SchemeResult>>();
 
     async idle(): Promise<void> {
@@ -177,6 +178,33 @@ export default class Exec extends CoreSchemeAdapterBase {
     hasActiveSpawns(workerId: number): boolean {
         for (const { workerId: r } of this.#activeAborts.values()) if (r === workerId) return true;
         return false;
+    }
+
+    // {§exec-optimistic-settlement} — wait on exactly the spawns initiated by
+    // this turn, ending immediately when all settle and never extending the
+    // opportunity to streams inherited from an earlier turn.
+    async settleTurnSpawns(
+        workerId: number,
+        turnId: number,
+        timeoutMs: number,
+        signal?: AbortSignal,
+    ): Promise<boolean> {
+        signal?.throwIfAborted();
+        const pending = [...this.#activeAborts.entries()]
+            .filter(([, active]) => active.workerId === workerId && active.turnId === turnId)
+            .map(([subscriptionId]) => {
+                const spawn = this.#activeSpawns.get(subscriptionId);
+                if (spawn === undefined) {
+                    throw new Error(`Active EXEC subscription ${subscriptionId} has no spawn settlement promise.`);
+                }
+                return spawn;
+            });
+        if (pending.length === 0) return true;
+        if (timeoutMs === 0) return false;
+        return await Promise.race([
+            Promise.allSettled(pending).then(() => true),
+            delay(timeoutMs, false, { signal, ref: false }),
+        ]);
     }
 
     // {§exec-hold-until-concluded} — match active spawns against the
@@ -543,7 +571,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             unlink = (): void => parent.removeEventListener("abort", onParentAbort);
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
-        this.#activeAborts.set(subscriptionId, { workerId: core.workerId, pathname, runtime, effect, controller, unlink });
+        this.#activeAborts.set(subscriptionId, { workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, unlink });
         this.liveSubscriptions().register(subscriptionId, {
             cancel: () => controller.abort(ExecAbort.teardownReason()),
         });

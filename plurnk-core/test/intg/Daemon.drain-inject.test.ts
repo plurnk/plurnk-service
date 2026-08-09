@@ -274,7 +274,13 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
     });
 });
 
-test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths into the resumed turn", async () => {
+test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths into the resumed turn", async (t) => {
+    const previousSettlement = process.env.PLURNK_SERVICE_EXEC_WAIT_MS;
+    process.env.PLURNK_SERVICE_EXEC_WAIT_MS = "0";
+    t.after(() => {
+        if (previousSettlement === undefined) delete process.env.PLURNK_SERVICE_EXEC_WAIT_MS;
+        else process.env.PLURNK_SERVICE_EXEC_WAIT_MS = previousSettlement;
+    });
     const mock = new Mock({
         contextWindow: 16384,
         responses: [

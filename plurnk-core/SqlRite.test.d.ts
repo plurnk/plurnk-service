@@ -342,6 +342,7 @@ export class SqlRiteSync {
 	test_delete_worker: SqlRiteSyncPreparedStatements;
 	test_count_subscriptions_for_entry: SqlRiteSyncPreparedStatements;
 	test_count_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
+	test_latest_subscription_for_worker: SqlRiteSyncPreparedStatements;
 	test_get_entry_id_by_pathname: SqlRiteSyncPreparedStatements;
 	test_count_entry_tags: SqlRiteSyncPreparedStatements;
 	test_get_entry_by_pathname_scheme: SqlRiteSyncPreparedStatements;
@@ -825,6 +826,7 @@ export default class SqlRite {
 	test_delete_worker: SqlRitePreparedStatements;
 	test_count_subscriptions_for_entry: SqlRitePreparedStatements;
 	test_count_subscriptions_for_worker: SqlRitePreparedStatements;
+	test_latest_subscription_for_worker: SqlRitePreparedStatements;
 	test_get_entry_id_by_pathname: SqlRitePreparedStatements;
 	test_count_entry_tags: SqlRitePreparedStatements;
 	test_get_entry_by_pathname_scheme: SqlRitePreparedStatements;

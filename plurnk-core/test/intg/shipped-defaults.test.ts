@@ -91,6 +91,11 @@ test("under the shipped policy wiring, the personality renders in the packet exa
             /keep implementation, specification, documentation, and coverage aligned/i,
             "the general worker policy does not expand every task into a four-lane maintenance obligation",
         );
+        assert.doesNotMatch(
+            packetSection(packet, "system-policy"),
+            /commit completed repository changes|plurnk@pm\.me/i,
+            "the general worker policy neither orders commits nor assigns Git authorship",
+        );
         // And the turn-0 foists contain no POLICY doc READ — the doc path is retired for the policy.
         const rows = await db.test_log_sequencees_by_turn.all<{ op: string; pathname: string | null }>({ turn_id: result.turnId });
         assert.ok(!rows.some((r) => r.op === "READ" && (r.pathname ?? "").includes("POLICY")), "no foisted worker://plurnk/POLICY.md READ");

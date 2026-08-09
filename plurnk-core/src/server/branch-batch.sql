@@ -94,7 +94,9 @@ SELECT b.id AS batch_id, b.state, b.repository_path, i.branch
 FROM branch_batches b
 JOIN branch_batch_items i ON i.batch_id = b.id
 WHERE i.worker_id = $worker_id
-  AND b.state IN ('queued', 'running', 'recovery_required')
+  AND b.state = 'running'
+  AND i.state = 'running'
+  AND b.active_sequence = i.sequence
 LIMIT 1;
 
 -- PREP: branch_batch_active

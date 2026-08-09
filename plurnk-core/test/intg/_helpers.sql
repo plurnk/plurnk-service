@@ -226,6 +226,12 @@ SELECT COUNT(*) AS n FROM subscriptions WHERE entry_id = $entry_id;
 -- PREP: test_count_subscriptions_for_worker
 SELECT COUNT(*) AS n FROM subscriptions WHERE worker_id = $worker_id;
 
+-- PREP: test_latest_subscription_for_worker
+SELECT entry_id, close_status FROM subscriptions
+WHERE worker_id = $worker_id
+ORDER BY id DESC
+LIMIT 1;
+
 -- PREP: test_get_entry_id_by_pathname
 SELECT id FROM entries WHERE pathname = $pathname;
 
