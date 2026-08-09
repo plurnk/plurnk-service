@@ -26,7 +26,7 @@ import { startObservability } from "./observe/init.ts";
 // Not the user-facing client — that is the separate `plurnk` project.
 export default class Service {
     // This file's own directory holds the runtime code + its .sql (src/ in dev, dist/ in a
-    // published install); its parent is the package root (migrations/, requirements.md, .env.defaults).
+    // published install); its parent is the package root (migrations/, .env.defaults).
     static #codeDir = dirname(fileURLToPath(import.meta.url));
     static #projectRoot = resolve(Service.#codeDir, "..");
     static #ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";

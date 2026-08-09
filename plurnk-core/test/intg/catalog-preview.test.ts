@@ -1,6 +1,6 @@
 // PLURNK_SERVICE_FILES_ITEMS — turn-0 catalog preview foist ({§actor-boundary}). A plurnk-origin
 // FIND(scheme:///*) is foisted into the model's turn 0 for folder-capable schemes: direct
-// entries plus complete `dir/**` summaries. Kernel docs remain recursively enumerated. The
+// entries plus exact `dir/**` summaries. Kernel docs remain recursively enumerated. The
 // first-N cap applies only to file rows; 0/unset turns the preview off.
 //
 // NOTE: sets a process-global env var. node --test isolates each file in its own
@@ -14,11 +14,11 @@ import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTe
 type LogRow = { op: string; pathname: string; scheme: string | null; hostname: string | null; status_rx: number; rx: string };
 const mock = () => new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 50)] });
 
-test("PLURNK_SERVICE_FILES_ITEMS foists complete shallow catalogs; the files cap never truncates memory (none when off)", async () => {
+test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         // ON with a cap: =2 → the catalog is foisted at turn 0 (200). The cap is FILES-only; the
-        // model memory is not governed by the file cap — all 3 root entries remain visible.
+        // model memory is not governed by the file cap — its ordinary first page contains all 3 entries.
         process.env.PLURNK_SERVICE_FILES_ITEMS = "2";
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -35,7 +35,7 @@ test("PLURNK_SERVICE_FILES_ITEMS foists complete shallow catalogs; the files cap
                 assert.equal(cf!.status_rx, 200, "the catalog FIND returns the scheme's rows (200)");
                 const parsed = JSON.parse(cf!.rx) as { content?: string; results?: unknown[] };
                 const items = parsed.results ?? (parsed.content !== undefined ? JSON.parse(parsed.content) as unknown[] : []);
-                assert.equal(items.length, 3, "the file cap never truncates the model's own memory map");
+                assert.equal(items.length, 3, "the project-file cap does not govern the model's own memory map");
             } finally { ws.close(); }
         });
 
@@ -166,7 +166,7 @@ test("turn-0 once-per-worker foists fire on the worker's first loop only, not ev
 test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a static print", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
-        process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist the complete per-scheme map at turn 0
+        process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist each ordinary first page at turn 0
         await withDaemon(mock(), async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -188,11 +188,12 @@ test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a sta
                 const content = (JSON.parse(row!.rx) as { content: string }).content;
                 // Dynamic - it carries the FIND the foist ACTUALLY dispatched (worker:///*), rendered to
                 // DSL and framed PLAN → SEND. Not a frozen print: feed-as-turn-0, show-in-turn-1 are one act.
-                assert.match(content, /^<<PLAN:Initialize:PLAN/, "opens with intended goals");
-                assert.match(content, /<<FIND\(worker:\/\/\/\*\)<1,-1>::FIND/, "the explicit complete shallow survey, rendered back to DSL");
+                assert.match(content, /^<<PLAN:Survey context, then address the prompt\.:PLAN/, "opens with an orienting goal");
+                assert.match(content, /<<FIND\(worker:\/\/\/\*\)::FIND/, "the markerless shallow survey is rendered back to DSL");
+                assert.doesNotMatch(content, /<<FIND\(worker:\/\/\/\*\)</, "the ordinary survey does not teach an explicit all-results scope");
                 assert.match(
                     content,
-                    /<<SEND\[102\]:Next, address the prompt from the initialized context\.:SEND$/,
+                    /<<SEND\[102\]:Next, address the prompt using the survey\.:SEND$/,
                     "closes by stating the next action",
                 );
             } finally { ws.close(); }
@@ -229,9 +230,9 @@ test("an empty workspace executes all four orienting FINDs and preserves empty-s
                 }
                 const exemplar = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 const content = (JSON.parse(exemplar!.rx) as { content: string }).content;
-                assert.match(content, /<<FIND\(\*\)<1,-1>::FIND/, "the empty project survey explicitly requests the complete empty set");
-                assert.match(content, /<<FIND\(worker:\/\/\/\*\)<1,-1>::FIND/, "the exemplar includes complete workspace commons");
-                assert.match(content, /<<FIND\(worker:\/\/~\/\*\)<1,-1>::FIND/, "the exemplar includes complete own space");
+                assert.match(content, /<<FIND\(\*\)::FIND/, "the exemplar includes the markerless project survey");
+                assert.match(content, /<<FIND\(worker:\/\/\/\*\)::FIND/, "the exemplar includes markerless workspace commons");
+                assert.match(content, /<<FIND\(worker:\/\/~\/\*\)::FIND/, "the exemplar includes markerless own space");
                 assert.match(content, /<<FIND\(worker:\/\/plurnk\/docs\/\*\*\)<1,-1>::FIND/, "the exemplar includes complete kernel docs");
             } finally { ws.close(); }
         });

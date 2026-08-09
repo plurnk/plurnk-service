@@ -249,7 +249,7 @@ test("{§grinder-layer1-rollback}: a huge current-turn engine row folds with the
         // measures the open packet, then a provider pinned just under it forces the stage-2 fold.
         const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
         const wideProbe = mockAt(999_998, [], 1_000_000);
-        const args = { initialMessages: MESSAGES, requirements: "", workspaceId, workerId, loopId, currentTurnSeq: 2, provider: wideProbe, gitStatus: null };
+        const args = { initialMessages: MESSAGES, workspaceId, workerId, loopId, currentTurnSeq: 2, provider: wideProbe, gitStatus: null };
         const open = await builder.buildRequestPacket(args);
         // Pin the ceiling just under the open packet: only folding the 8KB current-turn row can save it.
         const provider = mockAt(open.tokens - 50, [], 1_000_000);

@@ -25,7 +25,7 @@ test("every PLURNK_SERVICE_* the code reads is in .env.defaults, and vice versa"
     );
 
     // Read: literal PLURNK_SERVICE_* tokens across the service source (not tests).
-    const srcFiles = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "--", "src/**/*.ts", "src/**/*.sql"], { cwd: root, encoding: "utf8", env: hermeticGitEnv() }).trim().split("\n").filter((f) => f.length > 0 && existsSync(`${root}/${f}`));
+    const srcFiles = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "--", "src/*.ts", "src/**/*.ts", "src/**/*.sql"], { cwd: root, encoding: "utf8", env: hermeticGitEnv() }).trim().split("\n").filter((f) => f.length > 0 && existsSync(`${root}/${f}`));
     const read = new Set<string>();
     for (const f of srcFiles) {
         for (const m of readFileSync(`${root}/${f}`, "utf8").matchAll(/\bPLURNK_SERVICE_[A-Z0-9_]+\b/g)) read.add(m[0]);

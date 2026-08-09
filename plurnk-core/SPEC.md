@@ -286,7 +286,7 @@ the `plurnk` worker's log; the model sees the shared entry through its own READ.
 Client-provided workspace documents union with the operator set at the same
 entry surface.
 
-§actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS` foists turn-0 FINDs into the worker's first turn, so a worker opens with a navigable map instead of blank. An enabled preview always executes four orienting surveys: project files (`FIND(*)`), workspace commons (`FIND(worker:///*)`), the worker's own space (`FIND(worker://~/*)`), and kernel docs (`FIND(worker://plurnk/docs/**)`). Folder-capable entry plugins use the same shallow form; a scheme without folder scopes remains recursive. A shallow result is complete, not truncated: direct entries render normally and every deeper first-segment directory renders as an actionable `dir/**` summary with its recursive `items` and `tokens`. The small curated kernel-doc surface remains recursively enumerated, so the opening exemplar demonstrates both `*` and `**`. Every survey executes even when empty because zero results are useful orientation. A positive `N` caps only the file map's rendered rows, using the map's actual direct-entry-plus-directory count; `-1` renders the complete shallow map; unset / `0` disables previews. `log://` is absent because the current worker's log already renders in present mode.
+§actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS` foists turn-0 FINDs into the worker's first turn, so a worker opens with a navigable map instead of blank. An enabled preview always executes four orienting surveys: project files (`FIND(*)`), workspace commons (`FIND(worker:///*)`), the worker's own space (`FIND(worker://~/*)`), and kernel docs (`FIND(worker://plurnk/docs/**)<1,-1>`). Folder-capable entry plugins use the same shallow form; a scheme without folder scopes remains recursive. A shallow result renders direct entries normally and every deeper first-segment directory as an actionable `dir/**` summary with its recursive `items` and `tokens`. Ordinary surveys use FIND's markerless first-16 page, whose range metadata reports the complete selection and continuation; only the small curated kernel-doc surface explicitly selects all. The opening exemplar therefore demonstrates both `*` and `**` without normalizing an all-results override. Every survey executes even when empty because zero results are useful orientation. A positive `N` explicitly caps only the file map's rendered rows, using the map's actual direct-entry-plus-directory count; `-1` enables the ordinary markerless page; unset / `0` disables previews. `log://` is absent because the current worker's log already renders in present mode.
 
 ### §machine-processes The machine and its processes: workspace, worker, fork
 
@@ -1859,14 +1859,14 @@ Model selection: separate alias cascade in `ProviderRegistry` ({§provider-insta
 | `PLURNK_SERVICE_REQUIEM_MAX_TOKENS`                         | `16384` | Initial forensic witness output allowance ({§digest-requiem}). |
 | `PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS`                   | `32768` | Retry allowance; must be at least the initial requiem allowance ({§digest-requiem}). |
 | `PLURNK_SERVICE_MD_<ALIAS>`                                 | (unset) | Operator reference doc: materializes `<path>` as `worker://plurnk/<ALIAS>.md`, auto-READ into every model worker's turn 0 ({§actor-boundary-doc-injection}). `~` expands to home. |
-| `PLURNK_SERVICE_FILES_ITEMS`                                | `-1` | Turn-0 catalog preview. Folder-capable schemes render a complete one-level `*` map with `dir/**` rollups; kernel docs remain recursive. `-1` = complete maps; positive `N` caps only file-map rows; `0` / unset = off ({§actor-boundary-catalog-preview}). |
+| `PLURNK_SERVICE_FILES_ITEMS`                                | `-1` | Turn-0 catalog preview. Folder-capable schemes render a one-level `*` map with `dir/**` rollups; kernel docs remain recursive and explicitly complete. `-1` = markerless first pages; positive `N` explicitly caps only file-map rows; `0` / unset = off ({§actor-boundary-catalog-preview}). |
 | `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS`                        | (empty — waits indefinitely) | Finite positive milliseconds before cancellation with outcome `timeout`; empty waits, and every other explicit value fails ({§proposal-timeout-cancels}). |
 
 Every core knob listed is enforced at its owning read site; `.env.defaults` is the authoritative default ({§operator-config-env-defaults}). Provider, scheme, executor, mimetype, and client-interface knobs are documented by their owning packages and appear in the assembled catalog.
 
 **Two override semantics — ceiling vs default.** Which kind a var is determines what "override" means across the cascade:
 - **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-workspace constraint, not a per-call seam argument. `PLURNK_SERVICE_GIT_ALLOWED` ({§operator-config-git-ceiling}), `PLURNK_SERVICE_MAX_COMMANDS`, `PLURNK_SERVICE_MAX_STRIKES`, and `PLURNK_SERVICE_MAX_TURNS` (`-1` ships it off; a positive value caps the per-call request). The sandbox/cost guarantee: the operator caps it; no client widens it.
-- **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `runLoop({alias})` request overrides it), `PLURNK_SERVICE_REQUIREMENTS` (the per-call requirements default), and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
+- **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `runLoop({alias})` request overrides it) and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
 
 §operator-config-shipped-defaults **The shipped `.env.defaults` is itself under
 test.** It has no active `PLURNK_SERVICE_MD_*` doc alias because policy is a
@@ -1933,7 +1933,7 @@ The composition families remain distinct so one setting's semantics never
 leak into another.
 
 *Defaults — explicit-wins (the client replaces/merges freely):*
-- §operator-config-workspace-files-items `settings.filesItems` (number) **replaces** `PLURNK_SERVICE_FILES_ITEMS` for the workspace: a one-shot opens clean (`0`, no preview), a workspace full (`-1`), or with the file list capped (`N`, memory still full). A single scalar — the client value wins outright.
+- §operator-config-workspace-files-items `settings.filesItems` (number) **replaces** `PLURNK_SERVICE_FILES_ITEMS` for the workspace: a one-shot opens clean (`0`, no preview), with ordinary markerless pages (`-1`), or with the file list explicitly capped (`N`, other surveys remain markerless). A single scalar — the client value wins outright.
 - §operator-config-workspace-md-docs `settings.mdDocs` (`[{alias, content}]`) **unions** with the server's `PLURNK_SERVICE_MD_*` docs, keyed by alias — a client adds its own repo docs atop the operator's systemwide policy doc. On alias collision the client wins before I/O (a deliberate shadow), so the unselected operator path is not read; every selected non-empty operator path is required, and absence or another read failure rejects materialization with its cause. The client sends content (it owns the file), not a path.
 
 *Ceilings — most-restrictive-wins (the client may only narrow, never widen):*
@@ -2203,16 +2203,14 @@ Conditional absence never reorders the surviving default sections.
 |    13 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
 |    14 | user   | `budget`              | Model-facing packet pressure; omitted when capacity is unknown. |
 |    15 | user   | `prompt`              | Current prompt-entry pointers. |
-|    16 | user   | `requirements`        | Syntax recap deliberately nearest generation. |
 
 The order favors prefix-cache locality where semantics permit: the definition
 leads capability and privileged policy, while the append-mostly log leads the
 volatile user-status clump. It does **not** claim that every system byte is
 immutable or that the complete packet is globally monotone in volatility:
-capabilities, operator notes, and policies can change, and the stable recap is
-deliberately last for model recency. Trust is a separate admission rule. The
-system slot contains trusted control-plane material; attacker-reachable content
-stays in the user slot.
+capabilities, operator notes, and policies can change. Trust is a separate
+admission rule. The system slot contains trusted control-plane material;
+attacker-reachable content stays in the user slot.
 
 #### §packet-plugin-transform Trusted whole-list extension seam
 
@@ -2736,7 +2734,7 @@ evidence when a downstream standard cannot represent the complete list.
 
 READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. Prompts, model-emission mirrors, PLAN/SEND/WORK/FORK bodies, EXEC commands, mutation receipts, and extension-produced bodies use the bounded projection. A bounded row carries the exact neutral `overflow` message defined by {§jsonplurnk} and names its own `log:///` address. `READ(log:///<coordinate>)`, with the optional self-documenting `/<op>` suffix when one exists, applies its default or explicit text range to the canonical body; `FIND(log:///...)` and search match that same full body. FOLD hides the ordinary projection, and OPEN restores it without bypassing the bound. System/policy sections are not log bodies. Notices are transient non-log observations; they share the line/character bounds but have no durable body or recovery URI.
 
-§prompt-entry **Prompt as a first-class entry and log row.** Each prompt is stored once at `prompt:///<loop>/<N>` as an owner-keyed text/markdown entry, then published to its turn as one actionless lowercase `prompt` log row. No synthetic EDIT or READ operation is invented. The row is born OPEN and obeys {§body-projection}. The **User Prompts** section closes the user-slot status clump as a paths-only list (`* prompt:///<loop>/<N>`), so every frame remains directly READable even after its log row is folded or killed.
+§prompt-entry **Prompt as a first-class entry and log row.** Each prompt is stored once at `prompt:///<loop>/<N>` as an owner-keyed text/markdown entry, then published to its turn as one actionless lowercase `prompt` log row. No synthetic EDIT or READ operation is invented. The row is born OPEN and obeys {§body-projection}. The **Active User Prompts** section closes the user-slot status clump as a paths-only list (`* prompt:///<loop>/<N>`), so every frame remains directly READable even after its log row is folded or killed.
 
 §prompt-self-only The frame is self-only and owner-keyed:
 `entries.owner_id` carries worker identity while the address carries only the
@@ -2846,7 +2844,7 @@ turn.** It cannot execute operations or alter the audited history.
 
 ### §tools user.tools — the capability sheet
 
-§tools-capability-sheet The executable-tools capability sheet renders under `## Registered Executable Tools`, directly after the `definition` (plurnk.md) section and **above** `## Recap`. The heading defines the fenced examples as the closed set of valid executor selectors, not suggestions for an open-ended `[tag]` convention. Optional non-EXEC operations render separately under `## Enabled Optional Operations`, so the executable catalogue remains truthful. Both use `plurnk` fences — one packet, one shape for operation-example sheets — assembled by `PacketBuilder.#collectTools`; a prose notice (e.g. the EXEC-disabled line) stays beside the executor fence, and empty sections are omitted.
+§tools-capability-sheet The executable-tools capability sheet renders under `## Registered Executable Tools`, directly after the `definition` (plurnk.md) section. The heading defines the fenced examples as the closed set of valid executor selectors, not suggestions for an open-ended `[tag]` convention. Optional non-EXEC operations render separately under `## Enabled Optional Operations`, so the executable catalogue remains truthful. Both use `plurnk` fences — one packet, one shape for operation-example sheets — assembled by `PacketBuilder.#collectTools`; a prose notice (e.g. the EXEC-disabled line) stays beside the executor fence, and empty sections are omitted.
 
 §tools-loop-affinity **The capability sheet describes the current loop.** The
 sheet filters registered capabilities through the same
@@ -2891,25 +2889,13 @@ the exact two-character porcelain `XY` value as `git` metadata when the status
 snapshot names that path. The engine takes one snapshot after membership
 reconciliation and uses it for both projections; no per-file Git process exists.
 
-### §requirements The requirements section — static per-turn rules
+### §requirements Dormant Recap injection seam
 
-- §requirements-requirements-render-last Rendered at the end of the user packet
-  under `## Recap`, closest to the assistant turn so the contract the model has
-  to honor is the most recent text it sees.
-- §requirements-requirements-omitted-when-empty The header is omitted entirely
-  when the requirements string is empty.
-
-Contains a compact, recency-biased recap of operational law already owned by
-`plurnk.md`: the op shape, one complete turn, and the SEND[200] completion
-condition. This duplication is deliberate; it is the user-slot footer closest
-to generation, not a second contract. PLAN remains mandated by `plurnk.md`'s
-turn frame, so the service injects no additional plan directive.
-
-**Sourcing:** a non-empty `runLoop({ requirements })` / `runTurn({ requirements })` value overrides the default. Otherwise `Paths.defaultRequirements` resolves `PLURNK_SERVICE_REQUIREMENTS` or the required `@plurnk/plurnk-meta/requirements.md` source ({§teaching-corpus}). The engine reads that file for every packet; a failed read fails the build with its cause, and requirements are not persisted or cascaded through the database.
-
-**Rationale:** the user's prompt is natural language ("Reply with just the number") and routinely conflicts with the grammar's operational contract. Without an explicit requirement block, the model obeys the prompt literally and never reaches for SEND. Requirements are the contract that wins those conflicts.
-
----
+The default packet emits no `Recap` section and does not read `requirements.md`.
+The `runLoop` / `runTurn` `requirements` argument, PacketBuilder request property,
+`Paths.defaultRequirements`, `PLURNK_SERVICE_REQUIREMENTS` resolver, and packaged
+meta source remain one dormant seam. Supplying an override currently has no packet
+effect; restoring Recap projection is a future contract decision at that seam.
 
 ## §matcher Matcher selection and text regions
 

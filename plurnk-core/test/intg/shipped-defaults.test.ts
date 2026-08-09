@@ -70,11 +70,10 @@ test("under the shipped policy wiring, the personality renders in the packet exa
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done") as PlurnkStatement] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { sections: Array<{ name: string; content: string }> };
-        // The distinctive personality line appears in the system-policy section and NOWHERE else.
-        const marker = "You align with the user before consequential";
-        const carriers = packet.sections.filter((s) => s.content.includes(marker)).map((s) => s.name);
+        const personality = (await readFile(Paths.personality, "utf8")).trim();
+        const carriers = packet.sections.filter((section) => section.content === personality).map((section) => section.name);
         assert.deepEqual(carriers, ["system-policy"], `the policy rides exactly one section; got ${carriers.join(", ")}`);
-        assert.ok(packetSection(packet, "system-policy").includes(marker), "the section carries the personality");
+        assert.equal(packetSection(packet, "system-policy"), personality, "the section carries the exact authored personality");
         assert.doesNotMatch(
             packetSection(packet, "system-policy"),
             /READ the row an error points at/,

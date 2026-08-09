@@ -11,9 +11,6 @@ import { Policy } from "@plurnk/plurnk-execs";
 import WorkspaceSettings from "./workspace-settings.ts";
 import LoopFlagsReader from "./LoopFlagsReader.ts";
 import { readPacketInject, readSystemPolicy, readProjectPolicy } from "./packet-inject.ts";
-import { readFile } from "node:fs/promises";
-import Paths from "../Paths.ts";
-import { readTeachingSource } from "./teaching-corpus.ts";
 import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
@@ -243,13 +240,13 @@ export default class PacketBuilder {
     // {§packet-stored-shape} — assemble the system/user request before the
     // provider call; complete the same record with the provider response.
     async buildRequestPacket({
-        initialMessages, requirements, workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
+        initialMessages, workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
         transientOpenLogEntryId = null,
     }: {
         initialMessages: ChatMessage[];
-        // Optional requirements override. Empty in practice — callers don't thread it;
-        // the engine sources Paths.defaultRequirements itself (a non-empty value wins).
-        requirements: string;
+        // Dormant Recap injection seam. Intentionally not destructured: while
+        // Recap is disabled, packet assembly neither reads nor projects it.
+        requirements?: string;
         gitStatus: GitStatus | null;
         workspaceId: number; workerId: number; loopId: number;
         // DB-level turn sequence for "look at the previous turn" queries.
@@ -289,15 +286,6 @@ export default class PacketBuilder {
         const prompt = promptRows.length > 0
             ? promptRows.map((r) => `* prompt://${r.pathname}`).join("\n")
             : byRole("user");
-        // Requirements is engine-sourced, NOT threaded from callers — that threading is
-        // exactly how it went missing (callers read the sysprompt but never the
-        // requirements). Read Paths.defaultRequirements (PLURNK_SERVICE_REQUIREMENTS env →
-        // requirements.md) fresh each build so edits take effect; a non-empty param wins.
-        const baseRequirements = requirements.length > 0
-            ? requirements
-            : Paths.defaultRequirementsTeachingSource === null
-                ? await readFile(Paths.defaultRequirements, "utf8")
-                : await readTeachingSource(Paths.defaultRequirementsTeachingSource);
         // {§emission-admission}: the definition owns PLAN framing, so the packet
         // injects no duplicate syntax or plan directive.
         const log = await this.#buildLog(workerId, transientOpenLogEntryId);
@@ -341,7 +329,7 @@ export default class PacketBuilder {
             { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "" },
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
             { name: "log", slot: "user", header: "Log", content: PacketWire.renderLog(log, countTokens) },
-            // The per-turn status clump sits between log and recap ({§packet-cache-monotone}).
+            // The per-turn status clump follows the log ({§packet-cache-monotone}).
             // child-orientation: what this worker holds live — streams then child workers — just above errors. Terse
             // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. {§child-orientation}
             { name: "child-streams", slot: "user", header: "Child Streams", content: PacketWire.renderChildPointers(childStreams) },
@@ -353,9 +341,7 @@ export default class PacketBuilder {
             { name: "budget", slot: "user", header: "Budget", content: budgetReadout },
             // The prompts section closes the status clump as a paths-only list;
             // bodies arrive through first-class prompt rows.
-            { name: "prompt", slot: "user", header: "User Prompts", content: prompt },
-            // requirements renders LAST — the user-slot footer, the syntax contract closest to the model's turn (a recency carve-out for weak models).
-            { name: "requirements", slot: "user", header: "Recap", content: baseRequirements },
+            { name: "prompt", slot: "user", header: "Active User Prompts", content: prompt },
         ];
         // Plugin packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.

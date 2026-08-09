@@ -18,7 +18,7 @@ import { InvalidLoopFlagsError, Validator } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { copyStmt, editStmt, readStmt, findStmt, regex, sendStmt, urlPath } from "./_dsl.ts";
 
-const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; content: string; tokens: number }> }> =>
+const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; header: string | null; content: string; tokens: number }> }> =>
     JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
 
 test("packet assembly surfaces contract-invalid persisted loop flags at the same owner (#169)", async () => {
@@ -103,7 +103,7 @@ test("assembled packet: Git return guidance is limited to the active branch-batc
 
 test("assembled packet: the turn-0 catalog foist renders its entries into the log", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
-    process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist complete shallow maps at turn 0
+    process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist markerless shallow maps at turn 0
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-backbone-${crypto.randomUUID()}`);
@@ -134,7 +134,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         // log ({§render-rule-find-renders-result}) — the model SEES the catalog rows, not just
         // its own echoed query. The invisible-catalog bug rendered only `<<FIND(...)::FIND`.
         assert.match(log, /worker:\/\/\/note\.md/, "the foisted catalog FIND renders a direct entry into the packet's log");
-        assert.match(log, /worker:\/\/\/\.env\.defaults/, "the complete one-level map includes direct dot entries");
+        assert.match(log, /worker:\/\/\/\.env\.defaults/, "the one-level page includes direct dot entries");
         assert.match(log, /"path":"worker:\/\/\/\.github\/\*\*","items":1,"tokens":\d+/, "a dot directory renders as an actionable recursive summary");
         assert.match(log, /"path":"worker:\/\/\/nested\/\*\*","items":1,"tokens":\d+/, "a directory renders as an actionable recursive summary");
         assert.doesNotMatch(log, /worker:\/\/\/nested\/deep\.md/, "the opening map does not dump a summarized descendant");
@@ -150,7 +150,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.match(log, /"op":"FIND"/, "the catalog foist appears as a FIND op in the log");
         assert.match(
             log,
-            /<<SEND\[102\]:Next, address the prompt from the initialized context\.:SEND/,
+            /<<SEND\[102\]:Next, address the prompt using the survey\.:SEND/,
             "the turn-0 exemplar teaches SEND[102] as an explicit next action",
         );
 
@@ -258,7 +258,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
     } finally { await db.close(); }
 });
 
-test("the default wire preserves canonical trust and cache-locality order", async () => {
+test("the default wire preserves canonical order and leaves the Recap seam dormant", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-monotone-${crypto.randomUUID()}`);
@@ -267,15 +267,24 @@ test("the default wire preserves canonical trust and cache-locality order", asyn
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({
+            provider,
+            requirements: "DORMANT_RECAP_SENTINEL",
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
         const packet = await getPacket(db, result.turnId);
 
         // {§packet-cache-monotone}: trusted control-plane sections precede the user slot;
-        // append-mostly log precedes per-turn status, and the recap remains last for recency.
+        // append-mostly log precedes per-turn status and active prompt pointers.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "tools", "schemes", "system-policy", "project-policy"], "system slot carries trusted control-plane sections in canonical order");
-        assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "errors", "notices", "git", "budget", "prompt", "requirements"], "user slot: log -> status clump -> recap; the prompt paths list closes the clump");
-        assert.ok(packetSection(packet, "requirements").length > 0, "requirements section carries content");
+        assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "errors", "notices", "git", "budget", "prompt"], "user slot: log -> status clump -> active prompt paths");
+        assert.equal(packet.sections.find((section) => section.name === "prompt")?.header, "Active User Prompts");
+        assert.equal(packet.sections.some((section) => section.name === "requirements" || section.header === "Recap"), false);
+        assert.equal(packet.sections.some((section) => section.content.includes("DORMANT_RECAP_SENTINEL")), false);
     } finally { await db.close(); }
 });
 

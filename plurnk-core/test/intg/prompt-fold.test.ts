@@ -1,5 +1,5 @@
 // A prompt is one first-class, owner-keyed log row. It is born OPEN like any
-// newly delivered body, while the separate User Prompts section retains its
+// newly delivered body, while the separate Active User Prompts section retains its
 // durable prompt:// entry address.
 
 import test from "node:test";

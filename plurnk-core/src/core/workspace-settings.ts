@@ -2,7 +2,7 @@
 // user legitimately sets at workspace.create, read at turn-0 with precedence over env.
 // Two knobs with deliberately different compose semantics:
 //   - filesItems: REPLACE — a single scalar; the client value wins outright over
-//     PLURNK_SERVICE_FILES_ITEMS (0=off / -1=complete shallow map / N=file-map first-N).
+//     PLURNK_SERVICE_FILES_ITEMS (0=off / -1=markerless first page / N=file-map first-N).
 //   - mdDocs: UNION — the server env docs (PLURNK_SERVICE_MD_*) and the client's docs ride
 //     together; the systemwide policy doc survives unless the client shadows its alias.
 // Storage is a JSON bag on workspaces.settings (the env mdDocs live in process.env, never

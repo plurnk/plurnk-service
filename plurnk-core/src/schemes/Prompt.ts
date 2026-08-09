@@ -19,7 +19,7 @@ export default class Prompt implements SchemeHandler {
         modelVisible: true,
         folderScopes: true,
         example: "<<READ(prompt:///1/1)::READ",
-        documentation: "Your task frames — each loop's prompt at `prompt:///<loop>/<N>` (READ the address the User Prompts section lists). READ-ONLY: the engine writes these for you; your scratch lives at `worker://~/` and the shared blackboard at `worker:///`.",
+        documentation: "Your task frames — each loop's prompt at `prompt:///<loop>/<N>` (READ the address the Active User Prompts section lists). READ-ONLY: the engine writes these for you; your scratch lives at `worker://~/` and the shared blackboard at `worker:///`.",
     };
 
     async resolveEntryAddress(target: ParsedPath): Promise<EntryAddress | null> {

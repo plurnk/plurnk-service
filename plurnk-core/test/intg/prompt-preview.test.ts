@@ -1,5 +1,5 @@
 // Prompt frames are first-class actionless log rows. Their ordinary OPEN
-// projection obeys the universal preview contract, and the User Prompts
+// projection obeys the universal preview contract, and the Active User Prompts
 // section retains each prompt:// address for direct retrieval.
 
 import test from "node:test";
@@ -44,7 +44,7 @@ test("a long prompt renders an honest addressable preview and the section lists 
             const prompt = rows.find((r) => r.op === "prompt" && r.origin === "plurnk" && /^\/1\/\d+$/.test(r.pathname ?? "") && r.scheme === "prompt");
             assert.ok(prompt, "the first-class prompt row exists");
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds[turnIds.length - 1] });
-            const packet = JSON.parse(row!.packet) as { sections?: Array<{ name: string; slot: string; content: string }> };
+            const packet = JSON.parse(row!.packet) as { sections?: Array<{ name: string; slot: string; header: string | null; content: string }> };
             const logSection = (packet.sections ?? []).find((sec) => sec.name === "log");
             const promptSection = (packet.sections ?? []).find((sec) => sec.name === "prompt");
             assert.match(logSection?.content ?? "", /prompt line 1/, "the prompt preview reaches the model");
@@ -63,6 +63,7 @@ test("a long prompt renders an honest addressable preview and the section lists 
             assert.equal(recovered.content, fat, "the advertised log READ returns the exact canonical prompt body");
             assert.ok(promptSection, "the prompts section exists");
             assert.equal(promptSection!.slot, "user", "the prompt paths list closes the user-slot status clump");
+            assert.equal(promptSection!.header, "Active User Prompts");
             assert.match(promptSection!.content, /^\* prompt:\/\/\/1\/1$/m, "paths-only, owner-keyed prompt:///1/1");
             assert.doesNotMatch(promptSection!.content, /prompt line 5/, "no bodies in the section");
         } finally { ws.close(); }
