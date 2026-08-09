@@ -120,10 +120,10 @@ Text scope (Line, StartLine, StartColumn, EndLine, EndColumn) has one meaning fo
 | `<SL,SC,EL,EC>` | start included, end excluded   | `<<READ(notes.md)<2,1,2,5>::READ` reads columns 1-4 of line 2 |
 | `<SL,SC,SL,SC>` | positions, zero-width          | `<<EDIT(notes.md)<2,5,2,5>:inserted text:EDIT` insertion      |
 
-* Lines and Unicode code-point columns are 1-based. Rendered `L:` prefixes are coordinates, not content; edit from a recent READ.
+* Lines and Unicode code-point columns are 1-based.
+* Rendered `L:` prefixes are coordinates, not content; edit from a recent READ.
 * Unscoped READ returns lines 1–16; use `<1,-1>` for all.
 * `<0>` prepends and `<-1>` appends for EDIT and COPY/MOVE destinations.
-* A scoped COPY/MOVE destination must already exist. Omit its scope to create a new destination channel: `<<COPY(worker:///src.md)<2,3>:worker:///slice.md:COPY`
 * Multiple EDITs to one target in a turn share its pre-turn snapshot and cannot overlap.
 
 ### The Log
