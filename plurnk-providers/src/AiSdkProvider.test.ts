@@ -987,14 +987,16 @@ test("sampling passthrough guards contract invariants: n/tools/caps stripped, pl
 
 test("template reasoning returns the exact pre-projection grammar sentence ({§gbnf-response-observation})", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
-    const calls = installFetch([{ choices: [{ delta: { reasoning_content: "con🙂sider", content: "x" } }] }]);
     const grammarInput = "<|channel>thought\ncon🙂sider<channel|>x";
+    const calls = installFetch([{ choices: [{ delta: { content: grammarInput } }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: `root ::= ${JSON.stringify(grammarInput)}` });
     const body = JSON.parse(calls[0].init.body as string);
     assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true });
-    assert.equal(body.reasoning_format, "auto");
+    assert.equal(body.reasoning_format, "none");
     assert.equal(body.thinking_budget_tokens, 64);
     assert.equal(body.grammar, `root ::= ${JSON.stringify(grammarInput)}`);
+    assert.equal(res.assistant.reasoning, "con🙂sider");
+    assert.equal(res.assistant.content, "x");
     assert.deepEqual(res.grammarEvidence, {
         input: grammarInput,
         contentStart: [..."<|channel>thought\ncon🙂sider<channel|>"].length,
@@ -1003,11 +1005,46 @@ test("template reasoning returns the exact pre-projection grammar sentence ({§g
     assert.equal(res.meta?.railsVerdict, undefined, "the provider represents evidence but does not grade itself");
 });
 
-test("template reasoning does not invent pre-projection evidence when the wire omits its reasoning field", async () => {
+test("a verbatim template response remains exact evidence when it has no channel envelope", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
-    installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal(body.reasoning_format, "none");
+    assert.deepEqual(res.grammarEvidence, { input: "x", contentStart: 0, transported: true });
+});
+
+test("a template grammar preserves exact evidence when reasoning is disabled", async () => {
+    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false });
+    assert.equal(body.reasoning_format, "none");
+    assert.deepEqual(res.grammarEvidence, { input: "x", contentStart: 0, transported: true });
+});
+
+test("an unexpectedly projected template response cannot claim pre-projection evidence", async () => {
+    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    installFetch([{ choices: [{ delta: { reasoning_content: "reason", content: "x" } }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     assert.equal(res.grammarEvidence, undefined);
+});
+
+test("template reasoning preserves an empty grammar-required channel as exact evidence", async () => {
+    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const input = "<|channel>thought\n<channel|>x";
+    const calls = installFetch([{ choices: [{ delta: { content: input } }] }]);
+    const res = await p.generate({ workerId: "r", messages: [], grammar: `root ::= ${JSON.stringify(input)}` });
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal(body.reasoning_format, "none");
+    assert.equal(res.assistant.reasoning, null);
+    assert.equal(res.assistant.content, "x");
+    assert.deepEqual(res.grammarEvidence, {
+        input,
+        contentStart: [..."<|channel>thought\n<channel|>"].length,
+        transported: true,
+    });
 });
 
 test("channel-escape detector: billed completion tokens vastly beyond visible channels attach grammar_unenforced", async () => {

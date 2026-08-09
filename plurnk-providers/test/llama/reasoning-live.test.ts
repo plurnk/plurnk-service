@@ -47,9 +47,9 @@ test("llama-server honors PLURNK's request-scoped reasoning allowance", async ()
     assert.ok((timings!.predicted_n as number) < generationEnvelope, "reasoning ran to the generation envelope");
 });
 
-// {§gbnf-response-observation} — the live adapter must represent the raw sentence
-// that llama-server projected into separate reasoning and content fields.
-test("llama-server projection returns exact pre-projection grammar evidence", async () => {
+// {§gbnf-response-observation} — the live adapter must preserve the raw sentence
+// before separating reasoning and content itself.
+test("llama-server returns exact pre-projection grammar evidence", async () => {
     const input = "<|channel>thought\nverify<channel|>PLURNK-RAILS-LIVE";
     const response = await provider().generate({
         workerId: "llama-grammar-evidence",
@@ -63,6 +63,24 @@ test("llama-server projection returns exact pre-projection grammar evidence", as
     assert.deepEqual(response.grammarEvidence, {
         input,
         contentStart: [..."<|channel>thought\nverify<channel|>"].length,
+        transported: true,
+    });
+});
+
+test("llama-server preserves an empty grammar-required reasoning channel", async () => {
+    const input = "<|channel>thought\n<channel|>PLURNK-EMPTY-RAILS-LIVE";
+    const response = await provider().generate({
+        workerId: "llama-empty-grammar-evidence",
+        messages: [{ role: "user", content: "ok" }],
+        grammar: `root ::= ${JSON.stringify(input)}`,
+        maxTokens: 32,
+    });
+
+    assert.equal(response.assistant.reasoning, null);
+    assert.equal(response.assistant.content, "PLURNK-EMPTY-RAILS-LIVE");
+    assert.deepEqual(response.grammarEvidence, {
+        input,
+        contentStart: [..."<|channel>thought\n<channel|>"].length,
         transported: true,
     });
 });

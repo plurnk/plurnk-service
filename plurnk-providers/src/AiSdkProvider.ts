@@ -160,19 +160,15 @@ type TaggedReasoningProjection = {
     readonly contentStart: number;
 };
 
-// {§provider-tagged-reasoning} Only the model-contract position is structural:
-// one exact leading envelope. Parsing after stream assembly keeps SSE and JSON
-// on one path and leaves later literal tags in the visible suffix untouched.
-const projectTaggedReasoning = (
+const projectLeadingReasoning = (
     content: string,
     structuredReasoning: string,
-    style: ReasoningResponseStyle,
+    opening: string,
+    closing: string,
 ): TaggedReasoningProjection => {
-    const opening = "<think>";
-    if (style !== "think-tags" || structuredReasoning.length > 0 || !content.startsWith(opening)) {
+    if (structuredReasoning.length > 0 || !content.startsWith(opening)) {
         return { content, reasoning: structuredReasoning, projected: false, contentStart: 0 };
     }
-    const closing = "</think>";
     const closingIndex = content.indexOf(closing, opening.length);
     if (closingIndex === -1) {
         return {
@@ -190,6 +186,24 @@ const projectTaggedReasoning = (
         contentStart: [...content.slice(0, suffixStart)].length,
     };
 };
+
+// {§provider-tagged-reasoning} Only the model-contract position is structural:
+// one exact leading envelope. Parsing after stream assembly keeps SSE and JSON
+// on one path and leaves later literal tags in the visible suffix untouched.
+const projectTaggedReasoning = (
+    content: string,
+    structuredReasoning: string,
+    style: ReasoningResponseStyle,
+): TaggedReasoningProjection => style === "think-tags"
+    ? projectLeadingReasoning(content, structuredReasoning, "<think>", "</think>")
+    : { content, reasoning: structuredReasoning, projected: false, contentStart: 0 };
+
+// llama-server's template reasoning parser can project this leading channel out
+// of the OpenAI-compatible response. Grammar evidence needs the sentence before
+// that lossy projection, so constrained template turns request it verbatim and
+// split the observed enclosure here.
+const projectTemplateReasoning = (content: string): TaggedReasoningProjection =>
+    projectLeadingReasoning(content, "", "<|channel>thought\n", "<channel|>");
 
 // Shared budget→effort breakpoints (xai and google had identical copies).
 export const effortFromBudget = (budget: number): "low" | "medium" | "high" => {
@@ -439,9 +453,10 @@ export default class AiSdkProvider implements Provider {
             ?? { kind: "unknown", reason: "no provider rate or settled charge is available" };
     }
 
-    // Reasoning intent maps independently of grammar transport. The llama-server
-    // template mapping is owned by {§llama-reasoning-request}.
-    #reasoningBody(): Record<string, unknown> {
+    // Reasoning activation and allowance are independent of grammar transport;
+    // only the response representation becomes lossless when evidence is needed.
+    // The llama-server template mapping is owned by {§llama-reasoning-request}.
+    #reasoningBody(preserveGrammarSentence = false): Record<string, unknown> {
         const { mode, budget } = this.#reasoning;
         const on = mode !== "off";
         switch (this.#reasoningStyle) {
@@ -451,7 +466,7 @@ export default class AiSdkProvider implements Provider {
                     : mode === "on" ? budget : this.reasoningReserve;
                 return {
                     chat_template_kwargs: { enable_thinking: on },
-                    reasoning_format: "auto",
+                    reasoning_format: preserveGrammarSentence ? "none" : "auto",
                     ...(allowance === null ? {} : { thinking_budget_tokens: allowance }),
                 };
             }
@@ -632,6 +647,8 @@ export default class AiSdkProvider implements Provider {
         const wantGrammar = grammar !== undefined && this.#grammarStyle !== "none";
         if (wantGrammar && this.#gbnfDebug) this.#assertGrammarValid(grammar!);
         const sendGrammar = wantGrammar && !this.#gbnfDebug ? grammar : undefined;
+        const preserveGrammarSentence = wantGrammar
+            && this.#reasoningStyle === "template";
 
         // Assembly order = precedence: the family's sampling DEFAULTS
         // (PLURNK_PROVIDERS_TEMPERATURE — universal, measured on grammar
@@ -645,7 +662,7 @@ export default class AiSdkProvider implements Provider {
             ...(this.#serviceTier !== undefined ? { service_tier: this.#serviceTier } : {}),
             model: this.#model,
             messages,
-            ...this.#reasoningBody(),
+            ...this.#reasoningBody(preserveGrammarSentence),
             ...this.#grammarBody(sendGrammar),
             ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
             // Request per-token logprobs only when enabled (managed field —
@@ -730,45 +747,47 @@ export default class AiSdkProvider implements Provider {
         // wire text for forensics.
         if (this.#eosText !== undefined) raw.content = stripTrailingSpecial(raw.content, this.#eosText);
 
-        const taggedReasoning = projectTaggedReasoning(
-            raw.content,
-            raw.reasoning,
-            this.#reasoningResponseStyle,
-        );
+        const grammarInput = raw.content;
+        const projectedReasoning = preserveGrammarSentence && !raw.reasoningProjected
+            ? projectTemplateReasoning(raw.content)
+            : projectTaggedReasoning(
+                raw.content,
+                raw.reasoning,
+                this.#reasoningResponseStyle,
+            );
 
-        // Preserve the exact sentence seen at the grammar boundary. llama-server's
-        // `reasoning_format: "auto"` projects one raw Harmony enclosure into the
-        // reasoning/content fields; the wire field's presence is the proof that the
-        // projection occurred. The provider represents this evidence and never grades it.
+        // Preserve the exact sentence seen at the grammar boundary. Constrained
+        // template turns request `reasoning_format: "none"`, so even an empty
+        // channel remains observable. An unexpectedly projected response cannot
+        // supply independent pre-projection evidence.
         let grammarEvidence: GrammarEvidence | undefined;
         if (wantGrammar) {
-            if (taggedReasoning.projected) {
-                grammarEvidence = {
-                    input: raw.content,
-                    contentStart: taggedReasoning.contentStart,
-                    transported: sendGrammar !== undefined,
-                };
-            } else if (this.#reasoningStyle === "template" && this.#reasoning.mode !== "off") {
-                if (raw.reasoningProjected) {
-                    const prefix = `<|channel>thought\n${raw.reasoning}<channel|>`;
+            if (preserveGrammarSentence) {
+                if (!raw.reasoningProjected) {
                     grammarEvidence = {
-                        input: `${prefix}${raw.content}`,
-                        contentStart: [...prefix].length,
+                        input: grammarInput,
+                        contentStart: projectedReasoning.projected ? projectedReasoning.contentStart : 0,
                         transported: sendGrammar !== undefined,
                     };
                 }
+            } else if (projectedReasoning.projected) {
+                grammarEvidence = {
+                    input: grammarInput,
+                    contentStart: projectedReasoning.contentStart,
+                    transported: sendGrammar !== undefined,
+                };
             } else {
                 grammarEvidence = {
-                    input: raw.content,
+                    input: grammarInput,
                     contentStart: 0,
                     transported: sendGrammar !== undefined,
                 };
             }
         }
 
-        if (taggedReasoning.projected) {
-            raw.content = taggedReasoning.content;
-            raw.reasoning = taggedReasoning.reasoning;
+        if (projectedReasoning.projected) {
+            raw.content = projectedReasoning.content;
+            raw.reasoning = projectedReasoning.reasoning;
             raw.usage = attributeUnitemizedReasoning(raw.usage, raw.reasoning, raw.content);
         }
 

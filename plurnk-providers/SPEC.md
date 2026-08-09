@@ -337,9 +337,12 @@ every request:
 | `on` | true | explicit reasoning budget |
 
 The explicit budget may tighten but MUST NOT exceed the resolved reasoning
-reserve. `reasoning_format: "auto"` requests a separate readable reasoning
-channel. Process-wide llama-server flags are fallback server configuration, not
-part of the PLURNK contract and need not be synchronized with an alias.
+reserve. Template calls normally use `reasoning_format: "auto"` for a separate
+readable channel. A GBNF-bearing call uses `"none"` so the exact constrained
+sentence survives response projection; the adapter separates its leading
+reasoning enclosure only after preserving grammar evidence. Process-wide
+llama-server flags are fallback server configuration, not part of the PLURNK
+contract and need not be synchronized with an alias.
 
 §llama-reasoning-request The allowance is cumulative across the complete response. Opening a second or
 later reasoning block does not replenish it. Template parsing, the reasoning
@@ -423,10 +426,11 @@ When a grammar-capable adapter receives a grammar, `ProviderResponse` carries
 `grammarEvidence: { input, contentStart, transported }`. `input` is the exact
 pre-projection sentence represented by the response, `contentStart` is its
 Unicode-code-point offset to `assistant.content`, and `transported` says whether
-the grammar was actually sent. For active llama-server template reasoning, the
-adapter reconstructs the Harmony enclosure only when the response demonstrates
-that `reasoning_format: "auto"` projected it; otherwise it cannot claim evidence.
-For an unsplit response, `input` is `content` and `contentStart` is zero.
+the grammar was actually sent. Active llama-server template reasoning requests
+the unprojected sentence, records it, and then separates its leading enclosure;
+an empty body therefore remains observable. An endpoint that projects despite
+that request supplies no independent evidence. For an unsplit response, `input`
+is `content` and `contentStart` is zero.
 
 §gbnf-response-observation The provider transports and represents; it does not grade its own enforcement.
 The consumer validates `grammarEvidence.input` outside the enforcer's failure
