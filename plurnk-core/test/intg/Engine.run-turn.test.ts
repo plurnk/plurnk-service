@@ -105,7 +105,10 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
             ],
         });
         assert.equal(result.status, 200, "turn status from terminal SEND");
-        assert.deepEqual(result.statuses, [201, 200], "EDIT created → 201; SEND broadcast → 200");
+        assert.deepEqual(result.outcomes, [
+            { op: "EDIT", status: 201 },
+            { op: "SEND", status: 200 },
+        ], "EDIT created → 201; SEND broadcast → 200");
 
         const turn = await db.test_get_turn.get<{ loop_id: number; sequence: number; status: number; usage_completion: number }>({ id: result.turnId });
         if (turn === undefined) throw new Error("turn not found");
@@ -226,7 +229,12 @@ test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", as
             ])],
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        assert.deepEqual(result.statuses, [201, 201, 201, 200]);
+        assert.deepEqual(result.outcomes, [
+            { op: "EDIT", status: 201 },
+            { op: "EDIT", status: 201 },
+            { op: "EDIT", status: 201 },
+            { op: "SEND", status: 200 },
+        ]);
         const indices = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null }>({ turn_id: result.turnId });
         assert.deepEqual(
             indices.map((r) => ({ idx: r.sequence, op: r.op })),
@@ -286,7 +294,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched actions; overf
                 ],
             });
             const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-            assert.equal(t1.statuses.length, 4, "3 actions plus the disposition dispatched");
+            assert.equal(t1.outcomes.length, 4, "3 actions plus the disposition dispatched");
 
             // Confirm only 3 model EDITs landed — overflow didn't sneak through.
             // Scope to scheme='worker' to exclude the engine's prompt:/// entry.
@@ -332,7 +340,7 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the action
                 ],
             });
             const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-            assert.equal(t1.statuses.length, 6, "all 5 actions and the disposition dispatched — no cap");
+            assert.equal(t1.outcomes.length, 6, "all 5 actions and the disposition dispatched — no cap");
             const workerEntries = await db.test_count_entries_by_workspace_scheme.get<{ n: number }>({
                 workspace_id: workspaceId, scheme: "worker",
             });
@@ -850,7 +858,10 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
             provider, workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
-        assert.deepEqual(result.statuses, [200, 200], "PLAN and the SEND after the prose parse and dispatch");
+        assert.deepEqual(result.outcomes, [
+            { op: "PLAN", status: 200 },
+            { op: "SEND", status: 200 },
+        ], "PLAN and the SEND after the prose parse and dispatch");
         assert.equal(result.status, 200, "the SEND terminates the turn; free text does not break the op");
     } finally { await db.close(); }
 });
@@ -866,8 +877,11 @@ test("Engine.runTurn: PLAN dispatches as an ordinary durable intended-goals op",
             provider, workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
-        // PLAN dispatches like any op (a no-op for state) → both PLAN and the SEND in statuses.
-        assert.deepEqual(result.statuses, [200, 200], "PLAN dispatched as a log op, then the SEND");
+        // PLAN dispatches like any op (a no-op for state) → both PLAN and the SEND are outcomes.
+        assert.deepEqual(result.outcomes, [
+            { op: "PLAN", status: 200 },
+            { op: "SEND", status: 200 },
+        ], "PLAN dispatched as a log op, then the SEND");
         // The PLAN body is a real log row passed to the client, separate from provider reasoning.
         const ops = await db.test_log_entries_by_loop.all<{ op: string }>({ loop_id: loopId });
         assert.ok(ops.some((o) => o.op === "PLAN"), "PLAN is logged as a durable op");

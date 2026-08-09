@@ -303,7 +303,10 @@ test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model
         assert.equal(failed.status, 102);
         assert.equal(failed.emissionAttempts, 1, "a trustworthy frame is not blindly resampled");
         assert.equal(failed.emissionExhausted, false);
-        assert.ok(failed.statuses.includes(400), "the malformed matcher becomes a failed operation");
+        assert.ok(
+            failed.outcomes.some(({ op, status }) => op === null && status === 400),
+            "the malformed matcher becomes a failed operation",
+        );
         const attempts = await db.test_turn_attempts.all<{
             accepted: number;
             parse_errors: string;
@@ -394,8 +397,14 @@ test("a bounded malformed operation prevents same-turn completion until the mode
 
         assert.equal(result.emissionAttempts, 1);
         assert.equal(result.status, 102, "the refused SEND keeps the turn non-terminal");
-        assert.ok(result.statuses.includes(400), "the syntax failure participates in strike accounting");
-        assert.ok(result.statuses.includes(409), "SEND[200] refuses to conclude past the unseen failure");
+        assert.ok(
+            result.outcomes.some(({ op, status }) => op === null && status === 400),
+            "the syntax failure participates in strike accounting",
+        );
+        assert.ok(
+            result.outcomes.some(({ op, status }) => op === "SEND" && status === 409),
+            "SEND[200] refuses to conclude past the unseen failure",
+        );
         const rows = await db.test_log_entries_by_turn.all<{
             sequence: number;
             status_rx: number;
@@ -970,7 +979,10 @@ test("a valid turn with a failed operation remains recoverable and model-visible
         const failed = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(failed.emissionAttempts, 1);
         assert.equal(failed.emissionExhausted, false);
-        assert.ok(failed.statuses.includes(403), "the valid turn dispatches its failing operation");
+        assert.ok(
+            failed.outcomes.some(({ op, status }) => op === "EDIT" && status === 403),
+            "the valid turn dispatches its failing operation",
+        );
 
         const recovery = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });

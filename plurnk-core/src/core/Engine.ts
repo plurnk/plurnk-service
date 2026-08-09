@@ -51,7 +51,7 @@ import JournalTurn from "./JournalTurn.ts";
 // lifecycle and wires them together as the public facade.
 import NoticeChannel from "./NoticeChannel.ts";
 import ProblemLog from "./ProblemLog.ts";
-import StrikeRail from "./StrikeRail.ts";
+import StrikeRail, { type StrikeOutcome } from "./StrikeRail.ts";
 import PacketBuilder, { type ChatMessage } from "./PacketBuilder.ts";
 import StoredPacket, { type PacketAssistant } from "./StoredPacket.ts";
 import ProposalLifecycle from "./ProposalLifecycle.ts";
@@ -201,7 +201,7 @@ type SplitProviderResponse = {
 type EngineTurnResult = {
     turnId: number;
     status: number;
-    statuses: number[];
+    outcomes: StrikeOutcome[];
     fingerprint: string;
     budgetStruck: boolean;
     budgetHardStop: boolean;
@@ -1051,11 +1051,11 @@ export default class Engine {
             }
 
             // {§engine-rails} — per-turn strike accounting (cycle detection, the
-            // grinder/steer coupling, hard-failure statuses). StrikeRail owns the
+            // grinder/steer coupling, hard operation outcomes). StrikeRail owns the
             // bookkeeping; runLoop owns abandonment.
             const verdict = this.#strikes.assess(loopId, {
                 fingerprint: turn.fingerprint,
-                statuses: turn.statuses,
+                outcomes: turn.outcomes,
                 budgetStruck: turn.budgetStruck,
                 steerStruck: turn.steerStruck,
                 minCycles, maxCyclePeriod, maxStrikes,
@@ -1530,7 +1530,7 @@ export default class Engine {
                 return {
                     turnId,
                     status: 413,
-                    statuses: [],
+                    outcomes: [],
                     fingerprint: "",
                     budgetStruck: enforced.struck,
                     budgetHardStop: true,
@@ -1833,7 +1833,7 @@ export default class Engine {
             return {
                 turnId,
                 status: allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500,
-                statuses: [],
+                outcomes: [],
                 fingerprint: "",
                 budgetStruck: enforced.struck,
                 budgetHardStop: false,
@@ -1993,7 +1993,7 @@ export default class Engine {
             },
         );
         const droppedCount = opsCount - opsToDispatch.length;
-        const statuses: number[] = [];
+        const outcomes: StrikeOutcome[] = [];
         // Running counter — a multi-file READ writes N rows from one statement (rowsWritten),
         // so the next op's sequence picks up after them. Collapses to nextActionIndex+i when
         // every op writes one row (the common case).
@@ -2026,7 +2026,7 @@ export default class Engine {
                         },
                     ),
                 });
-                statuses.push(recorded.result.status);
+                outcomes.push({ op: null, status: recorded.result.status });
                 onDispatch?.(recorded.id);
             }
         };
@@ -2070,7 +2070,7 @@ export default class Engine {
                     return dispatchResult;
                 },
             );
-            statuses.push(result.status);
+            outcomes.push({ op: statement.op, status: result.status });
             for (const normalization of result.scopeNormalizations ?? []) {
                 this.#notices.push(workspaceId, loopId, {
                     source: "engine:slicer",
@@ -2166,7 +2166,7 @@ export default class Engine {
         return {
             turnId,
             status: turnStatus,
-            statuses,
+            outcomes,
             fingerprint: StrikeRail.fingerprintTurn(packetAssistant.ops),
             budgetStruck: enforced.struck,
             budgetHardStop: false,

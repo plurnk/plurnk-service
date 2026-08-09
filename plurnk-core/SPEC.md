@@ -75,10 +75,14 @@ These are the complete strike sources:
 
 | Strike source       | Exact trigger                                                                                                    | Model-visible occurrence                                      |
 |---------------------|------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------|
-| Hard result         | An admitted operation or bounded parse-error status is `>= 400`, except the soft set `404`, `409`, `416`, `501`. | The originating failure row.                                  |
+| Hard result         | An admitted non-`EXEC` operation or bounded parse-error status is `>= 400`, except the soft set `404`, `409`, `416`, `501`. | The originating failure row.                                  |
 | Grinder             | Packet overflow caused a grinder fold or admitted hard-recovery turn ({§grinder-strike-coupling}).               | The exact overflow Problem row.                               |
 | Terminal steering   | An idle `SEND[102]` or a final disposition refused at 409 sets the turn's steering ruling ({§send}).             | The idle rail row or refused SEND row.                        |
 | Cycle               | The configured consecutive fingerprint pattern repeats.                                                          | None; cycle detection itself is private engine accounting.    |
+
+`EXEC` results remain exact model-visible evidence but are always soft: an
+executor error is not a PLURNK contract violation. Cycle and terminal steering
+remain independent strike sources.
 
 A struck turn increments the consecutive streak once; a clean admitted turn
 resets it to zero. Reaching `MAX_STRIKES` terminates at **508 Loop Detected**

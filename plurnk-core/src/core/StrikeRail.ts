@@ -1,7 +1,7 @@
 import type { PlurnkStatement, LineMarker } from "@plurnk/plurnk-contracts";
 import { renderTarget } from "./plurnk-uri.ts";
 
-// Action-entry statuses that do not accumulate strikes. Exploratory misses are
+// Operation outcome statuses that do not accumulate strikes. Exploratory misses are
 // not failures: probing a path that doesn't exist (404), a line
 // range that doesn't exist (416), or a capability a scheme lacks (501) is how discovery
 // works — striking them prices caution into the motions we most want (range-reads ARE
@@ -9,8 +9,14 @@ import { renderTarget } from "./plurnk-uri.ts";
 // 409 is SOFT here because Engine accounts for a refused final disposition
 // through steerStruck ({§engine-rails}). Counting that raw status as well would
 // double-count one ruling; other 409 outcomes remain soft. The cycle detector
-// remains an independent backstop.
+// remains an independent backstop. EXEC outcomes are soft independently of
+// status: executor errors remain evidence, not PLURNK contract violations.
 const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 409, 416, 501]);
+
+export type StrikeOutcome = {
+    readonly op: PlurnkStatement["op"] | null;
+    readonly status: number;
+};
 
 // Per-op fingerprint: op verb + target URI, plus an op-specific discriminator
 // where the activity isn't fully captured by target alone:
@@ -115,7 +121,7 @@ export default class StrikeRail {
     // {§engine-rails} owns the complete source list and threshold semantics.
     assess(loopId: number, turn: {
         fingerprint: string;
-        statuses: ReadonlyArray<number>;
+        outcomes: ReadonlyArray<StrikeOutcome>;
         budgetStruck: boolean;
         steerStruck: boolean;
         minCycles: number;
@@ -128,7 +134,9 @@ export default class StrikeRail {
         const state = this.#state.get(loopId) ?? { streak: 0, history: [] };
         state.history.push(turn.fingerprint);
         const cycle = StrikeRail.detectCycle(state.history, turn.minCycles, turn.maxCyclePeriod);
-        const recordedFailed = turn.statuses.some((s) => s >= 400 && !SOFT_FAILURE_STATUSES.has(s));
+        const recordedFailed = turn.outcomes.some(
+            ({ op, status }) => op !== "EXEC" && status >= 400 && !SOFT_FAILURE_STATUSES.has(status),
+        );
         const struck = recordedFailed || turn.budgetStruck || turn.steerStruck || cycle.detected;
         let thresholdCrossed = false;
         if (struck) {

@@ -66,3 +66,24 @@ test("a 416 range-miss is an exploratory miss — soft, never a strike (like 404
         } finally { ws.close(); }
     });
 });
+
+test("an EXEC operation error remains visible but does not bump the strike streak", async () => {
+    const mock = new CapturingMock({ contextWindow: 100000, responses: [
+        response("<<PLAN:try an empty command:PLAN\n<<EXEC::EXEC\n<<SEND[102]:correcting:SEND", 10),
+        response("<<PLAN:finish:PLAN\n<<SEND[200]:done:SEND", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "soft-exec" });
+            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", maxTurns: 4 });
+            assert.equal(finalStatus, 200);
+            assert.deepEqual(mock.seen, [0, 0], "the failed EXEC did not alter first-party strike metadata");
+            const ops = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
+            assert.ok(
+                ops.some(({ op, status_rx }) => op === "EXEC" && status_rx === 400),
+                "the exact EXEC failure remains durable evidence",
+            );
+        } finally { ws.close(); }
+    });
+});

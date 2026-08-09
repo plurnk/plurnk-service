@@ -116,8 +116,12 @@ test("live web: exec[search] queries a real SearXNG instance into a results entr
         } finally { await schemes.close(); await db.close(); }
     });
 
-test("live web: a real HTML READ stores readable body + faithful DOM under one absolute identity",
+test("live web: a real HTML READ stores Tavily Markdown + source HTML under one absolute identity",
     async () => {
+        assert.ok(
+            process.env.TAVILY_API_KEY?.trim(),
+            "live HTML coverage requires TAVILY_API_KEY in the operator environment",
+        );
         const parsed = PlurnkParser.parse("<<PLAN::PLAN\n<<READ(https://example.com/)::READ");
         const item = parsed.items.find((i: { kind: string; statement?: PlurnkStatement }) => i.kind === "statement" && i.statement?.op === "READ") as { statement: PlurnkStatement } | undefined;
         if (item === undefined) throw new Error("parse produced no READ");
@@ -136,11 +140,15 @@ test("live web: a real HTML READ stores readable body + faithful DOM under one a
             assert.ok(entry);
             const body = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: entry.id, name: "body" });
             const html = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: entry.id, name: "html" });
+            const header = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "header" });
             assert.equal(body?.mimetype, "text/markdown");
             assert.match(body?.content ?? "", /documentation examples/i);
             assert.match(body?.content ?? "", /iana\.org\/domains\/example/i);
             assert.equal(html?.mimetype, "text/html");
             assert.match(html?.content ?? "", /<html/i);
             assert.match(html?.content ?? "", /Example Domain/i);
+            assert.match(header?.content ?? "", /^x-plurnk-materializer-id: tavily-extract:v1:basic$/m);
+            assert.match(header?.content ?? "", /^x-plurnk-tavily-request-id: .+$/m);
+            assert.match(header?.content ?? "", /^x-plurnk-tavily-credits: [0-9.]+$/m);
         } finally { await schemes.close(); await db.close(); }
     });
