@@ -51,7 +51,7 @@ test("every ```plurnk fenced turn in plurnk.md parses clean", () => {
 
 test("{§turn-shape} model reference teaches the complete turn frame", () => {
     assert.ok(plurnkMd.includes("A turn concatenates complete OPs;"));
-    assert.match(plurnkMd, /^\| PLAN \| open turn with intended goals /m);
+    assert.match(plurnkMd, /^\| PLAN \| open every turn with goals /m);
     assert.match(plurnkMd, /^\| SEND \| close turn with submit code /m);
 });
 

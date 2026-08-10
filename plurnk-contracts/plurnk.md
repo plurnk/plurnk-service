@@ -31,7 +31,7 @@ A turn concatenates complete OPs; reference examples are alternatives unless sho
 
 | OP   | purpose                        | `[signal]`   | `(path)`                   | `<scope>`      | `body`                |
 |------|--------------------------------|--------------|----------------------------|----------------|-----------------------|
-| PLAN | open turn with intended goals  | -            | -                          | -              | goals                 |
+| PLAN | open every turn with goals     | -            | -                          | -              | goals (list or prose) |
 | FIND | list matching targets          | filter tags? | target or glob             | result range?  | pattern?              |
 | READ | retrieve target content        | filter tags? | target                     | text region?   | -                     |
 | EDIT | create or edit scoped content  | apply tags?  | file or entry              | text region?   | literal text          |
