@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "description": "Framework + contract for the @plurnk/plurnk-execs-* runtime executor packages.",
     "keywords": [
         "plurnk",
@@ -51,8 +51,8 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "@plurnk/plurnk-contracts": "1.4.0",
-        "@plurnk/plurnk-meta": "1.4.0",
-        "@plurnk/plurnk-schemes": "1.4.0"
+        "@plurnk/plurnk-contracts": "1.5.0",
+        "@plurnk/plurnk-meta": "1.5.0",
+        "@plurnk/plurnk-schemes": "1.5.0"
     }
 }

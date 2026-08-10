@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-providers",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "description": "PLURNK's stable model-provider contract and AI SDK adapter.",
     "keywords": [
         "plurnk",
@@ -70,11 +70,11 @@
         "@ai-sdk/togetherai": "^3.0.0",
         "@ai-sdk/xai": "^4.0.0",
         "@openrouter/ai-sdk-provider": "^3.0.0",
-        "@plurnk/gbnf": "1.4.0",
-        "@plurnk/plurnk-aliases": "1.4.0",
-        "@plurnk/plurnk-contracts": "1.4.0",
-        "@plurnk/plurnk-meta": "1.4.0",
-        "@plurnk/plurnk-models": "1.4.0",
+        "@plurnk/gbnf": "1.5.0",
+        "@plurnk/plurnk-aliases": "1.5.0",
+        "@plurnk/plurnk-contracts": "1.5.0",
+        "@plurnk/plurnk-meta": "1.5.0",
+        "@plurnk/plurnk-models": "1.5.0",
         "ai": "^7.0.37",
         "zod": "^3.25.76"
     }

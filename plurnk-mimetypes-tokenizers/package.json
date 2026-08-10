@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-tokenizers",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "description": "Bundled LLM tokenizer vocabularies (tokenizer.json set) for @plurnk/plurnk-mimetypes' tokenizer seam — exact token counting for window math.",
     "keywords": [
         "plurnk",
@@ -46,7 +46,7 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^1.4.0"
+        "@plurnk/plurnk-mimetypes": "^1.5.0"
     },
     "dependencies": {
         "@huggingface/tokenizers": "^0.1.3"
