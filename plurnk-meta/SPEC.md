@@ -14,7 +14,7 @@ sources into a consuming package would create a second teaching owner.
 | Source                          | Membership | Meta-owned content                                 | Core read boundary                                      |
 | ------------------------------- | ---------- | -------------------------------------------------- | ------------------------------------------------------- |
 | `PLURNK_PERSONALITY.md`         | Required   | First-run default operating policy                 | Policy bootstrap {§policy-sections}                     |
-| `requirements.md`               | Required   | Dormant compact operational recap source           | Dormant seam; not read {§requirements}                 |
+| `requirements.md`               | Required   | Default compact operational Recap                  | Per-packet user-slot footer {§requirements}            |
 | `docs/log.md`, `docs/worker.md` | Required   | Deep reference prose for reserved built-in schemes | Pull-doc materialization {§schemes-directory}           |
 | `docs/questions.md`             | Required   | Conditional operator-question reference prose      | Enabled capability/teaching gate {§send-300-choices}    |
 

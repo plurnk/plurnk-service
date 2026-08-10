@@ -23,7 +23,7 @@ export default class Paths {
     static instructionsSystem = resolve(Paths.#CONTRACTS_ROOT, "plurnk.md");
     // The first-run policy seed and built-in/conditional pull-doc sources.
     static personality = Paths.teachingSource(TEACHING_CORPUS.personality);
-    // {§requirements} — dormant Recap source; packet assembly does not read it.
+    // {§requirements} — meta-owned default Recap and its operator override.
     static #DEFAULT_REQUIREMENTS = Paths.#resolveDefaultRequirements();
     static defaultRequirements = Paths.#DEFAULT_REQUIREMENTS.path;
     static defaultRequirementsTeachingSource = Paths.#DEFAULT_REQUIREMENTS.source;
@@ -32,7 +32,7 @@ export default class Paths {
         return resolve(Paths.teachingRoot, source);
     }
 
-    // Dormant override: absolute paths stay absolute; relative paths resolve here.
+    // Absolute overrides stay absolute; relative paths resolve from the package root.
     static #resolveDefaultRequirements(): { path: string; source: TeachingCorpusSource | null } {
         const env = process.env.PLURNK_SERVICE_REQUIREMENTS;
         if (typeof env === "string" && env.length > 0) {

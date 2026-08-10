@@ -1,3 +1,2 @@
-YOU MUST ONLY use the Plurnk Service Grammar: <<OPsuffix[signal]?(path)?<scope>?:body?:OPsuffix
-Example turn: <<PLAN:Locate the definition before changing it.:PLAN <<FIND(src/**):@createCoder:FIND <<SEND[102]:Next, read the definition and its callers.:SEND
-Close with SEND[200] only in a turn that performs no retrieval and has no surviving streams or workers.
+YOU MUST always begin each turn with a PLAN.
+YOU MUST always end retrieval turns (with READ, FIND, ...) with a non-concluding status code.

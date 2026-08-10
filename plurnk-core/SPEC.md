@@ -2919,13 +2919,14 @@ the exact two-character porcelain `XY` value as `git` metadata when the status
 snapshot names that path. The engine takes one snapshot after membership
 reconciliation and uses it for both projections; no per-file Git process exists.
 
-### §requirements Dormant Recap injection seam
+### §requirements Recap footer
 
-The default packet emits no `Recap` section and does not read `requirements.md`.
-The `runLoop` / `runTurn` `requirements` argument, PacketBuilder request property,
-`Paths.defaultRequirements`, `PLURNK_SERVICE_REQUIREMENTS` resolver, and packaged
-meta source remain one dormant seam. Supplying an override currently has no packet
-effect; restoring Recap projection is a future contract decision at that seam.
+The user slot ends with `## Recap`, a compact recency-biased reminder of selected
+operational law already owned by `plurnk.md`. A non-empty `runLoop` / `runTurn`
+`requirements` value overrides the default; otherwise core reads
+`PLURNK_SERVICE_REQUIREMENTS` or the required meta-owned `requirements.md` source
+for every packet. A failed read fails packet assembly with its cause. The footer
+is one projection path and one authored source, not a second language contract.
 
 ## §matcher Matcher selection and text regions
 

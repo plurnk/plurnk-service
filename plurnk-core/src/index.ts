@@ -26,7 +26,7 @@ export type {
 } from "./schemes/_entry-ops.ts";
 
 // Package-relative paths to non-code artifacts (migrations, the upstream
-// grammar's plurnk.md, dormant default requirements). Resolution lives in the
+// grammar's plurnk.md, default requirements). Resolution lives in the
 // Paths class so this entry stays a pure re-export barrel.
 export { default as Paths } from "./Paths.ts";
 

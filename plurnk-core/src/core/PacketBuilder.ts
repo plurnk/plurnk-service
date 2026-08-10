@@ -11,6 +11,9 @@ import { Policy } from "@plurnk/plurnk-execs";
 import WorkspaceSettings from "./workspace-settings.ts";
 import LoopFlagsReader from "./LoopFlagsReader.ts";
 import { readPacketInject, readSystemPolicy, readProjectPolicy } from "./packet-inject.ts";
+import { readFile } from "node:fs/promises";
+import Paths from "../Paths.ts";
+import { readTeachingSource } from "./teaching-corpus.ts";
 import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
@@ -240,12 +243,11 @@ export default class PacketBuilder {
     // {§packet-stored-shape} — assemble the system/user request before the
     // provider call; complete the same record with the provider response.
     async buildRequestPacket({
-        initialMessages, workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
+        initialMessages, requirements = "", workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
         transientOpenLogEntryId = null,
     }: {
         initialMessages: ChatMessage[];
-        // Dormant Recap injection seam. Intentionally not destructured: while
-        // Recap is disabled, packet assembly neither reads nor projects it.
+        // A non-empty caller value overrides the default Recap source.
         requirements?: string;
         gitStatus: GitStatus | null;
         workspaceId: number; workerId: number; loopId: number;
@@ -286,8 +288,13 @@ export default class PacketBuilder {
         const prompt = promptRows.length > 0
             ? promptRows.map((r) => `* prompt://${r.pathname}`).join("\n")
             : byRole("user");
-        // {§emission-admission}: the definition owns PLAN framing, so the packet
-        // injects no duplicate syntax or plan directive.
+        // {§requirements}: a non-empty override wins; otherwise read the meta-owned source per packet.
+        const recap = requirements.length > 0
+            ? requirements
+            : Paths.defaultRequirementsTeachingSource === null
+                ? await readFile(Paths.defaultRequirements, "utf8")
+                : await readTeachingSource(Paths.defaultRequirementsTeachingSource);
+        // {§emission-admission}: the definition remains the complete language authority.
         const log = await this.#buildLog(workerId, transientOpenLogEntryId);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
         const countTokens = rulerCount; // {§tokenomics-agnostic-ruler} — the ONE model-facing ruler (chars/2), not the provider
@@ -342,6 +349,7 @@ export default class PacketBuilder {
             // The prompts section closes the status clump as a paths-only list;
             // bodies arrive through first-class prompt rows.
             { name: "prompt", slot: "user", header: "Active User Prompts", content: prompt },
+            { name: "requirements", slot: "user", header: "Recap", content: recap },
         ];
         // Plugin packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.

@@ -264,7 +264,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
     } finally { await db.close(); }
 });
 
-test("the default wire preserves canonical order and leaves the Recap seam dormant", async () => {
+test("the default wire preserves canonical order and projects the Recap override last", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-monotone-${crypto.randomUUID()}`);
@@ -275,7 +275,7 @@ test("the default wire preserves canonical order and leaves the Recap seam dorma
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({
             provider,
-            requirements: "DORMANT_RECAP_SENTINEL",
+            requirements: "CUSTOM_RECAP_SENTINEL",
             workspaceId,
             workerId,
             loopId,
@@ -284,13 +284,38 @@ test("the default wire preserves canonical order and leaves the Recap seam dorma
         const packet = await getPacket(db, result.turnId);
 
         // {§packet-cache-monotone}: trusted control-plane sections precede the user slot;
-        // append-mostly log precedes per-turn status and active prompt pointers.
+        // append-mostly log precedes per-turn status, active prompt pointers, and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "tools", "schemes", "system-policy", "project-policy"], "system slot carries trusted control-plane sections in canonical order");
-        assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "errors", "notices", "git", "budget", "prompt"], "user slot: log -> status clump -> active prompt paths");
+        assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "errors", "notices", "git", "budget", "prompt", "requirements"], "user slot: log -> status clump -> active prompt paths -> Recap");
         assert.equal(packet.sections.find((section) => section.name === "prompt")?.header, "Active User Prompts");
-        assert.equal(packet.sections.some((section) => section.name === "requirements" || section.header === "Recap"), false);
-        assert.equal(packet.sections.some((section) => section.content.includes("DORMANT_RECAP_SENTINEL")), false);
+        assert.equal(packet.sections.at(-1)?.header, "Recap");
+        assert.equal(packet.sections.at(-1)?.content, "CUSTOM_RECAP_SENTINEL");
+    } finally { await db.close(); }
+});
+
+test("the default Recap projects the two framing reminders from the teaching corpus", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `pkt-recap-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+
+        const result = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+        });
+        const recap = packetSection(await getPacket(db, result.turnId), "requirements");
+
+        assert.equal(
+            recap,
+            "YOU MUST always begin each turn with a PLAN.\nYOU MUST always end retrieval turns (with READ, FIND, ...) with a non-concluding status code.\n",
+        );
     } finally { await db.close(); }
 });
 

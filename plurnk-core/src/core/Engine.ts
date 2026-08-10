@@ -692,8 +692,7 @@ export default class Engine {
     }: {
         provider: Provider;
         messages: ChatMessage[];
-        // Dormant Recap injection seam. Retained across the public engine API
-        // while packet assembly deliberately omits that surface.
+        // Optional Recap override; packet assembly owns default sourcing.
         requirements?: string;
         workspaceId: number; workerId: number; loopId: number;
         maxTurns?: number;
@@ -950,7 +949,7 @@ export default class Engine {
     }: {
         provider: Provider;
         messages: ChatMessage[];
-        // Dormant Recap injection seam; forwarded without reading or rendering.
+        // Optional Recap override; packet assembly owns default sourcing.
         requirements?: string;
         workspaceId: number; workerId: number; loopId: number;
         origin?: WriterTier;
