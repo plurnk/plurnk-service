@@ -3,6 +3,7 @@
 
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import type { Db } from "../core/Db.ts";
 import { execPollBackoffMs } from "./exec-poll-backoff.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
@@ -62,7 +63,13 @@ import type {
 } from "./DaemonModule.ts";
 import { observed, observedSync } from "../observe/spans.ts";
 import { LOOP_TERMINALS, recordCounter } from "../observe/metrics.ts";
-import { readExecSettlementMs } from "../core/exec-settlement.ts";
+import { readOptimisticSettlementMs } from "../core/optimistic-settlement.ts";
+
+interface CompletionWakeGate {
+    conclusions: number;
+    poke: PromiseWithResolvers<void>;
+    promise: Promise<void>;
+}
 
 const clientActionFailure = (error: unknown): SchemeResult => {
     if (error instanceof OperationFailureError) return error.result;
@@ -151,6 +158,10 @@ export default class Daemon {
     // never deadlock. The drain honors the owed wake at the worker's next park, closing the conclude-
     // before-park race. (Only a live exec stream, unbounded absent a timeout, may hold a park open.)
     #owedWakes = new Set<number>();
+    // {§worker-optimistic-settlement} — one non-sliding completion-wake batch
+    // per worker. Durable conclusions and client events land before this gate;
+    // only the parked loop's provider-dispatch requeue waits.
+    #completionWakeGates = new Map<number, CompletionWakeGate>();
 
     constructor({
         db, schemes, mimetypes, provider, nodeModulesPath,
@@ -227,7 +238,7 @@ export default class Daemon {
             },
             wakeParent: async (workspaceId, workerId) => {
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-                await this.#wakeParkedWorker(workspaceId, workerId, systemPrompt, false);
+                await this.#settleCompletionWake(workspaceId, workerId, systemPrompt, false);
             },
             notify: (workspaceId, payload) => {
                 this.#broadcast({ workspaceId }, "workspace/branch-batch", payload);
@@ -2139,16 +2150,19 @@ export default class Daemon {
             // the manifest. {§worker-lifecycle-wake-liveness}.
             const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: payload.workerId });
             if (slept !== undefined) {
-                await this.#lifecycle.wake(slept.id);
-                const started = await this.#ensureDrain({
-                    workspaceId: payload.workspaceId, workerId: payload.workerId,
+                // {§worker-optimistic-settlement} — publish this conclusion now,
+                // then let the worker-local gate coalesce only the provider
+                // dispatch. Concurrent stream/child callbacks join that one gate.
+                void this.#settleCompletionWake(
+                    payload.workspaceId,
+                    payload.workerId,
                     systemPrompt,
+                    false,
+                ).catch((err: unknown) => {
+                    console.error("completion wake settlement failed:", err instanceof Error ? err.message : String(err));
                 });
                 this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
                     ...conclusion, wakeAction: "resumed-loop", wakeLoopId: slept.id,
-                });
-                started?.drainPromise?.catch((err: unknown) => {
-                    console.error("wake resume drain failed:", err instanceof Error ? err.message : String(err));
                 });
                 return;
             }
@@ -2210,11 +2224,11 @@ export default class Daemon {
         }
         // Floored by the optimistic settlement cap so a `<…,1>` cannot wake a
         // parked loop faster than the preceding turn's settlement scale.
-        const execWaitMs = readExecSettlementMs();
+        const optimisticWaitMs = readOptimisticSettlementMs();
         const timer = setTimeout(() => {
             this.#pollTimers.delete(workerId);
             void this.#wakeParkedWorker(workspaceId, workerId, systemPrompt);
-        }, Math.max(delayMs, execWaitMs));
+        }, Math.max(delayMs, optimisticWaitMs));
         timer.unref();
         this.#pollTimers.set(workerId, timer);
     }
@@ -2233,10 +2247,13 @@ export default class Daemon {
             // conclusion that fired this wake arrived before the 202 committed (the conclude-before-park
             // race). Owe the wake: the drain honors it at park so a worker hibernation never deadlocks.
             // (No active drain → already concluded/running; nothing to wake.)
-            if (oweIfActive && this.#activeDrains.has(workerId)) this.#owedWakes.add(workerId);
+            if (this.#activeDrains.has(workerId)) {
+                if (oweIfActive) this.#owedWakes.add(workerId);
+            }
             return;
         }
-        await this.#lifecycle.wake(slept.id);
+        const woke = await this.#lifecycle.wake(slept.id);
+        if (!woke) return;
         const started = await this.#ensureDrain({
             workspaceId, workerId, systemPrompt,
         });
@@ -2245,6 +2262,108 @@ export default class Daemon {
                 console.error("wake-parked resume drain failed:", err instanceof Error ? err.message : String(err));
             }
         });
+    }
+
+    async #workerHasLiveObligation(workerId: number): Promise<boolean> {
+        const [openSubscriptions, liveChild] = await Promise.all([
+            this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId }),
+            this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId }),
+        ]);
+        return openSubscriptions.length > 0 || liveChild !== undefined;
+    }
+
+    #settleCompletionWake(
+        workspaceId: number,
+        workerId: number,
+        systemPrompt: string,
+        oweIfActive = true,
+    ): Promise<void> {
+        const existing = this.#completionWakeGates.get(workerId);
+        if (existing !== undefined) {
+            existing.conclusions++;
+            existing.poke.resolve();
+            return existing.promise;
+        }
+
+        const completed = Promise.withResolvers<void>();
+        const gate: CompletionWakeGate = {
+            conclusions: 1,
+            poke: Promise.withResolvers<void>(),
+            promise: completed.promise,
+        };
+        this.#completionWakeGates.set(workerId, gate);
+        void this.#runCompletionWake(
+            workspaceId,
+            workerId,
+            systemPrompt,
+            oweIfActive,
+            gate,
+        ).then(completed.resolve, completed.reject).finally(() => {
+            if (this.#completionWakeGates.get(workerId) === gate) {
+                this.#completionWakeGates.delete(workerId);
+            }
+        });
+        return gate.promise;
+    }
+
+    async #runCompletionWake(
+        workspaceId: number,
+        workerId: number,
+        systemPrompt: string,
+        oweIfActive: boolean,
+        gate: CompletionWakeGate,
+    ): Promise<void> {
+        const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
+        if (slept === undefined) {
+            this.#releaseCompletionWake(workerId, gate);
+            return this.#wakeParkedWorker(workspaceId, workerId, systemPrompt, oweIfActive);
+        }
+
+        const timeoutMs = readOptimisticSettlementMs();
+        if (timeoutMs === 0 || !(await this.#workerHasLiveObligation(workerId))) {
+            this.#releaseCompletionWake(workerId, gate);
+            return this.#wakeParkedWorker(workspaceId, workerId, systemPrompt, false);
+        }
+
+        return observed(
+            "worker.wake.settlement",
+            { "window.ms": timeoutMs },
+            async (span) => {
+                const startedAt = performance.now();
+                const signal = this.#workerAborts.get(workerId)?.signal;
+                const deadline = delay(timeoutMs, "deadline" as const, { signal, ref: false })
+                    .catch((cause: unknown) => {
+                        if (signal?.aborted === true) return "cancelled" as const;
+                        throw cause;
+                    });
+                let release: "quiescent" | "deadline" | "cancelled" = "quiescent";
+                while (await this.#workerHasLiveObligation(workerId)) {
+                    const poke = gate.poke;
+                    const outcome = await Promise.race([
+                        poke.promise.then(() => "arrival" as const),
+                        deadline,
+                    ]);
+                    if (outcome === "arrival") {
+                        if (gate.poke === poke) gate.poke = Promise.withResolvers<void>();
+                        continue;
+                    }
+                    release = outcome;
+                    break;
+                }
+                span.setAttribute("release", release);
+                span.setAttribute("conclusions", gate.conclusions);
+                span.setAttribute("elapsed.ms", Math.round(performance.now() - startedAt));
+                this.#releaseCompletionWake(workerId, gate);
+                if (release === "cancelled") return;
+                return this.#wakeParkedWorker(workspaceId, workerId, systemPrompt, false);
+            },
+        );
+    }
+
+    #releaseCompletionWake(workerId: number, gate: CompletionWakeGate): void {
+        if (this.#completionWakeGates.get(workerId) === gate) {
+            this.#completionWakeGates.delete(workerId);
+        }
     }
 
     /** A worker's drain exited. If the worker truly CONCLUDED — no 202-blocked loop, no open stream — then
@@ -2260,7 +2379,7 @@ export default class Daemon {
         if (openSubs.length > 0) return; // a stream still runs — its conclusion re-evaluates, not this exit
         const parent = await this.#db.worker_parent_id.get<{ parent_worker_id: number | null }>({ worker_id: workerId });
         if (parent?.parent_worker_id == null) return; // a root worker — nobody to wake
-        await this.#wakeParkedWorker(workspaceId, parent.parent_worker_id, systemPrompt);
+        await this.#settleCompletionWake(workspaceId, parent.parent_worker_id, systemPrompt);
     }
 
     // {§methods-event-subscribe} — subscriber failures are transport-local:

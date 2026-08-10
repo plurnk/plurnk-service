@@ -62,7 +62,7 @@ import type { DispatchContext, DispatchResult, ResolvedClientEntryAddress } from
 import { observed, observedSync } from "../observe/spans.ts";
 import { OPS_DISPATCHED, PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
-import { readExecSettlementMs } from "./exec-settlement.ts";
+import { readOptimisticSettlementMs } from "./optimistic-settlement.ts";
 
 // Proposal types are part of Engine's public API (resolveProposal/onProposalPending);
 // their definitions live with the lifecycle.
@@ -1886,7 +1886,7 @@ export default class Engine {
                 && TERMINAL_SEND_SIGNALS.has(statement.signal)
             ) {
                 await recordRecoverableParseErrors();
-                // {§exec-optimistic-settlement} — SEND judges the refreshed
+                // {§worker-optimistic-settlement} — SEND judges the refreshed
                 // lifecycle after this turn's own fast streams receive one
                 // bounded opportunity to conclude. This is not a sleep and
                 // does not delay a later turn for older monitored streams.
@@ -1901,7 +1901,7 @@ export default class Engine {
                 await execHandler?.settleTurnSpawns?.(
                     workerId,
                     turnId,
-                    readExecSettlementMs(),
+                    readOptimisticSettlementMs(),
                     providerSignal,
                 );
             }

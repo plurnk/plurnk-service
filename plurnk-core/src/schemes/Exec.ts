@@ -179,7 +179,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         return false;
     }
 
-    // {§exec-optimistic-settlement} — wait on exactly the spawns initiated by
+    // {§worker-optimistic-settlement} — wait on exactly the spawns initiated by
     // this turn, ending immediately when all settle and never extending the
     // opportunity to streams inherited from an earlier turn.
     async settleTurnSpawns(

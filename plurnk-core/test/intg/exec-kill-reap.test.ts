@@ -11,7 +11,7 @@ import { rpcCall, subscribeNotifications, connect, withDaemon, waitFor, waitForD
 
 // The reap fixture requires an already-monitored stream; settlement behavior
 // is covered independently.
-process.env.PLURNK_SERVICE_EXEC_WAIT_MS = "0";
+process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const mockTurn = (dsl: string) => ({
     assistant: { content: `<<PLAN::PLAN\n${dsl}`, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },

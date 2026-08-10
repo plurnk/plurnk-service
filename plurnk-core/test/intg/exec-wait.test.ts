@@ -1,4 +1,4 @@
-// {§exec-optimistic-settlement} — an EXEC receives one turn-scoped opportunity
+// {§worker-optimistic-settlement} — an EXEC receives one turn-scoped opportunity
 // to settle before the terminal SEND judges whether the stream needs monitoring.
 
 import test from "node:test";
@@ -75,8 +75,8 @@ const idle = async (schemes: SchemeRegistry): Promise<void> => {
 };
 
 test("fast current-turn streams settle before SEND[202] and do not become monitored work", async () => {
-    const previous = process.env.PLURNK_SERVICE_EXEC_WAIT_MS;
-    process.env.PLURNK_SERVICE_EXEC_WAIT_MS = "1000";
+    const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1000";
     let startedAt = 0;
     const fixture = await wire(async () => {
         startedAt = Date.now();
@@ -100,14 +100,14 @@ test("fast current-turn streams settle before SEND[202] and do not become monito
     } finally {
         await idle(fixture.schemes);
         await fixture.db.close();
-        if (previous === undefined) delete process.env.PLURNK_SERVICE_EXEC_WAIT_MS;
-        else process.env.PLURNK_SERVICE_EXEC_WAIT_MS = previous;
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previous;
     }
 });
 
 test("a current-turn stream still active at the settlement cap follows the ordinary monitored path", async () => {
-    const previous = process.env.PLURNK_SERVICE_EXEC_WAIT_MS;
-    process.env.PLURNK_SERVICE_EXEC_WAIT_MS = "40";
+    const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "40";
     let release!: () => void;
     let startedAt = 0;
     const fixture = await wire(() => new Promise((resolve) => {
@@ -133,14 +133,14 @@ test("a current-turn stream still active at the settlement cap follows the ordin
         release?.();
         await idle(fixture.schemes);
         await fixture.db.close();
-        if (previous === undefined) delete process.env.PLURNK_SERVICE_EXEC_WAIT_MS;
-        else process.env.PLURNK_SERVICE_EXEC_WAIT_MS = previous;
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previous;
     }
 });
 
 test("strike settlement cannot reap a fast current-turn stream before its optimistic opportunity", async () => {
-    const previous = process.env.PLURNK_SERVICE_EXEC_WAIT_MS;
-    process.env.PLURNK_SERVICE_EXEC_WAIT_MS = "1000";
+    const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1000";
     const fixture = await wire(async () => {
         await new Promise((resolve) => setTimeout(resolve, 25));
         return { status: 200 };
@@ -163,7 +163,7 @@ test("strike settlement cannot reap a fast current-turn stream before its optimi
     } finally {
         await idle(fixture.schemes);
         await fixture.db.close();
-        if (previous === undefined) delete process.env.PLURNK_SERVICE_EXEC_WAIT_MS;
-        else process.env.PLURNK_SERVICE_EXEC_WAIT_MS = previous;
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previous;
     }
 });

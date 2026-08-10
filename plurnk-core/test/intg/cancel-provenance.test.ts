@@ -73,11 +73,11 @@ test("{§loop-terminal-authorship}: cancelling a live loop records who and why",
 test("{§methods-loop-cancel}: cancelling a parked loop terminalizes it", async (t) => {
     // A worker parked on a live obligation has no active drain, so cancellation
     // terminalizes the durable 202 row directly.
-    const previousSettlement = process.env.PLURNK_SERVICE_EXEC_WAIT_MS;
-    process.env.PLURNK_SERVICE_EXEC_WAIT_MS = "0";
+    const previousSettlement = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
     t.after(() => {
-        if (previousSettlement === undefined) delete process.env.PLURNK_SERVICE_EXEC_WAIT_MS;
-        else process.env.PLURNK_SERVICE_EXEC_WAIT_MS = previousSettlement;
+        if (previousSettlement === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previousSettlement;
     });
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("<<EXEC[sh]:sleep 30:EXEC\n<<SEND[202]:awaiting the slow job:SEND"),

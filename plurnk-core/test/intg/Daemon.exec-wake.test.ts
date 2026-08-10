@@ -21,7 +21,7 @@ import { openMigrated } from "./_helpers.ts";
 // These fixtures exercise the lifecycle after a stream genuinely becomes
 // monitored. Optimistic settlement has its own matrix; disable it here so the
 // park/wake decision remains the controlled variable.
-process.env.PLURNK_SERVICE_EXEC_WAIT_MS = "0";
+process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const execDsl = (command: string): string =>
     `<<EXEC[sh]:${command}:EXEC\n<<SEND[202]<-1>:done:SEND`;

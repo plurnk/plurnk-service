@@ -15,7 +15,7 @@ import { sendStmt } from "./_dsl.ts";
 // This file isolates the hold decision after ordinary optimistic settlement:
 // disabling the latter keeps the selected-vs-unselected runtime distinction as
 // the only variable under test.
-process.env.PLURNK_SERVICE_EXEC_WAIT_MS = "0";
+process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime, target: null,
