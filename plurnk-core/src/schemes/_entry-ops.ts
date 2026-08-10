@@ -36,6 +36,11 @@ export type ReadResult = SchemeResultBase & {
 };
 export type OpenFoldResult = SchemeResultBase;
 
+interface ReadAddress {
+    readonly ownerId?: number;
+    readonly pathname?: string;
+}
+
 export default class EntryOps {
     static #pathnameOf(statement: { target: EditStatement["target"] }): string {
         const t = statement.target;
@@ -333,7 +338,12 @@ export default class EntryOps {
         return { status: 200 };
     }
 
-    static async readWorkspaceEntry(statement: ReadStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<ReadResult> {
+    static async readWorkspaceEntry(
+        statement: ReadStatement,
+        ctx: PlurnkSchemeContext,
+        manifest: SchemeManifest,
+        address: ReadAddress = {},
+    ): Promise<ReadResult> {
         const failure = (
             code: string,
             status: number,
@@ -361,14 +371,14 @@ export default class EntryOps {
         const scheme = EntryCrud.identityScheme(manifest);
 
         const fragment = EntryOps.#fragmentOf(statement);
-        const pathname = EntryOps.#pathnameOf(statement);
+        const pathname = address.pathname ?? EntryOps.#pathnameOf(statement);
         const targetChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);
         if (targetChannel === null) {
             const miss = EntryOps.#channelMiss(fragment, scheme, pathname, channels, defaultChannel);
             return failure("channel-not-found", 400, miss.detail, { content: null, mimetype: null, channel: null }, miss.extensions);
         }
 
-        const ownerId = await EntryOps.#ownerOf(explicitOwnerId, ctx);
+        const ownerId = await EntryOps.#ownerOf(address.ownerId, ctx);
         const readChannel = targetChannel;
         const row = await db.ops_read_channel.get<{ content: string; mimetype: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: readChannel }, owner_id: ownerId });
         // {§read-read-404} + {§fs-errno} — ENOENT carries its fact, the RESOLVED name in wire

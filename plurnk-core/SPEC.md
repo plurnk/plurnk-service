@@ -967,6 +967,10 @@ The optional engine-/daemon-populated capabilities (the notifiers, `injectWorker
 Engine → scheme guarantees:
 
 - `ctx` is fresh per call. No mutation across calls.
+- READ on a `category: "data"` scheme with no custom `read()` resolves its
+  canonical entry identity, invokes optional scope-blind `prepareRead()`, and
+  then applies the standard exact-entry projection. Preparation status composes
+  under {§read-preparation}; the scheme never receives READ text coordinates.
 - FIND on a `category: "data"` scheme with no custom `find()`
   invokes its optional `prepareFind()` and then the standard entry selection.
   Preparation owns discovery/materialization only; query semantics remain

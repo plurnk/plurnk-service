@@ -90,6 +90,12 @@ export interface ResolvedClientEntryAddress {
     readonly target: string;
 }
 
+interface ResolvedDataEntryAddress {
+    readonly ownerId: number;
+    readonly scheme: string;
+    readonly pathname: string;
+}
+
 import type { SchemeCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
 type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
 type LogCurationHandler = {
@@ -770,6 +776,44 @@ export default class Dispatcher {
             manifest,
             this.#liveSubscriptions,
         );
+        const resolved = await this.#resolveDataEntryAddress({
+            target,
+            routedScheme,
+            handler,
+            manifest,
+            ctx: coreCtx,
+            schemeCtx,
+        });
+        if (resolved === null) return null;
+
+        const rendered = target.kind === "url"
+            ? renderTarget({ ...target, fragment: null })
+            : renderTarget({ scheme: null, pathname: target.raw, fragment: null });
+        if (rendered === null) throw new TypeError("Resolved entry target did not render.");
+        return {
+            ownerId: resolved.ownerId,
+            scheme: resolved.scheme,
+            pathname: resolved.pathname,
+            target: rendered,
+        };
+    }
+
+    async #resolveDataEntryAddress({
+        target,
+        routedScheme,
+        handler,
+        manifest,
+        ctx,
+        schemeCtx,
+    }: {
+        target: ParsedPath;
+        routedScheme: string;
+        handler: SchemeWithEntryAddress;
+        manifest: SchemeManifest;
+        ctx: PlurnkSchemeContext;
+        schemeCtx: SchemeCtx;
+    }): Promise<ResolvedDataEntryAddress | null> {
+        const addressedScheme = target.kind === "url" ? target.scheme : routedScheme;
         const resolved = handler.resolveEntryAddress === undefined
             ? { pathname: entryPathnameOf(target), owner: "commons" as const }
             : await handler.resolveEntryAddress(target, schemeCtx);
@@ -785,25 +829,19 @@ export default class Dispatcher {
             }
             ownerId = resolved.ownerId;
         } else if (resolved.owner === "worker") {
-            ownerId = workerId;
+            ownerId = ctx.workerId;
         } else if (resolved.owner === "commons") {
-            ownerId = await Owner.commonsId(this.#db, workspaceId);
+            ownerId = await Owner.commonsId(this.#db, ctx.workspaceId);
         } else {
             throw new TypeError(`Scheme '${routedScheme}' returned an invalid entry owner.`);
         }
         if (!Number.isSafeInteger(ownerId) || ownerId < 1) {
             throw new TypeError(`Scheme '${routedScheme}' returned an invalid entry owner id.`);
         }
-
-        const rendered = target.kind === "url"
-            ? renderTarget({ ...target, fragment: null })
-            : renderTarget({ scheme: null, pathname: target.raw, fragment: null });
-        if (rendered === null) throw new TypeError("Resolved entry target did not render.");
         return {
             ownerId,
             scheme: manifest.storedScheme ?? addressedScheme,
             pathname: resolved.pathname,
-            target: rendered,
         };
     }
 
@@ -2750,6 +2788,57 @@ export default class Dispatcher {
         if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
         const schemeCtx = new SchemeCtxImpl(ctx, addressedScheme ?? schemeName, manifest, this.#liveSubscriptions);
         if (typeof method === "function") return Results.assert(await method.call(handler, statement, schemeCtx));
+        if (statement.op === "READ" && manifest.category === "data") {
+            const resolved = statement.target === null
+                ? null
+                : await this.#resolveDataEntryAddress({
+                    target: statement.target,
+                    routedScheme: schemeName,
+                    handler: handler as unknown as SchemeWithEntryAddress,
+                    manifest,
+                    ctx,
+                    schemeCtx,
+                });
+            if (statement.target !== null && resolved === null) {
+                const target = renderTarget(statement.target.kind === "url"
+                    ? statement.target
+                    : { scheme: null, pathname: statement.target.raw });
+                return Results.failure(
+                    `scheme:${schemeName}`,
+                    "entry-not-found",
+                    404,
+                    `No entry exists at ${target ?? "the requested address"}.`,
+                    { content: null, mimetype: null, channel: null },
+                    { target },
+                );
+            }
+            const prepareRead = (handler as unknown as SchemeHandler).prepareRead;
+            let prepared: SchemeResult = { status: 200 };
+            if (statement.target !== null && typeof prepareRead === "function") {
+                prepared = Results.assert(await prepareRead.call(handler, statement.target, schemeCtx));
+                if (prepared.status === 202) {
+                    throw new InvalidOperationResultError(
+                        `Scheme '${schemeName}' returned proposal status 202 from READ preparation.`,
+                    );
+                }
+                if (prepared.status < 200 || prepared.status >= 300) return prepared;
+            }
+            const storageScheme = resolved?.scheme ?? manifest.storedScheme ?? addressedScheme ?? schemeName;
+            const projected = Results.assertReadResult(await EntryOps.readWorkspaceEntry(
+                statement,
+                ctx,
+                { ...manifest, name: storageScheme, storedScheme: storageScheme },
+                resolved === null
+                    ? {}
+                    : { ownerId: resolved.ownerId, pathname: resolved.pathname },
+            ));
+            if (projected.status >= 300 || prepared.status === 200) return projected;
+            return Results.assertReadResult({
+                ...prepared,
+                ...projected,
+                status: prepared.status,
+            });
+        }
         if (statement.op !== "FIND" || manifest.category !== "data") {
             return Dispatcher.#failure(
                 "operation-not-implemented",

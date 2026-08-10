@@ -73,12 +73,13 @@ the consumer's proposal lifecycle decides whether a client, loop auto,
 ## §2 Interface
 
 Sister scheme handlers implement op methods consumed by plurnk-service via
-dispatch. An absent method returns **501**, except FIND on an entry-bearing
-`category: "data"` scheme: the consumer supplies its standard stored-entry
-FIND automatically. The op-dispatch surface is the exported
+dispatch. An absent method returns **501**, except READ and FIND on an
+entry-bearing `category: "data"` scheme: the consumer supplies its standard
+stored-entry operation automatically. The op-dispatch surface is the exported
 **`SchemeHandler`** interface — every method optional, each
-`(statement, ctx) => Promise<SchemeResult>`, the per-op statement type from
-grammar. `editBatch` returns the typed `EditBatchResult` specialization:
+operation method receives its per-op grammar statement and `ctx`;
+preparation hooks receive their deliberately narrower inputs. `editBatch`
+returns the typed `EditBatchResult` specialization:
 
 ```ts
 import type { EditBatchResult, SchemeHandler } from "@plurnk/plurnk-schemes";
@@ -87,6 +88,7 @@ export interface SchemeHandler {
     ready?(): Promise<void>;
     close?(): Promise<void>;
     resolveEntryAddress?(target: ParsedPath, ctx: SchemeCtx): Promise<EntryAddress | null>;
+    prepareRead?(target: ParsedPath, ctx: SchemeCtx): Promise<SchemeResult>;
     prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
@@ -100,6 +102,19 @@ export interface SchemeHandler {
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;
 }
 ```
+
+§read-preparation `prepareRead?` is the optional representation-acquisition
+seam for exact READ. Core resolves the target identity and owner first, then
+passes the hook only the exact `ParsedPath`; the authored `lineMarker` is
+structurally unavailable. A stored scheme omits the hook. An acquisition scheme
+writes the complete selected representation into its entry and returns that
+producer's operation status, not its storage-write receipt. `102` denotes a
+representation that remains genuinely live and is returned directly; a
+Problem or redirect is likewise exact. After any other successful preparation,
+the consumer alone selects the channel and applies the authored text scope (or
+the markerless `<1,16>` default). A successful non-`200` producer status is
+preserved when projection succeeds; a channel, binary, or range Problem from
+projection takes precedence.
 
 `prepareFind?` is not a second query implementation. It is the optional
 discovery/materialization seam invoked before the consumer's standard resource

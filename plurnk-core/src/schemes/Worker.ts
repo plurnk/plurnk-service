@@ -351,7 +351,9 @@ export default class Worker extends CoreSchemeAdapterBase {
                 },
             );
         }
-        return EntryOps.readWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
+        return EntryOps.readWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, {
+            ownerId: resolved.ownerId,
+        });
     }
 
     // Terminal loop statuses ({§lifecycle-terms}) — a loop here has DELIVERED; anything else is still running.

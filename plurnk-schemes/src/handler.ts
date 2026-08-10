@@ -2,12 +2,12 @@
 // (which types a scheme's declaration). A handler implements a method per op it
 // supports, named for the lowercased op (READ → read, SEND → send, FIND → find,
 // …). OPEN/FOLD are deliberately absent: core routes those curation operations
-// only to its log owner. An absent method returns 501 except FIND on a data
-// scheme, for which the consumer supplies its standard entry query after
-// optional `prepareFind`.
+// only to its log owner. Entry-bearing data schemes inherit standard READ and
+// FIND when the corresponding operation method is absent; optional preparation
+// hooks may materialize the requested representation first.
 // Every method is therefore OPTIONAL — a scheme implements only its distinct
-// surface. All share one shape:
-// `(statement, ctx) => Promise<SchemeResult>`.
+// surface. Operation methods share `(statement, ctx) => Promise<SchemeResult>`;
+// preparation hooks deliberately receive narrower inputs.
 //
 // `implements SchemeHandler` gives a sibling compile-time checking of its op
 // signatures instead of the duck-typed `object` the engine falls back to. The
@@ -60,6 +60,10 @@ export interface SchemeHandler extends PluginAttributionSource {
     // when the requested target must be discovered or materialized before FIND
     // selects stored entries.
     prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    // READ preparation receives only the exact target, never its text scope.
+    // A successful preparation leaves the readable representation in entries;
+    // the consumer then owns channel selection and text projection.
+    prepareRead?(target: ParsedPath, ctx: SchemeCtx): Promise<SchemeResult>;
     read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     editBatch?(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;

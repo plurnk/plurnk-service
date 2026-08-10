@@ -63,7 +63,9 @@ export default class DbEntryCaps implements EntryCaps {
     }
 
     async #read(statement: ReadStatement, owner?: EntryOwner): Promise<EntryReadResult> {
-        return this.#result("read", await EntryOps.readWorkspaceEntry(statement, this.#ctx, this.#manifest, this.#ownerId(owner))) as EntryReadResult;
+        return this.#result("read", await EntryOps.readWorkspaceEntry(statement, this.#ctx, this.#manifest, {
+            ownerId: this.#ownerId(owner),
+        })) as EntryReadResult;
     }
 
     async #find(statement: FindStatement, owner?: EntryOwner): Promise<EntryFindResult> {

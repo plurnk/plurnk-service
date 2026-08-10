@@ -82,7 +82,9 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
                 content: null, mimetype: null, channel: null,
             }) as ReadResult;
         }
-        return EntryOps.readWorkspaceEntry(owner.statement, core, this.#executor.manifest, owner.ownerId);
+        return EntryOps.readWorkspaceEntry(owner.statement, core, this.#executor.manifest, {
+            ownerId: owner.ownerId,
+        });
     }
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
