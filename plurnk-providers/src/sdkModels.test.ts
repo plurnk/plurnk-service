@@ -27,6 +27,22 @@ test("createSdkModel uses Models.dev provider facts and operator credentials", (
     assert.notEqual(sdk?.normalizeCharge, undefined);
 });
 
+test("createSdkModel attaches DeepInfra's documented response-cost normalizer", () => {
+    const sdk = createSdkModel("deepinfra", "zai-org/GLM-5.2", {
+        DEEPINFRA_API_KEY: "test-key",
+    });
+    assert.notEqual(sdk?.languageModel, undefined);
+    assert.deepEqual(sdk?.normalizeCharge?.({
+        usage: { estimated_cost: 5.04e-5 },
+        response: { id: "response-1" },
+    }), {
+        kind: "authoritative",
+        amount: { amount: "0.0000504", currency: "USD" },
+        usdEquivalent: "0.0000504",
+        source: "DeepInfra response usage.estimated_cost",
+    });
+});
+
 test("createSdkModel expands catalog endpoint variables without treating them as credentials", () => {
     const sdk = createSdkModel("cloudflare", "@cf/google/gemma-4-26b-a4b-it", {
         CLOUDFLARE_ACCOUNT_ID: "account",

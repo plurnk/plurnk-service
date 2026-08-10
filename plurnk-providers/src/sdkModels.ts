@@ -133,6 +133,7 @@ export const createSdkModel = (
         case "@ai-sdk/deepinfra":
             return {
                 languageModel: createDeepInfra({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).languageModel(model),
+                ...(normalizeCharge === undefined ? {} : { normalizeCharge }),
                 catalog,
             };
         case "@ai-sdk/google":

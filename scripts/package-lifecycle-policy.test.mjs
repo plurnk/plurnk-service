@@ -53,6 +53,7 @@ test("external, release, and forensic test commands remain explicitly classified
         "test:live": "node --test test/live/*.test.js",
         "test:live:specimen": "node test/live-specimen.js",
         "test:demo": "node --test test/demo/*.test.js",
+        "test:providersPing": "node scripts/providers-ping.js",
         "test:llama": "node --test test/llama/*.test.js",
         "test:installation": "node scripts/test-installation.js",
     };

@@ -62,11 +62,26 @@ const openRouterCharge: AuthoritativeChargeNormalizer = ({ providerMetadata }) =
     };
 };
 
+const deepInfraCharge: AuthoritativeChargeNormalizer = ({ usage }) => {
+    const wireUsage = recordOf(usage);
+    if (wireUsage === null || !("estimated_cost" in wireUsage)) return undefined;
+    const cost = wireUsage.estimated_cost;
+    if (typeof cost !== "number") throw new TypeError("DeepInfra usage.estimated_cost must be numeric");
+    const amount = decimalFromNumber(cost, "DeepInfra usage.estimated_cost");
+    return {
+        kind: "authoritative",
+        amount: { amount, currency: "USD" },
+        usdEquivalent: amount,
+        source: "DeepInfra response usage.estimated_cost",
+    };
+};
+
 export const authoritativeChargeNormalizer = (
     sdkPackage: string,
 ): AuthoritativeChargeNormalizer | undefined => {
     switch (sdkPackage) {
         case "@ai-sdk/xai": return xaiCharge;
+        case "@ai-sdk/deepinfra": return deepInfraCharge;
         case "@openrouter/ai-sdk-provider": return openRouterCharge;
         default: return undefined;
     }

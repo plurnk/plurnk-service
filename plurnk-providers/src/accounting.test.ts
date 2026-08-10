@@ -30,6 +30,17 @@ test("OpenRouter response cost normalizes without rate reconstruction", () => {
     });
 });
 
+test("DeepInfra's documented response estimate wins over local rate reconstruction", () => {
+    const normalize = authoritativeChargeNormalizer("@ai-sdk/deepinfra");
+    assert.notEqual(normalize, undefined);
+    assert.deepEqual(normalize!(evidence({ usage: { estimated_cost: 5.04e-5 } })), {
+        kind: "authoritative",
+        amount: { amount: "0.0000504", currency: "USD" },
+        usdEquivalent: "0.0000504",
+        source: "DeepInfra response usage.estimated_cost",
+    });
+});
+
 test("response cost normalization is an explicit adapter capability", () => {
     assert.equal(authoritativeChargeNormalizer("@ai-sdk/anthropic"), undefined);
     assert.equal(
@@ -39,5 +50,9 @@ test("response cost normalization is an explicit adapter capability", () => {
     assert.throws(
         () => authoritativeChargeNormalizer("@ai-sdk/xai")!(evidence({ usage: { cost_in_usd_ticks: "1" } })),
         /cost_in_usd_ticks must be numeric/,
+    );
+    assert.throws(
+        () => authoritativeChargeNormalizer("@ai-sdk/deepinfra")!(evidence({ usage: { estimated_cost: "1" } })),
+        /estimated_cost must be numeric/,
     );
 });

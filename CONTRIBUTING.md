@@ -19,6 +19,7 @@ npm test
 | `npm run test:<tier>` | Run one canonical `lint`, `unit`, or `intg` tier. |
 | `npm run test:live` | Long-running real-model wire assertions. |
 | `npm run test:demo` | Long-running real-model outcome assertions. |
+| `npm run test:providersPing` | Paid one-call probe of each keyed provider; retains sanitized response evidence outside the checkout. |
 | `npm run config:list` | Validate and list configuration ownership and source classes without values. |
 | `npm run candidate -- …` | Run an explicit client checkout against the source-built daemon. |
 

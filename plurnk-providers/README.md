@@ -142,3 +142,6 @@ record of that procedure, never a substitute for it.
 npm run test:lint -w @plurnk/plurnk-providers
 npm run test:unit -w @plurnk/plurnk-providers
 ```
+
+`npm run test:providersPing` is an explicit paid diagnostic; it calls each
+keyed provider once and prints the retained sanitized evidence directory.
