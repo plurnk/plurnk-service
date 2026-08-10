@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { PlurnkParser, PlurnkParseError, parsePath, Validator } from "../../src/index.ts";
+import { PlurnkParser, PlurnkParseError, parsePath, parseResourceSelection, Validator } from "../../src/index.ts";
 
 const statementsOf = (input: string) =>
     PlurnkParser.parseStatements(input).items.filter((i) => i.kind === "statement");
@@ -77,6 +77,49 @@ test("COPY/MOVE destinations use the same target escape layer", () => {
     if (destination?.kind !== "url") assert.fail("expected URL destination");
     assert.equal(destination.raw, "https://example.test/archive?literal=)&encoded=%29");
     assert.equal(destination.query, "literal=)&encoded=%29");
+});
+
+// {§destination-scope-boundary}
+test("COPY/MOVE reject close-fence residue after a destination scope", () => {
+    assert.throws(
+        () => parseResourceSelection("worker:///slice.md<0>:"),
+        (error) => error instanceof PlurnkParseError
+            && error.source === "visitor"
+            && error.message === "COPY/MOVE destination scope must immediately precede the operation close; remove the extra `:` after the scope",
+    );
+
+    for (const op of ["COPY", "MOVE"] as const) {
+        const result = PlurnkParser.parseStatements(`<<${op}(worker:///src.md):worker:///slice.md<0>::${op}`);
+        assert.equal(
+            result.items.some((item) => item.kind === "statement"),
+            false,
+            `${op} must not admit the malformed destination as a literal identity`,
+        );
+        const errors = result.items.filter((item) => item.kind === "error");
+        assert.equal(errors.length, 1);
+        assert.equal(errors[0]?.error.source, "visitor");
+        assert.match(errors[0]?.error.message ?? "", /destination scope must immediately precede the operation close/);
+    }
+});
+
+test("destination-scope admission leaves angle brackets in other URL contexts untouched", () => {
+    const global = parsePath("https://example.test/a<0>:");
+    if (global?.kind !== "url") assert.fail("expected global URL admission");
+    assert.equal(global.raw, "https://example.test/a<0>:");
+    assert.equal(global.pathname, "/a%3C0%3E:");
+
+    const cases = [
+        ["COPY", "https://example.test/a<draft>/next"],
+        ["MOVE", "https://example.test/a<0>:tail"],
+        ["COPY", "https://example.test/a%3C0%3E:"],
+    ] as const;
+    for (const [op, destination] of cases) {
+        const result = PlurnkParser.parseStatements(`<<${op}(worker:///src.md):${destination}:${op}`);
+        assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], `${op} ${destination}`);
+        const item = result.items.find((candidate) => candidate.kind === "statement");
+        if (item?.kind !== "statement" || item.statement.op !== op) assert.fail(`expected ${op}`);
+        assert.equal(item.statement.body?.target.raw, destination);
+    }
 });
 
 test("ex 12 — EDIT with empty body (clear)", () => {

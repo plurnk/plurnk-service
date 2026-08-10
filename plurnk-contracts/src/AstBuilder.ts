@@ -81,6 +81,7 @@ type ExecSlots = { signal: string | null; target: ParsedPath | null; lineMarker:
 
 export default class AstBuilder {
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
+    static #RESOURCE_SELECTION_TAIL = /(<-?\d+(?:\.\d+)?(?:(?:-|, ?)-?\d+(?:\.\d+)?)*>)(:*)$/;
     // Compile-only RFC 9535 admission using the runtime's JSONPath engine. {§matcher-prefix-claims}
     static #JSONPATH = new JSONPathEnvironment();
 
@@ -495,8 +496,16 @@ export default class AstBuilder {
         pos: Position = { line: 0, column: 0 },
     ): ResourceSelection | null {
         if (raw.length === 0) return null;
-        const markerMatch = /(<-?\d+(?:\.\d+)?(?:(?:-|, ?)-?\d+(?:\.\d+)?)*>)$/.exec(raw);
+        const markerMatch = AstBuilder.#RESOURCE_SELECTION_TAIL.exec(raw);
         const markerText = markerMatch?.[1] ?? null;
+        if ((markerMatch?.[2].length ?? 0) > 0) {
+            throw new PlurnkParseError(
+                pos.line,
+                pos.column,
+                "visitor",
+                "COPY/MOVE destination scope must immediately precede the operation close; remove the extra `:` after the scope",
+            );
+        }
         const pathText = markerText === null ? raw : raw.slice(0, -markerText.length);
         const target = AstBuilder.parsePath(pathText, pos);
         if (target === null) return null;

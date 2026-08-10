@@ -9,7 +9,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Digest from "../../src/digest/Digest.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection, seedEntryWithChannel } from "./_helpers.ts";
 
 const valid = (body = "done", usage?: Partial<ProviderUsage>): MockResponse => ({
     assistant: {
@@ -422,6 +422,63 @@ test("a bounded malformed operation prevents same-turn completion until the mode
                 { op: "SEND", status_rx: 409 },
             ],
         );
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§destination-scope-boundary} a malformed COPY destination cannot dispatch or materialize", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        await seedEntryWithChannel(db, {
+            workspaceId,
+            scheme: "worker",
+            pathname: "/src.md",
+            content: "one\ntwo\nthree",
+            mimetype: "text/markdown",
+        });
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [invalid([
+                "<<PLAN:copy the selected source lines:PLAN",
+                "<<COPY(worker:///src.md)<2,3>:worker:///slice.md<0>::COPY",
+                "<<SEND[102]:inspect the copy result:SEND",
+            ].join("\n"))],
+        });
+
+        const result = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "copy lines two and three" }],
+        });
+
+        assert.equal(result.emissionAttempts, 1, "the bounded interior error retains the surrounding turn");
+        assert.equal(result.status, 102);
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({
+            turn_id: result.turnId,
+        });
+        assert.equal(
+            rows.some(({ op, origin }) => op === "COPY" && origin === "model"),
+            false,
+            "the malformed selection never becomes a dispatchable COPY AST",
+        );
+        assert.ok(
+            rows.some(({ op, origin, status_rx }) => op === "error" && origin === "model" && status_rx === 400),
+            "the destination admission error remains observable",
+        );
+        const entries = await db.test_list_entries_by_workspace_workspace_pathname.all<{ scheme: string; pathname: string }>({
+            workspace_id: workspaceId,
+        });
+        assert.equal(entries.some(({ pathname }) => pathname === "/slice.md"), false);
+        assert.equal(entries.some(({ pathname }) => pathname === "/slice.md%3C0%3E:"), false);
+        const source = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+            pathname: "/src.md",
+            scheme: "worker",
+            name: "body",
+        });
+        assert.equal(source?.content, "one\ntwo\nthree", "admission fails before any source or destination mutation");
     } finally {
         await db.close();
     }

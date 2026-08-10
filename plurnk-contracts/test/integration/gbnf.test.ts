@@ -455,6 +455,27 @@ test("GBNF: pattern bodies cannot begin with the close delimiter - triple-colon 
     if (parsed.items[0]?.kind === "statement") assert.deepEqual(parsed.items[0].statement.body, { dialect: "glob", raw: ":" });
 });
 
+// {§destination-scope-boundary}
+test("GBNF: COPY/MOVE destination scopes meet the close fence without colon residue", () => {
+    for (const op of ["COPY", "MOVE"]) {
+        assert.equal(
+            derives("statement", `<<${op}(worker:///src.md):worker:///slice.md<0>:${op}`),
+            true,
+            `${op} retains the canonical destination scope`,
+        );
+        assert.equal(
+            derives("statement", `<<${op}(worker:///src.md):worker:///slice.md<0>::${op}`),
+            false,
+            `${op} excludes scope-following close-fence residue`,
+        );
+        assert.equal(
+            derives("statement", `<<${op}(worker:///src.md):worker:///slice.md%3C0%3E::${op}`),
+            true,
+            `${op} retains an encoded literal scope-shaped suffix followed by a literal colon`,
+        );
+    }
+});
+
 test("GBNF: mid-batch comms SENDs derive (targeted/pathless, NON-disposition codes) before the final", () => {
     const batch = "<<PLAN:plan:PLAN\n<<SEND[400](agent://supervisor):decomposition incomplete:SEND\n<<SEND[400]:{\"reason\":\"bad op\"}:SEND\n<<SEND[102]:done:SEND";
     assert.equal(derivesTurn(batch), true);

@@ -281,7 +281,7 @@ Mutation semantics:
 - An empty body deletes the selected text.
 - `<0>` prepends and `<-1>` appends.
 - `<SL,SC,EL,EC>` deletes the exact exclusive-end region and inserts the body at its start.
-- COPY and MOVE parse the body as a destination `ResourceSelection`: a target plus an optional destination scope. Header target, fragment, and scope independently select the source resource, channel, and region.
+- §destination-scope-boundary COPY and MOVE parse the body as a destination `ResourceSelection`: a target plus an optional destination scope. A destination scope is final body content; a scope-shaped suffix followed only by one or more colons is rejected as close-fence residue rather than reinterpreted as target data. Scope-shaped text elsewhere remains target data, and a URL requiring the reserved terminal spelling percent-encodes its angle brackets. Header target, fragment, and scope independently select the source resource, channel, and region.
 
 ### §operation-observation Per-operation observations
 

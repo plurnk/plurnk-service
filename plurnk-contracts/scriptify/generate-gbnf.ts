@@ -64,13 +64,19 @@ const bodyOther = (excluded: string, singleLine = false): GItem =>
 // the body; the statement's trailing close literal is the unique occurrence. Close
 // literals are ":" + word — no internal ":" and no borders, so on a mismatch the
 // only live restart is ":" → state 1.
-const bodyRules = (model: GModel, name: string, close: string, singleLine = false): void => {
+const bodyRules = (
+    model: GModel,
+    name: string,
+    close: string,
+    singleLine = false,
+    canonicalExclusions = "",
+): void => {
     for (let k = 0; k < close.length; k++) {
         const expected = close[k];
         const alts: GRule = [];
         if (k + 1 < close.length) alts.push([lit(expected), ref(`${name}-b${k + 1}`)]);
         if (k > 0) alts.push([lit(":"), ref(`${name}-b1`)]);
-        alts.push([bodyOther(k === 0 ? ":" : `:${expected}`, singleLine), ref(`${name}-b0`)]);
+        alts.push([bodyOther((k === 0 ? ":" : `:${expected}`) + canonicalExclusions, singleLine), ref(`${name}-b0`)]);
         alts.push([]);
         model.set(`${name}-b${k}`, alts);
     }
@@ -228,9 +234,18 @@ export const buildModel = (): GModel => {
             const open = `<<${op}${suffix}`;
             const close = `:${op}${suffix}`;
             const patternBody = PATTERN_OPS.has(op);
-            bodyRules(model, name, close, patternBody);
+            const resourceSelectionBody = op === "COPY" || op === "MOVE";
+            // COPY/MOVE canon reserves raw `<` for the optional terminal destination
+            // scope; literal URL angle brackets use the existing `%3C` spelling.
+            // Typed ingestion reserves only the ambiguous terminal shape. {§destination-scope-boundary}
+            bodyRules(model, name, close, patternBody, resourceSelectionBody ? "<" : "");
             const bodyStart = patternBody ? patternBodyStartRule(model, name) : `${name}-b0`;
-            const body = [lit(":"), ref(bodyStart), lit(close)];
+            const body = [
+                lit(":"),
+                ref(bodyStart),
+                ...(resourceSelectionBody ? [opt(ref("line"))] : []),
+                lit(close),
+            ];
             if (op === "SEND") {
                 // Mid SENDs carry no disposition; terminal SENDs require one disposition
                 // and a non-empty body. Only [202] admits a park scope. Runtime obligation
