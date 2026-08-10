@@ -31,7 +31,7 @@ A turn concatenates complete OPs; reference examples are alternatives unless sho
 
 | OP   | purpose                        | `[signal]`   | `(path)`                   | `<scope>`      | `body`                |
 |------|--------------------------------|--------------|----------------------------|----------------|-----------------------|
-| PLAN | open every turn with goals     | -            | -                          | -              | goals (list or prose) |
+| PLAN | extend working state           | -            | -                          | -              | plans and priorities |
 | FIND | list matching targets          | filter tags? | target or glob             | result range?  | pattern?              |
 | READ | retrieve target content        | filter tags? | target                     | text region?   | -                     |
 | EDIT | create or edit scoped content  | apply tags?  | file or entry              | text region?   | literal text          |
@@ -44,6 +44,8 @@ A turn concatenates complete OPs; reference examples are alternatives unless sho
 | FORK | fork current worker            | branch?      | `worker://name`            | -              | prompt                |
 | KILL | delete or terminate            | code?        | target, including log item | -              | -                     |
 | SEND | close turn with submit code    | code?        | recipient?                 | timeout, poll? | message               |
+
+YOU MUST use PLAN to extend your working state with new material conclusions or unresolved questions alongside this turn's plans and priorities.
 
 * Files you create are tracked automatically.
 * EXEC creates an output stream visible in subsequent turns.
@@ -123,7 +125,7 @@ Text scope (Line, StartLine, StartColumn, EndLine, EndColumn) has one meaning fo
 ### The Log
 
 The log is your context and you are its curator: what you retrieve stays until you FOLD it, and folded bodies are hidden, not gone — OPEN brings them back.
-When the packet runs out of room, nothing new lands until you make room: FOLD what you are done with.
+YOU SHOULD FOLD superseded PLANs and READs made stale by later changes before they pollute or exhaust the packet.
 KILL permanently erases addressed log items.
 
 Examples:
