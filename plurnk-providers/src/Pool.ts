@@ -128,7 +128,7 @@ export default class Pool implements Provider {
     calculateCost(usage: ProviderUsage): number { return this.#backends[0].calculateCost(usage); }
     calculateCharge(usage: ProviderUsage): Exclude<ProviderCost, { kind: "authoritative" }> {
         const backend = this.#backends[0];
-        return resolveProviderCost(undefined, backend.calculateCharge?.(usage), () => backend.calculateCost(usage)) as Exclude<ProviderCost, { kind: "authoritative" }>;
+        return resolveProviderCost(undefined, backend.calculateCharge?.(usage)) as Exclude<ProviderCost, { kind: "authoritative" }>;
     }
 
     // --- dispatch ---

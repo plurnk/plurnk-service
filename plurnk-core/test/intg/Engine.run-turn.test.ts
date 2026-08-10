@@ -129,7 +129,7 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: recorded turn cost reflects reasoning tokens (calculateCost bills them)", async () => {
+test("Engine.runTurn: reported fallback cost includes reasoning tokens", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const usage = { prompt: 100, completion: 50, reasoning: 200, cached: 0, total: 350 };
@@ -146,22 +146,21 @@ test("Engine.runTurn: recorded turn cost reflects reasoning tokens (calculateCos
         });
         assert.equal(result.status, 200);
 
-        const turn = await db.test_get_turn.get<{ usage_cost: string; usage_cost_usd: number | null; usage_completion: number }>({ id: result.turnId });
+        const turn = await db.test_get_turn.get<{ usage_cost: string; usage_cost_usd: number | null; usage_completion: number; usage_reasoning: number }>({ id: result.turnId });
         if (turn === undefined) throw new Error("turn not found");
         // calculateCost charges prompt+completion+reasoning = 100+50+200 = $0.35.
         // Strip reasoning from the usage the engine forwards and it falls
         // to $0.15 — so $0.35 proves reasoning survived into the recorded cost.
-        // The reasoning COUNT is never stored (no column); the cost is its
-        // only forensic trace.
         assert.equal(provider.calculateCost({ ...usage, reasoning: 0 }), 0.15,
             "control: identical usage minus reasoning excludes the reasoning charge");
-        assert.equal(turn.usage_cost_usd, null, "an estimated rate calculation is not a settled charge");
+        assert.equal(turn.usage_cost_usd, 0.35);
         assert.deepEqual(JSON.parse(turn.usage_cost), [{
             kind: "estimated",
             usd: "0.35",
             source: "reasoning billing fixture",
         }], "the projection still prices the full usage, including reasoning");
         assert.equal(turn.usage_completion, 50, "completion is still recorded separately as a raw count");
+        assert.equal(turn.usage_reasoning, 200, "reasoning is recorded separately as a raw count");
     } finally { await db.close(); }
 });
 

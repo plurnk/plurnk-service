@@ -187,7 +187,6 @@ test("{§machine-processes-fork-cost} — a fork inherits the log but spends no 
         assert.ok(branchLoop !== undefined);
         const branchUsage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(branchLoop.id);
         assert.equal(branchUsage.costUsd, 0);
-        assert.equal(branchUsage.projectedCostUsd, 0);
         assert.deepEqual(branchUsage.costs, [], "copied history carries no provider-call monetary evidence");
     } finally { db.close(); }
 });

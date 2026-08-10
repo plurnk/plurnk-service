@@ -45,7 +45,6 @@ interface Provider {
   calculateCost(usage: ProviderUsage): number;
   calculateCharge?(usage: ProviderUsage): Exclude<ProviderCost, { kind: "authoritative" }>;
   generate(args: GenerateArgs): Promise<ProviderResponse>;
-  reconcileAccounting?(scope: ProviderAccountingScope, signal?: AbortSignal): Promise<ProviderAccountingResult>;
 }
 ```
 
@@ -75,34 +74,20 @@ hard; consumers do not reinterpret it as ordinary unavailability.
 endpoint exposes its real vocabulary. Content tokenization does not substitute
 for complete-request measurement.
 
-§provider-monetary-evidence Monetary evidence has one normalization boundary
-and two acquisition modes:
+§provider-monetary-evidence One precedence path converts each provider response
+into {§provider-cost} evidence:
 
-| Mode | Provider responsibility | Consumer responsibility |
+| Precedence | Evidence | Result |
 | --- | --- | --- |
-| Response-native | Extract a documented settled charge from the represented call and return `ProviderResponse.charge`. | Preserve the charge beside that call. |
-| Correlated ledger | Map the opaque accounting scope onto vendor correlation, query the provider's billing authority, and return settled or pending. | Create durable scope/call identities before I/O and preserve the scope result separately from call evidence. |
+| 1 | A documented monetary field on that response | The adapter normalizes it as `ProviderResponse.charge`; its decimal USD equivalent wins. |
+| 2 | Exact response usage and the exact model's Models.dev rates | `calculateCharge` returns estimated USD, or explicit free when every applicable rate is zero. |
+| 3 | Neither | Unknown; no cost is reported. |
 
-A response charge wins over every local calculation. Otherwise
-`calculateCharge` returns estimated, explicitly free, or unknown evidence under
-{§provider-cost}. The numeric `calculateCost` method remains only as a frozen
-1.x compatibility surface: a positive value adapts to an estimate, while zero
-adapts to unknown because it cannot prove free. `providerCostUsd` projects only
-settled authoritative/free evidence; `providerProjectedCostUsd` is the distinct
-best-known operational projection that may include estimates.
-
-§provider-accounting-reconciliation A correlated scope is stable across every
-generation operation and transport retry in one consumer loop. Its calls have
-separate durable identities. `reconcileAccounting` receives only those opaque
-identities, timestamps, normalized usage, model, and attempt count; provider
-adapters alone know vendor headers, credentials, account discovery, billing
-endpoints, ingestion polling, and response fields. A settled scope total is not
-allocated across calls and supersedes their monetary sum only at scope and
-higher rollups. It is the provider's exact rated usage subtotal at the recorded
-evaluation time, not a claim of invoice finality. `pending` is explicit and
-never becomes zero merely because issued calls have not appeared in the ledger;
-provider-declared incomplete attribution cannot settle. A provider without a
-documented scoped billing authority omits the capability.
+Models.dev is the sole supported fallback rate table. Missing usage or rates
+never proves free. The numeric `calculateCost` method remains callable only as a
+frozen 1.x compatibility surface and is not a monetary-reporting authority.
+`providerCostUsd` exposes authoritative, estimated, and free evidence as decimal
+USD and returns `null` for unknown evidence.
 
 ### Generation
 
@@ -112,8 +97,7 @@ documented scoped billing authority omits the capability.
 - caller cancellation through `signal`;
 - optional `grammar` and `maxTokens`;
 - standard `sampling` intent;
-- opaque attribution tags plus client, strike, workspace, loop, and turn metadata;
-- optional opaque durable accounting scope and call identities.
+- opaque attribution tags plus client, strike, workspace, loop, and turn metadata.
 
 A successful return carries the model's raw content and reasoning, normalized
 usage, normalized finish reason, model identity, opaque evidence, optional
@@ -214,8 +198,6 @@ The universal groups are:
 - request, stream-idle, retry, and probe budgets;
 - local GBNF and llama-server capability pins;
 - context-window and generation-envelope overrides;
-- explicit input, cached-input, and output USD-per-million rates for models
-  absent from the snapshot or deliberate operator overrides;
 - opt-in logprob and raw-body capture.
 
 Operator secrets and machine-specific values never belong in committed
@@ -237,12 +219,11 @@ Provider and model facts resolve independently:
 | Context window       | Catalog metadata or a local endpoint probe.            | `PLURNK_PROVIDERS_CONTEXT_WINDOW`.                   | Minimum when both exist; the sole value otherwise. A cataloged cloud miss fails construction; a compatible probe miss remains `null` with one warning. |
 | Completion envelope  | Catalog `maxOutput`; there is no live limit probe.     | `PLURNK_PROVIDERS_COMPLETION_RESERVE`.               | An absolute reserve wins. A percentage derives from the effective window and is capped by catalog `maxOutput` when present.                            |
 | Reasoning capability | Catalog `reasoning: true`, exposed by snapshot lookup. | Runtime activation, reserve, and adapter wire style. | The catalog bit is informational; provider construction neither activates nor blocks reasoning from it.                                                |
-| Estimated USD rates  | Catalog input, output, and optional cache-read rates.  | Complete input/output rate override; cache optional. | Operator rates win; otherwise catalog rates apply. Missing rates produce unknown evidence; explicit all-zero rates produce free evidence. No live price fetch exists. |
+| Estimated USD rates  | Models.dev input, output, and optional cache-read rates. | None. | Missing rates produce unknown evidence; explicit all-zero rates produce free evidence. No live price fetch exists. |
 
-The cached-input override defaults to the explicit input rate when omitted.
-Catalog cache-read cost likewise defaults to catalog input cost. Catalog
-cache-write cost remains snapshot information; the current usage estimator has
-no cache-write quantity to price.
+Models.dev cache-read cost defaults to its input cost when omitted. Cache-write
+cost remains snapshot information; the current usage record has no cache-write
+quantity to price.
 
 `instantiateProvider` resolves in this order:
 

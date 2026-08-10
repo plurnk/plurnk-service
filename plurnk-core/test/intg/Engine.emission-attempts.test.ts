@@ -56,7 +56,7 @@ const setup = async (dbPath?: string) => {
     return { db, workspaceId, workerId, loopId, engine };
 };
 
-test("provider I/O receives the attempt identity only after its pending row is durable", async () => {
+test("provider I/O begins only after its pending attempt row is durable", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
@@ -65,18 +65,14 @@ test("provider I/O receives the attempt identity only after its pending row is d
         });
         const generate = provider.generate.bind(provider);
         provider.generate = async (args) => {
-            assert.notEqual(args.accounting, undefined);
             const attempts = await db.test_turn_attempts.all<{
-                accounting_id: string;
                 state: string;
                 completed_at: string | null;
             }>({ turn_id: (await db.test_turns_get_full.get<{ id: number }>({ loop_id: loopId }))!.id });
-            assert.deepEqual(attempts.map(({ accounting_id, state, completed_at }) => ({
-                accounting_id,
+            assert.deepEqual(attempts.map(({ state, completed_at }) => ({
                 state,
                 completed_at,
             })), [{
-                accounting_id: args.accounting!.callId,
                 state: "pending",
                 completed_at: null,
             }]);
@@ -101,9 +97,9 @@ test("invalid emissions retry beneath one turn against the identical packet, the
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("prose without a turn", { prompt: 10, completion: 2, total: 12 }),
-                invalid("<<PLAN:started but never ended:PLAN", { prompt: 20, completion: 3, total: 23 }),
-                valid("accepted", { prompt: 30, completion: 4, total: 34 }),
+                invalid("prose without a turn", { prompt: 10, completion: 2, reasoning: 1, cached: 4, total: 13 }),
+                invalid("<<PLAN:started but never ended:PLAN", { prompt: 20, completion: 3, reasoning: 2, cached: 5, total: 25 }),
+                valid("accepted", { prompt: 30, completion: 4, reasoning: 3, cached: 6, total: 37 }),
             ],
         });
 
@@ -139,13 +135,17 @@ test("invalid emissions retry beneath one turn against the identical packet, the
         const turn = await db.test_get_turn.get<{
             usage_prompt: number;
             usage_completion: number;
+            usage_reasoning: number;
+            usage_cached: number;
             usage_cost_usd: number | null;
             usage_cost: string;
             packet: string;
         }>({ id: result.turnId });
         assert.equal(turn?.usage_prompt, 60, "turn accounting includes every billed attempt");
         assert.equal(turn?.usage_completion, 9);
-        assert.equal(turn?.usage_cost_usd, null, "catalog-rate estimates are not settled provider charges");
+        assert.equal(turn?.usage_reasoning, 6);
+        assert.equal(turn?.usage_cached, 15);
+        assert.equal(turn?.usage_cost_usd, 0.075, "every response-bearing attempt contributes its reported or Models.dev-derived cost");
         const packet = JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } };
         assert.equal(packet.assistant?.content, "<<PLAN:complete the task:PLAN\n<<SEND[200]:accepted:SEND");
         assert.doesNotMatch(JSON.stringify(packet), /prose without|never ended/, "rejected emissions never enter packet history");
@@ -156,8 +156,10 @@ test("invalid emissions retry beneath one turn against the identical packet, the
 
         const loopUsage = await engine.loopUsage(loopId);
         assert.equal(loopUsage.promptTokens, 60, "aggregate usage includes retries");
-        assert.equal(loopUsage.costUsd, null);
-        assert.equal(loopUsage.projectedCostUsd, 0.069);
+        assert.equal(loopUsage.completionTokens, 9);
+        assert.equal(loopUsage.reasoningTokens, 6);
+        assert.equal(loopUsage.cachedTokens, 15);
+        assert.equal(loopUsage.costUsd, 0.075);
         assert.equal(loopUsage.contextTokens, 30, "context occupancy is the latest attempt, not the billed sum");
     } finally {
         await db.close();
@@ -199,7 +201,6 @@ test("a provider-authoritative charge is the settled turn and loop cost", async 
         }]);
         const loopUsage = await engine.loopUsage(loopId);
         assert.equal(loopUsage.costUsd, 0.0000123456);
-        assert.equal(loopUsage.projectedCostUsd, 0.0000123456);
     } finally {
         await db.close();
     }
@@ -751,7 +752,6 @@ test("a provider failure after a rejected emission preserves both issued calls a
             { kind: "unknown", reason: "provider call failed without response-bearing charge evidence" },
         ]);
         const attempts = await db.test_turn_attempts.all<{
-            accounting_id: string;
             state: "response" | "error";
             accepted: number | null;
             failure: string | null;
@@ -760,7 +760,6 @@ test("a provider failure after a rejected emission preserves both issued calls a
             { state: "response", accepted: 0 },
             { state: "error", accepted: null },
         ]);
-        assert.equal(new Set(attempts.map(({ accounting_id }) => accounting_id)).size, 2);
         assert.equal(JSON.parse(attempts[1]!.failure!).status, 503);
     } finally {
         await db.close();
@@ -847,7 +846,7 @@ test("#161: a complete-looking resource-interrupted attempt is persisted but nev
         assert.equal(turn?.usage_completion, 7);
         assert.equal(turn?.usage_reasoning, 2);
         assert.equal(turn?.usage_cached, 3);
-        assert.equal(turn?.usage_cost_usd, null, "an estimated interrupted-attempt cost is not settled money");
+        assert.equal(turn?.usage_cost_usd, 0.02, "response-bearing interrupted attempts retain their supported fallback cost");
         assert.equal(turn?.finish_reason, "resource_interrupted");
         assert.equal(turn?.model, "interrupted-model");
         assert.deepEqual(JSON.parse(turn?.meta ?? "{}"), { requestId: "interrupted-1" });
@@ -868,7 +867,7 @@ test("#161: a complete-looking resource-interrupted attempt is persisted but nev
         assert.equal(attempts.length, 1);
         assert.equal(attempts[0]!.accepted, 0);
         assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [], "the frame was complete but inadmissible");
-        assert.equal(attempts[0]!.usage_cost_usd, null);
+        assert.equal(attempts[0]!.usage_cost_usd, 0.02);
         assert.equal(attempts[0]!.finish_reason, "resource_interrupted");
         assert.equal(attempts[0]!.model, "interrupted-model");
         const recordedAttempt = JSON.parse(attempts[0]!.response) as ProviderAttempt;

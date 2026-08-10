@@ -90,15 +90,48 @@ export const normalizeUsage = (raw: RawUsage | null | undefined, reasoningText =
 // Conventional provider pricing: USD per million tokens, matching Models.dev.
 export type TokenRates = { input: number; output: number; cached: number };
 
+const decimalParts = (value: number): { coefficient: bigint; scale: number } => {
+    if (!Number.isFinite(value) || value < 0) {
+        throw new TypeError("token rates must be finite non-negative numbers");
+    }
+    const match = /^(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(String(value));
+    if (match === null) throw new TypeError(`cannot represent token rate ${value} as a decimal`);
+    const fraction = match[2] ?? "";
+    const exponent = Number(match[3] ?? "0");
+    const scale = fraction.length - exponent;
+    const coefficient = BigInt(`${match[1]}${fraction}`);
+    return scale < 0
+        ? { coefficient: coefficient * 10n ** BigInt(-scale), scale: 0 }
+        : { coefficient, scale };
+};
+
+const decimalString = (coefficient: bigint, scale: number): string => {
+    const digits = String(coefficient).padStart(scale + 1, "0");
+    if (scale === 0) return digits;
+    const integer = digits.slice(0, -scale);
+    const fraction = digits.slice(-scale).replace(/0+$/, "");
+    return fraction.length === 0 ? integer : `${integer}.${fraction}`;
+};
+
+// Models.dev rates are decimal USD-per-million values. Calculate their
+// projection as decimal arithmetic so ProviderCost preserves the table and
+// exact response counts without binary floating-point artifacts.
+export const calculateCostUsdDecimal = (usage: ProviderUsage, rates: TokenRates): string => {
+    const parts = [rates.input, rates.cached, rates.output].map(decimalParts);
+    const rateScale = Math.max(...parts.map(({ scale }) => scale));
+    const [input, cached, output] = parts.map(({ coefficient, scale }) =>
+        coefficient * 10n ** BigInt(rateScale - scale));
+    const nonCachedPrompt = Math.max(0, usage.prompt - usage.cached);
+    const outputTokens = usage.completion + usage.reasoning;
+    const coefficient = BigInt(nonCachedPrompt) * input!
+        + BigInt(usage.cached) * cached!
+        + BigInt(outputTokens) * output!;
+    return decimalString(coefficient, rateScale + 6);
+};
+
 // The one cost formula every provider uses: non-cached prompt at the input
 // rate, cached prompt at the cache rate, and billable output (completion +
 // reasoning) at the output rate.
 export const calculateCostUsd = (usage: ProviderUsage, rates: TokenRates): number => {
-    const nonCachedPrompt = Math.max(0, usage.prompt - usage.cached);
-    const output = usage.completion + usage.reasoning;
-    return (
-        nonCachedPrompt * rates.input
-        + usage.cached * rates.cached
-        + output * rates.output
-    ) / 1_000_000;
+    return Number(calculateCostUsdDecimal(usage, rates));
 };

@@ -110,16 +110,6 @@ CREATE TABLE IF NOT EXISTS loops (
     provider_spec TEXT NOT NULL DEFAULT 'null' CHECK (json_valid(provider_spec)),
     child_provider_spec TEXT NOT NULL DEFAULT 'null' CHECK (json_valid(child_provider_spec)),
     max_turns INTEGER NOT NULL DEFAULT 50 CHECK (max_turns >= -1),
-    -- {§tokenomics-provider-usage}: a globally unique opaque scope exists before
-    -- provider I/O. `unscoped` means per-call evidence is authoritative;
-    -- open/pending reserve the aggregate for provider-ledger settlement.
-    accounting_scope_id TEXT NOT NULL DEFAULT (lower(hex(randomblob(16)))) CHECK (length(accounting_scope_id) = 32),
-    accounting_started_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    accounting_state TEXT NOT NULL DEFAULT 'unscoped' CHECK (accounting_state IN ('unscoped', 'open', 'pending', 'settled')),
-    accounting_charge TEXT CHECK (accounting_charge IS NULL OR (json_valid(accounting_charge) AND json_type(accounting_charge) = 'object')),
-    accounting_cost_usd REAL CHECK (accounting_cost_usd IS NULL OR accounting_cost_usd >= 0),
-    accounting_detail TEXT CHECK (accounting_detail IS NULL OR length(accounting_detail) > 0),
-    accounting_evaluated_at TEXT,
     -- {§methods-loop-run-open-paths}: the initial prompt frame's selected paths,
     -- held here until turn 1 materializes that frame (string[] JSON).
     open_paths TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(open_paths)),
@@ -171,45 +161,12 @@ CREATE TABLE IF NOT EXISTS loops (
                 END
         END
     ),
-    CHECK (
-        (accounting_state IN ('unscoped', 'open')
-            AND accounting_charge IS NULL AND accounting_cost_usd IS NULL
-            AND accounting_detail IS NULL AND accounting_evaluated_at IS NULL)
-        OR
-        (accounting_state = 'pending'
-            AND accounting_charge IS NULL AND accounting_cost_usd IS NULL
-            AND accounting_detail IS NOT NULL)
-        OR
-        (accounting_state = 'settled'
-            AND accounting_charge IS NOT NULL AND accounting_cost_usd IS NOT NULL
-            AND accounting_detail IS NULL AND accounting_evaluated_at IS NOT NULL)
-    ),
     FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE,
     FOREIGN KEY (orphan_source_loop_id) REFERENCES loops(id)
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS loops_worker_id_sequence ON loops (worker_id, sequence);
 CREATE UNIQUE INDEX IF NOT EXISTS loops_orphan_source_loop_id ON loops (orphan_source_loop_id);
-CREATE UNIQUE INDEX IF NOT EXISTS loops_accounting_scope_id ON loops (accounting_scope_id);
-
-CREATE TRIGGER IF NOT EXISTS loops_accounting_identity_immutable
-BEFORE UPDATE OF accounting_scope_id, accounting_started_at ON loops
-BEGIN
-    SELECT RAISE(ABORT, 'loop accounting identity is immutable');
-END;
-
-CREATE TRIGGER IF NOT EXISTS loops_accounting_state_forward_only
-BEFORE UPDATE OF accounting_state ON loops
-WHEN NOT (
-    NEW.accounting_state = OLD.accounting_state
-    OR (OLD.accounting_state = 'unscoped' AND NEW.accounting_state = 'open')
-    OR (OLD.accounting_state = 'open' AND NEW.accounting_state IN ('pending', 'settled'))
-    OR (OLD.accounting_state = 'pending' AND NEW.accounting_state = 'settled')
-)
-BEGIN
-    SELECT RAISE(ABORT, 'loop accounting state may only advance');
-END;
-
 -- {§worker-scheme}: a loop crossing into a terminal status stamps terminated_at, so sibling
 -- workers pull the termination as a folded ambient delta — caught uniformly across every
 -- death-path (SEND, grinder, max-turns, strike, KILL). The stamp updates terminated_at,
@@ -308,7 +265,6 @@ CREATE TABLE IF NOT EXISTS turn_attempts (
     id               INTEGER NOT NULL PRIMARY KEY,
     turn_id          INTEGER NOT NULL,
     sequence         INTEGER NOT NULL CHECK (sequence >= 1),
-    accounting_id    TEXT    NOT NULL DEFAULT (lower(hex(randomblob(16)))) CHECK (length(accounting_id) = 32),
     state            TEXT    NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'response', 'error')),
     accepted         INTEGER          CHECK (accepted IS NULL OR accepted IN (0, 1)),
     response         TEXT             CHECK (response IS NULL OR json_valid(response)),
@@ -350,7 +306,6 @@ CREATE TABLE IF NOT EXISTS turn_attempts (
             AND usage_cost IS NOT NULL AND completed_at IS NOT NULL)
     ),
     UNIQUE (turn_id, sequence),
-    UNIQUE (accounting_id),
     FOREIGN KEY (turn_id) REFERENCES turns(id) ON DELETE CASCADE
 ) STRICT;
 
@@ -360,7 +315,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS turn_attempts_one_accepted_per_turn
     WHERE accepted = 1;
 
 CREATE TRIGGER IF NOT EXISTS turn_attempts_request_identity_immutable
-BEFORE UPDATE OF turn_id, sequence, accounting_id, attributions, timestamp ON turn_attempts
+BEFORE UPDATE OF turn_id, sequence, attributions, timestamp ON turn_attempts
 BEGIN
     SELECT RAISE(ABORT, 'provider attempt request identity is immutable');
 END;
@@ -785,14 +740,11 @@ BEGIN
     UPDATE log_entries SET ambient_event_id = last_insert_rowid() WHERE id = NEW.id;
 END;
 
--- One loop has exactly one aggregate monetary interpretation. A correlated
--- provider settlement supersedes its call evidence; pending settlement is
--- unknown; otherwise the settled per-turn sum applies.
+-- One loop's cost is the complete sum of its provider attempts. One unknown
+-- contributing turn makes the aggregate unknown rather than silently zero.
 CREATE VIEW IF NOT EXISTS loop_costs AS
 SELECT l.id, l.worker_id,
        CASE
-           WHEN l.accounting_state = 'settled' THEN l.accounting_cost_usd
-           WHEN l.accounting_state IN ('open', 'pending') THEN NULL
            WHEN COUNT(t.id) FILTER (WHERE t.usage_cost_usd IS NULL) > 0 THEN NULL
            ELSE COALESCE(SUM(t.usage_cost_usd), 0)
        END AS cost_usd
@@ -868,37 +820,6 @@ BEGIN
            JOIN loops l ON l.worker_id = r.id
           WHERE l.id = NEW.loop_id
      );
-END;
-
-CREATE TRIGGER IF NOT EXISTS loops_cost_rollup_accounting_worker
-AFTER UPDATE OF accounting_state, accounting_cost_usd ON loops
-WHEN NEW.accounting_state IS NOT OLD.accounting_state
-  OR NEW.accounting_cost_usd IS NOT OLD.accounting_cost_usd
-BEGIN
-    UPDATE workers
-       SET cost_usd = (
-           SELECT CASE WHEN COUNT(*) FILTER (WHERE lc.cost_usd IS NULL) > 0
-                       THEN NULL ELSE COALESCE(SUM(lc.cost_usd), 0) END
-             FROM loop_costs lc
-            WHERE lc.worker_id = workers.id
-       )
-     WHERE id = NEW.worker_id;
-END;
-
-CREATE TRIGGER IF NOT EXISTS loops_cost_rollup_accounting_workspace
-AFTER UPDATE OF accounting_state, accounting_cost_usd ON loops
-WHEN NEW.accounting_state IS NOT OLD.accounting_state
-  OR NEW.accounting_cost_usd IS NOT OLD.accounting_cost_usd
-BEGIN
-    UPDATE workspaces
-       SET cost_usd = (
-           SELECT CASE WHEN COUNT(*) FILTER (WHERE lc.cost_usd IS NULL) > 0
-                       THEN NULL ELSE COALESCE(SUM(lc.cost_usd), 0) END
-             FROM loop_costs lc
-             JOIN workers r ON r.id = lc.worker_id
-            WHERE r.workspace_id = workspaces.id
-       )
-     WHERE id = (SELECT workspace_id FROM workers WHERE id = NEW.worker_id);
 END;
 
 -- subscriptions

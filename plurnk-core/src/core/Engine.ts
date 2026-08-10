@@ -175,8 +175,8 @@ const readFilesItems = (): number | null => {
 };
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type { AuthoritativeCharge, GrammarEvidence, Provider, ProviderAccountingResult, ProviderAttempt, ProviderAttemptFinishReason, ProviderCost, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
-import { ProviderError, providerCostFor, providerCostUsd, providerProjectedCostUsd, validateAuthoritativeCharge, validateProviderAccountingResult, validateProviderCost, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
+import type { GrammarEvidence, Provider, ProviderAttempt, ProviderAttemptFinishReason, ProviderCost, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
+import { ProviderError, providerCostFor, providerCostUsd, validateProviderCost, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { validateGbnf } from "@plurnk/gbnf";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
@@ -212,31 +212,13 @@ type EngineTurnResult = {
     budget?: BudgetOverflowMeasurement;
 };
 
-export type LoopScopeAccounting =
-    | {
-        scopeId: string;
-        status: "open";
-    }
-    | {
-        scopeId: string;
-        status: "pending";
-        reason: string;
-        evaluatedAt?: string;
-    }
-    | {
-        scopeId: string;
-        status: "settled";
-        charge: AuthoritativeCharge;
-        evaluatedAt: string;
-    };
-
 export type LoopUsage = {
     promptTokens: number;
     completionTokens: number;
+    reasoningTokens: number;
+    cachedTokens: number;
     costUsd: number | null;
-    projectedCostUsd: number | null;
     costs: ProviderCost[];
-    accounting: LoopScopeAccounting | null;
     contextTokens: number;
     promptBudget: number | null;
     meta: Record<string, unknown>;
@@ -658,69 +640,25 @@ export default class Engine {
         const row = await this.#db.engine_loop_usage.get<{
             prompt: number;
             completion: number;
+            reasoning: number;
+            cached: number;
             cost_usd: number | null;
             costs: string | null;
             context: number | null;
             context_size: number | null;
             meta: string | null;
-            accounting_scope_id: string;
-            accounting_state: "unscoped" | "open" | "pending" | "settled";
-            accounting_charge: string | null;
-            accounting_detail: string | null;
-            accounting_evaluated_at: string | null;
         }>({ loop_id: loopId });
         if (row === undefined) throw new Error(`loopUsage: loop ${loopId} does not exist`);
         const parsedCosts: unknown = JSON.parse(row?.costs ?? "[]");
         if (!Array.isArray(parsedCosts)) throw new TypeError(`loop ${loopId} monetary evidence is not an array`);
         const costs = parsedCosts.map((cost) => validateProviderCost(cost as ProviderCost));
-        const projectedCosts = costs.map(providerProjectedCostUsd);
-        let accounting: LoopScopeAccounting | null;
-        switch (row.accounting_state) {
-            case "unscoped":
-                accounting = null;
-                break;
-            case "open":
-                accounting = { scopeId: row.accounting_scope_id, status: "open" };
-                break;
-            case "pending":
-                if (row.accounting_detail === null) {
-                    throw new TypeError(`loop ${loopId} pending accounting has no reason`);
-                }
-                accounting = {
-                    scopeId: row.accounting_scope_id,
-                    status: "pending",
-                    reason: row.accounting_detail,
-                    ...(row.accounting_evaluated_at === null ? {} : { evaluatedAt: row.accounting_evaluated_at }),
-                };
-                break;
-            case "settled": {
-                if (row.accounting_charge === null || row.accounting_evaluated_at === null) {
-                    throw new TypeError(`loop ${loopId} settled accounting lacks charge evidence`);
-                }
-                const charge = validateAuthoritativeCharge(JSON.parse(row.accounting_charge) as AuthoritativeCharge);
-                if (providerCostUsd(charge) !== row.cost_usd) {
-                    throw new TypeError(`loop ${loopId} settled accounting disagrees with its USD rollup`);
-                }
-                accounting = {
-                    scopeId: row.accounting_scope_id,
-                    status: "settled",
-                    charge,
-                    evaluatedAt: row.accounting_evaluated_at,
-                };
-                break;
-            }
-            default:
-                throw new TypeError(`loop ${loopId} has invalid accounting state ${String(row.accounting_state)}`);
-        }
         return {
             promptTokens: row?.prompt ?? 0,
             completionTokens: row?.completion ?? 0,
+            reasoningTokens: row?.reasoning ?? 0,
+            cachedTokens: row?.cached ?? 0,
             costUsd: row?.cost_usd ?? null,
-            projectedCostUsd: projectedCosts.some((cost) => cost === null)
-                ? null
-                : projectedCosts.reduce<number>((sum, cost) => sum + cost!, 0),
             costs,
-            accounting,
             // Latest provider attempt on the latest turn, not the billed total.
             contextTokens: row?.context ?? 0,
             // Latest effective packet allowance; null when uncapped or unknown.
@@ -728,86 +666,6 @@ export default class Engine {
             // Latest turn's opaque provider metadata. {§meta-passthrough}
             meta: JSON.parse(row?.meta ?? "{}") as Record<string, unknown>,
         };
-    }
-
-    async beginLoopAccounting(loopId: number, provider: Provider): Promise<string> {
-        if (provider.reconcileAccounting !== undefined) {
-            await this.#db.engine_begin_loop_accounting.run({ loop_id: loopId });
-        }
-        const row = await this.#db.engine_loop_accounting_identity.get<{
-            accounting_scope_id: string;
-            accounting_state: "unscoped" | "open" | "pending" | "settled";
-        }>({ loop_id: loopId });
-        if (row === undefined) throw new Error(`beginLoopAccounting: loop ${loopId} does not exist`);
-        if (provider.reconcileAccounting !== undefined && row.accounting_state !== "open") {
-            throw new Error(`beginLoopAccounting: loop ${loopId} cannot issue a call from ${row.accounting_state} accounting state`);
-        }
-        return row.accounting_scope_id;
-    }
-
-    async reconcileLoopAccounting(loopId: number, provider: Provider, signal?: AbortSignal): Promise<ProviderAccountingResult | null> {
-        if (provider.reconcileAccounting === undefined) return null;
-        const row = await this.#db.engine_loop_accounting_scope.get<{
-            accounting_scope_id: string;
-            accounting_started_at: string;
-            terminated_at: string | null;
-            accounting_state: "unscoped" | "open" | "pending" | "settled";
-            accounting_charge: string | null;
-            accounting_evaluated_at: string | null;
-            attempts: number;
-            usage_prompt: number;
-            usage_completion: number;
-            usage_reasoning: number;
-            usage_cached: number;
-        }>({ loop_id: loopId });
-        if (row === undefined) throw new Error(`reconcileLoopAccounting: loop ${loopId} does not exist`);
-        if (row.accounting_state === "unscoped") return null;
-        if (row.accounting_state === "settled") {
-            if (row.accounting_charge === null || row.accounting_evaluated_at === null) {
-                throw new TypeError(`reconcileLoopAccounting: loop ${loopId} has incomplete settled evidence`);
-            }
-            return {
-                status: "settled",
-                charge: validateAuthoritativeCharge(JSON.parse(row.accounting_charge) as AuthoritativeCharge),
-                evaluatedAt: row.accounting_evaluated_at,
-            };
-        }
-        if (row.terminated_at === null) {
-            throw new Error(`reconcileLoopAccounting: loop ${loopId} is not terminal`);
-        }
-        const usage: ProviderUsage = {
-            prompt: row.usage_prompt,
-            completion: row.usage_completion,
-            reasoning: row.usage_reasoning,
-            cached: row.usage_cached,
-            total: row.usage_prompt + row.usage_completion + row.usage_reasoning,
-        };
-        const result = validateProviderAccountingResult(await provider.reconcileAccounting({
-            id: row.accounting_scope_id,
-            startedAt: row.accounting_started_at,
-            endedAt: row.terminated_at,
-            model: provider.model,
-            attempts: row.attempts,
-            usage,
-        }, signal));
-        if (result.status === "pending") {
-            await this.#db.engine_set_loop_accounting_pending.run({
-                loop_id: loopId,
-                detail: result.reason,
-                evaluated_at: result.evaluatedAt ?? null,
-            });
-            return result;
-        }
-        const charge = result.charge;
-        const costUsd = providerCostUsd(charge);
-        if (costUsd === null) throw new TypeError(`provider returned a non-settling charge for loop ${loopId}`);
-        await this.#db.engine_set_loop_accounting_settled.run({
-            loop_id: loopId,
-            charge: JSON.stringify(charge),
-            cost_usd: costUsd,
-            evaluated_at: result.evaluatedAt,
-        });
-        return { status: "settled", charge, evaluatedAt: result.evaluatedAt };
     }
 
     // A mapped rail divergence is a CODE-POINT offset into the model's content;
@@ -1611,7 +1469,6 @@ export default class Engine {
             const attemptLimit = readEmissionAttempts();
             const maxTokens = this.#packets.maxTokensFor(provider) ?? undefined;
             const strikeStreak = this.#strikes.streak(loopId);
-            const accountingScopeId = await this.beginLoopAccounting(loopId, provider);
             for (let attempt = 1; attempt <= attemptLimit; attempt++) {
                 // Every attempt carries the exact same model packet, coordinates,
                 // limits, and engine-strike state. Plugin-authored tags are pulled
@@ -1628,10 +1485,7 @@ export default class Engine {
                 });
                 providerAttemptAttributions = await this.#attemptAttributions(provider, attributionContext);
                 requestPacket = { ...requestPacket, attributions: providerAttemptAttributions };
-                const attemptRow = await this.#db.engine_open_turn_attempt.get<{
-                    id: number;
-                    accounting_id: string;
-                }>({
+                const attemptRow = await this.#db.engine_open_turn_attempt.get<{ id: number }>({
                     turn_id: turnId,
                     sequence: attempt,
                     attributions: JSON.stringify(providerAttemptAttributions),
@@ -1661,10 +1515,6 @@ export default class Engine {
                             workspaceId: String(workspaceId),
                             loop: loopSeq,
                             turn: seq,
-                            accounting: {
-                                scopeId: accountingScopeId,
-                                callId: attemptRow.accounting_id,
-                            },
                         }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
                         providerCallInFlight = false;
                         recordCounter(PROVIDER_CALLS, {

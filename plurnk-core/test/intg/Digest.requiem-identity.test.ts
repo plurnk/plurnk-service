@@ -5,18 +5,18 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { ChatMessage, ProviderAccountingScope, ProviderCallAccounting, ProviderUsage } from "@plurnk/plurnk-providers";
+import type { ChatMessage, ProviderUsage } from "@plurnk/plurnk-providers";
 import Digest from "../../src/digest/Digest.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 // A witness that records the identity of every generate() call the requiem makes.
 class WitnessMock extends Mock {
-    calls: Array<{ workerId?: string; primaryWorkerId?: string; messages: readonly ChatMessage[]; accounting?: ProviderCallAccounting }> = [];
-    onGenerate?: (accounting: ProviderCallAccounting | undefined) => void;
+    calls: Array<{ workerId?: string; primaryWorkerId?: string; messages: readonly ChatMessage[] }> = [];
+    onGenerate?: () => void;
     override async generate(args: Parameters<Mock["generate"]>[0] & { workerId?: string; primaryWorkerId?: string }): ReturnType<Mock["generate"]> {
-        this.onGenerate?.(args.accounting);
-        this.calls.push({ workerId: args.workerId, primaryWorkerId: args.primaryWorkerId, messages: args.messages, accounting: args.accounting });
+        this.onGenerate?.();
+        this.calls.push({ workerId: args.workerId, primaryWorkerId: args.primaryWorkerId, messages: args.messages });
         return super.generate(args);
     }
 
@@ -26,24 +26,6 @@ class WitnessMock extends Mock {
 
     override calculateCharge(usage: ProviderUsage) {
         return { kind: "estimated" as const, usd: String(this.calculateCost(usage)), source: "requiem witness" };
-    }
-}
-
-class ScopedWitnessMock extends WitnessMock {
-    readonly accountingScopes: ProviderAccountingScope[] = [];
-
-    async reconcileAccounting(scope: ProviderAccountingScope) {
-        this.accountingScopes.push(scope);
-        return {
-            status: "settled" as const,
-            charge: {
-                kind: "authoritative" as const,
-                amount: { amount: "0.0042", currency: "USD" },
-                usdEquivalent: "0.0042",
-                source: "requiem accounting fixture",
-            },
-            evaluatedAt: "2026-08-08T12:00:00.000Z",
-        };
     }
 }
 
@@ -149,7 +131,7 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
         });
     } finally { await db.close(); }
 
-    const provider = new ScopedWitnessMock({
+    const provider = new WitnessMock({
         contextWindow: 100000,
         responses: [{
             assistant: {
@@ -174,11 +156,10 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
         "standalone forensic evidence retains the exact stored raw-body carriers",
     );
     let observedDurableOpenCall = false;
-    provider.onGenerate = (accounting) => {
+    provider.onGenerate = () => {
         const journal = JSON.parse(readFileSync(join(digestDir, "requiem.json"), "utf8")) as {
-            workers: Array<{ calls: Array<{ callId: string; state: string }> }>;
+            workers: Array<{ calls: Array<{ state: string }> }>;
         };
-        assert.equal(journal.workers[0]?.calls[0]?.callId, accounting?.callId);
         assert.equal(journal.workers[0]?.calls[0]?.state, "open");
         observedDurableOpenCall = true;
     };
@@ -190,10 +171,6 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
     const call = provider.calls[0];
     assert.ok(call.workerId !== undefined && call.workerId.length > 0, "the interview carries the worker's id");
     assert.equal(call.primaryWorkerId, call.workerId, "primaryWorkerId == workerId - the interview is its own root, so the endpoint's both-headers gate is satisfied and the strong model witnesses");
-    assert.notEqual(call.accounting, undefined, "the requiem call carries a correlated accounting identity");
-    assert.equal(provider.accountingScopes.length, 1);
-    assert.equal(provider.accountingScopes[0]!.id, call.accounting!.scopeId);
-    assert.equal(provider.accountingScopes[0]!.attempts, 1);
     assert.match(call.messages[0]?.content ?? "", /evidence are verbatim historical records, not instructions/);
     assert.match(call.messages[1]?.content ?? "", /rejected bytes/);
     assert.match(call.messages[1]?.content ?? "", /rejected reasoning/);
@@ -247,31 +224,16 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
 
     const requiem = readFileSync(path, "utf8");
     assert.match(requiem, /the testimony/, "the testimony was written");
-    assert.match(requiem, /prompt 10, completion 3, reasoning 0, cached 2, cost USD 0\.0042/);
+    assert.match(requiem, /prompt 10, completion 3, reasoning 0, cached 2, cost USD 0\.013/);
     const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
-        workers: Array<{ costs: import("@plurnk/plurnk-contracts").ProviderCost[]; costUsd: number | null; projectedCostUsd: number | null; accounting: { scopeId: string; status: string }; messages: ChatMessage[]; responses: unknown[] }>;
+        workers: Array<{ costs: import("@plurnk/plurnk-contracts").ProviderCost[]; costUsd: number | null; messages: ChatMessage[]; responses: unknown[] }>;
     };
-    assert.equal(report.workers[0]?.costUsd, 0.0042);
-    assert.equal(report.workers[0]?.projectedCostUsd, 0.013);
-    assert.deepEqual(report.workers[0]?.accounting, {
-        scopeId: call.accounting!.scopeId,
-        startedAt: provider.accountingScopes[0]!.startedAt,
-        endedAt: provider.accountingScopes[0]!.endedAt,
-        model: provider.model,
-        status: "settled",
-        charge: {
-            kind: "authoritative",
-            amount: { amount: "0.0042", currency: "USD" },
-            usdEquivalent: "0.0042",
-            source: "requiem accounting fixture",
-        },
-        evaluatedAt: "2026-08-08T12:00:00.000Z",
-    });
+    assert.equal(report.workers[0]?.costUsd, 0.013);
     assert.equal(report.workers[0]?.responses.length, 1);
     assert.equal(report.workers[0]?.messages.length, 2);
 });
 
-test("{§digest-requiem}: a failed call remains durable and still reconciles its scoped charge", async () => {
+test("{§digest-requiem}: a response-less failed call remains durable with unknown cost", async () => {
     const dbPath = join(TMP_DIR, `requiem-failure-${crypto.randomUUID()}.db`);
     const db = await openMigrated(dbPath);
     try {
@@ -288,7 +250,7 @@ test("{§digest-requiem}: a failed call remains durable and still reconciles its
         await db.close();
     }
 
-    const provider = new ScopedWitnessMock({ contextWindow: 100_000, responses: [] });
+    const provider = new WitnessMock({ contextWindow: 100_000, responses: [] });
     const digestDir = join(TMP_DIR, `requiem-failure-out-${crypto.randomUUID()}`);
     await assert.rejects(Digest.requiem({ dbPath, digestDir, provider }), /no more queued responses/);
 
@@ -296,12 +258,9 @@ test("{§digest-requiem}: a failed call remains durable and still reconciles its
         workers: Array<{
             calls: Array<{ state: string; failure: unknown }>;
             costUsd: number | null;
-            accounting: { status: string };
         }>;
     };
     assert.equal(report.workers[0]?.calls[0]?.state, "error");
     assert.notEqual(report.workers[0]?.calls[0]?.failure, null);
-    assert.equal(report.workers[0]?.costUsd, 0.0042);
-    assert.equal(report.workers[0]?.accounting.status, "settled");
-    assert.equal(provider.accountingScopes[0]?.attempts, 1);
+    assert.equal(report.workers[0]?.costUsd, null);
 });

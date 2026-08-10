@@ -1,10 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
-import Engine from "../../src/core/Engine.ts";
-import Results from "../../src/core/results.ts";
-import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { Mock, type ProviderAccountingResult, type ProviderAccountingScope } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 const MIN_PACKET = JSON.stringify({
@@ -82,21 +78,6 @@ const costs = async (db: Db, workspaceId: number, workerId: number) => ({
     worker: (await db.test_cost_worker.get<{ cost_usd: number | null }>({ id: workerId }))?.cost_usd,
     workspace: (await db.test_cost_workspace.get<{ cost_usd: number | null }>({ id: workspaceId }))?.cost_usd,
 });
-
-class ScopedAccountingMock extends Mock {
-    readonly scopes: ProviderAccountingScope[] = [];
-    #result: ProviderAccountingResult;
-
-    constructor(result: ProviderAccountingResult) {
-        super({ contextWindow: 100_000, responses: [] });
-        this.#result = result;
-    }
-
-    async reconcileAccounting(scope: ProviderAccountingScope): Promise<ProviderAccountingResult> {
-        this.scopes.push(scope);
-        return this.#result;
-    }
-}
 
 test("cost rollups: turn insert propagates to worker and workspace", async () => {
     const db = await openMigrated();
@@ -296,126 +277,5 @@ test("cost rollups: ordinary USD values retain fractional precision", async () =
         const c = await costs(db, workspaceId, workerId);
         assert.equal(c.worker, 3.75);
         assert.equal(c.workspace, 3.75);
-    } finally { await db.close(); }
-});
-
-test("cost rollups: a settled provider scope supersedes rather than adds to its turn sum", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, "ws-cost-scoped");
-        const workerId = await insertWorker(db, workspaceId);
-        const scopedLoopId = await insertLoop(db, workerId, 1);
-        const ordinaryLoopId = await insertLoop(db, workerId, 2);
-        await insertTurnWithCost(db, scopedLoopId, 1, 100);
-        await insertTurnWithCost(db, scopedLoopId, 2, 200);
-        await insertTurnWithCost(db, ordinaryLoopId, 1, 50);
-        assert.deepEqual(await costs(db, workspaceId, workerId), { worker: 350, workspace: 350 });
-
-        const charge = {
-            kind: "authoritative" as const,
-            amount: { amount: "7.25", currency: "USD" },
-            usdEquivalent: "7.25",
-            source: "scoped accounting fixture",
-        };
-        const provider = new ScopedAccountingMock({
-            status: "settled",
-            charge,
-            evaluatedAt: "2026-08-08T12:00:00.000Z",
-        });
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const scopeId = await engine.beginLoopAccounting(scopedLoopId, provider);
-        assert.deepEqual(await costs(db, workspaceId, workerId), { worker: null, workspace: null });
-        await db.test_set_loop_status.run({
-            id: scopedLoopId,
-            status: 200,
-            terminal_result: JSON.stringify({ status: 200 }),
-        });
-        await engine.reconcileLoopAccounting(scopedLoopId, provider);
-
-        assert.deepEqual(await costs(db, workspaceId, workerId), { worker: 57.25, workspace: 57.25 });
-        const usage = await engine.loopUsage(scopedLoopId);
-        assert.equal(usage.costUsd, 7.25);
-        assert.deepEqual(usage.accounting, {
-            scopeId,
-            status: "settled",
-            charge,
-            evaluatedAt: "2026-08-08T12:00:00.000Z",
-        });
-        assert.equal(provider.scopes.length, 1);
-        assert.equal(provider.scopes[0]!.id, scopeId);
-    } finally { await db.close(); }
-});
-
-test("cost rollups: reconciliation counts every durable provider call identity", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, "ws-cost-open-call");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
-        const turnId = await insertTurn(db, loopId, 1);
-        const provider = new ScopedAccountingMock({
-            status: "pending",
-            reason: "provider ledger has not settled",
-        });
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        await engine.beginLoopAccounting(loopId, provider);
-        await db.engine_open_turn_attempt.get({
-            turn_id: turnId,
-            sequence: 1,
-            attributions: "[]",
-            model: provider.model,
-        });
-        await db.test_set_loop_status.run({
-            id: loopId,
-            status: 500,
-            terminal_result: JSON.stringify(Results.attachInstance(
-                Results.failure(
-                    "test:accounting",
-                    "open-attempt",
-                    500,
-                    "The accounting fixture ended with an open provider attempt.",
-                ),
-                `loop:///${loopId}`,
-            )),
-        });
-
-        await engine.reconcileLoopAccounting(loopId, provider);
-
-        assert.equal(provider.scopes.length, 1);
-        assert.equal(provider.scopes[0]!.attempts, 1,
-            "an open pre-I/O row is possible issued-call evidence, never a free scope");
-    } finally { await db.close(); }
-});
-
-test("cost rollups: pending scoped accounting remains explicitly unknown", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, "ws-cost-scope-pending");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
-        await insertTurnWithCost(db, loopId, 1, 100);
-        const provider = new ScopedAccountingMock({
-            status: "pending",
-            reason: "provider ledger has not settled",
-            evaluatedAt: "2026-08-08T12:00:00.000Z",
-        });
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const scopeId = await engine.beginLoopAccounting(loopId, provider);
-        await db.test_set_loop_status.run({
-            id: loopId,
-            status: 200,
-            terminal_result: JSON.stringify({ status: 200 }),
-        });
-        await engine.reconcileLoopAccounting(loopId, provider);
-
-        assert.deepEqual(await costs(db, workspaceId, workerId), { worker: null, workspace: null });
-        const usage = await engine.loopUsage(loopId);
-        assert.equal(usage.costUsd, null);
-        assert.deepEqual(usage.accounting, {
-            scopeId,
-            status: "pending",
-            reason: "provider ledger has not settled",
-            evaluatedAt: "2026-08-08T12:00:00.000Z",
-        });
     } finally { await db.close(); }
 });

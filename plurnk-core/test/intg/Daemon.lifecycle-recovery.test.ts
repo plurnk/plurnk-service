@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Mock, type ProviderAccountingScope } from "@plurnk/plurnk-providers";
+import { Mock } from "@plurnk/plurnk-providers";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Daemon from "../../src/server/Daemon.ts";
@@ -65,81 +65,7 @@ test("boot restores a drain for accepted queued work", async () => {
     }
 });
 
-test("boot closes a crash-open provider call before reconciling its durable scope", async () => {
-    const db = await openMigrated();
-    const scopes: ProviderAccountingScope[] = [];
-    const mock = Object.assign(new Mock({ contextWindow: 16384, responses: [] }), {
-        async reconcileAccounting(scope: ProviderAccountingScope) {
-            scopes.push(scope);
-            return {
-                status: "settled" as const,
-                charge: {
-                    kind: "authoritative" as const,
-                    amount: { amount: "0.0042", currency: "USD" },
-                    usdEquivalent: "0.0042",
-                    source: "provider crash-recovery ledger",
-                },
-                evaluatedAt: "2026-08-08T12:01:00Z",
-            };
-        },
-    });
-    ProviderInstantiate.registerInstance(mock, providerSpec);
-    const daemon = new Daemon({ db, provider: mock });
-    try {
-        const workspaceId = await insertWorkspace(db, `recovery-accounting-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await enqueueLoop(db, workerId, 1, "interrupted provider call");
-        await db.engine_reclaim_queued_loop.run({ loop_id: loopId });
-        await db.engine_begin_loop_accounting.run({ loop_id: loopId });
-        const turnId = await insertTurn(db, loopId, 1, 102);
-        const attempt = await db.engine_open_turn_attempt.get<{ id: number; accounting_id: string }>({
-            turn_id: turnId,
-            sequence: 1,
-            attributions: "[]",
-            model: mock.model,
-        });
-        assert.ok(attempt !== undefined);
-
-        await daemon.start();
-
-        assert.equal(scopes.length, 1);
-        assert.equal(scopes[0]?.attempts, 1, "the issued call remains in provider reconciliation");
-        assert.deepEqual(scopes[0]?.usage, {
-            prompt: 0,
-            completion: 0,
-            reasoning: 0,
-            cached: 0,
-            total: 0,
-        });
-        const [recovered] = await db.test_turn_attempts.all<{
-            state: string;
-            failure: string;
-            usage_cost: string;
-        }>({ turn_id: turnId });
-        assert.equal(recovered?.state, "error");
-        assert.match(recovered?.failure ?? "", /whether the provider completed the call is unknown/);
-        assert.deepEqual(JSON.parse(recovered?.usage_cost ?? "null"), {
-            kind: "unknown",
-            reason: "daemon restarted before provider response evidence was durably observed",
-        });
-        const usage = await db.engine_loop_usage.get<{
-            cost_usd: number | null;
-            accounting_state: string;
-            accounting_charge: string | null;
-        }>({ loop_id: loopId });
-        assert.equal(usage?.accounting_state, "settled");
-        assert.equal(usage?.cost_usd, 0.0042);
-        assert.equal(
-            (JSON.parse(usage?.accounting_charge ?? "null") as { source?: string })?.source,
-            "provider crash-recovery ledger",
-        );
-    } finally {
-        await daemon.stop();
-        await db.close();
-    }
-});
-
-test("boot preserves unknown money for a crash-open unscoped provider call", async () => {
+test("boot closes a crash-open provider attempt and preserves unknown money", async () => {
     const db = await openMigrated();
     const mock = new Mock({ contextWindow: 16384, responses: [] });
     ProviderInstantiate.registerInstance(mock, providerSpec);
@@ -165,11 +91,7 @@ test("boot preserves unknown money for a crash-open unscoped provider call", asy
 
         await daemon.start();
 
-        const usage = await db.engine_loop_usage.get<{
-            cost_usd: number | null;
-            accounting_state: string;
-        }>({ loop_id: loopId });
-        assert.equal(usage?.accounting_state, "unscoped");
+        const usage = await db.engine_loop_usage.get<{ cost_usd: number | null }>({ loop_id: loopId });
         assert.equal(usage?.cost_usd, null);
         assert.equal(
             (await db.test_cost_workspace.get<{ cost_usd: number | null }>({ id: workspaceId }))?.cost_usd,

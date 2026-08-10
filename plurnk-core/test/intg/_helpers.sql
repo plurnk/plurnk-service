@@ -53,7 +53,7 @@ SELECT id, loop_id, sequence, status,
 FROM turns WHERE id = $id;
 
 -- PREP: test_turn_attempts
-SELECT id, sequence, accounting_id, state, accepted, response, failure, parse_errors,
+SELECT id, sequence, state, accepted, response, failure, parse_errors,
        attributions,
        usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost_usd,
        usage_cost, finish_reason, model, timestamp, completed_at

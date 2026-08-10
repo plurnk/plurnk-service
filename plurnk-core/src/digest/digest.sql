@@ -11,9 +11,7 @@ SELECT * FROM workspaces ORDER BY id;
 SELECT * FROM workers ORDER BY id;
 
 -- PREP: digest_loops
-SELECT id, worker_id, sequence, status, prompt, flags, terminated_by, terminal_result,
-       accounting_scope_id, accounting_state, accounting_charge, accounting_cost_usd,
-       accounting_detail, accounting_evaluated_at
+SELECT id, worker_id, sequence, status, prompt, flags, terminated_by, terminal_result
 FROM loops ORDER BY worker_id, sequence;
 
 -- PREP: digest_turns
@@ -23,7 +21,7 @@ SELECT id, loop_id, sequence, status, packet,
 FROM turns ORDER BY loop_id, sequence;
 
 -- PREP: digest_turn_attempts
-SELECT id, turn_id, sequence, accounting_id, state, accepted, response, failure,
+SELECT id, turn_id, sequence, state, accepted, response, failure,
        parse_errors, attributions,
        usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost, usage_cost_usd,
        finish_reason, model, timestamp, completed_at

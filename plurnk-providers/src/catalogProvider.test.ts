@@ -1,6 +1,7 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { catalogProviderFromEnv } from "./catalogProvider.ts";
+import { providerCostFor } from "./cost.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
 
 const env = {
@@ -119,22 +120,32 @@ test("cataloged unknown model fails unless its context is explicit", () => {
     assert.equal(provider?.contextWindow, 8192);
 });
 
-test("explicit operator rates price out-of-snapshot models and override catalog rates", () => {
-    const priced = {
+test("Models.dev is the only fallback rate table", () => {
+    const usage = {
+        prompt: 1_000,
+        cached: 400,
+        completion: 100,
+        reasoning: 50,
+        total: 1_150,
+    };
+    const cataloged = catalogProviderFromEnv("deepseek", {
+        ...env,
+        DEEPSEEK_API_KEY: "test-key",
+    }, "deepseek-v4-flash");
+    assert.notEqual(cataloged, null);
+    assert.deepEqual(providerCostFor(cataloged!, usage), {
+        kind: "estimated",
+        usd: "0.00012712",
+        source: "Models.dev catalog rates",
+    });
+
+    const uncataloged = catalogProviderFromEnv("xai", {
         ...env,
         XAI_API_KEY: "test-key",
         PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192",
-        PLURNK_PROVIDERS_INPUT_USD_PER_MILLION: "2",
-        PLURNK_PROVIDERS_CACHE_READ_USD_PER_MILLION: "0.5",
-        PLURNK_PROVIDERS_OUTPUT_USD_PER_MILLION: "8",
-    };
-    const usage = {
-        prompt: 1_000_000,
-        cached: 250_000,
-        completion: 500_000,
-        reasoning: 500_000,
-        total: 2_000_000,
-    };
-    assert.equal(catalogProviderFromEnv("xai", priced, "not-in-the-catalog")?.calculateCost(usage), 9.625);
-    assert.equal(catalogProviderFromEnv("openai", priced, "gpt-4.1-mini")?.calculateCost(usage), 9.625);
+    }, "not-in-the-catalog");
+    assert.deepEqual(providerCostFor(uncataloged!, usage), {
+        kind: "unknown",
+        reason: "the response reported no cost and Models.dev has no rate for this model",
+    });
 });

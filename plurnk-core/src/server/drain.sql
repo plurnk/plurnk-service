@@ -166,9 +166,6 @@ SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequ
 -- PREP: drain_loop_provider_spec
 SELECT provider_spec, child_provider_spec FROM loops WHERE id = $loop_id;
 
--- PREP: drain_loop_accounting_state
-SELECT accounting_state FROM loops WHERE id = $loop_id;
-
 -- PREP: drain_worker_min_poll
 -- EXEC `<T,P>` — aggregate each open subscription's policy into one worker timer. A fixed cadence
 -- wins at its tightest positive value; otherwise any omitted cadence requests default backoff;

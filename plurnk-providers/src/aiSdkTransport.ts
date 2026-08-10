@@ -2,7 +2,7 @@ import { createOpenAICompatible, type ProviderErrorStructure } from "@ai-sdk/ope
 import { APICallError, generateText, streamText, type JSONValue, type LanguageModel, type LanguageModelUsage } from "ai";
 import { prepareRetries } from "ai/internal";
 import { z } from "zod/v4";
-import type { ChatMessage, ProviderAccountingEvidence, ProviderAttemptFinishReason, ProviderUsage, TokenLogprob } from "./types.ts";
+import type { ChatMessage, ProviderAttemptFinishReason, ProviderChargeEvidence, ProviderUsage, TokenLogprob } from "./types.ts";
 import { normalizeUsage, type RawUsage } from "./usage.ts";
 import { emitWarningOnce } from "./warnings.ts";
 
@@ -155,7 +155,7 @@ export type AiSdkTransportResponse = {
         encrypted: Array<{ data: string; format: string | null }>;
     }>;
     logprobs: TokenLogprob[];
-    accounting: ProviderAccountingEvidence;
+    chargeEvidence: ProviderChargeEvidence;
     rawBody?: unknown;
 };
 
@@ -290,7 +290,7 @@ const executeModelOnce = async (
             metadata: metadataOf(values),
             reasoningEncrypted: evidence.reasoningEncrypted,
             logprobs: evidence.logprobs,
-            accounting: {
+            chargeEvidence: {
                 ...(accountingUsage === undefined ? {} : { usage: accountingUsage }),
                 ...(result.providerMetadata === undefined
                     ? {}
@@ -339,7 +339,7 @@ const executeModelOnce = async (
         metadata: metadataOf(rawChunks),
         reasoningEncrypted: evidence.reasoningEncrypted,
         logprobs: evidence.logprobs,
-        accounting: {
+        chargeEvidence: {
             ...(accountingUsage === undefined ? {} : { usage: accountingUsage }),
             ...(providerMetadata === undefined ? {} : { providerMetadata }),
             response: {

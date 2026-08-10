@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { normalizeUsage, calculateCostUsd } from "./usage.ts";
+import { normalizeUsage, calculateCostUsd, calculateCostUsdDecimal } from "./usage.ts";
 
 // — normalizeUsage —
 
@@ -142,4 +142,12 @@ test("calculateCostUsd: cached prompt billed at the cache rate, remainder at inp
 test("calculateCostUsd: zero rates → 0", () => {
     const usage = { prompt: 9, completion: 9, reasoning: 9, cached: 9, total: 27 };
     assert.equal(calculateCostUsd(usage, { input: 0, output: 0, cached: 0 }), 0);
+});
+
+test("calculateCostUsdDecimal preserves Models.dev rates without floating-point artifacts", () => {
+    const usage = { prompt: 1_000, completion: 100, reasoning: 50, cached: 400, total: 1_150 };
+    assert.equal(
+        calculateCostUsdDecimal(usage, { input: 0.14, output: 0.28, cached: 0.0028 }),
+        "0.00012712",
+    );
 });

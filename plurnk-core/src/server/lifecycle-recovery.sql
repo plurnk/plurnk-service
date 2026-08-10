@@ -53,16 +53,6 @@ WHERE state = 'pending'
         AND l.terminated_at IS NOT NULL
   );
 
--- PREP: recovery_unsettled_accounting
--- A provider call may have completed before the prior process vanished. Once
--- active loops are terminal, retry every provider-owned scope that has not
--- reached authoritative settlement.
-SELECT id AS loop_id
-FROM loops
-WHERE terminated_at IS NOT NULL
-  AND accounting_state IN ('open', 'pending')
-ORDER BY id;
-
 -- PREP: recovery_fail_ownerless_proposals
 -- {§worker-lifecycle-restart-recovery} Every proposed row depended on a
 -- process-local resolution waiter. At boot that owner is necessarily gone, so

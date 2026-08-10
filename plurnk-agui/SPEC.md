@@ -103,12 +103,14 @@ never recomputes the daemon's gauge.
 | `STATE_DELTA /budget/promptTokens`          | `loop/terminated.usage.promptTokens`     | Loop-total provider-reported prompt usage. |
 | `STATE_DELTA /budget/completionTokens`      | `loop/terminated.usage.completionTokens` | Loop-total provider-reported completion usage. |
 
+The `plurnk.terminated` custom event preserves those totals plus
+`reasoningTokens` and `cachedTokens`; generic AG-UI budget state has no fields
+for the latter pair.
+
 §agui-cost-evidence `plurnk.terminated.usage` preserves the daemon's ordered
-`costs` evidence, optional correlated-scope accounting state,
-authoritative-only nullable `costUsd`, and separately named nullable
-`projectedCostUsd` verbatim. Generic AG-UI has no standard monetary field; the
-custom event therefore distinguishes settled, pending, estimated, unknown, and
-zero evidence without fabricating any value.
+`costs` evidence and nullable `costUsd` verbatim. Generic AG-UI has no standard
+monetary field; the custom event therefore distinguishes direct, Models.dev,
+unknown, and zero evidence without fabricating any value.
 
 - §agui-row-channel **The row channel** — every log row ALSO rides `CUSTOM plurnk.row`
   carrying the full wire entry (fold state, tags-in-signal, tokens, coordinate) alongside its

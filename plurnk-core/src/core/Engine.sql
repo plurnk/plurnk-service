@@ -102,6 +102,8 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 -- provider attempt on the latest turn, distinct from summed billed `prompt`.
 SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
        COALESCE(SUM(usage_completion), 0) AS completion,
+       COALESCE(SUM(usage_reasoning), 0)  AS reasoning,
+       COALESCE(SUM(usage_cached), 0)     AS cached,
        (SELECT cost_usd FROM loop_costs WHERE id = $loop_id) AS cost_usd,
        COALESCE((
            SELECT json_group_array(json(cost.value))
@@ -126,58 +128,8 @@ SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
        -- {§tokenomics-client-gauge}
        (SELECT usage_prompt_budget FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS context_size,
        -- Latest turn's opaque provider metadata. {§meta-passthrough}
-       (SELECT meta FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS meta,
-       (SELECT accounting_scope_id FROM loops WHERE id = $loop_id) AS accounting_scope_id,
-       (SELECT accounting_state FROM loops WHERE id = $loop_id) AS accounting_state,
-       (SELECT accounting_charge FROM loops WHERE id = $loop_id) AS accounting_charge,
-       (SELECT accounting_detail FROM loops WHERE id = $loop_id) AS accounting_detail,
-       (SELECT accounting_evaluated_at FROM loops WHERE id = $loop_id) AS accounting_evaluated_at
+       (SELECT meta FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS meta
 FROM turns WHERE loop_id = $loop_id;
-
--- PREP: engine_begin_loop_accounting
--- A provider exposing scoped reconciliation reserves the loop aggregate before
--- its first call. Re-entry after a 202 park leaves the same open scope intact.
-UPDATE loops SET accounting_state = 'open'
-WHERE id = $loop_id AND accounting_state = 'unscoped';
-
--- PREP: engine_loop_accounting_identity
--- The loop owns one stable correlation identity across all of its calls and
--- parked/resumed execution segments.
-SELECT accounting_scope_id, accounting_state
-FROM loops
-WHERE id = $loop_id;
-
--- PREP: engine_loop_accounting_scope
-SELECT l.accounting_scope_id, l.accounting_started_at, l.terminated_at,
-       l.accounting_state, l.accounting_charge, l.accounting_evaluated_at,
-       COUNT(a.id) AS attempts,
-       COALESCE(SUM(a.usage_prompt), 0) AS usage_prompt,
-       COALESCE(SUM(a.usage_completion), 0) AS usage_completion,
-       COALESCE(SUM(a.usage_reasoning), 0) AS usage_reasoning,
-       COALESCE(SUM(a.usage_cached), 0) AS usage_cached
-FROM loops l
-LEFT JOIN turns t ON t.loop_id = l.id
-LEFT JOIN turn_attempts a ON a.turn_id = t.id
-WHERE l.id = $loop_id
-GROUP BY l.id;
-
--- PREP: engine_set_loop_accounting_pending
-UPDATE loops SET
-    accounting_state = 'pending',
-    accounting_charge = NULL,
-    accounting_cost_usd = NULL,
-    accounting_detail = $detail,
-    accounting_evaluated_at = $evaluated_at
-WHERE id = $loop_id AND accounting_state IN ('open', 'pending');
-
--- PREP: engine_set_loop_accounting_settled
-UPDATE loops SET
-    accounting_state = 'settled',
-    accounting_charge = $charge,
-    accounting_cost_usd = $cost_usd,
-    accounting_detail = NULL,
-    accounting_evaluated_at = $evaluated_at
-WHERE id = $loop_id AND accounting_state IN ('open', 'pending');
 
 -- PREP: engine_loop_attributions
 -- {§attribution} — derive the loop projection from exact response-attempt
@@ -232,7 +184,7 @@ WHERE id = $id;
 -- Identity and request attribution become durable before provider I/O.
 INSERT INTO turn_attempts (turn_id, sequence, attributions, model)
 VALUES ($turn_id, $sequence, $attributions, $model)
-RETURNING id, accounting_id;
+RETURNING id;
 
 -- PREP: engine_observe_turn_attempt_response
 -- Preserve the response and provider usage before parser/cost classification.

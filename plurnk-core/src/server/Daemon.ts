@@ -506,18 +506,6 @@ export default class Daemon {
         return ProviderInstantiate.instantiateProvider(await this.#providerSpecForLoop(loopId));
     }
 
-    async #reconcileLoopAccounting(loopId: number, provider?: Provider): Promise<void> {
-        const row = await this.#db.drain_loop_accounting_state.get<{
-            accounting_state: "unscoped" | "open" | "pending" | "settled";
-        }>({ loop_id: loopId });
-        if (row === undefined) throw new Error(`loop ${loopId}: accounting row is missing`);
-        if (row.accounting_state === "unscoped" || row.accounting_state === "settled") return;
-        await this.#engine.reconcileLoopAccounting(
-            loopId,
-            provider ?? await this.#providerForLoop(loopId),
-        );
-    }
-
     async #assertLoopProvider(loopId: number, requested: ProviderAlias): Promise<void> {
         const selected = await this.#providerSpecForLoop(loopId);
         if (JSON.stringify(selected) !== JSON.stringify(requested)) {
@@ -1306,9 +1294,6 @@ export default class Daemon {
     async #recoverLifecycle(): Promise<void> {
         await this.#db.recovery_fail_active_loops.run({});
         await this.#db.recovery_fail_open_provider_attempts.run({});
-        for (const row of await this.#db.recovery_unsettled_accounting.all<{ loop_id: number }>({})) {
-            await this.#reconcileLoopAccounting(row.loop_id);
-        }
         await this.#db.recovery_fail_ownerless_proposals.run({});
         await this.#db.recovery_error_orphan_subscription_channels.run({});
         await this.#db.recovery_fail_orphan_subscriptions.run({});
@@ -1639,7 +1624,6 @@ export default class Daemon {
             let loopsDrained = 0;
             let lastResult: DrainLoopResult | null = null;
             let currentLoopId: number | null = null; // the loop being drained — for abort→499 settlement
-            let currentProvider: Provider | null = null;
             try {
                 while (true) {
                     controller.signal.throwIfAborted();
@@ -1665,7 +1649,6 @@ export default class Daemon {
                     // drain that happened to claim it. A drain can consume multiple
                     // queued loops; resolve each durable selection at this boundary.
                     const provider = await this.#providerForLoop(loopRow.id);
-                    currentProvider = provider;
                     const onDispatch = (logEntryId: number): void => {
                         // {§methods-event-subscribe} — a log-broadcast failure must never crash the drain.
                         void (async () => {
@@ -1730,11 +1713,9 @@ export default class Daemon {
                         // that obligation's conclusion is its wake edge (the owed-wake above covers the
                         // conclude-before-block race). An idle wait never reaches here — it concluded at dispatch.
                         currentLoopId = null;
-                        currentProvider = null;
                         continue;
                     }
                     this.#owedWakes.delete(workerId); // the loop concluded (non-202) — no park to honor a held wake at
-                    await this.#reconcileLoopAccounting(loopRow.id, provider);
                     const [usage, attributions, turnIds] = await Promise.all([
                         this.#engine.loopUsage(loopRow.id),
                         this.#engine.loopAttributions(loopRow.id),
@@ -1768,7 +1749,6 @@ export default class Daemon {
                     // a fresh queued loop so it's never silently dropped.
                     await this.#reconcileOrphanedPrompts(workerId, loopRow.id);
                     currentLoopId = null;
-                    currentProvider = null;
                 }
             } catch (err) {
                 if (controller.signal.aborted) {
@@ -1778,10 +1758,10 @@ export default class Daemon {
                     let usage: LoopUsage = {
                         promptTokens: 0,
                         completionTokens: 0,
+                        reasoningTokens: 0,
+                        cachedTokens: 0,
                         costUsd: 0,
-                        projectedCostUsd: 0,
                         costs: [],
-                        accounting: null,
                         contextTokens: 0,
                         promptBudget: null,
                         meta: {},
@@ -1808,7 +1788,6 @@ export default class Daemon {
                             ),
                             { terminatedBy: "cancel" },
                         );
-                        await this.#reconcileLoopAccounting(currentLoopId, currentProvider ?? undefined);
                         [usage, attributions] = await Promise.all([
                             this.#engine.loopUsage(currentLoopId),
                             this.#engine.loopAttributions(currentLoopId),
@@ -1884,7 +1863,6 @@ export default class Daemon {
                         if (settled === null) {
                             throw new Error(`drain could not settle loop ${currentLoopId}`, { cause: err });
                         }
-                        await this.#reconcileLoopAccounting(currentLoopId, currentProvider ?? undefined);
                         const [usage, attributions] = await Promise.all([
                             this.#engine.loopUsage(currentLoopId),
                             this.#engine.loopAttributions(currentLoopId),
@@ -2049,7 +2027,6 @@ export default class Daemon {
         for (const { loopId, workerId: targetWorkerId, result } of cancelled.loops) {
             const row = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: targetWorkerId });
             if (row === undefined) continue;
-            await this.#reconcileLoopAccounting(loopId);
             const [usage, attributions] = await Promise.all([
                 this.#engine.loopUsage(loopId),
                 this.#engine.loopAttributions(loopId),

@@ -91,27 +91,6 @@ export function effectiveContextWindow(operatorCap: number | null, naturalWindow
             : Math.min(operatorCap, naturalWindow);
 }
 
-export type ProviderTokenRates = { input: number; cached: number; output: number };
-
-// {§model-fact-resolution} — any explicit rate opts into one complete operator
-// estimate; cached input alone may default to the explicit input rate.
-export const tokenRatesFromEnv = (env: NodeJS.ProcessEnv, label: string): ProviderTokenRates | null => {
-    const inputName = "PLURNK_PROVIDERS_INPUT_USD_PER_MILLION";
-    const cachedName = "PLURNK_PROVIDERS_CACHE_READ_USD_PER_MILLION";
-    const outputName = "PLURNK_PROVIDERS_OUTPUT_USD_PER_MILLION";
-    const configured = [inputName, cachedName, outputName]
-        .some((name) => env[name] !== undefined && env[name] !== "");
-    if (!configured) return null;
-    const input = parseRequiredFloat(env[inputName], inputName, label, 0);
-    return {
-        input,
-        cached: env[cachedName] === undefined || env[cachedName] === ""
-            ? input
-            : parseRequiredFloat(env[cachedName], cachedName, label, 0),
-        output: parseRequiredFloat(env[outputName], outputName, label, 0),
-    };
-};
-
 // {§provider-generation-envelope} How much of a
 // DETECTED context window is reserved for reasoning and for completion — the
 // remainder (minus the consumer's own packing-safety margin) is the prompt
@@ -218,15 +197,10 @@ export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_REASONING_BUDGET",
     "PLURNK_PROVIDERS_REASONING",
     "PLURNK_PROVIDERS_CONTEXT_WINDOW",
-    "PLURNK_PROVIDERS_INPUT_USD_PER_MILLION",
-    "PLURNK_PROVIDERS_CACHE_READ_USD_PER_MILLION",
-    "PLURNK_PROVIDERS_OUTPUT_USD_PER_MILLION",
     "PLURNK_PROVIDERS_RETRY_ATTEMPTS",
     "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT",
     "PLURNK_PROVIDERS_FETCH_TIMEOUT",
     "PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT",
-    "PLURNK_PROVIDERS_ACCOUNTING_TIMEOUT",
-    "PLURNK_PROVIDERS_ACCOUNTING_POLL_INTERVAL",
     "PLURNK_PROVIDERS_LLAMA_SERVER",
     "PLURNK_PROVIDERS_TEMPERATURE",
     "PLURNK_PROVIDERS_REPEAT_PENALTY",

@@ -153,7 +153,6 @@ export class SqlRiteSync {
 	drain_rehome_orphaned_prompt_frames: SqlRiteSyncPreparedStatements;
 	drain_find_slept_loop: SqlRiteSyncPreparedStatements;
 	drain_loop_provider_spec: SqlRiteSyncPreparedStatements;
-	drain_loop_accounting_state: SqlRiteSyncPreparedStatements;
 	drain_worker_min_poll: SqlRiteSyncPreparedStatements;
 	worker_parent_id: SqlRiteSyncPreparedStatements;
 	engine_loop_status: SqlRiteSyncPreparedStatements;
@@ -170,11 +169,6 @@ export class SqlRiteSync {
 	engine_list_owner_entry_tags: SqlRiteSyncPreparedStatements;
 	engine_next_turn_sequence: SqlRiteSyncPreparedStatements;
 	engine_loop_usage: SqlRiteSyncPreparedStatements;
-	engine_begin_loop_accounting: SqlRiteSyncPreparedStatements;
-	engine_loop_accounting_identity: SqlRiteSyncPreparedStatements;
-	engine_loop_accounting_scope: SqlRiteSyncPreparedStatements;
-	engine_set_loop_accounting_pending: SqlRiteSyncPreparedStatements;
-	engine_set_loop_accounting_settled: SqlRiteSyncPreparedStatements;
 	engine_loop_attributions: SqlRiteSyncPreparedStatements;
 	engine_loop_turn_seqs: SqlRiteSyncPreparedStatements;
 	engine_open_turn: SqlRiteSyncPreparedStatements;
@@ -239,7 +233,6 @@ export class SqlRiteSync {
 	journal_turn_insert: SqlRiteSyncPreparedStatements;
 	recovery_fail_active_loops: SqlRiteSyncPreparedStatements;
 	recovery_fail_open_provider_attempts: SqlRiteSyncPreparedStatements;
-	recovery_unsettled_accounting: SqlRiteSyncPreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRiteSyncPreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRiteSyncPreparedStatements;
 	recovery_fail_orphan_subscriptions: SqlRiteSyncPreparedStatements;
@@ -392,7 +385,6 @@ export default class SqlRite {
 	drain_rehome_orphaned_prompt_frames: SqlRitePreparedStatements;
 	drain_find_slept_loop: SqlRitePreparedStatements;
 	drain_loop_provider_spec: SqlRitePreparedStatements;
-	drain_loop_accounting_state: SqlRitePreparedStatements;
 	drain_worker_min_poll: SqlRitePreparedStatements;
 	worker_parent_id: SqlRitePreparedStatements;
 	engine_loop_status: SqlRitePreparedStatements;
@@ -409,11 +401,6 @@ export default class SqlRite {
 	engine_list_owner_entry_tags: SqlRitePreparedStatements;
 	engine_next_turn_sequence: SqlRitePreparedStatements;
 	engine_loop_usage: SqlRitePreparedStatements;
-	engine_begin_loop_accounting: SqlRitePreparedStatements;
-	engine_loop_accounting_identity: SqlRitePreparedStatements;
-	engine_loop_accounting_scope: SqlRitePreparedStatements;
-	engine_set_loop_accounting_pending: SqlRitePreparedStatements;
-	engine_set_loop_accounting_settled: SqlRitePreparedStatements;
 	engine_loop_attributions: SqlRitePreparedStatements;
 	engine_loop_turn_seqs: SqlRitePreparedStatements;
 	engine_open_turn: SqlRitePreparedStatements;
@@ -478,7 +465,6 @@ export default class SqlRite {
 	journal_turn_insert: SqlRitePreparedStatements;
 	recovery_fail_active_loops: SqlRitePreparedStatements;
 	recovery_fail_open_provider_attempts: SqlRitePreparedStatements;
-	recovery_unsettled_accounting: SqlRitePreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRitePreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRitePreparedStatements;
 	recovery_fail_orphan_subscriptions: SqlRitePreparedStatements;

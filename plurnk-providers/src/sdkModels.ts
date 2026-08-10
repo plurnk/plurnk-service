@@ -9,17 +9,12 @@ import { createTogetherAI } from "@ai-sdk/togetherai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { lookupProvider, type ProviderInfo } from "@plurnk/plurnk-models";
 import type { LanguageModel } from "ai";
-import {
-    authoritativeChargeNormalizer,
-    fireworksAccounting,
-} from "./accounting.ts";
-import { parseRequiredInt } from "./env.ts";
-import type { AuthoritativeChargeNormalizer, ProviderAccountingAdapter } from "./types.ts";
+import { authoritativeChargeNormalizer } from "./accounting.ts";
+import type { AuthoritativeChargeNormalizer } from "./types.ts";
 
 export type SdkModel = {
     readonly languageModel?: LanguageModel;
     readonly normalizeCharge?: AuthoritativeChargeNormalizer;
-    readonly accounting?: ProviderAccountingAdapter;
     readonly compatible?: {
         readonly url: string;
         readonly headers: Readonly<Record<string, string>>;
@@ -191,18 +186,6 @@ export const createSdkModel = (
             if (url === undefined) throw new Error(`${provider} provider: Models.dev supplies no API URL and no base URL was configured`);
             const keyNames = configuredKeyNames(provider, env, catalog);
             const key = keyNames.length === 0 ? undefined : requireApiKey(provider, env, catalog);
-            let accounting: ProviderAccountingAdapter | undefined;
-            if (catalog.id === "fireworks-ai") {
-                if (key === undefined) {
-                    throw new Error(`${provider} provider: Fireworks accounting requires a configured API key`);
-                }
-                accounting = fireworksAccounting({
-                    apiKey: key,
-                    ...(env.FIREWORKS_ACCOUNT_ID === undefined ? {} : { accountId: env.FIREWORKS_ACCOUNT_ID }),
-                    timeoutMs: parseRequiredInt(env.PLURNK_PROVIDERS_ACCOUNTING_TIMEOUT, "PLURNK_PROVIDERS_ACCOUNTING_TIMEOUT", provider),
-                    pollIntervalMs: parseRequiredInt(env.PLURNK_PROVIDERS_ACCOUNTING_POLL_INTERVAL, "PLURNK_PROVIDERS_ACCOUNTING_POLL_INTERVAL", provider),
-                });
-            }
             return {
                 compatible: {
                     url: `${url}/chat/completions`,
@@ -210,7 +193,6 @@ export const createSdkModel = (
                         ? {}
                         : { Authorization: `Bearer ${key}` },
                 },
-                ...(accounting === undefined ? {} : { accounting }),
                 catalog,
             };
         default:

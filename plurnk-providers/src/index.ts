@@ -15,9 +15,6 @@ export type {
     TokenLogprob,
     TokenAlternative,
     AuthoritativeCharge,
-    ProviderAccountingResult,
-    ProviderAccountingScope,
-    ProviderCallAccounting,
 } from "./types.ts";
 export type { ProviderCost } from "@plurnk/plurnk-contracts";
 export { assertPromptTokenMeasurement } from "./promptTokens.ts";
@@ -48,14 +45,12 @@ export { default as Pool } from "./Pool.ts";
 export type { ProviderFetch } from "./AiSdkProvider.ts";
 export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, requireEnv, reasoningFromEnv, reasoningResponseStyleFromEnv, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, effectiveContextWindow, envelopeFromEnv, resolveReserve, PROVIDERS_KNOBS } from "./env.ts";
 export type { Reasoning, ReasoningMode, ReasoningResponseStyle, ReserveSpec } from "./env.ts";
-export { normalizeUsage, calculateCostUsd } from "./usage.ts";
+export { normalizeUsage, calculateCostUsd, calculateCostUsdDecimal } from "./usage.ts";
 export {
     providerCostFor,
-    providerProjectedCostUsd,
     providerCostUsd,
     resolveProviderCost,
     validateAuthoritativeCharge,
-    validateProviderAccountingResult,
     validateProviderCost,
 } from "./cost.ts";
 export type { RawUsage, TokenRates } from "./usage.ts";
