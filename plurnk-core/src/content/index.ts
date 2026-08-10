@@ -16,6 +16,8 @@ export type { MatchResult } from "./matcher.ts";
 export { default as ReadResolve } from "./read-resolve.ts";
 export type { ReadSliceResult } from "./read-resolve.ts";
 
+export { default as ReadProjector } from "./read-projector.ts";
+
 export { editedSpan } from "./edited-span.ts";
 export {
     assertEditBatchReceipt,

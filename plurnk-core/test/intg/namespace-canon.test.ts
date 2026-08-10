@@ -10,7 +10,7 @@ import File from "../../src/schemes/File.ts";
 import Namespace from "../../src/core/namespace.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import Owner from "../../src/core/Owner.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace, lookThroughScheme } from "./_helpers.ts";
 
 const fileUrl = (pathname: string): UrlPath => ({
     kind: "url", raw: `file://${pathname}`, scheme: "file",
@@ -18,6 +18,8 @@ const fileUrl = (pathname: string): UrlPath => ({
     pathname, query: null, fragment: null,
 });
 const readStmt = (pathname: string): ReadStatement => ({ op: "READ", suffix: "", signal: null, target: fileUrl(pathname), lineMarker: null, body: null, position: { line: 1, column: 1 } });
+const readFileScheme = (statement: ReadStatement, ctx: ReturnType<typeof makeSchemeCtx>) =>
+    lookThroughScheme("file", null, statement, ctx);
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): EditStatement => ({ op: "EDIT", suffix: "", signal: null, target: fileUrl(pathname), lineMarker: marker, body, position: { line: 1, column: 1 } } as unknown as EditStatement);
 
@@ -41,7 +43,7 @@ test("{§fs-canonical-name}: every spelling of one member resolves to the same r
         const rootBase = root; // e.g. /tmp/plurnk-canon-XXXX
         const spellings = ["src/main.js", "/src/main.js", "./src/main.js", "src/./main.js", "a/../src/main.js", `../${rootBase.split("/").at(-1)}/src/main.js`];
         for (const spelling of spellings) {
-            const r = await new File().read(readStmt(spelling), ctx);
+            const r = await readFileScheme(readStmt(spelling), ctx);
             assert.equal(r.status, 200, `READ(${spelling}) resolves the member`);
             assert.equal(r.content, "the one file\n", `READ(${spelling}) reads the SAME row`);
         }
@@ -159,7 +161,7 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
         const file = new File();
 
         // ENOENT on a READ miss carries the resolved name in wire canon.
-        const miss = await file.read(readStmt("/no/such.md"), ctx);
+        const miss = await readFileScheme(readStmt("/no/such.md"), ctx);
         assert.equal(miss.status, 404);
         assert.equal(miss.problem?.detail, "No entry exists at no/such.md.", "the READ miss states its fact — resolved form, wire canon");
 
@@ -209,14 +211,14 @@ test("an in-root file no grantor admits DOES NOT EXIST; a client pick brings it 
         // A real file, physically in the root — non-git root, no pick: NO grantor admits it.
         await writeFile(join(root, "ungran.md"), "present on disk, absent in the world\n");
         const file = new File();
-        const invisible = await file.read(readStmt("ungran.md"), ctx);
+        const invisible = await readFileScheme(readStmt("ungran.md"), ctx);
         assert.equal(invisible.status, 404, "no grantor → the file does not exist for the model (counterintuitive on purpose — the sandbox's center)");
 
         // The client grants (pick) + the membership pass runs → it exists.
         await db.crud_insert_workspace_constraint.run({ workspace_id: workspaceId, effect: "pick", glob: "ungran.md" });
         const GitMembership = (await import("../../src/core/git-membership.ts")).default;
         await GitMembership.indexGitMembership(ctx);
-        const visible = await file.read(readStmt("ungran.md"), ctx);
+        const visible = await readFileScheme(readStmt("ungran.md"), ctx);
         assert.equal(visible.status, 200, "the client's explicit grant is what brings it into existence — every visible byte traces to an external grantor");
         assert.match(visible.content ?? "", /present on disk/);
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }

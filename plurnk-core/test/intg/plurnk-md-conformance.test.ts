@@ -24,7 +24,7 @@ import type { EditStatement, FindStatement, LineMarker, MatcherBody, ReadStateme
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
 
 // One plurnk.md example (FIND ~query RAG) asserts REAL vector ranking — re-enable the embedder the
 // Mock bootstrap turns off; --test-isolation scopes this to this file.
@@ -108,7 +108,7 @@ test("[plurnk.md-ex-READ-line-slice] READ <L> slices by line via the marker slot
     try {
         await seed(db, workspaceId, workerId, [["lines", "alpha\nbeta\ngamma"]]);
         const stmt: ReadStatement = { op: "READ", suffix: "", signal: null, target: url("lines"), lineMarker: { marks: [2, 2] }, body: null, position: { line: 1, column: 1 } };
-        const r = await new Worker().read(stmt, makeSchemeCtx({ db, workspaceId }));
+        const r = await lookThroughScheme("worker", null, stmt, makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.match(r.content ?? "", /beta/);
         assert.doesNotMatch(r.content ?? "", /alpha|gamma/);

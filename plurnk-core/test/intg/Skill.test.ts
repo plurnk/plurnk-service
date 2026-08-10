@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Skill from "../../src/schemes/Skill.ts";
 import Worker from "../../src/schemes/Worker.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, openStmt, foldStmt, fullReplace } from "./_dsl.ts";
 
 const setup = async () => {
@@ -39,10 +39,11 @@ test("Skill.read: existing → 200 with content; missing → 404", async () => {
     try {
         const s = new Skill();
         await s.edit(editStmt(urlPath("skill", "/grep"), "grep skill body"), makeHandlerCtx(makeSchemeCtx({ db, workspaceId, workerId }), Skill.manifest));
-        const found = await s.read(readStmt(urlPath("skill", "/grep")), makeHandlerCtx(makeSchemeCtx({ db, workspaceId }), Skill.manifest));
+        const readCtx = makeSchemeCtx({ db, workspaceId, workerId });
+        const found = await lookThroughScheme("skill", null, readStmt(urlPath("skill", "/grep")), readCtx);
         assert.equal(found.status, 200);
         assert.equal(found.content, "grep skill body");
-        const missing = await s.read(readStmt(urlPath("skill", "/nope")), makeHandlerCtx(makeSchemeCtx({ db, workspaceId }), Skill.manifest));
+        const missing = await lookThroughScheme("skill", null, readStmt(urlPath("skill", "/nope")), readCtx);
         assert.equal(missing.status, 404);
     } finally { await db.close(); }
 });
@@ -56,7 +57,12 @@ test("Skill.edit + read: idempotent on same path", async () => {
         assert.equal(first.status, 201);
         assert.equal(second.status, 200);
         assert.equal(second.entryId, first.entryId);
-        const read = await s.read(readStmt(urlPath("skill", "/x")), makeHandlerCtx(makeSchemeCtx({ db, workspaceId }), Skill.manifest));
+        const read = await lookThroughScheme(
+            "skill",
+            null,
+            readStmt(urlPath("skill", "/x")),
+            makeSchemeCtx({ db, workspaceId, workerId }),
+        );
         assert.equal(read.content, "second");
     } finally { await db.close(); }
 });

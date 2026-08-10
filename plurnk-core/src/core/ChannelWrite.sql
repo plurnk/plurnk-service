@@ -9,7 +9,8 @@ WHERE ec.entry_id = $entry_id AND ec.name = $channel;
 -- PREP: append_to_channel
 UPDATE entry_channels
 SET content = content || $chunk,
-    tokens = ruler_count(content || $chunk)
+    tokens = ruler_count(content || $chunk),
+    producer_result = NULL
 WHERE entry_id = $entry_id AND name = $channel;
 
 -- PREP: set_channel_state
@@ -28,7 +29,7 @@ WHERE entry_id = $entry_id AND name = $channel AND mimetype != $mimetype;
 -- Full content swap for one channel (ChannelCaps.replace). The caller binds
 -- the same ruler weight append_to_channel computes inside its atomic update.
 UPDATE entry_channels
-SET content = $content, tokens = $tokens
+SET content = $content, tokens = $tokens, producer_result = NULL
 WHERE entry_id = $entry_id AND name = $channel;
 
 -- PREP: open_subscription

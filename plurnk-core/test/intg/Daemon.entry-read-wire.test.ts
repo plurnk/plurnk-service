@@ -2,12 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type {
     EntryEditResult,
-    EntryReadResult,
     SchemeCtx,
     SchemeHandler,
     SchemeManifest,
 } from "@plurnk/plurnk-schemes";
-import type { EditStatement, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { EditStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import { Validator, type ClientEntry, type EntryReadResult as EntryReadWire } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -34,10 +33,6 @@ class PrivateNotes implements SchemeHandler {
 
     async editBatch(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EntryEditResult> {
         return ctx.entries.operations.editBatch(statements, "worker");
-    }
-
-    async read(statement: ReadStatement, ctx: SchemeCtx): Promise<EntryReadResult> {
-        return ctx.entries.operations.read(statement, "worker");
     }
 }
 

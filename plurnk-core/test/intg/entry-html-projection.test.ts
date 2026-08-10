@@ -13,7 +13,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import EntryOps from "../../src/schemes/_entry-ops.ts";
 import Worker from "../../src/schemes/Worker.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, makeHandlerCtx, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, lookThroughScheme, makeSchemeCtx, testExecutors, DEFAULT_MIMETYPES, quiesceExecs } from "./_helpers.ts";
 
 const ROSTER = "<html><body><h1>Team Roster</h1><user email=\"alice@x.com\">Alice</user></body></html>";
 
@@ -112,8 +112,7 @@ test("a scoped HTTP READ slices the materialized readable body instead of starti
             },
             lineMarker: { marks: [2, 3] }, body: null, position: { line: 1, column: 1 },
         };
-        const manifest = { ...Http.manifest, name: "https" };
-        const result = await new Http().read(statement, makeHandlerCtx(ctx, manifest));
+        const result = await lookThroughScheme("http", new Http(), statement, ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "two\nthree");
         assert.equal(result.startLine, 2);
@@ -145,8 +144,7 @@ test("a scoped HTTP READ slices the selected auxiliary channel when body is empt
             },
             lineMarker: { marks: [2, 3] }, body: null, position: { line: 1, column: 1 },
         };
-        const manifest = { ...Http.manifest, name: "https" };
-        const result = await new Http().read(statement, makeHandlerCtx(ctx, manifest));
+        const result = await lookThroughScheme("http", new Http(), statement, ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "content-type: text/plain\nx-request-id: 42");
         assert.equal(result.channel, "header");

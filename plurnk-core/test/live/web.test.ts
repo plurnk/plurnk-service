@@ -5,12 +5,11 @@
 //     the operator's normal environment.
 //
 // NO-MOCK: the http test dispatches a parsed READ straight through a real Engine against the real
-// http scheme and real network, then polls the REAL db channel for the fetched bytes. Nothing is
-// mocked — no provider, no db mock, no model turn. The search test fires through the daemon.
+// http scheme and real network, then inspects the canonical entry. Nothing is mocked — no
+// provider, no db mock, no model turn. The search test fires through the daemon.
 //
-//  - http: RUNS. The `ctx.subscriptions` streaming capability is wired in
-//    SchemeCtxImpl ({§scheme-subscriptions}) — the http plugin's `ctx.subscriptions.open/.notifyChunk/.close` drives
-//    the real fetch into a streamed entry, validated end-to-end here against real network.
+//  - http: a finite GET writes its complete canonical representation before READ returns 200;
+//    genuine event streams retain the subscription lifecycle ({§scheme-subscriptions}).
 //  - search: REQUIRED in this tier. An unavailable endpoint fails the live gate.
 
 import { liveTest as test } from "../live-test.ts";
@@ -24,11 +23,11 @@ import type Exec from "../../src/schemes/Exec.ts";
 import Http from "@plurnk/plurnk-schemes-http";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "../intg/_helpers.ts";
 
-// A stable NON-HTML URL: text/plain streams via raw fetch (an HTML target routes through the
+// A stable NON-HTML URL: text/plain uses raw fetch (an HTML target routes through the
 // HTTP scheme's generic acquisition path, which is exercised separately).
 const HTTP_URL = "https://www.google.com/robots.txt";
 
-test("live web: a discovered http:// READ fetches a real URL into a streamed entry (no model, no mock)",
+test("live web: a discovered http:// READ atomically materializes a real URL (no model, no mock)",
     async () => {
         // grammar requires a PLAN lead; PLAN-prefix then take the READ (the service parses ops this way too).
         const parsed = PlurnkParser.parse(`<<PLAN::PLAN\n<<READ(${HTTP_URL})::READ`);
@@ -48,17 +47,14 @@ test("live web: a discovered http:// READ fetches a real URL into a streamed ent
             const turnId = await insertTurn(db, loopId, 1, 102);
 
             const r = await engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-            assert.equal(r.status, 102, "http READ backgrounds (102) — the body streams in");
-
-            // Poll the REAL channel until the fetched bytes land (the stream writes it async).
-            let body = "";
-            for (let i = 0; i < 40 && body.length === 0; i++) {
-                await new Promise((res) => setTimeout(res, 500));
-                const e = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "https", pathname: "/www.google.com/robots.txt" });
-                if (e) body = (await db.test_get_channel.get<{ content: string }>({ entry_id: e.id, name: "body" }))?.content ?? "";
-            }
-            assert.ok(body.length > 0, "the real fetched robots.txt body materialized in the entry");
-            assert.match(body, /User-agent|Disallow/i, "the body is the actual robots.txt content");
+            assert.equal(r.status, 200, "finite HTTP READ settles only after canonical materialization");
+            assert.match(String(r.content), /User-agent|Disallow/i, "READ returns the actual robots.txt content");
+            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "https", pathname: "/www.google.com/robots.txt" });
+            assert.ok(entry);
+            const body = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "body" });
+            assert.ok(body?.content.startsWith(String(r.content)), "READ projects from the stored canonical prefix");
+            assert.ok((body?.content.split("\n").length ?? 0) > 16, "the entry retains content beyond the markerless preview");
+            assert.deepEqual((r.range as { returned?: readonly number[] } | undefined)?.returned, [1, 16]);
         } finally { await schemes.close(); await db.close(); }
     });
 
@@ -135,7 +131,8 @@ test("live web: a real HTML READ stores Tavily Markdown + source HTML under one 
             const loopId = await insertLoop(db, workerId, 1, "web html");
             const turnId = await insertTurn(db, loopId, 1, 102);
             const result = await engine.dispatch({ statement: item.statement, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-            assert.equal(result.status, 102);
+            assert.equal(result.status, 200);
+            assert.equal(result.mimetype, "text/markdown");
             const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "https", pathname: "/example.com/" });
             assert.ok(entry);
             const body = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: entry.id, name: "body" });

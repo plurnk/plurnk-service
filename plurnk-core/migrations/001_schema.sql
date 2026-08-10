@@ -481,6 +481,36 @@ CREATE TABLE IF NOT EXISTS entry_channels (
     -- NULL). The per-tokenizer token cache it once keyed was retired — {§tokenomics-agnostic-ruler}.
     content_hash TEXT,
     state    TEXT    NOT NULL DEFAULT 'static' CHECK (state IN ('static', 'active', 'closed', 'errored')),
+    -- Exact terminal producer evidence for this representation channel. NULL is
+    -- the ordinary implicit {status:200}; selection/projection metadata belongs
+    -- to core and is never stored here.
+    producer_result TEXT,
+    CONSTRAINT entry_channel_producer_result_contract CHECK (
+        CASE
+            WHEN producer_result IS NULL THEN 1
+            WHEN NOT json_valid(producer_result) THEN 0
+            ELSE
+                json_type(producer_result) IS 'object'
+                AND json_type(producer_result, '$.status') IS 'integer'
+                AND json_extract(producer_result, '$.status') BETWEEN 200 AND 599
+                AND json_extract(producer_result, '$.status') != 202
+                AND CASE
+                    WHEN json_extract(producer_result, '$.status') < 400 THEN
+                        json_type(producer_result, '$.problem') IS NULL
+                    ELSE
+                        json_type(producer_result, '$.problem') IS 'object'
+                        AND json_type(producer_result, '$.problem.status') IS 'integer'
+                        AND json_extract(producer_result, '$.problem.status')
+                            = json_extract(producer_result, '$.status')
+                        AND json_type(producer_result, '$.problem.type') IS 'text'
+                        AND length(json_extract(producer_result, '$.problem.type')) > 0
+                        AND json_type(producer_result, '$.problem.title') IS 'text'
+                        AND length(json_extract(producer_result, '$.problem.title')) > 0
+                        AND json_type(producer_result, '$.problem.detail') IS 'text'
+                        AND length(json_extract(producer_result, '$.problem.detail')) > 0
+                END
+        END
+    ),
     PRIMARY KEY (entry_id, name),
     FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;

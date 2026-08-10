@@ -1,10 +1,10 @@
 // The scheme BEHAVIOR contract — the typed counterpart to SchemeManifest
 // (which types a scheme's declaration). A handler implements a method per op it
-// supports, named for the lowercased op (READ → read, SEND → send, FIND → find,
+// supports, named for the lowercased op (SEND → send, FIND → find,
 // …). OPEN/FOLD are deliberately absent: core routes those curation operations
-// only to its log owner. Entry-bearing data schemes inherit standard READ and
-// FIND when the corresponding operation method is absent; optional preparation
-// hooks may materialize the requested representation first.
+// only to its log owner. Core owns every READ: stored schemes inherit it and
+// other readable schemes provide a scope-blind representation first. FIND may
+// still be candidate-store-specific.
 // Every method is therefore OPTIONAL — a scheme implements only its distinct
 // surface. Operation methods share `(statement, ctx) => Promise<SchemeResult>`;
 // preparation hooks deliberately receive narrower inputs.
@@ -21,7 +21,6 @@
 // they are client operations the engine never dispatches to a scheme.
 import type {
     FindStatement,
-    ReadStatement,
     EditStatement,
     SendStatement,
     ExecStatement,
@@ -34,8 +33,13 @@ import type {
 import type { PluginAttributionSource } from "@plurnk/plurnk-meta";
 import type { EntryAddress, ProposalApplyRequest, ProposalApplyResult, SchemeCtx } from "./ctx.ts";
 import type { EditBatchResult } from "./edit-receipt.ts";
-import type { SchemeResult } from "./Results.ts";
+import type { RepresentationPreparationResult, SchemeResult } from "./Results.ts";
 import type { SchemeManifest } from "./types.ts";
+
+export interface RepresentationPreparationRequest {
+    readonly target: ParsedPath;
+    readonly pathname: string;
+}
 
 export interface SchemeHandler extends PluginAttributionSource {
     // Per-instance manifest option. Every handler must expose either this or a
@@ -52,19 +56,27 @@ export interface SchemeHandler extends PluginAttributionSource {
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;
 
     // Resolve a client-visible address through the same pathname and ownership
-    // rules as this scheme's model-facing operations. Absent means commons.
-    resolveEntryAddress?(target: ParsedPath, ctx: SchemeCtx): Promise<EntryAddress | null>;
+    // rules as this scheme's model-facing operations. Absent means commons;
+    // null means no resolvable resource. An expected protocol/authority refusal
+    // returns its exact non-success result instead of losing it to a generic miss.
+    resolveEntryAddress?(
+        target: ParsedPath,
+        ctx: SchemeCtx,
+    ): Promise<EntryAddress | SchemeResult | null>;
 
     // Entry-bearing schemes receive the standard resource-selection
     // implementation from the consumer. A scheme implements this hook only
     // when the requested target must be discovered or materialized before FIND
     // selects stored entries.
     prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    // READ preparation receives only the exact target, never its text scope.
-    // A successful preparation leaves the readable representation in entries;
-    // the consumer then owns channel selection and text projection.
-    prepareRead?(target: ParsedPath, ctx: SchemeCtx): Promise<SchemeResult>;
-    read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    // Exact-resource acquisition receives an already-resolved pathname and a
+    // target stripped of channel selection. Operation-specific READ/FIND/COPY
+    // intent and scope are never available. Core binds ctx capabilities to the
+    // resolved owner, then owns selection and projection after readiness.
+    prepareRepresentation?(
+        request: RepresentationPreparationRequest,
+        ctx: SchemeCtx,
+    ): Promise<RepresentationPreparationResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     editBatch?(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;

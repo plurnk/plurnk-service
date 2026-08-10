@@ -26,6 +26,25 @@ export interface SchemeResultBase extends SchemeResult {
     readonly problem?: ProblemDetails;
 }
 
+// Exact terminal evidence about one produced channel. Core-owned selection and
+// projection fields are structurally unavailable: the consumer adds those only
+// after it selects this channel and projects the authored text scope.
+export interface ChannelProducerResult extends SchemeResultBase {
+    readonly content?: never;
+    readonly mimetype?: never;
+    readonly channel?: never;
+    readonly startLine?: never;
+    readonly region?: never;
+    readonly matches?: never;
+    readonly range?: never;
+}
+
+// A scope- and channel-neutral preparation result. `status: 200` means the
+// complete representation, including channel producer results, is ready in the
+// canonical entry. `102` means it remains genuinely live; other statuses are
+// returned directly.
+export interface RepresentationPreparationResult extends SchemeResultBase {}
+
 // Evidence explaining why a matcher selected a resource. Structural dialects
 // retain their canonical `locator`. `region` is present only when the
 // finding has an honest exact or enclosing mapping into text the model can READ.
@@ -150,6 +169,50 @@ export default class Results {
         }
         if (Object.hasOwn(record, "matches") && record.matches !== undefined) {
             Results.assertMatchEvidenceList(record.matches);
+        }
+        return exact;
+    }
+
+    static assertRepresentationPreparation<T extends RepresentationPreparationResult>(result: T): T {
+        const exact = Results.assert(result);
+        if (exact.status < 200 && exact.status !== 102) {
+            throw new InvalidOperationResultError(
+                "a live representation preparation must use status 102",
+            );
+        }
+        if (exact.status >= 200 && exact.status < 300 && exact.status !== 200) {
+            throw new InvalidOperationResultError(
+                "representation preparation readiness must use status 200",
+            );
+        }
+        if (Object.hasOwn(exact, "channelOutcomes")) {
+            throw new InvalidOperationResultError(
+                "representation preparation cannot carry transient channel outcomes",
+            );
+        }
+        const projectionFields = ["content", "mimetype", "channel", "startLine", "region", "matches", "range"];
+        const owned = projectionFields.find((field) => Object.hasOwn(exact, field));
+        if (owned !== undefined) {
+            throw new InvalidOperationResultError(
+                `representation preparation cannot carry core-owned projection field ${JSON.stringify(owned)}`,
+            );
+        }
+        return exact;
+    }
+
+    static assertChannelProducerResult<T extends ChannelProducerResult>(result: T): T {
+        const exact = Results.assert(result);
+        if (exact.status < 200 || exact.status === 202) {
+            throw new InvalidOperationResultError(
+                `channel producer result cannot use nonterminal status ${exact.status}`,
+            );
+        }
+        const projectionFields = ["content", "mimetype", "channel", "startLine", "region", "matches", "range"];
+        const owned = projectionFields.find((field) => Object.hasOwn(exact, field));
+        if (owned !== undefined) {
+            throw new InvalidOperationResultError(
+                `channel producer result cannot carry core-owned projection field ${JSON.stringify(owned)}`,
+            );
         }
         return exact;
     }

@@ -73,13 +73,13 @@ the consumer's proposal lifecycle decides whether a client, loop auto,
 ## §2 Interface
 
 Sister scheme handlers implement op methods consumed by plurnk-service via
-dispatch. An absent method returns **501**, except READ and FIND on an
-entry-bearing `category: "data"` scheme: the consumer supplies its standard
-stored-entry operation automatically. The op-dispatch surface is the exported
-**`SchemeHandler`** interface — every method optional, each
-operation method receives its per-op grammar statement and `ctx`;
-preparation hooks receive their deliberately narrower inputs. `editBatch`
-returns the typed `EditBatchResult` specialization:
+dispatch. The consumer owns READ for every `category: "data"` scheme and owns
+exact-target FIND over its canonical representation; no handler method can
+replace either projection. Other absent operation methods return **501**. The
+exported **`SchemeHandler`** interface gives operation methods their grammar
+statement and `ctx`, while representation preparation receives a deliberately
+narrower request. `editBatch` returns the typed `EditBatchResult`
+specialization:
 
 ```ts
 import type { EditBatchResult, SchemeHandler } from "@plurnk/plurnk-schemes";
@@ -87,10 +87,12 @@ import type { EditBatchResult, SchemeHandler } from "@plurnk/plurnk-schemes";
 export interface SchemeHandler {
     ready?(): Promise<void>;
     close?(): Promise<void>;
-    resolveEntryAddress?(target: ParsedPath, ctx: SchemeCtx): Promise<EntryAddress | null>;
-    prepareRead?(target: ParsedPath, ctx: SchemeCtx): Promise<SchemeResult>;
+    resolveEntryAddress?(target: ParsedPath, ctx: SchemeCtx): Promise<EntryAddress | SchemeResult | null>;
+    prepareRepresentation?(
+        request: RepresentationPreparationRequest,
+        ctx: SchemeCtx,
+    ): Promise<RepresentationPreparationResult>;
     prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     editBatch?(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
@@ -103,39 +105,55 @@ export interface SchemeHandler {
 }
 ```
 
-§read-preparation `prepareRead?` is the optional representation-acquisition
-seam for exact READ. Core resolves the target identity and owner first, then
-passes the hook only the exact `ParsedPath`; the authored `lineMarker` is
-structurally unavailable. A stored scheme omits the hook. An acquisition scheme
-writes the complete selected representation into its entry and returns that
-producer's operation status, not its storage-write receipt. `102` denotes a
-representation that remains genuinely live and is returned directly; a
-Problem or redirect is likewise exact. After any other successful preparation,
-the consumer alone selects the channel and applies the authored text scope (or
-the markerless `<1,16>` default). A successful non-`200` producer status is
-preserved when projection succeeds; a channel, binary, or range Problem from
-projection takes precedence.
+§read-preparation `prepareRepresentation?` is the optional, operation-neutral
+acquisition seam for one exact resource. Core first resolves its canonical
+pathname and owner, binds `ctx.entries`/channels/subscriptions to that owner,
+and removes the channel fragment. The request is exactly
+`{ target, pathname }`: READ coordinates, FIND matchers, the selected channel,
+and operation intent are structurally unavailable.
 
-`prepareFind?` is not a second query implementation. It is the optional
-discovery/materialization seam invoked before the consumer's standard resource
-selection when a data scheme has no custom `find()`. Stored schemes omit it.
-FIND invokes it before selecting entries. Acquisition
-schemes use it to make an exact requested resource into an ordinary entry,
-then receive the same target-shaped resource/location projection, weight,
-pagination, and status semantics as every other entry-bearing scheme. The consumer resolves the
-standard query through the same canonical entry identity used by
-`ctx.entries`: a URL authority remains part of that identity and cannot be
-dropped between preparation and lookup. A custom `find()` replaces the whole
-operation only where the scheme owns genuinely different candidate semantics.
+A stored scheme omits the hook. An acquired scheme writes its complete channel
+topology through `ctx.entries` and returns `200` readiness. A live scheme first
+seeds those same canonical channels, opens a subscription, and may return `102`
+only while production remains live. Other statuses are exact terminal results.
+Per-channel producer status belongs durably on that channel as
+`producerResult`; no transient preparation result may carry content, channel
+selection, or channel outcomes. After `200`, core alone selects the authored
+channel, applies tag/binary/text rules (including markerless `<1,16>`), and
+composes that channel's producer evidence. Cold and warm reads therefore have
+identical semantics.
+
+Exact FIND uses the same `prepareRepresentation?` seam and then the standard
+entry query; the queried default channel's durable producer result composes
+with that exact query just as it does with exact READ. `prepareFind?` is only
+the optional broad-scope discovery seam
+used before standard entry selection when no custom broad `find()` exists. A
+custom `find()` may own genuinely different candidate enumeration, but never
+exact-resource materialization or READ coordinates. Every standard query uses
+the same canonical identity as `ctx.entries`; URL authority cannot disappear
+between preparation and lookup.
+
+An exact COPY/MOVE source also resolves and prepares through this seam before
+core selects its canonical stored channel. COPY/MOVE retain their own source
+scope algebra: an absent source scope means the complete channel and an explicit
+scope preserves raw source separators. Neither distinction is exposed to the
+producer. A live `102` leaves the composition unapplied; a ready representation
+is selected from the same channels used by READ and exact FIND. A selected
+channel's producer failure aborts before destination mutation; successful
+non-`200` content remains eligible for transfer.
 
 §entry-address-resolution `resolveEntryAddress?` gives a client observation the
 same address law as model-facing operations without creating a second CRUD
-protocol. It returns the canonical stored `pathname` and a semantic owner:
+protocol. Core removes the channel fragment and target-slot pathname aliases
+{§path-parentheses} before invocation; query and other identity components
+remain exact. The hook returns the canonical stored `pathname` and a semantic
+owner:
 
 | Return                                  | Meaning                                           |
 |-----------------------------------------|---------------------------------------------------|
 | `{ pathname, owner: "commons" }`        | Resolve in the shared workspace namespace        |
 | `{ pathname, owner: "worker" }`         | Resolve in the calling worker's namespace         |
+| Non-success `SchemeResult`              | Preserve an expected address refusal exactly      |
 | `null`                                  | The selector names no client-visible entry        |
 | Hook absent                             | Use the standard pathname and `commons` ownership |
 
@@ -240,7 +258,7 @@ effects shown to consumers; plugins do not invent a second effect envelope.
 - Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `EditStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`).
 - Target syntax: contracts-owned `PathSyntax` is re-exported for the shared exact-versus-path-glob classifier {§path-glob}.
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
-- §executor-scheme-output Executor-scheme ("an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring); `DefaultRead.read(content, mimetype, statement, mimetypes)` -> `ReadResolution` is the free exact-target text projection over produced output (reuses `Slicer`). Markerless READ returns lines 1–16 with compact range metadata; `<1,-1>` explicitly returns all. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only EXEC-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
+- §executor-scheme-output Executor-scheme ("an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring). Executor output is a canonical entry and therefore inherits core's exact READ projection under {§read-preparation}; no executor-specific READ helper exists. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only EXEC-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
 - Results: `SchemeResult` is the universal operation-result contract. Statuses below 400 carry no `problem`; statuses 400–599 require RFC 9457 `ProblemDetails`, and the legacy `error` member is forbidden. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
 - Standard `EntryFindResult` exposes only its paged `results`, complete `matchingPathCount` / `matchLocationCount`, content weights, and typed range. Resource-mode rows are `EntryCatalogItem` or `EntryCatalogScope`; exact matcher mode returns flat `MatchEvidence` locations. Pagination is the materialization bound; no hidden `matches`, `pathnames`, or overflow-only result collection exists.
 - Capability ctx (see §3.bis): `SchemeCtx`, `StreamSubscription`, and the domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`/`EntryAddress`, and typed standard-operation results. `editBatch` receives every same-turn EDIT for one canonical resource and channel; it validates against one snapshot and commits one revision or none. There is no sequential single-EDIT fallback.

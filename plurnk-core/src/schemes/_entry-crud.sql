@@ -8,7 +8,7 @@ SELECT id FROM entries
 WHERE workspace_id = $workspace_id AND owner_id = $owner_id AND scheme = $scheme AND pathname = $pathname;
 
 -- PREP: crud_read_channels
-SELECT name, content, mimetype, state FROM entry_channels WHERE entry_id = $entry_id;
+SELECT name, content, mimetype, state, producer_result FROM entry_channels WHERE entry_id = $entry_id;
 
 -- PREP: crud_read_tags
 SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
@@ -72,8 +72,8 @@ DELETE FROM entry_tags WHERE entry_id = $entry_id;
 
 -- PREP: crud_write_channel
 -- {§tokenomics-content-hash-identity}: every static write stamps stable content identity.
-INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, content_hash, state)
-VALUES ($entry_id, $name, $content, $mimetype, $tokens, $content_hash, $state);
+INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, content_hash, state, producer_result)
+VALUES ($entry_id, $name, $content, $mimetype, $tokens, $content_hash, $state, $producer_result);
 
 -- PREP: crud_write_tag
 INSERT OR IGNORE INTO entry_tags (entry_id, tag) VALUES ($entry_id, $tag);

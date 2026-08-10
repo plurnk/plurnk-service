@@ -1,5 +1,5 @@
 import { parsePath } from "@plurnk/plurnk-contracts";
-import type { ExecStatement, FindStatement, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, FindStatement, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
 import { Policy, type ChannelState } from "@plurnk/plurnk-execs";
 import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";
 import {
@@ -17,7 +17,6 @@ import EntryOps from "./_entry-ops.ts";
 import EntryCrud from "./_entry-crud.ts";
 import Owner from "../core/Owner.ts";
 import EntryFind from "./_entry-find.ts";
-import type { ReadResult } from "./_entry-ops.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import type { FindResult } from "./_entry-find.ts";
 import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
@@ -28,7 +27,7 @@ import { writeFile, unlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
-import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
+import type { CoreEntryAddress, CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { OperationFailureError, type SchemeResult, type SchemeResultBase } from "../core/results.ts";
 import { InvalidOperationResultError, NetworkAddress } from "@plurnk/plurnk-schemes";
@@ -467,7 +466,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 suffix: "",
                 signal: null,
                 target: sourceTarget,
-                lineMarker: null,
+                lineMarker: { marks: [1, -1] },
                 body: null,
                 position: { line: 0, column: 0 },
             }, core);
@@ -708,7 +707,12 @@ export default class Exec extends CoreSchemeAdapterBase {
                 const tags = [...new Set([...(prior.entry?.tags ?? []), ...opts.tags])];
                 // {§exec-entry-sink}/{§html-materialization} The shared
                 // materializer owns the decisive projection and its provenance.
-                const channels: EntryData["channels"] = WebFetcher.materializedChannels(web);
+                const channels: EntryData["channels"] = WebFetcher.materializedChannels(
+                    web,
+                    content === null && fetchAddress !== null
+                        ? { url: fetchAddress.url, method: "GET" }
+                        : undefined,
+                );
                 const decisive = web.body.content;
                 const source = web.html?.content ?? decisive;
                 const causalSource = await resolveCallerSource();
@@ -895,17 +899,20 @@ export default class Exec extends CoreSchemeAdapterBase {
         return result;
     }
 
-    async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<ReadResult> {
-        const core = this.coreContext(ctx);
-        const owner = await resolveStreamStatement(statement, core);
-        if (owner === null) {
-            return Results.failure("scheme:exec", "stream-not-found", 404, "No visible stream exists at the requested address.", {
-                content: null, mimetype: null, channel: null,
-            }) as ReadResult;
-        }
-        return EntryOps.readWorkspaceEntry(owner.statement, core, Exec.manifest, {
-            ownerId: owner.ownerId,
-        });
+    async resolveEntryAddress(
+        target: ParsedPath,
+        ctx: CoreSchemeCallContext,
+    ): Promise<CoreEntryAddress | SchemeResultBase | null> {
+        if (target.kind !== "url") return null;
+        const ownerId = await Owner.resolveStreamOwner(target.hostname, this.coreContext(ctx));
+        return ownerId === null
+            ? Results.failure(
+                "scheme:exec",
+                "stream-not-found",
+                404,
+                "No visible stream exists at the requested address.",
+            )
+            : { pathname: target.pathname, ownerId };
     }
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
@@ -917,7 +924,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 matchingPathCount: 0, matchLocationCount: 0,
             }) as FindResult;
         }
-        return EntryFind.findWorkspaceEntries(owner.statement, core, Exec.manifest, owner.ownerId);
+        return EntryFind.findWorkspaceEntries(owner.statement, core, Exec.manifest, { ownerId: owner.ownerId });
     }
 
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {

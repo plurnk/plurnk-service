@@ -29,9 +29,10 @@ export default class DbEntryCaps implements EntryCaps {
     readonly #ctx: PlurnkSchemeContext;
     readonly #scheme: string;
     readonly #manifest: SchemeManifest;
+    readonly #defaultOwnerId: number | undefined;
     readonly operations: EntryOperationCaps;
 
-    constructor(ctx: PlurnkSchemeContext, scheme: string, manifest: SchemeManifest) {
+    constructor(ctx: PlurnkSchemeContext, scheme: string, manifest: SchemeManifest, defaultOwnerId?: number) {
         this.#ctx = ctx;
         this.#scheme = scheme;
         // One handler may own multiple addressed protocols (http/https, ws/wss).
@@ -39,6 +40,7 @@ export default class DbEntryCaps implements EntryCaps {
         // direct CRUD already uses #scheme; standard operations derive identity
         // from manifest.name, so give them the same addressed face.
         this.#manifest = manifest.name === scheme ? manifest : { ...manifest, name: scheme };
+        this.#defaultOwnerId = defaultOwnerId;
         this.operations = {
             editBatch: (statements, owner) => this.#editBatch(statements, owner),
             read: (statement, owner) => this.#read(statement, owner),
@@ -48,7 +50,9 @@ export default class DbEntryCaps implements EntryCaps {
     }
 
     #ownerId(owner: EntryOwner | undefined): number | undefined {
-        return owner === "worker" ? this.#ctx.workerId : undefined;
+        if (owner === "worker") return this.#ctx.workerId;
+        if (owner === "commons") return undefined;
+        return this.#defaultOwnerId;
     }
 
     #result<T extends SchemeResult>(operation: string, result: T): T {
@@ -69,7 +73,9 @@ export default class DbEntryCaps implements EntryCaps {
     }
 
     async #find(statement: FindStatement, owner?: EntryOwner): Promise<EntryFindResult> {
-        return this.#result("find", await EntryFind.findWorkspaceEntries(statement, this.#ctx, this.#manifest, this.#ownerId(owner))) as EntryFindResult;
+        return this.#result("find", await EntryFind.findWorkspaceEntries(statement, this.#ctx, this.#manifest, {
+            ownerId: this.#ownerId(owner),
+        })) as EntryFindResult;
     }
 
     async #send(statement: SendStatement, owner?: EntryOwner): Promise<SchemeResult> {

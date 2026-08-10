@@ -3,7 +3,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import type {
     EntryData,
-    ReadStatement,
+    RepresentationPreparationRequest,
     SchemeCtx,
 } from "@plurnk/plurnk-schemes";
 import type McpResources from "./McpResources.ts";
@@ -11,8 +11,7 @@ import Module from "./Module.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 
-const readStatement = (pathname: string): ReadStatement => ({
-    op: "READ",
+const preparationRequest = (pathname: string): RepresentationPreparationRequest => ({
     target: {
         kind: "url",
         raw: `echo://${pathname}`,
@@ -25,7 +24,8 @@ const readStatement = (pathname: string): ReadStatement => ({
         query: null,
         fragment: null,
     },
-} as ReadStatement);
+    pathname,
+});
 
 const context = (): {
     ctx: SchemeCtx;
@@ -47,27 +47,13 @@ const context = (): {
                     entryId: entries.size,
                 };
             },
-            operations: {
-                read: async (statement: ReadStatement) => {
-                    const pathname = statement.target?.kind === "url"
-                        ? statement.target.pathname ?? "/"
-                        : "/";
-                    const entry = entries.get(pathname);
-                    const body = entry?.channels.body;
-                    return {
-                        status: body === undefined ? 404 : 200,
-                        content: body?.content ?? null,
-                        mimetype: body?.mimetype ?? null,
-                        channel: body === undefined ? null : "body",
-                    };
-                },
-            },
+            operations: {},
         },
     } as unknown as SchemeCtx;
     return { ctx, entries };
 };
 
-test("resource facet reads current MCP resources through ordinary entry operations", async () => {
+test("resource facet materializes current MCP resources as ordinary entries", async () => {
     const module = Module.init({
         env: {
             PLURNK_MCP_CONNECT_TIMEOUT: "30000",
@@ -86,10 +72,10 @@ test("resource facet reads current MCP resources through ordinary entry operatio
         if (resources === undefined) throw new Error("MCP resource facet was not registered.");
         const { ctx, entries } = context();
         const pathname = "/resources/fixture%3A%2F%2Fdocument";
-        const result = await resources.read(readStatement(pathname), ctx);
+        const result = await resources.prepareRepresentation(preparationRequest(pathname), ctx);
         assert.equal(result.status, 200);
-        assert.equal(result.content, "alpha\nbeta\ngamma\n");
-        assert.equal(result.mimetype, "text/plain");
+        assert.equal(entries.get(pathname)?.channels.body?.content, "alpha\nbeta\ngamma\n");
+        assert.equal(entries.get(pathname)?.channels.body?.mimetype, "text/plain");
         assert.deepEqual(entries.get(pathname)?.tags, ["mcp-resource"]);
     } finally {
         await module.close();
@@ -113,8 +99,8 @@ test("resource facet rejects malformed encoded addresses as non-retryable client
             },
         });
         if (resources === undefined) throw new Error("MCP resource facet was not registered.");
-        const result = await resources.read(
-            readStatement("/resources/%E0%A4%A"),
+        const result = await resources.prepareRepresentation(
+            preparationRequest("/resources/%E0%A4%A"),
             context().ctx,
         );
         assert.equal(result.status, 400);

@@ -351,13 +351,14 @@ test("story: draft a brief, tighten it, then file it away", { timeout: TIMEOUT }
         },
     });
     try {
-        assert.equal(chain.steps[0].finalStatus, 200, "the brief was authored");
         assert.ok(sizes[0] > 200, `the draft has substantial prose; got ${sizes[0]} chars`);
-        assert.equal(chain.steps[1].finalStatus, 200, "the refine turn concluded");
         assert.ok(sizes[1] > 0 && sizes[1] < sizes[0], `the refined brief is shorter (${sizes[1]} < ${sizes[0]} chars)`);
-        assert.equal(chain.steps[2].finalStatus, 200, "the file-away turn concluded");
         const inDrafts = await readFile(join(chain.workspace, "drafts", "brief.md"), "utf8").catch(() => null);
-        assert.ok(inDrafts !== null && inDrafts.trim().length > 0, "brief.md was relocated under drafts/");
+        assert.ok(inDrafts !== null, "brief.md was relocated under drafts/");
+        assert.equal(inDrafts.trim().length, sizes[1], "the relocated file is the refined brief");
+        assert.doesNotMatch(inDrafts.trim(), /\n\s*\n/, "the refined brief is one paragraph");
+        const atRoot = await readFile(join(chain.workspace, "brief.md"), "utf8").catch(() => null);
+        assert.equal(atRoot, null, "the move left no brief.md at the workspace root");
     } finally { await chain.cleanup(); }
 });
 

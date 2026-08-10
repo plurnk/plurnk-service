@@ -12,10 +12,12 @@ import { renderAddress } from "../plurnk-uri.ts";
 export default class DbTagCaps implements TagCaps {
     readonly #ctx: PlurnkSchemeContext;
     readonly #scheme: string;
+    readonly #ownerId: number | undefined;
 
-    constructor(ctx: PlurnkSchemeContext, scheme: string) {
+    constructor(ctx: PlurnkSchemeContext, scheme: string, ownerId?: number) {
         this.#ctx = ctx;
         this.#scheme = scheme;
+        this.#ownerId = ownerId;
     }
 
     #missing(pathname: string, fields: Readonly<Record<string, unknown>> = {}): SchemeResult {
@@ -31,21 +33,21 @@ export default class DbTagCaps implements TagCaps {
     }
 
     async add(pathname: string, tags: ReadonlyArray<string>): Promise<SchemeResult> {
-        const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
+        const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname, this.#ownerId);
         if (entryId === null) return this.#missing(pathname);
         for (const tag of tags) await this.#ctx.db.crud_write_tag.run({ entry_id: entryId, tag });
         return Results.assert({ status: 200 });
     }
 
     async remove(pathname: string, tags: ReadonlyArray<string>): Promise<SchemeResult> {
-        const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
+        const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname, this.#ownerId);
         if (entryId === null) return this.#missing(pathname);
         for (const tag of tags) await this.#ctx.db.crud_delete_tag.run({ entry_id: entryId, tag });
         return Results.assert({ status: 200 });
     }
 
     async list(pathname: string): Promise<TagListResult> {
-        const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname);
+        const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname, this.#ownerId);
         if (entryId === null) return this.#missing(pathname, { tags: [] }) as TagListResult;
         const rows = await this.#ctx.db.crud_read_tags.all<{ tag: string }>({ entry_id: entryId });
         return Results.assert({ status: 200, tags: rows.map((r) => r.tag) });

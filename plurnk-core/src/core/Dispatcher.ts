@@ -40,6 +40,7 @@ import {
     LineMarkerOps,
     MimetypeBinary,
     PathMimetype,
+    ReadProjector,
     projectEditReceipt,
     type EditBatchReceipt,
     type ResourceEffect,
@@ -48,6 +49,7 @@ import {
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryOps from "../schemes/_entry-ops.ts";
+import EntryFind from "../schemes/_entry-find.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
@@ -55,7 +57,11 @@ import TerminalResult from "./TerminalResult.ts";
 import Results from "./results.ts";
 import { OperationFailureError } from "./results.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
-import { CoreSchemeAdapterBase, type CoreEntryAddress } from "./CoreSchemeServices.ts";
+import {
+    CoreSchemeAdapterBase,
+    type CoreEntryAddress,
+    type CoreRepresentationProvider,
+} from "./CoreSchemeServices.ts";
 import {
     type EntryAddress,
     InvalidOperationResultError,
@@ -96,6 +102,11 @@ interface ResolvedDataEntryAddress {
     readonly pathname: string;
 }
 
+interface PreparedRepresentation {
+    readonly address: ResolvedDataEntryAddress | null;
+    readonly result: DispatchResult | null;
+}
+
 import type { SchemeCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
 type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
 type LogCurationHandler = {
@@ -116,7 +127,7 @@ type PreparedEdit = {
     readonly batch: PreparedEditBatch;
 };
 
-interface SchemeWithCrud {
+interface CoreSchemeWithCrud {
     readEntry?: (pathname: string, ctx: SchemeCtx) => Promise<ReadEntryResult>;
     writeEntry?: (pathname: string, entry: EntryData, ctx: SchemeCtx) => Promise<WriteEntryResult>;
     deleteEntry?: (pathname: string, ctx: SchemeCtx) => Promise<DeleteEntryResult>;
@@ -127,7 +138,7 @@ interface SchemeWithEntryAddress {
     resolveEntryAddress?: (
         target: ParsedPath,
         ctx: SchemeCtx,
-    ) => Promise<EntryAddress | CoreEntryAddress | null>;
+    ) => Promise<EntryAddress | CoreEntryAddress | SchemeResult | null>;
 }
 
 type ResolvedResourceSelection = {
@@ -141,6 +152,7 @@ type ResolvedResourceSelection = {
 };
 
 type SelectedSource = ResolvedResourceSelection & {
+    readonly storageAddress: ResolvedDataEntryAddress;
     readonly content: string;
     readonly mimetype: string;
     readonly scopeNormalizations?: ReadonlyArray<ScopeNormalization>;
@@ -278,8 +290,15 @@ export default class Dispatcher {
         return this.#schemes.manifestFor(scheme)?.category === "data" ? handlerCtx : null;
     }
 
+    #coreCrud(scheme: string): CoreSchemeWithCrud | undefined {
+        const handler = this.#schemes.get(scheme);
+        return handler instanceof CoreSchemeAdapterBase
+            ? handler as CoreSchemeAdapterBase & CoreSchemeWithCrud
+            : undefined;
+    }
+
     async #readEntry(scheme: string, pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
-        const handler = this.#schemes.get(scheme) as SchemeWithCrud | undefined;
+        const handler = this.#coreCrud(scheme);
         const handlerCtx = this.#entryContext(scheme, ctx);
         if (typeof handler?.readEntry === "function" && handlerCtx !== null) {
             return Results.assert(await handler.readEntry(pathname, handlerCtx)) as ReadEntryResult;
@@ -310,7 +329,7 @@ export default class Dispatcher {
     }
 
     async #writeEntry(scheme: string, pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
-        const handler = this.#schemes.get(scheme) as SchemeWithCrud | undefined;
+        const handler = this.#coreCrud(scheme);
         const handlerCtx = this.#entryContext(scheme, ctx);
         if (typeof handler?.writeEntry === "function" && handlerCtx !== null) {
             return Results.assert(await handler.writeEntry(pathname, entry, handlerCtx)) as WriteEntryResult;
@@ -334,7 +353,7 @@ export default class Dispatcher {
     }
 
     async #deleteEntry(scheme: string, pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
-        const handler = this.#schemes.get(scheme) as SchemeWithCrud | undefined;
+        const handler = this.#coreCrud(scheme);
         const handlerCtx = this.#entryContext(scheme, ctx);
         if (typeof handler?.deleteEntry === "function" && handlerCtx !== null) {
             return Results.assert(await handler.deleteEntry(pathname, handlerCtx)) as DeleteEntryResult;
@@ -363,7 +382,7 @@ export default class Dispatcher {
         channel: string,
         ctx: PlurnkSchemeContext,
     ): Promise<DeleteEntryResult> {
-        const handler = this.#schemes.get(scheme) as SchemeWithCrud | undefined;
+        const handler = this.#coreCrud(scheme);
         const handlerCtx = this.#entryContext(scheme, ctx);
         if (typeof handler?.deleteChannel === "function" && handlerCtx !== null) {
             return Results.assert(await handler.deleteChannel(pathname, channel, handlerCtx)) as DeleteEntryResult;
@@ -463,7 +482,16 @@ export default class Dispatcher {
                 } else {
                     try {
                         const addressedScheme = first.target?.kind === "url" ? first.target.scheme : schemeName;
-                        initial = Results.assert(await method.call(handler, group, new SchemeCtxImpl(schemeCtx, addressedScheme ?? schemeName, manifest, this.#liveSubscriptions)));
+                        const publishedChannel = first.target?.kind === "url"
+                            ? first.target.fragment ?? manifest.defaultChannel
+                            : manifest.defaultChannel;
+                        initial = Results.assert(await method.call(handler, group, new SchemeCtxImpl(
+                            schemeCtx,
+                            addressedScheme ?? schemeName,
+                            manifest,
+                            this.#liveSubscriptions,
+                            { publishedChannel },
+                        )));
                     } catch (err) {
                         if (err instanceof InvalidOperationResultError) throw err;
                         console.error(`Scheme '${schemeName}' EDIT batch threw outside its operation result contract:`, err);
@@ -784,16 +812,16 @@ export default class Dispatcher {
             ctx: coreCtx,
             schemeCtx,
         });
-        if (resolved === null) return null;
+        if (resolved.address === null) return null;
 
         const rendered = target.kind === "url"
             ? renderTarget({ ...target, fragment: null })
             : renderTarget({ scheme: null, pathname: target.raw, fragment: null });
         if (rendered === null) throw new TypeError("Resolved entry target did not render.");
         return {
-            ownerId: resolved.ownerId,
-            scheme: resolved.scheme,
-            pathname: resolved.pathname,
+            ownerId: resolved.address.ownerId,
+            scheme: resolved.address.scheme,
+            pathname: resolved.address.pathname,
             target: rendered,
         };
     }
@@ -812,12 +840,28 @@ export default class Dispatcher {
         manifest: SchemeManifest;
         ctx: PlurnkSchemeContext;
         schemeCtx: SchemeCtx;
-    }): Promise<ResolvedDataEntryAddress | null> {
+    }): Promise<PreparedRepresentation> {
         const addressedScheme = target.kind === "url" ? target.scheme : routedScheme;
+        const identityTarget = target.kind === "url"
+            ? {
+                ...target,
+                pathname: PathSyntax.decodeParens(target.pathname),
+                fragment: null,
+            }
+            : { ...target, raw: PathSyntax.decodeParens(target.raw) };
         const resolved = handler.resolveEntryAddress === undefined
-            ? { pathname: entryPathnameOf(target), owner: "commons" as const }
-            : await handler.resolveEntryAddress(target, schemeCtx);
-        if (resolved === null) return null;
+            ? { pathname: entryPathnameOf(identityTarget), owner: "commons" as const }
+            : await handler.resolveEntryAddress(identityTarget, schemeCtx);
+        if (resolved === null) return { address: null, result: null };
+        if ("status" in resolved) {
+            const result = Results.assert(resolved);
+            if (result.status < 300) {
+                throw new InvalidOperationResultError(
+                    `Scheme '${routedScheme}' returned a successful operation result instead of an entry address.`,
+                );
+            }
+            return { address: null, result };
+        }
         if (typeof resolved.pathname !== "string") {
             throw new TypeError(`Scheme '${routedScheme}' returned an invalid entry pathname.`);
         }
@@ -839,9 +883,74 @@ export default class Dispatcher {
             throw new TypeError(`Scheme '${routedScheme}' returned an invalid entry owner id.`);
         }
         return {
-            ownerId,
-            scheme: manifest.storedScheme ?? addressedScheme,
-            pathname: resolved.pathname,
+            address: {
+                ownerId,
+                scheme: manifest.storedScheme ?? addressedScheme,
+                pathname: resolved.pathname,
+            },
+            result: null,
+        };
+    }
+
+    async #prepareDataRepresentation({
+        target,
+        routedScheme,
+        handler,
+        manifest,
+        ctx,
+        schemeCtx,
+        publishedChannel,
+    }: {
+        target: ParsedPath;
+        routedScheme: string;
+        handler: SchemeWithEntryAddress & SchemeHandler;
+        manifest: SchemeManifest;
+        ctx: PlurnkSchemeContext;
+        schemeCtx: SchemeCtx;
+        publishedChannel: string | null;
+    }): Promise<PreparedRepresentation> {
+        const resolved = await this.#resolveDataEntryAddress({
+            target,
+            routedScheme,
+            handler,
+            manifest,
+            ctx,
+            schemeCtx,
+        });
+        if (
+            resolved.address === null
+            || resolved.result !== null
+            || typeof handler.prepareRepresentation !== "function"
+        ) {
+            return resolved;
+        }
+        const address = resolved.address;
+        const selectionNeutralTarget = target.kind === "url"
+            ? {
+                ...target,
+                raw: renderTarget({ ...target, fragment: null }) ?? target.raw,
+                fragment: null,
+            }
+            : target;
+        const preparationCtx = new SchemeCtxImpl(
+            ctx,
+            target.kind === "url" ? target.scheme : routedScheme,
+            manifest,
+            this.#liveSubscriptions,
+            {
+                ownerId: address.ownerId,
+                publishedChannel,
+            },
+        );
+        const prepared = Results.assertRepresentationPreparation(
+            await handler.prepareRepresentation({
+                target: selectionNeutralTarget,
+                pathname: address.pathname,
+            }, preparationCtx),
+        );
+        return {
+            address,
+            result: prepared.status === 200 ? null : prepared,
         };
     }
 
@@ -1450,7 +1559,50 @@ export default class Dispatcher {
         selection: ResolvedResourceSelection,
         ctx: PlurnkSchemeContext,
     ): Promise<SelectedSource | DispatchResult> {
-        const read = await this.#readEntry(selection.scheme, selection.pathname, ctx);
+        const handler = this.#schemes.get(selection.scheme) as
+            | (SchemeWithEntryAddress & SchemeHandler)
+            | undefined;
+        if (handler === undefined) {
+            throw new InvalidOperationResultError(
+                `Resolved COPY/MOVE source scheme '${selection.scheme}' is no longer registered.`,
+            );
+        }
+        const addressedScheme = selection.target.kind === "url"
+            ? selection.target.scheme
+            : selection.scheme;
+        const schemeCtx = new SchemeCtxImpl(
+            ctx,
+            addressedScheme,
+            selection.manifest,
+            this.#liveSubscriptions,
+            { publishedChannel: selection.channel },
+        );
+        const prepared = await this.#prepareDataRepresentation({
+            target: selection.target,
+            routedScheme: selection.scheme,
+            handler,
+            manifest: selection.manifest,
+            ctx,
+            schemeCtx,
+            publishedChannel: selection.channel,
+        });
+        if (prepared.result !== null) return prepared.result;
+        if (prepared.address === null) {
+            return Dispatcher.#failure(
+                "entry-not-found",
+                404,
+                `No entry exists at ${this.#resourceAddress(selection)}.`,
+                {},
+                { target: this.#resourceAddress(selection) },
+            );
+        }
+        const storageAddress = prepared.address;
+        const read = await EntryCrud.readEntry(
+            storageAddress.pathname,
+            ctx,
+            storageAddress.scheme,
+            storageAddress.ownerId,
+        );
         if (read.status >= 400) return read;
         if (read.status !== 200 || read.entry === null) {
             throw new InvalidOperationResultError(
@@ -1462,10 +1614,10 @@ export default class Dispatcher {
             return Dispatcher.#failure(
                 "channel-not-found",
                 404,
-                `No channel named #${selection.channel} exists at ${renderAddress(selection.scheme, selection.identityPathname)}.`,
+                `No channel named #${selection.channel} exists at ${renderAddress(storageAddress.scheme, storageAddress.pathname)}.`,
                 {},
                 {
-                    target: renderAddress(selection.scheme, selection.identityPathname),
+                    target: renderAddress(storageAddress.scheme, storageAddress.pathname),
                     requestedChannel: selection.channel,
                     availableChannels: Object.keys(read.entry.channels),
                     retryable: false,
@@ -1494,8 +1646,12 @@ export default class Dispatcher {
             content = sliced.text ?? "";
             scopeNormalizations = sliced.scopeNormalizations;
         }
+        if (selected.producerResult !== undefined && selected.producerResult.status >= 400) {
+            return Results.assert(selected.producerResult) as DispatchResult;
+        }
         return {
             ...selection,
+            storageAddress,
             content,
             mimetype: selected.mimetype,
             ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
@@ -2739,11 +2895,24 @@ export default class Dispatcher {
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
         if (schemeName === null) {
+            const fields = statement.op === "READ"
+                ? { content: null, mimetype: null, channel: null }
+                : statement.op === "FIND"
+                    ? {
+                        content: null,
+                        mimetype: null,
+                        results: [],
+                        itemsTokenTotal: 0,
+                        returnedItemsTokenTotal: 0,
+                        matchingPathCount: 0,
+                        matchLocationCount: 0,
+                    }
+                    : {};
             return Dispatcher.#failure(
                 "target-scheme-required",
                 400,
                 `${statement.op} requires a target scheme.`,
-                {},
+                fields,
                 { operation: statement.op, retryable: false },
             );
         }
@@ -2786,19 +2955,64 @@ export default class Dispatcher {
         const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
         const manifest = this.#schemes.manifestFor(schemeName);
         if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
-        const schemeCtx = new SchemeCtxImpl(ctx, addressedScheme ?? schemeName, manifest, this.#liveSubscriptions);
-        if (typeof method === "function") return Results.assert(await method.call(handler, statement, schemeCtx));
+        const publishedChannel = statement.target?.kind === "url"
+            ? statement.target.fragment ?? manifest.defaultChannel
+            : manifest.defaultChannel;
+        const schemeCtx = new SchemeCtxImpl(
+            ctx,
+            addressedScheme ?? schemeName,
+            manifest,
+            this.#liveSubscriptions,
+            { publishedChannel },
+        );
+        if (
+            statement.op === "READ"
+            && handler instanceof CoreSchemeAdapterBase
+            && typeof (handler as Partial<CoreRepresentationProvider>).resolveCoreRepresentation === "function"
+        ) {
+            const selectionNeutralTarget = statement.target?.kind === "url"
+                ? {
+                    ...statement.target,
+                    raw: renderTarget({ ...statement.target, fragment: null }) ?? statement.target.raw,
+                    fragment: null,
+                }
+                : statement.target;
+            const resolved = await (handler as unknown as CoreRepresentationProvider)
+                .resolveCoreRepresentation(selectionNeutralTarget, schemeCtx);
+            if ("result" in resolved) return Results.assertReadResult(resolved.result);
+            if (selectionNeutralTarget === null) {
+                throw new InvalidOperationResultError(
+                    `Core scheme '${schemeName}' resolved a targetless READ representation.`,
+                );
+            }
+            const target = renderTarget(selectionNeutralTarget.kind === "url"
+                ? selectionNeutralTarget
+                : { scheme: null, pathname: selectionNeutralTarget.raw });
+            if (target === null) {
+                throw new TypeError(`Core scheme '${schemeName}' resolved an unrenderable READ target.`);
+            }
+            return Results.assertReadResult(await ReadProjector.project({
+                statement,
+                manifest,
+                target,
+                representation: resolved.representation,
+                mimetypes: ctx.mimetypes,
+            }));
+        }
         if (statement.op === "READ" && manifest.category === "data") {
-            const resolved = statement.target === null
-                ? null
-                : await this.#resolveDataEntryAddress({
+            const prepared = statement.target === null
+                ? { address: null, result: null }
+                : await this.#prepareDataRepresentation({
                     target: statement.target,
                     routedScheme: schemeName,
-                    handler: handler as unknown as SchemeWithEntryAddress,
+                    handler: handler as unknown as SchemeWithEntryAddress & SchemeHandler,
                     manifest,
                     ctx,
                     schemeCtx,
+                    publishedChannel,
                 });
+            if (prepared.result !== null) return prepared.result;
+            const resolved = prepared.address;
             if (statement.target !== null && resolved === null) {
                 const target = renderTarget(statement.target.kind === "url"
                     ? statement.target
@@ -2812,17 +3026,6 @@ export default class Dispatcher {
                     { target },
                 );
             }
-            const prepareRead = (handler as unknown as SchemeHandler).prepareRead;
-            let prepared: SchemeResult = { status: 200 };
-            if (statement.target !== null && typeof prepareRead === "function") {
-                prepared = Results.assert(await prepareRead.call(handler, statement.target, schemeCtx));
-                if (prepared.status === 202) {
-                    throw new InvalidOperationResultError(
-                        `Scheme '${schemeName}' returned proposal status 202 from READ preparation.`,
-                    );
-                }
-                if (prepared.status < 200 || prepared.status >= 300) return prepared;
-            }
             const storageScheme = resolved?.scheme ?? manifest.storedScheme ?? addressedScheme ?? schemeName;
             const projected = Results.assertReadResult(await EntryOps.readWorkspaceEntry(
                 statement,
@@ -2830,16 +3033,17 @@ export default class Dispatcher {
                 { ...manifest, name: storageScheme, storedScheme: storageScheme },
                 resolved === null
                     ? {}
-                    : { ownerId: resolved.ownerId, pathname: resolved.pathname },
+                    : {
+                        ownerId: resolved.ownerId,
+                        pathname: resolved.pathname,
+                    },
             ));
-            if (projected.status >= 300 || prepared.status === 200) return projected;
-            return Results.assertReadResult({
-                ...prepared,
-                ...projected,
-                status: prepared.status,
-            });
+            return projected;
         }
         if (statement.op !== "FIND" || manifest.category !== "data") {
+            if (typeof method === "function") {
+                return Results.assert(await method.call(handler, statement, schemeCtx));
+            }
             return Dispatcher.#failure(
                 "operation-not-implemented",
                 501,
@@ -2851,6 +3055,63 @@ export default class Dispatcher {
                     retryable: false,
                 },
             );
+        }
+        const targetPathname = statement.target?.kind === "url"
+            ? statement.target.pathname
+            : statement.target?.raw ?? "";
+        const collectionTarget = manifest.folderScopes === true
+            && (targetPathname === "" || targetPathname.endsWith("/"));
+        const exactTarget = statement.target !== null
+            && !collectionTarget
+            && !PathSyntax.hasGlob(entryPathnameOf(statement.target));
+        if (exactTarget && statement.target !== null) {
+            const prepared = await this.#prepareDataRepresentation({
+                target: statement.target,
+                routedScheme: schemeName,
+                handler: handler as unknown as SchemeWithEntryAddress & SchemeHandler,
+                manifest,
+                ctx,
+                schemeCtx,
+                publishedChannel,
+            });
+            if (prepared.result !== null) return prepared.result;
+            if (prepared.address === null) {
+                const target = renderTarget(statement.target.kind === "url"
+                    ? statement.target
+                    : { scheme: null, pathname: statement.target.raw });
+                return Results.failure(
+                    `scheme:${schemeName}`,
+                    "entry-not-found",
+                    404,
+                    `No entry exists at ${target ?? "the requested address"}.`,
+                    {
+                        content: null,
+                        mimetype: null,
+                        results: [],
+                        itemsTokenTotal: 0,
+                        returnedItemsTokenTotal: 0,
+                        matchingPathCount: 0,
+                        matchLocationCount: 0,
+                    },
+                    { target },
+                );
+            }
+            const storageScheme = prepared.address.scheme
+                ?? manifest.storedScheme
+                ?? addressedScheme
+                ?? schemeName;
+            return Results.assert(await EntryFind.findWorkspaceEntries(
+                statement,
+                ctx,
+                { ...manifest, name: storageScheme, storedScheme: storageScheme },
+                {
+                    ownerId: prepared.address.ownerId,
+                    pathname: prepared.address.pathname,
+                },
+            ));
+        }
+        if (typeof method === "function") {
+            return Results.assert(await method.call(handler, statement, schemeCtx));
         }
         const prepareFind = handler.prepareFind;
         if (typeof prepareFind === "function") {

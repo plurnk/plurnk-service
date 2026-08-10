@@ -14,6 +14,10 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import SchemeCtxImpl from "../../src/core/caps/SchemeCtxImpl.ts";
 import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
+import Engine from "../../src/core/Engine.ts";
+import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import type { ReadStatement } from "@plurnk/plurnk-contracts";
+import { Results, type EntryReadResult } from "@plurnk/plurnk-schemes";
 
 // Auto-discovering Mimetypes for scheme-test contexts. Default-constructed
 // Mimetypes walks node_modules for installed `@plurnk/plurnk-mimetypes-*` siblings
@@ -57,6 +61,42 @@ export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): Plu
 
 export const makeHandlerCtx = (ctx: PlurnkSchemeContext, manifest: SchemeManifest): SchemeCtxImpl =>
     new SchemeCtxImpl(ctx, manifest.name, manifest, new LiveSubscriptions());
+
+// Exercise a scheme READ through the real universal dispatch composition while
+// retaining the surrounding test's database and principal coordinates.
+export const lookThroughScheme = async (
+    name: string,
+    handler: object | null,
+    statement: ReadStatement,
+    ctx: PlurnkSchemeContext,
+): Promise<EntryReadResult> => {
+    const existingLoop = ctx.loopId > 0
+        ? { id: ctx.loopId }
+        : await ctx.db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: ctx.workerId });
+    const loopId = existingLoop?.id ?? await insertLoop(ctx.db, ctx.workerId, 1);
+    const schemes = new SchemeRegistry();
+    if (handler !== null) schemes.register(name, handler);
+    const engine = new Engine({
+        db: ctx.db,
+        schemes,
+        mimetypes: ctx.mimetypes,
+        tokenize: ctx.tokenize,
+    });
+    const result = await engine.look({
+        statement,
+        workspaceId: ctx.workspaceId,
+        workerId: ctx.workerId,
+        loopId,
+        origin: ctx.writer,
+    });
+    Results.assertReadResult(result);
+    return result as EntryReadResult;
+};
+
+export const readLog = (
+    statement: ReadStatement,
+    ctx: PlurnkSchemeContext,
+): Promise<EntryReadResult> => lookThroughScheme("log", null, statement, ctx);
 
 // Boot-style executor registry for EXEC tests. Memoized — built once (discover
 // + probe the installed siblings), shared across the suite. Pass to

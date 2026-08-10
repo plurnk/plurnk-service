@@ -1,14 +1,20 @@
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import LoopFlagsReader from "../core/LoopFlagsReader.ts";
 import EntryOps from "./_entry-ops.ts";
-import type { EditResult, ReadResult } from "./_entry-ops.ts";
+import type { EditResult } from "./_entry-ops.ts";
 import EntryFind from "./_entry-find.ts";
 import EntryCrud from "./_entry-crud.ts";
 import EntrySend from "./_entry-send.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import type { FindResult } from "./_entry-find.ts";
 import Owner from "../core/Owner.ts";
-import type { EditStatement, ReadStatement, SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import type { EditStatement, SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import type {
+    ChannelProducerResult,
+    RepresentationPreparationRequest,
+    RepresentationPreparationResult,
+    SchemeCtx,
+} from "@plurnk/plurnk-schemes";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreEntryAddress, CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
@@ -80,12 +86,153 @@ export default class Worker extends CoreSchemeAdapterBase {
         return { ...statement, target: { ...t, hostname: null } };
     }
 
-    async resolveEntryAddress(target: ParsedPath, ctx: CoreSchemeCallContext): Promise<CoreEntryAddress | null> {
+    async resolveEntryAddress(
+        target: ParsedPath,
+        ctx: CoreSchemeCallContext,
+    ): Promise<CoreEntryAddress | SchemeResultBase | null> {
         const authority = Worker.#authority(target);
+        if (authority === null) return null;
+        if (target.kind === "url" && target.pathname === "") {
+            if (authority === "" || authority === "~") {
+                return Results.failure(
+                    "scheme:worker",
+                    "named-worker-required",
+                    400,
+                    "A worker deliverable READ requires a named worker.",
+                    {},
+                    {
+                        recovery: "Address the worker by name.",
+                        retryable: false,
+                    },
+                );
+            }
+            if (
+                target.username !== null
+                || target.password !== null
+                || target.port !== null
+                || target.query !== null
+                || target.headers !== undefined
+            ) {
+                return Results.failure(
+                    "scheme:worker",
+                    "control-address-invalid",
+                    400,
+                    "READ requires an authority-only worker:// control address.",
+                    {},
+                    {
+                        operation: "READ",
+                        recovery: "Provide one worker authority and remove every other URI component.",
+                        retryable: false,
+                    },
+                );
+            }
+            const named = await this.coreContext(ctx).db.worker_resolve_by_name.get<{ id: number }>({
+                workspace_id: ctx.workspaceId,
+                name: authority,
+            });
+            return named === undefined
+                ? Results.failure(
+                    "scheme:worker",
+                    "worker-not-found",
+                    404,
+                    `Worker '${authority}' does not exist in this workspace.`,
+                    {},
+                    { worker: authority, retryable: false },
+                )
+                : { pathname: "", ownerId: named.id };
+        }
         const pathname = Worker.#entryPath(target);
-        if (authority === null || pathname === "") return null;
         const resolved = await Worker.#resolveAuthority(authority, this.coreContext(ctx));
-        return resolved === null ? null : { pathname, ownerId: resolved.ownerId };
+        return resolved === null
+            ? Results.failure(
+                "scheme:worker",
+                "worker-not-found",
+                404,
+                `Worker '${authority}' does not exist in this workspace.`,
+                {},
+                { worker: authority, retryable: false },
+            )
+            : { pathname, ownerId: resolved.ownerId };
+    }
+
+    async prepareRepresentation(
+        request: RepresentationPreparationRequest,
+        ctx: SchemeCtx,
+    ): Promise<RepresentationPreparationResult> {
+        if (request.target.kind !== "url" || request.target.pathname !== "") {
+            return { status: 200 };
+        }
+        const authority = Worker.#authority(request.target);
+        if (authority === null || authority === "" || authority === "~") {
+            throw new Error("Worker deliverable preparation received an unresolved address.");
+        }
+        const core = this.coreContext(ctx);
+        const row = await core.db.worker_deliverable_by_name.get<{
+            worker_id: number;
+            status: number;
+            terminal_result: string | null;
+            terminated_by: string | null;
+        }>({ workspace_id: core.workspaceId, name: authority });
+        if (row === undefined) {
+            return Results.failure(
+                "scheme:worker",
+                "worker-not-found",
+                404,
+                `Worker '${authority}' does not exist in this workspace.`,
+                {},
+                { worker: authority, retryable: false },
+            );
+        }
+        if (!Worker.#TERMINAL_LOOP.has(row.status)) {
+            const detail = `Worker '${authority}' is still running and has no deliverable yet.`;
+            return Results.failure(
+                "scheme:worker",
+                "worker-still-running",
+                425,
+                detail,
+                { awaitWorker: authority },
+                {
+                    worker: authority,
+                    recovery: "Continue once; the engine will wait for the worker's deliverable.",
+                    retryable: false,
+                },
+            );
+        }
+        if (row.terminal_result === null) {
+            throw new Error(`terminal worker '${authority}' has no terminal result`);
+        }
+        const exact = TerminalResult.parse(
+            row.terminal_result,
+            `terminal worker '${authority}'`,
+        );
+        const presentation = TerminalResult.present(exact, {
+            terminatedBy: row.terminated_by,
+            receipt: await BranchReceipt.render(core.db, row.worker_id),
+            fallback: `[ worker '${authority}' concluded with no deliverable (status ${exact.status}) ]`,
+        });
+        const projectionFields = new Set([
+            "content",
+            "mimetype",
+            "channel",
+            "startLine",
+            "region",
+            "matches",
+            "range",
+        ]);
+        const producerResult = Results.assertChannelProducerResult(Object.fromEntries(
+            Object.entries(exact).filter(([field]) => !projectionFields.has(field)),
+        ) as unknown as ChannelProducerResult);
+        const written = await ctx.entries.write(request.pathname, {
+            channels: {
+                body: {
+                    content: presentation?.content ?? "",
+                    mimetype: presentation?.mimetype ?? "text/markdown",
+                    producerResult,
+                },
+            },
+            tags: [],
+        });
+        return Results.isErrorStatus(written.status) ? written : { status: 200 };
     }
 
     async editBatch(statements: readonly EditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
@@ -234,128 +381,6 @@ export default class Worker extends CoreSchemeAdapterBase {
         return EntryOps.deleteWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
     }
 
-    async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<ReadResult> {
-        const failure = (
-            code: string,
-            status: number,
-            detail: string,
-            fields: Readonly<Record<string, unknown>> = {},
-            extensions: Readonly<Record<string, unknown>> = {},
-        ): ReadResult => Results.failure(
-            "scheme:worker",
-            code,
-            status,
-            detail,
-            { content: null, mimetype: null, channel: null, ...fields },
-            extensions,
-        ) as ReadResult;
-        const core = this.coreContext(ctx);
-        const authority = Worker.#authority(statement.target);
-        if (authority === null) {
-            return failure(
-                "worker-target-required",
-                400,
-                "READ requires a worker target.",
-                {},
-                {
-                    recovery: "Provide the worker target.",
-                    retryable: false,
-                },
-            );
-        }
-        const entryPath = Worker.#entryPath(statement.target);
-        // Path-absent READ(worker://<name>) COLLECTS the worker's deliverable ({§worker-scheme-collect}, pull side):
-        // its latest loop's exact terminal result. A worker
-        // still running hasn't delivered yet → 425 steers the model to park until it does (the
-        // same deliverable the wake/collect-delta will push). The pull complements the push; neither is lost.
-        if (entryPath === "") {
-            const address = WorkerControlAddress.resolve(statement.target, "READ");
-            if (!address.ok) {
-                return { ...address.result, content: null, mimetype: null, channel: null } as ReadResult;
-            }
-            const controlAuthority = address.authority;
-            if (controlAuthority === "~") {
-                return failure(
-                    "named-worker-required",
-                    400,
-                    "A worker deliverable READ requires a named worker.",
-                    {},
-                    {
-                        recovery: "Address the worker by name.",
-                        retryable: false,
-                    },
-                );
-            } // collect names a WORKER
-            const row = await core.db.worker_deliverable_by_name.get<{
-                worker_id: number;
-                status: number;
-                terminal_result: string | null;
-                terminated_by: string | null;
-            }>({ workspace_id: core.workspaceId, name: controlAuthority });
-            if (row === undefined) {
-                return failure(
-                    "worker-not-found",
-                    404,
-                    `Worker '${controlAuthority}' does not exist in this workspace.`,
-                    {},
-                    {
-                        worker: controlAuthority,
-                        retryable: false,
-                    },
-                );
-            }
-            // Let dispatch arm the blocking collect for this turn.
-            // {§join-blocking-collect}
-            if (!Worker.#TERMINAL_LOOP.has(row.status)) {
-                const detail = `Worker '${controlAuthority}' is still running and has no deliverable yet.`;
-                return failure("worker-still-running", 425, detail, {
-                    content: `[ ${detail} ]`,
-                    mimetype: "text/markdown",
-                    awaitWorker: controlAuthority,
-                }, {
-                    worker: controlAuthority,
-                    recovery: "Continue once; the engine will wait for the worker's deliverable.",
-                    retryable: false,
-                });
-            }
-            if (row.terminal_result === null) {
-                throw new Error(`terminal worker '${controlAuthority}' has no terminal result`);
-            }
-            const exact = TerminalResult.parse(
-                row.terminal_result,
-                `terminal worker '${controlAuthority}'`,
-            );
-            const presentation = TerminalResult.present(exact, {
-                terminatedBy: row.terminated_by,
-                receipt: await BranchReceipt.render(core.db, row.worker_id),
-                fallback: `[ worker '${controlAuthority}' concluded with no deliverable (status ${exact.status}) ]`,
-            });
-            return Results.assertReadResult({
-                ...exact,
-                content: presentation?.content ?? "",
-                mimetype: presentation?.mimetype ?? "text/markdown",
-                channel: null,
-            }) as ReadResult;
-        }
-        // Path-present: an entry read — commons / own / ancestry-gated named space.
-        const resolved = await Worker.#resolveAuthority(authority, core);
-        if (resolved === null) {
-            return failure(
-                "worker-not-found",
-                404,
-                `Worker '${authority}' does not exist in this workspace.`,
-                {},
-                {
-                    worker: authority,
-                    retryable: false,
-                },
-            );
-        }
-        return EntryOps.readWorkspaceEntry(Worker.#stripAuthority(statement), core, Worker.manifest, {
-            ownerId: resolved.ownerId,
-        });
-    }
-
     // Terminal loop statuses ({§lifecycle-terms}) — a loop here has DELIVERED; anything else is still running.
     static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 504, 508]);
 
@@ -383,7 +408,9 @@ export default class Worker extends CoreSchemeAdapterBase {
                 retryable: false,
             }) as FindResult;
         }
-        const found = await EntryFind.findWorkspaceEntries(Worker.#stripAuthority(statement), core, Worker.manifest, resolved.ownerId);
+        const found = await EntryFind.findWorkspaceEntries(Worker.#stripAuthority(statement), core, Worker.manifest, {
+            ownerId: resolved.ownerId,
+        });
         // The catalog renders the empty-authority form; a non-empty queried authority re-applies —
         // in results AND the serialized content the packet renders — so every path the model sees
         // is the address it typed (worker://~/x, worker://beta/x).

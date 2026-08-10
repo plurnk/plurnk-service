@@ -100,8 +100,8 @@ RETURNING id;
 -- PREP: fork_copy_entry_channels
 -- Copy every source channel from the source entry to the copy. Deep projections
 -- live on the shared artifact, not on either entry.
-INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, state)
-SELECT $new_entry_id, name, content, mimetype, tokens, state FROM entry_channels WHERE entry_id = $old_entry_id;
+INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, state, producer_result)
+SELECT $new_entry_id, name, content, mimetype, tokens, state, producer_result FROM entry_channels WHERE entry_id = $old_entry_id;
 
 -- PREP: fork_copy_entry_tags
 INSERT INTO entry_tags (entry_id, tag)

@@ -12,7 +12,7 @@ import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { urlPath, findStmt } from "./_dsl.ts";
 
 const editStmt = (pathname: string, content: string): EditStatement => ({
@@ -228,7 +228,7 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
             attrs: "{}",
         });
 
-        const result = await new Log().read(
+        const result = await readLog(
             { ...readStmt(urlPath("log", "/1/1/4/PLAN")), lineMarker: { marks: [1, -1] } },
             makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );

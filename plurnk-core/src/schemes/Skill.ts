@@ -1,8 +1,8 @@
 // PROVISIONAL: this handler delegates to the shared entry operation surface,
 // but its scheme-specific semantics are not yet designed.
 
-import type { EntryEditResult, EntryFindResult, EntryReadResult, SchemeCtx, SchemeHandler, SchemeManifest, SchemeResult } from "@plurnk/plurnk-schemes";
-import type { EditStatement, FindStatement, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
+import type { EntryEditResult, EntryFindResult, SchemeCtx, SchemeHandler, SchemeManifest, SchemeResult } from "@plurnk/plurnk-schemes";
+import type { EditStatement, FindStatement, SendStatement } from "@plurnk/plurnk-contracts";
 
 export default class Skill implements SchemeHandler {
     static manifest: SchemeManifest = {
@@ -22,10 +22,6 @@ export default class Skill implements SchemeHandler {
 
     async edit(statement: EditStatement, ctx: SchemeCtx): Promise<EntryEditResult> {
         return this.editBatch([statement], ctx);
-    }
-
-    async read(statement: ReadStatement, ctx: SchemeCtx): Promise<EntryReadResult> {
-        return ctx.entries.operations.read(statement);
     }
 
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult> {

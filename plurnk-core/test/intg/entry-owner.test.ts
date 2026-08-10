@@ -8,10 +8,10 @@ import type { ExecStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contr
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
-import type ExecOutputScheme from "../../src/schemes/ExecOutputScheme.ts";
+import { Results, type EntryReadResult } from "@plurnk/plurnk-schemes";
 import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime, target: null,
@@ -33,12 +33,13 @@ test("fan-out: two sisters EXEC[jq] at the same coordinate; each READ resolves i
         engine.setExecutors(executors);
         schemes.registerRuntimeSchemes(executors); // {§exec} — per-tag faces let READ jq:// resolve
         const exec = schemes.get("exec") as Exec;
-        const jq = schemes.get("jq") as ExecOutputScheme;
+        assert.ok(schemes.get("jq"));
         const ws = await insertWorkspace(db, `owner-fanout-${crypto.randomUUID()}`);
 
         // A parent and two sisters it spawned, each on its OWN first loop/turn — both jq outputs land
         // at the identical model-facing coordinate /1/1/1. jq is pure → inline.
         const parent = await insertWorker(db, ws, null, "parent");
+        const parentLoop = await insertLoop(db, parent, 1, "parent");
         const host = await insertWorker(db, ws, parent, "extract-host");
         const hLoop = await insertLoop(db, host, 1, "host");
         const hTurn = await insertTurn(db, hLoop, 1, 102);
@@ -52,20 +53,29 @@ test("fan-out: two sisters EXEC[jq] at the same coordinate; each READ resolves i
 
         // {§stream-owner-scoped}: both sisters READ the same loop-relative coordinate. Empty authority
         // = the CALLING worker, so each resolves its own — never the sibling's.
-        const hostRead = await jq.read(streamRead("jq", null, "/1/1/1"), makeSchemeCtx({ db, workspaceId: ws, workerId: host }));
-        const poolRead = await jq.read(streamRead("jq", null, "/1/1/1"), makeSchemeCtx({ db, workspaceId: ws, workerId: pool }));
+        const read = async (
+            workerId: number,
+            loopId: number,
+            statement: ReadStatement,
+        ): Promise<EntryReadResult> => {
+            const result = await engine.look({ statement, workspaceId: ws, workerId, loopId });
+            Results.assertReadResult(result);
+            return result as EntryReadResult;
+        };
+        const hostRead = await read(host, hLoop, streamRead("jq", null, "/1/1/1"));
+        const poolRead = await read(pool, pLoop, streamRead("jq", null, "/1/1/1"));
         assert.match(hostRead.content ?? "", /db\.internal/, "host READ resolves host's own jq output");
         assert.doesNotMatch(hostRead.content ?? "", /^5$/m, "host never sees the pool sister's output");
         assert.match(poolRead.content ?? "", /^5$/m, "pool READ resolves pool's own jq output");
 
         // Ancestry: the PARENT reads a child's stream BY NAME (oversight flows down the tree)…
-        const parentRead = await jq.read(streamRead("jq", "extract-host", "/1/1/1"), makeSchemeCtx({ db, workspaceId: ws, workerId: parent }));
+        const parentRead = await read(parent, parentLoop, streamRead("jq", "extract-host", "/1/1/1"));
         assert.match(parentRead.content ?? "", /db\.internal/, "the parent reads its child's stream by name");
         // …but a SIBLING is not an ancestor — named cross-read 404s, no existence leak.
-        const siblingRead = await jq.read(streamRead("jq", "extract-host", "/1/1/1"), makeSchemeCtx({ db, workspaceId: ws, workerId: pool }));
+        const siblingRead = await read(pool, pLoop, streamRead("jq", "extract-host", "/1/1/1"));
         assert.equal(siblingRead.status, 404, "a sibling naming another sibling's stream is 404 — reader must be owner or ancestor");
         // …and an unknown name is the same 404.
-        const unknownRead = await jq.read(streamRead("jq", "no-such-worker", "/1/1/1"), makeSchemeCtx({ db, workspaceId: ws, workerId: parent }));
+        const unknownRead = await read(parent, parentLoop, streamRead("jq", "no-such-worker", "/1/1/1"));
         assert.equal(unknownRead.status, 404, "an unknown authority is 404");
     } finally { await db.close(); }
 });

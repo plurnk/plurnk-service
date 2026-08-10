@@ -13,7 +13,7 @@ import Worker from "../../src/schemes/Worker.ts";
 import Log from "../../src/schemes/Log.ts";
 import Matcher from "../../src/content/matcher.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -292,7 +292,7 @@ test("jsonpath match coordinates support a model-chosen surgical follow-up READ"
 
         const bob = matches[1]!;
         assert.ok(bob.region !== undefined);
-        const surgical = await new Worker().read(
+        const surgical = await lookThroughScheme("worker", null,
             {
                 ...readStmt(urlPath("worker", "/team.json")),
                 lineMarker: {

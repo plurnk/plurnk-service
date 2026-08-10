@@ -7,6 +7,7 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import Ws from "./Ws.ts";
 import {
+    NetworkAddress,
     Results,
     type SchemeCtx,
     type UrlPath,
@@ -60,6 +61,9 @@ const fakeSocket = () => {
         },
         close(code?: number, reason?: string) {
             if (readyState === CLOSING || readyState === CLOSED) return;
+            if (code !== undefined && code !== 1000 && (code < 3000 || code > 4999)) {
+                throw new DOMException("invalid code", "InvalidAccessError");
+            }
             closed = { code, reason };
             readyState = CLOSING;
             fire("close", { code, reason });
@@ -199,6 +203,14 @@ const wss = (raw: string, pathname: string): UrlPath => {
     };
 };
 const readStmt = (target: UrlPath): ReadStatement => ({ op: "READ", suffix: "READ", signal: null, target, lineMarker: null, body: null, position: { line: 0, column: 0 } });
+const prepareRepresentation = (ws: Ws, statement: ReadStatement, ctx: SchemeCtx) => {
+    const target = statement.target;
+    if (target === null || target.kind !== "url") throw new TypeError("WebSocket READ requires a URL target");
+    return ws.prepareRepresentation({
+        target: { ...target, fragment: null },
+        pathname: NetworkAddress.from(target).pathname,
+    }, ctx);
+};
 const sendStmt = (signal: number, target: UrlPath, body?: string): SendStatement => ({ op: "SEND", suffix: "SEND", signal, target, lineMarker: null, body: body === undefined ? null : { raw: body, json: null }, position: { line: 0, column: 0 } });
 const killStmt = (target: UrlPath): KillStatement => ({ op: "KILL", suffix: "KILL", signal: null, target, lineMarker: null, body: null, position: { line: 0, column: 0 } });
 
@@ -227,7 +239,7 @@ test("manifest: documentation is loaded verbatim from docs/wss.md", async () => 
 test("READ: inbound frames stream into messages; socket close settles done", async () => {
     const sock = fakeSocket();
     const { ctx, inspect, awaitClosed } = makeCtx();
-    const p = new Ws(() => sock).read(readStmt(wss(PUB, "/feed")), ctx);
+    const p = prepareRepresentation(new Ws(() => sock), readStmt(wss(PUB, "/feed")), ctx);
     await flush();
     sock.emit("open");
     await flush();
@@ -254,7 +266,7 @@ test("READ: returns 102 after native open while the socket remains owned", async
     const { ctx, inspect, awaitClosed } = makeCtx();
     const target = wss(PUB, "/feed");
     let returned = false;
-    const read = ws.read(readStmt(target), ctx);
+    const read = prepareRepresentation(ws, readStmt(target), ctx);
     void read.then(() => { returned = true; });
 
     await flush();
@@ -278,7 +290,7 @@ test("READ: terminal settlement waits for in-flight message persistence", async 
     const { ctx, inspect, awaitClosed } = makeCtx({
         notifyChunk: async () => { await persistenceGate.promise; },
     });
-    const read = new Ws(() => sock).read(readStmt(wss(PUB, "/feed")), ctx);
+    const read = prepareRepresentation(new Ws(() => sock), readStmt(wss(PUB, "/feed")), ctx);
     await flush();
     sock.emit("open");
     await flush();
@@ -309,7 +321,7 @@ test("READ: inbound persistence remains transport-ordered under inverted latency
             if (chunk === "first") await firstGate.promise;
         },
     });
-    const read = new Ws(() => sock).read(readStmt(wss(PUB, "/feed")), ctx);
+    const read = prepareRepresentation(new Ws(() => sock), readStmt(wss(PUB, "/feed")), ctx);
     await flush();
     sock.emit("open");
     assert.equal((await read).status, 102);
@@ -346,7 +358,7 @@ for (const [form, data] of [
         });
         const ws = new Ws(() => sock);
         const target = wss(PUB, "/feed");
-        const read = ws.read(readStmt(target), ctx);
+        const read = prepareRepresentation(ws, readStmt(target), ctx);
         await flush();
         sock.emit("open");
         assert.equal((await read).status, 102);
@@ -369,7 +381,7 @@ for (const [form, data] of [
         assert.equal(terminal.result.problem?.stage, "materialization");
         assert.equal(terminal.result.problem?.retryable, false);
         assert.equal(terminal.summary, "The received WebSocket frame is binary; the messages channel accepts text only.");
-        assert.deepEqual(sock.closed, { code: 1003, reason: "binary unsupported" });
+        assert.deepEqual(sock.closed, { code: 4003, reason: "binary unsupported" });
         assert.equal(inspect().closeCount, 1);
         await flush();
         assert.equal((await ws.send(sendStmt(200, target, "late"), ctx)).status, 409);
@@ -380,8 +392,11 @@ test("READ: an explicit loopback target reaches the configured socket transport"
     const sock = fakeSocket();
     let connected: string | null = null;
     const { ctx, awaitClosed } = makeCtx();
-    const read = new Ws((url) => { connected = url; return sock; })
-        .read(readStmt(wss("ws://127.0.0.1/x", "/x")), ctx);
+    const read = prepareRepresentation(
+        new Ws((url) => { connected = url; return sock; }),
+        readStmt(wss("ws://127.0.0.1/x", "/x")),
+        ctx,
+    );
     await flush();
     assert.equal(connected, "ws://127.0.0.1/x");
     sock.emit("open");
@@ -393,7 +408,7 @@ test("READ: an explicit loopback target reaches the configured socket transport"
 
 test("READ: a connect throw settles error (502), not an unhandled throw", async () => {
     const { ctx, inspect } = makeCtx();
-    const r = await new Ws(() => { throw new Error("handshake refused"); }).read(readStmt(wss(PUB, "/feed")), ctx);
+    const r = await prepareRepresentation(new Ws(() => { throw new Error("handshake refused"); }), readStmt(wss(PUB, "/feed")), ctx);
     assert.equal(r.status, 502);
     assert.equal(r.problem?.detail, `The WebSocket connection to ${PUB} failed.`);
     assert.equal(r.problem?.stage, "connection");
@@ -413,10 +428,14 @@ test("READ preserves an exact seed-write failure without connecting", async () =
     ) as EntryStorageWriteResult;
     let connected = false;
     const { ctx, inspect } = makeCtx({ write: async () => failure });
-    const result = await new Ws(() => {
-        connected = true;
-        return fakeSocket();
-    }).read(readStmt(wss(PUB, "/feed")), ctx);
+    const result = await prepareRepresentation(
+        new Ws(() => {
+            connected = true;
+            return fakeSocket();
+        }),
+        readStmt(wss(PUB, "/feed")),
+        ctx,
+    );
     assert.deepEqual(result, { ...failure, shape: "passthrough" });
     assert.equal(connected, false);
     assert.equal(inspect().opened, null);
@@ -427,7 +446,7 @@ test("SEND[200]: connecting is 409, open is sendable, and closing cannot silentl
     const ws = new Ws(() => sock);
     const { ctx, inspect, awaitClosed } = makeCtx();
     const target = wss(PUB, "/feed");
-    const read = ws.read(readStmt(target), ctx); // owner exists while READ remains pending
+    const read = prepareRepresentation(ws, readStmt(target), ctx); // owner exists while READ remains pending
     await flush();
 
     const early = await ws.send(sendStmt(200, target, "early"), ctx);
@@ -474,7 +493,7 @@ test("SEND[200]: a claimed owner is distinct from an absent connection", async (
         },
     });
     const target = wss(PUB, "/feed");
-    const read = ws.read(readStmt(target), ctx);
+    const read = prepareRepresentation(ws, readStmt(target), ctx);
     await flush();
 
     const result = await ws.send(sendStmt(200, target, "early"), ctx);
@@ -502,7 +521,7 @@ test("READ: channel activation preserves an exact capability failure", async () 
     );
     const sock = fakeSocket();
     const { ctx, inspect } = makeCtx({ setState: async () => failure });
-    const read = new Ws(() => sock).read(readStmt(wss(PUB, "/feed")), ctx);
+    const read = prepareRepresentation(new Ws(() => sock), readStmt(wss(PUB, "/feed")), ctx);
     await flush();
     sock.emit("open");
     const result = await read;
@@ -517,7 +536,7 @@ test("READ: a thrown channel activation becomes a structured terminal failure", 
     const { ctx, inspect } = makeCtx({
         setState: async () => { throw new Error("raw state failure"); },
     });
-    const read = new Ws(() => sock).read(readStmt(wss(PUB, "/feed")), ctx);
+    const read = prepareRepresentation(new Ws(() => sock), readStmt(wss(PUB, "/feed")), ctx);
     await flush();
     sock.emit("open");
     const result = await read;
@@ -534,7 +553,7 @@ test("READ: a thrown activation notification remains a direct acquisition failur
     const { ctx, inspect } = makeCtx({
         streamEvent() { throw new Error("raw notification failure"); },
     });
-    const read = new Ws(() => sock).read(readStmt(wss(PUB, "/feed")), ctx);
+    const read = prepareRepresentation(new Ws(() => sock), readStmt(wss(PUB, "/feed")), ctx);
     await flush();
     sock.emit("open");
     const result = await read;
@@ -550,7 +569,7 @@ test("READ: a close before open is one connection failure and releases ownership
     const ws = new Ws(() => sock);
     const { ctx, inspect } = makeCtx();
     const target = wss(PUB, "/feed");
-    const read = ws.read(readStmt(target), ctx);
+    const read = prepareRepresentation(ws, readStmt(target), ctx);
     await flush();
     sock.emit("close", { code: 1006 });
     const result = await read;
@@ -561,7 +580,7 @@ test("READ: a close before open is one connection failure and releases ownership
     assert.equal((await ws.send(sendStmt(200, target, "late"), ctx)).status, 409);
 });
 
-test("READ: terminal cleanup retains the canonical claim until it settles", async () => {
+test("READ: terminal cleanup exposes the existing canonical representation until it settles", async () => {
     const sockets = [fakeSocket(), fakeSocket()];
     let connects = 0;
     const cleanupGate = Promise.withResolvers<void>();
@@ -569,45 +588,44 @@ test("READ: terminal cleanup retains the canonical claim until it settles", asyn
     const secondCtx = makeCtx();
     const ws = new Ws(() => sockets[connects++]!);
     const target = wss(PUB, "/feed");
-    const firstRead = ws.read(readStmt(target), firstCtx.ctx);
+    const firstRead = prepareRepresentation(ws, readStmt(target), firstCtx.ctx);
     await flush();
     sockets[0].emit("open");
     await flush();
     sockets[0].emit("close", { code: 1000 });
     await flush();
 
-    const duplicateRead = ws.read(readStmt(target), secondCtx.ctx);
+    const duplicateRead = prepareRepresentation(ws, readStmt(target), secondCtx.ctx);
     await flush();
     if (connects > 1) sockets[1].emit("close", { code: 1006 });
     const duplicate = await duplicateRead;
-    assert.equal(duplicate.status, 409);
-    assert.equal(duplicate.problem?.connectionState, "settling");
+    assert.equal(duplicate.status, 200);
+    assert.equal(duplicate.connectionState, "settling");
     assert.equal(connects, 1);
 
     cleanupGate.resolve();
     await firstCtx.awaitClosed();
 });
 
-test("READ: duplicate canonical workspace address is 409 and never replaces its owner", async () => {
+test("READ: duplicate canonical workspace address reuses its representation and owner", async () => {
     const sockets = [fakeSocket(), fakeSocket()];
     let connects = 0;
     const ws = new Ws(() => sockets[connects++]!);
     const firstCtx = makeCtx();
     const secondCtx = makeCtx();
     const target = wss(PUB, "/feed");
-    const firstRead = ws.read(readStmt(target), firstCtx.ctx);
+    const firstRead = prepareRepresentation(ws, readStmt(target), firstCtx.ctx);
     try {
         await flush();
         sockets[0].emit("open");
         await flush();
-        const secondRead = ws.read(readStmt(target), secondCtx.ctx);
+        const secondRead = prepareRepresentation(ws, readStmt(target), secondCtx.ctx);
         await flush();
         if (connects > 1) sockets[1].close(1000);
         const result = await secondRead;
 
-        assert.equal(result.status, 409);
-        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/socket-already-claimed");
-        assert.equal(result.problem?.connectionState, "open");
+        assert.equal(result.status, 200);
+        assert.equal(result.connectionState, "open");
         assert.equal(connects, 1, "the duplicate does not create a second transport");
         assert.equal(secondCtx.inspect().wrote, null, "the duplicate has no storage side effects");
         assert.equal(secondCtx.inspect().opened, null, "the duplicate opens no subscription");
@@ -628,8 +646,8 @@ test("socket ownership isolates the same canonical address by workspace", async 
     const secondCtx = makeCtx({ workspaceId: 2 });
     const target = wss(PUB, "/feed");
     const reads = [
-        ws.read(readStmt(target), firstCtx.ctx),
-        ws.read(readStmt(target), secondCtx.ctx),
+        prepareRepresentation(ws, readStmt(target), firstCtx.ctx),
+        prepareRepresentation(ws, readStmt(target), secondCtx.ctx),
     ];
     await flush();
     sockets[0].emit("open");
@@ -652,7 +670,7 @@ test("socket lookup isolates addressed protocol, port, and ordered query", async
     const ws = new Ws(() => sock);
     const { ctx, inspect, awaitClosed } = makeCtx();
     const opened = wss("wss://93.184.216.34:8443/feed?room=1&role=a&role=b", "/feed");
-    const read = ws.read(readStmt(opened), ctx);
+    const read = prepareRepresentation(ws, readStmt(opened), ctx);
     await flush();
     sock.emit("open");
     await flush();
@@ -672,10 +690,14 @@ test("socket lookup isolates addressed protocol, port, and ordered query", async
 test("WebSocket userinfo is rejected before connection", async () => {
     let connected = false;
     const { ctx } = makeCtx();
-    const result = await new Ws(() => {
-        connected = true;
-        return fakeSocket();
-    }).read(readStmt(wss("wss://alice:secret@93.184.216.34/feed", "/feed")), ctx);
+    const result = await prepareRepresentation(
+        new Ws(() => {
+            connected = true;
+            return fakeSocket();
+        }),
+        readStmt(wss("wss://alice:secret@93.184.216.34/feed", "/feed")),
+        ctx,
+    );
     assert.equal(result.status, 400);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/userinfo-not-allowed");
     assert.equal(result.problem?.target, "wss://93.184.216.34/feed");
@@ -699,7 +721,7 @@ test("SEND[200]: a socket send throw becomes a structured transport failure", as
         send() { throw new Error("raw socket failure"); },
     }));
     const { ctx, awaitClosed } = makeCtx();
-    const read = ws.read(readStmt(wss(PUB, "/feed")), ctx);
+    const read = prepareRepresentation(ws, readStmt(wss(PUB, "/feed")), ctx);
     await flush();
     sock.emit("open");
     await flush();
@@ -732,7 +754,7 @@ test("KILL: closes the claimed socket and settles the READ", async () => {
     const sock = fakeSocket();
     const ws = new Ws(() => sock);
     const { ctx, inspect } = makeCtx();
-    const read = ws.read(readStmt(wss(PUB, "/feed")), ctx);
+    const read = prepareRepresentation(ws, readStmt(wss(PUB, "/feed")), ctx);
     await flush();
     const r = await ws.kill(killStmt(wss(PUB, "/feed")), ctx);
     assert.equal(r.status, 200);
@@ -751,7 +773,7 @@ test("KILL: cancels an owner claimed before socket construction", async () => {
         },
     });
     const target = wss(PUB, "/feed");
-    const read = ws.read(readStmt(target), ctx);
+    const read = prepareRepresentation(ws, readStmt(target), ctx);
     await flush();
 
     assert.equal((await ws.kill(killStmt(target), ctx)).status, 200);
@@ -774,7 +796,7 @@ test("KILL: a socket close throw becomes a structured transport failure", async 
         close() { throw new Error("raw socket failure"); },
     }));
     const { ctx } = makeCtx();
-    void ws.read(readStmt(wss(PUB, "/feed")), ctx);
+    void prepareRepresentation(ws, readStmt(wss(PUB, "/feed")), ctx);
     await flush();
     const result = await ws.kill(killStmt(wss(PUB, "/feed")), ctx);
     assert.equal(result.status, 502);
@@ -793,7 +815,7 @@ test("READ: message persistence failure settles with a structured problem", asyn
     });
     const ws = new Ws(() => sock);
     const target = wss(PUB, "/feed");
-    const read = ws.read(readStmt(target), ctx);
+    const read = prepareRepresentation(ws, readStmt(target), ctx);
     await flush();
     sock.emit("open");
     await flush();
@@ -822,7 +844,7 @@ test("READ: a pending persistence failure supersedes graceful close", async () =
             throw new Error("late persistence failure");
         },
     });
-    const read = new Ws(() => sock).read(readStmt(wss(PUB, "/feed")), ctx);
+    const read = prepareRepresentation(new Ws(() => sock), readStmt(wss(PUB, "/feed")), ctx);
     await flush();
     sock.emit("open");
     assert.equal((await read).status, 102);
@@ -844,7 +866,7 @@ test("READ: a pre-open transport error closes once before settling", async () =>
     const { ctx, inspect } = makeCtx();
     const ws = new Ws(() => sock);
     const target = wss(PUB, "/feed");
-    const read = ws.read(readStmt(target), ctx);
+    const read = prepareRepresentation(ws, readStmt(target), ctx);
     await flush();
     sock.emit("error", { message: "connection reset" });
     const result = await read;
@@ -853,7 +875,7 @@ test("READ: a pre-open transport error closes once before settling", async () =>
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/connection-failed");
     assert.equal(inspect().closed?.result.problem, result.problem);
     assert.equal(inspect().closeCount, 1, "the error+close event pair has one settlement owner");
-    assert.notEqual(sock.closed, null, "a terminal transport error closes its transport");
+    assert.deepEqual(sock.closed, { code: 4011, reason: "transport failed" });
     assert.equal((await ws.send(sendStmt(200, target, "late"), ctx)).status, 409, "terminal cleanup releases address ownership");
 });
 
@@ -862,7 +884,7 @@ test("READ: a post-acquisition transport error settles the retained stream", asy
     const { ctx, awaitClosed } = makeCtx();
     const ws = new Ws(() => sock);
     const target = wss(PUB, "/feed");
-    const read = ws.read(readStmt(target), ctx);
+    const read = prepareRepresentation(ws, readStmt(target), ctx);
     await flush();
     sock.emit("open");
     assert.equal((await read).status, 102);
@@ -882,7 +904,7 @@ test("READ: subscription close rejection is diagnosed after the acquired READ", 
     const { ctx, awaitClosed } = makeCtx({
         close: async () => { throw new Error("subscription close failed"); },
     });
-    const read = new Ws(() => sock).read(readStmt(wss(PUB, "/feed")), ctx);
+    const read = prepareRepresentation(new Ws(() => sock), readStmt(wss(PUB, "/feed")), ctx);
     await flush();
     sock.emit("open");
     await flush();
@@ -896,7 +918,7 @@ test("READ: subscription close rejection is diagnosed after the acquired READ", 
 test("cancel: the composed abort signal closes the socket", async () => {
     const sock = fakeSocket();
     const { ctx, localAbort, inspect } = makeCtx();
-    const read = new Ws(() => sock).read(readStmt(wss(PUB, "/feed")), ctx);
+    const read = prepareRepresentation(new Ws(() => sock), readStmt(wss(PUB, "/feed")), ctx);
     await flush();
     localAbort.abort(); // loop.cancel → onAbort → socket.close → close listener → settle
     await read;
@@ -913,8 +935,8 @@ test("handler close closes every remaining socket and waits for READ cleanup", a
     const secondCtx = makeCtx({ close: async () => { await cleanupGate.promise; } });
     const ws = new Ws(() => sockets[connects++]!);
     const reads = [
-        ws.read(readStmt(wss("wss://93.184.216.34/one", "/one")), firstCtx.ctx),
-        ws.read(readStmt(wss(`${PUB}?room=two`, "/feed")), secondCtx.ctx),
+        prepareRepresentation(ws, readStmt(wss("wss://93.184.216.34/one", "/one")), firstCtx.ctx),
+        prepareRepresentation(ws, readStmt(wss(`${PUB}?room=two`, "/feed")), secondCtx.ctx),
     ];
     await flush();
 
@@ -942,8 +964,8 @@ test("handler close settles every READ and aggregates transport close failures",
     const firstCtx = makeCtx();
     const secondCtx = makeCtx();
     const reads = [
-        ws.read(readStmt(wss("wss://93.184.216.34/one", "/one")), firstCtx.ctx),
-        ws.read(readStmt(wss(`${PUB}?room=two`, "/feed")), secondCtx.ctx),
+        prepareRepresentation(ws, readStmt(wss("wss://93.184.216.34/one", "/one")), firstCtx.ctx),
+        prepareRepresentation(ws, readStmt(wss(`${PUB}?room=two`, "/feed")), secondCtx.ctx),
     ];
     await flush();
 

@@ -8,9 +8,6 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeWorkerNotify, InjectWorkerNotify } from "./ChannelWrite.ts";
 import type { WriterTier } from "./types.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
-import type { TextRegion } from "@plurnk/plurnk-contracts";
-import type { SchemeResultBase } from "./results.ts";
-import type { MatchEvidence } from "@plurnk/plurnk-schemes";
 
 // Re-export framework types so existing imports of `scheme-types.ts`
 // keep working without callers needing to know the new origin.
@@ -21,19 +18,6 @@ export type {
     WriterTier,
 } from "./types.ts";
 export { DEFAULT_LOOP_FLAGS } from "./types.ts";
-
-// Shared read-result shape for the core-owned read schemes (Log/File); de-dups the
-// per-scheme local copies. Problems carry failures; matchers fill startLine/matches.
-export type SchemeReadResult = SchemeResultBase & {
-    content: string | null;
-    mimetype: string | null;
-    reason?: string;
-    startLine?: number | null;
-    region?: TextRegion;
-    matches?: ReadonlyArray<MatchEvidence>;
-    // Arms this turn's blocking collect. {§join-blocking-collect}
-    awaitWorker?: string;
-};
 
 // Engine constructs this context for its own orchestration. SchemeCtxImpl
 // projects it into the public capability contract before invoking a plugin.

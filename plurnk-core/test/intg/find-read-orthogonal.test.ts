@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { FindStatement, MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import type { RepresentationPreparationRequest, SchemeCtx } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
@@ -99,7 +100,18 @@ test("trailing slash is ordinary resource syntax unless the scheme declares fold
             category: "data" as const, writableBy: ["plugin"] as const,
             volatile: false, modelVisible: true,
         };
-        async read() { return { status: 200, content: "opaque root resource", mimetype: "text/markdown" }; }
+        async prepareRepresentation(
+            request: RepresentationPreparationRequest,
+            ctx: SchemeCtx,
+        ) {
+            await ctx.entries.write(request.pathname, {
+                channels: {
+                    body: { content: "opaque root resource", mimetype: "text/markdown" },
+                },
+                tags: [],
+            });
+            return { status: 200 };
+        }
         async find() { throw new Error("undeclared folder scope must never invoke FIND"); }
     }
     const { db, workspaceId, workerId, loopId, turnId, schemes, engine } = await setup();

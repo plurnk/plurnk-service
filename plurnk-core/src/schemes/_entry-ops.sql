@@ -9,7 +9,7 @@ VALUES ($entry_id, $name, $content, $mimetype, $tokens, 'static');
 
 -- PREP: ops_read_channel
 -- READ targeting a specific channel of an entry — identity is (workspace, owner, scheme, pathname).
-SELECT ec.content, ec.mimetype
+SELECT ec.content, ec.mimetype, ec.producer_result
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
 WHERE e.workspace_id = $workspace_id
@@ -17,4 +17,3 @@ WHERE e.workspace_id = $workspace_id
   AND e.scheme = $scheme
   AND e.pathname = $pathname
   AND ec.name = $channel;
-

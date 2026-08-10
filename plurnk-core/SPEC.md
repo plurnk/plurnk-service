@@ -928,7 +928,7 @@ Directed SEND (non-null path) routes to scheme's `send`. Status = intent:
 - `SEND[200](path)` — write body into resource (WS message, exec stdin).
 - `SEND[499](path)` — cancel active subscription ({§stream}).
 
-- §log-uniform-query **Log speaks the universal query contract** — `FIND(log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~semantic` and `@graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are catalog-shaped items keyed `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). A tag signal filters candidates by the model's own region tags ({§log-region-tagging}). Log remains an event stream in storage; uniformity begins at its readable projection and search attachment, not by forcing logs into the entries table.
+- §log-uniform-query **Log speaks the universal query contract** — `FIND(log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~semantic` and `@graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are catalog-shaped items keyed `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). A tag signal filters candidates by the model's own region tags ({§log-region-tagging}). Log remains the core event ledger rather than duplicating rows into `entries`; its core-private storage adapter supplies one complete channel-and-tag representation to the same READ projector. That adapter is not a plugin seam and grants no protocol scheme an alternate READ path.
 - §find-source-agnostic **The content matcher is source-agnostic** — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND works uniformly across schemes by construction: `EntryFind` and `Log.find` run the one shared primitive rather than re-implementing it per scheme. Log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
 - §matcher-selection-signal **Matching carries navigation evidence** - a matcher is a boolean resource predicate. Internally, each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{locator?,region?}`. `locator` preserves a structural address without overloading the resource row's `path`; `region` is a complete four-coordinate `TextRegion` only when the finding maps honestly into the exact text the model can READ. Exact duplicate evidence deduplicates. Relation findings map their indexed source spans through the same readable text coordinate index. FIND alone decides whether that grouped selection projects as resource rows or flat locations ({§find-result-projection}); the engine never fabricates a region or guesses which surgical READ the model wants.
 
@@ -967,15 +967,25 @@ The optional engine-/daemon-populated capabilities (the notifiers, `injectWorker
 Engine → scheme guarantees:
 
 - `ctx` is fresh per call. No mutation across calls.
-- READ on a `category: "data"` scheme with no custom `read()` resolves its
-  canonical entry identity, invokes optional scope-blind `prepareRead()`, and
-  then applies the standard exact-entry projection. Preparation status composes
-  under {§read-preparation}; the scheme never receives READ text coordinates.
-- FIND on a `category: "data"` scheme with no custom `find()`
-  invokes its optional `prepareFind()` and then the standard entry selection.
-  Preparation owns discovery/materialization only; query semantics remain
-  universal. The prepared write and the query resolve through one canonical
-  entry identity, including every component owned by {§scheme-address}.
+- §universal-read-composition **Exact READ has one composition.** Core resolves
+  canonical identity and owner once, gives a data scheme its optional
+  `prepareRepresentation({ target, pathname })` opportunity, reads the complete
+  canonical channels and tags, selects the authored channel, applies binary and
+  text-coordinate rules, and finally composes that channel's durable producer
+  result. Preparation receives neither fragment nor `lineMarker`; finite work
+  returns `200`, while only a retained live representation may return `102`
+  ({§read-preparation}). No public handler can replace READ.
+- Exact FIND uses the same resolved identity and representation preparation
+  before standard entry selection, then composes the exact default channel's
+  durable producer result with the core-owned query projection. Broad FIND may invoke a custom `find()` for
+  genuinely protocol-owned candidate enumeration, or `prepareFind()` followed
+  by the standard catalog query. Acquisition never owns matcher, pagination,
+  or result-unit semantics. Every prepared write and query preserves all
+  identity components owned by {§scheme-address}.
+- COPY/MOVE source selection resolves and prepares that same canonical
+  representation before selecting a channel. Its independent source scope
+  remains raw transfer semantics—markerless means the complete channel rather
+  than READ's preview—and is structurally unavailable to the producer.
 - `ctx.writer` reflects the actual writer at this dispatch.
 - §scheme-surface-writableby-403 `manifest.writableBy` is checked BEFORE invocation; engine returns 403 directly on exclusion.
 - `ctx.signal` is wired to the worker's AbortController ({§provider-guarantees-signal-wired}).
@@ -1469,9 +1479,10 @@ AST: `{ op: "EXEC", target (optional input source, program, or cwd), body: strin
 canonicalizes `(target)` before effect admission. With no directory override,
 `cwd` is the workspace's `project_root`, where the File scheme writes — never
 the daemon's own cwd. A non-file scheme address is an eligible content source
-only when the registered scheme is a data scheme implementing READ. After
-acceptance, core reparses the complete authored address and resolves one exact,
-unscoped READ through that scheme's ordinary handler and addressed context.
+only when the registered scheme is a data scheme. After acceptance, core
+reparses the complete authored address and resolves one exact `<1,-1>` READ
+through {§universal-read-composition}; internal source consumption never
+borrows the model-facing 16-line preview.
 
 | Authored target                       | Body      | Canonical effect target | Accepted executor realization                         |
 | ------------------------------------- | --------- | ----------------------- | ----------------------------------------------------- |
@@ -3108,10 +3119,14 @@ Carried from the contract walk; durable.
 - **Binary markers** → 415 for text operations. A readable binary source is durably represented as projected `text/markdown` under {§membership-source-projection}; source-aware File EDIT remains 415.
 - **EDIT `<L>` on non-existent entry** → body becomes content; `<L>` is positional-only on existing content.
 - §copy-l-source-range **COPY/MOVE source scope** selects only the addressed source channel and
-  transfers canonical text without the packet's `N:` prefix. A MOVE removes
+  first resolves and, when required, prepares the same canonical
+  owner-addressed representation as exact READ/FIND. It transfers canonical
+  text without the packet's `N:` prefix. A MOVE removes
   that same selected region; an unscoped MOVE removes only the selected
   channel, deleting the entry only when no channels remain. A binary marker
-  is not transferable; a readable binary projection is already a textual channel.
+  is not transferable; a readable binary projection is already a textual
+  channel. A selected producer failure aborts before destination mutation;
+  successful non-`200` content remains transferable.
 
 - **COPY/MOVE destination scope** is independent of the source scope and lowers
   through the destination scheme's `editBatch`.

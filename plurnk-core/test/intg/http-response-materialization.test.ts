@@ -11,9 +11,16 @@ import {
     openMigrated,
     insertWorkspace,
     insertWorker,
+    lookThroughScheme,
     makeSchemeCtx,
     makeHandlerCtx,
 } from "./_helpers.ts";
+
+const readHttp = (
+    http: Http,
+    statement: ReadStatement,
+    ctx: ReturnType<typeof makeSchemeCtx>,
+) => lookThroughScheme("http", http, statement, ctx);
 
 const statement = (
     lineMarker: ReadStatement["lineMarker"] = null,
@@ -101,7 +108,7 @@ const legacyTextStatement = (): ReadStatement => ({
     position: { line: 1, column: 0 },
 });
 
-test("a direct binary response persists one typed marker whose universal READ is 415", async () => {
+test("an unsupported binary response returns an exact 415 without fabricating a text entry", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
     const http = new Http();
@@ -113,32 +120,18 @@ test("a direct binary response persists one typed marker whose universal READ is
         const workspaceId = await insertWorkspace(db, `http-binary-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const manifest = { ...Http.manifest, name: "https" };
-
-        const acquired = await http.read(statement(), makeHandlerCtx(ctx, manifest));
+        const acquired = await readHttp(http, statement(), ctx);
         assert.equal(acquired.status, 415);
         assert.equal(acquired.problem?.type, "https://problems.plurnk.dev/scheme/http/binary-response-unsupported");
 
         const entry = await db.test_entries_by_pathname.get<{ id: number; scheme: string }>({
             pathname: "/93.184.216.34/logo.png",
         });
-        assert.equal(entry?.scheme, "https");
-        const channels = await db.entry_read_channels.all<{
-            name: string;
-            content: string;
-            mimetype: string;
-            state: string;
-        }>({ entry_id: entry?.id });
-        const byName = new Map(channels.map((channel) => [channel.name, channel]));
-        assert.equal(byName.get("body")?.content, "");
-        assert.equal(byName.get("body")?.mimetype, "image/png");
-        assert.equal(byName.get("body")?.state, "errored");
-        assert.match(byName.get("header")?.content ?? "", /^HTTP 200 OK/m);
+        assert.equal(entry, undefined);
 
-        const reread = await http.read(statement({ marks: [1] }), makeHandlerCtx(ctx, manifest));
+        const reread = await readHttp(http, statement({ marks: [1] }), ctx);
         assert.equal(reread.status, 415);
-        assert.equal(reread.problem?.type, "https://problems.plurnk.dev/scheme/https/binary-read-unsupported");
-        assert.equal(reread.mimetype, "image/png");
+        assert.equal(reread.problem?.type, "https://problems.plurnk.dev/scheme/http/binary-response-unsupported");
     } finally {
         globalThis.fetch = originalFetch;
         await db.close();
@@ -161,18 +154,18 @@ test("a direct readable PDF persists only derived Unicode plus projection eviden
         const manifest = { ...Http.manifest, name: "https" };
         const handlerCtx = makeHandlerCtx(ctx, manifest);
 
-        assert.equal((await http.read(statement(null, "/paper.pdf"), handlerCtx)).status, 102);
+        assert.equal((await readHttp(http, statement(null, "/paper.pdf"), ctx)).status, 200);
         const entry = await handlerCtx.entries.read("/93.184.216.34/paper.pdf");
         assert.equal(entry.entry?.channels.body.mimetype, "text/markdown");
         assert.match(entry.entry?.channels.body.content ?? "", /Hello, world!/);
-        assert.equal(entry.entry?.channels.body.state, "closed");
+        assert.equal(entry.entry?.channels.body.state, "static");
         assert.match(entry.entry?.channels.header.content ?? "", /^content-type: application\/pdf$/m);
         assert.match(
             entry.entry?.channels.header.content ?? "",
             /^x-plurnk-projection-id: [a-f0-9]{64}$/m,
         );
 
-        const reread = await http.read(statement({ marks: [1] }, "/paper.pdf"), handlerCtx);
+        const reread = await readHttp(http, statement({ marks: [1] }, "/paper.pdf"), ctx);
         assert.equal(reread.status, 200);
         assert.match(reread.content ?? "", /Hello, world!/);
         assert.equal(reread.mimetype, "text/markdown");
@@ -201,12 +194,12 @@ test("a direct textual response durably preserves Fetch UTF-8 normalization and 
         const manifest = { ...Http.manifest, name: "https" };
         const handlerCtx = makeHandlerCtx(ctx, manifest);
 
-        assert.equal((await http.read(legacyTextStatement(), handlerCtx)).status, 102);
+        assert.equal((await readHttp(http, legacyTextStatement(), ctx)).status, 200);
 
         const entry = await handlerCtx.entries.read("/93.184.216.34/legacy.txt");
         assert.equal(entry.entry?.channels.body.content, "caf�");
         assert.equal(entry.entry?.channels.body.mimetype, "text/plain");
-        assert.equal(entry.entry?.channels.body.state, "closed");
+        assert.equal(entry.entry?.channels.body.state, "static");
         assert.match(
             entry.entry?.channels.header.content ?? "",
             /^content-type: text\/plain; charset=windows-1252$/m,
@@ -241,7 +234,7 @@ test("{§http-channel-outcomes}: a hard page-body failure preserves readable ser
         const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" });
         const pathname = "/93.184.216.34/hard.html";
 
-        const acquired = await http.read(statement(null, "/hard.html"), handlerCtx);
+        const acquired = await readHttp(http, statement(null, "/hard.html"), ctx);
         assert.equal(acquired.status, 502);
         assert.equal(
             acquired.problem?.type,
@@ -250,8 +243,8 @@ test("{§http-channel-outcomes}: a hard page-body failure preserves readable ser
 
         const stored = await handlerCtx.entries.read(pathname);
         assert.equal(stored.entry?.channels.body.state, "errored");
-        assert.equal(stored.entry?.channels.header.state, "closed");
-        assert.equal(stored.entry?.channels.html.state, "closed");
+        assert.equal(stored.entry?.channels.header.state, "static");
+        assert.equal(stored.entry?.channels.html.state, "static");
         assert.equal(stored.entry?.channels.html.content, source);
 
         const scoped = statement({ marks: [1] }, "/hard.html");
@@ -264,7 +257,7 @@ test("{§http-channel-outcomes}: a hard page-body failure preserves readable ser
                 fragment: "html",
             },
         };
-        const reread = await http.read(htmlRead, handlerCtx);
+        const reread = await readHttp(http, htmlRead, ctx);
         assert.equal(reread.status, 200);
         assert.equal(reread.content, source, "universal text scope preserves the exact source characters");
         assert.equal(reread.mimetype, "text/markdown", "scoped text follows the universal text-primitive contract");
@@ -276,7 +269,7 @@ test("{§http-channel-outcomes}: a hard page-body failure preserves readable ser
     }
 });
 
-test("an empty direct GET transitions active → closed and remains reusable through 304 and TTL", async () => {
+test("an empty finite GET materializes atomically and remains reusable through 304 and TTL", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
     const originalTtl = process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
@@ -308,7 +301,7 @@ test("an empty direct GET transitions active → closed and remains reusable thr
         const handlerCtx = makeHandlerCtx(ctx, { ...Http.manifest, name: "https" });
         const pathname = "/93.184.216.34/empty";
 
-        const acquiring = http.read(emptyStatement(), handlerCtx);
+        const acquiring = readHttp(http, emptyStatement(), ctx);
         await firstStarted.promise;
         const inFlight = await handlerCtx.entries.read(pathname);
         firstResponse.resolve(new Response(null, {
@@ -316,22 +309,26 @@ test("an empty direct GET transitions active → closed and remains reusable thr
             statusText: "No Content",
             headers: { "content-type": "text/plain", etag: '"empty-v1"' },
         }));
-        assert.equal(Object.keys(inFlight.entry?.channels ?? {}).length, 3);
-        assert.ok(Object.values(inFlight.entry?.channels ?? {}).every(({ state }) => state === "active"));
-        assert.equal((await acquiring).status, 102);
+        const acquired = await acquiring;
+        assert.equal(inFlight.status, 404, "finite preparation does not publish a partial representation");
+        assert.equal(acquired.status, 204);
+        assert.equal(acquired.content, "");
 
         const completed = await handlerCtx.entries.read(pathname);
         assert.equal(completed.entry?.channels.body.content, "");
         assert.equal(Object.keys(completed.entry?.channels ?? {}).length, 3);
-        assert.ok(Object.values(completed.entry?.channels ?? {}).every(({ state }) => state === "closed"));
+        assert.equal(completed.entry?.channels.body.state, "static");
+        assert.equal(completed.entry?.channels.header.state, "static");
+        assert.equal(completed.entry?.channels.html.state, "errored");
+        assert.equal(completed.entry?.channels.html.producerResult?.status, 502);
 
         process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "0";
-        assert.equal((await http.read(emptyStatement(), handlerCtx)).status, 102);
+        assert.equal((await readHttp(http, emptyStatement(), ctx)).status, 204);
         assert.equal(requests, 2, "stale empty representation revalidated through 304");
-        assert.equal((await handlerCtx.entries.read(pathname)).entry?.channels.body.state, "closed");
+        assert.equal((await handlerCtx.entries.read(pathname)).entry?.channels.body.state, "static");
 
         process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "60000";
-        assert.equal((await http.read(emptyStatement(), handlerCtx)).status, 102);
+        assert.equal((await readHttp(http, emptyStatement(), ctx)).status, 204);
         assert.equal(requests, 2, "fresh empty representation used the TTL fast path");
     } finally {
         globalThis.fetch = originalFetch;
@@ -372,13 +369,13 @@ test("parser-produced request metadata cannot share a fresh HTTP representation"
             "https://93.184.216.34/account{Authorization: Bearer private}",
         );
 
-        assert.equal((await http.read(publicRead, handlerCtx)).status, 102);
+        assert.equal((await readHttp(http, publicRead, ctx)).status, 200);
         assert.match(
             (await handlerCtx.entries.read("/93.184.216.34/account")).entry?.channels.header.content ?? "",
             /^x-plurnk-cache-variant: default$/m,
         );
 
-        assert.equal((await http.read(privateRead, handlerCtx)).status, 102);
+        assert.equal((await readHttp(http, privateRead, ctx)).status, 200);
         const privateEntry = await handlerCtx.entries.read("/93.184.216.34/account");
         assert.equal(privateEntry.entry?.channels.body.content, "private");
         assert.match(
@@ -386,7 +383,7 @@ test("parser-produced request metadata cannot share a fresh HTTP representation"
             /^x-plurnk-cache-variant: bypass$/m,
         );
 
-        assert.equal((await http.read(publicRead, handlerCtx)).status, 102);
+        assert.equal((await readHttp(http, publicRead, ctx)).status, 200);
         const finalEntry = await handlerCtx.entries.read("/93.184.216.34/account");
         assert.equal(finalEntry.entry?.channels.body.content, "public v2");
         assert.match(
@@ -436,12 +433,12 @@ test("a durable no-store response is operation evidence, not a reusable HTTP cac
         const read = parsedRead("https://93.184.216.34/evidence");
         const pathname = "/93.184.216.34/evidence";
 
-        assert.equal((await http.read(read, handlerCtx)).status, 102);
+        assert.equal((await readHttp(http, read, ctx)).status, 200);
         const first = await handlerCtx.entries.read(pathname);
         assert.equal(first.entry?.channels.body.content, "acquisition 1");
         assert.match(first.entry?.channels.header.content ?? "", /^cache-control: no-store$/m);
 
-        assert.equal((await http.read(read, handlerCtx)).status, 102);
+        assert.equal((await readHttp(http, read, ctx)).status, 200);
         assert.equal((await handlerCtx.entries.read(pathname)).entry?.channels.body.content, "acquisition 2");
         assert.deepEqual(requests, [{ conditional: false }, { conditional: false }]);
     } finally {

@@ -9,8 +9,8 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import type { Executor, RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
 import type { ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
-import type ExecOutputScheme from "../../src/schemes/ExecOutputScheme.ts";
-import { openMigrated, makeSchemeCtx } from "./_helpers.ts";
+import { Results } from "@plurnk/plurnk-schemes";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
 
 // A stand-in executor - the seam stores the entry + wraps the executor in a lazy scheme face
 // (ExecOutputScheme reads the executor only at dispatch), so registration needs no live runtime.
@@ -140,25 +140,38 @@ test("a runtime resource facet claims only its subtree and preserves output-stre
         let calls = 0;
         engine.registerRuntime("myserver", fakeEntry("myserver"), {
             claims: (pathname) => pathname.startsWith("/resources/"),
-            read: async (_statement, ctx) => {
+            prepareRepresentation: async (request, ctx) => {
                 calls++;
-                assert.ok(ctx.entries, "the module receives the public scheme context");
-                return {
-                    status: 200,
-                    content: "remote resource",
-                    mimetype: "text/plain",
-                    channel: "body",
-                };
+                assert.equal(request.pathname, "/resources/item");
+                const written = await ctx.entries.write(request.pathname, {
+                    channels: {
+                        results: {
+                            content: "remote resource",
+                            mimetype: "text/plain",
+                        },
+                    },
+                    tags: [],
+                });
+                assert.ok(written.status === 200 || written.status === 201);
+                return { status: 200 };
             },
         });
-        const handler = schemes.get("myserver") as ExecOutputScheme;
-        const ctx = makeSchemeCtx({ db });
+        assert.ok(schemes.get("myserver"));
+        const workspaceId = await insertWorkspace(db, `module-runtime-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const read = (statement: ReadStatement) => engine.look({
+            statement,
+            workspaceId,
+            workerId,
+            loopId,
+        }).then(Results.assertReadResult);
 
-        const remote = await handler.read(readStatement("/resources/item"), ctx);
+        const remote = await read(readStatement("/resources/item"));
         assert.equal(remote.content, "remote resource");
         assert.equal(calls, 1);
 
-        const output = await handler.read(readStatement("/1/1/1"), ctx);
+        const output = await read(readStatement("/1/1/1"));
         assert.equal(output.status, 404, "an unclaimed output coordinate uses the standard stream reader");
         assert.equal(calls, 1, "the resource facet never intercepts output coordinates");
     } finally {

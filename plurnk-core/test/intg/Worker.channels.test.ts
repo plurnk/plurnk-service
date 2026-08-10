@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Worker from "../../src/schemes/Worker.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, openStmt, foldStmt } from "./_dsl.ts";
 
 const setup = async () => {
@@ -47,7 +47,7 @@ test("Worker.read with no fragment returns body channel (default)", async () => 
     try {
         const k = new Worker();
         await k.edit(editStmt(urlPath("worker", "/x"), "body content"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await k.read(readStmt(urlPath("worker", "/x")), makeSchemeCtx({ db, workspaceId }));
+        const r = await lookThroughScheme("worker", null, readStmt(urlPath("worker", "/x")), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.content, "body content");
         assert.equal(r.channel, "body");
@@ -59,7 +59,7 @@ test("Worker.read with unknown channel returns 400", async () => {
     try {
         const k = new Worker();
         await k.edit(editStmt(urlPath("worker", "/x"), "body content"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await k.read(readStmt(urlPath("worker", "/x", "not-a-channel")), makeSchemeCtx({ db, workspaceId }));
+        const r = await lookThroughScheme("worker", null, readStmt(urlPath("worker", "/x", "not-a-channel")), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 400);
     } finally { await db.close(); }
 });

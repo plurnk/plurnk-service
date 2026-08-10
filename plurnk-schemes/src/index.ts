@@ -37,8 +37,6 @@ export { default as Summarize } from "./Summarize.ts";
 export type { OrientIndex } from "./Summarize.ts";
 export { default as OutputScheme } from "./OutputScheme.ts";
 export type { RuntimeDecl } from "./OutputScheme.ts";
-export { default as DefaultRead } from "./DefaultRead.ts";
-export type { ReadResolution } from "./DefaultRead.ts";
 export { default as Results } from "./Results.ts";
 export { default as PacketSections } from "./PacketSections.ts";
 export { InvalidOperationResultError } from "./Results.ts";
@@ -56,11 +54,13 @@ export type {
     SupersededEditReceipt,
 } from "./edit-receipt.ts";
 export type {
+    ChannelProducerResult,
     EntryResult,
     MatchEvidence,
     PassthroughResult,
     ProposalResult,
     ProblemDetails,
+    RepresentationPreparationResult,
     ScopeNormalization,
     SchemeResult,
     SchemeResultBase,
@@ -104,7 +104,7 @@ export type {
 // statement + path types are re-exported from grammar here so a sibling depends
 // on and exact-pins ONLY this package; grammar is the framework's transitive pin
 // (this repo already peers it). The engine speaks one grammar — keep it single.
-export type { SchemeHandler } from "./handler.ts";
+export type { RepresentationPreparationRequest, SchemeHandler } from "./handler.ts";
 export type { PacketSectionDraft, PacketSectionTransformer } from "./packet.ts";
 export type {
     PluginAttributionContext,

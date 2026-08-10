@@ -1,6 +1,11 @@
 import type { RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
-import type { FindStatement, ReadStatement } from "@plurnk/plurnk-contracts";
-import type { SchemeCtx, SchemeResult } from "@plurnk/plurnk-schemes";
+import type { FindStatement } from "@plurnk/plurnk-contracts";
+import type {
+    RepresentationPreparationRequest,
+    RepresentationPreparationResult,
+    SchemeCtx,
+    SchemeResult,
+} from "@plurnk/plurnk-schemes";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 
 export type ModuleActionHandler = (
@@ -12,7 +17,10 @@ export type ModuleActionHandler = (
 // unclaimed coordinates retain the standard executor-output behavior.
 export interface RuntimeSchemeFacet {
     claims(pathname: string): boolean;
-    read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    prepareRepresentation?(
+        request: RepresentationPreparationRequest,
+        ctx: SchemeCtx,
+    ): Promise<RepresentationPreparationResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
 }
 

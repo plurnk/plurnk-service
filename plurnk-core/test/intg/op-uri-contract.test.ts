@@ -21,7 +21,10 @@ import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { MimetypeBinary } from "../../src/content/index.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, lookThroughScheme } from "./_helpers.ts";
+
+const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
+    lookThroughScheme("file", null, statement, ctx);
 
 // Parse one op the way production does, so a bare path carries its REAL parsed shape
 // (LocalPath {kind:"local"}) â€” the exact thing the model emits, not a hand-built UrlPath.
@@ -85,7 +88,7 @@ test("contract: READ(bare path) resolves the canonical-stored member (control â€
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
         const stmt = parseOp<ReadStatement>("<<READ(notes.md)::READ", "READ");
-        const result = await new File().read(stmt, ctx);
+        const result = await readFileScheme(stmt, ctx);
         assert.equal(result.status, 200, "READ canonicalizes the bare path and resolves the member");
         assert.match(result.content ?? "", /phoenix/, "READ returns the member content");
     });

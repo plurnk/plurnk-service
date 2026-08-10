@@ -18,10 +18,12 @@ import { renderAddress } from "../plurnk-uri.ts";
 export default class DbNotifyCaps implements NotifyCaps {
     readonly #ctx: PlurnkSchemeContext;
     readonly #scheme: string;
+    readonly #ownerId: number | undefined;
 
-    constructor(ctx: PlurnkSchemeContext, scheme: string) {
+    constructor(ctx: PlurnkSchemeContext, scheme: string, ownerId?: number) {
         this.#ctx = ctx;
         this.#scheme = scheme;
+        this.#ownerId = ownerId;
     }
 
     streamEvent(pathname: string, channel: string, state: ChannelState, contentLength: number): void {
@@ -33,7 +35,7 @@ export default class DbNotifyCaps implements NotifyCaps {
     }
 
     async #emit(notify: StreamEventNotify, pathname: string, channel: string, state: ChannelState, contentLength: number): Promise<void> {
-        const entry = await CapsResolve.entry(this.#ctx, this.#scheme, pathname);
+        const entry = await CapsResolve.entry(this.#ctx, this.#scheme, pathname, this.#ownerId);
         if (entry === null) return;
         const target = renderAddress(this.#scheme, pathname);
         notify(this.#ctx.workspaceId, { entryId: entry.entryId, workerId: entry.workerId, target, channel, state, contentLength });

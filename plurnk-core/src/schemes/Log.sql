@@ -3,7 +3,13 @@
 
 -- PREP: log_read_by_coordinate
 SELECT le.op, le.scheme, le.pathname, le.status_rx,
-       le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.attrs
+       le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.attrs,
+       COALESCE((
+           SELECT json_group_array(ordered.tag)
+           FROM (
+               SELECT tag FROM log_tags WHERE log_entry_id = le.id ORDER BY tag
+           ) ordered
+       ), '[]') AS tags
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id

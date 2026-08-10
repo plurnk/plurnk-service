@@ -39,12 +39,14 @@ import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import {
     openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn,
-    seedEnvelope, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace,
+    seedEnvelope, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace, lookThroughScheme,
 } from "./_helpers.ts";
 import Owner from "../../src/core/Owner.ts";
 import { urlPath, editStmt, readStmt, sendStmt, findStmt } from "./_dsl.ts";
 
 const execFileP = promisify(execFile);
+const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
+    lookThroughScheme("file", null, statement, ctx);
 
 const setup = async () => {
     const db = await openMigrated();
@@ -100,7 +102,7 @@ test("jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdo
         const broken = '{"host": "db.internal", "pool":}';  // trailing-colon: not valid JSON
         await k.edit(editStmt(urlPath("worker", "/config.json"), broken), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
 
-        const r = await k.read(
+        const r = await lookThroughScheme("worker", null,
             readStmt(urlPath("worker", "/config.json")),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
@@ -155,7 +157,7 @@ test("an exact matcher FIND returns flat coordinates for a surgical follow-up RE
 
         const second = rx.results[1]!;
         assert.ok(second.region);
-        const surgical = await new Worker().read(
+        const surgical = await lookThroughScheme("worker", null,
             {
                 ...readStmt(urlPath("worker", "/log.txt")),
                 lineMarker: {
@@ -331,7 +333,7 @@ test("a binary file persists only derived Unicode and refreshes when its project
                 disposition: "projected",
             },
         });
-        const read = await new File().read(readStmt(urlPath("file", "/document.binary")), firstCtx);
+        const read = await readFileScheme(readStmt(urlPath("file", "/document.binary")), firstCtx);
         assert.equal(read.status, 200);
         assert.equal(read.content, "projection-v1:1,2,3,4");
         assert.equal(read.mimetype, "text/markdown");
@@ -409,7 +411,7 @@ test("a binary file persists only derived Unicode and refreshes when its project
             },
         });
         assert.equal(
-            (await new File().read(readStmt(urlPath("file", "/document.binary")), limitedCtx)).status,
+            (await readFileScheme(readStmt(urlPath("file", "/document.binary")), limitedCtx)).status,
             415,
             "an over-limit source remains an honest typed marker rather than leaking bytes",
         );
@@ -485,7 +487,7 @@ test("registry-aware classification governs file decoding, operation gates, and 
         await GitMembership.indexGitMembership(ctx);
 
         const file = new File();
-        const readable = await file.read({
+        const readable = await readFileScheme({
             ...readStmt(urlPath("file", "/readable.treeish")),
             lineMarker: { marks: [1] },
         }, ctx);
@@ -496,7 +498,7 @@ test("registry-aware classification governs file decoding, operation gates, and 
             ctx,
         )).status, 202, "the handler-declared text file remains region-editable");
 
-        const opaque = await file.read({
+        const opaque = await readFileScheme({
             ...readStmt(urlPath("file", "/opaque.encoded")),
             lineMarker: { marks: [1] },
         }, ctx);

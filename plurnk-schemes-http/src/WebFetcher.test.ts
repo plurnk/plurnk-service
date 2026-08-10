@@ -497,11 +497,15 @@ test("registry classification failure cancels the owned response body and preser
     assert.equal(cancelled, true);
 });
 
-test("empty textual body → null", async () => {
+test("empty textual body remains a present representation", async () => {
     await withFetch((async () => resp("", 200, { "content-type": "text/plain" })) as typeof fetch, async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
-        assert.equal(await WebFetcher.materialize(fetched, PROJECTION), null);
+        assert.deepEqual(await WebFetcher.materialize(fetched, PROJECTION), {
+            body: { content: "", mimetype: "text/plain" },
+            header: fetched.header,
+            bodyOutcome: { status: 200 },
+        });
     });
 });
 

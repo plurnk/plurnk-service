@@ -7,7 +7,7 @@
 import type { WriterTier } from "./types.ts";
 import type { EditStatement, FindStatement, RangeExtent, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
-import type { MatchEvidence, SchemeResult } from "./Results.ts";
+import type { ChannelProducerResult, MatchEvidence, SchemeResult } from "./Results.ts";
 import type { EditBatchReceipt, EditBatchResult } from "./edit-receipt.ts";
 // Channel streaming-lifecycle state. Metadata, not an engine gate
 // (service SPEC {§channel-state}).
@@ -16,14 +16,24 @@ export type ChannelState = "static" | "active" | TerminalChannelState;
 
 // Entry write shape. Omitting state selects the consumer's `static` default.
 export interface EntryData {
-    readonly channels: Record<string, { content: string; mimetype: string; state?: ChannelState }>;
+    readonly channels: Record<string, {
+        content: string;
+        mimetype: string;
+        state?: ChannelState;
+        producerResult?: ChannelProducerResult;
+    }>;
     readonly tags: ReadonlyArray<string>;
 }
 
 // Entry read shape. Lifecycle is part of the stored channel representation,
 // not private database metadata, so successful reads never omit it.
 export interface StoredEntryData {
-    readonly channels: Record<string, { content: string; mimetype: string; state: ChannelState }>;
+    readonly channels: Record<string, {
+        content: string;
+        mimetype: string;
+        state: ChannelState;
+        producerResult?: ChannelProducerResult;
+    }>;
     readonly tags: ReadonlyArray<string>;
 }
 
@@ -48,6 +58,7 @@ export interface EntryReadResult extends SchemeResult {
     readonly startLine?: number | null;
     readonly region?: TextRegion;
     readonly matches?: ReadonlyArray<MatchEvidence>;
+    readonly range?: RangeExtent;
     readonly reason?: string;
     readonly awaitWorker?: string;
 }
@@ -154,7 +165,7 @@ export interface NotifyCaps {
 
 // ── projection ───────────────────────────────────────────────────────────
 // Ask the consumer's configured mimetype family for the model-facing text
-// projection of acquired content. Network schemes acquire source representations; they do
+// projection of acquired content. Acquiring schemes produce source representations; they do
 // not select or instantiate the reader family. Keeping that reader capability
 // on the consumer makes direct READ and executor-prefetch use the same
 // configured projection instead of shipping raw HTML down one path. A returned
@@ -208,13 +219,10 @@ export interface SubscriptionCaps extends Pick<StreamSubscription, "notifyChunk"
     // engine's cancel router invokes to tear the subscription down from
     // OUTSIDE (exec's kill handle; http's socket-abort) — the active
     // counterpart to the passive signal.
-    open(pathname: string, handle: SubscriptionHandle, options?: {
-        // Persist every channel the producer writes, but publish live stream
-        // events only for this selected channel. A fragmentless multi-channel
-        // READ passes its manifest default here; auxiliary/raw channels remain
-        // implementation detail unless explicitly addressed.
-        publishedChannel?: string;
-    }): Promise<StreamSubscription>;
+    // Core binds the operation's selected channel into this capability. The
+    // producer persists every channel but cannot reinterpret which one the
+    // authored operation publishes.
+    open(pathname: string, handle: SubscriptionHandle): Promise<StreamSubscription>;
 }
 
 // The force-cancel hook a streaming scheme hands to `open`. The engine's

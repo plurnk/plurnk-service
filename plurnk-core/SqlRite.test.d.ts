@@ -428,6 +428,7 @@ export class SqlRiteSync {
 	test_entry_channels_insert_default: SqlRiteSyncPreparedStatements;
 	test_entry_channels_insert_with_state: SqlRiteSyncPreparedStatements;
 	test_entry_channels_insert_with_tokens: SqlRiteSyncPreparedStatements;
+	test_entry_channels_insert_with_producer_result: SqlRiteSyncPreparedStatements;
 	test_entry_channels_get_first: SqlRiteSyncPreparedStatements;
 	test_entry_channels_count_all: SqlRiteSyncPreparedStatements;
 	test_entry_tags_insert: SqlRiteSyncPreparedStatements;
@@ -905,6 +906,7 @@ export default class SqlRite {
 	test_entry_channels_insert_default: SqlRitePreparedStatements;
 	test_entry_channels_insert_with_state: SqlRitePreparedStatements;
 	test_entry_channels_insert_with_tokens: SqlRitePreparedStatements;
+	test_entry_channels_insert_with_producer_result: SqlRitePreparedStatements;
 	test_entry_channels_get_first: SqlRitePreparedStatements;
 	test_entry_channels_count_all: SqlRitePreparedStatements;
 	test_entry_tags_insert: SqlRitePreparedStatements;

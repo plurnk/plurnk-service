@@ -7,7 +7,12 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
-import { Results, type SchemeCtx, type StreamSubscription } from "@plurnk/plurnk-schemes";
+import {
+    Results,
+    type RepresentationPreparationRequest,
+    type SchemeCtx,
+    type StreamSubscription,
+} from "@plurnk/plurnk-schemes";
 import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (scheme: string, pathname: string): UrlPath => ({
@@ -83,8 +88,11 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
                 category: "data" as const,
                 writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
             };
-            async read(statement: ReadStatement, ctx: SchemeCtx): Promise<{ status: number }> {
-                const path = statement.target;
+            async prepareRepresentation(
+                request: RepresentationPreparationRequest,
+                ctx: SchemeCtx,
+            ): Promise<{ status: number }> {
+                const path = request.target;
                 if (path === null || path.kind !== "url") {
                     return Results.failure(
                         "scheme:teststream",
@@ -95,12 +103,12 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
                         { stage: "validate", retryable: false },
                     );
                 }
-                await ctx.entries.write(path.pathname, {
+                await ctx.entries.write(request.pathname, {
                     channels: { data: { content: "", mimetype: "text/plain", state: "active" } },
                     tags: [],
                 });
                 let subscription: StreamSubscription | undefined;
-                subscription = await ctx.subscriptions.open(path.pathname, {
+                subscription = await ctx.subscriptions.open(request.pathname, {
                     cancel: async () => {
                         teardownCalls.push(handle);
                         if (subscription === undefined) throw new Error("stream subscription missing");

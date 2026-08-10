@@ -4,7 +4,8 @@ import type {
 } from "@plurnk/plurnk-execs";
 import type {
     FindStatement,
-    ReadStatement,
+    RepresentationPreparationRequest,
+    RepresentationPreparationResult,
     SchemeCtx,
     SchemeResult,
 } from "@plurnk/plurnk-schemes";
@@ -15,7 +16,10 @@ import McpResources from "./McpResources.ts";
 
 interface RuntimeSchemeFacet {
     claims(pathname: string): boolean;
-    read?(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    prepareRepresentation?(
+        request: RepresentationPreparationRequest,
+        ctx: SchemeCtx,
+    ): Promise<RepresentationPreparationResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
 }
 

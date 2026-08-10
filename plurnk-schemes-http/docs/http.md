@@ -1,19 +1,18 @@
 # http(s)://
 
-Use a web URL as an addressable entry. An unscoped READ performs a GET
-or reuses a fresh stored GET representation, then streams the selected response
-channel. HTML becomes a readable model-facing body (normally Markdown); its
-original server source is retained separately. Auxiliary channels are never presented by
-default.
+Use a web URL as an addressable entry. Every exact READ acquires or refreshes a
+complete representation when needed, then core selects the channel and applies
+the requested text scope. HTML becomes a readable model-facing body (normally
+Markdown); original server source is retained separately. Auxiliary channels
+are never presented by default.
 
-| Operation                         | Remote action | Effect                                                                         |
-| --------------------------------- | ------------- | ------------------------------------------------------------------------------ |
-| Unscoped `READ(http(s)://…)`      | GET           | Acquire/reuse the response and publish the selected channel                    |
-| Scoped `READ(http(s)://…)<scope>` | None          | Read a range from the selected already-materialized channel; never refetch     |
-| `FIND(http(s)://…):matcher`       | GET if needed | Prepare an exact URL, then return flat match locations                         |
-| `SEND[200](http(s)://…):body:`    | POST          | Submit the body and stream the response                                        |
-| `EDIT(http(s)://…):body:`         | PUT           | Replace the whole remote resource; do not use a line scope                     |
-| `KILL(http(s)://…)`               | DELETE        | Delete the remote resource and stream the response                             |
+| Operation                         | Remote action | Effect                                                                     |
+| --------------------------------- | ------------- | -------------------------------------------------------------------------- |
+| `READ(http(s)://…)<scope?>`       | GET if needed | Acquire/reuse the complete response, then return the selected scoped text  |
+| `FIND(http(s)://…):matcher`       | GET if needed | Prepare an exact URL, then return flat match locations                     |
+| `SEND[200](http(s)://…):body:`    | POST          | Submit the body and stream the response                                    |
+| `EDIT(http(s)://…):body:`         | PUT           | Replace the whole remote resource; do not use a line scope                 |
+| `KILL(http(s)://…)`               | DELETE        | Delete the remote resource and stream the response                         |
 
 A path-pattern FIND searches only web entries already materialized in the
 workspace; a pattern cannot discover the remote web. FIND returns navigation
@@ -21,14 +20,15 @@ metadata, not the selected page body. Use READ for content.
 
 Caller cancellation of an exact acquisition returns `499 cancelled`.
 
-| Direct response                      | `body`                                                    | Other channel                                  |
-| ------------------------------------ | --------------------------------------------------------- | ---------------------------------------------- |
-| Negotiated origin Markdown           | Exact origin Markdown                                     | Independently requested server HTML in `#html` |
-| GET HTML                             | Tavily Markdown or the local HTML-reader projection       | Original server HTML in `#html`                |
-| GET `text/event-stream`              | Event `data` chunks after READ `102`                       | Initial response in `#header`                  |
-| Configured textual response          | Incremental UTF-8 text under its declared type            | Status and headers in `#header`                |
-| Binary with a readable projection    | Derived Unicode under the projection output type          | Origin type and projection ID in `#header`     |
-| Binary without a readable projection | Empty marker under its type or `application/octet-stream` | Status and headers in `#header`                |
+| Response                             | `body`                                              | Other channel                                  |
+| ------------------------------------ | --------------------------------------------------- | ---------------------------------------------- |
+| Negotiated origin Markdown           | Exact origin Markdown                               | Independently requested server HTML in `#html` |
+| GET HTML                             | Tavily Markdown or local HTML-reader projection     | Original server HTML in `#html`                |
+| GET `text/event-stream`              | Event `data` chunks after READ `102`                 | Initial response in `#header`                  |
+| Configured textual response          | Complete Fetch-decoded text under its declared type | Status and headers in `#header`                |
+| Origin HTTP `4xx`/`5xx`              | Preserve available origin or independently produced text | Exact status on each origin-backed channel |
+| Binary with a readable projection    | Derived Unicode under the projection output type    | Origin type and projection ID in `#header`     |
+| Binary without a readable projection | No fabricated text representation                   | Exact `415` Problem                            |
 
 Generic public HTML uses configured Tavily as its body producer. A recoverable
 timeout, transport error, `429`, `5xx`, or per-URL extraction failure uses the
@@ -44,25 +44,29 @@ non-retryable `500 projection-failed`.
 
 A binary response uses the installed mimetype reader when one supplies a
 bounded Unicode projection; raw bytes never enter a durable channel. Without a
-reader, a direct operation returns `415 binary-response-unsupported`. Input
-above the configured byte ceiling returns `413 projection-input-limit`. The
-remote response was received and its metadata remains in `#header`; do not
-retry a POST, PUT, or DELETE solely to retrieve its binary body. Exact FIND
-instead prunes responses that produce no readable projection.
+reader, finite GET preparation returns `415 binary-response-unsupported`
+without fabricating an entry. Input above the configured byte ceiling returns
+`413 projection-input-limit`. A streamed POST, PUT, or DELETE response already
+owns lifecycle evidence in `#header`; do not retry a mutation solely to
+retrieve its binary body.
 
 `#header` contains origin and package acquisition evidence. A Tavily attempt
 adds its route, status, timing, any reported request ID and credits, and bounded
-failure evidence. `body`, `header`, and `html` settle independently; the selected
-channel determines success. Thus `#html` or `#header` can remain readable after
-a body failure, while a Tavily body can succeed without fabricating unavailable
-server HTML. `SEND[code]` is never the remote HTTP status.
+failure evidence. `body`, `header`, and `html` carry independent durable
+producer outcomes; the selected channel determines success. Thus `#html` or
+`#header` can remain readable after a body failure, while a Tavily body can
+succeed without fabricating unavailable server HTML. `SEND[code]` is never the
+remote HTTP status. A direct non-success origin response is still materialized:
+origin-backed channels carry its exact durable `http-response-status` Problem,
+while independently produced Tavily content and acquisition headers retain
+their own outcomes.
 
 For SSE, the response and persisted `#header` establish acquisition. READ then
 returns `102` while events continue. Origin close settles the subscription at
 `200`; later cancellation or transfer failure settles it at `499` or `502`
 without rewriting the initial READ.
 
-Re-reading without a scope can reuse only a complete GET acquired without
+Re-reading an exact URL can reuse only a complete GET acquired without
 explicit request metadata whose response had no `Vary` field. Plurnk keeps one
 representation per URL, so any target metadata or `Vary` response bypasses both
 the freshness shortcut and old validators instead of creating a variant store.
@@ -79,10 +83,10 @@ likewise require the same origin-Markdown, local, Tavily depth/version, or
 local-fallback route. Once stale, a page composite is fully reacquired without
 old validators; an origin 304 cannot certify provider or auxiliary material.
 
-A scoped READ never fetches. Its fragment, or `body` by default, selects an
-already-materialized channel before the universal READ contract applies the
-range. If that channel is absent, READ the URL without a scope to acquire the
-response first.
+Scope never suppresses acquisition or refresh. The HTTP producer cannot see the
+fragment or text coordinates; after preparation, the fragment (or `body` by
+default) selects a durable channel and core applies the range. Cold and warm
+forms therefore have identical selection and scope semantics.
 
 Request headers ride inside the target as ordered trailing `{Key: value}`
 blocks, one header per block:

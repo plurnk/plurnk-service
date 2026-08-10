@@ -77,6 +77,11 @@ export interface FindProjectionResource {
     readonly match: Match;
 }
 
+interface FindAddress {
+    readonly ownerId?: number;
+    readonly pathname?: string;
+}
+
 export const emptyFindFields = (): FindFields => ({
     content: null,
     mimetype: null,
@@ -209,7 +214,7 @@ export default class EntryFind {
         statement: FindStatement,
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
-        explicitOwnerId?: number,
+        address: FindAddress,
     ): Promise<{
         status: number;
         matches: Match[];
@@ -233,7 +238,7 @@ export default class EntryFind {
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
         // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
         const scheme = EntryCrud.identityScheme(manifest);
-        const scopePathname = EntryFind.#scopePathnameOf(statement);
+        const scopePathname = address.pathname ?? EntryFind.#scopePathnameOf(statement);
         const scope = scopePathname === null
             ? null
             : pathScope(scopePathname, manifest.folderScopes === true);
@@ -242,7 +247,7 @@ export default class EntryFind {
         if (scope?.kind === "exact" && scope.pathname.length > 0) {
             const exact = await ctx.db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: ctx.workspaceId,
-                owner_id: explicitOwnerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId),
+                owner_id: address.ownerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId),
                 scheme, pathname: scope.pathname,
             });
             if (exact === undefined) {
@@ -269,7 +274,7 @@ export default class EntryFind {
         const semantic = statement.body?.dialect === "semantic";
         let candidates = await db[semantic ? "find_workspace_entry_candidate_ids" : "find_workspace_entry_candidates"].all<Candidate>({
             workspace_id: workspaceId,
-            owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId),
+            owner_id: address.ownerId ?? await Owner.commonsId(db, workspaceId),
             scheme,
             ...(semantic ? {} : { channel: manifest.defaultChannel }),
             scope_prefix: scope?.candidatePrefix ?? null,
@@ -362,7 +367,7 @@ export default class EntryFind {
                 })),
                 ctx,
                 manifest,
-                explicitOwnerId,
+                address.ownerId,
             );
         } else if (statement.body === null) {
             matches = candidates.map((c) => ({ pathname: c.pathname, matches: [] }));
@@ -427,7 +432,7 @@ export default class EntryFind {
                 })),
                 ctx,
                 manifest,
-                explicitOwnerId,
+                address.ownerId,
             );
         } else {
             const { mimetypes } = ctx;
@@ -480,8 +485,13 @@ export default class EntryFind {
     // match order. A catalog row is exactly what the manifest catalogs (path + per-channel
     // {mimetype, tokens, lines}, tags, stream lifecycle) — FIND is the filtered, navigable slice of
     // that catalog, rendered as a JSON array (application/json). {§find-result-projection}
-    static async findWorkspaceEntries(statement: FindStatement, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<FindResult> {
-        const match = await EntryFind.#matchPathnames(statement, ctx, manifest, explicitOwnerId);
+    static async findWorkspaceEntries(
+        statement: FindStatement,
+        ctx: PlurnkSchemeContext,
+        manifest: SchemeManifest,
+        address: FindAddress = {},
+    ): Promise<FindResult> {
+        const match = await EntryFind.#matchPathnames(statement, ctx, manifest, address);
         const empty = emptyFindFields();
         if (match.status !== 200) {
             if (match.problem !== undefined) {
@@ -509,7 +519,7 @@ export default class EntryFind {
         // uses. Resource order is preserved (rank for ~semantic).
         // {§entry-owner} — the alignment draws from the SAME owner the candidates matched, so a
         // match never pairs with a coordinate-twin sibling's catalog metadata.
-        const byPath = new Map((await EntryManifest.catalogRowsFor(ctx, scheme, explicitOwnerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId))).map((r) => [r.path, r] as const));
+        const byPath = new Map((await EntryManifest.catalogRowsFor(ctx, scheme, address.ownerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId))).map((r) => [r.path, r] as const));
         const resources: FindProjectionResource[] = [];
         for (const m of match.matches) {
             const row = byPath.get(EntryManifest.toPath(scheme, m.pathname));
@@ -537,6 +547,30 @@ export default class EntryFind {
             }
         }
         if (match.scope === undefined) throw new Error("FIND selection succeeded without a path scope");
-        return projectFindResult(statement, match.scope, resources, scopes);
+        const projected = projectFindResult(statement, match.scope, resources, scopes);
+        if (address.pathname === undefined) return projected;
+
+        // Exact FIND consumes the same selected canonical producer as exact
+        // READ. Query projection remains core-owned, while the durable default-
+        // channel outcome survives cold and warm acquisition identically.
+        const stored = await EntryCrud.readEntry(
+            address.pathname,
+            ctx,
+            scheme,
+            address.ownerId,
+        );
+        if (stored.status !== 200 || stored.entry === null) {
+            throw new Error(
+                `EntryFind projected exact entry ${address.pathname} but could not read its canonical representation.`,
+            );
+        }
+        const producerResult = stored.entry.channels[manifest.defaultChannel]?.producerResult;
+        return producerResult === undefined
+            ? projected
+            : Results.assert({
+                ...producerResult,
+                ...projected,
+                status: producerResult.status,
+            }) as FindResult;
     }
 }

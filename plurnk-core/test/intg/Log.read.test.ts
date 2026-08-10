@@ -6,7 +6,7 @@ import type { EditStatement, FindStatement, LineMarker, LocalPath, MatcherBody, 
 import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -45,7 +45,7 @@ test("Log.read: EDIT op log entry returns its canonical effect receipt", async (
             workspaceId, workerId, loopId, turnId,
             sequence: 1, origin: "model",
         });
-        const result = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
+        const result = await readLog(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
         assert.equal(result.status, 200);
         assert.equal(result.mimetype, "text/plain");
         assert.equal(result.content, "1:Paris", "storage envelope fields do not replace the model-facing edit result");
@@ -59,9 +59,9 @@ test("Log.read: each coordinate addresses its own canonical body", async () => {
         await engine.dispatch({ statement: editStmt("/b", "2"), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         await engine.dispatch({ statement: editStmt("/c", "3"), workspaceId, workerId, loopId, turnId, sequence: 3, origin: "model" });
 
-        const r1 = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
-        const r2 = await new Log().read(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, workerId }));
-        const r3 = await new Log().read(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, workerId }));
+        const r1 = await readLog(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
+        const r2 = await readLog(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, workerId }));
+        const r3 = await readLog(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, workerId }));
         assert.deepEqual(
             [r1.content, r2.content, r3.content],
             ["1:1", "1:2", "1:3"],
@@ -79,8 +79,8 @@ test("Log.read: cross-loop coordinates within a worker resolve correctly", async
         const turn2 = await insertTurn(db, loop2, 1, 200);
         await engine.dispatch({ statement: editStmt("/from-loop-2", "y"), workspaceId, workerId, loopId: loop2, turnId: turn2, sequence: 1, origin: "model" });
 
-        const r1 = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
-        const r2 = await new Log().read(readStmt(urlPath("log", "/2/1/1")), makeSchemeCtx({ db, workerId }));
+        const r1 = await readLog(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
+        const r2 = await readLog(readStmt(urlPath("log", "/2/1/1")), makeSchemeCtx({ db, workerId }));
         assert.equal(r1.content, "1:x");
         assert.equal(r2.content, "1:y");
     } finally { db.close(); }
@@ -89,7 +89,7 @@ test("Log.read: cross-loop coordinates within a worker resolve correctly", async
 test("Log.read: 404 on missing coordinates", async () => {
     const { db } = await setup();
     try {
-        const result = await new Log().read(readStmt(urlPath("log", "/99/99/99")), makeSchemeCtx({ db, workerId: 1 }));
+        const result = await readLog(readStmt(urlPath("log", "/99/99/99")), makeSchemeCtx({ db, workerId: 1 }));
         assert.equal(result.status, 404);
         assert.equal(result.content, null);
     } finally { db.close(); }
@@ -99,16 +99,39 @@ test("Log.read: 400 on malformed coordinates", async () => {
     const { db } = await setup();
     try {
         for (const bad of ["abc", "1/2", "1/2/3/4", "x/y/z"]) {
-            const result = await new Log().read(readStmt(urlPath("log", bad)), makeSchemeCtx({ db, workerId: 1 }));
+            const result = await readLog(readStmt(urlPath("log", bad)), makeSchemeCtx({ db, workerId: 1 }));
             assert.equal(result.status, 400, `path '${bad}' should return 400`);
         }
+    } finally { db.close(); }
+});
+
+test("Log.read: core rejects a channel fragment before projecting an atomic log row", async () => {
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        await engine.dispatch({
+            statement: editStmt("/fact", "value"),
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 1,
+            origin: "model",
+        });
+        const target = urlPath("log", "/1/1/1");
+        const result = await readLog(readStmt({
+            ...target,
+            raw: `${target.raw}#body`,
+            fragment: "body",
+        }), makeSchemeCtx({ db, workerId }));
+        assert.equal(result.status, 400);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/log/channel-not-found");
     } finally { db.close(); }
 });
 
 test("Log.read: 400 on null path", async () => {
     const { db } = await setup();
     try {
-        const result = await new Log().read(readStmt(null), makeSchemeCtx({ db, workerId: 1 }));
+        const result = await readLog(readStmt(null), makeSchemeCtx({ db, workerId: 1 }));
         assert.equal(result.status, 400);
     } finally { db.close(); }
 });
@@ -118,12 +141,12 @@ test("Log.read: lineMarker <1> on a JSON result selects its first physical line"
     try {
         await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
-        const whole = await new Log().read(
+        const whole = await readLog(
             readStmt(urlPath("log", "/1/1/2")),
             makeSchemeCtx({ db, workerId }),
         );
         const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/2")), lineMarker: { marks: [1] } };
-        const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
+        const r = await readLog(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/markdown");
         assert.equal(r.startLine, 1);
@@ -137,7 +160,7 @@ test("Log.read: a range miss carries the exact textual line extent", async () =>
         await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
         const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/2")), lineMarker: { marks: [99] } };
-        const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
+        const r = await readLog(stmt, makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 416);
         assert.equal(r.content, null);
         const range = r.problem?.range as {
@@ -176,13 +199,24 @@ test("Log.find: an exact matcher returns flat locations and complete path/locati
     } finally { db.close(); }
 });
 
-test("Log.read: a tag filter on an exact READ → 404 (tag recall is OPEN[tag]/FIND[tag]'s job, )", async () => {
+test("Log.read: exact READ applies the same all-tags filter to log-row tags", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/z", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), signal: ["france"] };
-        const r = await new Log().read(stmt, makeSchemeCtx({ db, workerId }));
-        assert.equal(r.status, 404);
+        assert.equal((await readLog(stmt, makeSchemeCtx({ db, workerId }))).status, 404);
+
+        const row = await db.log_id_by_coordinate.get<{ id: number }>({
+            worker_id: workerId,
+            loop_seq: 1,
+            turn_seq: 1,
+            sequence: 1,
+        });
+        assert.ok(row);
+        await db.log_write_tag.run({ log_entry_id: row.id, tag: "france" });
+        const tagged = await readLog(stmt, makeSchemeCtx({ db, workerId }));
+        assert.equal(tagged.status, 200);
+        assert.equal(tagged.content, "1:v");
     } finally { db.close(); }
 });
 
@@ -225,7 +259,7 @@ test("Log.find: a matcher FIND writes flat surgical coordinates", async () => {
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.rowsWritten ?? 1, 1);
-        const r = await new Log().read(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
+        const r = await readLog(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
         const locations = JSON.parse(r.content ?? "[]") as Array<{ region?: unknown }>;

@@ -2,9 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { parsePath } from "@plurnk/plurnk-contracts";
-import type { ExecStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { Effect } from "@plurnk/plurnk-execs";
-import type { SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
+import type {
+    RepresentationPreparationRequest,
+    SchemeCtx,
+    SchemeHandler,
+    SchemeManifest,
+} from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
@@ -56,6 +61,22 @@ const runtimeManifest = (name: string): SchemeManifest => ({
     volatile: true,
     foldedByDefault: true,
 });
+
+const materializeSource = async (
+    request: RepresentationPreparationRequest,
+    ctx: SchemeCtx,
+    content: string,
+    channel = "body",
+) => {
+    const written = await ctx.entries.write(request.pathname, {
+        channels: {
+            [channel]: { content, mimetype: "text/plain" },
+        },
+        tags: [],
+    });
+    assert.ok(written.status === 200 || written.status === 201);
+    return { status: 200 } as const;
+};
 
 const wire = async (): Promise<{
     readonly db: Awaited<ReturnType<typeof openMigrated>>;
@@ -150,14 +171,15 @@ const wire = async (): Promise<{
 // is one exact ordinary READ; a non-empty body uses a spawn-scoped temporary.
 test("EXEC source READ preserves the complete authored scheme address (#163)", async () => {
     const ctx = await wire();
-    const seen: ReadStatement[] = [];
+    const seen: RepresentationPreparationRequest[] = [];
+    const completeSource = Array.from({ length: 20 }, (_, index) => `source line ${index + 1}`).join("\n");
     const raw = "source://alice:secret@example.test:8443/items/path?b=2&a=1&a=3#payload{Accept: text/plain}{X-Trace: one:two}";
     try {
         ctx.schemes.register("source", {
             manifest: schemeManifest("source", { payload: "text/plain" }, "payload"),
-            async read(statement: ReadStatement) {
-                seen.push(statement);
-                return { status: 200, content: "complete identity", mimetype: "text/plain", channel: "payload" };
+            async prepareRepresentation(request, schemeCtx) {
+                seen.push(structuredClone(request));
+                return materializeSource(request, schemeCtx, completeSource, "payload");
             },
         } satisfies SchemeHandler);
 
@@ -165,17 +187,20 @@ test("EXEC source READ preserves the complete authored scheme address (#163)", a
 
         assert.equal(result.status, 200);
         assert.equal(seen.length, 1);
-        assert.deepEqual(seen[0], {
-            op: "READ",
-            suffix: "",
-            signal: null,
-            target: urlTarget(raw),
-            lineMarker: null,
-            body: null,
-            position: { line: 0, column: 0 },
-        });
+        assert.equal(seen[0]?.pathname, "/example.test/items/path");
+        const preparedTarget = seen[0]?.target;
+        assert.equal(preparedTarget?.kind, "url");
+        if (preparedTarget?.kind !== "url") throw new Error("source preparation lost its URL target");
+        assert.equal(preparedTarget.username, "alice");
+        assert.equal(preparedTarget.password, "secret");
+        assert.equal(preparedTarget.hostname, "example.test");
+        assert.equal(preparedTarget.port, 8443);
+        assert.equal(preparedTarget.pathname, "/items/path");
+        assert.equal(preparedTarget.query, "b=2&a=1&a=3");
+        assert.deepEqual(preparedTarget.headers, [["Accept", "text/plain"], ["X-Trace", "one:two"]]);
+        assert.equal(preparedTarget.fragment, null, "core withholds channel selection from acquisition");
         assert.deepEqual(ctx.runs.map(({ command, materialized }) => ({ command, materialized })), [
-            { command: "transform", materialized: "complete identity" },
+            { command: "transform", materialized: completeSource },
         ]);
         const tempPath = ctx.runs[0]?.target;
         assert.ok(tempPath !== null && tempPath !== undefined);
@@ -197,8 +222,8 @@ test("{§exec-source-temporary} cleanup failure preserves the settled result and
     try {
         ctx.schemes.register("source", {
             manifest: schemeManifest("source"),
-            async read() {
-                return { status: 200, content: "temporary content", mimetype: "text/plain", channel: "body" };
+            async prepareRepresentation(request, schemeCtx) {
+                return materializeSource(request, schemeCtx, "temporary content");
             },
         } satisfies SchemeHandler);
 
@@ -305,13 +330,13 @@ test("EXEC source READ preserves current and named runtime-stream ownership (#16
 
 test("EXEC source eligibility and failures come from the owning READ contract (#163)", async () => {
     const ctx = await wire();
-    let loggingReadCalled = false;
+    let loggingPreparationCalled = false;
     try {
         ctx.schemes.register("audit", {
             manifest: { ...schemeManifest("audit"), category: "logging" },
-            async read() {
-                loggingReadCalled = true;
-                return { status: 200, content: "must not execute", mimetype: "text/plain", channel: "body" };
+            async prepareRepresentation() {
+                loggingPreparationCalled = true;
+                return { status: 200 };
             },
         } satisfies SchemeHandler);
         ctx.schemes.register("writeonly", {
@@ -319,19 +344,24 @@ test("EXEC source eligibility and failures come from the owning READ contract (#
         } satisfies SchemeHandler);
         ctx.schemes.register("absent", {
             manifest: schemeManifest("absent"),
-            async read() {
-                return { status: 204 };
+            async prepareRepresentation() {
+                return Results.failure(
+                    "scheme:absent",
+                    "representation-not-found",
+                    404,
+                    "The source representation does not exist.",
+                );
             },
         } satisfies SchemeHandler);
         ctx.schemes.register("failing", {
             manifest: schemeManifest("failing"),
-            async read() {
+            async prepareRepresentation() {
                 return Results.failure(
                     "scheme:failing",
                     "source-refused",
                     409,
                     "The source owner refused this representation.",
-                    { content: null, mimetype: null, channel: null },
+                    {},
                     { retryable: false },
                 );
             },
@@ -340,19 +370,19 @@ test("EXEC source eligibility and failures come from the owning READ contract (#
         const logging = await ctx.dispatch(ctx.root, "audit:///event");
         assert.equal(logging.status, 501);
         assert.equal(logging.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/exec-source-not-data");
-        assert.equal(loggingReadCalled, false);
+        assert.equal(loggingPreparationCalled, false);
 
         const writeonly = await ctx.dispatch(ctx.root, "writeonly:///item");
-        assert.equal(writeonly.status, 501);
-        assert.equal(writeonly.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/operation-not-implemented");
+        assert.equal(writeonly.status, 404);
+        assert.equal(writeonly.problem?.type, "https://problems.plurnk.dev/scheme/writeonly/entry-not-found");
 
         const unknown = await ctx.dispatch(ctx.root, "unknown:///item");
         assert.equal(unknown.status, 501);
         assert.equal(unknown.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/scheme-not-found");
 
         const absent = await ctx.dispatch(ctx.root, "absent:///item");
-        assert.equal(absent.status, 422);
-        assert.equal(absent.problem?.type, "https://problems.plurnk.dev/scheme/exec/source-content-unavailable");
+        assert.equal(absent.status, 404);
+        assert.equal(absent.problem?.type, "https://problems.plurnk.dev/scheme/absent/representation-not-found");
 
         const failing = await ctx.dispatch(ctx.root, "failing:///item");
         assert.equal(failing.status, 409);

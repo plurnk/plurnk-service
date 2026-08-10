@@ -10,7 +10,7 @@ import type { Db } from "../../src/core/Db.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, seedEntryWithChannel, testExecutors } from "./_helpers.ts";
+import { lookThroughScheme, openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, seedEntryWithChannel, testExecutors } from "./_helpers.ts";
 import { urlPath, editStmt, readStmt, foldStmt } from "./_dsl.ts";
 
 const setup = async () => {
@@ -47,16 +47,21 @@ test("fragment targets the named channel; fragment-less targets default", async 
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedExecEntry(db, workspaceId, workerId, "/run/abc", "OUT-content", "ERR-content");
-        const exec = new Exec();
+        const readExec = (statement: ReturnType<typeof readStmt>) => lookThroughScheme(
+            "exec",
+            null,
+            statement,
+            makeSchemeCtx({ db, workspaceId, workerId }),
+        );
 
         // Fragment `#stderr` selects the named (non-default) channel.
-        const frag = await exec.read(readStmt(urlPath("exec", "/run/abc", "stderr")), makeSchemeCtx({ db, workspaceId, workerId }));
+        const frag = await readExec(readStmt(urlPath("exec", "/run/abc", "stderr")));
         assert.equal(frag.status, 200);
         assert.equal(frag.channel, "stderr");
         assert.equal(frag.content, "ERR-content");
 
         // Fragment-less resolves to the scheme's defaultChannel (stdout).
-        const dflt = await exec.read(readStmt(urlPath("exec", "/run/abc")), makeSchemeCtx({ db, workspaceId, workerId }));
+        const dflt = await readExec(readStmt(urlPath("exec", "/run/abc")));
         assert.equal(dflt.status, 200);
         assert.equal(dflt.channel, "stdout");
         assert.equal(dflt.content, "OUT-content");
@@ -67,10 +72,14 @@ test("an unknown fragment 400s WITH the fact naming the declared universe", asyn
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedExecEntry(db, workspaceId, workerId, "/run/abc", "OUT-content", "ERR-content");
-        const exec = new Exec();
         // The sweep shape: a model probing a results-channel habit against a stdout/stderr
         // runtime. One miss must teach the topology — never a bare 400.
-        const read = await exec.read(readStmt(urlPath("exec", "/run/abc", "results")), makeSchemeCtx({ db, workspaceId, workerId }));
+        const read = await lookThroughScheme(
+            "exec",
+            null,
+            readStmt(urlPath("exec", "/run/abc", "results")),
+            makeSchemeCtx({ db, workspaceId, workerId }),
+        );
         assert.equal(read.status, 400);
         assert.equal(read.problem?.type, "https://problems.plurnk.dev/scheme/exec/channel-not-found");
         assert.equal(read.problem?.requestedChannel, "results");
@@ -174,7 +183,7 @@ test("channel state does not gate reads — errored/closed channels still return
 
         // READ returns the accumulated content regardless of the errored state —
         // state is metadata, not an engine gate.
-        const r = await k.read(readStmt(urlPath("worker", "/partial")), makeSchemeCtx({ db, workspaceId }));
+        const r = await lookThroughScheme("worker", null, readStmt(urlPath("worker", "/partial")), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200, "errored state does not gate the read");
         assert.equal(r.content, "partial-but-readable");
         assert.equal(r.channel, "body");

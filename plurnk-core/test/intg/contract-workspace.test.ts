@@ -24,10 +24,12 @@ import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import {
     openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn,
-    seedEnvelope, DEFAULT_MIMETYPES, logEntries, rootWorkspace,
+    seedEnvelope, DEFAULT_MIMETYPES, logEntries, rootWorkspace, lookThroughScheme,
 } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
+const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
+    lookThroughScheme("file", null, statement, ctx);
 
 const sendStmt = (status: number): SendStatement => ({
     op: "SEND", suffix: "", signal: status, target: null,
@@ -144,7 +146,7 @@ test("git-tracked file (never client-added) is a workspace member via git ls-fil
         // not 404 it as a non-member. Production materializes members every turn
         // (indexGitMembership at runTurn); do the same before the entry-backed read.
         await GitMembership.indexGitMembership(ctx);
-        const result = await new File().read(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
+        const result = await readFileScheme(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
         assert.equal(
             result.status, 200,
             "READ of a git-tracked member must succeed; 404 means git membership was not established",
@@ -185,7 +187,7 @@ test("a host-absolute spelling names its literal jail path — READ 404s, EDIT p
         // {§fs-namespace} — chroot semantics: host paths do not exist in the jail. The spelling
         // canonicalizes to the nested bare key abs.slice(1) (a legitimate, empty in-jail path),
         // NOT to the member — the old exec-echo fold was existence-dependent resolution (run59).
-        const read = await new File().read(readStmt(urlPath("file", abs)), ctx);
+        const read = await readFileScheme(readStmt(urlPath("file", abs)), ctx);
         assert.equal(read.status, 404, "a host-absolute spelling is not the member's name — no fold, deterministic 404");
 
         // The write side obeys the same law: the spelling names an EMPTY in-jail path, so EDIT
@@ -298,7 +300,7 @@ test("a hide-glob drops a tracked file from membership, reconciling already-regi
         // Reconciled: the entry is GONE (un-registered), not merely hidden — entries == members.
         const after = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: `${trackedPath}`});
         assert.equal(after, undefined, "an ignored member must be un-registered");
-        const read = await new File().read(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
+        const read = await readFileScheme(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
         assert.equal(read.status, 404, "an ignored file is not readable — it left the curated surface");
     });
 });
@@ -312,7 +314,7 @@ test("a pick-glob admits an untracked file git misses", async () => {
         const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(db, ctx.workspaceId), scheme: "file", pathname: "untracked.md" });
         assert.notEqual(member, undefined, "an add-glob admits an untracked match as a member");
         // And it's readable — admitted to the curated surface.
-        const read = await new File().read(readStmt(urlPath("file", "/untracked.md")), ctx);
+        const read = await readFileScheme(readStmt(urlPath("file", "/untracked.md")), ctx);
         assert.equal(read.status, 200, "an added file is readable");
     });
 });
@@ -322,7 +324,7 @@ test("a view-glob keeps a member readable but refuses edits", async () => {
         await db.crud_insert_workspace_constraint.run({ workspace_id: ctx.workspaceId, effect: "view", glob: trackedPath });
         await GitMembership.indexGitMembership(ctx);  // materialize the member (read-only gates edits, not membership)
         // READ still works — it's a member...
-        const read = await new File().read(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
+        const read = await readFileScheme(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
         assert.equal(read.status, 200, "a read-only member stays readable");
         // ...but EDIT is refused at the membership check, before any diff.
         const edit = await new File().edit(editStmt(urlPath("file", `/${trackedPath}`), "changed\n"), ctx);

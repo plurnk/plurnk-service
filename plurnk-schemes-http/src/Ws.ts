@@ -9,7 +9,8 @@ import type {
     PassthroughResult,
     SchemeManifest,
     SchemeHandler,
-    ReadStatement,
+    RepresentationPreparationRequest,
+    RepresentationPreparationResult,
     SendStatement,
     KillStatement,
     EntryData,
@@ -56,6 +57,9 @@ interface SocketOwner {
 }
 
 const SOCKET_OPEN = 1;
+const SOCKET_CLOSE_NORMAL = 1000;
+const SOCKET_CLOSE_UNSUPPORTED_DATA = 4003;
+const SOCKET_CLOSE_INTERNAL_ERROR = 4011;
 
 // Default: the Node 26+ global WebSocket, reached through globalThis so the lib
 // typing is not a compile dependency (tests always inject, so this path is
@@ -92,27 +96,25 @@ export default class Ws implements SchemeHandler {
     // {§ws-lifecycle} Claim and connect through native open plus durable channel
     // activation. READ then returns 102 while the owner and its retained
     // subscription continue to stream and settle independently.
-    async read(statement: ReadStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
-        if (statement.target === null || statement.target.kind !== "url") {
+    async prepareRepresentation(
+        request: RepresentationPreparationRequest,
+        ctx: SchemeCtx,
+    ): Promise<RepresentationPreparationResult> {
+        if (request.target.kind !== "url") {
             return Ws.#bad(400, "bad-target", "READ requires a ws(s):// URL target.", {
                 stage: "target-validation",
                 recovery: "Provide a ws(s):// URL target.",
                 retryable: false,
             });
         }
-        const address = Ws.#address(statement.target);
+        const address = Ws.#address(request.target);
         if (!(address instanceof NetworkAddress)) return address;
-        const { url, pathname } = address;
+        const { url } = address;
+        const pathname = request.pathname;
         const key = Ws.#key(ctx.workspaceId, address);
         const existing = this.#sockets.get(key);
         if (existing !== undefined) {
-            return Ws.#bad(409, "socket-already-claimed", `A WebSocket connection is already claimed for ${url}.`, {
-                target: url,
-                connectionState: existing.state,
-                stage: "connection",
-                recovery: "Use the existing owner after it opens or KILL it before opening another.",
-                retryable: false,
-            });
+            return { status: 200, connectionState: existing.state };
         }
         const done = Promise.withResolvers<void>();
         const owner: SocketOwner = {
@@ -225,14 +227,14 @@ export default class Ws implements SchemeHandler {
                 owner.shutdownRequested = true;
                 const result = cancelled();
                 void settle(result, "WebSocket execution was cancelled.", {
-                    code: 1000,
+                    code: SOCKET_CLOSE_NORMAL,
                     reason: "cancelled",
                 }).catch(reportCleanupFailure);
             };
             owner.shutdown = () => {
                 const result = cancelled();
-                return settle(result, () => `ws closed (1001); ${messages} messages`, {
-                    code: 1001,
+                return settle(result, () => `ws closed (${SOCKET_CLOSE_NORMAL}); ${messages} messages`, {
+                    code: SOCKET_CLOSE_NORMAL,
                     reason: "shutdown",
                 });
             };
@@ -255,7 +257,7 @@ export default class Ws implements SchemeHandler {
                             void settle(
                                 result,
                                 result.problem?.detail ?? "WebSocket channel activation failed.",
-                                { code: 1011, reason: "activation failed" },
+                                { code: SOCKET_CLOSE_INTERNAL_ERROR, reason: "activation failed" },
                             ).catch(reportCleanupFailure);
                             return;
                         }
@@ -279,7 +281,7 @@ export default class Ws implements SchemeHandler {
                         void settle(
                             result,
                             result.problem?.detail ?? "WebSocket channel activation failed.",
-                            { code: 1011, reason: "activation failed" },
+                            { code: SOCKET_CLOSE_INTERNAL_ERROR, reason: "activation failed" },
                         ).catch(reportCleanupFailure);
                     }
                 })());
@@ -308,7 +310,7 @@ export default class Ws implements SchemeHandler {
                         void settle(
                             result,
                             detail,
-                            { code: 1003, reason: "binary unsupported" },
+                            { code: SOCKET_CLOSE_UNSUPPORTED_DATA, reason: "binary unsupported" },
                         ).catch(reportCleanupFailure);
                         return;
                     }
@@ -333,7 +335,7 @@ export default class Ws implements SchemeHandler {
                         void settle(
                             result,
                             failureSummary,
-                            { code: 1011, reason: "persistence failed" },
+                            { code: SOCKET_CLOSE_INTERNAL_ERROR, reason: "persistence failed" },
                         ).catch(reportCleanupFailure);
                     }
                 });
@@ -349,7 +351,7 @@ export default class Ws implements SchemeHandler {
                     retryable: true,
                 });
                 void settle(result, detail, {
-                    code: 1011,
+                    code: SOCKET_CLOSE_INTERNAL_ERROR,
                     reason: "transport failed",
                 }).catch(reportCleanupFailure);
             });

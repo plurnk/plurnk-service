@@ -7,8 +7,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import Log from "../../src/schemes/Log.ts";
-import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, makeSchemeCtx, readLog } from "./_helpers.ts";
 import { readStmt, urlPath } from "./_dsl.ts";
 
 const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("<<SEND[200]:done:SEND", 40)] });
@@ -55,7 +54,7 @@ test("a long prompt renders an honest addressable preview and the section lists 
             assert.ok(bodyTarget, "the emitted canonical-body target is present");
             const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId });
             assert.ok(worker, "the model worker exists");
-            const recovered = await new Log().read(
+            const recovered = await readLog(
                 readStmt(urlPath("log", new URL(bodyTarget).pathname), { marks: [1, -1] }),
                 makeSchemeCtx({ db, workerId: worker!.worker_id, mimetypes: DEFAULT_MIMETYPES }),
             );

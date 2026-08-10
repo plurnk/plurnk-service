@@ -4,7 +4,7 @@
 
 import { contentHash } from "../core/content-hash.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
-import type { ChannelState, StoredEntryData } from "@plurnk/plurnk-schemes";
+import type { ChannelProducerResult, ChannelState, StoredEntryData } from "@plurnk/plurnk-schemes";
 import Owner from "../core/Owner.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
@@ -13,7 +13,12 @@ export type { ChannelState, StoredEntryData } from "@plurnk/plurnk-schemes";
 
 // {§channels-channels-append-only}: channels are content stores keyed by (entry_id, name)
 export interface EntryData {
-    channels: Record<string, { content: string; mimetype: string; state?: ChannelState }>;
+    channels: Record<string, {
+        content: string;
+        mimetype: string;
+        state?: ChannelState;
+        producerResult?: ChannelProducerResult;
+    }>;
     tags: string[];
     // Core-private metadata, never part of StoredEntryData or extension caps.
     attributes?: Readonly<Record<string, unknown>>;
@@ -66,10 +71,22 @@ export default class EntryCrud {
             content: string;
             mimetype: string;
             state: ChannelState;
+            producer_result: string | null;
         }>({ entry_id: entry.id });
         const channels: StoredEntryData["channels"] = {};
         for (const row of channelRows) {
-            channels[row.name] = { content: row.content, mimetype: row.mimetype, state: row.state };
+            channels[row.name] = {
+                content: row.content,
+                mimetype: row.mimetype,
+                state: row.state,
+                ...(row.producer_result === null
+                    ? {}
+                    : {
+                        producerResult: Results.assertChannelProducerResult(
+                            JSON.parse(row.producer_result) as ChannelProducerResult,
+                        ),
+                    }),
+            };
         }
 
         const tagRows = await db.crud_read_tags.all<{ tag: string }>({ entry_id: entry.id });
@@ -117,11 +134,15 @@ export default class EntryCrud {
         // (the exec sink), NOT here: an authored/workspace html file is DATA whose attributes are the
         // payload (a `<user email=…>` roster), and a reader-view projection would strip it.
         for (const [channelName, channelData] of Object.entries(entry.channels)) {
+            const producerResult = channelData.producerResult === undefined
+                ? null
+                : JSON.stringify(Results.assertChannelProducerResult(channelData.producerResult));
             await db.crud_write_channel.run({
                 entry_id: entryId, name: channelName, content: channelData.content, mimetype: channelData.mimetype,
                 tokens: tokenize(channelData.content), // the model-agnostic ruler stamp ({§tokenomics-agnostic-ruler}, {§tokenomics-tokens-stored-at-write})
                 content_hash: contentHash(channelData.content),
                 state: channelData.state ?? "static",
+                producer_result: producerResult,
             });
         }
         for (const tag of entry.tags) {

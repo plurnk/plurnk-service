@@ -25,28 +25,43 @@ Ship a scheme by publishing a package — **under any scope** (`@acme/whatever`;
 
 ```ts
 import type {
-  SchemeHandler, SchemeManifest, SchemeCtx, SchemeResult, ReadStatement,
+  RepresentationPreparationRequest, RepresentationPreparationResult,
+  SchemeHandler, SchemeManifest, SchemeCtx,
 } from "@plurnk/plurnk-schemes";
 
 export default class Foo implements SchemeHandler {
   static manifest: SchemeManifest = { /* step 3 */ };
 
-  async read(statement: ReadStatement, ctx: SchemeCtx): Promise<SchemeResult> {
-    /* … use ctx's stable domain capabilities (SPEC §3.bis) … */
+  async prepareRepresentation(
+    { target, pathname }: RepresentationPreparationRequest,
+    ctx: SchemeCtx,
+  ): Promise<RepresentationPreparationResult> {
+    const { content, mimetype } = await acquire(target);
+    const written = await ctx.entries.write(pathname, {
+      channels: { body: { content, mimetype } },
+      tags: [],
+    });
+    return written.status >= 400 ? written : { status: 200 };
   }
 }
 ```
 
-Implement only the delegated methods you support - `read`, `find`, `editBatch`,
-`send`, and the other optional methods in `SchemeHandler`. COPY and MOVE are
-engine-owned compositions over `ctx.entries` and `editBatch`, so plugins do not
-override them or author COPY/MOVE effect envelopes. A regional `editBatch`
+Core owns READ. A stored scheme needs no READ method; an acquisition scheme
+implements scope-blind `prepareRepresentation`, writes its complete channels,
+and lets core select the channel and apply operation-owned semantics. Exact
+READ, exact FIND, and COPY/MOVE source selection all reuse that acquisition;
+the producer receives none of their scopes, matchers, or channel choices.
+Implement only
+the remaining delegated methods you support—`find`, `editBatch`, `send`, and
+the other optional methods in `SchemeHandler`. COPY and MOVE are engine-owned
+compositions over `ctx.entries` and `editBatch`, so plugins do not override
+them or author COPY/MOVE effect envelopes. A regional `editBatch`
 returns `EditBatchResult` with its typed `EditBatchReceipt`; the engine validates
 and projects it.
 The optional synchronous `attributions(context)` hook may return no, one, or
 many opaque tags for each provider emission attempt ({§plugin-attribution}).
 `implements SchemeHandler` gives compile-time signature checking. The statement
-and path types (`ReadStatement`, `SendStatement`, `UrlPath`, etc.) are re-exported
+and path types (`FindStatement`, `SendStatement`, `UrlPath`, etc.) are re-exported
 from this package, so you depend on and peer (`^1`) only
 `@plurnk/plurnk-schemes`; grammar rides underneath.
 

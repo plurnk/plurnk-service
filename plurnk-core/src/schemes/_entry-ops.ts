@@ -6,7 +6,7 @@ import { entryPathnameOf } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Owner from "../core/Owner.ts";
 import EntryManifest from "./_entry-manifest.ts";
-import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadResolve, editReceipt } from "../content/index.ts";
+import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadProjector, editReceipt } from "../content/index.ts";
 import type { EditBatchReceipt } from "../content/index.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 import type { ScopeNormalization } from "@plurnk/plurnk-schemes";
@@ -364,69 +364,30 @@ export default class EntryOps {
             );
         }
 
-        const { db, workspaceId } = ctx;
-        const { channels, defaultChannel } = manifest;
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
         // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
         const scheme = EntryCrud.identityScheme(manifest);
 
-        const fragment = EntryOps.#fragmentOf(statement);
         const pathname = address.pathname ?? EntryOps.#pathnameOf(statement);
-        const targetChannel = EntryOps.#resolveChannel(fragment, channels, defaultChannel);
-        if (targetChannel === null) {
-            const miss = EntryOps.#channelMiss(fragment, scheme, pathname, channels, defaultChannel);
-            return failure("channel-not-found", 400, miss.detail, { content: null, mimetype: null, channel: null }, miss.extensions);
-        }
-
         const ownerId = await EntryOps.#ownerOf(address.ownerId, ctx);
-        const readChannel = targetChannel;
-        const row = await db.ops_read_channel.get<{ content: string; mimetype: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: readChannel }, owner_id: ownerId });
+        const stored = await EntryCrud.readEntry(pathname, ctx, scheme, ownerId);
         // {§read-read-404} + {§fs-errno} — ENOENT carries its fact, the RESOLVED name in wire
         // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
-        if (row === undefined) return failure("entry-not-found", 404, `No entry exists at ${EntryManifest.toPath(scheme, pathname)}.`, { content: null, mimetype: null, channel: targetChannel });
-
-        if (await MimetypeBinary.isBinaryMimetype(row.mimetype, ctx.mimetypes)) {
-            return failure("binary-read-unsupported", 415, `The #${targetChannel} channel is binary and cannot be rendered.`, { content: null, mimetype: row.mimetype, channel: targetChannel });
-        }
-
-        // `[tag]` filter: entry must have ALL requested tags. Mismatch = 404
-        // (entry doesn't match the tag-scoped READ).
-        if (Array.isArray(statement.signal) && statement.signal.length > 0) {
-            const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, pathname });
-            if (entry === undefined) return failure("entry-not-found", 404, `No entry exists at ${EntryManifest.toPath(scheme, pathname)}.`, { content: null, mimetype: null, channel: targetChannel });
-            const tagRows = await db.crud_read_tags.all<{ tag: string }>({ entry_id: entry.id });
-            const have = new Set(tagRows.map((r) => r.tag));
-            for (const want of statement.signal) {
-                if (!have.has(want)) return failure("tag-not-found", 404, `The entry does not carry the required '${want}' tag.`, { content: null, mimetype: null, channel: targetChannel });
-            }
-        }
-
-        const r = await ReadResolve.resolve({
-            content: row.content,
-            mimetype: row.mimetype,
-            lineMarker: statement.lineMarker,
-        });
-        if (r.status >= 400) {
-            if (r.problem !== undefined) {
-                return Results.assert({
-                    ...r,
-                    content: null,
-                    channel: readChannel,
-                }) as ReadResult;
-            }
-            if (r.reason === undefined) {
-                throw new Error(`EntryOps.readWorkspaceEntry: ReadResolve returned status ${r.status} without Problem Details or a diagnostic`);
-            }
+        if (stored.entry === null) {
             return failure(
-                r.status === 416 ? "range-not-satisfiable" : "read-resolution-failed",
-                r.status,
-                r.reason,
-                { content: null, mimetype: r.mimetype, channel: readChannel },
-                {
-                    ...(r.range === undefined ? {} : { range: r.range, stage: "projection" }),
-                },
+                "entry-not-found",
+                404,
+                `No entry exists at ${EntryManifest.toPath(scheme, pathname)}.`,
+                { content: null, mimetype: null, channel: null },
+                { target: EntryManifest.toPath(scheme, pathname) },
             );
         }
-        return { ...r, channel: readChannel }; // READ returns the resolved channel's content + mimetype — {§read-read-content}
+        return ReadProjector.project({
+            statement,
+            manifest: { ...manifest, name: scheme },
+            target: EntryManifest.toPath(scheme, pathname),
+            representation: stored.entry,
+            mimetypes: ctx.mimetypes,
+        }) as Promise<ReadResult>;
     }
 }

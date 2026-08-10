@@ -5,6 +5,8 @@ import Http from "@plurnk/plurnk-schemes-http";
 import type {
     FindStatement,
     ReadStatement,
+    RepresentationPreparationRequest,
+    RepresentationPreparationResult,
     SendStatement,
     SchemeCtx,
     SchemeHandler,
@@ -33,8 +35,8 @@ class PreparedDataScheme implements SchemeHandler {
         modelVisible: true,
     };
 
-    async prepareFind(_statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult> {
-        return ctx.entries.write("/fact.md", {
+    async #materialize(pathname: string, ctx: SchemeCtx): Promise<SchemeResult> {
+        return ctx.entries.write(pathname, {
             channels: {
                 body: {
                     content: "the universal answer is forty-two",
@@ -43,6 +45,18 @@ class PreparedDataScheme implements SchemeHandler {
             },
             tags: [],
         });
+    }
+
+    async prepareRepresentation(
+        request: RepresentationPreparationRequest,
+        ctx: SchemeCtx,
+    ): Promise<RepresentationPreparationResult> {
+        const result = await this.#materialize(request.pathname, ctx);
+        return result.status >= 400 ? result : { status: 200 };
+    }
+
+    async prepareFind(_statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult> {
+        return this.#materialize("/fact.md", ctx);
     }
 }
 
@@ -89,7 +103,7 @@ test("data schemes inherit standard FIND after their optional preparation hook",
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseFind("<<FIND(prepared:///fact.md):*forty-two*:FIND"),
+            statement: parseFind("<<FIND(prepared:///*.md):*forty-two*:FIND"),
             workspaceId,
             workerId,
             loopId,
@@ -99,9 +113,13 @@ test("data schemes inherit standard FIND after their optional preparation hook",
         });
 
         assert.equal(result.status, 200);
-        const locations = JSON.parse(String(result.content)) as Array<{ region?: unknown }>;
-        assert.equal(locations.length, 1);
-        assert.ok(locations[0]?.region !== undefined);
+        const resources = JSON.parse(String(result.content)) as Array<{
+            path?: string;
+            matchLocationCount?: number;
+        }>;
+        assert.equal(resources.length, 1);
+        assert.equal(resources[0]?.path, "prepared:///fact.md");
+        assert.equal(resources[0]?.matchLocationCount, 1);
     } finally {
         await db.close();
     }
@@ -230,8 +248,20 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
             origin: "model",
         });
         assert.equal(dead.status, 404);
-        assert.equal(dead.problem?.type, "https://problems.plurnk.dev/scheme/http/not-materialized");
+        assert.equal(dead.problem?.type, "https://problems.plurnk.dev/scheme/http/http-response-status");
         assert.deepEqual(requests, [url, deadUrl]);
+
+        const reusedDead = await engine.dispatch({
+            statement: parseFind(`<<FIND(${deadUrl})::FIND`),
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 5,
+            origin: "model",
+        });
+        assert.equal(reusedDead.status, 404, "reacquisition preserves the exact producer result");
+        assert.deepEqual(requests, [url, deadUrl, deadUrl]);
     } finally {
         globalThis.fetch = originalFetch;
         await db.close();
@@ -276,7 +306,7 @@ test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisitio
         });
 
         assert.equal((await dispatch(parseSend(`<<SEND[200](${readUrl}):update:SEND`), 1)).status, 102);
-        assert.equal((await dispatch(parseRead(`<<READ(${readUrl})::READ`), 2)).status, 102);
+        assert.equal((await dispatch(parseRead(`<<READ(${readUrl})::READ`), 2)).status, 200);
         const readEntry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/93.184.216.34/mutation-read" });
         assert.ok(readEntry !== undefined);
         const readChannels = await db.entry_read_channels.all<{ name: string; content: string }>({ entry_id: readEntry.id });

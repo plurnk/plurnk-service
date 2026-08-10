@@ -8,6 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import type { Effect } from "@plurnk/plurnk-execs";
+import type { RepresentationPreparationRequest, SchemeCtx } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
@@ -41,15 +42,22 @@ class SideEffectingScheme {
 
 class AffinitySource {
     readonly manifest: SchemeManifest;
-    reads = 0;
+    preparations = 0;
 
     constructor(name: string, flags: NonNullable<SchemeManifest["flags"]>) {
         this.manifest = { ...schemeManifest(name), flags };
     }
 
-    async read(): Promise<{ status: number; content: string; mimetype: string; channel: string }> {
-        this.reads += 1;
-        return { status: 200, content: "source", mimetype: "text/plain", channel: "body" };
+    async prepareRepresentation(
+        request: RepresentationPreparationRequest,
+        ctx: SchemeCtx,
+    ): Promise<{ status: number }> {
+        this.preparations += 1;
+        await ctx.entries.write(request.pathname, {
+            channels: { body: { content: "source", mimetype: "text/plain" } },
+            tags: [],
+        });
+        return { status: 200 };
     }
 }
 
@@ -256,7 +264,7 @@ test("ask mode gates the exec operation before every target form (#164)", async 
             assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/scheme-unavailable");
             assert.equal(result.problem?.scheme, "exec", "the unavailable operation owner wins before its source");
         }
-        assert.equal(web.reads, 0);
+        assert.equal(web.preparations, 0);
         await exec.idle();
     } finally { await exec.idle(); await db.close(); }
 });
@@ -283,8 +291,8 @@ test("EXEC additionally gates non-file sources by their own affinity (#164)", as
         });
         assert.equal(interactionResult.status, 403);
         assert.equal(interactionResult.problem?.scheme, "interaction-source");
-        assert.equal(web.reads, 0);
-        assert.equal(interaction.reads, 0);
+        assert.equal(web.preparations, 0);
+        assert.equal(interaction.preparations, 0);
     } finally { await exec.idle(); await db.close(); }
 });
 

@@ -2,9 +2,9 @@ import type { Db } from "./Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { InjectWorkerNotify, StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
-import type { Notice, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { Notice, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
-import type { SchemeCtx, SchemeResult } from "@plurnk/plurnk-schemes";
+import type { SchemeCtx, SchemeResult, StoredEntryData } from "@plurnk/plurnk-schemes";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 
 export interface CoreSchemeServices {
@@ -30,6 +30,20 @@ export interface CoreSchemeAdapter {
 export interface CoreEntryAddress {
     readonly pathname: string;
     readonly ownerId: number;
+}
+
+// Core-owned stores that cannot use `entries` expose one complete canonical
+// representation here. This is deliberately not part of SchemeHandler: public
+// protocol plugins materialize through prepareRepresentation + EntryCaps.
+export type CoreRepresentationResolution =
+    | { readonly representation: StoredEntryData }
+    | { readonly result: SchemeResult };
+
+export interface CoreRepresentationProvider {
+    resolveCoreRepresentation(
+        target: ParsedPath | null,
+        ctx: CoreSchemeCallContext,
+    ): Promise<CoreRepresentationResolution>;
 }
 
 // Core-owned adapters are also exercised directly by service integration tests.

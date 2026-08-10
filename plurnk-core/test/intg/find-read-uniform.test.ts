@@ -14,7 +14,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
 
 // Semantic FIND asserts real vector ranking, so re-enable the embedder that the
 // Mock bootstrap turns off; --test-isolation scopes this to this file.
@@ -356,7 +356,7 @@ test("FIND coordinates compose into scoped READ for structured JSON", async () =
         }]);
         const span = found.results[0];
         assert.ok(span?.region);
-        const read = await worker.read(
+        const read = await lookThroughScheme("worker", null,
             {
                 ...parseOp<ReadStatement>("<<READ(worker:///users.json)<1,1,1,1>::READ", "READ"),
                 lineMarker: {

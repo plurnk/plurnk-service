@@ -11,7 +11,12 @@ import {
     type UrlPath,
 } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { SchemeHandler, SchemeManifest, SchemeResult } from "@plurnk/plurnk-schemes";
+import type {
+    RepresentationPreparationRequest,
+    SchemeCtx,
+    SchemeHandler,
+    SchemeManifest,
+} from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Digest from "../../src/digest/Digest.ts";
@@ -51,16 +56,19 @@ class CredentialProbe implements SchemeHandler {
         modelVisible: true,
     };
 
-    observed: ReadStatement | null = null;
+    observed: UrlPath | null = null;
 
-    async read(statement: ReadStatement): Promise<SchemeResult> {
-        this.observed = structuredClone(statement);
-        return {
-            status: 200,
-            content: "credential probe response",
-            mimetype: "text/plain",
-            channel: "body",
-        };
+    async prepareRepresentation(request: RepresentationPreparationRequest, ctx: SchemeCtx) {
+        if (request.target.kind !== "url") throw new Error("credential probe requires a URL target");
+        this.observed = structuredClone(request.target);
+        const written = await ctx.entries.write(request.pathname, {
+            channels: {
+                body: { content: "credential probe response", mimetype: "text/plain" },
+            },
+            tags: [],
+        });
+        assert.ok(written.status === 200 || written.status === 201);
+        return { status: 200 };
     }
 }
 
@@ -144,7 +152,7 @@ test("ordinary operation evidence redacts credential slots once before every dur
 
         const observed = probe.observed;
         assert.ok(observed !== null);
-        const observedTarget = urlTarget(observed);
+        const observedTarget = observed;
         assert.equal(observedTarget.username, "primary-user");
         assert.equal(observedTarget.password, "primary-password");
         assert.deepEqual(observedTarget.headers, [

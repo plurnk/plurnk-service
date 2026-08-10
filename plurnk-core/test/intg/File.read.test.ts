@@ -10,7 +10,7 @@ import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { MimetypeBinary } from "../../src/content/index.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, lookThroughScheme } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -28,6 +28,9 @@ const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement[
 const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null): FindStatement => ({
     op: "FIND", suffix: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 },
 });
+
+const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
+    lookThroughScheme("file", null, statement, ctx);
 
 // Parse a single op the way production does, so a bare path carries its REAL parsed shape
 // (a LocalPath {kind:"local"}), not a hand-built UrlPath that hides the kind the model emits.
@@ -108,7 +111,7 @@ test("File.read: read existing file inside workspace → 200 + content + text/ma
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "hello.txt"), "Paris is the capital of France.\n");
         await addMember(ctx, "hello.txt");
-        const result = await new File().read(readStmt(urlPath("file", "/hello.txt")), ctx);
+        const result = await readFileScheme(readStmt(urlPath("file", "/hello.txt")), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "Paris is the capital of France.\n");
         assert.equal(result.mimetype, "text/markdown");
@@ -120,7 +123,7 @@ test("File.read: nested path inside workspace works", async () => {
         await mkdir(join(root, "docs"));
         await writeFile(join(root, "docs", "readme.md"), "# Doc\n");
         await addMember(ctx, "docs/readme.md");
-        const result = await new File().read(readStmt(urlPath("file", "/docs/readme.md")), ctx);
+        const result = await readFileScheme(readStmt(urlPath("file", "/docs/readme.md")), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content, "# Doc\n");
     });
@@ -128,7 +131,7 @@ test("File.read: nested path inside workspace works", async () => {
 
 test("File.read: missing file → 404", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
-        const result = await new File().read(readStmt(urlPath("file", "/missing.txt")), ctx);
+        const result = await readFileScheme(readStmt(urlPath("file", "/missing.txt")), ctx);
         assert.equal(result.status, 404);
         assert.equal(result.content, null);
     });
@@ -139,7 +142,7 @@ test("File.read: workspace escape via .. → 403 or 404", async () => {
         const outside = await mkdtemp(join(tmpdir(), "plurnk-outside-"));
         try {
             await writeFile(join(outside, "secret.txt"), "shouldnt-see");
-            const result = await new File().read(readStmt(urlPath("file", `../${outside.split("/").pop()}/secret.txt`)), ctx);
+            const result = await readFileScheme(readStmt(urlPath("file", `../${outside.split("/").pop()}/secret.txt`)), ctx);
             assert.ok(result.status === 403 || result.status === 404, `expected 403 or 404, got ${result.status}`);
         } finally { await rm(outside, { recursive: true, force: true }); }
     });
@@ -151,7 +154,7 @@ test("File.read: symlink pointing outside workspace → 404 (never a member)", a
         try {
             await writeFile(join(outside, "secret.txt"), "shouldnt-see");
             await symlink(join(outside, "secret.txt"), join(root, "link-to-secret"));
-            const result = await new File().read(readStmt(urlPath("file", "/link-to-secret")), ctx);
+            const result = await readFileScheme(readStmt(urlPath("file", "/link-to-secret")), ctx);
             // Containment moved to the materialize/edit disk edges: an outside-root
             // symlink is never materialized → no entry → 404 (not a read-path 403).
             assert.equal(result.status, 404, "non-member (outside-root symlink) → no entry → 404");
@@ -165,14 +168,14 @@ test("File.read: headless workspace (no entries) → 404", async () => {
         // Entry-backed read: a headless workspace materializes no file entries, so
         // any file read finds nothing → 404 (uniform with stored entries; the old
         // project_root precondition lived on the deleted disk-read path).
-        const result = await new File().read(readStmt(urlPath("file", "/hello.txt")), ctx);
+        const result = await readFileScheme(readStmt(urlPath("file", "/hello.txt")), ctx);
         assert.equal(result.status, 404);
     });
 });
 
 test("File.read: null path → 400", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
-        const result = await new File().read(readStmt(null), ctx);
+        const result = await readFileScheme(readStmt(null), ctx);
         assert.equal(result.status, 400);
     });
 });
@@ -181,7 +184,7 @@ test("File.read: lineMarker <N> selects line N as raw content with startLine=N",
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nbeta\ngamma\n");
         await addMember(ctx, "f.txt");
-        const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { lineMarker: { marks: [2] } }), ctx);
+        const r = await readFileScheme(readStmt(urlPath("file", "/f.txt"), { lineMarker: { marks: [2] } }), ctx);
         assert.equal(r.status, 200);
         assert.equal(r.content, "beta");
         assert.equal((r as { startLine?: number }).startLine, 2);
@@ -192,7 +195,7 @@ test("File.read: lineMarker <N,M> selects inclusive range as raw content with st
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "a\nb\nc\nd\n");
         await addMember(ctx, "f.txt");
-        const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { lineMarker: { marks: [2, 3] } }), ctx);
+        const r = await readFileScheme(readStmt(urlPath("file", "/f.txt"), { lineMarker: { marks: [2, 3] } }), ctx);
         assert.equal(r.status, 200);
         assert.equal(r.content, "b\nc");
         assert.equal((r as { startLine?: number }).startLine, 2);
@@ -203,7 +206,7 @@ test("File.read: lineMarker out of range returns 416", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "one\ntwo\n");
         await addMember(ctx, "f.txt");
-        const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { lineMarker: { marks: [99] } }), ctx);
+        const r = await readFileScheme(readStmt(urlPath("file", "/f.txt"), { lineMarker: { marks: [99] } }), ctx);
         assert.equal(r.status, 416);
         assert.deepEqual(r.problem?.range, {
             unit: "line",
@@ -315,7 +318,7 @@ test("File.read: non-empty tag filter on file:/// returns 404 (no tag concept)",
         await addMember(ctx, "f.txt");
         // Entry exists, but file entries carry no tags → a tag-filtered read 404s
         // via the shared EntryOps tag gate.
-        const r = await new File().read(readStmt(urlPath("file", "/f.txt"), { tags: ["any"] }), ctx);
+        const r = await readFileScheme(readStmt(urlPath("file", "/f.txt"), { tags: ["any"] }), ctx);
         assert.equal(r.status, 404);
     });
 });
@@ -325,7 +328,7 @@ test("File.read: long content round-trips", async () => {
         const big = "lorem ipsum dolor sit amet ".repeat(1000);
         await writeFile(join(root, "big.txt"), big);
         await addMember(ctx, "big.txt");
-        const result = await new File().read(readStmt(urlPath("file", "/big.txt")), ctx);
+        const result = await readFileScheme(readStmt(urlPath("file", "/big.txt")), ctx);
         assert.equal(result.status, 200);
         assert.equal(result.content?.length, big.length);
     });
@@ -339,7 +342,7 @@ test("File.read: a host-absolute spelling does not exist in the jail — no fold
         // {§fs-namespace} — chroot semantics: the host path /tmp/.../abs.txt canonicalizes to
         // the bare key tmp/.../abs.txt, which is not a member. The old exec-echo fold was
         // run59-class existence-dependent resolution; the model uses the catalog's key.
-        const result = await new File().read(readStmt(urlPath("file", absolutePath)), ctx);
+        const result = await readFileScheme(readStmt(urlPath("file", absolutePath)), ctx);
         assert.equal(result.status, 404, "host paths are not addresses inside the namespace");
     });
 });
@@ -351,7 +354,7 @@ test("File.read: bare relative path (no leading slash) normalizes to the member 
         // The member is keyed "/notes.md", but the model naturally types the bare "notes.md"
         // it copies from the catalog. READ must resolve it the way WRITE does — the regression
         // that 404'd "read the codename from notes.md" against the live model.
-        const result = await new File().read(parseRead("<<READ(notes.md)::READ"), ctx);
+        const result = await readFileScheme(parseRead("<<READ(notes.md)::READ"), ctx);
         assert.equal(result.status, 200, "bare relative READ resolves to the /notes.md member, not 404");
         assert.equal(result.content, "Codename: Bluejay\n");
     });
@@ -363,13 +366,13 @@ test("File.read: markerless exact READ returns 16 lines and explicit <1,-1> retu
         await writeFile(join(root, "bounded.txt"), content);
         await addMember(ctx, "bounded.txt");
 
-        const bounded = await new File().read(parseRead("<<READ(bounded.txt)::READ"), ctx);
+        const bounded = await readFileScheme(parseRead("<<READ(bounded.txt)::READ"), ctx);
         assert.equal(bounded.status, 200);
         assert.equal(bounded.content, Array.from({ length: 16 }, (_, index) => `line ${index + 1}`).join("\n"));
         assert.equal(bounded.range?.total, 20);
         assert.deepEqual(bounded.range?.returned, [1, 16]);
 
-        const all = await new File().read(parseRead("<<READ(bounded.txt)<1,-1>::READ"), ctx);
+        const all = await readFileScheme(parseRead("<<READ(bounded.txt)<1,-1>::READ"), ctx);
         assert.equal(all.status, 200);
         assert.equal(all.content, content);
         assert.deepEqual(all.range?.returned, [1, 20]);
@@ -381,7 +384,7 @@ test("File.read: bare nested relative path resolves to its member key too", asyn
         await mkdir(join(root, "src"));
         await writeFile(join(root, "src", "app.js"), "// TODO: rename\n");
         await addMember(ctx, "src/app.js");
-        const result = await new File().read(parseRead("<<READ(src/app.js)::READ"), ctx);
+        const result = await readFileScheme(parseRead("<<READ(src/app.js)::READ"), ctx);
         assert.equal(result.status, 200, "bare nested relative READ resolves");
         assert.equal(result.content, "// TODO: rename\n");
     });
@@ -393,7 +396,7 @@ test("File.read: absolute path OUTSIDE workspace → 404 (never a member)", asyn
         try {
             const outsideFile = join(outside, "leak.txt");
             await writeFile(outsideFile, "should not be readable");
-            const result = await new File().read(readStmt(urlPath("file", outsideFile)), ctx);
+            const result = await readFileScheme(readStmt(urlPath("file", outsideFile)), ctx);
             // An outside-root path can never be materialized → no entry → 404.
             assert.equal(result.status, 404);
             assert.equal(result.content, null);
@@ -407,7 +410,7 @@ test("{§membership-change-gated-sync}: a grown file exposes newly valid lines a
         await writeFile(join(root, "grow.txt"), "l1\nl2\nl3\n");
         await addMember(ctx, "grow.txt");
         // A read at line 6 is out of range NOW (3 lines) — the pre-growth 416.
-        const before = await new File().read(readStmt(urlPath("file", "/grow.txt"), { lineMarker: { marks: [6] } }), ctx);
+        const before = await readFileScheme(readStmt(urlPath("file", "/grow.txt"), { lineMarker: { marks: [6] } }), ctx);
         assert.equal(before.status, 416, "line 6 is out of range on the 3-line file");
 
         // Grow the file to 8 lines and re-materialize.
@@ -415,14 +418,14 @@ test("{§membership-change-gated-sync}: a grown file exposes newly valid lines a
         await addMember(ctx, "grow.txt");
 
         // The same read now succeeds against the refreshed snapshot.
-        const after = await new File().read(readStmt(urlPath("file", "/grow.txt"), { lineMarker: { marks: [6] } }), ctx);
+        const after = await readFileScheme(readStmt(urlPath("file", "/grow.txt"), { lineMarker: { marks: [6] } }), ctx);
         assert.equal(after.status, 200, "line 6 reads after the growth — the entry's length tracks disk, not a stale duplicate row");
         assert.equal(after.content, "l6");
 
         // An over-EOF read names the refreshed line count per {§fs-errno}.
         // A trailing newline is a terminator, not a ninth addressable line; the
         // advertised extent and the slicer's actual address space are identical.
-        const over = await new File().read(readStmt(urlPath("file", "/grow.txt"), { lineMarker: { marks: [99] } }), ctx);
+        const over = await readFileScheme(readStmt(urlPath("file", "/grow.txt"), { lineMarker: { marks: [99] } }), ctx);
         assert.equal(over.status, 416);
         const range = over.problem?.range as { total?: number };
         assert.equal(range.total, 8, "the range fact carries the refreshed line count");

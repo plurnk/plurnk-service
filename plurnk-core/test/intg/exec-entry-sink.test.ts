@@ -381,7 +381,8 @@ test("an absolute web URL ending in slash is one fetchable resource, not a folde
             statement: parseOne("<<READ(https://example.org/)::READ") as ReadStatement,
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 102, "the HTTP handler fetched the resource; Dispatcher never synthesized FIND");
+        assert.equal(result.status, 200, "the finite HTTP representation settled through exact READ");
+        assert.equal(result.content, "publisher home");
         const stored = await db.test_entries_by_pathname.get<{ scheme: string; id: number }>({ pathname: "/example.org/" });
         assert.equal(stored?.scheme, "https");
         const body = stored === undefined ? undefined : await db.test_get_channel.get<{ content: string }>({ entry_id: stored.id, name: "body" });

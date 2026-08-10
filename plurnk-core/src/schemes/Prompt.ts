@@ -1,5 +1,5 @@
-import type { EntryAddress, EntryEditResult, EntryFindResult, EntryReadResult, SchemeCtx, SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
-import type { EditStatement, FindStatement, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { EntryAddress, EntryEditResult, EntryFindResult, SchemeCtx, SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
+import type { EditStatement, FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 
 // {§prompt-self-only} — prompt:// carries the worker's own task frames: each loop's prompt at
 // prompt:///<loopSeq>/<turnSeq>, owned by the worker via owner_id — the address carries only the
@@ -32,10 +32,6 @@ export default class Prompt implements SchemeHandler {
     // worker it addresses. The actionless prompt log row is written separately.
     async editBatch(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EntryEditResult> {
         return ctx.entries.operations.editBatch(statements, "worker");
-    }
-
-    async read(statement: ReadStatement, ctx: SchemeCtx): Promise<EntryReadResult> {
-        return ctx.entries.operations.read(statement, "worker");
     }
 
     async find(statement: FindStatement, ctx: SchemeCtx): Promise<EntryFindResult> {

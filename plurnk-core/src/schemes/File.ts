@@ -3,13 +3,12 @@ import Namespace from "../core/namespace.ts";
 import Owner from "../core/Owner.ts";
 import { dirname, relative, isAbsolute, join, matchesGlob, sep } from "node:path";
 import { createPatch } from "diff";
-import type { EditStatement, ReadStatement, FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import type { EditStatement, FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import GitMembership from "../core/git-membership.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import EntryOps from "./_entry-ops.ts";
-import type { ReadResult } from "./_entry-ops.ts";
 import EntryFind from "./_entry-find.ts";
 import type { FindResult } from "./_entry-find.ts";
 import EntryCrud from "./_entry-crud.ts";
@@ -67,19 +66,20 @@ const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): 
     return MimetypeBinary.normalizeAutoTextMimetype(detected);
 };
 
-// SECURITY — File is entry-backed: read()/find()/readEntry()
-// delegate to the shared Entry* helpers over the membership-materialized entries
+// SECURITY — File's exact READ uses the core projector and broad FIND uses the
+// shared entry query over the membership-materialized entries
 // (stored under scheme="file"). The membership gate is now ENTRY-EXISTENCE — a non-member has no
-// entry, so read/find/readEntry 404 it at the shared entry boundary
+// entry, so every read-side consumer 404s it at the shared entry boundary
 // (a gitignored `.env` is never a member → never an entry → never readable). Disk
 // I/O is confined to the two edges that own it: the git-membership materialize-IN
 // and edit()/applyResolution()'s proposal-gated write-OUT ({§membership}), where the
 // containment/traversal checks live.
 //
-// writeEntry() is the proposal-gated write-back: a COPY/MOVE *into* file:/// is a disk
+// Core-only writeEntry() is the proposal-gated write-back: a COPY/MOVE *into* file:/// is a disk
 // write, so it flows through the SAME {§membership} gate as EDIT (#resolveWriteTarget) — a
 // 202 proposal, then applyResolution() writes on accept — never an ungated overwrite (the
-// `.env`-wipe this guard prevents). COPY/MOVE *from* file:/// is readEntry (read-only).
+// `.env`-wipe this guard prevents). COPY/MOVE *from* file:/// uses the core-only
+// readEntry adapter.
 export default class File extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "file",
@@ -94,17 +94,6 @@ export default class File extends CoreSchemeAdapterBase {
         example: "<<READ(README.md)::READ",
         documentation: "The project's workspace files (git-tracked members, shown as bare paths) — THE TASK'S FILES: when asked to change the project, EDIT these, not your notes or scratch. READ and FIND them like any entry; EDIT proposes a diff for review and only writes to disk once accepted — the review is normal, not a refusal, so propose the edit rather than working around it. Non-members are invisible, so you can't read or clobber a file outside the tracked surface.",
     };
-
-    // {§membership} — read the membership-materialized `file` entry through the
-    // shared entry helper. Disk is touched only at materialization and accepted
-    // write-back boundaries, never by READ itself.
-    async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<ReadResult> {
-        const core = this.coreContext(ctx);
-        // {§fs-namei} — canonicalize once, before the entry-existence gate;
-        // resolution never depends on whether the target currently exists.
-        const canon = File.#canonTarget(statement, await loadWorkspaceRoot(core.db, core.workspaceId));
-        return EntryOps.readWorkspaceEntry(canon ?? statement, core, File.manifest);
-    }
 
     // {§fs-namei}/{§fs-canonical-name} — the ONE statement-normalizing seam: every model
     // spelling resolves through Namespace.canonicalize before storage, comparison, or render.
@@ -133,10 +122,9 @@ export default class File extends CoreSchemeAdapterBase {
     }
 
     async resolveEntryAddress(target: ParsedPath, ctx: CoreSchemeCallContext): Promise<EntryAddress | null> {
-        if (target.kind !== "url") return null;
         const core = this.coreContext(ctx);
         const pathname = File.#canonSpelling(
-            target.pathname,
+            target.kind === "url" ? target.pathname : target.raw,
             await loadWorkspaceRoot(core.db, core.workspaceId),
         );
         return pathname === null ? null : { pathname, owner: "commons" };

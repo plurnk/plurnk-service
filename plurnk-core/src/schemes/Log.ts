@@ -3,16 +3,19 @@ import {
     type FindStatement,
     type FoldStatement,
     type OpenStatement,
-    type ReadStatement,
+    type ParsedPath,
 } from "@plurnk/plurnk-contracts";
-import type { SchemeManifest, PlurnkSchemeContext, SchemeReadResult } from "../core/scheme-types.ts";
-import { ReadResolve } from "../content/index.ts";
+import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
 import type { SourceCandidateMatch } from "../content/matcher.ts";
 import { emptyFindFields, projectFindResult } from "./_entry-find.ts";
 import type { FindResult, Match, CatalogScope, CatalogMatch, FindProjectionResource } from "./_entry-find.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
-import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
+import type {
+    CoreRepresentationProvider,
+    CoreRepresentationResolution,
+    CoreSchemeCallContext,
+} from "../core/CoreSchemeServices.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
 import LogBody from "../core/LogBody.ts";
 import EntrySemantic from "./_entry-semantic.ts";
@@ -64,10 +67,10 @@ const canonicalCoordinate = (coordinate: string): string => coordinate.replace(/
 const coordinateScopeMatches = (scope: ReturnType<typeof pathScope>, coordinate: string): boolean =>
     pathScopeMatches(scope, coordinate) || pathScopeMatches(scope, canonicalCoordinate(coordinate));
 
-export default class Log extends CoreSchemeAdapterBase {
+export default class Log extends CoreSchemeAdapterBase implements CoreRepresentationProvider {
     static manifest: SchemeManifest = {
         name: "log",
-        channels: {},  // logs render through read(), not channel storage
+        channels: {},
         defaultChannel: "",
         category: "logging",
         // Log KILL is model-authorized curation. Other mutations remain unavailable
@@ -79,7 +82,10 @@ export default class Log extends CoreSchemeAdapterBase {
         example: "<<READ(log:///1/2/3)::READ",
     };
 
-    async read(statement: ReadStatement, ctx: CoreSchemeCallContext): Promise<SchemeReadResult> {
+    async resolveCoreRepresentation(
+        target: ParsedPath | null,
+        ctx: CoreSchemeCallContext,
+    ): Promise<CoreRepresentationResolution> {
         const core = this.coreContext(ctx);
         const { db, workerId } = core;
         const failure = (
@@ -87,15 +93,17 @@ export default class Log extends CoreSchemeAdapterBase {
             status: number,
             detail: string,
             extensions: Readonly<Record<string, unknown>> = {},
-        ): SchemeReadResult => Results.failure(
-            "scheme:log",
-            code,
-            status,
-            detail,
-            { content: null, mimetype: null },
-            extensions,
-        ) as SchemeReadResult;
-        if (statement.target === null) {
+        ): CoreRepresentationResolution => ({
+            result: Results.failure(
+                "scheme:log",
+                code,
+                status,
+                detail,
+                { content: null, mimetype: null, channel: null },
+                extensions,
+            ),
+        });
+        if (target === null) {
             return failure(
                 "read-target-required",
                 400,
@@ -106,21 +114,7 @@ export default class Log extends CoreSchemeAdapterBase {
                 },
             );
         }
-        // READ is exact — one coordinate, one row. Tag recall is OPEN[tag]/FIND[tag]'s job ({§log-region-tagging}),
-        // not a filter on a single-row read.
-        if (Array.isArray(statement.signal) && statement.signal.length > 0) {
-            return failure(
-                "tagged-coordinate-not-found",
-                404,
-                "The exact log row does not carry every requested tag.",
-                {
-                    recovery: "Remove the tag filter or use a log row carrying those tags.",
-                    retryable: false,
-                },
-            );
-        }
-
-        const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
+        const pathname = (target.kind === "url" ? target.pathname : target.raw).replace(/^\//, "");
         const coord = parseCoordinate(pathname);
         if (coord === null) {
             return failure(
@@ -145,6 +139,7 @@ export default class Log extends CoreSchemeAdapterBase {
             rx: string;
             mimetype_rx: string;
             attrs: string;
+            tags: string;
         }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
 
         if (row === undefined) return failure("entry-not-found", 404, `No log entry exists at log:///${pathname}.`);
@@ -157,33 +152,22 @@ export default class Log extends CoreSchemeAdapterBase {
             mimetypeTx: row.mimetype_tx,
             mimetypeRx: row.mimetype_rx,
         });
-
-        const resolved = await ReadResolve.resolve({
-            content: underlyingContent,
-            mimetype: underlyingMimetype,
-            lineMarker: statement.lineMarker,
-        });
-        if (resolved.status >= 400) {
-            if (resolved.problem !== undefined) {
-                return Results.assert({
-                    ...resolved,
-                    content: null,
-                    mimetype: null,
-                }) as SchemeReadResult;
-            }
-            if (resolved.reason === undefined) {
-                throw new Error(`Log.read: ReadResolve returned status ${resolved.status} without Problem Details or a diagnostic`);
-            }
-            return failure(
-                resolved.status === 416 ? "range-not-satisfiable" : "read-resolution-failed",
-                resolved.status,
-                resolved.reason,
-                {
-                    ...(resolved.range === undefined ? {} : { range: resolved.range, stage: "projection" }),
-                },
-            );
+        const tags = JSON.parse(row.tags) as unknown;
+        if (!Array.isArray(tags) || !tags.every((tag) => typeof tag === "string")) {
+            throw new TypeError(`Log row ${pathname} contains invalid tag storage.`);
         }
-        return { ...resolved };
+        return {
+            representation: {
+                channels: {
+                    "": {
+                        content: underlyingContent,
+                        mimetype: underlyingMimetype,
+                        state: "static",
+                    },
+                },
+                tags,
+            },
+        };
     }
 
     // {§log-uniform-query} — FIND over the worker's log rows, on the SAME source-agnostic primitive

@@ -1,9 +1,9 @@
 import { Results as _Results } from "@plurnk/plurnk-schemes";
 import type {
-    EntryResult, MatchEvidence, ProblemDetails, ProposalResult, PassthroughResult, SchemeResult, SchemeResultBase,
+    ChannelProducerResult, EntryResult, MatchEvidence, ProblemDetails, ProposalResult, PassthroughResult, RepresentationPreparationResult, SchemeResult, SchemeResultBase,
 } from "@plurnk/plurnk-schemes";
 
-export type { EntryResult, MatchEvidence, ProblemDetails, ProposalResult, PassthroughResult, SchemeResult, SchemeResultBase };
+export type { ChannelProducerResult, EntryResult, MatchEvidence, ProblemDetails, ProposalResult, PassthroughResult, RepresentationPreparationResult, SchemeResult, SchemeResultBase };
 
 export class OperationFailureError extends Error {
     readonly result: SchemeResult & { readonly problem: ProblemDetails };
@@ -54,6 +54,14 @@ export default class Results {
 
     static assertReadResult<T extends SchemeResult>(result: T): T {
         return _Results.assertReadResult(result);
+    }
+
+    static assertRepresentationPreparation<T extends RepresentationPreparationResult>(result: T): T {
+        return _Results.assertRepresentationPreparation(result);
+    }
+
+    static assertChannelProducerResult<T extends ChannelProducerResult>(result: T): T {
+        return _Results.assertChannelProducerResult(result);
     }
 
     static assertMatchEvidenceList(evidence: unknown): ReadonlyArray<MatchEvidence> {

@@ -13,12 +13,16 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { ReadStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import ChannelWrite, { type StreamEventPayload } from "../../src/core/ChannelWrite.ts";
-import { Results, type SchemeCtx, type StreamSubscription } from "@plurnk/plurnk-schemes";
+import {
+    Results,
+    type RepresentationPreparationRequest,
+    type SchemeCtx,
+    type StreamSubscription,
+} from "@plurnk/plurnk-schemes";
 import {
     openMigrated, seedEnvelope, seedEntryWithChannel,
     insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors,
@@ -53,8 +57,11 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
                 category: "data" as const,
                 writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
             };
-            async read(statement: ReadStatement, ctx: SchemeCtx): Promise<{ status: number }> {
-                const path = statement.target;
+            async prepareRepresentation(
+                request: RepresentationPreparationRequest,
+                ctx: SchemeCtx,
+            ): Promise<{ status: number }> {
+                const path = request.target;
                 if (path === null || path.kind !== "url") {
                     return Results.failure(
                         "scheme:fakestream",
@@ -65,12 +72,12 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
                         { stage: "validate", retryable: false },
                     );
                 }
-                await ctx.entries.write(path.pathname, {
+                await ctx.entries.write(request.pathname, {
                     channels: { data: { content: "partial", mimetype: "text/plain", state: "active" } },
                     tags: [],
                 });
                 let subscription: StreamSubscription | undefined;
-                subscription = await ctx.subscriptions.open(path.pathname, {
+                subscription = await ctx.subscriptions.open(request.pathname, {
                     cancel: async () => {
                         teardownByHandle.push(HANDLE);
                         if (subscription === undefined) throw new Error("stream subscription missing");
@@ -146,14 +153,16 @@ test("a public streaming READ returns its 102 row before detached subscription w
                 category: "data" as const,
                 writableBy: ["model" as const, "client" as const], volatile: true, modelVisible: true,
             };
-            async read(statement: ReadStatement, ctx: SchemeCtx): Promise<{ status: number }> {
-                const target = statement.target;
-                if (target === null || target.kind !== "url") throw new Error("detached fixture requires a URL");
-                await ctx.entries.write(target.pathname, {
+            async prepareRepresentation(
+                request: RepresentationPreparationRequest,
+                ctx: SchemeCtx,
+            ): Promise<{ status: number }> {
+                if (request.target.kind !== "url") throw new Error("detached fixture requires a URL");
+                await ctx.entries.write(request.pathname, {
                     channels: { data: { content: "", mimetype: "text/plain", state: "active" } },
                     tags: [],
                 });
-                subscription = await ctx.subscriptions.open(target.pathname, { cancel() {} });
+                subscription = await ctx.subscriptions.open(request.pathname, { cancel() {} });
                 return { status: 102 };
             }
         }

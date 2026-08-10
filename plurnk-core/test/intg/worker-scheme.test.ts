@@ -24,7 +24,7 @@ import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import Fork from "../../src/core/fork.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
 import { editStmt, sendStmt, readStmt, fullReplace } from "./_dsl.ts";
 
 // {§worker-scheme} — the authority is a worker name or the current-worker sigil `~`.
@@ -109,13 +109,13 @@ test("a fork inherits the parent's private entries under its own owner, then div
 
         const inherited = await workerScheme.find(findEntry("~", "**"), ctxF);
         assert.deepEqual(inherited.results.map((r) => r.path), ["worker://~/todo.md"], "the fork's own-space FIND holds the inherited scratch, addressed as its own");
-        const fRead = await workerScheme.read(readEntry("~", "todo.md"), ctxF);
+        const fRead = await lookThroughScheme("worker", null, readEntry("~", "todo.md"), ctxF);
         assert.equal(fRead.content, "parent note", "the inherited scratch content is copied");
 
         // Divergence: the fork edits its scratch; the parent's copy is independent + untouched.
         await workerScheme.edit(editStmt(workerEntry("~", "todo.md"), "fork note", null, fullReplace), ctxF);
-        assert.equal((await workerScheme.read(readEntry("~", "todo.md"), ctxF)).content, "fork note", "the fork's edit lands on its own copy");
-        assert.equal((await workerScheme.read(readEntry("~", "todo.md"), ctxP)).content, "parent note", "the parent's scratch is untouched — independent copies, diverged");
+        assert.equal((await lookThroughScheme("worker", null, readEntry("~", "todo.md"), ctxF)).content, "fork note", "the fork's edit lands on its own copy");
+        assert.equal((await lookThroughScheme("worker", null, readEntry("~", "todo.md"), ctxP)).content, "parent note", "the parent's scratch is untouched — independent copies, diverged");
     } finally { await db.close(); }
 });
 
@@ -441,25 +441,51 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
         const workerScheme = new Worker();
 
         // No such worker → 404 (not a bare 400 the model can't read).
-        const missing = await workerScheme.read(readStmt(workerPath("ghost")), ctx);
+        const missing = await lookThroughScheme("worker", null, readStmt(workerPath("ghost")), ctx);
         assert.equal(missing.status, 404, "a name with no worker is 404");
 
         // A worker still running (its loop at the default live status 102) hasn't delivered → 425, steer to 202.
         const worker = await insertWorker(db, workspaceId, null, "worker-db");
         const wLoop = await insertLoop(db, worker, 1, "find db");
-        const running = await workerScheme.read(readStmt(workerPath("worker-db")), ctx);
+        const running = await lookThroughScheme("worker", null, readStmt(workerPath("worker-db")), ctx);
         assert.equal(running.status, 425, "a still-running worker hasn't delivered — 425, not its result");
-        assert.match(String(running.content), /still running|SEND\[202\]/, "the 425 steers the model to hibernate and await");
+        assert.match(running.problem?.detail ?? "", /still running/, "the exact 425 explains the unresolved deliverable");
+        assert.equal(running.awaitWorker, "worker-db", "the 425 arms the blocking join");
 
-        // It concludes 200 with a deliverable → READing the worker yields the deliverable (the pull side of collect).
-        const deliverable = { status: 200, content: "postgres", mimetype: "text/markdown" };
+        // It concludes 200 with a deliverable → READing the worker yields one
+        // canonical body channel, projected by the same READ rules as entries.
+        const lines = Array.from({ length: 20 }, (_, index) => `finding ${index + 1}`);
+        const deliverable = { status: 200, content: lines.join("\n"), mimetype: "text/markdown" };
         assert.deepEqual(
             await new LoopLifecycle(db).finish(wLoop, deliverable),
             deliverable,
         );
-        const done = await workerScheme.read(readStmt(workerPath("worker-db")), ctx);
+        const done = await lookThroughScheme("worker", null, readStmt(workerPath("worker-db")), ctx);
         assert.equal(done.status, 200, "a concluded worker's READ succeeds");
-        assert.equal(done.content, "postgres", "the exact terminal result is collected by READing the worker itself — no scratch-path guessing");
+        assert.equal(done.content, lines.slice(0, 16).join("\n"));
+        assert.deepEqual(done.range, {
+            unit: "line",
+            total: 20,
+            requested: [1, 16],
+            returned: [1, 16],
+        });
+
+        const tail = await lookThroughScheme("worker", null, {
+            ...readStmt(workerPath("worker-db")),
+            lineMarker: { marks: [18, -1] },
+        }, ctx);
+        assert.equal(tail.content, lines.slice(17).join("\n"));
+        assert.equal(tail.mimetype, "text/markdown");
+
+        const bodyTarget = workerPath("worker-db");
+        if (bodyTarget.kind !== "url") throw new Error("worker test target must be a URL");
+        const body = await lookThroughScheme("worker", null, readStmt({
+            ...bodyTarget,
+            raw: `${bodyTarget.raw}#body`,
+            fragment: "body",
+        }), ctx);
+        assert.equal(body.content, lines.slice(0, 16).join("\n"));
+        assert.equal(body.channel, "body");
 
         const failedWorker = await insertWorker(db, workspaceId, null, "worker-failed");
         const failedLoop = await insertLoop(db, failedWorker, 1, "call provider");
@@ -470,7 +496,7 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
             "The child provider failed.",
         );
         await new LoopLifecycle(db).finish(failedLoop, failure);
-        const failed = await workerScheme.read(readStmt(workerPath("worker-failed")), ctx);
+        const failed = await lookThroughScheme("worker", null, readStmt(workerPath("worker-failed")), ctx);
         assert.equal(failed.status, 502, "READ preserves the child's exact failure status");
         assert.equal(failed.problem?.detail, "The child provider failed.", "READ preserves the child's exact Problem");
         assert.equal(failed.content, "The child provider failed.", "READ derives a readable body from the exact Problem");
@@ -850,7 +876,7 @@ test("an already-drained join is a normal deliverable", async () => {
         assert.equal(waited.status, 200, "the empty join completes");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: wLoop }))?.status, 200, "the loop concluded");
         const reader = await insertWorker(db, workspaceId);
-        const collected = await new Worker().read(readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
+        const collected = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
         assert.equal(collected.status, 200);
         assert.equal(String(collected.content), "Standing by for user input", "the model's terminal body is the deliverable");
     } finally { await db.close(); }

@@ -100,6 +100,55 @@ test("assert rejects the legacy top-level error envelope", () => {
     );
 });
 
+test("representation preparation distinguishes ready, live, and terminal outcomes", () => {
+    for (const result of [
+        { status: 200 },
+        { status: 102 },
+        Results.failure("scheme:test", "acquisition-failed", 502, "Acquisition failed."),
+    ]) {
+        assert.equal(Results.assertRepresentationPreparation(result), result);
+    }
+    for (const result of [
+        { status: 103 },
+        { status: 201 },
+        { status: 202 },
+        { status: 200, channelOutcomes: { body: { status: 203 } } },
+    ]) {
+        assert.throws(
+            () => Results.assertRepresentationPreparation(result as never),
+            /representation preparation/,
+        );
+    }
+});
+
+test("channel producer results are terminal and cannot preempt core projection", () => {
+    const result = { status: 203, producer: "specimen" };
+    assert.equal(Results.assertChannelProducerResult(result), result);
+    assert.throws(
+        () => Results.assertChannelProducerResult({ status: 102 }),
+        /nonterminal status 102/,
+    );
+    assert.throws(
+        () => Results.assertChannelProducerResult({ status: 202 }),
+        /nonterminal status 202/,
+    );
+    const projectionFields: Readonly<Record<string, unknown>> = {
+        content: "forbidden",
+        mimetype: "text/plain",
+        channel: "body",
+        startLine: 1,
+        region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 2 },
+        matches: [{ locator: "$.item" }],
+        range: { unit: "line", total: 1, requested: [1, 1], returned: [1, 1] },
+    };
+    for (const [field, value] of Object.entries(projectionFields)) {
+        assert.throws(
+            () => Results.assertChannelProducerResult({ status: 200, [field]: value } as never),
+            new RegExp(`projection field .*${field}`),
+        );
+    }
+});
+
 test("assert validates schemes-owned scope normalization evidence", () => {
     const result = {
         status: 200,

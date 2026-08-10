@@ -8,6 +8,7 @@ import test, { after, beforeEach, mock } from "node:test";
 import { strict as assert } from "node:assert";
 import {
     MimetypeClassifier,
+    NetworkAddress,
     ProjectionInputLimitError,
     Results,
     type EntryStorageReadResult,
@@ -99,6 +100,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
     let wrote: { pathname: string; entry: EntryData } | null = null;
     let observedStorageRead: string | null = null;
     let observedRead: ReadStatement | null = null;
+    let storedEntry = priorEntry;
     const seq: string[] = []; // {§http-lifecycle} operation order
     const localAbort = new AbortController();
 
@@ -116,7 +118,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
         async read(pathname) {
             observedStorageRead = pathname;
             if (overrides.read !== undefined) return overrides.read(pathname);
-            return priorEntry === null
+            return storedEntry === null
                 ? Results.failure(
                     "scheme:test",
                     "entry-not-found",
@@ -124,17 +126,25 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
                     `No entry exists at ${pathname}.`,
                     { entry: null },
                 ) as EntryStorageReadResult
-                : Results.assert({ status: 200, entry: priorEntry });
+                : Results.assert({ status: 200, entry: storedEntry });
         },
         async write(pathname, entry) {
             wrote = { pathname, entry };
             seq.push("write");
             if (overrides.write !== undefined) return overrides.write(pathname, entry);
+            storedEntry = {
+                channels: Object.fromEntries(Object.entries(entry.channels).map(([channel, value]) => [
+                    channel,
+                    { ...value, state: value.state ?? "static" },
+                ])),
+                tags: entry.tags,
+            };
             return { status: 201, created: true, entryId: 1 };
         },
         async delete(pathname) {
             deleted = pathname;
             if (overrides.delete !== undefined) return overrides.delete(pathname);
+            storedEntry = null;
             return { status: 200 };
         },
     };
@@ -159,8 +169,8 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
         settled.resolve(closed);
     };
     const subscriptions: SubscriptionCaps = {
-        async open(pathname, handle, options) {
-            opened = { pathname, handle, ...options };
+        async open(pathname, handle) {
+            opened = { pathname, handle };
             seq.push("open");
             current = Object.assign(localAbort.signal, { notifyChunk, close });
             return current;
@@ -180,7 +190,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
     };
     return {
         ctx,
-        inspect: () => ({ chunks, opened, closed, deleted, wrote, observedStorageRead, observedRead, seq }),
+        inspect: () => ({ chunks, opened, closed, deleted, wrote, storedEntry, observedStorageRead, observedRead, seq }),
         forceCancel: () => opened?.handle.cancel(),
         awaitClosed: () => settled.promise,
     };
@@ -218,6 +228,32 @@ const findStmt = (target: UrlPath | null, body: FindStatement["body"] = null): F
     op: "FIND", suffix: "FIND", signal: null, target, lineMarker: null, body,
     position: { line: 0, column: 0 },
 });
+const prepareExactFind = (http: Http, statement: FindStatement, ctx: SchemeCtx) => {
+    const target = statement.target;
+    if (target === null || target.kind !== "url") {
+        throw new TypeError("prepareExactFind requires one exact URL target");
+    }
+    return http.prepareRepresentation({
+        target: { ...target, fragment: null },
+        pathname: NetworkAddress.from(target).pathname,
+    }, ctx);
+};
+
+// Producer-focused unit tests invoke the operation-neutral hook directly.
+// Universal READ selection and projection are covered in plurnk-core.
+const prepareRepresentation = (http: Http, statement: ReadStatement, ctx: SchemeCtx) => {
+    const target = statement.target;
+    if (target === null || target.kind !== "url") {
+        return http.prepareRepresentation({
+            target: target ?? { kind: "local", raw: "" },
+            pathname: "",
+        }, ctx);
+    }
+    return http.prepareRepresentation({
+        target: { ...target, fragment: null },
+        pathname: NetworkAddress.from(target).pathname,
+    }, ctx);
+};
 
 // Mock fetch: a streaming Response over the given chunks.
 const mockFetch = (
@@ -298,15 +334,15 @@ test("ready validates Tavily depth and timeout without making a provider request
     assert.equal(calls, 0);
 });
 
-test("prepareFind materializes an exact URL through the checked readable path", async () => {
+test("exact FIND preparation materializes an exact URL through the checked readable path", async () => {
     const { ctx, inspect } = makeCtx();
     const http = new Http();
     const target = urlTarget("https://example.com/dist/index.json", "/dist/index.json");
     await withFetch(
         mockFetch(200, "OK", ['{"version":"24.18.0"}'], { "content-type": "application/json" }),
         async () => {
-            const prepared = await http.prepareFind(findStmt(target), ctx);
-            assert.equal(prepared.status, 201);
+            const prepared = await prepareExactFind(http, findStmt(target), ctx);
+            assert.equal(prepared.status, 200);
         },
     );
     assert.equal(inspect().wrote?.pathname, "/example.com/dist/index.json");
@@ -314,7 +350,7 @@ test("prepareFind materializes an exact URL through the checked readable path", 
     assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
 });
 
-test("prepareFind preserves a provider-only page's unavailable HTML channel", async () => {
+test("exact FIND preparation preserves a provider-only page's unavailable HTML channel", async () => {
     process.env.TAVILY_API_KEY = "tvly-test";
     const { ctx, inspect } = makeCtx();
     const target = urlTarget("https://example.com/provider-only", "/provider-only");
@@ -329,19 +365,23 @@ test("prepareFind preserves a provider-only page's unavailable HTML channel", as
         }
         throw new Error("origin unavailable");
     }) as typeof fetch, async () => {
-        const prepared = await new Http().prepareFind(findStmt(target), ctx);
-        assert.equal(prepared.status, 201);
+        const prepared = await prepareExactFind(new Http(), findStmt(target), ctx);
+        assert.equal(prepared.status, 200);
     });
 
     assert.equal(inspect().wrote?.entry.channels.body?.content, "provider body");
-    assert.deepEqual(inspect().wrote?.entry.channels.html, {
-        content: "",
-        mimetype: "text/html",
-        state: "errored",
-    });
+    const html = inspect().wrote?.entry.channels.html;
+    assert.equal(html?.content, "");
+    assert.equal(html?.mimetype, "text/html");
+    assert.equal(html?.state, "errored");
+    assert.equal(html?.producerResult?.status, 502);
+    assert.equal(
+        html?.producerResult?.problem?.type,
+        "https://problems.plurnk.dev/scheme/http/html-unavailable",
+    );
 });
 
-test("prepareFind persists a readable binary projection with source and projection evidence", async () => {
+test("exact FIND preparation persists a readable binary projection with source and projection evidence", async () => {
     const projection = projectionCaps({
         async isBinary(mimetype) { return mimetype === "application/pdf"; },
         async readableBytes(chunks, mimetype) {
@@ -361,11 +401,11 @@ test("prepareFind persists a readable binary projection with source and projecti
         "content-type": "application/pdf",
         "x-plurnk-projection-id": "origin-spoof",
     }), async () => {
-        const result = await new Http().prepareFind(
+        const result = await prepareExactFind(new Http(),
             findStmt(urlTarget("https://example.com/paper.pdf", "/paper.pdf")),
             ctx,
         );
-        assert.equal(result.status, 201);
+        assert.equal(result.status, 200);
     });
 
     assert.deepEqual(inspect().wrote?.entry.channels.body, {
@@ -381,7 +421,7 @@ test("prepareFind persists a readable binary projection with source and projecti
     );
 });
 
-test("prepareFind reports the binary input ceiling as a typed 413 without persisting bytes", async (t) => {
+test("exact FIND preparation reports the binary input ceiling as a typed 413 without persisting bytes", async (t) => {
     let cancelled = false;
     const stream = new ReadableStream<Uint8Array>({
         start(controller) { controller.enqueue(Uint8Array.of(1, 2, 3, 4)); },
@@ -400,12 +440,12 @@ test("prepareFind reports the binary input ceiling as a typed 413 without persis
     const diagnostics: unknown[][] = [];
     t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
     const { ctx, inspect } = makeCtx(null, { projection });
-    let result: Awaited<ReturnType<Http["prepareFind"]>> | undefined;
+    let result: Awaited<ReturnType<typeof prepareExactFind>> | undefined;
     await withFetch(async () => new Response(stream, {
         status: 200,
         headers: { "content-type": "application/pdf" },
     }), async () => {
-        result = await new Http().prepareFind(
+        result = await prepareExactFind(new Http(),
             findStmt(urlTarget("https://example.com/large.pdf", "/large.pdf")),
             ctx,
         );
@@ -422,7 +462,7 @@ test("prepareFind reports the binary input ceiling as a typed 413 without persis
     assert.equal(diagnostics.length, 0, "an enforced input ceiling is not an internal defect");
 });
 
-test("prepareFind treats XHTML and a present empty projection as successful materialization", async () => {
+test("exact FIND preparation treats XHTML and a present empty projection as successful materialization", async () => {
     const projection = projectionCaps({
         async readable(_content, mimetype) {
             return {
@@ -437,11 +477,11 @@ test("prepareFind treats XHTML and a present empty projection as successful mate
     await withFetch(
         mockFetch(200, "OK", ["<html><body></body></html>"], { "content-type": "application/xhtml+xml" }),
         async () => {
-            const result = await new Http().prepareFind(
+            const result = await prepareExactFind(new Http(),
                 findStmt(urlTarget("https://example.com/empty.xhtml", "/empty.xhtml")),
                 ctx,
             );
-            assert.equal(result.status, 201);
+            assert.equal(result.status, 200);
         },
     );
     assert.deepEqual(inspect().wrote?.entry.channels.body, { content: "", mimetype: "text/markdown" });
@@ -451,24 +491,30 @@ test("prepareFind treats XHTML and a present empty projection as successful mate
     });
 });
 
-test("prepareFind reports an absent final HTML projection as 422", async () => {
+test("exact FIND preparation persists an absent final HTML projection as the body channel's exact 422", async () => {
     const projection = projectionCaps({ async readable() { return null; } });
     const { ctx, inspect } = makeCtx(null, { projection });
     await withFetch(
         mockFetch(200, "OK", ["<html><body><div></div></body></html>"], { "content-type": "text/html" }),
         async () => {
-            const result = await new Http().prepareFind(
+            const result = await prepareExactFind(new Http(),
                 findStmt(urlTarget("https://example.com/empty", "/empty")),
                 ctx,
             );
-            assert.equal(result.status, 422);
-            assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/no-readable-projection");
+            assert.equal(result.status, 200);
         },
     );
-    assert.equal(inspect().wrote, null);
+    const body = inspect().wrote?.entry.channels.body;
+    assert.equal(body?.content, "");
+    assert.equal(body?.state, "errored");
+    assert.equal(body?.producerResult?.status, 422);
+    assert.equal(
+        body?.producerResult?.problem?.type,
+        "https://problems.plurnk.dev/scheme/http/no-readable-projection",
+    );
 });
 
-test("prepareFind reports a projection exception as 500 and logs its cause", async (t) => {
+test("exact FIND preparation reports a projection exception as 500 and logs its cause", async (t) => {
     const cause = new Error("reader implementation failed");
     const projection = projectionCaps({ async readable() { throw cause; } });
     const { ctx, inspect } = makeCtx(null, { projection });
@@ -477,7 +523,7 @@ test("prepareFind reports a projection exception as 500 and logs its cause", asy
     await withFetch(
         mockFetch(200, "OK", ["<html><body>page</body></html>"], { "content-type": "text/html" }),
         async () => {
-            const result = await new Http().prepareFind(
+            const result = await prepareExactFind(new Http(),
                 findStmt(urlTarget("https://example.com/projection", "/projection")),
                 ctx,
             );
@@ -492,30 +538,28 @@ test("prepareFind reports a projection exception as 500 and logs its cause", asy
     assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
 });
 
-test("prepareFind reports caller cancellation during origin acquisition as 499", async (t) => {
+test("exact FIND preparation reports caller cancellation during origin acquisition as 499", async () => {
     const controller = new AbortController();
     const reason = new Error("operator cancelled");
     const { ctx, inspect } = makeCtx(null, { signal: controller.signal });
-    t.mock.method(Guard, "fetch", async (
-        _url: Parameters<typeof Guard.fetch>[0],
-        _init: Parameters<typeof Guard.fetch>[1],
-        signal: Parameters<typeof Guard.fetch>[2],
-    ) => {
+    let result: Awaited<ReturnType<typeof prepareExactFind>> | undefined;
+    await withFetch(async () => {
         controller.abort(reason);
-        signal.throwIfAborted();
-        throw new Error("unreachable after abort");
+        throw reason;
+    }, async () => {
+        result = await prepareExactFind(new Http(),
+            findStmt(urlTarget("https://example.com/cancelled-probe", "/cancelled-probe")),
+            ctx,
+        );
     });
-    const result = await new Http().prepareFind(
-        findStmt(urlTarget("https://example.com/cancelled-probe", "/cancelled-probe")),
-        ctx,
-    );
+    assert.ok(result);
     assert.equal(result.status, 499);
     assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/cancelled");
     assert.equal(result.problem?.retryable, false);
     assert.equal(inspect().wrote, null);
 });
 
-test("prepareFind does not relabel an unrelated failure after a later caller abort", async (t) => {
+test("exact FIND preparation does not relabel an unrelated failure after a later caller abort", async (t) => {
     const controller = new AbortController();
     const failure = new Error("unrelated acquisition defect");
     const { ctx } = makeCtx(null, { signal: controller.signal });
@@ -524,7 +568,7 @@ test("prepareFind does not relabel an unrelated failure after a later caller abo
         throw failure;
     });
     await assert.rejects(
-        new Http().prepareFind(
+        prepareExactFind(new Http(),
             findStmt(urlTarget("https://example.com/failed-probe", "/failed-probe")),
             ctx,
         ),
@@ -532,7 +576,7 @@ test("prepareFind does not relabel an unrelated failure after a later caller abo
     );
 });
 
-test("prepareFind rewrites acquisition but stores the addressed GitHub identity", async () => {
+test("exact FIND preparation rewrites acquisition but stores the addressed GitHub identity", async () => {
     const { ctx, inspect } = makeCtx();
     let seenUrl = "";
     const blob = "https://github.com/nodejs/node/blob/main/src/node_version.h";
@@ -540,42 +584,17 @@ test("prepareFind rewrites acquisition but stores the addressed GitHub identity"
         seenUrl = String(url);
         return new Response("// source", { status: 200, headers: { "content-type": "text/plain" } });
     }, async () => {
-        const prepared = await new Http().prepareFind(
+        const prepared = await prepareExactFind(new Http(),
             findStmt(urlTarget(blob, "/nodejs/node/blob/main/src/node_version.h")),
             ctx,
         );
-        assert.equal(prepared.status, 201);
+        assert.equal(prepared.status, 200);
     });
     assert.equal(seenUrl, "https://raw.githubusercontent.com/nodejs/node/main/src/node_version.h");
     assert.equal(inspect().wrote?.pathname, "/github.com/nodejs/node/blob/main/src/node_version.h");
 });
 
-test("prepareFind leaves absent and shared-classified path globs to the entry query", async () => {
-    const { ctx, inspect } = makeCtx();
-    const http = new Http();
-    const absent = await http.prepareFind(findStmt(null), ctx);
-    assert.equal(absent.status, 200);
-    const star = await http.prepareFind(
-        findStmt(urlTarget("https://example.com/docs/*", "/docs/*")),
-        ctx,
-    );
-    assert.equal(star.status, 200);
-    let fetched = false;
-    await withFetch(async () => {
-        fetched = true;
-        return new Response("wrong");
-    }, async () => {
-        const characterClass = await http.prepareFind(
-            findStmt(urlTarget("https://example.com/docs/[ab].md", "/docs/[ab].md")),
-            ctx,
-        );
-        assert.equal(characterClass.status, 200);
-    });
-    assert.equal(fetched, false);
-    assert.equal(inspect().wrote, null);
-});
-
-test("prepareFind preserves an exact storage-read failure without fetching", async () => {
+test("exact FIND preparation preserves an exact storage-read failure without fetching", async () => {
     const failure = Results.failure(
         "scheme:test",
         "storage-unavailable",
@@ -587,7 +606,7 @@ test("prepareFind preserves an exact storage-read failure without fetching", asy
     const { ctx, inspect } = makeCtx(null, { read: async () => failure });
     let fetched = false;
     await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
-        const result = await new Http().prepareFind(
+        const result = await prepareExactFind(new Http(),
             findStmt(urlTarget("https://example.com/x", "/x")),
             ctx,
         );
@@ -597,7 +616,7 @@ test("prepareFind preserves an exact storage-read failure without fetching", asy
     assert.equal(inspect().wrote, null);
 });
 
-test("prepareFind preserves an exact storage-write failure", async () => {
+test("exact FIND preparation preserves an exact storage-write failure", async () => {
     const failure = Results.failure(
         "scheme:test",
         "storage-read-only",
@@ -610,7 +629,7 @@ test("prepareFind preserves an exact storage-write failure", async () => {
     await withFetch(
         mockFetch(200, "OK", ["body"], { "content-type": "text/plain" }),
         async () => {
-            const result = await new Http().prepareFind(
+            const result = await prepareExactFind(new Http(),
                 findStmt(urlTarget("https://example.com/x", "/x")),
                 ctx,
             );
@@ -619,14 +638,14 @@ test("prepareFind preserves an exact storage-write failure", async () => {
     );
 });
 
-test("prepareFind preserves an unmarked authored entry without network acquisition", async () => {
+test("exact FIND preparation preserves an unmarked authored entry without network acquisition", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("authored representation", "text/plain", "", undefined, "static"));
     let fetched = false;
     await withFetch(async () => {
         fetched = true;
         return new Response("wrong");
     }, async () => {
-        const result = await new Http().prepareFind(
+        const result = await prepareExactFind(new Http(),
             findStmt(urlTarget("https://example.com/authored", "/authored")),
             ctx,
         );
@@ -637,20 +656,18 @@ test("prepareFind preserves an unmarked authored entry without network acquisiti
 });
 
 // ── acquisition lifecycle {§http-lifecycle} ───────────────────────────────
-test("READ: materializes the entry (manifest channels) BEFORE subscribing", async () => {
+test("finite GET materializes complete channels without opening a subscription", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["x"], { "content-type": "text/plain" }), async () => {
-        await new Http().read(readStmt(urlTarget("http://example.com/robots.txt", "/robots.txt")), ctx);
+        await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/robots.txt", "/robots.txt")), ctx);
     });
     const { wrote, seq } = inspect();
-    // write must precede open — open() binds an existing entry; it can't seed channels.
-    assert.deepEqual(seq.slice(0, 2), ["write", "open"]);
+    assert.deepEqual(seq, ["write"]);
     assert.equal(wrote?.pathname, "/example.com/robots.txt");
-    // Seeded channels mirror the manifest: empty content + the seed mimetypes.
     assert.deepEqual(Object.keys(wrote!.entry.channels).sort(), ["body", "header", "html"]);
-    assert.deepEqual(wrote!.entry.channels.body, { content: "", mimetype: "application/octet-stream", state: "active" });
-    assert.deepEqual(wrote!.entry.channels.header, { content: "", mimetype: "text/plain", state: "active" });
-    assert.equal(wrote!.entry.channels.html?.state, "active");
+    assert.deepEqual(wrote!.entry.channels.body, { content: "x", mimetype: "text/plain" });
+    assert.match(wrote!.entry.channels.header?.content ?? "", /^HTTP 200 OK/m);
+    assert.equal(wrote!.entry.channels.html?.state, "errored");
     assert.deepEqual(wrote!.entry.tags, []);
 });
 
@@ -665,22 +682,36 @@ test("SEND[200]: also materializes the entry before subscribing (shares #fetchSt
 });
 
 // ── READ streaming ────────────────────────────────────────────────────────
-test("READ: streams response body into the body channel and closes done", async () => {
+test("finite GET stores its complete body and returns ready", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["hello ", "world"], { "content-type": "text/plain" }), async () => {
-        const r = await new Http().read(readStmt(urlTarget("http://example.com/x", "/x")), ctx);
-        assert.equal(r.status, 102); // Processing — streaming subscription
+        const r = await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/x", "/x")), ctx);
+        assert.equal(r.status, 200);
     });
-    const { chunks, opened, closed } = inspect();
-    assert.equal(opened?.pathname, "/example.com/x");
-    assert.equal(opened?.publishedChannel, "body", "fragmentless READ publishes only the manifest default");
-    const body = chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
-    assert.equal(body, "hello world");
-    // Byte path labels the body with its real content type (not the seed default).
-    assert.ok(chunks.every((c) => c.channel !== "body" || c.mimetype === "text/plain"));
-    assert.ok(chunks.some((c) => c.channel === "header" && c.chunk.startsWith("HTTP 200 OK")));
-    assert.equal(closed?.result.status, 200);
-    assert.match(closed?.summary ?? "", /HTTP 200; \d+ bytes/);
+    const { opened, closed, wrote } = inspect();
+    assert.equal(opened, null);
+    assert.equal(closed, null);
+    assert.deepEqual(wrote?.entry.channels.body, { content: "hello world", mimetype: "text/plain" });
+});
+
+test("finite HTTP errors preserve their body and exact default-channel outcome", async () => {
+    const { ctx, inspect } = makeCtx();
+    await withFetch(mockFetch(404, "Not Found", ["missing"], { "content-type": "text/plain" }), async () => {
+        const result = await prepareRepresentation(
+            new Http(),
+            readStmt(urlTarget("https://example.com/missing", "/missing")),
+            ctx,
+        );
+        assert.equal(result.status, 200, "the complete representation is ready for core projection");
+    });
+    const body = inspect().wrote?.entry.channels.body;
+    assert.equal(body?.content, "missing");
+    assert.equal(body?.state, "errored");
+    assert.equal(body?.producerResult?.status, 404);
+    assert.equal(
+        body?.producerResult?.problem?.type,
+        "https://problems.plurnk.dev/scheme/http/http-response-status",
+    );
 });
 
 test("READ uses canonical authority/query identity while metadata and fragment stay out of transport", async () => {
@@ -699,13 +730,13 @@ test("READ uses canonical authority/query identity while metadata and fragment s
         seenHeaders = init?.headers;
         return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
     }, async () => {
-        const result = await new Http().read(readStmt(target), ctx);
-        assert.equal(result.status, 102);
+        const result = await prepareRepresentation(new Http(), readStmt(target), ctx);
+        assert.equal(result.status, 200);
     });
     assert.equal(seenUrl, "https://example.com:8443/x?b=2&a=1&a=3");
     assert.equal(new Headers(seenHeaders).get("Authorization"), "Bearer example");
     assert.equal(inspect().wrote?.pathname, "/example.com:8443/x?b=2&a=1&a=3");
-    assert.equal(inspect().opened?.pathname, "/example.com:8443/x?b=2&a=1&a=3");
+    assert.equal(inspect().opened, null);
 });
 
 test("SEND[410] distinguishes an explicit empty query from no query", async () => {
@@ -725,7 +756,7 @@ test("HTTP userinfo is rejected without transport or secret-bearing diagnostics"
         fetched = true;
         return new Response("wrong");
     }, async () => {
-        const result = await new Http().read(readStmt(target), ctx);
+        const result = await prepareRepresentation(new Http(), readStmt(target), ctx);
         assert.equal(result.status, 400);
         assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/userinfo-not-allowed");
         assert.equal(result.problem?.target, "https://example.com/x");
@@ -749,15 +780,15 @@ test("READ/POST/PUT/DELETE: explicit loopback targets use the native transport",
     }) as typeof fetch, async () => {
         const target = urlTarget("http://127.0.0.1/private", "/private");
         const operations = [
-            (http: Http, ctx: SchemeCtx) => http.read(readStmt(target), ctx),
+            (http: Http, ctx: SchemeCtx) => prepareRepresentation(http, readStmt(target), ctx),
             (http: Http, ctx: SchemeCtx) => http.send(sendStmt(200, target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => http.edit(editStmt(target, "body"), ctx),
             (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target), ctx),
         ];
-        for (const operation of operations) {
+        for (const [index, operation] of operations.entries()) {
             const { ctx, inspect } = makeCtx();
-            assert.equal((await operation(new Http(), ctx)).status, 102);
-            assert.equal(inspect().closed?.result.status, 200);
+            assert.equal((await operation(new Http(), ctx)).status, index === 0 ? 200 : 102);
+            assert.equal(inspect().closed?.result.status, index === 0 ? undefined : 200);
         }
     }, false);
     assert.deepEqual(requests.map(({ url, method }) => ({ url, method })), [
@@ -769,53 +800,38 @@ test("READ/POST/PUT/DELETE: explicit loopback targets use the native transport",
     assert.ok(requests.every(({ redirect }) => redirect === "follow"));
 });
 
-test("scoped READ observes the materialized readable entry without refetching", async () => {
+test("preparation is line-scope-blind and leaves selection to core", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("complete page", "text/markdown", ""));
     let fetched = false;
     await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
         const statement = readStmt(urlTarget("https://example.com/x", "/x"), { marks: [2, 4] });
-        const result = await new Http().read(statement, ctx);
+        const result = await prepareRepresentation(new Http(), statement, ctx);
         assert.equal(result.status, 200);
-        assert.equal(result.content, "selected lines");
-        assert.equal(inspect().observedRead, statement, "the standard entry reader owns scope semantics");
+        assert.equal(inspect().observedRead, null, "the producer never receives or applies text scope");
     });
     assert.equal(fetched, false, "a range observation never re-enters the network path");
     assert.equal(inspect().wrote, null, "the materialized entry is not replaced with a stream seed");
     assert.equal(inspect().opened, null, "no subscription is opened for a stored range");
 });
 
-test("scoped READ delegates an auxiliary channel even when the stored body is empty", async () => {
+test("preparation is channel-blind even when an auxiliary channel was authored", async () => {
     const statement = readStmt(
         urlTarget("https://example.com/x#header", "/x", undefined, "header"),
         { marks: [2] },
     );
-    const selected = Results.assert({
-        status: 200,
-        content: "content-type: text/plain",
-        mimetype: "text/plain",
-        channel: "header",
-        startLine: 2,
-    }) as EntryReadResult;
     const { ctx, inspect } = makeCtx(
         priorEntry("", "text/plain", "HTTP 204 No Content\ncontent-type: text/plain"),
-        {
-            operationRead: async (observed) => {
-                assert.equal(observed.target?.kind, "url");
-                assert.equal(observed.target.fragment, "header");
-                return selected;
-            },
-        },
     );
     let fetched = false;
     await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
-        assert.deepEqual(await new Http().read(statement, ctx), { ...selected, shape: "passthrough" });
+        assert.equal((await prepareRepresentation(new Http(), statement, ctx)).status, 200);
     });
-    assert.equal(inspect().observedRead, statement);
-    assert.equal(inspect().observedStorageRead, null, "universal READ is the only channel-selection path");
+    assert.equal(inspect().observedRead, null);
+    assert.equal(inspect().observedStorageRead, "/example.com/x");
     assert.equal(fetched, false, "a scoped auxiliary-channel observation never enters the network path");
 });
 
-test("scoped READ preserves the exact standard-reader failure", async () => {
+test("preparation cannot observe a core selection failure", async () => {
     const failure = Results.failure(
         "schemes:slicer",
         "range-not-satisfiable",
@@ -832,14 +848,14 @@ test("scoped READ preserves the exact standard-reader failure", async () => {
         priorEntry("complete page", "text/markdown", ""),
         { operationRead: async () => failure },
     );
-    const result = await new Http().read(
+    const result = await prepareRepresentation(new Http(),
         readStmt(urlTarget("https://example.com/x", "/x"), { marks: [30, 100] }),
         ctx,
     );
-    assert.deepEqual(result, { ...failure, shape: "passthrough" });
+    assert.equal(result.status, 200);
 });
 
-test("scoped READ preserves a missing selected-channel failure without acquisition", async () => {
+test("channel selection cannot suppress representation acquisition", async () => {
     const failure = Results.failure(
         "scheme:http",
         "entry-not-found",
@@ -850,44 +866,41 @@ test("scoped READ preserves a missing selected-channel failure without acquisiti
     ) as EntryReadResult;
     const { ctx, inspect } = makeCtx(null, { operationRead: async () => failure });
     let fetched = false;
-    await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
-        const result = await new Http().read(
+    await withFetch(async () => {
+        fetched = true;
+        return new Response("complete", { headers: { "content-type": "text/plain" } });
+    }, async () => {
+        const result = await prepareRepresentation(new Http(),
             readStmt(urlTarget("https://example.com/x", "/x"), { marks: [2, 4] }),
             ctx,
         );
-        assert.deepEqual(result, { ...failure, shape: "passthrough" });
+        assert.equal(result.status, 200);
     });
-    assert.equal(fetched, false);
-    assert.equal(inspect().observedStorageRead, null);
+    assert.equal(fetched, true);
+    assert.equal(inspect().observedStorageRead, "/example.com/x");
     assert.equal(inspect().opened, null);
 });
 
-test("READ: an explicit auxiliary fragment publishes that channel instead", async () => {
-    const { ctx, inspect } = makeCtx();
-    await withFetch(mockFetch(200, "OK", ["body"], { "content-type": "text/plain" }), async () => {
-        await new Http().read(readStmt(urlTarget("https://example.com/x", "/x", undefined, "header")), ctx);
-    });
-    assert.equal(inspect().opened?.publishedChannel, "header");
-});
-
-test("READ: an unknown channel fails before fetching or subscribing", async () => {
+test("an unknown channel is withheld from the producer and rejected later by core", async () => {
     const { ctx, inspect } = makeCtx();
     let fetched = false;
-    await withFetch(async () => { fetched = true; return new Response("no"); }, async () => {
-        const result = await new Http().read(readStmt(urlTarget("https://example.com/x", "/x", undefined, "raw")), ctx);
-        assert.equal(result.status, 400);
+    await withFetch(async () => {
+        fetched = true;
+        return new Response("body", { headers: { "content-type": "text/plain" } });
+    }, async () => {
+        const result = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/x", "/x", undefined, "raw")), ctx);
+        assert.equal(result.status, 200);
     });
-    assert.equal(fetched, false);
+    assert.equal(fetched, true);
     assert.equal(inspect().opened, null);
 });
 
 test("READ: non-HTML body is labelled with its real content-type", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ['{"a":1}'], { "content-type": "Application/JSON; charset=utf-8" }), async () => {
-        await new Http().read(readStmt(urlTarget("https://example.com/d.json", "/d.json")), ctx);
+        await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/d.json", "/d.json")), ctx);
     });
-    const body = inspect().chunks.filter((c) => c.channel === "body");
-    assert.equal(body[0]?.mimetype, "application/json");
+    assert.equal(inspect().wrote?.entry.channels.body?.mimetype, "application/json");
 });
 
 test("READ: textual bytes follow Fetch UTF-8 decoding regardless of charset metadata", async () => {
@@ -897,36 +910,33 @@ test("READ: textual bytes follow Fetch UTF-8 decoding regardless of charset meta
         "content-type": "text/plain; charset=windows-1252",
     }), async () => {
         assert.equal(
-            (await new Http().read(readStmt(urlTarget("https://example.com/legacy.txt", "/legacy.txt")), ctx)).status,
-            102,
+            (await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/legacy.txt", "/legacy.txt")), ctx)).status,
+            200,
         );
     });
 
     assert.equal(
-        inspect().chunks.filter(({ channel }) => channel === "body").map(({ chunk }) => chunk).join(""),
+        inspect().wrote?.entry.channels.body?.content,
         "caf�",
     );
     assert.match(
-        inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "",
+        inspect().wrote?.entry.channels.header?.content ?? "",
         /^content-type: text\/plain; charset=windows-1252$/m,
     );
 });
 
 test("READ: an unparseable Content-Type is an unknown binary representation", async () => {
     const { ctx, inspect } = makeCtx();
-    let result: Awaited<ReturnType<Http["read"]>> | undefined;
+    let result: Awaited<ReturnType<typeof prepareRepresentation>> | undefined;
     await withFetch(mockFetch(200, "OK", ["not trustworthy"], {
         "content-type": "text/plain garbage",
     }), async () => {
-        result = await new Http().read(readStmt(urlTarget("https://example.com/bad", "/bad")), ctx);
+        result = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/bad", "/bad")), ctx);
     });
 
     assert.equal(result?.status, 415);
     assert.equal(result?.problem?.mimetype, "application/octet-stream");
-    assert.deepEqual(
-        inspect().chunks.filter(({ channel }) => channel === "body"),
-        [{ channel: "body", chunk: "", mimetype: "application/octet-stream" }],
-    );
+    assert.equal(inspect().wrote, null);
 });
 
 test("SEND[200]: a binary response becomes a typed marker and explicit non-retryable 415", async () => {
@@ -979,28 +989,25 @@ test("READ: a readable binary response publishes only derived Unicode and projec
         },
     });
     const { ctx, inspect } = makeCtx(null, { projection });
-    let result: Awaited<ReturnType<Http["read"]>> | undefined;
+    let result: Awaited<ReturnType<typeof prepareRepresentation>> | undefined;
     await withFetch(mockFetch(200, "OK", [Uint8Array.of(37, 80, 68, 70)], {
         "content-type": "application/pdf",
     }), async () => {
-        result = await new Http().read(
+        result = await prepareRepresentation(new Http(),
             readStmt(urlTarget("https://example.com/paper.pdf", "/paper.pdf")),
             ctx,
         );
     });
 
-    assert.equal(result?.status, 102);
-    assert.deepEqual(
-        inspect().chunks.filter(({ channel }) => channel === "body"),
-        [{ channel: "body", chunk: "# projected paper", mimetype: "text/markdown" }],
-    );
-    const header = inspect().chunks
-        .filter(({ channel }) => channel === "header")
-        .map(({ chunk }) => chunk)
-        .join("");
+    assert.equal(result?.status, 200);
+    assert.deepEqual(inspect().wrote?.entry.channels.body, {
+        content: "# projected paper",
+        mimetype: "text/markdown",
+    });
+    const header = inspect().wrote?.entry.channels.header?.content ?? "";
     assert.match(header, /^content-type: application\/pdf$/m);
     assert.match(header, /^x-plurnk-projection-id: pdf-reader-v3$/m);
-    assert.equal(inspect().closed?.result.status, 200);
+    assert.equal(inspect().closed, null);
 });
 
 test("READ: a binary projection input ceiling leaves a typed marker and closes with 413", async (t) => {
@@ -1022,12 +1029,12 @@ test("READ: a binary projection input ceiling leaves a typed marker and closes w
     const diagnostics: unknown[][] = [];
     t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
     const { ctx, inspect } = makeCtx(null, { projection });
-    let result: Awaited<ReturnType<Http["read"]>> | undefined;
+    let result: Awaited<ReturnType<typeof prepareRepresentation>> | undefined;
     await withFetch(async () => new Response(stream, {
         status: 200,
         headers: { "content-type": "application/pdf" },
     }), async () => {
-        result = await new Http().read(
+        result = await prepareRepresentation(new Http(),
             readStmt(urlTarget("https://example.com/large.pdf", "/large.pdf")),
             ctx,
         );
@@ -1037,31 +1044,25 @@ test("READ: a binary projection input ceiling leaves a typed marker and closes w
     assert.equal(result?.problem?.type, "https://problems.plurnk.dev/scheme/http/projection-input-limit");
     assert.equal(result?.problem?.maximumBytes, 3);
     assert.equal(result?.problem?.observedBytes, 4);
-    assert.deepEqual(
-        inspect().chunks.filter(({ channel }) => channel === "body"),
-        [{ channel: "body", chunk: "", mimetype: "application/pdf" }],
-    );
+    assert.equal(inspect().wrote, null);
     assert.equal(cancelled, true);
-    assert.equal(inspect().closed?.result.problem, result?.problem);
+    assert.equal(inspect().closed, null);
     assert.equal(diagnostics.length, 0);
 });
 
 test("READ: an undeclared body is an application/octet-stream marker, not guessed text", async () => {
     const { ctx, inspect } = makeCtx();
-    let result: Awaited<ReturnType<Http["read"]>> | undefined;
+    let result: Awaited<ReturnType<typeof prepareRepresentation>> | undefined;
     await withFetch(async () => new Response(new Uint8Array([0x68, 0x69]), {
         status: 200,
         statusText: "OK",
     }), async () => {
-        result = await new Http().read(readStmt(urlTarget("https://example.com/unknown", "/unknown")), ctx);
+        result = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/unknown", "/unknown")), ctx);
     });
 
     assert.equal(result?.status, 415);
     assert.equal(result?.problem?.mimetype, "application/octet-stream");
-    assert.deepEqual(
-        inspect().chunks.filter(({ channel }) => channel === "body"),
-        [{ channel: "body", chunk: "", mimetype: "application/octet-stream" }],
-    );
+    assert.equal(inspect().wrote, null);
 });
 
 // ── server-sent events {§sse} ─────────────────────────────────────────────
@@ -1071,7 +1072,7 @@ const sseBody = (chunks: Array<{ channel: string; chunk: string }>) =>
 test("READ SSE: each event's data becomes one body chunk, framing stripped", async () => {
     const { ctx, inspect, awaitClosed } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["data: hello\n\n", "data: world\n\n"], { "content-type": "text/event-stream" }), async () => {
-        const r = await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+        const r = await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
         assert.equal(r.status, 102);
         await awaitClosed();
     });
@@ -1097,7 +1098,7 @@ test("READ SSE: returns 102 after acquisition while the origin stream remains op
         status: 200,
         headers: { "content-type": "text/event-stream" },
     }), async () => {
-        const read = new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+        const read = prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
         void read.then(() => { returned = true; });
         await flush();
         const returnedBeforeClose = returned;
@@ -1115,7 +1116,7 @@ test("READ SSE: returns 102 after acquisition while the origin stream remains op
 test("READ SSE: multi-line data joins with \\n into a single event", async () => {
     const { ctx, inspect, awaitClosed } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["data: a\ndata: b\n\n"], { "content-type": "text/event-stream; charset=utf-8" }), async () => {
-        await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+        await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
         await awaitClosed();
     });
     assert.deepEqual(sseBody(inspect().chunks), ["a\nb\n"]);
@@ -1124,7 +1125,7 @@ test("READ SSE: multi-line data joins with \\n into a single event", async () =>
 test("READ SSE: comment and metadata-only frames drop; only data dispatches", async () => {
     const { ctx, inspect, awaitClosed } = makeCtx();
     await withFetch(mockFetch(200, "OK", [": keep-alive\n\n", "event: greet\nid: 7\ndata: payload\n\n"], { "content-type": "text/event-stream" }), async () => {
-        await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+        await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
         await awaitClosed();
     });
     const { chunks, closed } = inspect();
@@ -1135,7 +1136,7 @@ test("READ SSE: comment and metadata-only frames drop; only data dispatches", as
 test("READ SSE: an event split across network chunks reassembles", async () => {
     const { ctx, inspect, awaitClosed } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["data: par", "tial\n", "\n"], { "content-type": "text/event-stream" }), async () => {
-        await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+        await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
         await awaitClosed();
     });
     assert.deepEqual(sseBody(inspect().chunks), ["partial\n"]);
@@ -1144,7 +1145,7 @@ test("READ SSE: an event split across network chunks reassembles", async () => {
 test("READ SSE: CRLF-framed events parse (\\r normalized)", async () => {
     const { ctx, inspect, awaitClosed } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["data: crlf\r", "\n\r", "\n"], { "content-type": "text/event-stream" }), async () => {
-        await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+        await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
         await awaitClosed();
     });
     assert.deepEqual(sseBody(inspect().chunks), ["crlf\n"]);
@@ -1156,7 +1157,7 @@ test("READ SSE: an oversized incomplete event fails the remote stream", async ()
     try {
         const { ctx, inspect, awaitClosed } = makeCtx();
         await withFetch(mockFetch(200, "OK", ["data: this event never terminates"], { "content-type": "text/event-stream" }), async () => {
-            const result = await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+            const result = await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
             assert.equal(result.status, 102);
             const terminal = await awaitClosed();
             assert.equal(terminal.result.status, 502);
@@ -1181,7 +1182,7 @@ test("READ SSE: cancellation after acquisition settles the retained stream at 49
         status: 200,
         headers: { "content-type": "text/event-stream" },
     }), async () => {
-        const initial = await new Http().read(readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
+        const initial = await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/sse", "/sse")), ctx);
         assert.equal(initial.status, 102);
         await forceCancel();
         controller.error(new DOMException("aborted", "AbortError"));
@@ -1191,21 +1192,20 @@ test("READ SSE: cancellation after acquisition settles the retained stream at 49
     });
 });
 
-test("READ: HTML acquisition archives server HTML while body carries the model-facing projection", async () => {
+test("HTML preparation archives server HTML while body carries the model-facing projection", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["<html><body><h1>Hello</h1></body></html>"], { "content-type": "text/html; charset=utf-8" }), async () => {
-        const r = await new Http().read(readStmt(urlTarget("https://example.com/spa", "/spa")), ctx);
-        assert.equal(r.status, 102);
+        const r = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/spa", "/spa")), ctx);
+        assert.equal(r.status, 200);
     });
-    const { chunks, closed } = inspect();
-    const bodyChunks = chunks.filter((c) => c.channel === "body");
-    assert.equal(bodyChunks.length, 1);
-    assert.equal(bodyChunks[0].chunk, "Hello");
-    assert.equal(bodyChunks[0].mimetype, "text/markdown");
-    const htmlChunks = chunks.filter((c) => c.channel === "html");
-    assert.equal(htmlChunks[0]?.chunk, "<html><body><h1>Hello</h1></body></html>");
-    assert.equal(htmlChunks[0]?.mimetype, "text/html");
-    assert.equal(closed?.result.status, 200);
+    assert.deepEqual(inspect().wrote?.entry.channels.body, {
+        content: "Hello",
+        mimetype: "text/markdown",
+    });
+    assert.deepEqual(inspect().wrote?.entry.channels.html, {
+        content: "<html><body><h1>Hello</h1></body></html>",
+        mimetype: "text/html",
+    });
 });
 
 test("READ: a present empty HTML projection succeeds and retains its HTML evidence", async () => {
@@ -1224,20 +1224,19 @@ test("READ: a present empty HTML projection succeeds and retains its HTML eviden
     await withFetch(
         mockFetch(200, "OK", [html], { "content-type": "text/html" }),
         async () => {
-            const result = await new Http().read(
+            const result = await prepareRepresentation(new Http(),
                 readStmt(urlTarget("https://example.com/empty", "/empty")),
                 ctx,
             );
-            assert.equal(result.status, 102);
+            assert.equal(result.status, 200);
         },
     );
-    assert.deepEqual(inspect().chunks.find(({ channel }) => channel === "body"), {
-        channel: "body",
-        chunk: "",
+    assert.deepEqual(inspect().wrote?.entry.channels.body, {
+        content: "",
         mimetype: "text/markdown",
     });
-    assert.equal(inspect().chunks.find(({ channel }) => channel === "html")?.chunk, html);
-    assert.equal(inspect().closed?.result.status, 200);
+    assert.equal(inspect().wrote?.entry.channels.html?.content, html);
+    assert.equal(inspect().closed, null);
 });
 
 test("READ: public HTML uses Tavily Markdown and retains origin, request, and credit evidence", async () => {
@@ -1256,23 +1255,21 @@ test("READ: public HTML uses Tavily Markdown and retains origin, request, and cr
             usage: { credits: 0.2 },
         }), { status: 200, headers: { "content-type": "application/json" } })
         : new Response(html, { status: 200, statusText: "OK", headers: { "content-type": "application/xhtml+xml" } })) as typeof fetch, async () => {
-        const result = await new Http().read(
+        const result = await prepareRepresentation(new Http(),
             readStmt(urlTarget("https://example.com/tavily", "/tavily")),
             ctx,
         );
-        assert.equal(result.status, 102);
+        assert.equal(result.status, 200);
     });
-    assert.deepEqual(inspect().chunks.find(({ channel }) => channel === "body"), {
-        channel: "body",
-        chunk: "# Tavily body",
+    assert.deepEqual(inspect().wrote?.entry.channels.body, {
+        content: "# Tavily body",
         mimetype: "text/markdown",
     });
-    assert.deepEqual(inspect().chunks.find(({ channel }) => channel === "html"), {
-        channel: "html",
-        chunk: html,
+    assert.deepEqual(inspect().wrote?.entry.channels.html, {
+        content: html,
         mimetype: "application/xhtml+xml",
     });
-    const header = inspect().chunks.filter(({ channel }) => channel === "header").map(({ chunk }) => chunk).join("");
+    const header = inspect().wrote?.entry.channels.header?.content ?? "";
     assert.match(header, /^HTTP 200 OK/m);
     assert.match(header, /^x-plurnk-materializer-id: tavily-extract:v1:basic$/m);
     assert.match(header, /^x-plurnk-tavily-request-id: req-direct$/m);
@@ -1299,29 +1296,24 @@ test("READ: negotiated origin Markdown is authoritative and acquires auxiliary s
                 headers: { "content-type": "text/markdown", vary: "Accept" },
             });
     }) as typeof fetch, async () => {
-        const result = await new Http().read(
+        const result = await prepareRepresentation(new Http(),
             readStmt(urlTarget("https://example.com/markdown", "/markdown")),
             ctx,
         );
-        assert.equal(result.status, 102);
+        assert.equal(result.status, 200);
     });
     assert.match(accepts[0] ?? "", /^text\/markdown/);
     assert.equal(accepts[1], "text/html");
-    assert.equal(inspect().chunks.find(({ channel }) => channel === "body")?.chunk, "# Origin Markdown");
-    assert.equal(inspect().chunks.find(({ channel }) => channel === "html")?.chunk, "<html><body>Origin source</body></html>");
-    const header = inspect().chunks.filter(({ channel }) => channel === "header").map(({ chunk }) => chunk).join("");
+    assert.equal(inspect().wrote?.entry.channels.body?.content, "# Origin Markdown");
+    assert.equal(inspect().wrote?.entry.channels.html?.content, "<html><body>Origin source</body></html>");
+    const header = inspect().wrote?.entry.channels.header?.content ?? "";
     assert.match(header, /^x-plurnk-materializer-id: origin-markdown:v1$/m);
     assert.match(header, /^x-plurnk-html-status: 200$/m);
-    assert.equal(inspect().closed?.result.status, 200);
-    assert.deepEqual(inspect().closed?.channelStates, {
-        body: "closed",
-        header: "closed",
-        html: "closed",
-    });
+    assert.equal(inspect().closed, null);
 });
 
 for (const selected of ["body", "html", "header"] as const) {
-    test(`READ #${selected}: hard Tavily authentication failure settles by the selected channel`, async () => {
+    test(`preparation with authored #${selected} persists independent Tavily channel outcomes`, async () => {
         process.env.TAVILY_API_KEY = "tvly-test";
         const projection = projectionCaps({
             async readable() { throw new Error("hard provider failure must not use the local floor"); },
@@ -1336,7 +1328,7 @@ for (const selected of ["body", "html", "header"] as const) {
                 status: 200,
                 headers: { "content-type": "text/html" },
             })) as typeof fetch, async () => {
-            const result = await new Http().read(
+            const result = await prepareRepresentation(new Http(),
                 readStmt(urlTarget(
                     "https://example.com/hard-provider",
                     "/hard-provider",
@@ -1345,21 +1337,12 @@ for (const selected of ["body", "html", "header"] as const) {
                 )),
                 ctx,
             );
-            if (selected === "body") {
-                assert.equal(result.status, 502);
-                assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/tavily-authentication-failed");
-            } else {
-                assert.equal(result.status, 102);
-            }
+            assert.equal(result.status, 200);
         });
-        assert.equal(inspect().chunks.some(({ channel }) => channel === "body"), false);
-        assert.equal(inspect().chunks.find(({ channel }) => channel === "html")?.chunk, "<html><body>Durable source</body></html>");
-        assert.equal(inspect().closed?.result.status, selected === "body" ? 502 : 200);
-        assert.deepEqual(inspect().closed?.channelStates, {
-            body: "errored",
-            header: "closed",
-            html: "closed",
-        });
+        assert.equal(inspect().wrote?.entry.channels.body?.state, "errored");
+        assert.equal(inspect().wrote?.entry.channels.body?.producerResult?.status, 502);
+        assert.equal(inspect().wrote?.entry.channels.html?.content, "<html><body>Durable source</body></html>");
+        assert.equal(inspect().closed, null);
     });
 }
 
@@ -1386,20 +1369,15 @@ test("READ: recoverable Tavily failure uses the local floor with explicit termin
             status: 200,
             headers: { "content-type": "text/html" },
         })) as typeof fetch, async () => {
-        const result = await new Http().read(
+        const result = await prepareRepresentation(new Http(),
             readStmt(urlTarget("https://example.com/recover", "/recover")),
             ctx,
         );
-        assert.equal(result.status, 102);
+        assert.equal(result.status, 200);
     });
-    assert.equal(inspect().chunks.find(({ channel }) => channel === "body")?.chunk, "local floor");
-    assert.equal(inspect().closed?.result.status, 203);
-    assert.deepEqual(inspect().closed?.channelStates, {
-        body: "closed",
-        header: "closed",
-        html: "closed",
-    });
-    const header = inspect().chunks.filter(({ channel }) => channel === "header").map(({ chunk }) => chunk).join("");
+    assert.equal(inspect().wrote?.entry.channels.body?.content, "local floor");
+    assert.equal(inspect().wrote?.entry.channels.body?.producerResult?.status, 203);
+    const header = inspect().wrote?.entry.channels.header?.content ?? "";
     assert.match(header, /^x-plurnk-tavily-reason: failed-result$/m);
 });
 
@@ -1416,7 +1394,7 @@ for (const selected of ["body", "html"] as const) {
                 usage: { credits: 1 },
             }), { status: 200, headers: { "content-type": "application/json" } });
         }) as typeof fetch, async () => {
-            const result = await new Http().read(
+            const result = await prepareRepresentation(new Http(),
                 readStmt(urlTarget(
                     "https://example.com/provider-only",
                     "/provider-only",
@@ -1425,19 +1403,12 @@ for (const selected of ["body", "html"] as const) {
                 )),
                 ctx,
             );
-            assert.equal(result.status, selected === "body" ? 102 : 502);
-            if (selected === "html") {
-                assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/http/html-unavailable");
-            }
+            assert.equal(result.status, 200);
         });
-        assert.equal(inspect().chunks.find(({ channel }) => channel === "body")?.chunk, "provider-only body");
-        assert.equal(inspect().chunks.some(({ channel }) => channel === "html"), false);
-        assert.equal(inspect().closed?.result.status, selected === "body" ? 200 : 502);
-        assert.deepEqual(inspect().closed?.channelStates, {
-            body: "closed",
-            header: "closed",
-            html: "errored",
-        });
+        assert.equal(inspect().wrote?.entry.channels.body?.content, "provider-only body");
+        assert.equal(inspect().wrote?.entry.channels.html?.state, "errored");
+        assert.equal(inspect().wrote?.entry.channels.html?.producerResult?.status, 502);
+        assert.equal(inspect().closed, null);
     });
 }
 
@@ -1445,27 +1416,20 @@ test("READ: an absent HTML projection returns 422 and retains its HTML evidence"
     const projection = projectionCaps({ async readable() { return null; } });
     const { ctx, inspect } = makeCtx(null, { projection });
     const html = "<html><body><div></div></body></html>";
-    let result: Awaited<ReturnType<Http["read"]>> | undefined;
+    let result: Awaited<ReturnType<typeof prepareRepresentation>> | undefined;
     await withFetch(
         mockFetch(200, "OK", [html], { "content-type": "text/html" }),
         async () => {
-            result = await new Http().read(
+            result = await prepareRepresentation(new Http(),
                 readStmt(urlTarget("https://example.com/empty", "/empty")),
                 ctx,
             );
         },
     );
-    assert.equal(result?.status, 422);
-    assert.equal(result?.problem?.type, "https://problems.plurnk.dev/scheme/http/no-readable-projection");
-    assert.equal(inspect().closed?.result.problem, result?.problem);
-    assert.equal(inspect().chunks.find(({ channel }) => channel === "html")?.chunk, html);
-    assert.match(inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "", /^HTTP 200 OK/m);
-    assert.equal(inspect().chunks.some(({ channel }) => channel === "body"), false);
-    assert.deepEqual(inspect().closed?.channelStates, {
-        body: "errored",
-        header: "closed",
-        html: "closed",
-    });
+    assert.equal(result?.status, 200);
+    assert.equal(inspect().wrote?.entry.channels.body?.producerResult?.status, 422);
+    assert.equal(inspect().wrote?.entry.channels.html?.content, html);
+    assert.match(inspect().wrote?.entry.channels.header?.content ?? "", /^HTTP 200 OK/m);
 });
 
 test("READ: a projection exception returns 500, retains evidence, and logs its cause", async (t) => {
@@ -1475,11 +1439,11 @@ test("READ: a projection exception returns 500, retains evidence, and logs its c
     const html = "<html><body>page</body></html>";
     const diagnostics: unknown[][] = [];
     t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
-    let result: Awaited<ReturnType<Http["read"]>> | undefined;
+    let result: Awaited<ReturnType<typeof prepareRepresentation>> | undefined;
     await withFetch(
         mockFetch(200, "OK", [html], { "content-type": "text/html" }),
         async () => {
-            result = await new Http().read(
+            result = await prepareRepresentation(new Http(),
                 readStmt(urlTarget("https://example.com/projection", "/projection")),
                 ctx,
             );
@@ -1487,15 +1451,8 @@ test("READ: a projection exception returns 500, retains evidence, and logs its c
     );
     assert.equal(result?.status, 500);
     assert.equal(result?.problem?.type, "https://problems.plurnk.dev/scheme/http/projection-failed");
-    assert.equal(inspect().closed?.result.problem, result?.problem);
-    assert.equal(inspect().chunks.find(({ channel }) => channel === "html")?.chunk, html);
-    assert.match(inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "", /^HTTP 200 OK/m);
-    assert.equal(inspect().chunks.some(({ channel }) => channel === "body"), false);
-    assert.deepEqual(inspect().closed?.channelStates, {
-        body: "errored",
-        header: "closed",
-        html: "closed",
-    });
+    assert.equal(inspect().wrote, null);
+    assert.equal(inspect().closed, null);
     assert.equal((diagnostics[0]?.[1] as { error?: Error })?.error?.cause, cause);
 });
 
@@ -1510,7 +1467,7 @@ test("SEND[200]: an HTML response streams body text as text/html", async () => {
 
 test("READ: non-url target → 400 with RFC 9457 Problem Details", async () => {
     const { ctx } = makeCtx();
-    const r = await new Http().read(readStmt(null), ctx);
+    const r = await prepareRepresentation(new Http(), readStmt(null), ctx);
     assert.equal(r.status, 400);
     assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/bad-target");
 });
@@ -1518,12 +1475,11 @@ test("READ: non-url target → 400 with RFC 9457 Problem Details", async () => {
 test("READ: empty response body closes done without body chunks", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(204, "No Content", []), async () => {
-        const r = await new Http().read(readStmt(urlTarget("http://example.com/x", "/x")), ctx);
-        assert.equal(r.status, 102);
+        const r = await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/x", "/x")), ctx);
+        assert.equal(r.status, 200);
     });
-    const { chunks, closed } = inspect();
-    assert.equal(chunks.filter((c) => c.channel === "body").length, 0);
-    assert.equal(closed?.result.status, 200);
+    assert.equal(inspect().wrote?.entry.channels.body?.content, "");
+    assert.equal(inspect().closed, null);
 });
 
 test("READ preserves an exact storage-read failure before acquisition", async () => {
@@ -1538,7 +1494,7 @@ test("READ preserves an exact storage-read failure before acquisition", async ()
     const { ctx, inspect } = makeCtx(null, { read: async () => failure });
     let fetched = false;
     await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
-        const result = await new Http().read(
+        const result = await prepareRepresentation(new Http(),
             readStmt(urlTarget("https://example.com/x", "/x")),
             ctx,
         );
@@ -1548,7 +1504,7 @@ test("READ preserves an exact storage-read failure before acquisition", async ()
     assert.equal(inspect().opened, null);
 });
 
-test("READ preserves an exact seed-write failure before acquisition", async () => {
+test("GET preserves an exact materialization-write failure", async () => {
     const failure = Results.failure(
         "scheme:test",
         "storage-read-only",
@@ -1560,25 +1516,27 @@ test("READ preserves an exact seed-write failure before acquisition", async () =
     const { ctx, inspect } = makeCtx(null, { write: async () => failure });
     let fetched = false;
     await withFetch(async () => { fetched = true; return new Response("wrong"); }, async () => {
-        const result = await new Http().read(
+        const result = await prepareRepresentation(new Http(),
             readStmt(urlTarget("https://example.com/x", "/x")),
             ctx,
         );
         assert.deepEqual(result, { ...failure, shape: "passthrough" });
     });
-    assert.equal(fetched, false);
+    assert.equal(fetched, true);
     assert.equal(inspect().opened, null);
 });
 
-test("READ: network failure → close error + 502", async () => {
+test("origin failure becomes durable body-channel producer evidence", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(async () => { throw new Error("ECONNREFUSED"); }, async () => {
-        const r = await new Http().read(readStmt(urlTarget("http://example.com/x", "/x")), ctx);
-        assert.equal(r.status, 502);
-        assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/fetch-failed");
+        const r = await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/x", "/x")), ctx);
+        assert.equal(r.status, 200);
     });
-    assert.equal(inspect().closed?.result.status, 502);
-    assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/http/fetch-failed");
+    assert.equal(inspect().wrote?.entry.channels.body?.producerResult?.status, 502);
+    assert.equal(
+        inspect().wrote?.entry.channels.body?.producerResult?.problem?.type,
+        "https://problems.plurnk.dev/scheme/http/fetch-failed",
+    );
 });
 
 test("READ: network failure bounds caught diagnostics in the exact Problem", async () => {
@@ -1587,9 +1545,12 @@ test("READ: network failure bounds caught diagnostics in the exact Problem", asy
     try {
         const { ctx, inspect } = makeCtx();
         await withFetch(async () => { throw new Error("ECONNREFUSED"); }, async () => {
-            const result = await new Http().read(readStmt(urlTarget("http://example.com/x", "/x")), ctx);
-            assert.equal(result.problem?.detail, "HTTP GET http://example.com/x failed: ECON...");
-            assert.deepEqual(inspect().closed?.result, result);
+            const result = await prepareRepresentation(new Http(), readStmt(urlTarget("http://example.com/x", "/x")), ctx);
+            assert.equal(result.status, 200);
+            assert.equal(
+                inspect().wrote?.entry.channels.body?.producerResult?.problem?.detail,
+                "HTTP GET http://example.com/x failed: ECON...",
+            );
         });
     } finally {
         if (prior === undefined) delete process.env.PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT;
@@ -1667,7 +1628,7 @@ test("READ: target {…} headers are threaded into the fetch", async () => {
     };
     const target = urlTarget("https://api.x/v1/me", "/v1/me", [["Authorization", "Bearer T"], ["Accept", "application/json"]]);
     await withFetch(probe as typeof fetch, async () => {
-        await new Http().read(readStmt(target), ctx);
+        await prepareRepresentation(new Http(), readStmt(target), ctx);
     });
     // The default web identity rides first when the model supplied no UA block.
     assert.deepEqual(seenHeaders, [["User-Agent", (seenHeaders as [string, string][])[0][1]], ["Authorization", "Bearer T"], ["Accept", "application/json"]]);
@@ -1685,11 +1646,11 @@ test("READ: headers reach direct fetch on an HTML GET (authed page requests auth
         seenAuth = new Headers(init?.headers).get("authorization") ?? "";
         return new Response("<html><body>authed</body></html>", { status: 200, headers: { "content-type": "text/html" } });
     }) as typeof fetch, async () => {
-        await new Http().read(readStmt(target), ctx);
+        await prepareRepresentation(new Http(), readStmt(target), ctx);
     });
     assert.equal(seenAuth, "Bearer T");
     assert.deepEqual(seenUrls, ["https://app.x/dash"], "explicit request metadata never authorizes Tavily");
-    const header = inspect().chunks.filter(({ channel }) => channel === "header").map(({ chunk }) => chunk).join("");
+    const header = inspect().storedEntry?.channels.header?.content ?? "";
     assert.match(header, /^x-plurnk-materializer-id: local-projection:v1:ineligible$/m);
 });
 
@@ -1741,7 +1702,7 @@ test("GitHub blob → raw.githubusercontent rewrite (code wants source, not the 
     };
     const blob = "https://github.com/nodejs/node/blob/main/src/node_version.h";
     await withFetch(probe as typeof fetch, async () => {
-        await new Http().read(readStmt(urlTarget(blob, "/nodejs/node/blob/main/src/node_version.h")), ctx);
+        await prepareRepresentation(new Http(), readStmt(urlTarget(blob, "/nodejs/node/blob/main/src/node_version.h")), ctx);
     });
     assert.equal(seenUrl, "https://raw.githubusercontent.com/nodejs/node/main/src/node_version.h");
     assert.equal(inspect().wrote?.pathname, "/github.com/nodejs/node/blob/main/src/node_version.h");
@@ -1753,7 +1714,7 @@ test("GitHub blob rewrite preserves a slash-bearing branch ref", async () => {
     const probe = async (url: string | URL | Request) => { seenUrl = String(url); return new Response("x", { status: 200 }); };
     const blob = "https://github.com/o/r/blob/feature/foo/src/x.js";
     await withFetch(probe as typeof fetch, async () => {
-        await new Http().read(readStmt(urlTarget(blob, "/o/r/blob/feature/foo/src/x.js")), ctx);
+        await prepareRepresentation(new Http(), readStmt(urlTarget(blob, "/o/r/blob/feature/foo/src/x.js")), ctx);
     });
     assert.equal(seenUrl, "https://raw.githubusercontent.com/o/r/feature/foo/src/x.js");
 });
@@ -1763,7 +1724,7 @@ test("non-GitHub URL is fetched verbatim (no rewrite)", async () => {
     let seenUrl = "";
     const probe = async (url: string | URL | Request) => { seenUrl = String(url); return new Response("ok", { status: 200 }); };
     await withFetch(probe as typeof fetch, async () => {
-        await new Http().read(readStmt(urlTarget("https://example.com/x", "/x")), ctx);
+        await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/x", "/x")), ctx);
     });
     assert.equal(seenUrl, "https://example.com/x");
 });
@@ -1838,13 +1799,13 @@ test("revalidation: a mutation response cannot satisfy a later GET", async () =>
         conditional = headers.has("if-none-match") || headers.has("if-modified-since");
         return new Response("get response", { status: 200, headers: { "content-type": "text/plain" } });
     }, async () => {
-        await new Http().read(readStmt(urlTarget("https://example.com/item", "/item")), ctx);
+        await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/item", "/item")), ctx);
     });
     assert.equal(conditional, false);
-    assert.equal(inspect().chunks.filter(({ channel }) => channel === "body").map(({ chunk }) => chunk).join(""), "get response");
+    assert.equal(inspect().storedEntry?.channels.body?.content, "get response");
 });
 
-test("prepareFind reacquires an exact URL whose stored response came from a mutation", async () => {
+test("exact FIND preparation reacquires an exact URL whose stored response came from a mutation", async () => {
     const header = [
         "HTTP 200 OK",
         "x-plurnk-request-method: DELETE",
@@ -1856,17 +1817,17 @@ test("prepareFind reacquires an exact URL whose stored response came from a muta
         fetched = true;
         return new Response("current representation", { status: 200, headers: { "content-type": "text/plain" } });
     }, async () => {
-        const result = await new Http().prepareFind(
+        const result = await prepareExactFind(new Http(),
             findStmt(urlTarget("https://example.com/item", "/item")),
             ctx,
         );
-        assert.equal(result.status, 201);
+        assert.equal(result.status, 200);
     });
     assert.equal(fetched, true);
     assert.equal(inspect().wrote?.entry.channels.body?.content, "current representation");
 });
 
-test("prepareFind reuses only a derived representation produced by the installed projection", async () => {
+test("exact FIND preparation reuses only a derived representation produced by the installed projection", async () => {
     for (const [storedIdentity, expectedFetch] of [["pdf-reader-v2", false], ["pdf-reader-v1", true]] as const) {
         const header = [
             "HTTP 200 OK",
@@ -1903,11 +1864,11 @@ test("prepareFind reuses only a derived representation produced by the installed
                 headers: { "content-type": "application/pdf" },
             });
         }, async () => {
-            const result = await new Http().prepareFind(
+            const result = await prepareExactFind(new Http(),
                 findStmt(urlTarget("https://example.com/paper.pdf", "/paper.pdf")),
                 ctx,
             );
-            assert.equal(result.status, expectedFetch ? 201 : 200);
+            assert.equal(result.status, 200);
         });
         assert.equal(fetched, expectedFetch);
         assert.equal(inspect().wrote?.entry.channels.body?.content, expectedFetch ? "current projection" : undefined);
@@ -1940,14 +1901,13 @@ test("stale Tavily HTML-page materialization performs full reacquisition without
         });
     };
     await withFetch(probe as typeof fetch, async () => {
-        const r = await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
-        assert.equal(r.status, 102);
+        const r = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/p", "/p")), ctx);
+        assert.equal(r.status, 200);
     });
     assert.equal(conditional, false);
-    const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
-    assert.equal(body, "fresh page");
-    assert.equal(inspect().chunks.find((c) => c.channel === "html")?.chunk, "<html>fresh page</html>");
-    const header = inspect().chunks.filter((c) => c.channel === "header").map(({ chunk }) => chunk).join("");
+    assert.equal(inspect().storedEntry?.channels.body?.content, "fresh page");
+    assert.equal(inspect().storedEntry?.channels.html?.content, "<html>fresh page</html>");
+    const header = inspect().storedEntry?.channels.header?.content ?? "";
     assert.match(header, /^x-plurnk-materializer-id: tavily-extract:v1:basic$/m);
     assert.match(header, /^x-plurnk-tavily-request-id: req-fresh$/m);
 });
@@ -1982,7 +1942,7 @@ test("TTL: enabling Tavily invalidates a locally materialized HTML body and its 
                 headers: { "content-type": "text/html", etag: '"current"' },
             });
         }) as typeof fetch, async () => {
-            await new Http().read(
+            await prepareRepresentation(new Http(),
                 readStmt(urlTarget("https://example.com/page", "/page")),
                 ctx,
             );
@@ -1990,7 +1950,7 @@ test("TTL: enabling Tavily invalidates a locally materialized HTML body and its 
     });
     assert.equal(originFetched, true);
     assert.equal(conditional, false, "old validators cannot certify a different materializer route");
-    assert.equal(inspect().chunks.find(({ channel }) => channel === "body")?.chunk, "# Current Tavily body");
+    assert.equal(inspect().storedEntry?.channels.body?.content, "# Current Tavily body");
 });
 
 for (const {
@@ -2111,11 +2071,11 @@ for (const {
                 }
                 return new Response(null, { status: 304, headers: responseHeaders });
             }, async () => {
-                const result = await new Http().read(
+                const result = await prepareRepresentation(new Http(),
                     readStmt(urlTarget("https://example.com/correspondence", "/correspondence")),
                     ctx,
                 );
-                assert.equal(result.status, valid ? 102 : 502);
+                assert.equal(result.status, valid ? 200 : 502);
                 if (!valid) {
                     assert.equal(
                         result.problem?.type,
@@ -2126,22 +2086,21 @@ for (const {
             });
         });
         assert.equal(requests, 1, "an invalid 304 never triggers an implicit retry");
-        const body = inspect().chunks
-            .filter(({ channel }) => channel === "body")
-            .map(({ chunk }) => chunk)
-            .join("");
-        assert.equal(body, valid ? "cached" : "");
+        if (valid) {
+            assert.equal(inspect().wrote?.entry.channels.body?.content, "cached");
+        } else {
+            assert.equal(inspect().wrote, null, "an invalid 304 cannot replace the stored representation");
+        }
     });
 }
 
 test("READ revalidation: 200 (changed) re-fetches + streams normally despite a prior entry", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("old", "text/plain", stampedHeader(500_000, '\netag: "v1"')));
     await withFetch(mockFetch(200, "OK", ["fresh content"], { "content-type": "text/plain" }), async () => {
-        await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
+        await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/p", "/p")), ctx);
     });
-    const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
-    assert.equal(body, "fresh content");
-    assert.match(inspect().closed?.summary ?? "", /HTTP 200; \d+ bytes/); // normal path, not revalidated
+    assert.equal(inspect().storedEntry?.channels.body?.content, "fresh content");
+    assert.equal(inspect().opened, null, "a finite replacement does not create a stream");
 });
 
 test("READ revalidation: no prior entry → no conditional headers, full fetch", async () => {
@@ -2153,7 +2112,7 @@ test("READ revalidation: no prior entry → no conditional headers, full fetch",
         return new Response("body", { status: 200, headers: { "content-type": "text/plain" } });
     };
     await withFetch(probe as typeof fetch, async () => {
-        await new Http().read(readStmt(urlTarget("https://example.com/x", "/x")), ctx);
+        await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/x", "/x")), ctx);
     });
     assert.equal(hadConditional, false);
 });
@@ -2192,13 +2151,13 @@ for (const { name, requestHeaders, responseHeaders, expectedValues } of [
     test(`cache variant: ${name} receives authoritative package evidence`, async () => {
         const { ctx, inspect } = makeCtx();
         await withFetch(async () => new Response("fresh", { status: 200, headers: responseHeaders }), async () => {
-            await new Http().read(readStmt(urlTarget(
+            await prepareRepresentation(new Http(), readStmt(urlTarget(
                 "https://example.com/variant",
                 "/variant",
                 requestHeaders,
             )), ctx);
         });
-        const header = inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "";
+        const header = inspect().storedEntry?.channels.header?.content ?? "";
         const values = [...header.matchAll(new RegExp(`^${CACHE_VARIANT_HEADER}:[ \\t]*(.+)$`, "gim"))]
             .map((match) => match[1].trim());
         assert.deepEqual(values, expectedValues);
@@ -2225,7 +2184,7 @@ test("cache variant: explicit request metadata bypasses a TTL-fresh default repr
             assert.equal(headers.get("authorization"), "Bearer private");
             return new Response("private representation", { status: 200, headers: { "content-type": "text/plain" } });
         }, async () => {
-            await new Http().read(readStmt(urlTarget(
+            await prepareRepresentation(new Http(), readStmt(urlTarget(
                 "https://example.com/account",
                 "/account",
                 [["Authorization", "Bearer private"]],
@@ -2234,10 +2193,7 @@ test("cache variant: explicit request metadata bypasses a TTL-fresh default repr
     });
     assert.equal(fetched, true);
     assert.equal(conditional, false, "validators from the default representation do not cross request metadata");
-    assert.equal(
-        inspect().chunks.filter(({ channel }) => channel === "body").map(({ chunk }) => chunk).join(""),
-        "private representation",
-    );
+    assert.equal(inspect().storedEntry?.channels.body?.content, "private representation");
 });
 
 test("cache variant: explicit request metadata also bypasses stale validators", async () => {
@@ -2253,7 +2209,7 @@ test("cache variant: explicit request metadata also bypasses stale validators", 
             conditional = headers.has("if-none-match") || headers.has("if-modified-since");
             return new Response("private representation", { status: 200, headers: { "content-type": "text/plain" } });
         }, async () => {
-            await new Http().read(readStmt(urlTarget(
+            await prepareRepresentation(new Http(), readStmt(urlTarget(
                 "https://example.com/account",
                 "/account",
                 [["Authorization", "Bearer private"]],
@@ -2278,15 +2234,12 @@ for (const [name, header] of [
                 conditional = headers.has("if-none-match") || headers.has("if-modified-since");
                 return new Response("current representation", { status: 200, headers: { "content-type": "text/plain" } });
             }, async () => {
-                await new Http().read(readStmt(urlTarget("https://example.com/variant", "/variant")), ctx);
+                await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/variant", "/variant")), ctx);
             });
         });
         assert.equal(fetched, true);
         assert.equal(conditional, false);
-        assert.equal(
-            inspect().chunks.filter(({ channel }) => channel === "body").map(({ chunk }) => chunk).join(""),
-            "current representation",
-        );
+        assert.equal(inspect().storedEntry?.channels.body?.content, "current representation");
     });
 }
 
@@ -2301,17 +2254,17 @@ test("cache variant: a 304 that introduces Vary retires default reuse", async ()
             status: 304,
             headers: { etag: '"v1"', vary: "Accept-Language" },
         }), async () => {
-            await new Http().read(readStmt(urlTarget("https://example.com/variant", "/variant")), ctx);
+            await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/variant", "/variant")), ctx);
         });
     });
-    const header = inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "";
+    const header = inspect().storedEntry?.channels.header?.content ?? "";
     assert.equal(
         [...header.matchAll(new RegExp(`^${CACHE_VARIANT_HEADER}:[ \\t]*(.+)$`, "gim"))].at(-1)?.[1].trim(),
         "bypass",
     );
 });
 
-test("prepareFind reacquires request metadata through WebFetcher instead of reusing another variant", async () => {
+test("exact FIND preparation reacquires request metadata through WebFetcher instead of reusing another variant", async () => {
     const { ctx, inspect } = makeCtx(priorEntry(
         "public",
         "text/plain",
@@ -2324,12 +2277,12 @@ test("prepareFind reacquires request metadata through WebFetcher instead of reus
         authorization = new Headers(init?.headers).get("authorization") ?? "";
         return new Response("private", { status: 200, headers: { "content-type": "text/plain" } });
     }, async () => {
-        const result = await new Http().prepareFind(findStmt(urlTarget(
+        const result = await prepareExactFind(new Http(), findStmt(urlTarget(
             "https://example.com/account",
             "/account",
             [["Authorization", "Bearer private"]],
         )), ctx);
-        assert.equal(result.status, 201);
+        assert.equal(result.status, 200);
     });
     assert.equal(authorization, "Bearer private");
     assert.equal(inspect().wrote?.entry.channels.body?.content, "private");
@@ -2337,7 +2290,7 @@ test("prepareFind reacquires request metadata through WebFetcher instead of reus
 });
 
 for (const state of ["active", "errored"] as const) {
-    test(`prepareFind cannot reuse a ${state} default representation`, async () => {
+    test(`exact FIND preparation cannot reuse a ${state} default representation`, async () => {
         const { ctx, inspect } = makeCtx(priorEntry(
             "partial",
             "text/plain",
@@ -2349,10 +2302,10 @@ for (const state of ["active", "errored"] as const) {
             status: 200,
             headers: { "content-type": "text/plain" },
         }), async () => {
-            assert.equal((await new Http().prepareFind(
+            assert.equal((await prepareExactFind(new Http(),
                 findStmt(urlTarget(`https://example.com/${state}`, `/${state}`)),
                 ctx,
-            )).status, 201);
+            )).status, 200);
         });
         assert.equal(inspect().wrote?.entry.channels.body?.content, "complete");
     });
@@ -2363,14 +2316,14 @@ test("TTL: fresh stamp serves the stored copy with ZERO round-trips", async () =
     let fetched = false;
     await withTtl("60000", async () => {
         await withFetch((async () => { fetched = true; throw new Error("must not fetch"); }) as unknown as typeof fetch, async () => {
-            const r = await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
-            assert.equal(r.status, 102);
+            const r = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/p", "/p")), ctx);
+            assert.equal(r.status, 200);
         });
     });
-    assert.equal(fetched, false); // no network at all — the pre-fetch phase served
-    const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
-    assert.equal(body, "cached page");
-    assert.match(inspect().closed?.summary ?? "", /ttl-fresh/);
+    assert.equal(fetched, false);
+    assert.equal(inspect().wrote, null);
+    assert.equal(inspect().opened, null);
+    assert.equal(inspect().storedEntry?.channels.body?.content, "cached page");
 });
 
 test("cache policy: no-store evidence supplies neither TTL content nor validators", async () => {
@@ -2389,17 +2342,14 @@ test("cache policy: no-store evidence supplies neither TTL content nor validator
                 headers: { "content-type": "text/plain" },
             });
         }, async () => {
-            await new Http().read(
+            await prepareRepresentation(new Http(),
                 readStmt(urlTarget("https://example.com/no-store", "/no-store")),
                 ctx,
             );
         });
     });
     assert.equal(conditional, false);
-    assert.equal(
-        inspect().chunks.filter(({ channel }) => channel === "body").map(({ chunk }) => chunk).join(""),
-        "current response",
-    );
+    assert.equal(inspect().storedEntry?.channels.body?.content, "current response");
 });
 
 for (const { name, ageMs, ttl, cacheHeaders, expectedFetch } of [
@@ -2482,7 +2432,7 @@ for (const { name, ageMs, ttl, cacheHeaders, expectedFetch } of [
                     headers: { "content-type": "text/plain" },
                 });
             }, async () => {
-                await new Http().read(
+                await prepareRepresentation(new Http(),
                     readStmt(urlTarget("https://example.com/policy", "/policy")),
                     ctx,
                 );
@@ -2510,7 +2460,7 @@ test("cache policy: an expired Expires field bounds the operator heuristic", asy
             conditional = new Headers(init?.headers).has("if-none-match");
             return new Response("fresh", { headers: { "content-type": "text/plain" } });
         }, async () => {
-            await new Http().read(
+            await prepareRepresentation(new Http(),
                 readStmt(urlTarget("https://example.com/expires", "/expires")),
                 ctx,
             );
@@ -2525,7 +2475,7 @@ for (const { name, cacheHeaders, expectedFetch } of [
     { name: "no-store", cacheHeaders: "cache-control: no-store", expectedFetch: true },
     { name: "expired max-age", cacheHeaders: "cache-control: max-age=0", expectedFetch: true },
 ] as const) {
-    test(`prepareFind cache policy: ${name}`, async () => {
+    test(`exact FIND preparation cache policy: ${name}`, async () => {
         const { ctx } = makeCtx(priorEntry(
             "stored",
             "text/plain",
@@ -2542,18 +2492,18 @@ for (const { name, cacheHeaders, expectedFetch } of [
                     headers: { "content-type": "text/plain" },
                 });
             }, async () => {
-                const result = await new Http().prepareFind(
+                const result = await prepareExactFind(new Http(),
                     findStmt(urlTarget("https://example.com/find-policy", "/find-policy")),
                     ctx,
                 );
-                assert.equal(result.status, expectedFetch ? 201 : 200);
+                assert.equal(result.status, 200);
             });
         });
         assert.equal(fetched, expectedFetch);
     });
 }
 
-test("prepareFind cache policy: an unset operator ceiling fails at configuration", async () => {
+test("exact FIND preparation cache policy: an unset operator ceiling fails at configuration", async () => {
     const { ctx } = makeCtx(priorEntry(
         "stored",
         "text/plain",
@@ -2563,7 +2513,7 @@ test("prepareFind cache policy: an unset operator ceiling fails at configuration
     ));
     await withTtl(undefined, async () => {
         await assert.rejects(
-            new Http().prepareFind(
+            prepareExactFind(new Http(),
                 findStmt(urlTarget("https://example.com/find-policy", "/find-policy")),
                 ctx,
             ),
@@ -2611,14 +2561,14 @@ test("304 merges freshness metadata without relabeling a processed representatio
                 },
             });
         }, async () => {
-            await new Http().read(
+            await prepareRepresentation(new Http(),
                 readStmt(urlTarget("https://example.com/paper.pdf", "/paper.pdf")),
                 ctx,
             );
         });
     });
     assert.equal(conditional, true, "no-cache forces successful origin validation");
-    const served = inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "";
+    const served = inspect().storedEntry?.channels.header?.content ?? "";
     assert.match(served, /^cache-control: max-age=60$/m);
     assert.match(served, /^x-origin-version: 2$/m);
     assert.doesNotMatch(served, /^x-origin-version: 1$/m);
@@ -2638,7 +2588,7 @@ test("304 merges freshness metadata without relabeling a processed representatio
             fetchedAgain = true;
             return new Response("unexpected");
         }, async () => {
-            await new Http().read(
+            await prepareRepresentation(new Http(),
                 readStmt(urlTarget("https://example.com/paper.pdf", "/paper.pdf")),
                 refreshedCtx,
             );
@@ -2655,13 +2605,13 @@ test("304 no-store retires the restored body and its validators from the next re
             status: 304,
             headers: { "cache-control": "no-store", etag: '"v1"' },
         }), async () => {
-            await new Http().read(
+            await prepareRepresentation(new Http(),
                 readStmt(urlTarget("https://example.com/retired", "/retired")),
                 ctx,
             );
         });
     });
-    const refreshedHeader = inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "";
+    const refreshedHeader = inspect().storedEntry?.channels.header?.content ?? "";
     assert.match(refreshedHeader, /^cache-control: no-store$/m);
 
     const { ctx: nextCtx } = makeCtx(priorEntry("cached", "text/plain", refreshedHeader));
@@ -2672,7 +2622,7 @@ test("304 no-store retires the restored body and its validators from the next re
             conditional = headers.has("if-none-match") || headers.has("if-modified-since");
             return new Response("new body", { headers: { "content-type": "text/plain" } });
         }, async () => {
-            await new Http().read(
+            await prepareRepresentation(new Http(),
                 readStmt(urlTarget("https://example.com/retired", "/retired")),
                 nextCtx,
             );
@@ -2717,21 +2667,18 @@ test("TTL: a changed projection identity invalidates derived content and its ori
             });
         }, async () => {
             assert.equal(
-                (await new Http().read(
+                (await prepareRepresentation(new Http(),
                     readStmt(urlTarget("https://example.com/paper.pdf", "/paper.pdf")),
                     ctx,
                 )).status,
-                102,
+                200,
             );
         });
     });
 
     assert.equal(fetched, true);
     assert.equal(conditional, false, "a validator cannot certify output from a different projection");
-    assert.equal(
-        inspect().chunks.filter(({ channel }) => channel === "body").map(({ chunk }) => chunk).join(""),
-        "new projection",
-    );
+    assert.equal(inspect().storedEntry?.channels.body?.content, "new projection");
 });
 
 test("TTL: an exact static WebFetcher materialization is reusable", async () => {
@@ -2745,11 +2692,12 @@ test("TTL: an exact static WebFetcher materialization is reusable", async () => 
     let fetched = false;
     await withTtl("60000", async () => {
         await withFetch((async () => { fetched = true; throw new Error("must not fetch"); }) as unknown as typeof fetch, async () => {
-            await new Http().read(readStmt(urlTarget("https://example.com/materialized", "/materialized")), ctx);
+            await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/materialized", "/materialized")), ctx);
         });
     });
     assert.equal(fetched, false);
-    assert.equal(inspect().chunks.find(({ channel }) => channel === "body")?.chunk, "materialized");
+    assert.equal(inspect().wrote, null);
+    assert.equal(inspect().storedEntry?.channels.body?.content, "materialized");
 });
 
 test("TTL: a completed empty GET is a reusable representation", async () => {
@@ -2757,13 +2705,13 @@ test("TTL: a completed empty GET is a reusable representation", async () => {
     let fetched = false;
     await withTtl("60000", async () => {
         await withFetch((async () => { fetched = true; throw new Error("must not fetch"); }) as unknown as typeof fetch, async () => {
-            assert.equal(await new Http().read(readStmt(urlTarget("https://example.com/empty", "/empty")), ctx).then((r) => r.status), 102);
+            assert.equal(await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/empty", "/empty")), ctx).then((r) => r.status), 200);
         });
     });
     assert.equal(fetched, false);
-    assert.equal(inspect().chunks.filter(({ channel }) => channel === "body").length, 1);
-    assert.equal(inspect().chunks.find(({ channel }) => channel === "body")?.chunk, "");
-    assert.match(inspect().closed?.summary ?? "", /ttl-fresh; 0 chars/);
+    assert.equal(inspect().wrote, null);
+    assert.equal(inspect().opened, null);
+    assert.equal(inspect().storedEntry?.channels.body?.content, "");
 });
 
 for (const state of ["active", "errored"] as const) {
@@ -2778,7 +2726,7 @@ for (const state of ["active", "errored"] as const) {
                 conditional = new Headers(init?.headers).has("if-none-match");
                 return new Response("complete", { status: 200, headers: { "content-type": "text/plain" } });
             }, async () => {
-                await new Http().read(readStmt(urlTarget(`https://example.com/${state}`, `/${state}`)), ctx);
+                await prepareRepresentation(new Http(), readStmt(urlTarget(`https://example.com/${state}`, `/${state}`)), ctx);
             });
         });
         assert.equal(fetched, true);
@@ -2795,7 +2743,7 @@ test("TTL: stale stamp falls through to the conditional GET (revalidates)", asyn
     };
     await withTtl("60000", async () => {
         await withFetch(probe as typeof fetch, async () => {
-            await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
+            await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/p", "/p")), ctx);
         });
     });
     assert.equal(seenINM, "\"v1\""); // past the window → the 304 phase owns freshness
@@ -2814,12 +2762,12 @@ test("READ revalidation: 304 restores a completed empty representation", async (
                 headers: { etag: '"empty"' },
             });
         }) as typeof fetch, async () => {
-            await new Http().read(readStmt(urlTarget("https://example.com/empty", "/empty")), ctx);
+            await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/empty", "/empty")), ctx);
         });
     });
     assert.equal(seenINM, '"empty"');
-    assert.equal(inspect().chunks.find(({ channel }) => channel === "body")?.chunk, "");
-    assert.match(inspect().closed?.summary ?? "", /revalidated 304; 0 chars/);
+    assert.equal(inspect().wrote?.entry.channels.body?.content, "");
+    assert.equal(inspect().opened, null);
 });
 
 test("TTL: package-appended metadata wins over a same-named origin header", async () => {
@@ -2839,14 +2787,14 @@ test("TTL: package-appended metadata wins over a same-named origin header", asyn
             fetched = true;
             return new Response("fresh", { status: 200, headers: { "content-type": "text/plain" } });
         }, async () => {
-            await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
+            await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/p", "/p")), ctx);
         });
     });
     assert.equal(fetched, true);
 });
 
-test("TTL: an unmarked authored entry never supplies GET freshness or validators", async () => {
-    const { ctx } = makeCtx(priorEntry(
+test("TTL: an unmarked authored entry remains outside HTTP acquisition", async () => {
+    const { ctx, inspect } = makeCtx(priorEntry(
         "materialized",
         "text/html",
         "HTTP 200 OK\netag: \"m1\"",
@@ -2862,11 +2810,13 @@ test("TTL: an unmarked authored entry never supplies GET freshness or validators
     };
     await withTtl("60000", async () => {
         await withFetch(probe as typeof fetch, async () => {
-            await new Http().read(readStmt(urlTarget("https://example.com/m", "/m")), ctx);
+            await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/m", "/m")), ctx);
         });
     });
-    assert.equal(fetched, true);
+    assert.equal(fetched, false);
     assert.equal(conditional, false);
+    assert.equal(inspect().wrote, null);
+    assert.equal(inspect().storedEntry?.channels.body?.content, "materialized");
 });
 
 test("TTL: explicit 0 disables the window — fresh stamp still revalidates", async () => {
@@ -2878,7 +2828,7 @@ test("TTL: explicit 0 disables the window — fresh stamp still revalidates", as
     };
     await withTtl("0", async () => {
         await withFetch(probe as typeof fetch, async () => {
-            await new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx);
+            await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/p", "/p")), ctx);
         });
     });
     assert.equal(fetched, true);
@@ -2888,7 +2838,7 @@ test("TTL: unset crashes naming the var (floor-set knob, no silent default)", as
     const { ctx } = makeCtx(priorEntry("cached", "text/plain", stampedHeader(1000)));
     await withTtl(undefined, async () => {
         await assert.rejects(
-            new Http().read(readStmt(urlTarget("https://example.com/p", "/p")), ctx),
+            prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/p", "/p")), ctx),
             /PLURNK_SCHEMES_HTTP_TTL_MS is unset/,
         );
     });
@@ -2897,9 +2847,9 @@ test("TTL: unset crashes naming the var (floor-set knob, no silent default)", as
 test("stamp: #writeHeader materializes x-plurnk-fetched-at; 304 re-serve refreshes it", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["x"], { "content-type": "text/plain" }), async () => {
-        await new Http().read(readStmt(urlTarget("https://example.com/s", "/s")), ctx);
+        await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/s", "/s")), ctx);
     });
-    const header = inspect().chunks.find((c) => c.channel === "header")?.chunk ?? "";
+    const header = inspect().storedEntry?.channels.header?.content ?? "";
     assert.match(header, /^x-plurnk-fetched-at: \d{4}-/m); // stamped at materialization
 
     const old = stampedHeader(500_000, "\netag: \"v1\"");
@@ -2909,10 +2859,10 @@ test("stamp: #writeHeader materializes x-plurnk-fetched-at; 304 re-serve refresh
             status: 304,
             headers: { etag: '"v1"' },
         })) as unknown as typeof fetch, async () => {
-            await new Http().read(readStmt(urlTarget("https://example.com/s", "/s")), ctx2);
+            await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/s", "/s")), ctx2);
         });
     });
-    const served = inspect2().chunks.find((c) => c.channel === "header")?.chunk ?? "";
+    const served = inspect2().storedEntry?.channels.header?.content ?? "";
     const oldMs = Date.parse(/x-plurnk-fetched-at: (.+)$/m.exec(old)![1]);
     const newMs = Date.parse(/x-plurnk-fetched-at: (.+)$/m.exec(served)![1]);
     assert.ok(newMs > oldMs, "origin vouched (304) → stamp refreshed");
@@ -2927,9 +2877,9 @@ test("GET appends authoritative request-method metadata after origin headers", a
             "x-plurnk-request-method": "POST",
         },
     }), async () => {
-        await new Http().read(readStmt(urlTarget("https://example.com/method", "/method")), ctx);
+        await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/method", "/method")), ctx);
     });
-    const header = inspect().chunks.find(({ channel }) => channel === "header")?.chunk ?? "";
+    const header = inspect().storedEntry?.channels.header?.content ?? "";
     assert.deepEqual(
         [...header.matchAll(/^x-plurnk-request-method:[ \t]*(.+)$/gim)].map((match) => match[1].trim()),
         ["POST", "GET"],
@@ -2945,7 +2895,7 @@ test("byte path sends the default web UA, not Node's automated-client default", 
         return new Response("x", { status: 200, headers: { "content-type": "text/plain" } });
     };
     await withFetch(probe as typeof fetch, async () => {
-        await new Http().read(readStmt(urlTarget("https://api.example.com/d.json", "/d.json")), ctx);
+        await prepareRepresentation(new Http(), readStmt(urlTarget("https://api.example.com/d.json", "/d.json")), ctx);
     });
     assert.match(ua, /Mozilla.*Chrome/);
 });
@@ -2959,31 +2909,9 @@ test("a model-supplied User-Agent target block overrides the default identity", 
     };
     const target = urlTarget("https://api.example.com/x", "/x", [["User-Agent", "curl/8"]]);
     await withFetch(probe as typeof fetch, async () => {
-        await new Http().read(readStmt(target), ctx);
+        await prepareRepresentation(new Http(), readStmt(target), ctx);
     });
     assert.equal(ua, "curl/8");
 });
 
 // ── cancellation ──────────────────────────────────────────────────────────
-test("force-cancel via the SubscriptionHandle aborts the fetch -> 499", async () => {
-    const { ctx, inspect, forceCancel } = makeCtx();
-    // A fetch that rejects when its signal aborts; we trip it via the handle.
-    const hangThenAbort = async (_url: string | URL | Request, init?: RequestInit) => {
-        const signal = init?.signal;
-        return await new Promise<Response>((_resolve, reject) => {
-            signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
-            // trip the cancel on next tick
-            queueMicrotask(() => forceCancel());
-        });
-    };
-    await withFetch(hangThenAbort as typeof fetch, async () => {
-        const r = await new Http().read(readStmt(urlTarget("http://example.com/x", "/x")), ctx);
-        assert.equal(r.status, 499);
-        assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/cancelled");
-        assert.equal(r.problem?.stage, "acquisition");
-        assert.equal(r.problem?.retryable, false);
-    });
-    assert.equal(inspect().closed?.result.status, 499);
-    assert.equal(inspect().closed?.result.problem?.type, "https://problems.plurnk.dev/scheme/http/cancelled");
-    assert.equal(inspect().closed?.summary, "HTTP GET http://example.com/x was cancelled.");
-});

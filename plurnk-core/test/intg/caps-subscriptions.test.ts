@@ -29,7 +29,7 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         });
         const entries = new DbEntryCaps(ctx, "exec", schemeManifest("exec", { stdout: "text/plain", stderr: "text/plain" }, "stdout"));
         const liveSubscriptions = new LiveSubscriptions();
-        const subs = new DbSubscriptionCaps(ctx, "exec", liveSubscriptions);
+        const subs = new DbSubscriptionCaps(ctx, "exec", liveSubscriptions, "stdout");
 
         const seeded = await entries.write("/run", { channels: {
             stdout: { content: "", mimetype: "text/plain", state: "active" },
@@ -39,7 +39,7 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
 
         // open → a live (un-aborted) signal
         let cancelCalls = 0;
-        const signal = await subs.open("/run", { cancel: () => { cancelCalls += 1; } }, { publishedChannel: "stdout" });
+        const signal = await subs.open("/run", { cancel: () => { cancelCalls += 1; } });
         assert.equal(signal.aborted, false);
         const subscription = await db.find_active_subscription.get<{ id: number }>({ worker_id: workerId, entry_id: entryId });
         const publication = await db.test_subscription_published_channel.get<{ published_channel: string | null }>({ id: subscription?.id });

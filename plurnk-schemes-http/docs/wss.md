@@ -35,7 +35,7 @@ identity; `messages` is the only current channel.
 | -------------------------- | ----------------------------------------------------------------------- |
 | Inbound payload            | String event data only; no coercion or binary projection                |
 | Inbound order              | Native event order; one durable write completes before the next begins  |
-| Binary inbound payload     | Keep the text prefix, prune the suffix, settle `415`, and close `1003`   |
+| Binary inbound payload     | Keep the text prefix, prune the suffix, settle `415`, and close with private-use code `4003` |
 | Persistence failure        | Keep the successful prefix; prune queued and later frames; settle `500` |
 | Reconnection               | None; READ again after terminal cleanup                                 |
 | Handshake headers          | Target header metadata is not applied                                   |

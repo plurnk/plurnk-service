@@ -1,10 +1,10 @@
 import {
     Results,
     type EntryData,
-    type EntryReadResult,
     type EntryFindResult,
     type FindStatement,
-    type ReadStatement,
+    type RepresentationPreparationRequest,
+    type RepresentationPreparationResult,
     type SchemeCtx,
 } from "@plurnk/plurnk-schemes";
 import type { ReadResourceResult } from "@modelcontextprotocol/client";
@@ -21,28 +21,24 @@ class ResourceAddressError extends Error {}
 const resourcePath = (uri: string): string =>
     `${RESOURCE_PREFIX}${encodeURIComponent(uri)}`;
 
-const readFailure = (
+const preparationFailure = (
     server: string,
     code: string,
     status: number,
     detail: string,
     extensions: Readonly<Record<string, unknown>>,
-): EntryReadResult => Results.failure(
+): RepresentationPreparationResult => Results.failure(
     "scheme:mcp",
     code,
     status,
     detail,
-    {
-        content: null,
-        mimetype: null,
-        channel: null,
-    },
+    {},
     {
         server,
         stage: "mcp-resource",
         ...extensions,
     },
-) as EntryReadResult;
+) as RepresentationPreparationResult;
 
 const findFailure = (
     server: string,
@@ -175,10 +171,11 @@ export default class McpResources {
         });
     }
 
-    async read(statement: ReadStatement, ctx: SchemeCtx): Promise<EntryReadResult> {
-        const pathname = statement.target?.kind === "url"
-            ? statement.target.pathname ?? ROOT
-            : ROOT;
+    async prepareRepresentation(
+        request: RepresentationPreparationRequest,
+        ctx: SchemeCtx,
+    ): Promise<RepresentationPreparationResult> {
+        const pathname = request.pathname;
         try {
             const exactResource = pathname.startsWith(RESOURCE_PREFIX)
                 && !/[*?[\]{}]/.test(pathname);
@@ -187,10 +184,10 @@ export default class McpResources {
             } else {
                 await this.#materializeCatalog(ctx);
             }
-            return await ctx.entries.operations.read(statement);
+            return { status: 200 };
         } catch (error) {
             const invalidAddress = error instanceof ResourceAddressError;
-            return readFailure(
+            return preparationFailure(
                 this.#server,
                 invalidAddress ? "resource-address-invalid" : "resource-read-failed",
                 invalidAddress ? 400 : 502,

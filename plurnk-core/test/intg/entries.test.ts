@@ -231,6 +231,40 @@ test("entry_channels: state enum CHECK", async () => {
     } finally { await db.close(); }
 });
 
+test("entry_channels: producer result is an exact terminal operation result", async () => {
+    const db = await openMigrated();
+    try {
+        const entryId = await insertEntry(db, "prepared", "/item");
+        const producerResult = JSON.stringify({ status: 203, producer: "specimen" });
+        await db.test_entry_channels_insert_with_producer_result.run({
+            entry_id: entryId,
+            name: "body",
+            content: "projected",
+            mimetype: "text/plain",
+            producer_result: producerResult,
+        });
+        const row = await db.test_entry_channels_get_first.get<{ producer_result: string | null }>({ entry_id: entryId });
+        assert.equal(row?.producer_result, producerResult);
+
+        for (const invalid of [
+            JSON.stringify({ status: 102 }),
+            JSON.stringify({ status: 202 }),
+            JSON.stringify({ status: 502 }),
+        ]) {
+            await assert.rejects(
+                db.test_entry_channels_insert_with_producer_result.run({
+                    entry_id: entryId,
+                    name: `invalid-${JSON.parse(invalid).status}`,
+                    content: "",
+                    mimetype: "text/plain",
+                    producer_result: invalid,
+                }),
+                /entry_channel_producer_result_contract/,
+            );
+        }
+    } finally { await db.close(); }
+});
+
 test("entry_channels: NOT NULL on name, content, mimetype", async () => {
     const db = await openMigrated();
     try {

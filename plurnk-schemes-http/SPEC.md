@@ -36,19 +36,19 @@ pathnames, `%28` and `%29` canonicalize to literal parentheses.
 
 ## §op-surface §2 HTTP operation surface
 
-| Operation                         | Remote action                         | Contract                                                                                   |
-| --------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Unscoped `READ(url)`              | GET unless a fresh GET copy is usable | Seed, subscribe, materialize every channel, publish the selected channel, and return `102` |
-| Scoped `READ(url)<scope>`         | None                                  | Delegate selected-channel presence and scope projection to universal READ; never acquire   |
-| Exact `FIND(url)`                 | GET only when acquisition is required | Prepare an exact entry, then use universal query, matcher, weighting, and pagination       |
-| `FIND(pattern-url)`               | None                                  | Query already-materialized web entries; a path pattern does not discover the remote web    |
-| `SEND[200](url):body:`            | POST                                  | Stream and persist the response under the addressed URL                                    |
-| `EDIT(url):body:`                 | PUT                                   | Replace the whole remote resource; a line marker is invalid                                |
-| `KILL(url)`                       | DELETE                                | Delete the remote resource and stream its response                                         |
-| `SEND[410](url)`                  | None                                  | Delete the local stored entry                                                              |
-| `SEND[499](url)`                  | Cancellation is engine-routed         | The routed subscription handle aborts acquisition; scheme dispatch itself is a `200` no-op |
+| Operation                         | Remote action                         | Contract                                                                                |
+| --------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------- |
+| Exact `READ(url)<scope?>`         | GET unless a fresh GET copy is usable | Prepare one complete canonical representation, then let core select and project it      |
+| Exact `FIND(url)`                 | GET only when acquisition is required | Use the same preparation, then universal query, matcher, weighting, and pagination      |
+| `FIND(pattern-url)`               | None                                  | Query already-materialized web entries; a path pattern does not discover the remote web |
+| `SEND[200](url):body:`            | POST                                  | Stream and persist the response under the addressed URL                                 |
+| `EDIT(url):body:`                 | PUT                                   | Replace the whole remote resource; a line marker is invalid                             |
+| `KILL(url)`                       | DELETE                                | Delete the remote resource and stream its response                                      |
+| `SEND[410](url)`                  | None                                  | Delete the local stored entry                                                           |
+| `SEND[499](url)`                  | Cancellation is engine-routed         | The routed subscription handle aborts the live owner; scheme dispatch is a `200` no-op  |
 
-Every direct network method uses the same streaming path. Request
+Finite GET uses scope-blind representation preparation; POST, PUT, DELETE,
+and genuinely live GET responses retain the subscription path. Request
 headers are ordered target metadata: one trailing `{Key: value}` block per
 header. The loop `SEND[code]` is never the remote HTTP status; remote status and
 headers are persisted in `header`.
@@ -60,7 +60,9 @@ path-pattern grammar.
 
 ```mermaid
 flowchart TD
-    get["GET acquisition"] --> origin{"Origin outcome"}
+    get["GET acquisition"] --> live{"text/event-stream?"}
+    live -->|yes| subscription["Seed canonical channels<br/>retain subscription; return 102"]
+    live -->|no| origin{"Finite origin outcome"}
     origin -->|text/markdown| markdown["Use origin Markdown as body<br/>and request an HTML variant"]
     origin -->|server HTML| source["Retain exact server HTML"]
     origin -->|transport unavailable<br/>after public admission| noSource["No HTML source"]
@@ -73,49 +75,45 @@ flowchart TD
     tavily -->|hard failure or<br/>no recovery source| bodyError["Body errored"]
     local -->|present, including empty| localBody["Local body"]
     local -->|absent or no source| bodyError
-    markdown --> settle["Persist each available channel<br/>and its independent terminal state"]
+    markdown --> settle["Write complete canonical channels<br/>and durable producer results"]
     providerBody --> settle
     recovery --> settle
     localBody --> settle
     bodyError --> settle
-    settle --> selected{"Selected channel"}
-    selected -->|successful| streamed["Publish; operation 102"]
-    selected -->|errored| problem["Return that channel's Problem"]
+    settle --> core["Core selects channel<br/>and projects authored text scope"]
 ```
 
-The same page producer serves direct GET, exact FIND preparation, and executor
-entry acquisition. Their outer policies differ: direct GET accepts explicit
+The same page producer serves exact GET preparation, exact FIND, and executor
+entry acquisition. Their outer policies differ: authored GET accepts explicit
 targets and HTTP error responses; automatic acquisition first admits a public
-credential-free target and treats non-2xx responses as unavailable. A scoped
-READ never enters the producer. It delegates the already-stored selected
-channel and scope to universal READ.
+credential-free target and treats non-2xx responses as unavailable. READ scope
+and channel selection never enter the producer. Freshness may avoid transport,
+but cold and warm representations pass through the same core projection.
 
-| Consumer / response                          | `body`                                                        | Auxiliary materialization                                 | Completion                                             |
-| -------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------ |
-| GET + negotiated origin Markdown             | Exact origin Markdown                                         | Independently acquired server source in `html` when found | Selected-channel settlement                            |
-| GET + HTML-page production                   | Tavily Markdown, local Markdown, or an independent error      | Exact server source in `html` when origin supplied it     | Selected-channel settlement                            |
-| Direct GET + `text/event-stream`             | One `data` value plus newline per `text/plain` chunk          | Initial response in `header`                              | `102` after header; origin close settles               |
-| Direct request + no response body            | Empty seed                                                    | Response and package metadata in `header`                 | Subscription closes; op is `102`                       |
-| Direct request + configured textual type     | Incremental UTF-8 text under the declared type                | Response and package metadata in `header`                 | Response-body end closes the stream                    |
-| Direct request + readable binary type        | Derived Unicode under the projection output type             | Origin type and projection identity in `header`           | `102`; bytes are never durable                         |
-| Direct request + unreadable binary/unknown   | Empty marker; declared type or `application/octet-stream`     | Response and package metadata in `header`                 | `415 binary-response-unsupported`                      |
-| Direct binary input exceeds configured bound | Empty marker under the source type                            | Limit evidence in the terminal Problem                    | `413 projection-input-limit`                           |
-| Exact WebFetcher + configured text           | Complete UTF-8 response                                       | Response evidence in `header`                             | Materialize, then universal query                      |
-| Exact WebFetcher + readable binary           | Derived Unicode under the projection output type             | Origin type and projection identity in `header`           | Materialize; absent projection is `422`                |
+| Response                                | `body`                                                   | Auxiliary materialization                                 | Completion                                  |
+| --------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------- |
+| Negotiated origin Markdown              | Exact origin Markdown                                    | Independently acquired server source in `html` when found | Static representation, then core projection |
+| HTML-page production                    | Tavily Markdown, local Markdown, or independent error    | Exact server source in `html` when origin supplied it     | Static representation, then core projection |
+| `text/event-stream`                     | One `data` value plus newline per `text/plain` chunk     | Initial response in `header`                              | `102`; origin close settles subscription    |
+| No response body                        | Present empty text                                       | Response and package metadata in `header`                 | Static representation; body READ is `204`   |
+| Origin HTTP `4xx`/`5xx`                 | Preserve available origin or independently produced text | Exact response evidence; origin-backed channels errored   | Selected channel's durable outcome          |
+| Configured textual type                 | Complete Fetch-decoded Unicode                           | Response and package metadata in `header`                 | Static representation                       |
+| Readable binary type                    | Derived Unicode under the projection output type        | Origin type and projection identity in `header`           | Static representation; bytes never durable  |
+| Unreadable binary or unknown bytes      | No representation is fabricated                         | Exact non-retryable Problem                               | `415 binary-response-unsupported`           |
+| Binary input exceeds configured bound   | No representation is fabricated                         | Exact size evidence in the Problem                        | `413 projection-input-limit`                |
 
-A fragmentless direct operation publishes only `body`. An explicit fragment
-publishes that named channel. Every acquired channel remains durable even when
-it is not published to the requesting loop. Broad FIND returns standard
-resource metadata; exact matcher FIND returns flat match locations. Exact READ returns the selected channel's requested text
-projection.
+The producer persists every available channel; core publishes only the channel
+selected by the fragment, or `body` by default. Broad FIND returns standard
+resource metadata; exact matcher FIND returns flat match locations. Exact READ
+returns the selected channel's requested text projection.
 
 ### §http-text-decoding Text response decoding
 
 | Surface                       | Contract                                                                                         |
 | ----------------------------- | ------------------------------------------------------------------------------------------------ |
 | Response media type           | WHATWG `MIMEType` essence; absent or unparseable metadata becomes `application/octet-stream`     |
-| Direct textual response       | Incremental replacement-mode UTF-8 through `TextDecoder`, preserving response backpressure       |
-| WebFetcher textual response   | Fetch `Response.text()` UTF-8 decoding; buffering does not select a different character encoding |
+| Finite GET text               | Fetch `Response.text()` UTF-8 decoding; buffering does not select a different character encoding |
+| Streamed mutation response    | Incremental replacement-mode UTF-8 through `TextDecoder`, preserving response backpressure       |
 | `charset` parameter           | Preserve in `header` as origin evidence; it does not replace Fetch text decoding                 |
 | JSON and XML textual families | Use the same HTTP byte-to-string rule; format projections consume the resulting Unicode string   |
 | Direct HTML GET               | Fetch UTF-8 decoding of origin server HTML                                                       |
@@ -130,8 +128,9 @@ durable channel.
 ### §html-materialization Readable materialization
 
 `WebFetcher.materialize` is the shared readable-representation seam for exact
-query preparation and executor entry acquisition. Direct GET uses the same
-HTML and binary projection results while retaining incremental text streaming.
+GET/FIND preparation and executor entry acquisition. It returns complete
+Unicode channel material for one atomic canonical entry write; only SSE and
+mutation responses retain incremental streaming.
 
 | Input or event                              | Action                                      | Result                                                             |
 | ------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------ |
@@ -144,7 +143,7 @@ HTML and binary projection results while retaining incremental text streaming.
 | Ineligible HTML or Tavily not configured    | Use the installed HTML projection           | Local Markdown in `body`; origin server source in `html`            |
 | Recoverable Tavily failure with source HTML | Use the installed projection as recovery    | Local Markdown in `body` with terminal `203`; source in `html`       |
 | Hard Tavily failure                         | Preserve evidence; do not run local recovery | `body` errored; independently successful `html`/`header` survive    |
-| Tavily success after origin transport loss  | Preserve provider body and origin failure   | `body` closed; `html` errored                                       |
+| Tavily success after origin transport loss  | Preserve provider body and origin failure   | `body` static; `html` errored                                       |
 | Projection implementation throws            | Stop and preserve the cause                 | `WebMaterializationError` with stage `projection`                   |
 
 A projection object is present even when its content is `""`; only `null`
@@ -188,60 +187,68 @@ closes errored.
 
 #### §http-channel-outcomes Channel outcomes
 
-For HTML-page production, `body`, `header`, and `html` settle independently.
-Available evidence is written before settlement. The selected channel alone
-determines the operation result: successful `#html` or `#header` can be read
-when `body` failed, and a successful default `body` is not invalidated by an
-unavailable `html`. Unselected failures remain durable channel state. A
-recoverable local body is closed, not errored, with result `203`; direct READ
-still returns its ordinary streaming acknowledgement `102`.
+For finite HTML-page production, `body`, `header`, and `html` have independent
+durable outcomes and are written atomically. The selected channel alone
+determines the projected operation result: successful `#html` or `#header` can
+be read when `body` failed, and a successful default `body` is not invalidated
+by unavailable `html`. Unselected failures remain `errored` channels carrying
+their exact `producerResult`. A recoverable local body remains a static readable
+channel with producer status `203`, so cold and warm READ both return its
+content with that same status.
 
-Synchronous exact-FIND and executor materialization preserves the same outcome
-when it persists a successful body: available channels remain static, while an
-explicitly unavailable `html` representation is an empty `errored` channel.
-Later cache use therefore cannot reinterpret missing source evidence as a
-successful empty representation.
+Exact READ, exact FIND, and executor materialization preserve the same channel
+representation. A missing source variant is an explicit empty `errored`
+channel, never an absent fact that later cache use can reinterpret as successful
+empty content. A direct non-success HTTP response likewise remains available as
+evidence, while each origin-backed channel carries an exact
+`http-response-status` producer Problem. A Tavily-produced body and the
+acquisition `header` remain independent of an unavailable origin source.
 
 ## §http-status §4 HTTP status mapping
 
-| Outcome                                                       | Operation status                                      |
-| ------------------------------------------------------------- | ----------------------------------------------------- |
-| Scoped READ                                                   | Exact universal selected-channel READ result          |
-| Exact FIND after preparation                                  | Exact universal query result                          |
-| Exact acquisition returns no WebFetcher value                 | `404` (`not-materialized`)                            |
-| Selected HTML-page channel succeeds                           | Direct READ `102`; terminal selected-channel result   |
-| Selected HTML-page channel fails                              | That channel's exact producer Problem                 |
-| Local HTML projection is absent                               | `422` (`no-readable-projection`)                      |
-| Recoverable Tavily failure uses local projection              | Direct READ `102`; terminal body result `203`         |
-| Direct textual, projected-binary, or empty response           | `102`                                                 |
-| Direct binary response has no readable projection             | `415` (`binary-response-unsupported`)                 |
-| Binary projection input exceeds the configured byte bound     | `413` (`projection-input-limit`)                      |
-| `SEND[410]`                                                   | Exact entry-delete result                             |
-| Routed `SEND[499]` dispatch                                   | `200`                                                 |
-| Client-cancelled acquisition                                  | Direct `499` (`cancelled`)                            |
-| SSE cancellation after acquisition                            | `102` initial; terminal `499`                         |
-| SSE parser/transfer failure after acquisition                 | `102` initial; terminal `502`                         |
-| Multi-statement HTTP edit batch                               | `409` (`non-atomic-edit-batch`)                       |
-| Invalid target, channel, line edit, or URL userinfo           | `400` with the corresponding stable Problem kind      |
-| Non-corresponding 304                                         | `502` (`fetch-failed`)                                |
-| Direct acquisition failure without a successful provider body | `502` (`fetch-failed`)                                |
-| Direct or prepared projection exception                       | `500` (`projection-failed`)                           |
-| Uninterpreted SEND status                                     | `501` (`send-status-unsupported`)                     |
+| Outcome                                                       | Operation status                                         |
+| ------------------------------------------------------------- | -------------------------------------------------------- |
+| Finite exact READ after preparation                           | Universal selected-channel result (`200`, `204`, or producer status) |
+| Exact FIND after preparation                                  | Exact universal query result                             |
+| Exact acquisition returns no WebFetcher value                 | `404` (`not-materialized`)                               |
+| Selected origin-backed channel received HTTP `4xx`/`5xx`      | Exact durable `http-response-status` Problem             |
+| Selected HTML-page channel fails                              | That channel's exact durable producer Problem            |
+| Local HTML projection is absent                               | `422` (`no-readable-projection`)                         |
+| Recoverable Tavily failure uses local projection              | Readable body with durable status `203`                  |
+| Finite textual or projected-binary response                   | Universal READ result                                    |
+| Finite empty text response                                    | `204`                                                    |
+| Finite binary response has no readable projection             | `415` (`binary-response-unsupported`)                    |
+| Binary projection input exceeds the configured byte bound     | `413` (`projection-input-limit`)                         |
+| `SEND[410]`                                                   | Exact entry-delete result                                |
+| Routed `SEND[499]` dispatch                                   | `200`                                                    |
+| Client-cancelled finite acquisition                           | `499` (`cancelled`)                                      |
+| SSE after acquisition                                         | `102` initial; terminal selected-channel result          |
+| SSE cancellation after acquisition                            | `102` initial; terminal `499`                            |
+| SSE parser/transfer failure after acquisition                 | `102` initial; terminal `502`                            |
+| Multi-statement HTTP edit batch                               | `409` (`non-atomic-edit-batch`)                          |
+| Invalid target, channel, line edit, or URL userinfo           | `400` with the corresponding stable Problem kind         |
+| Non-corresponding 304                                         | `502` (`fetch-failed`)                                   |
+| Acquisition failure without a successful provider body       | `502` (`fetch-failed`)                                   |
+| Projection exception                                          | `500` (`projection-failed`)                              |
+| Uninterpreted SEND status                                     | `501` (`send-status-unsupported`)                        |
 
 An HTTP error status is still a successfully acquired direct response: its
-status remains in `header`; HTML enters page production and other content uses
-the ordinary response path. Automatic WebFetcher acquisition instead treats a
-non-2xx response as unavailable. Handler failures use RFC 9457 Problem Details.
+content and response evidence are preserved, and origin-backed channels carry
+that exact status as durable producer evidence. HTML still enters page
+production, so a successful Tavily `body` can remain readable while the origin
+`html` records the HTTP error. Automatic WebFetcher acquisition instead treats
+a non-2xx response as unavailable. Handler failures use RFC 9457 Problem Details.
 Caught direct-acquisition diagnostics are bounded by
 `PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT` in model-facing detail while complete
 errors remain in daemon diagnostics.
 
-A direct binary response first asks the installed mimetype family for a bounded
+A binary response first asks the installed mimetype family for a bounded
 readable projection. A present result stores only its derived Unicode and
 appends authoritative `x-plurnk-projection-id` evidence after the origin and
-acquisition fields. Absence preserves an empty marker under the source type and
-returns non-retryable `415`; exceeding the input ceiling preserves the same
-marker and returns non-retryable `413` with configured and observed sizes.
+acquisition fields. A finite GET with no projection returns non-retryable `415`
+without fabricating a text entry; exceeding the input ceiling similarly returns
+`413` with configured and observed sizes. A streamed mutation response already
+owns a seeded lifecycle entry and settles its typed channel as errored instead.
 These statuses describe Plurnk's materialization boundary, not the remote HTTP
 outcome—a POST, PUT, or DELETE might already have changed the remote resource.
 Missing or malformed `Content-Type` becomes `application/octet-stream`; the
@@ -422,7 +429,7 @@ operation is cancelled.
 | Materialized readable binary         | Bounded derived Unicode plus source type, projection identity, and enriched header       |
 | Materialized HTML page               | Independent body/html outcomes and complete route/provider evidence                      |
 | Automatic top-level `null`           | Refused target, non-2xx response, or unavailable response with no provider route          |
-| Non-page materialization `null`      | Empty configured text or no final readable binary projection                             |
+| Non-page materialization `null`      | No final readable binary projection                                                      |
 | Caller-cancelled acquisition         | Rejects with the caller signal's exact reason                                            |
 
 Top-level `null` is an automatic-acquisition liveness value rather than a thrown
@@ -462,7 +469,7 @@ stateDiagram-v2
 | `SEND[499](ws(s)://…)`            | Engine-routed cancellation closes the owning READ; scheme dispatch returns `200`                                 |
 | `KILL(ws(s)://…)`                 | Close/cancel the claimed owner; no owner is `404`; an attempted close throw is `502`                             |
 | Inbound frame after native `open` | Join the owner's persistence chain; the next write begins only after the preceding write succeeds               |
-| Binary frame after native `open`  | Retain the text prefix, prune the binary and later frames, settle `415 binary-frame-unsupported`, close `1003`   |
+| Binary frame after native `open`  | Retain the text prefix, prune the binary and later frames, settle `415 binary-frame-unsupported`, close with private-use code `4003` |
 | First inbound persistence failure | Retain the successful prefix, prune queued and later frames, and settle with `500 message-persistence-failed`    |
 | Socket closes before `open`       | Close subscription with `502 connection-failed`; the pending READ returns that exact failure                     |
 | Socket closes after `open`        | Drain the accepted frame prefix; initial READ remains `102`; settle with `200` unless a drained write fails       |
@@ -480,7 +487,7 @@ transport-close failures under {§handler-lifecycle}.
 
 | Transport limit    | Current contract                                                                                        |
 | ------------------ | ------------------------------------------------------------------------------------------------------- |
-| Payload projection | String event data only into `text/plain`; binary data terminates with Plurnk `415` and WebSocket `1003` |
+| Payload projection | String event data only into `text/plain`; binary data terminates with Plurnk `415` and private-use WebSocket code `4003` |
 | Reconnection       | None; READ again after terminal cleanup                                                                 |
 | Handshake metadata | Default global-WebSocket identity; custom target headers are not applied                                |
 | Runtime            | Node ≥26                                                                                                |

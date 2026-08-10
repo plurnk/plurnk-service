@@ -29,16 +29,26 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
     readonly #ctx: PlurnkSchemeContext;
     readonly #scheme: string;
     readonly #liveSubscriptions: LiveSubscriptions;
+    readonly #publishedChannel: string | null;
+    readonly #ownerId: number | undefined;
     #current: StreamSubscription | null = null;
 
-    constructor(ctx: PlurnkSchemeContext, scheme: string, liveSubscriptions: LiveSubscriptions) {
+    constructor(
+        ctx: PlurnkSchemeContext,
+        scheme: string,
+        liveSubscriptions: LiveSubscriptions,
+        publishedChannel: string | null,
+        ownerId?: number,
+    ) {
         this.#ctx = ctx;
         this.#scheme = scheme;
         this.#liveSubscriptions = liveSubscriptions;
+        this.#publishedChannel = publishedChannel;
+        this.#ownerId = ownerId;
     }
 
-    async open(pathname: string, handle: SubscriptionHandle, options?: { publishedChannel?: string }): Promise<StreamSubscription> {
-        const entry = await CapsResolve.entry(this.#ctx, this.#scheme, pathname);
+    async open(pathname: string, handle: SubscriptionHandle): Promise<StreamSubscription> {
+        const entry = await CapsResolve.entry(this.#ctx, this.#scheme, pathname, this.#ownerId);
         if (entry === null) throw new Error(`subscriptions.open: no entry at ${pathname}`);
         const { entryId, workerId: entryOwnerId } = entry;
         const {
@@ -51,7 +61,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         } = this.#ctx;
         const scheme = this.#scheme;
         const liveSubscriptions = this.#liveSubscriptions;
-        const publishedChannel = options?.publishedChannel ?? null;
+        const publishedChannel = this.#publishedChannel;
         const subscriptionId = await ChannelWrite.openSubscription(db, {
             workerId, entryId, scheme, handle: pathname, publishedChannel,
         });
