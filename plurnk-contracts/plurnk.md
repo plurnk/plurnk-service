@@ -72,7 +72,7 @@ Examples:
 * Regex: `<<FIND(src/**/*.ts):/createCoder/i:FIND`
 * XPath: `<<FIND(config/**/*.xml)://user[@role='admin']:FIND`
 * JSONPath: `<<FIND(data/users.json):$[?(@.role=="admin")]:FIND`
-* Semantic threshold/range: `<<FIND(worker:///**)<0.7,1,16>:~french revolutionary history:FIND`
+* Semantic threshold/range: `<<FIND(worker:///**)<0.7,1,50>:~french revolutionary history:FIND`
 * Graph: `<<FIND(src/**):@<createCoder:FIND`
 * Glob body: `<<FIND(worker:///**):*revolution*:FIND`
 
@@ -105,8 +105,6 @@ Examples:
 
 ### `<scope>`
 
-FIND scopes select inclusive result positions: `<1,16>` by default and `<1,-1>` for all.
-
 Text scope (Line, StartLine, StartColumn, EndLine, EndColumn) has one meaning for every textual mimetype:
 
 | form            | endpoint rule                  | example                                                       |
@@ -118,7 +116,7 @@ Text scope (Line, StartLine, StartColumn, EndLine, EndColumn) has one meaning fo
 
 * Lines and Unicode code-point columns are 1-based.
 * Rendered `L:` prefixes are coordinates, not content; edit from a recent READ.
-* Unscoped READ returns lines 1–16; use `<1,-1>` for all.
+* Unscoped FIND returns items 1-16; unscoped READ returns lines 1–16. Use `<1,-1>` for all.
 * `<0>` prepends and `<-1>` appends for EDIT and COPY/MOVE destinations.
 * Multiple EDITs to one target in a turn share its pre-turn snapshot and cannot overlap.
 
