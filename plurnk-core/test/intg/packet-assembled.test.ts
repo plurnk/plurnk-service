@@ -314,7 +314,7 @@ test("the default Recap projects the two framing reminders from the teaching cor
 
         assert.equal(
             recap,
-            "YOU MUST always begin each turn with a PLAN.\nYOU MUST always end retrieval turns (with READ, FIND, ...) with a non-concluding status code.\n",
+            "YOU MUST always begin each turn with a PLAN.\nYOU MUST always end each turn with SEND[status code]; retrieval turns use a non-concluding code.\n",
         );
     } finally { await db.close(); }
 });

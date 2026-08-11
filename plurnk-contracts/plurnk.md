@@ -31,7 +31,7 @@ A turn concatenates complete OPs; reference examples are alternatives unless sho
 
 | OP   | purpose                        | `[signal]`   | `(path)`                   | `<scope>`      | `body`                |
 |------|--------------------------------|--------------|----------------------------|----------------|-----------------------|
-| PLAN | extend working state           | -            | -                          | -              | plans and priorities |
+| PLAN | add working-state deltas       | -            | -                          | -              | new findings, questions, priorities |
 | FIND | list matching targets          | filter tags? | target or glob             | result range?  | pattern?              |
 | READ | retrieve target content        | filter tags? | target                     | text region?   | -                     |
 | EDIT | create or edit scoped content  | apply tags?  | file or entry              | text region?   | literal text          |
@@ -45,7 +45,7 @@ A turn concatenates complete OPs; reference examples are alternatives unless sho
 | KILL | delete or terminate            | code?        | target, including log item | -              | -                     |
 | SEND | close turn with submit code    | code?        | recipient?                 | timeout, poll? | message               |
 
-YOU MUST use PLAN to extend your working state with new material conclusions or unresolved questions alongside this turn's plans and priorities.
+YOU MUST use PLAN to add new material conclusions or unresolved questions and this turn's priorities.
 
 * Files you create are tracked automatically.
 * EXEC creates an output stream visible in subsequent turns.
