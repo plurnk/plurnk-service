@@ -136,6 +136,7 @@ export class SqlRiteSync {
 	digest_loops: SqlRiteSyncPreparedStatements;
 	digest_turns: SqlRiteSyncPreparedStatements;
 	digest_turn_attempts: SqlRiteSyncPreparedStatements;
+	digest_provider_requests: SqlRiteSyncPreparedStatements;
 	digest_log_entries: SqlRiteSyncPreparedStatements;
 	digest_worker_rollups: SqlRiteSyncPreparedStatements;
 	digest_worker_op_mix: SqlRiteSyncPreparedStatements;
@@ -169,6 +170,7 @@ export class SqlRiteSync {
 	engine_list_owner_entry_tags: SqlRiteSyncPreparedStatements;
 	engine_next_turn_sequence: SqlRiteSyncPreparedStatements;
 	engine_loop_usage: SqlRiteSyncPreparedStatements;
+	engine_loop_provider_requests: SqlRiteSyncPreparedStatements;
 	engine_loop_attributions: SqlRiteSyncPreparedStatements;
 	engine_loop_turn_seqs: SqlRiteSyncPreparedStatements;
 	engine_open_turn: SqlRiteSyncPreparedStatements;
@@ -177,6 +179,8 @@ export class SqlRiteSync {
 	engine_observe_turn_attempt_response: SqlRiteSyncPreparedStatements;
 	engine_classify_turn_attempt_response: SqlRiteSyncPreparedStatements;
 	engine_fail_turn_attempt: SqlRiteSyncPreparedStatements;
+	engine_open_provider_request: SqlRiteSyncPreparedStatements;
+	engine_settle_provider_request: SqlRiteSyncPreparedStatements;
 	engine_list_workspace_entries: SqlRiteSyncPreparedStatements;
 	engine_scheme_catalog_summary: SqlRiteSyncPreparedStatements;
 	engine_initialize_ambient_cursor: SqlRiteSyncPreparedStatements;
@@ -234,6 +238,7 @@ export class SqlRiteSync {
 	journal_turn_next_sequence: SqlRiteSyncPreparedStatements;
 	journal_turn_insert: SqlRiteSyncPreparedStatements;
 	recovery_fail_active_loops: SqlRiteSyncPreparedStatements;
+	recovery_settle_open_provider_requests: SqlRiteSyncPreparedStatements;
 	recovery_fail_open_provider_attempts: SqlRiteSyncPreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRiteSyncPreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRiteSyncPreparedStatements;
@@ -372,6 +377,7 @@ export default class SqlRite {
 	digest_loops: SqlRitePreparedStatements;
 	digest_turns: SqlRitePreparedStatements;
 	digest_turn_attempts: SqlRitePreparedStatements;
+	digest_provider_requests: SqlRitePreparedStatements;
 	digest_log_entries: SqlRitePreparedStatements;
 	digest_worker_rollups: SqlRitePreparedStatements;
 	digest_worker_op_mix: SqlRitePreparedStatements;
@@ -405,6 +411,7 @@ export default class SqlRite {
 	engine_list_owner_entry_tags: SqlRitePreparedStatements;
 	engine_next_turn_sequence: SqlRitePreparedStatements;
 	engine_loop_usage: SqlRitePreparedStatements;
+	engine_loop_provider_requests: SqlRitePreparedStatements;
 	engine_loop_attributions: SqlRitePreparedStatements;
 	engine_loop_turn_seqs: SqlRitePreparedStatements;
 	engine_open_turn: SqlRitePreparedStatements;
@@ -413,6 +420,8 @@ export default class SqlRite {
 	engine_observe_turn_attempt_response: SqlRitePreparedStatements;
 	engine_classify_turn_attempt_response: SqlRitePreparedStatements;
 	engine_fail_turn_attempt: SqlRitePreparedStatements;
+	engine_open_provider_request: SqlRitePreparedStatements;
+	engine_settle_provider_request: SqlRitePreparedStatements;
 	engine_list_workspace_entries: SqlRitePreparedStatements;
 	engine_scheme_catalog_summary: SqlRitePreparedStatements;
 	engine_initialize_ambient_cursor: SqlRitePreparedStatements;
@@ -470,6 +479,7 @@ export default class SqlRite {
 	journal_turn_next_sequence: SqlRitePreparedStatements;
 	journal_turn_insert: SqlRitePreparedStatements;
 	recovery_fail_active_loops: SqlRitePreparedStatements;
+	recovery_settle_open_provider_requests: SqlRitePreparedStatements;
 	recovery_fail_open_provider_attempts: SqlRitePreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRitePreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRitePreparedStatements;

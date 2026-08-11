@@ -15,15 +15,30 @@ import type { Provider, ProviderResponse } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "SD" }, { role: "user" as const, content: "go" }];
-const usage = { prompt: 1, completion: 1, reasoning: 1, cached: 0, total: 3 };
+const usage = {
+    inputTokens: 1,
+    outputTokens: 2,
+    totalTokens: 3,
+    outputTokenDetails: { textTokens: 1, reasoningTokens: 1 },
+};
 
-const staticProvider = (response: ProviderResponse): Provider => ({
+const staticProvider = (response: Omit<ProviderResponse, "accounting">): Provider => ({
     model: "fake",
     contextWindow: 100000,
     constrainsOutput: true,
-    generate: async () => response,
+    generate: async ({ observeRequest }) => {
+        const accounting = {
+            provider: "provider:fake",
+            model: "fake",
+            outcome: "response",
+            usage,
+            cost: { kind: "estimated", amount: { amount: "0", currency: "USD" }, source: "rail fixture" },
+        } as const;
+        const settle = await observeRequest?.({ provider: accounting.provider, model: accounting.model });
+        await settle?.(accounting);
+        return { ...response, accounting: [accounting] };
+    },
     countPromptTokens: async () => ({ kind: "exact", tokens: 1, source: "test:exact" }),
-    calculateCost: () => 0,
 }) as Provider;
 
 // A Mock that RECORDS what generate receives — the end of the chain, observed directly.
@@ -37,7 +52,6 @@ const recordingProvider = (): { provider: Provider; calls: Array<{ grammar?: str
         get contextWindow() { return base.contextWindow; },
         get model() { return base.model; },
         countPromptTokens: (...args: Parameters<Mock["countPromptTokens"]>) => base.countPromptTokens(...args),
-        calculateCost: (u: never) => base.calculateCost(u),
         generate: (args: { grammar?: string }) => { calls.push({ grammar: args.grammar }); return base.generate(args as never); },
     } as unknown as Provider;
     return { provider, calls };
@@ -169,7 +183,7 @@ test("the engine grades the exact pre-projection sentence, not projected content
     try {
         process.env[key] = gbnfPath;
         const provider = staticProvider({
-            assistant: { content, reasoning: "consider", usage, finishReason: "stop", model: "fake" },
+            assistant: { content, reasoning: "consider", finishReason: "stop", model: "fake" },
             assistantRaw: null,
             grammarEvidence: { input, contentStart: [...prefix].length, transported: true },
         });
@@ -208,8 +222,8 @@ test("raw rail positions map only from content, and debug evidence is stamped wi
                 broadcasts.push(payload as { notice: Record<string, unknown> });
             },
         });
-        const response = (transported: boolean): ProviderResponse => ({
-            assistant: { content, reasoning: "🙂", usage, finishReason: "stop", model: "fake" },
+        const response = (transported: boolean): Omit<ProviderResponse, "accounting"> => ({
+            assistant: { content, reasoning: "🙂", finishReason: "stop", model: "fake" },
             assistantRaw: null,
             grammarEvidence: { input, contentStart: [...prefix].length, transported },
         });
@@ -250,7 +264,7 @@ test("a configured grammar fails hard when the provider omits its observation ev
     try {
         process.env[key] = gbnfPath;
         const provider = staticProvider({
-            assistant: { content, reasoning: null, usage, finishReason: "stop", model: "fake" },
+            assistant: { content, reasoning: null, finishReason: "stop", model: "fake" },
             assistantRaw: null,
         });
         ProviderInstantiate.registerAlias(provider, "noevidence");

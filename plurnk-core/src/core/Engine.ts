@@ -36,6 +36,7 @@ import LoopLifecycle from "./LoopLifecycle.ts";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { isDeepStrictEqual } from "node:util";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
@@ -62,6 +63,11 @@ import { observed, observedSync } from "../observe/spans.ts";
 import { OPS_DISPATCHED, PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
 import { readOptimisticSettlementMs } from "./optimistic-settlement.ts";
+import {
+    providerRequestFromStorageRow,
+    providerRequestSettlementParams,
+    type ProviderRequestStorageRow,
+} from "./provider-accounting.ts";
 
 // Proposal types are part of Engine's public API (resolveProposal/onProposalPending);
 // their definitions live with the lifecycle.
@@ -174,8 +180,23 @@ const readFilesItems = (): number | null => {
 };
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type { GrammarEvidence, Provider, ProviderAttempt, ProviderAttemptFinishReason, ProviderCost, ProviderResponse, ProviderUsage } from "@plurnk/plurnk-providers";
-import { ProviderError, providerCostFor, providerCostUsd, validateProviderCost, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
+import type {
+    GrammarEvidence,
+    Provider,
+    ProviderAccounting,
+    ProviderAttempt,
+    ProviderAttemptFinishReason,
+    ProviderRequestAccounting,
+    ProviderRequestObserver,
+    ProviderResponse,
+} from "@plurnk/plurnk-providers";
+import {
+    aggregateProviderAccounting,
+    ProviderError,
+    resolveActiveAlias,
+    scopeEnvToAlias,
+    validateProviderRequestAccounting,
+} from "@plurnk/plurnk-providers";
 import { validateGbnf } from "@plurnk/gbnf";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
@@ -183,7 +204,6 @@ import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
 // Split-out call-metadata that travels with the parsed packet but lands in
 // Turn columns instead of packet.assistant.
 type TurnCallMetadata = {
-    usage: ProviderUsage;
     finishReason: ProviderAttemptFinishReason;
     model: string;
 };
@@ -245,16 +265,18 @@ const contextEnvelopeFailure = (
 );
 
 export type LoopUsage = {
-    promptTokens: number;
-    completionTokens: number;
-    reasoningTokens: number;
-    cachedTokens: number;
-    costUsd: number | null;
-    costs: ProviderCost[];
-    contextTokens: number;
+    accounting: ProviderAccounting;
+    contextTokens: number | null;
     promptBudget: number | null;
     meta: Record<string, unknown>;
 };
+
+class ProviderAccountingPersistenceError extends Error {
+    constructor(message: string, cause: unknown) {
+        super(message, { cause });
+        this.name = "ProviderAccountingPersistenceError";
+    }
+}
 
 // Runtime normalization for a disposition the engine refuses or resolves as a
 // continue after dispatch ({§send}). Every admitted emission itself ends in an
@@ -663,37 +685,25 @@ export default class Engine {
         return [...Meta.composeAttributions(tags)];
     }
 
-    // Loop totals are billing evidence; the latest-turn pair is the client
-    // occupancy gauge. {§tokenomics-client-gauge}, {§notifications-loop-terminated}
+    // The request ledger is cardinal evidence; its aggregate and the latest-turn
+    // occupancy gauge are derived projections. {§tokenomics-client-gauge},
+    // {§notifications-loop-terminated}, {§provider-accounting}
     async loopUsage(loopId: number): Promise<LoopUsage> {
         const row = await this.#db.engine_loop_usage.get<{
-            prompt: number;
-            completion: number;
-            reasoning: number;
-            cached: number;
-            cost_usd: number | null;
-            costs: string | null;
             context: number | null;
             context_size: number | null;
             meta: string | null;
         }>({ loop_id: loopId });
         if (row === undefined) throw new Error(`loopUsage: loop ${loopId} does not exist`);
-        const parsedCosts: unknown = JSON.parse(row?.costs ?? "[]");
-        if (!Array.isArray(parsedCosts)) throw new TypeError(`loop ${loopId} monetary evidence is not an array`);
-        const costs = parsedCosts.map((cost) => validateProviderCost(cost as ProviderCost));
+        const requests = await this.#db.engine_loop_provider_requests.all<ProviderRequestStorageRow>({ loop_id: loopId });
         return {
-            promptTokens: row?.prompt ?? 0,
-            completionTokens: row?.completion ?? 0,
-            reasoningTokens: row?.reasoning ?? 0,
-            cachedTokens: row?.cached ?? 0,
-            costUsd: row?.cost_usd ?? null,
-            costs,
-            // Latest provider attempt on the latest turn, not the billed total.
-            contextTokens: row?.context ?? 0,
+            accounting: aggregateProviderAccounting(requests.map(providerRequestFromStorageRow)),
+            // Latest physical request on the latest turn, not the billed total.
+            contextTokens: row.context,
             // Latest effective packet allowance; null when uncapped or unknown.
-            promptBudget: row?.context_size ?? null,
+            promptBudget: row.context_size,
             // Latest turn's opaque provider metadata. {§meta-passthrough}
-            meta: JSON.parse(row?.meta ?? "{}") as Record<string, unknown>,
+            meta: JSON.parse(row.meta ?? "{}") as Record<string, unknown>,
         };
     }
 
@@ -1383,6 +1393,8 @@ export default class Engine {
         let providerAttemptSequence = 0;
         let providerAttemptId: number | null = null;
         let providerAttemptAttributions: string[] = [];
+        let providerRequestSequence = 0;
+        let observedProviderRequests: ProviderRequestAccounting[] = [];
         const providerSignal = this.#loopAborts.get(loopId)?.signal ?? signal;
         // {§client-metadata}
         const { client } = await WorkspaceSettings.read(this.#db, workspaceId);
@@ -1390,42 +1402,89 @@ export default class Engine {
             id: number,
             attemptResponse: ProviderAttempt,
         ): Promise<void> => {
-            const attemptUsage = attemptResponse.assistant.usage;
+            const { accounting: omittedAccounting, ...responseEvidence } = attemptResponse;
+            void omittedAccounting;
             await this.#db.engine_observe_turn_attempt_response.run({
                 id,
-                response: JSON.stringify(attemptResponse),
-                usage_prompt: attemptUsage.prompt,
-                usage_completion: attemptUsage.completion,
-                usage_reasoning: attemptUsage.reasoning,
-                usage_cached: attemptUsage.cached,
-                usage_cost: JSON.stringify({
-                    kind: "unknown",
-                    reason: "provider response retained before monetary classification",
-                } satisfies ProviderCost),
+                response: JSON.stringify(responseEvidence),
                 finish_reason: attemptResponse.assistant.finishReason,
                 model: attemptResponse.assistant.model,
             });
         };
         const classifyProviderAttempt = async (
             id: number,
-            attemptResponse: ProviderAttempt,
             attemptSplit: SplitProviderResponse,
             sequence: number,
             accepted: boolean,
             failure: SchemeResult | null = null,
         ): Promise<void> => {
-            const attemptUsage = attemptSplit.callMetadata.usage;
-            const attemptCost = providerCostFor(provider, attemptUsage, attemptResponse.charge);
-            const attemptCostUsd = providerCostUsd(attemptCost);
             await this.#db.engine_classify_turn_attempt_response.run({
                 id,
                 accepted: accepted ? 1 : 0,
                 parse_errors: JSON.stringify(attemptSplit.parseErrors),
                 failure: failure === null ? null : JSON.stringify(failure),
-                usage_cost: JSON.stringify(attemptCost),
-                usage_cost_usd: attemptCostUsd,
             });
             emissionAttempts = sequence;
+        };
+        const observeProviderRequest: ProviderRequestObserver = async (identity) => {
+            if (providerAttemptId === null) {
+                throw new Error("provider opened a physical request without a durable emission attempt");
+            }
+            if (identity.provider.length === 0 || identity.model.length === 0) {
+                throw new TypeError("provider request identity requires non-empty provider and model names");
+            }
+            const sequence = ++providerRequestSequence;
+            let row: { id: number } | undefined;
+            try {
+                row = await this.#db.engine_open_provider_request.get<{ id: number }>({
+                    turn_attempt_id: providerAttemptId,
+                    sequence,
+                    provider: identity.provider,
+                    model: identity.model,
+                });
+            } catch (cause) {
+                throw new ProviderAccountingPersistenceError(
+                    `could not open provider request ${sequence} for attempt ${providerAttemptId}`,
+                    cause,
+                );
+            }
+            if (row === undefined) {
+                throw new ProviderAccountingPersistenceError(
+                    `provider request ${sequence} for attempt ${providerAttemptId} did not open`,
+                    new Error("INSERT RETURNING produced no row"),
+                );
+            }
+            let settled = false;
+            return async (value) => {
+                if (settled) throw new Error(`provider request ${row.id} was settled more than once`);
+                const accounting = validateProviderRequestAccounting(value);
+                if (accounting.provider !== identity.provider || accounting.model !== identity.model) {
+                    throw new TypeError(`provider request ${row.id} settlement changed its durable identity`);
+                }
+                try {
+                    const result = await this.#db.engine_settle_provider_request.run(
+                        providerRequestSettlementParams(row.id, accounting),
+                    );
+                    if (result.changes !== 1) {
+                        throw new Error(`provider request ${row.id} was not pending at settlement`);
+                    }
+                } catch (cause) {
+                    throw new ProviderAccountingPersistenceError(
+                        `could not settle provider request ${row.id}`,
+                        cause,
+                    );
+                }
+                settled = true;
+                observedProviderRequests.push(accounting);
+            };
+        };
+        const assertObservedProviderAccounting = (
+            accounting: readonly ProviderRequestAccounting[],
+        ): void => {
+            const returned = accounting.map(validateProviderRequestAccounting);
+            if (!isDeepStrictEqual(returned, observedProviderRequests)) {
+                throw new TypeError("provider accounting does not match the cardinal requests observed by Core");
+            }
         };
         try {
             // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
@@ -1462,35 +1521,46 @@ export default class Engine {
                     throw new Error(`Engine.runTurn: provider attempt ${attempt} did not open`);
                 }
                 providerAttemptId = attemptRow.id;
+                providerRequestSequence = 0;
+                observedProviderRequests = [];
                 providerCallInFlight = true;
                 const completedResponse = await observed( // {§observability-boundary}
                     "provider.generate",
                     { model: provider.model, attempt },
                     async (span) => {
-                        const generated = await provider.generate({
-                            messages: modelMessages,
-                            workerId: String(workerId),
-                            primaryWorkerId,
-                            signal: providerSignal,
-                            grammar: railGrammar,
-                            maxTokens,
-                            strikes: strikeStreak,
-                            attributions: providerAttemptAttributions.length > 0
-                                ? providerAttemptAttributions
-                                : undefined,
-                            client: client ?? undefined,
-                            workspaceId: String(workspaceId),
-                            loop: loopSeq,
-                            turn: seq,
-                        }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
-                        providerCallInFlight = false;
-                        recordCounter(PROVIDER_CALLS, {
-                            model: provider.model,
-                            attempt,
-                            status: "resolved",
-                        });
-                        span.setAttribute("status", "resolved");
-                        return generated;
+                        try {
+                            const generated = await provider.generate({
+                                messages: modelMessages,
+                                workerId: String(workerId),
+                                primaryWorkerId,
+                                signal: providerSignal,
+                                grammar: railGrammar,
+                                maxTokens,
+                                strikes: strikeStreak,
+                                attributions: providerAttemptAttributions.length > 0
+                                    ? providerAttemptAttributions
+                                    : undefined,
+                                client: client ?? undefined,
+                                workspaceId: String(workspaceId),
+                                loop: loopSeq,
+                                turn: seq,
+                                observeRequest: observeProviderRequest,
+                            }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
+                            assertObservedProviderAccounting(generated.accounting);
+                            providerCallInFlight = false;
+                            recordCounter(PROVIDER_CALLS, {
+                                model: provider.model,
+                                attempt,
+                                status: "resolved",
+                            });
+                            span.setAttribute("status", "resolved");
+                            return generated;
+                        } catch (error) {
+                            if (error instanceof ProviderError) {
+                                assertObservedProviderAccounting(error.accounting);
+                            }
+                            throw error;
+                        }
                     },
                 );
                 response = completedResponse;
@@ -1501,7 +1571,6 @@ export default class Engine {
                 splitResponse = this.#splitResponse(completedResponse);
                 await classifyProviderAttempt(
                     attemptRow.id,
-                    completedResponse,
                     splitResponse,
                     attempt,
                     splitResponse.emissionValid,
@@ -1512,6 +1581,7 @@ export default class Engine {
         } catch (err) {
             // This handler owns only provider-call failures. Parser, cost, SQL,
             // and engine-contract failures retain their original source.
+            if (err instanceof ProviderAccountingPersistenceError) throw err;
             if (!providerCallInFlight) throw err;
             providerCallInFlight = false;
             if (providerAttemptId === null) {
@@ -1553,21 +1623,15 @@ export default class Engine {
                 splitResponse = this.#splitResponse(response);
                 await classifyProviderAttempt(
                     providerAttemptId,
-                    response,
                     splitResponse,
                     providerAttemptSequence,
                     false,
                     failure,
                 );
             } else {
-                const unknownCost: ProviderCost = {
-                    kind: "unknown",
-                    reason: "provider call failed without response-bearing charge evidence",
-                };
                 await this.#db.engine_fail_turn_attempt.run({
                     id: providerAttemptId,
                     failure: JSON.stringify(failure),
-                    usage_cost: JSON.stringify(unknownCost),
                 });
                 emissionAttempts = providerAttemptSequence;
             }
@@ -1993,7 +2057,8 @@ export default class Engine {
 
     // Split the wire-level ProviderResponse into the two destinations:
     // packet.assistant gets the model's emission (content, ops, reasoning);
-    // Turn columns get the call-metadata (usage, finishReason, model).
+    // Turn columns get accepted-call metadata (finishReason, model). Physical
+    // request usage and cost have their own cardinal persistence path.
     // {§provider-surface} Text-fragment scraping policy lives
     // here — engine owns the parse and the scraping rule, providers stay
     // grammar-unaware.
@@ -2085,7 +2150,7 @@ export default class Engine {
         const reasoning = assistant.reasoning ?? null;
         return {
             packetAssistant: { content: assistant.content, ops, reasoning },
-            callMetadata: { usage: assistant.usage, finishReason: assistant.finishReason, model: assistant.model },
+            callMetadata: { finishReason: assistant.finishReason, model: assistant.model },
             parseErrors,
             recoverableParseErrors: emissionValid ? recoverableParseErrors : [],
             parseNotices,

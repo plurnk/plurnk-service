@@ -7,13 +7,28 @@ import { resetEmittedWarnings } from "./warnings.ts";
 
 test.afterEach(() => { resetEmittedWarnings(); });
 
-const RESP = { assistant: { usage: { prompt: 1, completion: 1, reasoning: 0, cached: 0, total: 2 } }, assistantRaw: null } as unknown as ProviderResponse;
+const RESP: ProviderResponse = {
+    assistant: {
+        content: "ok",
+        reasoning: null,
+        finishReason: "stop",
+        model: "gemma",
+    },
+    assistantRaw: null,
+    accounting: [{
+        provider: "provider:test",
+        model: "gemma",
+        outcome: "response",
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        cost: { kind: "unknown", reason: "test fixture has no cost" },
+    }],
+};
 
 type FakeOpts = {
     model?: string; window?: number | null; servedModel?: string;
     constrainsOutput?: boolean; requiresMaxTokens?: boolean;
     reasoningReserve?: number | null; completionReserve?: number | null;
-    tokenize?: boolean; cost?: number; throws?: Error;
+    tokenize?: boolean; throws?: Error;
     promptMeasurement?: PromptTokenMeasurement;
 };
 // A fake backend that records which workers it served, and optionally throws.
@@ -33,7 +48,6 @@ const backend = (opts: FakeOpts = {}) => {
             tokens: messages.reduce((sum, { content }) => sum + content.length, 0),
             source: "test:exact",
         }),
-        calculateCost: () => opts.cost ?? 0,
         generate: async (args: Parameters<Provider["generate"]>[0]): Promise<ProviderResponse> => {
             served.push(args.workerId);
             if (opts.throws !== undefined) throw opts.throws;
@@ -94,12 +108,11 @@ test("Pool: tokenize is exposed iff every backend has it", () => {
     assert.equal(new Pool([backend({ tokenize: true }).b, backend({ tokenize: false }).b]).tokenize, undefined);
 });
 
-test("Pool: prompt counting + calculateCost delegate to a backend", async () => {
-    const p = new Pool([backend({ cost: 42 }).b]);
+test("Pool: prompt counting delegates conservatively to its backends", async () => {
+    const p = new Pool([backend().b]);
     assert.deepEqual(await p.countPromptTokens([{ role: "user", content: "abcd" }]), {
         kind: "exact", tokens: 4, source: "pool:test:exact",
     });
-    assert.equal(p.calculateCost({ prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 }), 42);
 });
 
 test("Pool: prompt evidence is conservative across every routable backend", async () => {

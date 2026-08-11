@@ -1,7 +1,6 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { catalogProviderFromEnv } from "./catalogProvider.ts";
-import { providerCostFor } from "./cost.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
 
 const env = {
@@ -32,13 +31,6 @@ test("catalog provider resolves model physics and Models.dev USD rates", () => {
     assert.equal(provider?.contextWindow, 1_047_576);
     assert.equal(provider?.reasoningReserve, 16_384);
     assert.equal(provider?.completionReserve, 32_768);
-    assert.ok((provider?.calculateCost({
-        prompt: 1_000_000,
-        completion: 1_000_000,
-        reasoning: 0,
-        cached: 0,
-        total: 2_000_000,
-    }) ?? 0) > 0);
 });
 
 test("an operator context window caps catalog physics and percentage reserves derive from the cap", () => {
@@ -97,7 +89,11 @@ test("official AI SDK provider owns the native request while PLURNK owns call se
     });
 
     assert.equal(result?.assistant.content, "done");
-    assert.equal(result?.assistant.usage.total, 3);
+    assert.equal(result?.accounting[0]?.usage?.totalTokens, 3);
+    assert.deepEqual(result?.accounting[0]?.cost, {
+        kind: "unknown",
+        reason: "the provider response omitted a token category with a distinct Models.dev rate",
+    });
     assert.equal(calls.length, 1);
     assert.equal(calls[0]?.url, "https://api.openai.com/v1/chat/completions");
     assert.equal(calls[0]?.body.model, "gpt-4.1-mini");
@@ -120,22 +116,35 @@ test("cataloged unknown model fails unless its context is explicit", () => {
     assert.equal(provider?.contextWindow, 8192);
 });
 
-test("Models.dev is the only fallback rate table", () => {
-    const usage = {
-        prompt: 1_000,
-        cached: 400,
-        completion: 100,
-        reasoning: 50,
-        total: 1_150,
-    };
+test("Models.dev is the only fallback rate table", async () => {
+    mock.method(globalThis, "fetch", async () => new Response([
+        `data: ${JSON.stringify({
+            id: "response",
+            model: "served",
+            choices: [{ delta: { content: "ok" }, finish_reason: "stop" }],
+        })}`,
+        `data: ${JSON.stringify({
+            id: "response",
+            model: "served",
+            choices: [],
+            usage: {
+                prompt_tokens: 1_000,
+                prompt_tokens_details: { cached_tokens: 400 },
+                completion_tokens: 100,
+                total_tokens: 1_150,
+            },
+        })}`,
+        "data: [DONE]",
+    ].join("\n\n"), { headers: { "content-type": "text/event-stream" } }));
     const cataloged = catalogProviderFromEnv("deepseek", {
         ...env,
         DEEPSEEK_API_KEY: "test-key",
     }, "deepseek-v4-flash");
     assert.notEqual(cataloged, null);
-    assert.deepEqual(providerCostFor(cataloged!, usage), {
+    const catalogedResponse = await cataloged!.generate({ workerId: "cataloged", messages: [] });
+    assert.deepEqual(catalogedResponse.accounting[0]?.cost, {
         kind: "estimated",
-        usd: "0.00012712",
+        amount: { amount: "0.00012712", currency: "USD" },
         source: "Models.dev catalog rates",
     });
 
@@ -144,8 +153,9 @@ test("Models.dev is the only fallback rate table", () => {
         XAI_API_KEY: "test-key",
         PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192",
     }, "not-in-the-catalog");
-    assert.deepEqual(providerCostFor(uncataloged!, usage), {
+    const uncatalogedResponse = await uncataloged!.generate({ workerId: "uncataloged", messages: [] });
+    assert.deepEqual(uncatalogedResponse.accounting[0]?.cost, {
         kind: "unknown",
-        reason: "the response reported no cost and Models.dev has no rate for this model",
+        reason: "Models.dev has no complete rate for this model",
     });
 });

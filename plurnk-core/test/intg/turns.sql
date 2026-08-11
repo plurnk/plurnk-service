@@ -7,35 +7,17 @@ INSERT INTO turns (loop_id, sequence, status, packet) VALUES ($loop_id, $sequenc
 -- PREP: test_turns_insert_with_version
 INSERT INTO turns (loop_id, sequence, status, packet, version) VALUES ($loop_id, $sequence, $status, $packet, $version);
 
--- PREP: test_turns_insert_with_usage_prompt
-INSERT INTO turns (loop_id, sequence, status, packet, usage_prompt) VALUES ($loop_id, $sequence, $status, $packet, $val);
-
--- PREP: test_turns_insert_with_prompt_and_context_size
--- A turn carrying billed prompt usage and its effective packet allowance.
--- {§tokenomics-client-gauge}
-INSERT INTO turns (loop_id, sequence, status, packet, usage_prompt, usage_prompt_budget) VALUES ($loop_id, $sequence, $status, $packet, $prompt, $context_size);
-
--- PREP: test_turns_insert_with_usage_completion
-INSERT INTO turns (loop_id, sequence, status, packet, usage_completion) VALUES ($loop_id, $sequence, $status, $packet, $val);
-
--- PREP: test_turns_insert_with_usage_cached
-INSERT INTO turns (loop_id, sequence, status, packet, usage_cached) VALUES ($loop_id, $sequence, $status, $packet, $val);
-
--- PREP: test_turns_insert_with_usage_cost_usd
-INSERT INTO turns (loop_id, sequence, status, packet, usage_cost_usd) VALUES ($loop_id, $sequence, $status, $packet, $val);
-
--- PREP: test_turns_insert_all_usage
-INSERT INTO turns (loop_id, sequence, status, packet, usage_prompt, usage_completion, usage_cached, usage_cost_usd)
-VALUES ($loop_id, $sequence, $status, $packet, $usage_prompt, $usage_completion, $usage_cached, $usage_cost_usd);
+-- PREP: test_turns_insert_with_prompt_budget
+-- The turn retains only the latest-packet gauge denominator; provider usage is
+-- normalized under provider_requests. {§tokenomics-client-gauge}
+INSERT INTO turns (loop_id, sequence, status, packet, usage_prompt_budget)
+VALUES ($loop_id, $sequence, $status, $packet, $prompt_budget);
 
 -- PREP: test_turns_get_full
 SELECT * FROM turns WHERE loop_id = $loop_id LIMIT 1;
 
--- PREP: test_turns_get_usage
-SELECT usage_prompt, usage_completion, usage_cached, usage_cost_usd FROM turns WHERE loop_id = $loop_id;
-
--- PREP: test_turns_sum_cost
-SELECT SUM(usage_cost_usd) AS total FROM turns WHERE loop_id = $loop_id;
+-- PREP: test_turns_get_prompt_budget
+SELECT usage_prompt_budget FROM turns WHERE loop_id = $loop_id;
 
 -- PREP: test_turns_count_all
 SELECT COUNT(*) AS n FROM turns;

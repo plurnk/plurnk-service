@@ -24,7 +24,7 @@ test("createSdkModel uses Models.dev provider facts and operator credentials", (
         url: "https://api.x.ai/v1/chat/completions",
         headers: { Authorization: "Bearer test-key" },
     });
-    assert.notEqual(sdk?.normalizeCharge, undefined);
+    assert.notEqual(sdk?.normalizeCost, undefined);
 });
 
 test("createSdkModel attaches DeepInfra's documented response-cost normalizer", () => {
@@ -32,13 +32,12 @@ test("createSdkModel attaches DeepInfra's documented response-cost normalizer", 
         DEEPINFRA_API_KEY: "test-key",
     });
     assert.notEqual(sdk?.languageModel, undefined);
-    assert.deepEqual(sdk?.normalizeCharge?.({
+    assert.deepEqual(sdk?.normalizeCost?.({
         usage: { estimated_cost: 5.04e-5 },
         response: { id: "response-1" },
     }), {
-        kind: "authoritative",
+        kind: "estimated",
         amount: { amount: "0.0000504", currency: "USD" },
-        usdEquivalent: "0.0000504",
         source: "DeepInfra response usage.estimated_cost",
     });
 });

@@ -15,7 +15,6 @@ const response = (content: string): MockResponse => ({
     assistant: {
         content,
         reasoning: null,
-        usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
     },
     assistantRaw: null,
 });

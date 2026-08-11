@@ -7,7 +7,7 @@ import type { StoredPacketSection } from "../../src/core/StoredPacket.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { rulerCount } from "../../src/core/token-ruler.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { MockResponse, ProviderUsage } from "@plurnk/plurnk-providers";
+import type { MockResponse } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, logEntries } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -45,15 +45,15 @@ const contentResp = (content: string, completion: number = 0): MockResponse => (
         // grammar 0.70: turns lead with PLAN (the Engine re-parses this content).
         content: content.startsWith("<<PLAN") ? content : `<<PLAN::PLAN\n${content}`,
         reasoning: null,
-        usage: { prompt: 0, completion, reasoning: 0, cached: 0, total: completion },
     },
+    usage: { inputTokens: 0, outputTokens: completion, totalTokens: completion },
 } as MockResponse);
 
 const response = (ops: PlurnkStatement[], content: string = "", completion: number = 0): MockResponse => ({
     assistant: {
         content, ops, reasoning: null,
-        usage: { prompt: 0, completion, reasoning: 0, cached: 0, total: completion },
     },
+    usage: { inputTokens: 0, outputTokens: completion, totalTokens: completion },
 });
 
 // The deterministic HARD-failure (403 writableBy) generator for the strike/notice tests:
@@ -77,19 +77,6 @@ const setup = async () => {
     return { db, engine, workspaceId, workerId, loopId };
 };
 
-// The Mock's calculateCost ignores usage; this billing rule charges reasoning
-// tokens too, so a nonzero reasoning count MUST move the recorded turn
-// cost — the discriminator for "did the engine forward reasoning to
-// calculateCost, or silently drop it?"
-class ReasoningBillingMock extends Mock {
-    calculateCost({ prompt, completion, reasoning }: ProviderUsage): number {
-        return (prompt + completion + reasoning) / 1_000;
-    }
-    override calculateCharge(usage: ProviderUsage) {
-        return { kind: "estimated" as const, usd: String(this.calculateCost(usage)), source: "reasoning billing fixture" };
-    }
-}
-
 test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with status from SEND", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
@@ -110,12 +97,12 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
             { op: "SEND", status: 200 },
         ], "EDIT created → 201; SEND broadcast → 200");
 
-        const turn = await db.test_get_turn.get<{ loop_id: number; sequence: number; status: number; usage_completion: number }>({ id: result.turnId });
+        const turn = await db.test_get_turn.get<{ loop_id: number; sequence: number; status: number }>({ id: result.turnId });
         if (turn === undefined) throw new Error("turn not found");
         assert.equal(turn.loop_id, loopId);
         assert.equal(turn.sequence, 1);
         assert.equal(turn.status, 200);
-        assert.equal(turn.usage_completion, 42);
+        assert.equal((await engine.loopUsage(loopId)).accounting.usage?.outputTokens, 42);
 
         // 5 log entries: the turn-0 `model` exemplar (mirrored OPEN at sequence 1),
         // one first-class prompt row, two model ops (EDIT, SEND), and one folded
@@ -129,13 +116,26 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: reported fallback cost includes reasoning tokens", async () => {
+test("Engine.runTurn: exact request accounting preserves reasoning-inclusive pricing", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        const usage = { prompt: 100, completion: 50, reasoning: 200, cached: 0, total: 350 };
-        const provider = new ReasoningBillingMock({
+        const usage = {
+            inputTokens: 100,
+            outputTokens: 250,
+            totalTokens: 350,
+            outputTokenDetails: { textTokens: 50, reasoningTokens: 200 },
+        };
+        const provider = new Mock({
             contextWindow: 100000,
-            responses: [{ assistant: { content: "", ops: [sendStmt(200, "done")], reasoning: "deliberated at length", usage } }],
+            responses: [{
+                assistant: { content: "", ops: [sendStmt(200, "done")], reasoning: "deliberated at length" },
+                usage,
+                cost: {
+                    kind: "estimated",
+                    amount: { amount: "0.35", currency: "USD" },
+                    source: "reasoning billing fixture",
+                },
+            }],
         });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,
@@ -146,21 +146,14 @@ test("Engine.runTurn: reported fallback cost includes reasoning tokens", async (
         });
         assert.equal(result.status, 200);
 
-        const turn = await db.test_get_turn.get<{ usage_cost: string; usage_cost_usd: number | null; usage_completion: number; usage_reasoning: number }>({ id: result.turnId });
-        if (turn === undefined) throw new Error("turn not found");
-        // calculateCost charges prompt+completion+reasoning = 100+50+200 = $0.35.
-        // Strip reasoning from the usage the engine forwards and it falls
-        // to $0.15 — so $0.35 proves reasoning survived into the recorded cost.
-        assert.equal(provider.calculateCost({ ...usage, reasoning: 0 }), 0.15,
-            "control: identical usage minus reasoning excludes the reasoning charge");
-        assert.equal(turn.usage_cost_usd, 0.35);
-        assert.deepEqual(JSON.parse(turn.usage_cost), [{
+        const accounting = (await engine.loopUsage(loopId)).accounting;
+        assert.equal(accounting.costUsd, "0.35");
+        assert.deepEqual(accounting.usage, usage);
+        assert.deepEqual(accounting.requests[0]?.cost, {
             kind: "estimated",
-            usd: "0.35",
+            amount: { amount: "0.35", currency: "USD" },
             source: "reasoning billing fixture",
-        }], "the projection still prices the full usage, including reasoning");
-        assert.equal(turn.usage_completion, 50, "completion is still recorded separately as a raw count");
-        assert.equal(turn.usage_reasoning, 200, "reasoning is recorded separately as a raw count");
+        });
     } finally { await db.close(); }
 });
 

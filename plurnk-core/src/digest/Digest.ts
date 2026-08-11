@@ -37,6 +37,7 @@ import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+import { isDeepStrictEqual } from "node:util";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
 import { observedSync } from "../observe/spans.ts";
 import type { SqlRiteSyncPreparedStatements } from "@possumtech/sqlrite";
@@ -48,12 +49,25 @@ import PacketWire from "../core/packet-wire.ts";
 import StoredPacket, { type DurablePacket } from "../core/StoredPacket.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
-import { ProviderError, providerCostFor, providerCostUsd, validateProviderCost, type ChatMessage, type Provider, type ProviderAttempt, type ProviderResponse, type ProviderUsage } from "@plurnk/plurnk-providers";
+import {
+    aggregateProviderAccounting,
+    ProviderError,
+    validateProviderRequestAccounting,
+    type ChatMessage,
+    type Provider,
+    type ProviderAccounting,
+    type ProviderRequestAccounting,
+    type ProviderRequestObserver,
+    type ProviderResponse,
+} from "@plurnk/plurnk-providers";
+import {
+    providerRequestFromStorageRow,
+    type ProviderRequestStorageRow,
+} from "../core/provider-accounting.ts";
 import {
     Validator,
     type OperationResult,
     type ProblemDetails,
-    type ProviderCost,
 } from "@plurnk/plurnk-contracts";
 
 // The requiem prompt ({§digest-requiem}): the model's exit interview. Absolution up front - the system is
@@ -65,7 +79,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
 const requiemResponseEvidence = (response: unknown): unknown => {
     if (!isRecord(response)) return response;
-    const { rawBody: _rawBody, ...withoutRawBody } = response;
+    const { rawBody: _rawBody, accounting: _accounting, ...withoutRawBody } = response;
+    void _rawBody;
+    void _accounting;
     if (!isRecord(withoutRawBody.assistantRaw)) return withoutRawBody;
     const { rawBody: _nestedRawBody, ...assistantRaw } = withoutRawBody.assistantRaw;
     return { ...withoutRawBody, assistantRaw };
@@ -103,8 +119,8 @@ const writeJsonDurably = (path: string, value: unknown): void => {
 
 // DB row shapes — only the columns this tool reads. JSON columns (packet,
 // flags, rx) arrive as strings, parsed on use.
-interface WorkspaceRow { id: number; name: string; cost_usd: number | null }
-interface WorkerRow { id: number; workspace_id: number; name: string; cost_usd: number | null }
+interface WorkspaceRow { id: number; name: string }
+interface WorkerRow { id: number; workspace_id: number; name: string }
 interface LoopRow {
     id: number;
     worker_id: number;
@@ -117,8 +133,6 @@ interface LoopRow {
 }
 interface TurnRow {
     id: number; loop_id: number; sequence: number; status: number; packet: DurablePacket | null;
-    usage_prompt: number; usage_completion: number; usage_reasoning: number;
-    usage_cached: number; usage_cost: string; usage_cost_usd: number | null;
     finish_reason: string | null; model: string | null;
     meta: string | null;  // {§meta-passthrough}, {§rail-truth-engine-verdict}
 }
@@ -127,9 +141,37 @@ interface TurnAttemptRow {
     id: number; turn_id: number; sequence: number;
     state: "pending" | "response" | "error"; accepted: number | null;
     response: string | null; failure: string | null; parse_errors: string; attributions: string;
-    usage_prompt: number | null; usage_completion: number | null; usage_reasoning: number | null;
-    usage_cached: number | null; usage_cost: string | null; usage_cost_usd: number | null;
     finish_reason: string | null; model: string; timestamp: string; completed_at: string | null;
+}
+interface ProviderRequestRow {
+    id: number;
+    turn_attempt_id: number;
+    turn_id: number;
+    loop_id: number;
+    worker_id: number;
+    workspace_id: number;
+    sequence: number;
+    provider: string;
+    model: string;
+    state: "pending" | "settled";
+    outcome: "response" | "error" | null;
+    status: number | null;
+    usage_input: number | null;
+    usage_output: number | null;
+    usage_total: number | null;
+    usage_input_no_cache: number | null;
+    usage_input_cache_read: number | null;
+    usage_input_cache_write: number | null;
+    usage_output_text: number | null;
+    usage_output_reasoning: number | null;
+    cost_kind: "charged" | "estimated" | "unknown" | null;
+    cost_amount: string | null;
+    cost_currency: string | null;
+    cost_usd_equivalent: string | null;
+    cost_source: string | null;
+    cost_reason: string | null;
+    started_at: string;
+    completed_at: string | null;
 }
 interface LogRow {
     id: number; worker_id: number; loop_id: number; turn_id: number; sequence: number;
@@ -145,8 +187,6 @@ interface LogCurationEffectRow {
 }
 interface WorkerRollupRow {
     worker_id: number; loops: number; turns: number;
-    total_prompt: number; total_completion: number; total_reasoning: number;
-    total_cached: number; total_cost_usd: number | null;
     last_status: number | null;
 }
 interface OpMixRow { worker_id: number; op: string; n: number }
@@ -161,12 +201,18 @@ interface DigestModel {
     loops: LoopRow[];
     turns: TurnRow[];
     turnAttempts: TurnAttemptRow[];
+    providerRequests: ProviderRequestRow[];
     logEntries: LogRow[];
     curationEffects: LogCurationEffectRow[];
     workersByWorkspace: Map<number, WorkerRow[]>;
     loopsByWorker: Map<number, LoopRow[]>;
     turnsByLoop: Map<number, TurnRow[]>;
     attemptsByTurn: Map<number, TurnAttemptRow[]>;
+    requestsByAttempt: Map<number, ProviderRequestRow[]>;
+    requestsByTurn: Map<number, ProviderRequestRow[]>;
+    requestsByLoop: Map<number, ProviderRequestRow[]>;
+    requestsByWorker: Map<number, ProviderRequestRow[]>;
+    requestsByWorkspace: Map<number, ProviderRequestRow[]>;
     logEntriesByTurn: Map<number, LogRow[]>;
     loopsById: Map<number, LoopRow>;
     workersById: Map<number, WorkerRow>;
@@ -204,8 +250,14 @@ type RequiemCallRecord = {
     openedAt: string;
     completedAt: string | null;
     state: "open" | "response" | "error";
-    usage: ProviderUsage | null;
-    cost: ProviderCost;
+    requests: Array<{
+        provider: string;
+        model: string;
+        openedAt: string;
+        completedAt: string | null;
+        state: "open" | "settled";
+        accounting: ProviderRequestAccounting | null;
+    }>;
     failure: unknown;
 };
 
@@ -213,11 +265,9 @@ type RequiemWorkerReport = {
     workerId: number;
     workerName: string;
     messages: ChatMessage[];
-    responses: ProviderAttempt[];
+    responses: unknown[];
     calls: RequiemCallRecord[];
-    usage: ProviderUsage;
-    costs: ProviderCost[];
-    costUsd: number | null;
+    accounting: ProviderAccounting;
     testimony: string | null;
 };
 
@@ -234,21 +284,28 @@ export default class Digest {
         try { return JSON.parse(String(s)); } catch { return fallback; }
     }
 
-    static #providerCosts(raw: unknown, subject: string): ProviderCost[] {
-        const parsed = Digest.#parseJson(raw);
-        if (!Array.isArray(parsed)) throw new TypeError(`digest: ${subject} monetary evidence is not an array`);
-        return parsed.map((cost) => validateProviderCost(cost as ProviderCost));
+    static #requestAccounting(row: ProviderRequestRow): ProviderRequestAccounting {
+        if (row.state !== "settled" || row.outcome === null || row.cost_kind === null) {
+            throw new TypeError(`digest: provider request ${row.id} is not settled`);
+        }
+        return providerRequestFromStorageRow(row as ProviderRequestStorageRow);
     }
 
-    static #providerCost(raw: unknown, subject: string): ProviderCost {
-        return validateProviderCost(Digest.#parseJson(raw) as ProviderCost);
-    }
-
-    static #costProjection(costs: readonly ProviderCost[]): number | null {
-        const values = costs.map(providerCostUsd);
-        return values.some((value) => value === null)
+    static #accounting(rows: readonly ProviderRequestRow[]): ProviderAccounting | null {
+        return rows.some((row) => row.state !== "settled")
             ? null
-            : values.reduce<number>((total, value) => total + (value ?? 0), 0);
+            : aggregateProviderAccounting(rows.map((row) => Digest.#requestAccounting(row)));
+    }
+
+    static #usageSummary(accounting: ProviderAccounting | null): string {
+        if (accounting === null) return "accounting=incomplete";
+        const usage = accounting.usage;
+        return [
+            `input=${usage?.inputTokens ?? "unknown"}`,
+            `output=${usage?.outputTokens ?? "unknown"}`,
+            `reasoning=${usage?.outputTokenDetails?.reasoningTokens ?? "unknown"}`,
+            `cache-read=${usage?.inputTokenDetails?.cacheReadTokens ?? "unknown"}`,
+        ].join(" ");
     }
 
     static #operationResult(raw: unknown, subject: string): OperationResult {
@@ -353,11 +410,11 @@ export default class Digest {
         const assistant = packet !== null && StoredPacket.isAdmitted(packet) ? packet.assistant : null;
         const content = assistant?.content ?? "";
         const reasoning = assistant?.reasoning ?? null;
-        const tokens = `prompt=${turn.usage_prompt} completion=${turn.usage_completion} reasoning=${turn.usage_reasoning} cached=${turn.usage_cached}`;
-        Digest.#providerCosts(turn.usage_cost, `turn ${turn.id}`);
-        const cost = turn.usage_cost_usd === null
+        const accounting = Digest.#accounting(m.requestsByTurn.get(turn.id) ?? []);
+        const tokens = Digest.#usageSummary(accounting);
+        const cost = accounting === null || accounting.costUsd === null
             ? " cost=unavailable"
-            : ` cost=$${turn.usage_cost_usd.toFixed(6)}`;
+            : ` cost=$${accounting.costUsd}`;
         const finishReason = turn.finish_reason ?? "—";
         // Render only observed constraint metadata; absence makes no claim
         // about endpoint-owned settings. {§rail-truth-engine-verdict}
@@ -401,13 +458,14 @@ export default class Digest {
         // every worker has exactly one rollup row — digest_worker_rollups is FROM workers
         const roll = m.workerRollups.get(worker.id)!;
         const opMix = (m.opMixByWorker.get(worker.id) ?? []).map((o) => `${o.op}=${o.n}`).join(" ");
-        const costStr = roll.total_cost_usd === null ? "unknown" : `$${roll.total_cost_usd.toFixed(6)}`;
+        const accounting = Digest.#accounting(m.requestsByWorker.get(worker.id) ?? []);
+        const costStr = accounting === null || accounting.costUsd === null ? "unknown" : `$${accounting.costUsd}`;
         return [
             `Loops:      ${roll.loops}`,
             `Turns:      ${roll.turns}`,
             `Last turn:  ${roll.last_status !== null ? `status=${roll.last_status}` : "(none)"}`,
-            `Tokens:     prompt=${roll.total_prompt} completion=${roll.total_completion} reasoning=${roll.total_reasoning} cached=${roll.total_cached}`,
-            `Cost:       ${costStr} (DB rollup workers.cost_usd=${worker.cost_usd})`,
+            `Tokens:     ${Digest.#usageSummary(accounting)}`,
+            `Cost:       ${costStr}`,
             `Op mix:     ${opMix.length > 0 ? opMix : "(no ops)"}`,
         ].join("\n");
     }
@@ -420,7 +478,8 @@ export default class Digest {
         const rejectedAttempts = m.turnAttempts.filter((attempt) => attempt.accepted === 0).length;
         const erroredAttempts = m.turnAttempts.filter((attempt) => attempt.state === "error").length;
         const pendingAttempts = m.turnAttempts.filter((attempt) => attempt.state === "pending").length;
-        lines.push(`Workspaces: ${m.workspaces.length}  Workers: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Provider attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected, ${erroredAttempts} errored, ${pendingAttempts} open)  Log entries: ${m.logEntries.length}`);
+        const pendingRequests = m.providerRequests.filter((request) => request.state === "pending").length;
+        lines.push(`Workspaces: ${m.workspaces.length}  Workers: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Emission attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected, ${erroredAttempts} errored, ${pendingAttempts} open)  Provider requests: ${m.providerRequests.length} (${pendingRequests} open)  Log entries: ${m.logEntries.length}`);
         lines.push(`Semantic:  body=${m.embeddings.body_entries} attached=${m.embeddings.derivation_complete} (vector=${m.embeddings.vector_complete} lexical=${m.embeddings.lexical} excluded=${m.embeddings.excluded} nonsemantic=${m.embeddings.nonsemantic} failed=${m.embeddings.failed}) unattached=${m.embeddings.unfinished} artifacts=${m.embeddings.derivation_artifacts_complete} complete/${m.embeddings.derivation_artifacts_building} building chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
         if (m.embeddings.dispositions.length > 0) {
             lines.push("Semantic dispositions:");
@@ -605,55 +664,60 @@ export default class Digest {
         return JSON.stringify({
             dbPath: m.dbPath,
             semantic: m.embeddings,
-            workspaces: m.workspaces.map((s) => ({ id: s.id, name: s.name, cost_usd: s.cost_usd })),
-            workers: m.workers.map((r) => ({ id: r.id, workspace_id: r.workspace_id, name: r.name, cost_usd: r.cost_usd })),
+            workspaces: m.workspaces.map((s) => ({
+                id: s.id,
+                name: s.name,
+                accounting: Digest.#accounting(m.requestsByWorkspace.get(s.id) ?? []),
+            })),
+            workers: m.workers.map((r) => ({
+                id: r.id,
+                workspace_id: r.workspace_id,
+                name: r.name,
+                accounting: Digest.#accounting(m.requestsByWorker.get(r.id) ?? []),
+            })),
             loops: m.loops.map((l) => ({
                 id: l.id, worker_id: l.worker_id, sequence: l.sequence, status: l.status,
                 prompt: l.prompt, flags: Digest.#parseJson(l.flags, {}),
                 terminated_by: l.terminated_by,
                 result: Digest.#terminalResult(l),
+                accounting: Digest.#accounting(m.requestsByLoop.get(l.id) ?? []),
             })),
-            turns: m.turns.map((t) => {
-                const costs = Digest.#providerCosts(t.usage_cost, `turn ${t.id}`);
-                return {
-                    id: t.id, loop_id: t.loop_id, sequence: t.sequence, status: t.status,
-                    usage_prompt: t.usage_prompt, usage_completion: t.usage_completion,
-                    usage_reasoning: t.usage_reasoning, usage_cached: t.usage_cached,
-                    usage_cost: costs,
-                    usage_cost_usd: t.usage_cost_usd,
-                    finish_reason: t.finish_reason, model: t.model,
-                    attributions: t.packet?.attributions ?? [],
-                    // Preserve the opaque provider and engine metadata for aggregate
-                    // tooling. {§meta-passthrough}, {§rail-truth-engine-verdict}
-                    meta: Digest.#parseJson(t.meta ?? "null", null),
-                };
-            }),
-            turn_attempts: m.turnAttempts.map((attempt) => {
-                const cost = attempt.usage_cost === null
-                    ? null
-                    : Digest.#providerCost(attempt.usage_cost, `attempt ${attempt.id}`);
-                return {
-                    id: attempt.id,
-                    turn_id: attempt.turn_id,
-                    sequence: attempt.sequence,
-                    state: attempt.state,
-                    accepted: attempt.accepted === null ? null : attempt.accepted === 1,
-                    response: Digest.#parseJson(attempt.response),
-                    failure: Digest.#parseJson(attempt.failure),
-                    parse_errors: Digest.#parseJson(attempt.parse_errors, []),
-                    attributions: Digest.#parseJson(attempt.attributions, []),
-                    usage_prompt: attempt.usage_prompt,
-                    usage_completion: attempt.usage_completion,
-                    usage_reasoning: attempt.usage_reasoning,
-                    usage_cached: attempt.usage_cached,
-                    usage_cost: cost,
-                    usage_cost_usd: attempt.usage_cost_usd,
-                    finish_reason: attempt.finish_reason,
-                    model: attempt.model,
-                    timestamp: attempt.timestamp,
-                    completed_at: attempt.completed_at,
-                };
-            }),
+            turns: m.turns.map((t) => ({
+                id: t.id, loop_id: t.loop_id, sequence: t.sequence, status: t.status,
+                accounting: Digest.#accounting(m.requestsByTurn.get(t.id) ?? []),
+                finish_reason: t.finish_reason, model: t.model,
+                attributions: t.packet?.attributions ?? [],
+                // Preserve the opaque provider and engine metadata for aggregate
+                // tooling. {§meta-passthrough}, {§rail-truth-engine-verdict}
+                meta: Digest.#parseJson(t.meta ?? "null", null),
+            })),
+            turn_attempts: m.turnAttempts.map((attempt) => ({
+                id: attempt.id,
+                turn_id: attempt.turn_id,
+                sequence: attempt.sequence,
+                state: attempt.state,
+                accepted: attempt.accepted === null ? null : attempt.accepted === 1,
+                response: Digest.#parseJson(attempt.response),
+                failure: Digest.#parseJson(attempt.failure),
+                parse_errors: Digest.#parseJson(attempt.parse_errors, []),
+                attributions: Digest.#parseJson(attempt.attributions, []),
+                accounting: Digest.#accounting(m.requestsByAttempt.get(attempt.id) ?? []),
+                finish_reason: attempt.finish_reason,
+                model: attempt.model,
+                timestamp: attempt.timestamp,
+                completed_at: attempt.completed_at,
+            })),
+            provider_requests: m.providerRequests.map((request) => ({
+                id: request.id,
+                turn_attempt_id: request.turn_attempt_id,
+                sequence: request.sequence,
+                state: request.state,
+                accounting: request.state === "settled"
+                    ? Digest.#requestAccounting(request)
+                    : null,
+                started_at: request.started_at,
+                completed_at: request.completed_at,
+            })),
             log_entries: m.logEntries.map((le) => ({
                 id: le.id, worker_id: le.worker_id, loop_id: le.loop_id,
                 turn_id: le.turn_id, sequence: le.sequence, origin: le.origin,
@@ -804,25 +868,14 @@ export default class Digest {
                 messages,
                 responses: [],
                 calls: [],
-                usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
-                costs: [],
-                costUsd: null,
+                accounting: aggregateProviderAccounting([]),
                 testimony: null,
             };
             reports.push(report);
             const updateObservedTotals = (): void => {
-                report.usage = report.calls.reduce<ProviderUsage>((total, call) => {
-                    if (call.usage === null) return total;
-                    return {
-                        prompt: total.prompt + call.usage.prompt,
-                        completion: total.completion + call.usage.completion,
-                        reasoning: total.reasoning + call.usage.reasoning,
-                        cached: total.cached + call.usage.cached,
-                        total: total.total + call.usage.total,
-                    };
-                }, { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 });
-                report.costs = report.calls.map((call) => call.cost);
-                report.costUsd = Digest.#costProjection(report.costs);
+                const requests = report.calls.flatMap((call) => call.requests.flatMap((request) =>
+                    request.accounting === null ? [] : [request.accounting]));
+                report.accounting = aggregateProviderAccounting(requests);
                 persistReports();
             };
             const issue = async (outputTokens: number): Promise<ProviderResponse> => {
@@ -830,25 +883,61 @@ export default class Digest {
                     openedAt: new Date().toISOString(),
                     completedAt: null,
                     state: "open",
-                    usage: null,
-                    cost: { kind: "unknown", reason: "requiem provider call is open" },
+                    requests: [],
                     failure: null,
                 };
                 report.calls.push(call);
                 updateObservedTotals();
+                const observeRequest: ProviderRequestObserver = async (identity) => {
+                    if (identity.provider.length === 0 || identity.model.length === 0) {
+                        throw new TypeError("requiem provider request identity is incomplete");
+                    }
+                    const request: RequiemCallRecord["requests"][number] = {
+                        provider: identity.provider,
+                        model: identity.model,
+                        openedAt: new Date().toISOString(),
+                        completedAt: null,
+                        state: "open",
+                        accounting: null,
+                    };
+                    call.requests.push(request);
+                    updateObservedTotals();
+                    return async (value) => {
+                        if (request.state !== "open") throw new Error("requiem provider request settled more than once");
+                        const accounting = validateProviderRequestAccounting(value);
+                        if (accounting.provider !== identity.provider || accounting.model !== identity.model) {
+                            throw new TypeError("requiem provider request settlement changed its identity");
+                        }
+                        request.state = "settled";
+                        request.completedAt = new Date().toISOString();
+                        request.accounting = accounting;
+                        updateObservedTotals();
+                    };
+                };
+                const assertObserved = (expected: readonly ProviderRequestAccounting[]): void => {
+                    const observedRequests = call.requests.map((request) => {
+                        if (request.accounting === null) {
+                            throw new TypeError("requiem provider returned while a physical request remained open");
+                        }
+                        return request.accounting;
+                    });
+                    if (!isDeepStrictEqual(expected.map(validateProviderRequestAccounting), observedRequests)) {
+                        throw new TypeError("requiem provider accounting differs from its observed physical requests");
+                    }
+                };
                 try {
                     const response = await provider.generate({
                         messages,
                         workerId: id,
                         primaryWorkerId: id,
                         maxTokens: outputTokens,
+                        observeRequest,
                         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
                     });
+                    assertObserved(response.accounting);
                     call.state = "response";
                     call.completedAt = new Date().toISOString();
-                    call.usage = response.assistant.usage;
-                    call.cost = providerCostFor(provider, response.assistant.usage, response.charge);
-                    report.responses.push(response);
+                    report.responses.push(requiemResponseEvidence(response));
                     updateObservedTotals();
                     return response;
                 } catch (cause) {
@@ -859,15 +948,11 @@ export default class Digest {
                         : cause instanceof Error
                             ? { name: cause.name, message: cause.message }
                             : String(cause);
-                    if (cause instanceof ProviderError && cause.attempt !== undefined) {
-                        call.usage = cause.attempt.assistant.usage;
-                        call.cost = providerCostFor(provider, cause.attempt.assistant.usage, cause.attempt.charge);
-                        report.responses.push(cause.attempt);
-                    } else {
-                        call.cost = {
-                            kind: "unknown",
-                            reason: "requiem provider call failed without response-bearing charge evidence",
-                        };
+                    if (cause instanceof ProviderError) {
+                        assertObserved(cause.accounting);
+                        if (cause.attempt !== undefined) {
+                            report.responses.push(requiemResponseEvidence(cause.attempt));
+                        }
                     }
                     updateObservedTotals();
                     throw cause;
@@ -886,16 +971,17 @@ export default class Digest {
             if (generationFailure !== undefined) throw generationFailure;
             if (resp === undefined) throw new Error(`requiem worker ${worker.id} completed without a provider response`);
             const testimony = resp.assistant.content.trim()
-                || `(no testimony - ${resp.assistant.usage.completion} visible completion tokens after ${report.calls.length} provider attempt(s))`;
+                || `(no testimony - ${report.accounting.usage?.outputTokens ?? "unknown"} output tokens after ${report.calls.length} provider call(s))`;
             report.testimony = testimony;
             persistReports();
-            const costSummary = report.costUsd === null
+            const costSummary = report.accounting.costUsd === null
                 ? "cost USD unavailable"
-                : `cost USD ${report.costUsd}`;
+                : `cost USD ${report.accounting.costUsd}`;
+            const physicalRequests = report.calls.reduce((total, call) => total + call.requests.length, 0);
             out.push(
                 `## Worker #${worker.id} - ${worker.name}`,
                 "",
-                `_(${resp.assistant.model}, ${resp.assistant.finishReason ?? "?"}, attempts ${report.calls.length}, prompt ${report.usage.prompt}, completion ${report.usage.completion}, reasoning ${report.usage.reasoning}, cached ${report.usage.cached}, ${costSummary})_`,
+                `_(${resp.assistant.model}, ${resp.assistant.finishReason ?? "?"}, provider calls ${report.calls.length}, physical requests ${physicalRequests}, ${Digest.#usageSummary(report.accounting)}, ${costSummary})_`,
                 "",
                 testimony,
                 "",
@@ -936,6 +1022,7 @@ export default class Digest {
                 packet: StoredPacket.parse(turn.packet, `digest turn ${turn.id}`),
             }));
         let turnAttempts = (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all();
+        let providerRequests = (db.digest_provider_requests as SyncPrep<ProviderRequestRow>).all();
         let logEntries = (db.digest_log_entries as SyncPrep<LogRow>).all();
         let curationEffects: LogCurationEffectRow[] = [];
         let workerRollupRows = (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all();
@@ -998,6 +1085,8 @@ export default class Digest {
             turns = turns.filter((t) => keptLoopIds.has(t.loop_id));
             const keptTurnIds = new Set(turns.map((t) => t.id));
             turnAttempts = turnAttempts.filter((attempt) => keptTurnIds.has(attempt.turn_id));
+            const keptAttemptIds = new Set(turnAttempts.map((attempt) => attempt.id));
+            providerRequests = providerRequests.filter((request) => keptAttemptIds.has(request.turn_attempt_id));
             logEntries = logEntries.filter((le) => keptTurnIds.has(le.turn_id));
             const keptLogEntryIds = new Set(logEntries.map((entry) => entry.id));
             curationEffects = curationEffects.filter((effect) =>
@@ -1024,6 +1113,23 @@ export default class Digest {
             arr.push(attempt);
             attemptsByTurn.set(attempt.turn_id, arr);
         }
+        const requestsByAttempt = new Map<number, ProviderRequestRow[]>();
+        const requestsByTurn = new Map<number, ProviderRequestRow[]>();
+        const requestsByLoop = new Map<number, ProviderRequestRow[]>();
+        const requestsByWorker = new Map<number, ProviderRequestRow[]>();
+        const requestsByWorkspace = new Map<number, ProviderRequestRow[]>();
+        const appendRequest = (map: Map<number, ProviderRequestRow[]>, id: number, request: ProviderRequestRow): void => {
+            const rows = map.get(id) ?? [];
+            rows.push(request);
+            map.set(id, rows);
+        };
+        for (const request of providerRequests) {
+            appendRequest(requestsByAttempt, request.turn_attempt_id, request);
+            appendRequest(requestsByTurn, request.turn_id, request);
+            appendRequest(requestsByLoop, request.loop_id, request);
+            appendRequest(requestsByWorker, request.worker_id, request);
+            appendRequest(requestsByWorkspace, request.workspace_id, request);
+        }
         const logEntriesByTurn = new Map<number, LogRow[]>();
         for (const le of logEntries) { const arr = logEntriesByTurn.get(le.turn_id) ?? []; arr.push(le); logEntriesByTurn.set(le.turn_id, arr); }
         const loopsById = new Map(loops.map((l) => [l.id, l]));
@@ -1033,8 +1139,10 @@ export default class Digest {
         for (const o of opMixRows) { const arr = opMixByWorker.get(o.worker_id) ?? []; arr.push(o); opMixByWorker.set(o.worker_id, arr); }
 
         const m: DigestModel = {
-            dbPath, digestDir, workspaces, workers, loops, turns, turnAttempts, logEntries, curationEffects,
-            workersByWorkspace, loopsByWorker, turnsByLoop, attemptsByTurn, logEntriesByTurn, loopsById, workersById,
+            dbPath, digestDir, workspaces, workers, loops, turns, turnAttempts, providerRequests, logEntries, curationEffects,
+            workersByWorkspace, loopsByWorker, turnsByLoop, attemptsByTurn,
+            requestsByAttempt, requestsByTurn, requestsByLoop, requestsByWorker, requestsByWorkspace,
+            logEntriesByTurn, loopsById, workersById,
             workerRollups, opMixByWorker, embeddings,
         };
 
@@ -1046,6 +1154,6 @@ export default class Digest {
 
         console.log(`digest: wrote ${digestDir}/{digest.md,digest.json,reasoning.md} + ${packetFiles.length} packet section files (${packetIds.join(", ") || "none"})`);
         console.log(`  source: ${dbPath}`);
-        console.log(`  workspaces=${workspaces.length} workers=${workers.length} loops=${loops.length} turns=${turns.length} turn_attempts=${turnAttempts.length} log_entries=${logEntries.length} log_curation_effects=${curationEffects.length}`);
+        console.log(`  workspaces=${workspaces.length} workers=${workers.length} loops=${loops.length} turns=${turns.length} turn_attempts=${turnAttempts.length} provider_requests=${providerRequests.length} log_entries=${logEntries.length} log_curation_effects=${curationEffects.length}`);
     }
 }

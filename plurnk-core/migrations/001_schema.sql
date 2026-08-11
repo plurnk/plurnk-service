@@ -11,7 +11,6 @@ CREATE TABLE IF NOT EXISTS workspaces (
     version                   INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
     name                      TEXT    NOT NULL UNIQUE CHECK (length(name) > 0),
     created_at                TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    cost_usd                  REAL             DEFAULT 0 CHECK (cost_usd IS NULL OR cost_usd >= 0),
     project_root              TEXT,
     -- {§operator-config} validated client workspace settings; each field composes
     -- with operator configuration at its owning use site.
@@ -29,7 +28,6 @@ CREATE TABLE IF NOT EXISTS workers (
     created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     -- workers fork via parent_worker_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
-    cost_usd        REAL             DEFAULT 0 CHECK (cost_usd IS NULL OR cost_usd >= 0),
     origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', 'plurnk')),
     -- {§methods-model-worker}: durable identity for the workspace's stable
     -- default conversation; unrelated to its human-facing, reclaimable name.
@@ -198,9 +196,9 @@ BEGIN
 END;
 
 -- turns
--- finish_reason / model: provider-call metadata from the provider response contract.
--- Properties of the call, not of the model's emission payload — kept on
--- the Turn row alongside usage rather than nested into packet.assistant.
+-- finish_reason / model: accepted provider-call metadata from the provider
+-- response contract. Physical request accounting is normalized beneath the
+-- logical emission attempt that caused it.
 CREATE TABLE IF NOT EXISTS turns (
     id               INTEGER NOT NULL PRIMARY KEY,
     version          INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
@@ -208,12 +206,6 @@ CREATE TABLE IF NOT EXISTS turns (
     sequence         INTEGER NOT NULL           CHECK (sequence >= 1),
     timestamp        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     status           INTEGER NOT NULL           CHECK (status BETWEEN 100 AND 599),
-    usage_prompt     INTEGER NOT NULL DEFAULT 0 CHECK (usage_prompt >= 0),
-    usage_completion INTEGER NOT NULL DEFAULT 0 CHECK (usage_completion >= 0),
-    usage_reasoning  INTEGER NOT NULL DEFAULT 0 CHECK (usage_reasoning >= 0),
-    usage_cached     INTEGER NOT NULL DEFAULT 0 CHECK (usage_cached >= 0),
-    usage_cost       TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(usage_cost) AND json_type(usage_cost) = 'array'),
-    usage_cost_usd   REAL             DEFAULT 0 CHECK (usage_cost_usd IS NULL OR usage_cost_usd >= 0),
     -- Effective packet allowance for this turn's provider and policy; NULL is
     -- uncapped or unknown. {§tokenomics-client-gauge}
     usage_prompt_budget INTEGER                  CHECK (usage_prompt_budget IS NULL OR usage_prompt_budget >= 1),
@@ -258,9 +250,10 @@ CREATE TABLE IF NOT EXISTS turns (
 CREATE UNIQUE INDEX IF NOT EXISTS turns_loop_id_sequence ON turns (loop_id, sequence);
 CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
 
--- Provider calls are attempts beneath one engine turn. Rejected and interrupted
--- response evidence persists without becoming a turn or entering model-visible
--- history.
+-- Logical model-emission attempts sit beneath one engine turn. Rejected and
+-- interrupted response evidence persists without becoming model-visible
+-- history. Physical provider requests are separate child rows because retries
+-- and provider failover can make more than one request for one emission.
 CREATE TABLE IF NOT EXISTS turn_attempts (
     id               INTEGER NOT NULL PRIMARY KEY,
     turn_id          INTEGER NOT NULL,
@@ -275,12 +268,6 @@ CREATE TABLE IF NOT EXISTS turn_attempts (
     attributions     TEXT    NOT NULL DEFAULT '[]' CHECK (
         json_valid(attributions) AND json_type(attributions) = 'array'
     ),
-    usage_prompt     INTEGER          CHECK (usage_prompt IS NULL OR usage_prompt >= 0),
-    usage_completion INTEGER          CHECK (usage_completion IS NULL OR usage_completion >= 0),
-    usage_reasoning  INTEGER          CHECK (usage_reasoning IS NULL OR usage_reasoning >= 0),
-    usage_cached     INTEGER          CHECK (usage_cached IS NULL OR usage_cached >= 0),
-    usage_cost       TEXT             CHECK (usage_cost IS NULL OR (json_valid(usage_cost) AND json_type(usage_cost) = 'object')),
-    usage_cost_usd   REAL             CHECK (usage_cost_usd IS NULL OR usage_cost_usd >= 0),
     finish_reason    TEXT,
     model            TEXT    NOT NULL CHECK (length(model) >= 1),
     timestamp        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -288,22 +275,15 @@ CREATE TABLE IF NOT EXISTS turn_attempts (
     CHECK (
         (state = 'pending'
             AND accepted IS NULL AND response IS NULL AND failure IS NULL
-            AND usage_prompt IS NULL AND usage_completion IS NULL
-            AND usage_reasoning IS NULL AND usage_cached IS NULL
-            AND usage_cost IS NULL AND usage_cost_usd IS NULL
             AND finish_reason IS NULL AND completed_at IS NULL)
         OR
         (state = 'response'
             AND response IS NOT NULL
-            AND usage_prompt IS NOT NULL AND usage_completion IS NOT NULL
-            AND usage_reasoning IS NOT NULL AND usage_cached IS NOT NULL
-            AND usage_cost IS NOT NULL AND completed_at IS NOT NULL)
+            AND completed_at IS NOT NULL)
         OR
         (state = 'error'
             AND accepted IS NULL AND response IS NULL AND failure IS NOT NULL
-            AND usage_prompt = 0 AND usage_completion = 0
-            AND usage_reasoning = 0 AND usage_cached = 0
-            AND usage_cost IS NOT NULL AND completed_at IS NOT NULL)
+            AND completed_at IS NOT NULL)
     ),
     UNIQUE (turn_id, sequence),
     FOREIGN KEY (turn_id) REFERENCES turns(id) ON DELETE CASCADE
@@ -331,8 +311,7 @@ BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS turn_attempts_observation_immutable
-BEFORE UPDATE OF response, usage_prompt, usage_completion, usage_reasoning,
-                 usage_cached, finish_reason, model, completed_at
+BEFORE UPDATE OF response, finish_reason, model, completed_at
 ON turn_attempts
 WHEN OLD.state != 'pending'
 BEGIN
@@ -340,66 +319,129 @@ BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS turn_attempts_classification_once
-BEFORE UPDATE OF accepted, parse_errors, failure, usage_cost, usage_cost_usd
+BEFORE UPDATE OF accepted, parse_errors, failure
 ON turn_attempts
 WHEN OLD.state = 'error' OR (OLD.state = 'response' AND OLD.accepted IS NOT NULL)
 BEGIN
     SELECT RAISE(ABORT, 'provider attempt classification is immutable');
 END;
 
--- Attempt rows are the monetary and provider-usage authority. Turns retain a
--- denormalized projection for their public read contract, maintained here so a
--- crash between provider I/O and engine closure cannot leave a false zero.
-CREATE VIEW IF NOT EXISTS turn_attempt_rollups AS
-SELECT t.id AS turn_id,
-       COALESCE(SUM(a.usage_prompt), 0) AS usage_prompt,
-       COALESCE(SUM(a.usage_completion), 0) AS usage_completion,
-       COALESCE(SUM(a.usage_reasoning), 0) AS usage_reasoning,
-       COALESCE(SUM(a.usage_cached), 0) AS usage_cached,
-       COALESCE((
-           SELECT json_group_array(json(ordered.usage_cost))
-           FROM (
-               SELECT observed.usage_cost
-               FROM turn_attempts observed
-               WHERE observed.turn_id = t.id AND observed.usage_cost IS NOT NULL
-               ORDER BY observed.sequence
-           ) ordered
-       ), '[]') AS usage_cost,
-       CASE
-           WHEN COUNT(a.id) = 0 THEN 0
-           WHEN COUNT(a.id) FILTER (WHERE a.usage_cost_usd IS NULL) > 0 THEN NULL
-           ELSE COALESCE(SUM(a.usage_cost_usd), 0)
-       END AS usage_cost_usd
-FROM turns t
-LEFT JOIN turn_attempts a ON a.turn_id = t.id
-GROUP BY t.id;
+-- {§provider-request-accounting}: one row is opened before one physical
+-- provider request and settled exactly once with the evidence from that request.
+-- Monetary values remain canonical decimal strings; SQLite REAL is never an
+-- accounting representation.
+CREATE TABLE IF NOT EXISTS provider_requests (
+    id                       INTEGER NOT NULL PRIMARY KEY,
+    turn_attempt_id          INTEGER NOT NULL,
+    sequence                 INTEGER NOT NULL CHECK (sequence >= 1),
+    provider                 TEXT    NOT NULL CHECK (length(provider) > 0),
+    model                    TEXT    NOT NULL CHECK (length(model) > 0),
+    state                    TEXT    NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'settled')),
+    outcome                  TEXT             CHECK (outcome IN ('response', 'error')),
+    status                   INTEGER          CHECK (status IS NULL OR status BETWEEN 100 AND 599),
+    usage_input              INTEGER          CHECK (usage_input IS NULL OR usage_input >= 0),
+    usage_output             INTEGER          CHECK (usage_output IS NULL OR usage_output >= 0),
+    usage_total              INTEGER          CHECK (usage_total IS NULL OR usage_total >= 0),
+    usage_input_no_cache     INTEGER          CHECK (usage_input_no_cache IS NULL OR usage_input_no_cache >= 0),
+    usage_input_cache_read   INTEGER          CHECK (usage_input_cache_read IS NULL OR usage_input_cache_read >= 0),
+    usage_input_cache_write  INTEGER          CHECK (usage_input_cache_write IS NULL OR usage_input_cache_write >= 0),
+    usage_output_text        INTEGER          CHECK (usage_output_text IS NULL OR usage_output_text >= 0),
+    usage_output_reasoning   INTEGER          CHECK (usage_output_reasoning IS NULL OR usage_output_reasoning >= 0),
+    cost_kind                TEXT             CHECK (cost_kind IN ('charged', 'estimated', 'unknown')),
+    cost_amount              TEXT,
+    cost_currency            TEXT,
+    cost_usd_equivalent      TEXT,
+    cost_source              TEXT,
+    cost_reason              TEXT,
+    started_at               TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    completed_at             TEXT,
+    CHECK (
+        (state = 'pending'
+            AND outcome IS NULL AND status IS NULL
+            AND usage_input IS NULL AND usage_output IS NULL AND usage_total IS NULL
+            AND usage_input_no_cache IS NULL AND usage_input_cache_read IS NULL
+            AND usage_input_cache_write IS NULL AND usage_output_text IS NULL
+            AND usage_output_reasoning IS NULL
+            AND cost_kind IS NULL AND cost_amount IS NULL AND cost_currency IS NULL
+            AND cost_usd_equivalent IS NULL AND cost_source IS NULL AND cost_reason IS NULL
+            AND completed_at IS NULL)
+        OR
+        (state = 'settled' AND outcome IS NOT NULL AND cost_kind IS NOT NULL AND completed_at IS NOT NULL)
+    ),
+    CHECK (
+        cost_amount IS NULL OR (
+            length(cost_amount) > 0
+            AND cost_amount NOT GLOB '*[^0-9.]*'
+            AND cost_amount NOT LIKE '.%'
+            AND cost_amount NOT LIKE '%.'
+            AND cost_amount NOT LIKE '%.%.%'
+            AND (cost_amount = '0' OR cost_amount NOT GLOB '0[0-9]*')
+        )
+    ),
+    CHECK (
+        cost_usd_equivalent IS NULL OR (
+            length(cost_usd_equivalent) > 0
+            AND cost_usd_equivalent NOT GLOB '*[^0-9.]*'
+            AND cost_usd_equivalent NOT LIKE '.%'
+            AND cost_usd_equivalent NOT LIKE '%.'
+            AND cost_usd_equivalent NOT LIKE '%.%.%'
+            AND (cost_usd_equivalent = '0' OR cost_usd_equivalent NOT GLOB '0[0-9]*')
+        )
+    ),
+    CHECK (
+        cost_currency IS NULL OR (
+            length(cost_currency) BETWEEN 3 AND 12
+            AND substr(cost_currency, 1, 1) GLOB '[A-Z]'
+            AND cost_currency NOT GLOB '*[^A-Z0-9]*'
+        )
+    ),
+    CHECK (
+        cost_kind IS NULL
+        OR (cost_kind = 'charged'
+            AND cost_amount IS NOT NULL AND cost_currency IS NOT NULL
+            AND cost_source IS NOT NULL AND length(cost_source) > 0
+            AND cost_reason IS NULL)
+        OR (cost_kind = 'estimated'
+            AND cost_amount IS NOT NULL AND cost_currency IS NOT NULL
+            AND cost_usd_equivalent IS NULL
+            AND cost_source IS NOT NULL AND length(cost_source) > 0
+            AND cost_reason IS NULL)
+        OR (cost_kind = 'unknown'
+            AND cost_amount IS NULL AND cost_currency IS NULL
+            AND cost_usd_equivalent IS NULL AND cost_source IS NULL
+            AND cost_reason IS NOT NULL AND length(cost_reason) > 0)
+    ),
+    UNIQUE (turn_attempt_id, sequence),
+    FOREIGN KEY (turn_attempt_id) REFERENCES turn_attempts(id) ON DELETE CASCADE
+) STRICT;
 
-CREATE TRIGGER IF NOT EXISTS turn_attempts_rollup_insert
-AFTER INSERT ON turn_attempts
+CREATE INDEX IF NOT EXISTS provider_requests_turn_attempt_id
+    ON provider_requests (turn_attempt_id, sequence);
+
+CREATE TRIGGER IF NOT EXISTS provider_requests_identity_immutable
+BEFORE UPDATE OF turn_attempt_id, sequence, provider, model, started_at ON provider_requests
 BEGIN
-    UPDATE turns SET
-        usage_prompt = (SELECT usage_prompt FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
-        usage_completion = (SELECT usage_completion FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
-        usage_reasoning = (SELECT usage_reasoning FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
-        usage_cached = (SELECT usage_cached FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
-        usage_cost = (SELECT usage_cost FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
-        usage_cost_usd = (SELECT usage_cost_usd FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id)
-    WHERE id = NEW.turn_id;
+    SELECT RAISE(ABORT, 'provider request identity is immutable');
 END;
 
-CREATE TRIGGER IF NOT EXISTS turn_attempts_rollup_update
-AFTER UPDATE OF state, usage_prompt, usage_completion, usage_reasoning,
-                usage_cached, usage_cost, usage_cost_usd
-ON turn_attempts
+CREATE TRIGGER IF NOT EXISTS provider_requests_state_forward_only
+BEFORE UPDATE OF state ON provider_requests
+WHEN NOT (NEW.state = OLD.state OR (OLD.state = 'pending' AND NEW.state = 'settled'))
 BEGIN
-    UPDATE turns SET
-        usage_prompt = (SELECT usage_prompt FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
-        usage_completion = (SELECT usage_completion FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
-        usage_reasoning = (SELECT usage_reasoning FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
-        usage_cached = (SELECT usage_cached FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
-        usage_cost = (SELECT usage_cost FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id),
-        usage_cost_usd = (SELECT usage_cost_usd FROM turn_attempt_rollups WHERE turn_id = NEW.turn_id)
-    WHERE id = NEW.turn_id;
+    SELECT RAISE(ABORT, 'provider request may only settle once');
+END;
+
+CREATE TRIGGER IF NOT EXISTS provider_requests_settlement_immutable
+BEFORE UPDATE OF outcome, status,
+                 usage_input, usage_output, usage_total,
+                 usage_input_no_cache, usage_input_cache_read, usage_input_cache_write,
+                 usage_output_text, usage_output_reasoning,
+                 cost_kind, cost_amount, cost_currency, cost_usd_equivalent,
+                 cost_source, cost_reason, completed_at
+ON provider_requests
+WHEN OLD.state != 'pending'
+BEGIN
+    SELECT RAISE(ABORT, 'provider request settlement is immutable');
 END;
 
 -- derivations
@@ -802,88 +844,6 @@ BEGIN
     FROM workers w
     WHERE w.id = NEW.worker_id;
     UPDATE log_entries SET ambient_event_id = last_insert_rowid() WHERE id = NEW.id;
-END;
-
--- One loop's cost is the complete sum of its provider attempts. One unknown
--- contributing turn makes the aggregate unknown rather than silently zero.
-CREATE VIEW IF NOT EXISTS loop_costs AS
-SELECT l.id, l.worker_id,
-       CASE
-           WHEN COUNT(t.id) FILTER (WHERE t.usage_cost_usd IS NULL) > 0 THEN NULL
-           ELSE COALESCE(SUM(t.usage_cost_usd), 0)
-       END AS cost_usd
-FROM loops l
-LEFT JOIN turns t ON t.loop_id = l.id
-GROUP BY l.id;
-
--- cost_rollups
--- Triggers maintaining denormalized USD totals on workers and workspaces
--- as turns insert/update. Pure denormalization (textbook trigger use);
--- no branching state-machine logic lives here.
-CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_insert_worker
-AFTER INSERT ON turns
-BEGIN
-    UPDATE workers
-       SET cost_usd = (
-           SELECT CASE WHEN COUNT(*) FILTER (WHERE lc.cost_usd IS NULL) > 0
-                       THEN NULL ELSE COALESCE(SUM(lc.cost_usd), 0) END
-             FROM loop_costs lc
-            WHERE lc.worker_id = workers.id
-       )
-     WHERE id = (SELECT worker_id FROM loops WHERE id = NEW.loop_id);
-END;
-
-CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_insert_workspace
-AFTER INSERT ON turns
-BEGIN
-    UPDATE workspaces
-       SET cost_usd = (
-           SELECT CASE WHEN COUNT(*) FILTER (WHERE lc.cost_usd IS NULL) > 0
-                       THEN NULL ELSE COALESCE(SUM(lc.cost_usd), 0) END
-             FROM loop_costs lc
-             JOIN workers r ON r.id = lc.worker_id
-            WHERE r.workspace_id = workspaces.id
-       )
-     WHERE id = (
-         SELECT r.workspace_id
-           FROM workers r
-           JOIN loops l ON l.worker_id = r.id
-          WHERE l.id = NEW.loop_id
-     );
-END;
-
-CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_update_worker
-AFTER UPDATE OF usage_cost_usd ON turns
-WHEN NEW.usage_cost_usd IS NOT OLD.usage_cost_usd
-BEGIN
-    UPDATE workers
-       SET cost_usd = (
-           SELECT CASE WHEN COUNT(*) FILTER (WHERE lc.cost_usd IS NULL) > 0
-                       THEN NULL ELSE COALESCE(SUM(lc.cost_usd), 0) END
-             FROM loop_costs lc
-            WHERE lc.worker_id = workers.id
-       )
-     WHERE id = (SELECT worker_id FROM loops WHERE id = NEW.loop_id);
-END;
-
-CREATE TRIGGER IF NOT EXISTS turns_cost_rollup_update_workspace
-AFTER UPDATE OF usage_cost_usd ON turns
-WHEN NEW.usage_cost_usd IS NOT OLD.usage_cost_usd
-BEGIN
-    UPDATE workspaces
-       SET cost_usd = (
-           SELECT CASE WHEN COUNT(*) FILTER (WHERE lc.cost_usd IS NULL) > 0
-                       THEN NULL ELSE COALESCE(SUM(lc.cost_usd), 0) END
-             FROM loop_costs lc
-             JOIN workers r ON r.id = lc.worker_id
-            WHERE r.workspace_id = workspaces.id
-       )
-     WHERE id = (
-         SELECT r.workspace_id
-           FROM workers r
-           JOIN loops l ON l.worker_id = r.id
-          WHERE l.id = NEW.loop_id
-     );
 END;
 
 -- subscriptions

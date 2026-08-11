@@ -15,12 +15,11 @@ import {
 import AiSdkProvider, { type ReasoningStyle } from "./AiSdkProvider.ts";
 import { configuredProviderInfo, createSdkModel } from "./sdkModels.ts";
 import { providerSource } from "./notices.ts";
-import type { AuthoritativeChargeNormalizer, Provider, ProviderUsage } from "./types.ts";
-import { calculateCostUsd, calculateCostUsdDecimal } from "./usage.ts";
+import type { Provider, ProviderCostNormalizer } from "./types.ts";
+import { estimateProviderCost } from "./cost.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import type { LanguageModel } from "ai";
 import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk-meta";
-import type { ProviderCost } from "@plurnk/plurnk-contracts";
 
 const reasoningStyleFromEnv = (
     env: NodeJS.ProcessEnv,
@@ -44,7 +43,7 @@ export const providerFromSdkModel = ({
     env,
     model,
     languageModel,
-    normalizeCharge,
+    normalizeCost,
     url,
     headers,
     contextWindow,
@@ -55,7 +54,7 @@ export const providerFromSdkModel = ({
     env: NodeJS.ProcessEnv;
     model: string;
     languageModel?: LanguageModel;
-    normalizeCharge?: AuthoritativeChargeNormalizer;
+    normalizeCost?: ProviderCostNormalizer;
     url?: string;
     headers?: Readonly<Record<string, string>>;
     contextWindow: number;
@@ -87,26 +86,21 @@ export const providerFromSdkModel = ({
     const rates = catalogCost === undefined ? null : {
         input: catalogCost.inputPer1M,
         output: catalogCost.outputPer1M,
-        cached: catalogCost.cacheReadPer1M ?? catalogCost.inputPer1M,
+        ...(catalogCost.cacheReadPer1M === undefined
+            ? {}
+            : { cacheRead: catalogCost.cacheReadPer1M }),
+        ...(catalogCost.cacheWritePer1M === undefined
+            ? {}
+            : { cacheWrite: catalogCost.cacheWritePer1M }),
     };
-    const calculateCost = rates === null
-        ? undefined
-        : (usage: ProviderUsage): number => calculateCostUsd(usage, rates);
-    const calculateCharge: (usage: ProviderUsage) => Exclude<ProviderCost, { kind: "authoritative" }> = rates === null
-        ? () => ({ kind: "unknown", reason: "the response reported no cost and Models.dev has no rate for this model" })
-        : rates.input === 0 && rates.output === 0 && rates.cached === 0
-            ? () => ({ kind: "free", source: "Models.dev catalog rates" })
-            : (usage: ProviderUsage) => ({
-                kind: "estimated",
-                usd: calculateCostUsdDecimal(usage, rates),
-                source: "Models.dev catalog rates",
-            });
+    const estimateCost = (usage: Parameters<typeof estimateProviderCost>[0]) =>
+        estimateProviderCost(usage, rates, "Models.dev catalog rates");
 
     return new AiSdkProvider({
         model,
         ...(attributions === undefined ? {} : { attributions }),
         ...(languageModel === undefined ? {} : { languageModel }),
-        ...(normalizeCharge === undefined ? {} : { normalizeCharge }),
+        ...(normalizeCost === undefined ? {} : { normalizeCost }),
         ...(url === undefined ? {} : { url }),
         ...(headers === undefined ? {} : { headers: { ...headers } }),
         contextWindow,
@@ -124,8 +118,7 @@ export const providerFromSdkModel = ({
         reasoningStyle: reasoningStyleFromEnv(env, name),
         promptCacheKey: url === undefined ? false : promptCacheKeyFromEnv(env, name),
         serviceTier: env.PLURNK_PROVIDERS_SERVICE_TIER,
-        calculateCost,
-        calculateCharge,
+        estimateCost,
         source: providerSource(name),
         gbnfDebug: env.PLURNK_PROVIDERS_GBNF_DEBUG !== undefined
             && env.PLURNK_PROVIDERS_GBNF_DEBUG !== ""
@@ -165,7 +158,7 @@ export const catalogProviderFromEnv = (
         env,
         model: wireModel,
         languageModel: sdk.languageModel,
-        normalizeCharge: sdk.normalizeCharge,
+        normalizeCost: sdk.normalizeCost,
         url: sdk.compatible?.url,
         headers: sdk.compatible?.headers,
         contextWindow,

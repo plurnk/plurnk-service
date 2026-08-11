@@ -6,8 +6,17 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
-// {§tokenomics-client-gauge}: loop totals are billing evidence; the latest
-// attempt occupancy and latest turn allowance form the client gauge.
+// {§tokenomics-client-gauge}: cardinal request totals are billing evidence; the
+// latest physical request and latest turn allowance form the client gauge.
+
+const recordRequest = async (
+    db: Awaited<ReturnType<typeof openMigrated>>,
+    turnId: number,
+    input: number,
+): Promise<void> => {
+    const attempt = await db.test_context_insert_attempt.get<{ id: number }>({ turn_id: turnId });
+    await db.test_context_insert_request.run({ turn_attempt_id: attempt!.id, input });
+};
 
 test("loopUsage.contextTokens is the latest turn's prompt, not the summed total", async () => {
     const db = await openMigrated();
@@ -19,20 +28,18 @@ test("loopUsage.contextTokens is the latest turn's prompt, not the summed total"
         const first = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 1,
-            prompt: 100,
             prompt_budget: null,
         });
         const second = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 2,
-            prompt: 250,
             prompt_budget: null,
         });
-        await db.test_context_insert_attempt.run({ turn_id: first!.id, prompt: 100 });
-        await db.test_context_insert_attempt.run({ turn_id: second!.id, prompt: 250 });
+        await recordRequest(db, first!.id, 100);
+        await recordRequest(db, second!.id, 250);
 
         const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);
-        assert.equal(usage.promptTokens, 350, "promptTokens sums across turns (the cost figure)");
+        assert.equal(usage.accounting.usage?.inputTokens, 350, "inputTokens sums across physical requests");
         assert.equal(usage.contextTokens, 250, "contextTokens is the LAST turn's prompt (occupancy)");
     } finally { await db.close(); }
 });
@@ -47,17 +54,15 @@ test("loopUsage.promptBudget follows the latest turn across a model switch", asy
         const first = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 1,
-            prompt: 100,
             prompt_budget: 49152,
         });
         const second = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 2,
-            prompt: 250,
             prompt_budget: 200000,
         });
-        await db.test_context_insert_attempt.run({ turn_id: first!.id, prompt: 100 });
-        await db.test_context_insert_attempt.run({ turn_id: second!.id, prompt: 250 });
+        await recordRequest(db, first!.id, 100);
+        await recordRequest(db, second!.id, 250);
 
         const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);
         assert.equal(usage.promptBudget, 200000, "promptBudget is the LAST turn's effective ceiling — the switched-to model's policy, not the stale default");
@@ -75,10 +80,9 @@ test("loopUsage.promptBudget is null when the provider reports no window", async
         const turn = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 1,
-            prompt: 100,
             prompt_budget: null,
         });
-        await db.test_context_insert_attempt.run({ turn_id: turn!.id, prompt: 100 });
+        await recordRequest(db, turn!.id, 100);
 
         const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);
         assert.equal(usage.promptBudget, null, "no window → null (the client omits the gauge)");
@@ -94,19 +98,17 @@ test("loopUsage does not reuse an earlier turn's context when the latest provide
         const completed = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 1,
-            prompt: 100,
             prompt_budget: 49152,
         });
-        await db.test_context_insert_attempt.run({ turn_id: completed!.id, prompt: 100 });
+        await recordRequest(db, completed!.id, 100);
         await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 2,
-            prompt: 0,
             prompt_budget: 200000,
         });
 
         const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);
-        assert.equal(usage.contextTokens, 0, "an absent latest exchange reports no current occupancy");
+        assert.equal(usage.contextTokens, null, "an absent latest exchange remains unknown rather than fabricated zero");
         assert.equal(usage.promptBudget, 200000, "the denominator still describes the latest attempted turn");
     } finally { await db.close(); }
 });

@@ -48,23 +48,23 @@ test("Mock.provider: exhausted queue throws", async () => {
     await assert.rejects(() => mock.generate({ messages: [{ role: "user", content: "y" }] }), /Mock provider exhausted/);
 });
 
-test("Mock.provider: assistant shape carries content + ops + reasoning + usage", async () => {
+test("Mock.provider: assistant and request accounting remain separate", async () => {
     const r: MockResponse = {
         assistant: {
             content: "<<SEND[200]:done:SEND",
             ops: [sendStmt(200, "done")],
             reasoning: "thought about it",
-            usage: { prompt: 100, completion: 42, reasoning: 0, cached: 0, total: 142 },
             finishReason: "stop",
             model: "mock-bench-v1",
         },
+        usage: { inputTokens: 100, outputTokens: 42, totalTokens: 142 },
     };
     const mock = new Mock({ contextWindow: 100, responses: [r] });
     const result = await mock.generate({ messages: [{ role: "user", content: "x" }] });
     assert.equal(result.assistant.content, "<<SEND[200]:done:SEND");
-    assert.equal(result.assistant.usage.completion, 42);
-    assert.equal(result.assistant.usage.prompt, 100);
-    assert.equal(result.assistant.usage.total, 142);
+    assert.equal(result.accounting[0]?.usage?.outputTokens, 42);
+    assert.equal(result.accounting[0]?.usage?.inputTokens, 100);
+    assert.equal(result.accounting[0]?.usage?.totalTokens, 142);
     assert.equal(result.assistant.finishReason, "stop");
     assert.equal(result.assistant.model, "mock-bench-v1");
     assert.equal(result.assistant.reasoning, "thought about it");
@@ -72,11 +72,11 @@ test("Mock.provider: assistant shape carries content + ops + reasoning + usage",
     assert.equal((result.assistant.ops as PlurnkStatement[] | undefined)?.[0]?.op, "SEND");
 });
 
-test("Mock.provider: defaults fill when test omits usage/finishReason/model", async () => {
+test("Mock.provider: request accounting defaults fill when the fixture omits usage", async () => {
     const r: MockResponse = { assistant: { content: "", ops: [], reasoning: null } };
     const mock = new Mock({ contextWindow: 100, responses: [r] });
     const result = await mock.generate({ messages: [] });
-    assert.deepEqual(result.assistant.usage, { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 });
+    assert.deepEqual(result.accounting[0]?.usage, { inputTokens: 0, outputTokens: 0, totalTokens: 0 });
     assert.equal(result.assistant.finishReason, "stop");
     assert.equal(result.assistant.model, "mock");
 });

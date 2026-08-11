@@ -9,7 +9,19 @@ import type {
     PluginAttributionContext,
     PluginAttributionSource,
 } from "@plurnk/plurnk-meta";
-import type { ProviderCost } from "@plurnk/plurnk-contracts";
+import type {
+    ProviderAccounting,
+    ProviderCost,
+    ProviderRequestAccounting,
+    ProviderUsage,
+} from "@plurnk/plurnk-contracts";
+
+export type {
+    ProviderAccounting,
+    ProviderCost,
+    ProviderRequestAccounting,
+    ProviderUsage,
+} from "@plurnk/plurnk-contracts";
 
 export interface ChatMessage {
     role: "system" | "user" | "assistant";
@@ -31,39 +43,44 @@ export type PromptTokenMeasurement =
         readonly detail: string;
     };
 
-// Normalized token accounting. Invariant (enforced by normalizeUsage at the
-// provider boundary): total = prompt + completion + reasoning; cached is a
-// subset of prompt. `completion` is visible output EXCLUDING reasoning; the
-// billable output is `completion + reasoning` (frontier providers bill reasoning
-// tokens at the output rate).
-export interface ProviderUsage {
-    readonly prompt: number;       // input tokens (cached ones included)
-    readonly completion: number;   // visible output tokens, excluding reasoning
-    readonly reasoning: number;    // reasoning tokens, billed as output
-    readonly cached: number;       // subset of prompt served from cache
-    readonly total: number;        // prompt + completion + reasoning
-}
-
-export type AuthoritativeCharge = Extract<ProviderCost, { kind: "authoritative" }>;
+export type ChargedCost = Extract<ProviderCost, { kind: "charged" }>;
 
 // Evidence exposed by the transport to the provider adapter that owns its
 // vendor protocol. Core and downstream consumers receive only the normalized
 // charge, never a requirement to understand provider metadata fields.
 export interface ProviderChargeEvidence {
     readonly providerMetadata?: unknown;
+    // A protocol-owned direct monetary field. It remains unknown until the
+    // selected adapter explicitly validates and normalizes it.
+    readonly charge?: unknown;
     // Provider-owned raw usage projection retained independently of optional
     // full-body capture. Accounting fields cannot disappear merely because
     // forensic raw-body capture is disabled.
     readonly usage?: unknown;
     readonly response: {
-        readonly id: string;
+        readonly id?: string;
         readonly headers?: Readonly<Record<string, string>>;
     };
 }
 
-export type AuthoritativeChargeNormalizer = (
+export type ProviderCostNormalizer = (
     evidence: ProviderChargeEvidence,
-) => AuthoritativeCharge | undefined;
+) => ProviderCost | undefined;
+
+export interface ProviderRequestIdentity {
+    readonly provider: string;
+    readonly model: string;
+}
+
+export type ProviderRequestSettlement = (
+    accounting: ProviderRequestAccounting,
+) => Promise<void>;
+
+// Core opens durable physical-request identity through this observer before
+// provider I/O. The returned settlement closes that exact identity.
+export type ProviderRequestObserver = (
+    identity: ProviderRequestIdentity,
+) => Promise<ProviderRequestSettlement>;
 
 // A successful exchange's closed finish set. ProviderAttemptFinishReason adds
 // the failed disposition that may occur only on ProviderError attempt evidence.
@@ -102,7 +119,6 @@ export interface ProviderAssistant<TFinish extends ProviderAttemptFinishReason =
     readonly reasoning: string | null;
     // Encrypted reasoning remains distinct from readable `reasoning`.
     readonly reasoningEncrypted?: ReadonlyArray<ProviderEncryptedReasoningItem>;
-    readonly usage: ProviderUsage;
     readonly finishReason: TFinish;
     readonly model: string;
     // Per-token logprobs, present only when PLURNK_PROVIDERS_TOP_LOGPROBS is set
@@ -124,10 +140,9 @@ export interface GrammarEvidence {
 export interface ProviderResponse<TFinish extends ProviderAttemptFinishReason = FinishReason> {
     readonly assistant: ProviderAssistant<TFinish>;
     readonly assistantRaw: unknown;
-    // A settled upstream charge is a validated public fact, not opaque metadata.
-    // Non-USD settlement carries an explicit provider-owned USD equivalent for
-    // the platform's existing USD aggregate. Core never supplies an FX rate.
-    readonly charge?: AuthoritativeCharge;
+    // Ordered physical request evidence, including automatic retries and pool
+    // failover that preceded this response. {§provider-request-accounting}
+    readonly accounting: readonly ProviderRequestAccounting[];
     // {§gbnf-response-observation} — evidence only; the consumer owns the verdict.
     readonly grammarEvidence?: GrammarEvidence;
     // Per-turn provider→client metadata bag: the backend's non-standard top-level
@@ -206,7 +221,7 @@ export interface Provider {
     // `Plurnk-Turn` ONLY under the same firstPartyMetadata gate; dropped
     // everywhere else. Coordinates are 1-based: absent/0 emits no header (no
     // strikes-style zero exception). Headers only, never the packet.
-    generate(args: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
+    generate(args: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown>; observeRequest?: ProviderRequestObserver }): Promise<ProviderResponse>;
     // {§model-fact-resolution} — effective total context envelope in tokens,
     // including any stricter operator cap. `null` means unknown; under
     // llama-server parallelism the probed natural value is per slot.
@@ -251,12 +266,6 @@ export interface Provider {
     // `tokenize === undefined` means the backend can't. Exact-counting
     // consumers (the tokenizer seam) prefer this over any client-side data.
     tokenize?(text: string): Promise<number[]>;
-    // {§model-fact-resolution} — frozen 1.x local USD estimate compatibility.
-    // This is not a monetary-reporting authority.
-    calculateCost(usage: ProviderUsage): number;
-    // Models.dev-derived monetary fallback. Direct response charges travel on
-    // ProviderResponse and take precedence at the consuming attempt boundary.
-    calculateCharge?(usage: ProviderUsage): Exclude<ProviderCost, AuthoritativeCharge>;
 }
 
 // ProviderAlias lives in @plurnk/plurnk-aliases (the zero-dependency parser);

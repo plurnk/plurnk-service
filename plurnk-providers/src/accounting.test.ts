@@ -1,18 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { authoritativeChargeNormalizer } from "./accounting.ts";
+import {
+    aggregateProviderAccounting,
+    plurnkCostNormalizer,
+    providerCostNormalizer,
+} from "./accounting.ts";
 
-const evidence = ({ providerMetadata, usage }: { providerMetadata?: unknown; usage?: unknown }) => ({
+const evidence = ({ providerMetadata, usage, charge }: {
+    providerMetadata?: unknown;
+    usage?: unknown;
+    charge?: unknown;
+}) => ({
     ...(providerMetadata === undefined ? {} : { providerMetadata }),
     ...(usage === undefined ? {} : { usage }),
+    ...(charge === undefined ? {} : { charge }),
     response: { id: "response-1" },
 });
 
-test("xAI response ticks normalize to an exact provider-authoritative charge", () => {
-    const normalize = authoritativeChargeNormalizer("@ai-sdk/xai");
+test("xAI response ticks normalize to a directly charged request", () => {
+    const normalize = providerCostNormalizer("@ai-sdk/xai");
     assert.notEqual(normalize, undefined);
     assert.deepEqual(normalize!(evidence({ usage: { cost_in_usd_ticks: 15_493_500 } })), {
-        kind: "authoritative",
+        kind: "charged",
         amount: { amount: "15493500", currency: "USDTICK" },
         usdEquivalent: "0.00154935",
         source: "xAI response usage.cost_in_usd_ticks",
@@ -20,39 +29,66 @@ test("xAI response ticks normalize to an exact provider-authoritative charge", (
 });
 
 test("OpenRouter response cost normalizes without rate reconstruction", () => {
-    const normalize = authoritativeChargeNormalizer("@openrouter/ai-sdk-provider");
+    const normalize = providerCostNormalizer("@openrouter/ai-sdk-provider");
     assert.notEqual(normalize, undefined);
     assert.deepEqual(normalize!(evidence({ providerMetadata: { openrouter: { usage: { cost: 3.2e-7 } } } })), {
-        kind: "authoritative",
+        kind: "charged",
         amount: { amount: "0.00000032", currency: "USD" },
-        usdEquivalent: "0.00000032",
         source: "OpenRouter response usage.cost",
     });
 });
 
-test("DeepInfra's documented response estimate wins over local rate reconstruction", () => {
-    const normalize = authoritativeChargeNormalizer("@ai-sdk/deepinfra");
+test("DeepInfra's documented response estimate remains estimated", () => {
+    const normalize = providerCostNormalizer("@ai-sdk/deepinfra");
     assert.notEqual(normalize, undefined);
     assert.deepEqual(normalize!(evidence({ usage: { estimated_cost: 5.04e-5 } })), {
-        kind: "authoritative",
+        kind: "estimated",
         amount: { amount: "0.0000504", currency: "USD" },
-        usdEquivalent: "0.0000504",
         source: "DeepInfra response usage.estimated_cost",
     });
 });
 
+test("first-party charged evidence is validated at its adapter boundary", () => {
+    const charged = {
+        kind: "charged",
+        amount: { amount: "0.01", currency: "USD" },
+        source: "plurnk endpoint",
+    } as const;
+    assert.deepEqual(plurnkCostNormalizer(evidence({ charge: charged })), charged);
+    assert.equal(plurnkCostNormalizer(evidence({})), undefined);
+});
+
 test("response cost normalization is an explicit adapter capability", () => {
-    assert.equal(authoritativeChargeNormalizer("@ai-sdk/anthropic"), undefined);
-    assert.equal(
-        authoritativeChargeNormalizer("@ai-sdk/xai")!(evidence({ usage: {} })),
-        undefined,
-    );
+    assert.equal(providerCostNormalizer("@ai-sdk/anthropic"), undefined);
+    assert.equal(providerCostNormalizer("@ai-sdk/xai")!(evidence({ usage: {} })), undefined);
     assert.throws(
-        () => authoritativeChargeNormalizer("@ai-sdk/xai")!(evidence({ usage: { cost_in_usd_ticks: "1" } })),
+        () => providerCostNormalizer("@ai-sdk/xai")!(evidence({ usage: { cost_in_usd_ticks: "1" } })),
         /cost_in_usd_ticks must be numeric/,
     );
-    assert.throws(
-        () => authoritativeChargeNormalizer("@ai-sdk/deepinfra")!(evidence({ usage: { estimated_cost: "1" } })),
-        /estimated_cost must be numeric/,
-    );
+});
+
+test("aggregateProviderAccounting preserves request order and only sums known fields", () => {
+    const accounting = aggregateProviderAccounting([
+        {
+            provider: "provider:a",
+            model: "m",
+            outcome: "error",
+            status: 429,
+            cost: { kind: "unknown", reason: "no response accounting" },
+        },
+        {
+            provider: "provider:b",
+            model: "m",
+            outcome: "response",
+            usage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 },
+            cost: {
+                kind: "charged",
+                amount: { amount: "0.25", currency: "USD" },
+                source: "provider b",
+            },
+        },
+    ]);
+    assert.deepEqual(accounting.requests.map(({ provider }) => provider), ["provider:a", "provider:b"]);
+    assert.equal(accounting.usage, null, "an unknown failed request prevents fabricated totals");
+    assert.equal(accounting.costUsd, null);
 });

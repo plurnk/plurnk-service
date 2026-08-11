@@ -2,7 +2,7 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import AiSdkProvider, { effortFromBudget } from "./AiSdkProvider.ts";
 import { ProviderError } from "./errors.ts";
-import { authoritativeChargeNormalizer } from "./accounting.ts";
+import { providerCostNormalizer } from "./accounting.ts";
 import type { LanguageModel } from "ai";
 
 // Build a fake fetch returning a one-chunk SSE stream, capturing the request
@@ -60,6 +60,31 @@ const installFetchJson = (payload: unknown) => {
     });
     return calls;
 };
+
+const settledCharge = {
+    kind: "charged",
+    amount: { amount: "0.00000042", currency: "XMR" },
+    usdEquivalent: "0.000071",
+    source: "plurnk endpoint settlement",
+} as const;
+
+const billedErrorBody = {
+    status: 422,
+    error: {
+        message: "non-conforming emission rejected",
+        type: "grammar_invalid",
+    },
+    usage: {
+        prompt_tokens: 8,
+        completion_tokens: 3,
+        reasoning_tokens: 0,
+        prompt_tokens_details: { cached_tokens: 2 },
+        total_tokens: 11,
+    },
+    charge: settledCharge,
+};
+
+const directCost = ({ charge }: { charge?: unknown }) => charge as typeof settledCharge | undefined;
 
 const jsonChoice = { model: "m", choices: [{ message: { content: "x" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } };
 
@@ -159,6 +184,60 @@ test("per-instance fetch owns tokenization and retry attempts", async () => {
     ]);
 });
 
+test("request-observer open failures preserve the durability cause and issue no provider I/O", async () => {
+    const root = new Error("durable request open failed");
+    let calls = 0;
+    const provider = new AiSdkProvider({
+        ...injectedBase,
+        retryAttempts: 3,
+        fetch: async () => {
+            calls++;
+            return new Response(JSON.stringify(jsonChoice), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+            });
+        },
+        streaming: false,
+    });
+
+    await assert.rejects(
+        provider.generate({
+            workerId: "observer-open",
+            messages: [],
+            observeRequest: async () => { throw root; },
+        }),
+        (error: unknown) => error === root,
+    );
+    assert.equal(calls, 0);
+});
+
+test("request-observer settlement failures preserve the durability cause without retrying I/O", async () => {
+    const root = new Error("durable request settlement failed");
+    let calls = 0;
+    const provider = new AiSdkProvider({
+        ...injectedBase,
+        retryAttempts: 3,
+        fetch: async () => {
+            calls++;
+            return new Response(JSON.stringify(jsonChoice), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+            });
+        },
+        streaming: false,
+    });
+
+    await assert.rejects(
+        provider.generate({
+            workerId: "observer-settle",
+            messages: [],
+            observeRequest: async () => async () => { throw root; },
+        }),
+        (error: unknown) => error === root,
+    );
+    assert.equal(calls, 1);
+});
+
 // Sequenced fetch mock for retry tests: each entry is one HTTP response. A 200
 // streams its chunks; any other status returns that error (with an optional
 // retry-after header). The last entry repeats once the script runs out.
@@ -239,6 +318,115 @@ test("an SSE error frame is a failed exchange, not an empty completion", async (
     assert.equal(calls.length, 1);
 });
 
+test("a buffered classified error retains normalized usage and settled charge", async () => {
+    const calls = installFetchScript([{ status: 422, body: JSON.stringify(billedErrorBody) }]);
+    const p = new AiSdkProvider({
+        ...injectedBase,
+        streaming: false,
+        normalizeCost: directCost,
+    });
+    await assert.rejects(
+        p.generate({ workerId: "billed-json-error", messages: [] }),
+        (error: unknown) => {
+            assert.ok(error instanceof ProviderError);
+            assert.equal(error.kind, "grammar_invalid");
+            assert.deepEqual(error.accounting, [{
+                provider: "provider",
+                model: "m",
+                outcome: "error",
+                status: 422,
+                usage: {
+                    inputTokens: 8,
+                    outputTokens: 3,
+                    totalTokens: 11,
+                    inputTokenDetails: { cacheReadTokens: 2 },
+                    outputTokenDetails: { textTokens: 3, reasoningTokens: 0 },
+                },
+                cost: settledCharge,
+            }]);
+            assert.equal(error.attempt, undefined, "accounting evidence does not fabricate an assistant response");
+            return true;
+        },
+    );
+    assert.equal(calls.length, 1);
+});
+
+test("an SSE classified error retains the same normalized usage and settled charge", async () => {
+    const calls = installFetch([billedErrorBody]);
+    const p = new AiSdkProvider({
+        ...injectedBase,
+        normalizeCost: directCost,
+    });
+    await assert.rejects(
+        p.generate({ workerId: "billed-sse-error", messages: [] }),
+        (error: unknown) => {
+            assert.ok(error instanceof ProviderError);
+            assert.equal(error.kind, "grammar_invalid");
+            assert.deepEqual(error.accounting, [{
+                provider: "provider",
+                model: "m",
+                outcome: "error",
+                status: 422,
+                usage: {
+                    inputTokens: 8,
+                    outputTokens: 3,
+                    totalTokens: 11,
+                    inputTokenDetails: { cacheReadTokens: 2 },
+                    outputTokenDetails: { textTokens: 3, reasoningTokens: 0 },
+                },
+                cost: settledCharge,
+            }]);
+            assert.equal(error.attempt, undefined);
+            return true;
+        },
+    );
+    assert.equal(calls.length, 1);
+});
+
+test("a successful response normalizes direct charge without duplicating it as metadata", async () => {
+    installFetchJson({ ...jsonChoice, charge: settledCharge });
+    const p = new AiSdkProvider({
+        ...injectedBase,
+        streaming: false,
+        normalizeCost: directCost,
+    });
+    const response = await p.generate({ workerId: "billed-json-success", messages: [] });
+    assert.deepEqual(response.accounting[0]?.cost, settledCharge);
+    assert.equal(response.meta?.charge, undefined);
+});
+
+test("malformed monetary evidence closes the physical request before surfacing the normalization failure", async () => {
+    const root = new TypeError("direct charge is malformed");
+    const settled: unknown[] = [];
+    const calls = installFetchJson({ ...jsonChoice, charge: { malformed: true } });
+    const provider = new AiSdkProvider({
+        ...injectedBase,
+        retryAttempts: 3,
+        streaming: false,
+        normalizeCost: () => { throw root; },
+    });
+
+    await assert.rejects(
+        provider.generate({
+            workerId: "malformed-charge",
+            messages: [],
+            observeRequest: async () => async (accounting) => { settled.push(accounting); },
+        }),
+        (error: unknown) => error === root,
+    );
+    assert.equal(calls.length, 1);
+    assert.deepEqual(settled, [{
+        provider: "provider",
+        model: "m",
+        outcome: "response",
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+        cost: {
+            kind: "unknown",
+            reason: "provider request accounting could not be normalized after physical I/O",
+        },
+    }]);
+});
+
 test("a trailing eos_token (--special EOG leak) is stripped from content", async () => {
     installFetchJson({ model: "m", choices: [{ message: { content: "the answer<eos>" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 3, total_tokens: 4 } });
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });
@@ -274,25 +462,35 @@ test("identity getters and default prompt estimate", async () => {
         },
         "chars/2 is explicitly an estimate; high-token-density Unicode prevents an upper-bound claim",
     );
-    assert.equal(p.calculateCost({ prompt: 9, completion: 9, reasoning: 0, cached: 0, total: 18 }), 0); // current unknown-rate sentinel
 });
 
-test("injected prompt measurement preserves provenance and calculateCost is used", async () => {
+test("injected prompt measurement preserves provenance and request cost estimation stays internal", async () => {
     const seen: string[] = [];
+    installFetchJson(jsonChoice);
     const p = new AiSdkProvider({
         model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
         countPromptTokens: (messages) => {
             seen.push(...messages.map(({ content }) => content));
             return { kind: "upper_bound", tokens: 7, source: "test:proven-bound" };
         },
-        calculateCost: (u) => u.total * 2,
+        streaming: false,
+        estimateCost: (usage) => ({
+            kind: "estimated",
+            amount: { amount: String((usage?.totalTokens ?? 0) * 2), currency: "USD" },
+            source: "test estimator",
+        }),
     });
     assert.deepEqual(
         await p.countPromptTokens([{ role: "system", content: "system" }, { role: "user", content: "user" }]),
         { kind: "upper_bound", tokens: 7, source: "test:proven-bound" },
     );
     assert.deepEqual(seen, ["system", "user"]);
-    assert.equal(p.calculateCost({ prompt: 1, completion: 1, reasoning: 0, cached: 0, total: 5 }), 10);
+    const response = await p.generate({ workerId: "accounted", messages: [] });
+    assert.deepEqual(response.accounting[0]?.cost, {
+        kind: "estimated",
+        amount: { amount: "4", currency: "USD" },
+        source: "test estimator",
+    });
 });
 
 test("generate maps a streamed response into ProviderResponse", async () => {
@@ -302,11 +500,16 @@ test("generate maps a streamed response into ProviderResponse", async () => {
         { choices: [{ delta: { content: "lo" }, finish_reason: "stop" }] },
         { usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5, cached_tokens: 1 } },
     ]);
-    const { assistant, assistantRaw } = await p.generate({ workerId: "r", messages: [{ role: "user", content: "hi" }] });
+    const { assistant, assistantRaw, accounting } = await p.generate({ workerId: "r", messages: [{ role: "user", content: "hi" }] });
     assert.equal(assistant.content, "hello");
     assert.equal(assistant.model, "wire-model"); // wire-reported wins
     assert.equal(assistant.finishReason, "stop");
-    assert.deepEqual(assistant.usage, { prompt: 3, completion: 2, reasoning: 0, cached: 1, total: 5 });
+    assert.deepEqual(accounting[0]?.usage, {
+        inputTokens: 3,
+        outputTokens: 2,
+        totalTokens: 5,
+        inputTokenDetails: { cacheReadTokens: 1 },
+    });
     assert.equal(assistant.reasoning, null); // none emitted
     assert.notEqual(assistantRaw, undefined);
 });
@@ -318,9 +521,8 @@ test("native SDK accounting metadata becomes a normalized charge in buffered and
     };
     const providerMetadata = { openrouter: { usage: { cost: 0.00154935 } } };
     const charge = {
-        kind: "authoritative",
+        kind: "charged",
         amount: { amount: "0.00154935", currency: "USD" },
-        usdEquivalent: "0.00154935",
         source: "OpenRouter response usage.cost",
     };
     const languageModel = {
@@ -364,18 +566,18 @@ test("native SDK accounting metadata becomes a normalized charge in buffered and
         repeatPenalty: 1.15,
         reasoning: { mode: "off" as const, budget: null },
         retryAttempts: 0,
-        normalizeCharge: authoritativeChargeNormalizer("@openrouter/ai-sdk-provider"),
+        normalizeCost: providerCostNormalizer("@openrouter/ai-sdk-provider"),
     };
 
     await t.test("buffered", async () => {
         const response = await new AiSdkProvider({ ...config, streaming: false })
             .generate({ workerId: "buffered", messages: [] });
-        assert.deepEqual(response.charge, charge);
+        assert.deepEqual(response.accounting[0]?.cost, charge);
     });
     await t.test("streamed", async () => {
         const response = await new AiSdkProvider(config)
             .generate({ workerId: "streamed", messages: [] });
-        assert.deepEqual(response.charge, charge);
+        assert.deepEqual(response.accounting[0]?.cost, charge);
     });
 });
 
@@ -389,7 +591,7 @@ test("compatible xAI wire usage becomes an exact tick charge without raw-body ca
         reasoning: { mode: "off", budget: null },
         retryAttempts: 0,
         streaming: false,
-        normalizeCharge: authoritativeChargeNormalizer("@ai-sdk/xai"),
+        normalizeCost: providerCostNormalizer("@ai-sdk/xai"),
     });
     installFetchJson({
         id: "response-1",
@@ -403,8 +605,8 @@ test("compatible xAI wire usage becomes an exact tick charge without raw-body ca
         },
     });
     const response = await p.generate({ workerId: "xai", messages: [] });
-    assert.deepEqual(response.charge, {
-        kind: "authoritative",
+    assert.deepEqual(response.accounting[0]?.cost, {
+        kind: "charged",
         amount: { amount: "15493500", currency: "USDTICK" },
         usdEquivalent: "0.00154935",
         source: "xAI response usage.cost_in_usd_ticks",
@@ -421,7 +623,7 @@ test("streamed xAI final usage retains its exact tick charge", async () => {
         repeatPenalty: 1.15,
         reasoning: { mode: "off", budget: null },
         retryAttempts: 0,
-        normalizeCharge: authoritativeChargeNormalizer("@ai-sdk/xai"),
+        normalizeCost: providerCostNormalizer("@ai-sdk/xai"),
     });
     installFetch([
         { choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] },
@@ -436,8 +638,8 @@ test("streamed xAI final usage retains its exact tick charge", async () => {
         },
     ]);
     const response = await p.generate({ workerId: "xai", messages: [] });
-    assert.deepEqual(response.charge, {
-        kind: "authoritative",
+    assert.deepEqual(response.accounting[0]?.cost, {
+        kind: "charged",
         amount: { amount: "15493500", currency: "USDTICK" },
         usdEquivalent: "0.00154935",
         source: "xAI response usage.cost_in_usd_ticks",
@@ -489,12 +691,10 @@ test("#161: a streamed resource interruption is a failed exchange with complete 
             assert.equal(error.attempt?.assistant.content, "partial answer");
             assert.equal(error.attempt?.assistant.reasoning, "partial thought");
             assert.equal(error.attempt?.assistant.finishReason, "resource_interrupted");
-            assert.deepEqual(error.attempt?.assistant.usage, {
-                prompt: 7,
-                completion: 2,
-                reasoning: 3,
-                cached: 0,
-                total: 12,
+            assert.deepEqual(error.accounting[0]?.usage, {
+                inputTokens: 7,
+                outputTokens: 5,
+                totalTokens: 12,
             });
             assert.equal(
                 (error.attempt?.assistantRaw as { rawFinishReason?: string }).rawFinishReason,
@@ -574,7 +774,7 @@ test("generate aggregates reasoning deltas under multiple field names", async ()
     assert.equal("reasoningEncrypted" in assistant, false); // open reasoning only -> field absent
 });
 
-test("{§provider-tagged-reasoning} explicit think-tags projects one streamed leading envelope and reclassifies usage", async () => {
+test("{§provider-tagged-reasoning} explicit think-tags project content without estimating token attribution", async () => {
     const config = { ...injectedBase, reasoningResponseStyle: "think-tags" as const, rawBody: true };
     const p = new AiSdkProvider(config);
     installFetch([
@@ -588,12 +788,10 @@ test("{§provider-tagged-reasoning} explicit think-tags projects one streamed le
 
     assert.equal(response.assistant.reasoning, "12345");
     assert.equal(response.assistant.content, "abcde");
-    assert.deepEqual(response.assistant.usage, {
-        prompt: 3,
-        completion: 5,
-        reasoning: 5,
-        cached: 0,
-        total: 13,
+    assert.deepEqual(response.accounting[0]?.usage, {
+        inputTokens: 3,
+        outputTokens: 10,
+        totalTokens: 13,
     });
     assert.deepEqual(
         ((response.assistantRaw as { content: string; reasoning: string }).content),
@@ -615,8 +813,8 @@ test("{§provider-tagged-reasoning} explicit think-tags projects one buffered le
 
     assert.equal(response.assistant.reasoning, "12345");
     assert.equal(response.assistant.content, "abcde");
-    assert.equal(response.assistant.usage.completion, 5);
-    assert.equal(response.assistant.usage.reasoning, 5);
+    assert.equal(response.accounting[0]?.usage?.outputTokens, 10);
+    assert.equal(response.accounting[0]?.usage?.outputTokenDetails, undefined);
 });
 
 test("{§provider-tagged-reasoning} tagged text does not overwrite itemized reasoning usage", async () => {
@@ -635,8 +833,10 @@ test("{§provider-tagged-reasoning} tagged text does not overwrite itemized reas
 
     assert.equal(response.assistant.reasoning, "12345");
     assert.equal(response.assistant.content, "abcde");
-    assert.equal(response.assistant.usage.completion, 7);
-    assert.equal(response.assistant.usage.reasoning, 3);
+    assert.deepEqual(response.accounting[0]?.usage?.outputTokenDetails, {
+        textTokens: 7,
+        reasoningTokens: 3,
+    });
 });
 
 test("{§provider-tagged-reasoning} an unclosed capped envelope is wholly reasoning in streamed and buffered responses", async () => {
@@ -648,12 +848,10 @@ test("{§provider-tagged-reasoning} an unclosed capped envelope is wholly reason
     const streamed = await new AiSdkProvider(config).generate({ workerId: "tagged-capped-stream", messages: [] });
     assert.equal(streamed.assistant.reasoning, "unfinished");
     assert.equal(streamed.assistant.content, "");
-    assert.deepEqual(streamed.assistant.usage, {
-        prompt: 3,
-        completion: 0,
-        reasoning: 8,
-        cached: 0,
-        total: 11,
+    assert.deepEqual(streamed.accounting[0]?.usage, {
+        inputTokens: 3,
+        outputTokens: 8,
+        totalTokens: 11,
     });
 
     mock.restoreAll();
@@ -666,8 +864,8 @@ test("{§provider-tagged-reasoning} an unclosed capped envelope is wholly reason
     const buffered = await new AiSdkProvider(bufferedConfig).generate({ workerId: "tagged-capped-buffer", messages: [] });
     assert.equal(buffered.assistant.reasoning, "unfinished");
     assert.equal(buffered.assistant.content, "");
-    assert.equal(buffered.assistant.usage.completion, 0);
-    assert.equal(buffered.assistant.usage.reasoning, 8);
+    assert.equal(buffered.accounting[0]?.usage?.outputTokens, 8);
+    assert.equal(buffered.accounting[0]?.usage?.outputTokenDetails, undefined);
 });
 
 test("{§provider-tagged-reasoning} verbatim, non-leading, and structured-reasoning controls preserve literal tags", async () => {
@@ -680,7 +878,7 @@ test("{§provider-tagged-reasoning} verbatim, non-leading, and structured-reason
         .generate({ workerId: "verbatim", messages: [] });
     assert.equal(verbatim.assistant.content, "<think>literal</think>answer");
     assert.equal(verbatim.assistant.reasoning, null);
-    assert.equal(verbatim.assistant.usage.completion, 4);
+    assert.equal(verbatim.accounting[0]?.usage?.outputTokens, 4);
 
     mock.restoreAll();
     installFetchJson({
@@ -1068,7 +1266,7 @@ test("channel-escape detector: billed completion tokens vastly beyond visible ch
     const escape = res.notices?.find((e) => e.message.includes("escaped the grammar"));
     assert.ok(escape, "escape notice attached");
     assert.equal(escape!.kind, "grammar_unenforced");
-    assert.match(escape!.message ?? "", /5000 completion tokens billed/);
+    assert.match(escape!.message ?? "", /5000 output tokens billed/);
 });
 
 test("channel-escape state is absent without a transported grammar", async () => {
@@ -1692,7 +1890,7 @@ test("streaming:false posts without stream and parses the single JSON response",
     assert.equal(res.assistant.content, "hello");          // content from message.content
     assert.equal(res.assistant.reasoning, "because");      // reasoning_content mapped
     assert.equal(res.assistant.finishReason, "stop");
-    assert.equal(res.assistant.usage.total, 4);
+    assert.equal(res.accounting[0]?.usage?.totalTokens, 4);
     mock.restoreAll();
 });
 

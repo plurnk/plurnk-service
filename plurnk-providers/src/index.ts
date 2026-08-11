@@ -10,13 +10,18 @@ export type {
     ProviderOptions,
     ProviderResponse,
     ProviderEncryptedReasoningItem,
+    ProviderAccounting,
+    ProviderCost,
+    ProviderCostNormalizer,
+    ProviderRequestAccounting,
+    ProviderRequestIdentity,
+    ProviderRequestObserver,
+    ProviderRequestSettlement,
     ProviderUsage,
     PromptTokenMeasurement,
     TokenLogprob,
     TokenAlternative,
-    AuthoritativeCharge,
 } from "./types.ts";
-export type { ProviderCost } from "@plurnk/plurnk-contracts";
 export { assertPromptTokenMeasurement } from "./promptTokens.ts";
 
 // Alias cascade — re-exported from the zero-dep @plurnk/plurnk-aliases, so
@@ -45,14 +50,23 @@ export { default as Pool } from "./Pool.ts";
 export type { ProviderFetch } from "./AiSdkProvider.ts";
 export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, requireEnv, reasoningFromEnv, reasoningResponseStyleFromEnv, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, effectiveContextWindow, envelopeFromEnv, resolveReserve, PROVIDERS_KNOBS } from "./env.ts";
 export type { Reasoning, ReasoningMode, ReasoningResponseStyle, ReserveSpec } from "./env.ts";
-export { normalizeUsage, calculateCostUsd, calculateCostUsdDecimal } from "./usage.ts";
+export { normalizeUsage, calculateCostUsdDecimal, validateProviderUsage } from "./usage.ts";
 export {
-    providerCostFor,
+    addDecimals,
+    estimateProviderCost,
     providerCostUsd,
     resolveProviderCost,
-    validateAuthoritativeCharge,
+    sumProviderCostsUsd,
+    validateChargedCost,
+    validateDecimal,
     validateProviderCost,
 } from "./cost.ts";
+export {
+    aggregateProviderAccounting,
+    plurnkCostNormalizer,
+    providerCostNormalizer,
+    validateProviderRequestAccounting,
+} from "./accounting.ts";
 export type { RawUsage, TokenRates } from "./usage.ts";
 export { ProviderError, classifyProviderError, toProviderError } from "./errors.ts";
 export { providerSource } from "./notices.ts";

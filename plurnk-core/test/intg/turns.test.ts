@@ -38,18 +38,14 @@ test("turns: insert with required fields — defaults populate", async () => {
         await db.test_turns_insert.run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET });
         const row = await db.test_turns_get_full.get<{
             id: number; version: number; loop_id: number; sequence: number; timestamp: string;
-            status: number; usage_prompt: number; usage_completion: number; usage_cached: number;
-            usage_cost_usd: number; packet: string;
+            status: number; usage_prompt_budget: number | null; packet: string;
         }>({ loop_id: loopId });
         assert.ok((row?.id ?? 0) >= 1);
         assert.equal(row?.version, 0);
         assert.equal(row?.sequence, 1);
         assert.match(row?.timestamp ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
         assert.equal(row?.status, 200);
-        assert.equal(row?.usage_prompt, 0);
-        assert.equal(row?.usage_completion, 0);
-        assert.equal(row?.usage_cached, 0);
-        assert.equal(row?.usage_cost_usd, 0);
+        assert.equal(row?.usage_prompt_budget, null);
         assert.equal(row?.packet, MIN_PACKET);
     } finally { await db.close(); }
 });
@@ -209,49 +205,32 @@ test("turns: CASCADE chain workspace→workers→loops→turns", async () => {
     } finally { await db.close(); }
 });
 
-test("turns: usage_* negative values rejected", async () => {
+test("turns: prompt budget is a positive optional gauge denominator", async () => {
     const { db, loopId } = await setup();
     try {
-        const inserts = [
-            "test_turns_insert_with_usage_prompt",
-            "test_turns_insert_with_usage_completion",
-            "test_turns_insert_with_usage_cached",
-            "test_turns_insert_with_usage_cost_usd",
-        ] as const;
-        for (const name of inserts) {
+        for (const promptBudget of [0, -1]) {
             await assert.rejects(
-                () => db[name].run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET, val: -1 }),
+                () => db.test_turns_insert_with_prompt_budget.run({
+                    loop_id: loopId,
+                    sequence: 1,
+                    status: 200,
+                    packet: MIN_PACKET,
+                    prompt_budget: promptBudget,
+                }),
                 /CHECK constraint failed/,
             );
         }
-    } finally { await db.close(); }
-});
-
-test("turns: usage_* large positive integers stored and read back", async () => {
-    const { db, loopId } = await setup();
-    try {
-        await db.test_turns_insert_all_usage.run({
-            loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET,
-            usage_prompt: 50000, usage_completion: 12345, usage_cached: 200, usage_cost_usd: 9876543210,
+        await db.test_turns_insert_with_prompt_budget.run({
+            loop_id: loopId,
+            sequence: 1,
+            status: 200,
+            packet: MIN_PACKET,
+            prompt_budget: 200_000,
         });
-        const row = await db.test_turns_get_usage.get<{
-            usage_prompt: number; usage_completion: number; usage_cached: number; usage_cost_usd: number;
+        const row = await db.test_turns_get_prompt_budget.get<{
+            usage_prompt_budget: number;
         }>({ loop_id: loopId });
-        assert.equal(row?.usage_prompt, 50000);
-        assert.equal(row?.usage_completion, 12345);
-        assert.equal(row?.usage_cached, 200);
-        assert.equal(row?.usage_cost_usd, 9876543210);
-    } finally { await db.close(); }
-});
-
-test("turns: aggregation — SUM(usage_cost_usd)", async () => {
-    const { db, loopId } = await setup();
-    try {
-        await db.test_turns_insert_with_usage_cost_usd.run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET, val: 100 });
-        await db.test_turns_insert_with_usage_cost_usd.run({ loop_id: loopId, sequence: 2, status: 200, packet: MIN_PACKET, val: 250 });
-        await db.test_turns_insert_with_usage_cost_usd.run({ loop_id: loopId, sequence: 3, status: 200, packet: MIN_PACKET, val: 75 });
-        const row = await db.test_turns_sum_cost.get<{ total: number }>({ loop_id: loopId });
-        assert.equal(row?.total, 425);
+        assert.equal(row?.usage_prompt_budget, 200_000);
     } finally { await db.close(); }
 });
 

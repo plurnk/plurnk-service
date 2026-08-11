@@ -9,14 +9,29 @@ const reasoning = "verify";
 const reasoningPrefix = `<|channel>thought\n${reasoning}<channel|>`;
 const verifyToken = "PLURNK-RAILS-LIVE";
 const verifyInput = `${reasoningPrefix}${verifyToken}`;
+const accounting = {
+    provider: "provider:fake",
+    model: "fake",
+    outcome: "response",
+    usage: {
+        inputTokens: 1,
+        outputTokens: 4,
+        totalTokens: 5,
+        outputTokenDetails: { textTokens: 3, reasoningTokens: 1 },
+    },
+    cost: { kind: "estimated", amount: { amount: "0", currency: "USD" }, source: "grammar verification fixture" },
+} as const;
 
 const fakeProvider = (content: string, calls: Array<{ grammar?: string }> = []): Provider => ({
     model: "fake", contextWindow: 1000, constrainsOutput: true,
-    generate: async ({ grammar }: Parameters<Provider["generate"]>[0]) => {
+    generate: async ({ grammar, observeRequest }: Parameters<Provider["generate"]>[0]) => {
         calls.push({ grammar });
+        const settle = await observeRequest?.({ provider: accounting.provider, model: accounting.model });
+        await settle?.(accounting);
         return {
-            assistant: { content, reasoning, usage: { prompt: 1, completion: 3, reasoning: 1, cached: 0, total: 5 }, finishReason: "stop", model: "fake" },
+            assistant: { content, reasoning, finishReason: "stop", model: "fake" },
             assistantRaw: null,
+            accounting: [accounting],
             grammarEvidence: {
                 input: `${reasoningPrefix}${content}`,
                 contentStart: [...reasoningPrefix].length,
@@ -25,7 +40,6 @@ const fakeProvider = (content: string, calls: Array<{ grammar?: string }> = []):
         };
     },
     countPromptTokens: async () => ({ kind: "exact", tokens: 1, source: "test:exact" }),
-    calculateCost: () => 0,
 }) as unknown as Provider;
 
 test("an enforcing backend proves the required raw reasoning-plus-content sentence", async () => {
@@ -50,8 +64,9 @@ test("boot verification rejects a provider that cannot represent its pre-project
     const provider = {
         ...fakeProvider(verifyToken),
         generate: async () => ({
-            assistant: { content: verifyToken, reasoning: null, usage: { prompt: 1, completion: 3, reasoning: 0, cached: 0, total: 4 }, finishReason: "stop", model: "fake" },
+            assistant: { content: verifyToken, reasoning: null, finishReason: "stop", model: "fake" },
             assistantRaw: null,
+            accounting: [accounting],
         }),
     } as unknown as Provider;
     await assert.rejects(

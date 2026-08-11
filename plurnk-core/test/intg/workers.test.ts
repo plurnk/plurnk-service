@@ -47,7 +47,7 @@ test("workers: root worker insert — null parent_worker_id, defaults populate",
         await db.test_workers_insert.run({ workspace_id: workspaceId, name: n("trunk") });
         const row = await db.test_workers_get_by_workspace.get<{
             id: number; version: number; workspace_id: number; name: string; created_at: string;
-            parent_worker_id: number | null; cost_usd: number;
+            parent_worker_id: number | null;
         }>({ workspace_id: workspaceId });
         assert.ok((row?.id ?? 0) >= 1);
         assert.equal(row?.version, 0);
@@ -55,7 +55,6 @@ test("workers: root worker insert — null parent_worker_id, defaults populate",
         assert.match(row?.name ?? "", /^worker-trunk-\d+$/);
         assert.match(row?.created_at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
         assert.equal(row?.parent_worker_id, null);
-        assert.equal(row?.cost_usd, 0);
     } finally { await db.close(); }
 });
 
@@ -193,17 +192,6 @@ test("workers: ON DELETE CASCADE via parent_worker_id — deleting a parent work
         await db.test_workers_delete.run({ id: trunkId });
         const after = await db.test_workers_count.get<{ n: number }>();
         assert.equal(after?.n, 0);
-    } finally { await db.close(); }
-});
-
-test("workers: negative cost_usd rejected by CHECK", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, "ws-negcost");
-        await assert.rejects(
-            () => db.test_workers_insert_cost.run({ workspace_id: workspaceId, name: n("negcost"), cost_usd: -1 }),
-            /CHECK constraint failed/,
-        );
     } finally { await db.close(); }
 });
 

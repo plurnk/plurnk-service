@@ -25,14 +25,12 @@ export interface WorkspaceRow {
     name: string;
     project_root: string | null;
     created_at: string;
-    cost_usd: number | null;
 }
 
 export interface WorkerRow {
     id: number;
     name: string;
     created_at: string;
-    cost_usd: number | null;
     origin: "model" | "client" | "plurnk";
 }
 

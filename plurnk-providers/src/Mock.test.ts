@@ -3,6 +3,7 @@ import { strict as assert } from "node:assert";
 import Mock from "./Mock.ts";
 import type { Provider } from "./types.ts";
 import type { MockResponse } from "./Mock.ts";
+import { ProviderError } from "./errors.ts";
 
 const build = (responses: MockResponse[] = [{ assistant: { content: "hi", reasoning: null } }]) =>
     new Mock({ contextWindow: 100000, responses });
@@ -34,19 +35,23 @@ test("Mock: prompt counting is exact for its declared mock vocabulary", async ()
     });
 });
 
-test("Mock: calculateCost returns its deliberate zero estimate", () => {
-    const m = build();
-    assert.equal(m.calculateCost({ prompt: 100, completion: 20, reasoning: 10, cached: 5, total: 130 }), 0);
-});
-
 // — Transport ({§provider-interface}) —
 
 test("Mock: generate resolves a valid ProviderResponse shape", async () => {
     const m = build([{ assistant: { content: "hello", reasoning: "cot" } }]);
-    const { assistant, assistantRaw } = await m.generate({ messages: [] });
+    const { assistant, assistantRaw, accounting } = await m.generate({ messages: [] });
     assert.equal(assistant.content, "hello");
     assert.equal(assistant.reasoning, "cot");
-    assert.deepEqual(assistant.usage, { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 });
+    assert.deepEqual(accounting[0]?.usage, {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+    });
+    assert.deepEqual(accounting[0]?.cost, {
+        kind: "estimated",
+        amount: { amount: "0", currency: "USD" },
+        source: "mock provider fixture",
+    });
     assert.equal(assistant.finishReason, "stop");
     assert.equal(assistant.model, "mock");
     assert.equal(assistantRaw, null); // present, defaulted
@@ -57,16 +62,20 @@ test("Mock: generate applies caller-supplied overrides", async () => {
         assistant: {
             content: "x",
             reasoning: null,
-            usage: { prompt: 1, completion: 2, reasoning: 0, cached: 0, total: 3 },
             finishReason: "length",
             model: "mock-xl",
         },
+        usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
         assistantRaw: { wire: true },
     }]);
-    const { assistant, assistantRaw } = await m.generate({ messages: [] });
+    const { assistant, assistantRaw, accounting } = await m.generate({ messages: [] });
     assert.equal(assistant.finishReason, "length");
     assert.equal(assistant.model, "mock-xl");
-    assert.deepEqual(assistant.usage, { prompt: 1, completion: 2, reasoning: 0, cached: 0, total: 3 });
+    assert.deepEqual(accounting[0]?.usage, {
+        inputTokens: 1,
+        outputTokens: 2,
+        totalTokens: 3,
+    });
     assert.deepEqual(assistantRaw, { wire: true });
 });
 
@@ -116,9 +125,25 @@ test("Mock: remaining decrements as responses are consumed", async () => {
     assert.equal(m.remaining, 1);
 });
 
-test("Mock: exhausted queue throws a specific error", async () => {
+test("Mock: exhausted queue throws a ProviderError carrying its settled accounting", async () => {
     const m = build([]);
-    await assert.rejects(() => m.generate({ messages: [] }), /exhausted/);
+    await assert.rejects(
+        () => m.generate({ messages: [] }),
+        (error: unknown) => {
+            assert.ok(error instanceof ProviderError);
+            assert.match(error.message, /exhausted/);
+            assert.deepEqual(error.accounting, [{
+                provider: "provider:mock",
+                model: "mock",
+                outcome: "error",
+                cost: {
+                    kind: "unknown",
+                    reason: "mock provider exhausted before producing a response",
+                },
+            }]);
+            return true;
+        },
+    );
 });
 
 // -- {§provider-generation-envelope} --

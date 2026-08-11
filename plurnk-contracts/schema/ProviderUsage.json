@@ -1,0 +1,40 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/ProviderUsage.json",
+    "title": "ProviderUsage",
+    "description": "Known token quantities for one provider request. Omitted fields are unknown; explicit zero is observed or exactly derived.",
+    "type": "object",
+    "additionalProperties": false,
+    "minProperties": 1,
+    "properties": {
+        "inputTokens": { "$ref": "#/$defs/Tokens" },
+        "outputTokens": { "$ref": "#/$defs/Tokens" },
+        "totalTokens": { "$ref": "#/$defs/Tokens" },
+        "inputTokenDetails": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": {
+                "noCacheTokens": { "$ref": "#/$defs/Tokens" },
+                "cacheReadTokens": { "$ref": "#/$defs/Tokens" },
+                "cacheWriteTokens": { "$ref": "#/$defs/Tokens" }
+            }
+        },
+        "outputTokenDetails": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": {
+                "textTokens": { "$ref": "#/$defs/Tokens" },
+                "reasoningTokens": { "$ref": "#/$defs/Tokens" }
+            }
+        }
+    },
+    "$defs": {
+        "Tokens": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+        }
+    }
+}

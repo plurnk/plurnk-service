@@ -9,12 +9,11 @@ const request = {
     body: {},
     messages: [{ role: "user" as const, content: "question" }],
     fetchTimeoutMs: 1_000,
-    retryAttempts: 2,
     streaming: false,
     captureRawBody: false,
 };
 
-test("X-Should-Retry:false prevents nested retries for a normally retryable status", async () => {
+test("the transport performs exactly one physical request", async () => {
     let calls = 0;
     await assert.rejects(executeOpenAICompatible({
         ...request,
@@ -64,7 +63,6 @@ test("the adapter preserves PLURNK request extensions and response evidence", as
     };
     const result = await executeOpenAICompatible({
         ...request,
-        retryAttempts: 0,
         captureRawBody: true,
         body: {
             grammar: "root ::= \"answer\"",
@@ -85,11 +83,10 @@ test("the adapter preserves PLURNK request extensions and response evidence", as
     assert.equal(result.reasoning, "because");
     assert.equal(result.finishReason, "stop");
     assert.deepEqual(result.usage, {
-        prompt: 3,
-        completion: 3,
-        reasoning: 2,
-        cached: 0,
-        total: 8,
+        inputTokens: 3,
+        outputTokens: 5,
+        totalTokens: 8,
+        outputTokenDetails: { textTokens: 3, reasoningTokens: 2 },
     });
     assert.equal(result.logprobs[0]?.token, "answer");
     assert.deepEqual(result.metadata.balance, { amount: 1.25, currency: "USD" });
@@ -116,7 +113,6 @@ test("the adapter maps leading system messages to AI SDK instructions", async ()
             { role: "user", content: "hello" },
         ],
         fetchTimeoutMs: 1000,
-        retryAttempts: 0,
         streaming: false,
         captureRawBody: false,
         fetch,
@@ -130,7 +126,6 @@ test("the adapter maps leading system messages to AI SDK instructions", async ()
 test("the adapter preserves nonstandard reasoning accounting after SDK parsing", async (t) => {
     const execute = (responseBody: object) => executeOpenAICompatible({
         ...request,
-        retryAttempts: 0,
         fetch: async () => new Response(JSON.stringify(responseBody), {
             headers: { "content-type": "application/json" },
         }),
@@ -153,25 +148,22 @@ test("the adapter preserves nonstandard reasoning accounting after SDK parsing",
             { prompt_tokens: 2, completion_tokens: 3, total_tokens: 9 },
         ));
         assert.deepEqual(result.usage, {
-            prompt: 2,
-            completion: 3,
-            reasoning: 4,
-            cached: 0,
-            total: 9,
+            inputTokens: 2,
+            outputTokens: 7,
+            totalTokens: 9,
+            outputTokenDetails: { textTokens: 3, reasoningTokens: 4 },
         });
     });
 
-    await t.test("Fireworks-style unitemized output is split by returned channels", async () => {
+    await t.test("Fireworks-style channels do not invent token attribution", async () => {
         const result = await execute(response(
             { content: "aa", reasoning_content: "bbbbbb" },
             { prompt_tokens: 2, completion_tokens: 10, total_tokens: 12 },
         ));
         assert.deepEqual(result.usage, {
-            prompt: 2,
-            completion: 2,
-            reasoning: 8,
-            cached: 0,
-            total: 12,
+            inputTokens: 2,
+            outputTokens: 10,
+            totalTokens: 12,
         });
     });
 
@@ -195,7 +187,6 @@ test("the adapter preserves nonstandard reasoning accounting after SDK parsing",
         ];
         const result = await executeOpenAICompatible({
             ...request,
-            retryAttempts: 0,
             streaming: true,
             fetch: async () => new Response(
                 `${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("")}data: [DONE]\n\n`,
@@ -203,15 +194,14 @@ test("the adapter preserves nonstandard reasoning accounting after SDK parsing",
             ),
         });
         assert.deepEqual(result.usage, {
-            prompt: 2,
-            completion: 3,
-            reasoning: 4,
-            cached: 0,
-            total: 9,
+            inputTokens: 2,
+            outputTokens: 7,
+            totalTokens: 9,
+            outputTokenDetails: { textTokens: 3, reasoningTokens: 4 },
         });
     });
 
-    await t.test("streamed Fireworks-style channels preserve the output split", async () => {
+    await t.test("streamed Fireworks-style channels do not invent an output split", async () => {
         const chunks = [
             {
                 id: "response-1",
@@ -235,7 +225,6 @@ test("the adapter preserves nonstandard reasoning accounting after SDK parsing",
         ];
         const result = await executeOpenAICompatible({
             ...request,
-            retryAttempts: 0,
             streaming: true,
             fetch: async () => new Response(
                 `${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("")}data: [DONE]\n\n`,
@@ -243,11 +232,9 @@ test("the adapter preserves nonstandard reasoning accounting after SDK parsing",
             ),
         });
         assert.deepEqual(result.usage, {
-            prompt: 2,
-            completion: 2,
-            reasoning: 8,
-            cached: 0,
-            total: 12,
+            inputTokens: 2,
+            outputTokens: 10,
+            totalTokens: 12,
         });
     });
 });

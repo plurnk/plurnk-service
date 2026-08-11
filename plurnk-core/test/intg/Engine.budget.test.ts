@@ -45,7 +45,7 @@ const sendStmt = (status: number, body: string): SendStatement => ({
 });
 
 const response = (ops: PlurnkStatement[]): MockResponse => ({
-    assistant: { content: "", ops, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: "", ops, reasoning: null },
 });
 
 test("Engine.runTurn: budget readout — partition-derived ceiling, free reconciles to ceiling − assembled total", async () => {

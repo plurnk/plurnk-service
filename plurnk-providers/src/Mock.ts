@@ -5,15 +5,14 @@
 // Provider contract. Production providers don't expose the `ops` escape
 // hatch — that's an intg-only convenience.
 
-import type { AuthoritativeCharge, ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderEncryptedReasoningItem, ProviderResponse, ProviderUsage } from "./types.ts";
-import type { ProviderCost } from "@plurnk/plurnk-contracts";
+import type { ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderEncryptedReasoningItem, ProviderRequestAccounting, ProviderResponse, ProviderUsage } from "./types.ts";
 import { resolveEnvelopeFromEnv } from "./env.ts";
+import { validateProviderRequestAccounting } from "./accounting.ts";
+import { ProviderError } from "./errors.ts";
 
 export type MockAssistant = {
     content: string;
     reasoning: string | null;
-    // Partial — omitted fields fall back to DEFAULT_USAGE (e.g. reasoning: 0).
-    usage?: Partial<ProviderUsage>;
     finishReason?: FinishReason;
     model?: string;
     // Provider-normalized encrypted reasoning fixture.
@@ -28,7 +27,9 @@ export type MockAssistant = {
 export type MockResponse = {
     assistant: MockAssistant;
     assistantRaw?: unknown;
-    charge?: AuthoritativeCharge;
+    // Partial — omitted fields fall back to the deliberate zero fixture.
+    usage?: Partial<ProviderUsage>;
+    cost?: ProviderCost;
     grammarEvidence?: GrammarEvidence;
 };
 
@@ -36,7 +37,11 @@ export type MockResponse = {
 export type MockReturnedAssistant = ProviderAssistant & { ops?: unknown[] };
 export type MockReturnedResponse = ProviderResponse & { assistant: MockReturnedAssistant };
 
-const DEFAULT_USAGE: ProviderUsage = { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 };
+const DEFAULT_USAGE: ProviderUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+};
 type MockGenerateArgs = Omit<Parameters<Provider["generate"]>[0], "workerId"> & { workerId?: string };
 
 export default class Mock implements Provider {
@@ -77,22 +82,48 @@ export default class Mock implements Provider {
         };
     }
 
-    // Mock is free.
-    calculateCost(_usage: ProviderUsage): number { return 0; }
-    calculateCharge(_usage: ProviderUsage): Exclude<ProviderCost, { kind: "authoritative" }> { return { kind: "free", source: "mock provider" }; }
-
-    async generate({ signal, grammar }: MockGenerateArgs): Promise<MockReturnedResponse> {
+    async generate({ signal, grammar, observeRequest }: MockGenerateArgs): Promise<MockReturnedResponse> {
         // Honor abort before consuming the queue — an aborted call makes no
         // "wire call" and must not exhaust a queued response
         // ({§provider-failure-normalization}).
         signal?.throwIfAborted();
+        const settle = await observeRequest?.({ provider: "provider:mock", model: this.model });
         const next = this.#queue.shift();
-        if (next === undefined) throw new Error("Mock provider exhausted: no more queued responses");
+        if (next === undefined) {
+            const accounting = validateProviderRequestAccounting({
+                provider: "provider:mock",
+                model: this.model,
+                outcome: "error",
+                cost: { kind: "unknown", reason: "mock provider exhausted before producing a response" },
+            });
+            await settle?.(accounting);
+            throw new ProviderError(
+                "mock",
+                "invalid_response",
+                "Mock provider exhausted: no more queued responses",
+                { accounting: [accounting] },
+            );
+        }
         const a = next.assistant;
+        const usage: ProviderUsage = {
+            ...DEFAULT_USAGE,
+            ...next.usage,
+        };
+        const requestAccounting: ProviderRequestAccounting = validateProviderRequestAccounting({
+            provider: "provider:mock",
+            model: a.model ?? this.model,
+            outcome: "response",
+            usage,
+            cost: next.cost ?? {
+                kind: "estimated",
+                amount: { amount: "0", currency: "USD" },
+                source: "mock provider fixture",
+            },
+        });
+        await settle?.(requestAccounting);
         const assistant: MockReturnedAssistant = {
             content: a.content,
             reasoning: a.reasoning,
-            usage: { ...DEFAULT_USAGE, ...a.usage },
             ...(a.reasoningEncrypted !== undefined ? { reasoningEncrypted: a.reasoningEncrypted } : {}),
             finishReason: a.finishReason ?? "stop",
             model: a.model ?? "mock",
@@ -105,7 +136,7 @@ export default class Mock implements Provider {
         return {
             assistant,
             assistantRaw: next.assistantRaw ?? null,
-            ...(next.charge === undefined ? {} : { charge: next.charge }),
+            accounting: [requestAccounting],
             ...(grammarEvidence !== undefined ? { grammarEvidence } : {}),
         };
     }

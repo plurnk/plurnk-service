@@ -80,20 +80,43 @@ The schemas own the runtime-neutral shapes; core owns their stateful values.
 | `LoopFlags`               | Complete effective `mode`, `auto`, `noWeb`, `noInteraction`, and `noProposals`  | Validate/expand persisted partial policy before use                                    |
 | `ProposalDisposition`     | Client authority, or the loop's exact automatic accept/reject                   | Compute precedence from effective loop policy, proposal kind, and stale-target truth   |
 | `ProposalProjection`      | Identity, review target/body/attrs, effective flags, stale signal, disposition  | Derive one validated projection for live delivery and durable reconnect discovery      |
-| `ProviderCost`            | Discriminated authoritative, estimated, free, or unknown monetary evidence      | Acquire evidence, preserve it per attempt, and derive nullable aggregate projections   |
+| `ProviderUsage`           | Conventional input/output totals with cache and reasoning details                | Preserve observed quantities without replacing absence with zero                        |
+| `ProviderCost`            | Exact charged, estimated, or unknown monetary evidence                           | Normalize one monetary disposition for each physical provider request                    |
+| `ProviderRequestAccounting` | Usage and cost evidence for one physical provider request                      | Preserve request order across retries, failover, success, and failure                    |
+| `ProviderAccounting`      | Ordered requests plus deterministic usage and exact-USD projections              | Derive loop, protocol, telemetry, and client reporting without a second authority        |
 
 `DEFAULT_LOOP_FLAGS` is the contracts-owned effective default value. A consumer may persist a partial object as an implementation detail, but it never exposes or acts on that partial representation as though it were the complete contract.
 
-§provider-cost `ProviderCost` represents one provider attempt's monetary truth.
-An authoritative result preserves the provider's canonical decimal amount and
-currency plus its decimal USD equivalent; an estimate carries a decimal USD
-amount; free requires an explicit source; unknown requires a reason. Decimal
-strings preserve evidence without binary floating-point rewriting. Unknown is
-not zero, and no consumer may infer free from absent rates or a legacy numeric
-zero. A numeric `costUsd` projection includes authoritative USD equivalents,
-Models.dev-derived estimates, and explicit zero-cost evidence. It is `null`
-when any contributing result is unknown; there is no second projected-cost
-surface.
+§provider-usage `ProviderUsage` records only known non-negative safe-integer
+quantities. `inputTokens` includes every input category; cache reads and cache
+writes are details within it. `outputTokens` includes reasoning; text and
+reasoning are details within it. `totalTokens` equals input plus output whenever
+all three are present. A detail is no greater than its containing total, and a
+complete detail partition sums to that total. An omitted field is unknown; an
+explicit zero is provider evidence or an exact derivation from complete known
+components. Consumers never estimate a token category from text length.
+
+§provider-cost `ProviderCost` represents one physical provider request's
+monetary disposition. `charged` preserves a provider-reported canonical decimal
+amount and currency, with an optional decimal USD equivalent for a non-USD
+charge. `estimated` preserves a calculated decimal amount and currency.
+`unknown` requires a reason. Zero is an ordinary exact amount under `charged`
+or `estimated`; there is no separate free mechanism. Decimal strings preserve
+evidence without binary floating-point rewriting. Unknown is not zero.
+
+§provider-request-accounting `ProviderRequestAccounting` is the indivisible
+accounting fact for one issued physical request. Its provider, model, outcome,
+optional protocol status, optional {§provider-usage}, and required
+{§provider-cost} travel together. Ordered request records preserve retries and
+capacity failover; a later response never replaces an earlier request.
+
+§provider-accounting `ProviderAccounting.requests` is the source evidence.
+`usage` and `costUsd` are deterministic projections of that ordered set, not
+independent inputs. Each usage field is present only when every contributing
+request has that field known; the empty set totals to explicit zero. `costUsd`
+is the exact decimal sum only when every request is expressible in USD and is
+`null` otherwise. Consumers do not recompute provider rates or convert
+currencies while reading the projection.
 
 The parser returns ordered statement, error, and text items. It recovers at a
 trustworthy statement boundary when possible and sets `unparsedTail` when a

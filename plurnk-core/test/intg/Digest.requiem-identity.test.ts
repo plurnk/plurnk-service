@@ -5,9 +5,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { ChatMessage, ProviderUsage } from "@plurnk/plurnk-providers";
+import type { ChatMessage, ProviderAccounting, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import Digest from "../../src/digest/Digest.ts";
 import type { Db } from "../../src/core/Db.ts";
+import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 // A witness that records the identity of every generate() call the requiem makes.
@@ -18,14 +19,6 @@ class WitnessMock extends Mock {
         this.onGenerate?.();
         this.calls.push({ workerId: args.workerId, primaryWorkerId: args.primaryWorkerId, messages: args.messages });
         return super.generate(args);
-    }
-
-    override calculateCost(usage: ProviderUsage): number {
-        return usage.total / 1_000;
-    }
-
-    override calculateCharge(usage: ProviderUsage) {
-        return { kind: "estimated" as const, usd: String(this.calculateCost(usage)), source: "requiem witness" };
     }
 }
 
@@ -56,14 +49,37 @@ const recordResponseAttempt = async (db: Db, args: {
         model: "mock",
     });
     if (attempt === undefined) throw new Error("requiem fixture attempt did not open");
+    const accounting: ProviderRequestAccounting = {
+        provider: "provider:mock",
+        model: "mock",
+        outcome: "response",
+        usage: {
+            inputTokens: 2,
+            outputTokens: 4,
+            totalTokens: 6,
+            inputTokenDetails: { noCacheTokens: 2, cacheReadTokens: 0 },
+            outputTokenDetails: { textTokens: 2, reasoningTokens: 2 },
+        },
+        cost: {
+            kind: "estimated",
+            amount: { amount: "0", currency: "USD" },
+            source: "requiem fixture",
+        },
+    };
+    const request = await db.engine_open_provider_request.get<{ id: number }>({
+        turn_attempt_id: attempt.id,
+        sequence: 1,
+        provider: accounting.provider,
+        model: accounting.model,
+    });
+    if (request === undefined) throw new Error("requiem fixture provider request did not open");
+    const settled = await db.engine_settle_provider_request.run(
+        providerRequestSettlementParams(request.id, accounting),
+    );
+    assert.equal(settled.changes, 1);
     await db.engine_observe_turn_attempt_response.run({
         id: attempt.id,
         response: JSON.stringify(args.response),
-        usage_prompt: 2,
-        usage_completion: 2,
-        usage_reasoning: 2,
-        usage_cached: 0,
-        usage_cost: JSON.stringify({ kind: "free", source: "requiem fixture" }),
         finish_reason: "stop",
         model: "mock",
     });
@@ -72,8 +88,6 @@ const recordResponseAttempt = async (db: Db, args: {
         accepted: args.accepted ? 1 : 0,
         parse_errors: JSON.stringify(args.parseErrors),
         failure: null,
-        usage_cost: JSON.stringify({ kind: "free", source: "requiem fixture" }),
-        usage_cost_usd: 0,
     });
 };
 
@@ -95,7 +109,6 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
                 assistant: {
                     content: "rejected bytes",
                     reasoning: "rejected reasoning",
-                    usage: { prompt: 2, completion: 2, reasoning: 2, cached: 0, total: 6 },
                     finishReason: "stop",
                     model: "mock",
                 },
@@ -116,7 +129,6 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
                 assistant: {
                     content: "accepted bytes",
                     reasoning: "accepted reasoning",
-                    usage: { prompt: 2, completion: 2, reasoning: 2, cached: 0, total: 6 },
                     finishReason: "stop",
                     model: "mock",
                 },
@@ -139,7 +151,18 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
                 reasoning: null,
                 ops: [],
                 finishReason: "stop",
-                usage: { prompt: 10, completion: 3, reasoning: 0, cached: 2, total: 13 },
+            },
+            usage: {
+                inputTokens: 10,
+                outputTokens: 3,
+                totalTokens: 13,
+                inputTokenDetails: { noCacheTokens: 8, cacheReadTokens: 2 },
+                outputTokenDetails: { textTokens: 3, reasoningTokens: 0 },
+            },
+            cost: {
+                kind: "estimated",
+                amount: { amount: "0.013", currency: "USD" },
+                source: "requiem witness",
             },
         }],
     });
@@ -197,7 +220,6 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
             assistant: {
                 content: "rejected bytes",
                 reasoning: "rejected reasoning",
-                usage: { prompt: 2, completion: 2, reasoning: 2, cached: 0, total: 6 },
                 finishReason: "stop",
                 model: "mock",
             },
@@ -212,7 +234,6 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
             assistant: {
                 content: "accepted bytes",
                 reasoning: "accepted reasoning",
-                usage: { prompt: 2, completion: 2, reasoning: 2, cached: 0, total: 6 },
                 finishReason: "stop",
                 model: "mock",
             },
@@ -224,11 +245,12 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
 
     const requiem = readFileSync(path, "utf8");
     assert.match(requiem, /the testimony/, "the testimony was written");
-    assert.match(requiem, /prompt 10, completion 3, reasoning 0, cached 2, cost USD 0\.013/);
+    assert.match(requiem, /input=10 output=3 reasoning=0 cache-read=2, cost USD 0\.013/);
     const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
-        workers: Array<{ costs: import("@plurnk/plurnk-contracts").ProviderCost[]; costUsd: number | null; messages: ChatMessage[]; responses: unknown[] }>;
+        workers: Array<{ accounting: ProviderAccounting; messages: ChatMessage[]; responses: unknown[] }>;
     };
-    assert.equal(report.workers[0]?.costUsd, 0.013);
+    assert.equal(report.workers[0]?.accounting.costUsd, "0.013");
+    assert.equal(report.workers[0]?.accounting.requests.length, 1);
     assert.equal(report.workers[0]?.responses.length, 1);
     assert.equal(report.workers[0]?.messages.length, 2);
 });
@@ -256,11 +278,17 @@ test("{§digest-requiem}: a response-less failed call remains durable with unkno
 
     const report = JSON.parse(readFileSync(join(digestDir, "requiem.json"), "utf8")) as {
         workers: Array<{
-            calls: Array<{ state: string; failure: unknown }>;
-            costUsd: number | null;
+            calls: Array<{
+                state: string;
+                failure: unknown;
+                requests: Array<{ state: string; accounting: ProviderRequestAccounting | null }>;
+            }>;
+            accounting: ProviderAccounting;
         }>;
     };
     assert.equal(report.workers[0]?.calls[0]?.state, "error");
     assert.notEqual(report.workers[0]?.calls[0]?.failure, null);
-    assert.equal(report.workers[0]?.costUsd, null);
+    assert.equal(report.workers[0]?.calls[0]?.requests[0]?.state, "settled");
+    assert.equal(report.workers[0]?.calls[0]?.requests[0]?.accounting?.cost.kind, "unknown");
+    assert.equal(report.workers[0]?.accounting.costUsd, null);
 });

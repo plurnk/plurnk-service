@@ -12,7 +12,7 @@ export type {
     AssistantMessage,
     RunAgentInput,
 } from "@ag-ui/core";
-import type { OperationResult, ProposalProjection, ProviderCost } from "@plurnk/plurnk-contracts";
+import type { OperationResult, ProposalProjection, ProviderAccounting } from "@plurnk/plurnk-contracts";
 
 // The daemon event shapes this module consumes from the typed in-process seam.
 // Core owns the shapes; this module owns their external AG-UI projection.
@@ -46,13 +46,8 @@ export interface TerminatedNotification {
     turnIds: number[];   // on the wire (Daemon.ts broadcast) — the turn count for a client's json record
     attributions: string[];
     usage: {
-        promptTokens: number;
-        completionTokens: number;
-        reasoningTokens: number;
-        cachedTokens: number;
-        costUsd: number | null;
-        costs: ProviderCost[];
-        contextTokens: number;
+        accounting: ProviderAccounting;
+        contextTokens: number | null;
         promptBudget: number | null;
         meta: Record<string, unknown>;
     };

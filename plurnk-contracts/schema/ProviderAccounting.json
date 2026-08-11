@@ -1,0 +1,30 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/ProviderAccounting.json",
+    "title": "ProviderAccounting",
+    "description": "Ordered physical provider-request evidence and its deterministic aggregate projection.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["requests", "usage", "costUsd"],
+    "properties": {
+        "requests": {
+            "type": "array",
+            "items": { "$ref": "https://schemas.plurnk.dev/ProviderRequestAccounting.json" }
+        },
+        "usage": {
+            "oneOf": [
+                { "$ref": "https://schemas.plurnk.dev/ProviderUsage.json" },
+                { "type": "null" }
+            ]
+        },
+        "costUsd": {
+            "oneOf": [
+                {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+                },
+                { "type": "null" }
+            ]
+        }
+    }
+}

@@ -25,9 +25,12 @@ test("live OpenAI: a multi-turn loop consumes a fold-back result and concludes w
 
         console.log(`\n=== multi-turn run (${turnIds.length} turns, final ${finalStatus}) ===`);
         for (const [i, turnId] of turnIds.entries()) {
-            const turn = await s.db.test_get_turn.get<{ status: number; packet: string; usage_completion: number }>({ id: turnId });
+            const turn = await s.db.test_get_turn.get<{ status: number; packet: string }>({ id: turnId });
+            const requests = await s.db.test_provider_requests.all<{ usage_output: number | null }>({ turn_id: turnId });
+            const outputTokens = requests.reduce<number | null>((total, request) =>
+                total === null || request.usage_output === null ? null : total + request.usage_output, 0);
             const packet = JSON.parse(turn?.packet ?? "{}") as { assistant: { content: string } };
-            console.log(`\n--- turn ${i + 1} (status ${turn?.status}, ${turn?.usage_completion} tokens) ---`);
+            console.log(`\n--- turn ${i + 1} (status ${turn?.status}, ${outputTokens ?? "unknown"} output tokens) ---`);
             console.log(packet.assistant.content);
         }
 

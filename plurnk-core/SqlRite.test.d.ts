@@ -142,6 +142,7 @@ export class SqlRiteSync {
 	digest_loops: SqlRiteSyncPreparedStatements;
 	digest_turns: SqlRiteSyncPreparedStatements;
 	digest_turn_attempts: SqlRiteSyncPreparedStatements;
+	digest_provider_requests: SqlRiteSyncPreparedStatements;
 	digest_log_entries: SqlRiteSyncPreparedStatements;
 	digest_worker_rollups: SqlRiteSyncPreparedStatements;
 	digest_worker_op_mix: SqlRiteSyncPreparedStatements;
@@ -175,6 +176,7 @@ export class SqlRiteSync {
 	engine_list_owner_entry_tags: SqlRiteSyncPreparedStatements;
 	engine_next_turn_sequence: SqlRiteSyncPreparedStatements;
 	engine_loop_usage: SqlRiteSyncPreparedStatements;
+	engine_loop_provider_requests: SqlRiteSyncPreparedStatements;
 	engine_loop_attributions: SqlRiteSyncPreparedStatements;
 	engine_loop_turn_seqs: SqlRiteSyncPreparedStatements;
 	engine_open_turn: SqlRiteSyncPreparedStatements;
@@ -183,6 +185,8 @@ export class SqlRiteSync {
 	engine_observe_turn_attempt_response: SqlRiteSyncPreparedStatements;
 	engine_classify_turn_attempt_response: SqlRiteSyncPreparedStatements;
 	engine_fail_turn_attempt: SqlRiteSyncPreparedStatements;
+	engine_open_provider_request: SqlRiteSyncPreparedStatements;
+	engine_settle_provider_request: SqlRiteSyncPreparedStatements;
 	engine_list_workspace_entries: SqlRiteSyncPreparedStatements;
 	engine_scheme_catalog_summary: SqlRiteSyncPreparedStatements;
 	engine_initialize_ambient_cursor: SqlRiteSyncPreparedStatements;
@@ -240,6 +244,7 @@ export class SqlRiteSync {
 	journal_turn_next_sequence: SqlRiteSyncPreparedStatements;
 	journal_turn_insert: SqlRiteSyncPreparedStatements;
 	recovery_fail_active_loops: SqlRiteSyncPreparedStatements;
+	recovery_settle_open_provider_requests: SqlRiteSyncPreparedStatements;
 	recovery_fail_open_provider_attempts: SqlRiteSyncPreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRiteSyncPreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRiteSyncPreparedStatements;
@@ -299,10 +304,10 @@ export class SqlRiteSync {
 	test_prompt_paths_by_owner: SqlRiteSyncPreparedStatements;
 	test_get_turn: SqlRiteSyncPreparedStatements;
 	test_turn_attempts: SqlRiteSyncPreparedStatements;
+	test_provider_requests: SqlRiteSyncPreparedStatements;
 	test_get_log_entry_by_id: SqlRiteSyncPreparedStatements;
-	test_get_workspace_cost: SqlRiteSyncPreparedStatements;
-	test_get_worker_cost: SqlRiteSyncPreparedStatements;
 	test_count_turns: SqlRiteSyncPreparedStatements;
+	test_count_provider_requests: SqlRiteSyncPreparedStatements;
 	test_count_entries_by_workspace: SqlRiteSyncPreparedStatements;
 	test_count_entries_by_workspace_scheme: SqlRiteSyncPreparedStatements;
 	test_get_entry_by_path: SqlRiteSyncPreparedStatements;
@@ -416,9 +421,7 @@ export class SqlRiteSync {
 	test_get_origin: SqlRiteSyncPreparedStatements;
 	test_context_insert_turn: SqlRiteSyncPreparedStatements;
 	test_context_insert_attempt: SqlRiteSyncPreparedStatements;
-	test_cost_insert_turn: SqlRiteSyncPreparedStatements;
-	test_cost_worker: SqlRiteSyncPreparedStatements;
-	test_cost_workspace: SqlRiteSyncPreparedStatements;
+	test_context_insert_request: SqlRiteSyncPreparedStatements;
 	test_entries_table_sql: SqlRiteSyncPreparedStatements;
 	test_entries_insert_workspace: SqlRiteSyncPreparedStatements;
 	test_entries_get_first: SqlRiteSyncPreparedStatements;
@@ -477,15 +480,9 @@ export class SqlRiteSync {
 	test_turns_table_sql: SqlRiteSyncPreparedStatements;
 	test_turns_insert: SqlRiteSyncPreparedStatements;
 	test_turns_insert_with_version: SqlRiteSyncPreparedStatements;
-	test_turns_insert_with_usage_prompt: SqlRiteSyncPreparedStatements;
-	test_turns_insert_with_prompt_and_context_size: SqlRiteSyncPreparedStatements;
-	test_turns_insert_with_usage_completion: SqlRiteSyncPreparedStatements;
-	test_turns_insert_with_usage_cached: SqlRiteSyncPreparedStatements;
-	test_turns_insert_with_usage_cost_usd: SqlRiteSyncPreparedStatements;
-	test_turns_insert_all_usage: SqlRiteSyncPreparedStatements;
+	test_turns_insert_with_prompt_budget: SqlRiteSyncPreparedStatements;
 	test_turns_get_full: SqlRiteSyncPreparedStatements;
-	test_turns_get_usage: SqlRiteSyncPreparedStatements;
-	test_turns_sum_cost: SqlRiteSyncPreparedStatements;
+	test_turns_get_prompt_budget: SqlRiteSyncPreparedStatements;
 	test_turns_count_all: SqlRiteSyncPreparedStatements;
 	test_turns_list_ids: SqlRiteSyncPreparedStatements;
 	test_turns_loops_delete: SqlRiteSyncPreparedStatements;
@@ -499,7 +496,6 @@ export class SqlRiteSync {
 	test_workers_insert_with_parent_returning: SqlRiteSyncPreparedStatements;
 	test_workers_insert_returning: SqlRiteSyncPreparedStatements;
 	test_workers_insert_default_conversation: SqlRiteSyncPreparedStatements;
-	test_workers_insert_cost: SqlRiteSyncPreparedStatements;
 	test_workers_insert_version: SqlRiteSyncPreparedStatements;
 	test_workers_get_by_workspace: SqlRiteSyncPreparedStatements;
 	test_workers_get_parent: SqlRiteSyncPreparedStatements;
@@ -515,9 +511,7 @@ export class SqlRiteSync {
 	test_workspaces_table_sql: SqlRiteSyncPreparedStatements;
 	test_workspaces_insert_name_only: SqlRiteSyncPreparedStatements;
 	test_workspaces_get_by_name: SqlRiteSyncPreparedStatements;
-	test_workspaces_insert_with_cost: SqlRiteSyncPreparedStatements;
 	test_workspaces_insert_with_version: SqlRiteSyncPreparedStatements;
-	test_workspaces_get_cost: SqlRiteSyncPreparedStatements;
 	test_workspaces_index_exists: SqlRiteSyncPreparedStatements;
 	test_workspaces_list_ordered: SqlRiteSyncPreparedStatements;
 	ws_dup_identities: SqlRiteSyncPreparedStatements;
@@ -625,6 +619,7 @@ export default class SqlRite {
 	digest_loops: SqlRitePreparedStatements;
 	digest_turns: SqlRitePreparedStatements;
 	digest_turn_attempts: SqlRitePreparedStatements;
+	digest_provider_requests: SqlRitePreparedStatements;
 	digest_log_entries: SqlRitePreparedStatements;
 	digest_worker_rollups: SqlRitePreparedStatements;
 	digest_worker_op_mix: SqlRitePreparedStatements;
@@ -658,6 +653,7 @@ export default class SqlRite {
 	engine_list_owner_entry_tags: SqlRitePreparedStatements;
 	engine_next_turn_sequence: SqlRitePreparedStatements;
 	engine_loop_usage: SqlRitePreparedStatements;
+	engine_loop_provider_requests: SqlRitePreparedStatements;
 	engine_loop_attributions: SqlRitePreparedStatements;
 	engine_loop_turn_seqs: SqlRitePreparedStatements;
 	engine_open_turn: SqlRitePreparedStatements;
@@ -666,6 +662,8 @@ export default class SqlRite {
 	engine_observe_turn_attempt_response: SqlRitePreparedStatements;
 	engine_classify_turn_attempt_response: SqlRitePreparedStatements;
 	engine_fail_turn_attempt: SqlRitePreparedStatements;
+	engine_open_provider_request: SqlRitePreparedStatements;
+	engine_settle_provider_request: SqlRitePreparedStatements;
 	engine_list_workspace_entries: SqlRitePreparedStatements;
 	engine_scheme_catalog_summary: SqlRitePreparedStatements;
 	engine_initialize_ambient_cursor: SqlRitePreparedStatements;
@@ -723,6 +721,7 @@ export default class SqlRite {
 	journal_turn_next_sequence: SqlRitePreparedStatements;
 	journal_turn_insert: SqlRitePreparedStatements;
 	recovery_fail_active_loops: SqlRitePreparedStatements;
+	recovery_settle_open_provider_requests: SqlRitePreparedStatements;
 	recovery_fail_open_provider_attempts: SqlRitePreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRitePreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRitePreparedStatements;
@@ -782,10 +781,10 @@ export default class SqlRite {
 	test_prompt_paths_by_owner: SqlRitePreparedStatements;
 	test_get_turn: SqlRitePreparedStatements;
 	test_turn_attempts: SqlRitePreparedStatements;
+	test_provider_requests: SqlRitePreparedStatements;
 	test_get_log_entry_by_id: SqlRitePreparedStatements;
-	test_get_workspace_cost: SqlRitePreparedStatements;
-	test_get_worker_cost: SqlRitePreparedStatements;
 	test_count_turns: SqlRitePreparedStatements;
+	test_count_provider_requests: SqlRitePreparedStatements;
 	test_count_entries_by_workspace: SqlRitePreparedStatements;
 	test_count_entries_by_workspace_scheme: SqlRitePreparedStatements;
 	test_get_entry_by_path: SqlRitePreparedStatements;
@@ -899,9 +898,7 @@ export default class SqlRite {
 	test_get_origin: SqlRitePreparedStatements;
 	test_context_insert_turn: SqlRitePreparedStatements;
 	test_context_insert_attempt: SqlRitePreparedStatements;
-	test_cost_insert_turn: SqlRitePreparedStatements;
-	test_cost_worker: SqlRitePreparedStatements;
-	test_cost_workspace: SqlRitePreparedStatements;
+	test_context_insert_request: SqlRitePreparedStatements;
 	test_entries_table_sql: SqlRitePreparedStatements;
 	test_entries_insert_workspace: SqlRitePreparedStatements;
 	test_entries_get_first: SqlRitePreparedStatements;
@@ -960,15 +957,9 @@ export default class SqlRite {
 	test_turns_table_sql: SqlRitePreparedStatements;
 	test_turns_insert: SqlRitePreparedStatements;
 	test_turns_insert_with_version: SqlRitePreparedStatements;
-	test_turns_insert_with_usage_prompt: SqlRitePreparedStatements;
-	test_turns_insert_with_prompt_and_context_size: SqlRitePreparedStatements;
-	test_turns_insert_with_usage_completion: SqlRitePreparedStatements;
-	test_turns_insert_with_usage_cached: SqlRitePreparedStatements;
-	test_turns_insert_with_usage_cost_usd: SqlRitePreparedStatements;
-	test_turns_insert_all_usage: SqlRitePreparedStatements;
+	test_turns_insert_with_prompt_budget: SqlRitePreparedStatements;
 	test_turns_get_full: SqlRitePreparedStatements;
-	test_turns_get_usage: SqlRitePreparedStatements;
-	test_turns_sum_cost: SqlRitePreparedStatements;
+	test_turns_get_prompt_budget: SqlRitePreparedStatements;
 	test_turns_count_all: SqlRitePreparedStatements;
 	test_turns_list_ids: SqlRitePreparedStatements;
 	test_turns_loops_delete: SqlRitePreparedStatements;
@@ -982,7 +973,6 @@ export default class SqlRite {
 	test_workers_insert_with_parent_returning: SqlRitePreparedStatements;
 	test_workers_insert_returning: SqlRitePreparedStatements;
 	test_workers_insert_default_conversation: SqlRitePreparedStatements;
-	test_workers_insert_cost: SqlRitePreparedStatements;
 	test_workers_insert_version: SqlRitePreparedStatements;
 	test_workers_get_by_workspace: SqlRitePreparedStatements;
 	test_workers_get_parent: SqlRitePreparedStatements;
@@ -998,9 +988,7 @@ export default class SqlRite {
 	test_workspaces_table_sql: SqlRitePreparedStatements;
 	test_workspaces_insert_name_only: SqlRitePreparedStatements;
 	test_workspaces_get_by_name: SqlRitePreparedStatements;
-	test_workspaces_insert_with_cost: SqlRitePreparedStatements;
 	test_workspaces_insert_with_version: SqlRitePreparedStatements;
-	test_workspaces_get_cost: SqlRitePreparedStatements;
 	test_workspaces_index_exists: SqlRitePreparedStatements;
 	test_workspaces_list_ordered: SqlRitePreparedStatements;
 	ws_dup_identities: SqlRitePreparedStatements;

@@ -17,14 +17,11 @@ INSERT INTO workers (workspace_id, name) VALUES ($workspace_id, $name) RETURNING
 INSERT INTO workers (workspace_id, name, parent_worker_id, origin, default_conversation)
 VALUES ($workspace_id, $name, $parent_worker_id, $origin, 1);
 
--- PREP: test_workers_insert_cost
-INSERT INTO workers (workspace_id, name, cost_usd) VALUES ($workspace_id, $name, $cost_usd);
-
 -- PREP: test_workers_insert_version
 INSERT INTO workers (workspace_id, name, version) VALUES ($workspace_id, $name, $version);
 
 -- PREP: test_workers_get_by_workspace
-SELECT id, version, workspace_id, name, created_at, parent_worker_id, cost_usd
+SELECT id, version, workspace_id, name, created_at, parent_worker_id
 FROM workers WHERE workspace_id = $workspace_id AND origin != 'plurnk' LIMIT 1;
 
 -- PREP: test_workers_get_parent

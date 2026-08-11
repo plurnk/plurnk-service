@@ -19,10 +19,29 @@ SET status = 500,
     )
 WHERE status = 102;
 
+-- PREP: recovery_settle_open_provider_requests
+-- A physical request identity was opened immediately before I/O, so a crash can
+-- leave its outcome and provider evidence unknowable. Preserve the occurrence
+-- and settle that uncertainty explicitly before closing its logical attempt.
+UPDATE provider_requests
+SET state = 'settled',
+    outcome = 'error',
+    cost_kind = 'unknown',
+    cost_reason = 'daemon restarted before provider request evidence was durably observed',
+    completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE state = 'pending'
+  AND EXISTS (
+      SELECT 1
+      FROM turn_attempts a
+      JOIN turns t ON t.id = a.turn_id
+      JOIN loops l ON l.id = t.loop_id
+      WHERE a.id = provider_requests.turn_attempt_id
+        AND l.terminated_at IS NOT NULL
+  );
+
 -- PREP: recovery_fail_open_provider_attempts
--- A pre-I/O call identity can survive a crash without a durable response.
--- Close that occurrence as unknown before querying the correlated provider
--- ledger; leaving it pending would erase an issued call from reconciliation.
+-- The process-local emission owner vanished. Physical requests have already
+-- been settled above, preserving unknown evidence without fabricating zero use.
 UPDATE turn_attempts
 SET state = 'error',
     failure = json_object(
@@ -34,15 +53,6 @@ SET state = 'error',
             'detail', 'The daemon restarted before this provider response was durably observed; whether the provider completed the call is unknown.'
         )
     ),
-    usage_prompt = 0,
-    usage_completion = 0,
-    usage_reasoning = 0,
-    usage_cached = 0,
-    usage_cost = json_object(
-        'kind', 'unknown',
-        'reason', 'daemon restarted before provider response evidence was durably observed'
-    ),
-    usage_cost_usd = NULL,
     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE state = 'pending'
   AND EXISTS (

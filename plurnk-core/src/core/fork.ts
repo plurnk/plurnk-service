@@ -88,12 +88,11 @@ export default class Fork {
         const turns = await db.fork_get_turns.all<{ id: number; loop_id: number; [k: string]: unknown }>({ worker_id: parentWorkerId });
         const turnMap = new Map<number, number>();
         for (const { id, loop_id, ...rest } of turns) {
-            // {§machine-processes-fork-cost} — a fork inherits the parent's log for context but spends no new money:
-            // the copied turns are history, not fresh generations. Zero their usage so the
-            // cost-rollup triggers add nothing — the workspace total stays true lifetime spend
-            // (no double-count) and the branch's cost_usd accrues only what IT generates.
+            // {§machine-processes-fork-cost} — copied turns retain conversational
+            // history but no physical provider-request rows. Branch accounting
+            // therefore begins with only requests it actually issues.
             const nt = await db.fork_insert_turn.get<{ id: number }>({
-                ...rest, usage_prompt: 0, usage_completion: 0, usage_reasoning: 0, usage_cached: 0, usage_cost_usd: 0,
+                ...rest,
                 loop_id: loopMap.get(loop_id),
             });
             if (nt === undefined) throw new Error("fork: turn insert returned no row");

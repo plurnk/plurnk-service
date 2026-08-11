@@ -4,7 +4,6 @@ INSERT INTO turns (
     sequence,
     status,
     packet,
-    usage_prompt,
     usage_prompt_budget
 )
 VALUES (
@@ -12,7 +11,6 @@ VALUES (
     $sequence,
     200,
     '{"tokens":0,"sections":[],"attributions":[],"assistant":{"content":"fixture","ops":[],"reasoning":null},"assistantRaw":null}',
-    $prompt,
     $prompt_budget
 )
 RETURNING id;
@@ -25,12 +23,6 @@ INSERT INTO turn_attempts (
     accepted,
     response,
     parse_errors,
-    usage_prompt,
-    usage_completion,
-    usage_reasoning,
-    usage_cached,
-    usage_cost,
-    usage_cost_usd,
     finish_reason,
     model,
     completed_at
@@ -42,13 +34,21 @@ VALUES (
     1,
     '{"assistant":{"content":"fixture"}}',
     '[]',
-    $prompt,
-    0,
-    0,
-    0,
-    '{"kind":"free","source":"context gauge fixture"}',
-    0,
     'stop',
     'fixture',
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+)
+RETURNING id;
+
+-- PREP: test_context_insert_request
+INSERT INTO provider_requests (
+    turn_attempt_id, sequence, provider, model, state, outcome,
+    usage_input, usage_output, usage_total,
+    cost_kind, cost_amount, cost_currency, cost_source, completed_at
+)
+VALUES (
+    $turn_attempt_id, 1, 'provider:fixture', 'fixture', 'settled', 'response',
+    $input, 0, $input,
+    'estimated', '0', 'USD', 'context gauge fixture',
     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 );

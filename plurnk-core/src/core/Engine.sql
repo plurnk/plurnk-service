@@ -97,22 +97,14 @@ ORDER BY et.entry_id, et.tag;
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
 -- PREP: engine_loop_usage
--- Per-loop usage totals and latest-turn gauge ({§tokenomics-client-gauge}),
--- surfaced on {§notifications-loop-terminated}. `context` is the latest
--- provider attempt on the latest turn, distinct from summed billed `prompt`.
-SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
-       COALESCE(SUM(usage_completion), 0) AS completion,
-       COALESCE(SUM(usage_reasoning), 0)  AS reasoning,
-       COALESCE(SUM(usage_cached), 0)     AS cached,
-       (SELECT cost_usd FROM loop_costs WHERE id = $loop_id) AS cost_usd,
-       COALESCE((
-           SELECT json_group_array(json(cost.value))
-           FROM turns charged, json_each(charged.usage_cost) AS cost
-           WHERE charged.loop_id = $loop_id
-       ), '[]') AS costs,
-       (
-           SELECT a.usage_prompt
-           FROM turn_attempts a
+-- Latest-turn gauge ({§tokenomics-client-gauge}), surfaced beside the derived
+-- accounting projection on {§notifications-loop-terminated}. `context` is the
+-- latest settled physical request on the latest turn; an absent input count is
+-- unknown and does not fall back to older evidence.
+SELECT (
+           SELECT pr.usage_input
+           FROM provider_requests pr
+           JOIN turn_attempts a ON a.id = pr.turn_attempt_id
            WHERE a.turn_id = (
                SELECT latest.id
                FROM turns latest
@@ -120,8 +112,8 @@ SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
                ORDER BY latest.sequence DESC
                LIMIT 1
            )
-           AND a.state = 'response'
-           ORDER BY a.sequence DESC
+           AND pr.state = 'settled'
+           ORDER BY a.sequence DESC, pr.sequence DESC
            LIMIT 1
        ) AS context,
        -- Latest turn's effective packet allowance; NULL when uncapped or unknown.
@@ -129,7 +121,23 @@ SELECT COALESCE(SUM(usage_prompt), 0)     AS prompt,
        (SELECT usage_prompt_budget FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS context_size,
        -- Latest turn's opaque provider metadata. {§meta-passthrough}
        (SELECT meta FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS meta
-FROM turns WHERE loop_id = $loop_id;
+FROM loops
+WHERE id = $loop_id;
+
+-- PREP: engine_loop_provider_requests
+-- Ordered cardinal accounting evidence. Aggregation belongs to the shared
+-- provider accounting contract, not SQLite arithmetic or denormalized rows.
+SELECT pr.provider, pr.model, pr.outcome, pr.status,
+       pr.usage_input, pr.usage_output, pr.usage_total,
+       pr.usage_input_no_cache, pr.usage_input_cache_read, pr.usage_input_cache_write,
+       pr.usage_output_text, pr.usage_output_reasoning,
+       pr.cost_kind, pr.cost_amount, pr.cost_currency, pr.cost_usd_equivalent,
+       pr.cost_source, pr.cost_reason
+FROM provider_requests pr
+JOIN turn_attempts a ON a.id = pr.turn_attempt_id
+JOIN turns t ON t.id = a.turn_id
+WHERE t.loop_id = $loop_id AND pr.state = 'settled'
+ORDER BY t.sequence, a.sequence, pr.sequence;
 
 -- PREP: engine_loop_attributions
 -- {§attribution} — derive the loop projection from exact response-attempt
@@ -187,17 +195,11 @@ VALUES ($turn_id, $sequence, $attributions, $model)
 RETURNING id;
 
 -- PREP: engine_observe_turn_attempt_response
--- Preserve the response and provider usage before parser/cost classification.
--- Unknown is the safe monetary evidence until the following classification.
+-- Preserve the logical response before parser classification. Physical request
+-- accounting has already settled through its cardinal observer path.
 UPDATE turn_attempts SET
     state = 'response',
     response = $response,
-    usage_prompt = $usage_prompt,
-    usage_completion = $usage_completion,
-    usage_reasoning = $usage_reasoning,
-    usage_cached = $usage_cached,
-    usage_cost = $usage_cost,
-    usage_cost_usd = NULL,
     finish_reason = $finish_reason,
     model = $model,
     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -207,21 +209,41 @@ WHERE id = $id AND state = 'pending';
 UPDATE turn_attempts SET
     accepted = $accepted,
     parse_errors = $parse_errors,
-    failure = $failure,
-    usage_cost = $usage_cost,
-    usage_cost_usd = $usage_cost_usd
+    failure = $failure
 WHERE id = $id AND state = 'response';
 
 -- PREP: engine_fail_turn_attempt
 UPDATE turn_attempts SET
     state = 'error',
     failure = $failure,
-    usage_prompt = 0,
-    usage_completion = 0,
-    usage_reasoning = 0,
-    usage_cached = 0,
-    usage_cost = $usage_cost,
-    usage_cost_usd = NULL,
+    completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE id = $id AND state = 'pending';
+
+-- PREP: engine_open_provider_request
+-- The provider calls this immediately before physical I/O.
+INSERT INTO provider_requests (turn_attempt_id, sequence, provider, model)
+VALUES ($turn_attempt_id, $sequence, $provider, $model)
+RETURNING id;
+
+-- PREP: engine_settle_provider_request
+UPDATE provider_requests SET
+    state = 'settled',
+    outcome = $outcome,
+    status = $status,
+    usage_input = $usage_input,
+    usage_output = $usage_output,
+    usage_total = $usage_total,
+    usage_input_no_cache = $usage_input_no_cache,
+    usage_input_cache_read = $usage_input_cache_read,
+    usage_input_cache_write = $usage_input_cache_write,
+    usage_output_text = $usage_output_text,
+    usage_output_reasoning = $usage_output_reasoning,
+    cost_kind = $cost_kind,
+    cost_amount = $cost_amount,
+    cost_currency = $cost_currency,
+    cost_usd_equivalent = $cost_usd_equivalent,
+    cost_source = $cost_source,
+    cost_reason = $cost_reason,
     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = $id AND state = 'pending';
 
