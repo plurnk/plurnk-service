@@ -13,7 +13,7 @@ import Engine, { type LoopUsage } from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
+import { aggregateProviderAccounting, type Provider, type ProviderAlias } from "@plurnk/plurnk-providers";
 // {§notifications-envelope-carries-workspaceid}: "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
@@ -1304,6 +1304,7 @@ export default class Daemon {
 
     async #recoverLifecycle(): Promise<void> {
         await this.#db.recovery_fail_active_loops.run({});
+        await this.#db.recovery_settle_open_provider_requests.run({});
         await this.#db.recovery_fail_open_provider_attempts.run({});
         await this.#db.recovery_fail_ownerless_proposals.run({});
         await this.#db.recovery_error_orphan_subscription_channels.run({});
@@ -1767,13 +1768,8 @@ export default class Daemon {
                     // is the loop's TERMINAL state (499), delivered via loop/terminated (runLoop no
                     // longer blocks to return it). A genuine error rejects firstLoopPromise.
                     let usage: LoopUsage = {
-                        promptTokens: 0,
-                        completionTokens: 0,
-                        reasoningTokens: 0,
-                        cachedTokens: 0,
-                        costUsd: 0,
-                        costs: [],
-                        contextTokens: 0,
+                        accounting: aggregateProviderAccounting([]),
+                        contextTokens: null,
                         promptBudget: null,
                         meta: {},
                     };

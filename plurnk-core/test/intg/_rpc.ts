@@ -175,7 +175,13 @@ export const makeMockResponse = (dsl: string, completion: number = 0): MockRespo
     return {
         assistant: {
             content: turn, ops: parseDsl(turn), reasoning: null,
-            usage: { prompt: 0, completion, reasoning: 0, cached: 0, total: completion },
+        },
+        usage: {
+            inputTokens: 0,
+            outputTokens: completion,
+            totalTokens: completion,
+            inputTokenDetails: { noCacheTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+            outputTokenDetails: { textTokens: completion, reasoningTokens: 0 },
         },
         assistantRaw: null,
     };

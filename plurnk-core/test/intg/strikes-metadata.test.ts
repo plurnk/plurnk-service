@@ -13,8 +13,8 @@ const response = (content: string, completion: number = 0): MockResponse => ({
     assistant: {
         content,
         reasoning: null,
-        usage: { prompt: 0, completion, reasoning: 0, cached: 0, total: completion },
     },
+    usage: { inputTokens: 0, outputTokens: completion, totalTokens: completion },
 });
 
 class CapturingMock extends Mock {

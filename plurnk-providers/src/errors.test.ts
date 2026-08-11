@@ -75,11 +75,17 @@ test("#161: ProviderError carries resource-interrupted attempt evidence outside 
         assistant: {
             content: "partial",
             reasoning: null,
-            usage: { prompt: 3, completion: 1, reasoning: 0, cached: 0, total: 4 },
             finishReason: "resource_interrupted",
             model: "served-model",
         },
         assistantRaw: { rawFinishReason: "insufficient_system_resource" },
+        accounting: [{
+            provider: "provider:deepseek",
+            model: "served-model",
+            outcome: "response",
+            usage: { inputTokens: 3, outputTokens: 1, totalTokens: 4 },
+            cost: { kind: "unknown", reason: "fixture has no monetary evidence" },
+        }],
     } as ProviderAttempt;
     const error = new ProviderError(
         "provider:deepseek",
@@ -96,6 +102,7 @@ test("#161: ProviderError carries resource-interrupted attempt evidence outside 
     );
 
     assert.equal(error.attempt, attempt);
+    assert.deepEqual(error.accounting, attempt.accounting);
     assert.deepEqual(error.problem, {
         type: "https://problems.plurnk.dev/provider/deepseek/resource-interrupted",
         title: "Resource interrupted",

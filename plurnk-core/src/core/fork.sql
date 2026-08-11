@@ -45,14 +45,13 @@ WHERE id = $loop_id
 -- PREP: fork_get_turns
 -- All turns across the worker's loops, in order — loop_id is remapped by the caller.
 SELECT t.id, t.loop_id, t.sequence, t.timestamp, t.status,
-       t.usage_prompt, t.usage_completion, t.usage_cached, t.usage_cost_usd,
        t.packet, t.finish_reason, t.model
 FROM turns t JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id ORDER BY t.id;
 
 -- PREP: fork_insert_turn
-INSERT INTO turns (loop_id, sequence, timestamp, status, usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost_usd, packet, finish_reason, model)
-VALUES ($loop_id, $sequence, $timestamp, $status, $usage_prompt, $usage_completion, $usage_reasoning, $usage_cached, $usage_cost_usd, $packet, $finish_reason, $model)
+INSERT INTO turns (loop_id, sequence, timestamp, status, packet, finish_reason, model)
+VALUES ($loop_id, $sequence, $timestamp, $status, $packet, $finish_reason, $model)
 RETURNING id;
 
 -- PREP: fork_get_log_entries

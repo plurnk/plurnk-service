@@ -48,7 +48,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `log/entry` actionless `kind=model_emission` | At most one `REASONING_ENCRYPTED_VALUE`, attached to the same turn's actual SEND assistant message when {§agui-encrypted-reasoning} is satisfied; otherwise nothing beyond the forensic row. |
 | `log/entry` origin≠model                   | `CUSTOM plurnk.ambient` (foists, deltas, narrations) |
 | client-owned `loop/proposal`               | `TOOL_CALL_START/ARGS/END`, then `RUN_FINISHED` with an interrupt outcome |
-| `loop/terminated`                          | `STATE_DELTA` (budget) + `CUSTOM plurnk.terminated` (including the daemon's top-level attribution projection) + `RAW` (the provider's native completion frame, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
+| `loop/terminated`                          | `STATE_DELTA` (latest-turn gauge only) + `CUSTOM plurnk.terminated` (the complete daemon terminal, including physical-request accounting and top-level attribution) + `RAW` (the provider's opaque metadata bag, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
 | transport failure after SSE opens          | `CUSTOM plurnk.problem` (exact Problem Details) + `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`) |
 | `notice/event`                             | `CUSTOM plurnk.notice` |
 | `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
@@ -89,28 +89,28 @@ same log identity and verbatim goals:
 - §agui-custom-namespace **The custom namespace** — plurnk-specific metadata rides
   `CUSTOM` events named `plurnk.*` (`plurnk.send`, `plurnk.ambient`,
   `plurnk.notice`, `plurnk.stream`, `plurnk.branch_batch`, `plurnk.terminated` — the full loop
-  outcome the budget `STATE_DELTA` can't hold). Generic frontends skip unknown customs; plurnk-aware frontends render
+  outcome and {§provider-accounting} the gauge `STATE_DELTA` cannot represent). Generic frontends skip unknown customs; plurnk-aware frontends render
   them richly. Nothing plurnk-specific ever masquerades as a core event.
 
-§agui-numbers-passthrough **Usage numbers pass through verbatim.** The module
-never recomputes the daemon's gauge.
+§agui-numbers-passthrough **Gauge numbers pass through verbatim.** The module
+never recomputes the daemon's gauge or promotes accounting into application
+state paths that could be mistaken for standard AG-UI fields.
 
 | AG-UI state location                        | Daemon source                            | Meaning |
 |:--------------------------------------------|:-----------------------------------------|:--------|
 | `snapshot.plurnk.providers[*].promptBudget` | `providers.list.aliases[*]`              | Each provider alias's effective model-facing prompt ceiling, or `null` when unknown. |
-| `STATE_DELTA /budget/contextTokens`         | `loop/terminated.usage.contextTokens`    | Latest turn's provider-reported prompt occupancy. |
+| `STATE_DELTA /budget/contextTokens`         | `loop/terminated.usage.contextTokens`    | Latest settled physical request's input occupancy on the latest turn, or `null` when absent or unknown. |
 | `STATE_DELTA /budget/promptBudget`          | `loop/terminated.usage.promptBudget`     | Latest turn's effective model-facing prompt ceiling, or `null` when unknown. |
-| `STATE_DELTA /budget/promptTokens`          | `loop/terminated.usage.promptTokens`     | Loop-total provider-reported prompt usage. |
-| `STATE_DELTA /budget/completionTokens`      | `loop/terminated.usage.completionTokens` | Loop-total provider-reported completion usage. |
 
-The `plurnk.terminated` custom event preserves those totals plus
-`reasoningTokens` and `cachedTokens`; generic AG-UI budget state has no fields
-for the latter pair.
-
-§agui-cost-evidence `plurnk.terminated.usage` preserves the daemon's ordered
-`costs` evidence and nullable `costUsd` verbatim. Generic AG-UI has no standard
-monetary field; the custom event therefore distinguishes direct, Models.dev,
-unknown, and zero evidence without fabricating any value.
+§agui-cost-evidence AG-UI defines lifecycle, messages, tools, state transport,
+`RAW`, and `CUSTOM`, but no standard token-usage or monetary-accounting event.
+`plurnk.terminated.usage.accounting` therefore preserves the daemon's complete
+{§provider-accounting} verbatim: ordered physical request records, conventional
+input/output totals with cache/reasoning details, and exact-decimal nullable
+`costUsd`. The custom event distinguishes charged, Models.dev-estimated,
+unknown, and exact-zero evidence without fabricating a value. Generic clients
+ignore the extension; PLURNK clients consume the same contracts-owned shape as
+every other daemon surface.
 
 - §agui-row-channel **The row channel** — every log row ALSO rides `CUSTOM plurnk.row`
   carrying the full wire entry (fold state, tags-in-signal, tokens, coordinate) alongside its

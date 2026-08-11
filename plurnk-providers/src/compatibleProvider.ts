@@ -13,6 +13,7 @@ import {
     reasoningResponseStyleFromEnv,
 } from "./env.ts";
 import { providerSource } from "./notices.ts";
+import { plurnkCostNormalizer } from "./accounting.ts";
 import type { Provider } from "./types.ts";
 import { emitWarningOnce } from "./warnings.ts";
 
@@ -200,6 +201,7 @@ export const compatibleProviderFromEnv = async (
             && env.PLURNK_PROVIDERS_GBNF_DEBUG !== "0",
         ...dataCaptureFromEnv(env, provider),
         firstPartyMetadata: provider === "plurnk",
+        normalizeCost: provider === "plurnk" ? plurnkCostNormalizer : undefined,
         apiKeyRejectedMessage: provider === "plurnk"
             ? "PLURNK_API_KEY was rejected by plurnk.ai (invalid or expired)."
             : undefined,

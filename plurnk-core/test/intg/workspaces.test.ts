@@ -10,20 +10,18 @@ test("workspaces: table is STRICT", async () => {
     } finally { await db.close(); }
 });
 
-test("workspaces: insert with name only — defaults populate version, created_at, and cost_usd", async () => {
+test("workspaces: insert with name only — defaults populate version and created_at", async () => {
     const db = await openMigrated();
     try {
         await db.test_workspaces_insert_name_only.run({ name: "opus-1747400000" });
         const row = await db.test_workspaces_get_by_name.get<{
             id: number; version: number; name: string; created_at: string;
-            cost_usd: number;
         }>({ name: "opus-1747400000" });
         assert.equal(typeof row?.id, "number");
         assert.ok((row?.id ?? 0) >= 1);
         assert.equal(row?.version, 0);
         assert.equal(row?.name, "opus-1747400000");
         assert.match(row?.created_at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-        assert.equal(row?.cost_usd, 0);
     } finally { await db.close(); }
 });
 
@@ -43,16 +41,6 @@ test("workspaces: empty name rejected by CHECK (length > 0)", async () => {
     try {
         await assert.rejects(
             () => db.test_workspaces_insert_name_only.run({ name: "" }),
-            /CHECK constraint failed/,
-        );
-    } finally { await db.close(); }
-});
-
-test("workspaces: negative cost_usd rejected by CHECK", async () => {
-    const db = await openMigrated();
-    try {
-        await assert.rejects(
-            () => db.test_workspaces_insert_with_cost.run({ name: "workspace-b", cost_usd: -1 }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }
@@ -83,15 +71,6 @@ test("workspaces: created_at query index uses workspace vocabulary", async () =>
     try {
         const row = await db.test_workspaces_index_exists.get<{ name: string }>();
         assert.equal(row?.name, "workspaces_created_at");
-    } finally { await db.close(); }
-});
-
-test("workspaces: explicit cost_usd value overrides default", async () => {
-    const db = await openMigrated();
-    try {
-        await db.test_workspaces_insert_with_cost.run({ name: "workspace-f", cost_usd: 12345 });
-        const row = await db.test_workspaces_get_cost.get<{ cost_usd: number }>({ name: "workspace-f" });
-        assert.equal(row?.cost_usd, 12345);
     } finally { await db.close(); }
 });
 

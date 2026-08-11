@@ -21,7 +21,6 @@ const contentResponse = (content: string): MockResponse => ({
         // Turns lead with PLAN; the Engine re-parses the supplied content.
         content: content.startsWith("<<PLAN") ? content : `<<PLAN::PLAN\n${content}`,
         reasoning: null,
-        usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
     },
     assistantRaw: null,
 });
@@ -43,9 +42,23 @@ const noticeProvider = (extraDrains: number) => {
     provider.generate = async (req) => {
         if (did) return real(req);
         did = true;
+        const accounting = {
+            provider: "provider:mock",
+            model: "mock",
+            outcome: "response",
+            usage: { inputTokens: 5, outputTokens: 10, totalTokens: 15 },
+            cost: {
+                kind: "estimated",
+                amount: { amount: "0", currency: "USD" },
+                source: "notice fixture",
+            },
+        } as const;
+        const settle = await req.observeRequest?.({ provider: accounting.provider, model: accounting.model });
+        await settle?.(accounting);
         return {
-            assistant: { content: NOTICE_CONTENT, reasoning: null, usage: { prompt: 5, completion: 10, reasoning: 0, cached: 0, total: 15 }, finishReason: "stop", model: "mock" },
+            assistant: { content: NOTICE_CONTENT, reasoning: null, finishReason: "stop", model: "mock" },
             assistantRaw: { id: "x", filtered: true },
+            accounting: [accounting],
             notices: [{ source: "provider:mock", kind: "grammar_unenforced", level: "warn", message: "decode escaped into a discarded channel", position: NOTICE_POS }],
         };
     };
@@ -136,7 +149,6 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
                 content: "",
                 ops,
                 reasoning: null,
-                usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
             },
         } as MockResponse);
         const scopedRead = readStmt(urlPath("worker", "/x"));
@@ -175,7 +187,6 @@ test("an EDIT batch reports each tolerated scope once in authored order ({§text
                 content: "",
                 ops,
                 reasoning: null,
-                usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
             },
         } as MockResponse);
         const provider = new Mock({

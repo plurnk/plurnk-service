@@ -40,7 +40,7 @@ SELECT id, name, workspace_id, origin FROM workers WHERE id = $id;
 SELECT id, name FROM workers WHERE workspace_id = $workspace_id AND name = $name;
 
 -- PREP: envelope_list_workers_for_workspace
-SELECT id, name, created_at, cost_usd, origin
+SELECT id, name, created_at, origin
 FROM workers
 WHERE workspace_id = $workspace_id
 ORDER BY created_at DESC;
@@ -72,6 +72,6 @@ SET status = $status,
 WHERE id = $loop_id AND status = 102;
 
 -- PREP: envelope_list_workspaces
-SELECT id, name, project_root, created_at, cost_usd
+SELECT id, name, project_root, created_at
 FROM workspaces
 ORDER BY created_at DESC;

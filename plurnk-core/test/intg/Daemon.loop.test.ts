@@ -20,11 +20,11 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
             assert.equal(result.hitMaxTurns, false);
             assert.equal(result.turnIds?.length, 1);
             // {§notifications}: loop/terminated carries usage summed over the loop's turns.
-            assert.equal(result.usage?.completionTokens, 142, "completion tokens summed from the turn");
-            assert.equal(result.usage?.promptTokens, 0);
-            assert.equal(result.usage?.reasoningTokens, 0);
-            assert.equal(result.usage?.cachedTokens, 0);
-            assert.equal(result.usage?.costUsd, 0);
+            assert.equal(result.usage?.accounting.usage?.outputTokens, 142, "output tokens sum the physical request evidence");
+            assert.equal(result.usage?.accounting.usage?.inputTokens, 0);
+            assert.equal(result.usage?.accounting.usage?.outputTokenDetails?.reasoningTokens, 0);
+            assert.equal(result.usage?.accounting.usage?.inputTokenDetails?.cacheReadTokens, 0);
+            assert.equal(result.usage?.accounting.costUsd, "0");
             assert.deepEqual(result.attributions, [], "attribution remains a top-level terminal projection, separate from usage");
 
             const entryCount = (await db.test_count_entries.get<{ n: number }>())?.n;
@@ -173,7 +173,7 @@ test("loop.run fires loop/terminated notification on completion", async () => {
             const ack = accept.result as { loopId: number; status: number };
             assert.equal(ack.status, 100, "loop.run accepts immediately, not the terminal");
             const captured = await waitFor(
-                () => terminated() as Array<{ workerId: number; loopId: number; result: { status: number }; hitMaxTurns: boolean; attributions: string[]; usage: { promptTokens: number; completionTokens: number; reasoningTokens: number; cachedTokens: number; costUsd: number | null; costs: import("@plurnk/plurnk-contracts").ProviderCost[] } }>,
+                () => terminated() as Array<{ workerId: number; loopId: number; result: { status: number }; hitMaxTurns: boolean; attributions: string[]; usage: import("../../src/core/Engine.ts").LoopUsage }>,
                 (ts) => ts.length >= 1,
             );
             assert.equal(captured.length, 1);
@@ -184,9 +184,9 @@ test("loop.run fires loop/terminated notification on completion", async () => {
             assert.equal(params.hitMaxTurns, false);
             assert.deepEqual(params.attributions, []);
             // {§notifications}: loop/terminated carries the loop's usage totals.
-            assert.equal(params.usage.completionTokens, 50);
-            assert.equal(params.usage.reasoningTokens, 0);
-            assert.equal(params.usage.cachedTokens, 0);
+            assert.equal(params.usage.accounting.usage?.outputTokens, 50);
+            assert.equal(params.usage.accounting.usage?.outputTokenDetails?.reasoningTokens, 0);
+            assert.equal(params.usage.accounting.usage?.inputTokenDetails?.cacheReadTokens, 0);
         } finally { ws.close(); }
     });
 });
@@ -194,9 +194,8 @@ test("loop.run fires loop/terminated notification on completion", async () => {
 test("loop.run still fires loop/terminated when the loop throws — no client hang", async () => {
     // A loop that ERRORS (terminal provider failure / engine throw — not a clean SEND, abort, or
     // strike-abandonment) must STILL broadcast loop/terminated: loop.run only acked 100, so it's the
-    // async client's sole outcome channel. One non-terminal turn, then the Mock exhausts - generate()
-    // throws outside the provider's typed failure contract, so the engine records a generic provider
-    // contract violation and the drain must still publish it ({§notifications}).
+    // async client's sole outcome channel. One non-terminal turn, then the Mock exhausts and returns
+    // its typed invalid-response failure; the drain must still publish it ({§notifications}).
     const dsl = "<<EDIT(worker:///x):iter:EDIT\n<<SEND[102]:continue:SEND";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 10)] });
     // The failure must reach daemon diagnostics too. Capture stderr around the loop.
@@ -221,8 +220,8 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
             assert.ok(captured[0].turnIds.length > 0, "every durable turn completed before the failure is accounted for");
             assert.equal(captured[0].hitMaxTurns, false);
             const exact = captured[0].result as { status: number; problem?: { type?: string; detail?: string; instance?: string } };
-            assert.equal(exact.problem?.type, "https://problems.plurnk.dev/engine/provider/provider-contract-violation");
-            assert.equal(exact.problem?.detail, "The provider failed without returning its required Problem Details.");
+            assert.equal(exact.problem?.type, "https://problems.plurnk.dev/provider/mock/invalid-response");
+            assert.equal(exact.problem?.detail, "Mock provider exhausted: no more queued responses");
             assert.match(exact.problem?.instance ?? "", /^log:\/\/\//, "the failure identifies its durable operation");
             const loopRow = await _db.test_get_loop_status.get<{ status: number }>({ id: (captured[0] as { loopId: number }).loopId });
             assert.equal(loopRow?.status, 500, "the compact scheduler projection is terminal, never a live 102");

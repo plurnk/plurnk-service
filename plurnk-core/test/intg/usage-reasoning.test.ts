@@ -1,4 +1,4 @@
-// {§tokenomics-provider-usage} Provider reasoning usage persists as turn and digest evidence.
+// {§provider-request-accounting} Provider reasoning usage persists as cardinal request and digest evidence.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -13,7 +13,7 @@ import Digest from "../../src/digest/Digest.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
-test("usage.reasoning is persisted and exposed by the digest", async () => {
+test("output reasoning usage is persisted and exposed by the digest", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-usage-reasoning-"));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
@@ -23,12 +23,32 @@ test("usage.reasoning is persisted and exposed by the digest", async () => {
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const resp: MockResponse = { assistant: { content: "", reasoning: "thought hard", ops: [sendStmt(200, null, "done")], usage: { prompt: 100, completion: 20, reasoning: 37, cached: 0, total: 157 } } };
+        const resp: MockResponse = {
+            assistant: { content: "", reasoning: "thought hard", ops: [sendStmt(200, null, "done")] },
+            usage: {
+                inputTokens: 100,
+                outputTokens: 57,
+                totalTokens: 157,
+                inputTokenDetails: { noCacheTokens: 100, cacheReadTokens: 0 },
+                outputTokenDetails: { textTokens: 20, reasoningTokens: 37 },
+            },
+        };
         const provider = new Mock({ contextWindow: 100000, responses: [resp] });
         const r = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const turn = await db.test_get_turn.get<{ usage_reasoning: number; usage_completion: number }>({ id: r.turnId });
-        assert.equal(turn?.usage_reasoning, 37, "the reasoning token count round-trips to the turn row");
-        assert.equal(turn?.usage_completion, 20, "completion is unaffected");
+        const requests = await db.test_provider_requests.all<{
+            usage_output: number;
+            usage_output_text: number;
+            usage_output_reasoning: number;
+        }>({ turn_id: r.turnId });
+        assert.deepEqual(requests.map(({ usage_output, usage_output_text, usage_output_reasoning }) => ({
+            usage_output,
+            usage_output_text,
+            usage_output_reasoning,
+        })), [{
+            usage_output: 57,
+            usage_output_text: 20,
+            usage_output_reasoning: 37,
+        }]);
     } finally {
         await db.close();
     }
@@ -37,11 +57,10 @@ test("usage.reasoning is persisted and exposed by the digest", async () => {
         Digest.run({ dbPath, digestDir });
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
         const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
-            turns: Array<{ usage_reasoning: number }>;
+            turns: Array<{ accounting: { usage: { outputTokenDetails: { reasoningTokens: number } } } }>;
         };
-        assert.match(markdown, /completion=20 reasoning=37 cached=0/);
-        assert.match(markdown, /Tokens:\s+prompt=100 completion=20 reasoning=37 cached=0/);
-        assert.equal(json.turns[0]?.usage_reasoning, 37);
+        assert.match(markdown, /input=100 output=57 reasoning=37 cache-read=0/);
+        assert.equal(json.turns[0]?.accounting.usage.outputTokenDetails.reasoningTokens, 37);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }

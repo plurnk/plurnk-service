@@ -1,6 +1,5 @@
 import { createOpenAICompatible, type ProviderErrorStructure } from "@ai-sdk/openai-compatible";
 import { APICallError, generateText, streamText, type JSONValue, type LanguageModel, type LanguageModelUsage } from "ai";
-import { prepareRetries } from "ai/internal";
 import { z } from "zod/v4";
 import type { ChatMessage, ProviderAttemptFinishReason, ProviderChargeEvidence, ProviderUsage, TokenLogprob } from "./types.ts";
 import { normalizeUsage, type RawUsage } from "./usage.ts";
@@ -41,36 +40,43 @@ const baseUrl = (completionUrl: string): string => {
 
 const usageOf = (
     usage: LanguageModelUsage,
-    reasoningText: string,
-    contentText: string,
-): ProviderUsage => normalizeUsage({
+): ProviderUsage | undefined => normalizeUsage({
     prompt_tokens: usage.inputTokens,
     completion_tokens: usage.outputTokens,
     total_tokens: usage.totalTokens,
-    prompt_tokens_details: { cached_tokens: usage.inputTokenDetails.cacheReadTokens },
+    prompt_tokens_details: {
+        cached_tokens: usage.inputTokenDetails.cacheReadTokens,
+        cache_write_tokens: usage.inputTokenDetails.cacheWriteTokens,
+    },
     completion_tokens_details: usage.outputTokenDetails.reasoningTokens !== undefined
         ? { reasoning_tokens: usage.outputTokenDetails.reasoningTokens }
         : undefined,
-}, reasoningText, contentText);
+});
 
 const wireUsageOf = (
     values: readonly unknown[],
-    reasoningText: string,
-    contentText: string,
-): ProviderUsage | null => {
+): ProviderUsage | undefined => {
     for (let index = values.length - 1; index >= 0; index -= 1) {
         const usage = recordOf(values[index])?.usage;
         if (usage !== null && typeof usage === "object") {
-            return normalizeUsage(usage as RawUsage, reasoningText, contentText);
+            return normalizeUsage(usage as RawUsage);
         }
     }
-    return null;
+    return undefined;
 };
 
 const wireUsageEvidenceOf = (values: readonly unknown[]): unknown => {
     for (let index = values.length - 1; index >= 0; index -= 1) {
         const record = recordOf(values[index]);
         if (record !== null && record.usage !== undefined) return record.usage;
+    }
+    return undefined;
+};
+
+const wireChargeEvidenceOf = (values: readonly unknown[]): unknown => {
+    for (let index = values.length - 1; index >= 0; index -= 1) {
+        const record = recordOf(values[index]);
+        if (record !== null && record.charge !== undefined) return record.charge;
     }
     return undefined;
 };
@@ -119,7 +125,7 @@ const metadataOf = (values: readonly unknown[]): Record<string, unknown> => {
         const record = recordOf(value);
         if (record === null) continue;
         for (const [key, item] of Object.entries(record)) {
-            if (key !== "choices" && key !== "usage") metadata[key] = item;
+            if (key !== "choices" && key !== "usage" && key !== "charge") metadata[key] = item;
         }
     }
     return metadata;
@@ -135,7 +141,6 @@ export type AiSdkTransportRequest = {
     fetch?: typeof globalThis.fetch;
     fetchTimeoutMs: number;
     streamIdleTimeoutMs?: number;
-    retryAttempts: number;
     streaming: boolean;
     captureRawBody: boolean;
 };
@@ -147,7 +152,7 @@ export type AiSdkTransportResponse = {
     reasoningProjected: boolean;
     finishReason: ProviderAttemptFinishReason;
     rawFinishReason?: string;
-    usage: ProviderUsage;
+    usage?: ProviderUsage;
     metadata: Record<string, unknown>;
     reasoningEncrypted: Array<{
         id: string | null;
@@ -179,6 +184,8 @@ const isStreamIdleTimeout = (cause: unknown): cause is Error | DOMException =>
     && (cause as { name?: string }).name === "TimeoutError"
     && /chunk timeout/i.test(String((cause as { message?: unknown }).message ?? ""));
 
+const streamFailureValues = new WeakMap<object, readonly unknown[]>();
+
 const executeModel = async (
     request: AiSdkModelRequest,
 ): Promise<AiSdkTransportResponse> => {
@@ -186,29 +193,19 @@ const executeModel = async (
     const operationSignal = request.signal === undefined
         ? timeoutSignal
         : AbortSignal.any([request.signal, timeoutSignal]);
-    const { retry } = prepareRetries({
-        maxRetries: request.retryAttempts,
-        abortSignal: operationSignal,
-    });
-    return retry(async () => {
-        try {
-            return await executeModelOnce({
-                ...request,
-                signal: operationSignal,
-                retryAttempts: 0,
-            });
-        } catch (cause) {
-            if (operationSignal.aborted) throw operationSignal.reason;
-            if (!isStreamIdleTimeout(cause)) throw cause;
-            throw new APICallError({
-                message: cause.message,
-                url: "model:generation",
-                requestBodyValues: {},
-                cause,
-                isRetryable: true,
-            });
-        }
-    });
+    try {
+        return await executeModelOnce({ ...request, signal: operationSignal });
+    } catch (cause) {
+        if (operationSignal.aborted) throw operationSignal.reason;
+        if (!isStreamIdleTimeout(cause)) throw cause;
+        throw new APICallError({
+            message: cause.message,
+            url: "model:generation",
+            requestBodyValues: {},
+            cause,
+            isRetryable: true,
+        });
+    }
 };
 
 const executeModelOnce = async (
@@ -255,7 +252,9 @@ const executeModelOnce = async (
         messages: messages.length > 0
             ? messages
             : [{ role: "user" as const, content: "" }],
-        maxRetries: request.retryAttempts,
+        // AiSdkProvider owns retries so every physical request is independently
+        // observed and accounted. The SDK transport executes exactly once.
+        maxRetries: 0,
         abortSignal: request.signal,
         headers: request.headers,
         timeout: {
@@ -285,12 +284,14 @@ const executeModelOnce = async (
             reasoningProjected: evidence.reasoningProjected,
             finishReason: finishReasonOf(rawFinishReason),
             ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
-            usage: wireUsageOf(values, reasoningText, result.text)
-                ?? usageOf(result.usage, reasoningText, result.text),
+            usage: wireUsageOf(values) ?? usageOf(result.usage),
             metadata: metadataOf(values),
             reasoningEncrypted: evidence.reasoningEncrypted,
             logprobs: evidence.logprobs,
             chargeEvidence: {
+                ...(wireChargeEvidenceOf(values) === undefined
+                    ? {}
+                    : { charge: wireChargeEvidenceOf(values) }),
                 ...(accountingUsage === undefined ? {} : { usage: accountingUsage }),
                 ...(result.providerMetadata === undefined
                     ? {}
@@ -317,7 +318,12 @@ const executeModelOnce = async (
         if (part.type === "raw") rawChunks.push(part.rawValue);
         if (part.type === "error") streamError ??= part.error;
     }
-    if (streamError !== undefined) throw streamError;
+    if (streamError !== undefined) {
+        if (typeof streamError === "object" && streamError !== null) {
+            streamFailureValues.set(streamError, [...rawChunks, streamError]);
+        }
+        throw streamError;
+    }
     const evidence = extractEvidence(rawChunks);
     const accountingUsage = wireUsageEvidenceOf(rawChunks);
     const content = await result.text;
@@ -334,12 +340,14 @@ const executeModelOnce = async (
         reasoningProjected: evidence.reasoningProjected,
         finishReason: finishReasonOf(rawFinishReason),
         ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
-        usage: wireUsageOf(rawChunks, reasoningText, content)
-            ?? usageOf(await result.usage, reasoningText, content),
+        usage: wireUsageOf(rawChunks) ?? usageOf(await result.usage),
         metadata: metadataOf(rawChunks),
         reasoningEncrypted: evidence.reasoningEncrypted,
         logprobs: evidence.logprobs,
         chargeEvidence: {
+            ...(wireChargeEvidenceOf(rawChunks) === undefined
+                ? {}
+                : { charge: wireChargeEvidenceOf(rawChunks) }),
             ...(accountingUsage === undefined ? {} : { usage: accountingUsage }),
             ...(providerMetadata === undefined ? {} : { providerMetadata }),
             response: {
@@ -379,10 +387,53 @@ export const executeOpenAICompatible = async (
         signal: request.signal,
         fetchTimeoutMs: request.fetchTimeoutMs,
         streamIdleTimeoutMs: request.streamIdleTimeoutMs,
-        retryAttempts: request.retryAttempts,
         streaming: request.streaming,
         captureRawBody: request.captureRawBody,
     });
+};
+
+const responseBodyValues = (error: APICallError): readonly unknown[] => {
+    if (error.responseBody === undefined || error.responseBody.length === 0) return [];
+    try {
+        return [JSON.parse(error.responseBody)];
+    } catch {
+        return [];
+    }
+};
+
+export type AiSdkTransportFailureEvidence = {
+    readonly usage?: ProviderUsage;
+    readonly chargeEvidence: ProviderChargeEvidence;
+    readonly status?: number;
+};
+
+export const transportFailureEvidence = (
+    error: unknown,
+): AiSdkTransportFailureEvidence => {
+    const values = typeof error === "object" && error !== null
+        ? streamFailureValues.get(error) ?? (APICallError.isInstance(error) ? responseBodyValues(error) : [])
+        : [];
+    const usage = wireUsageOf(values);
+    const usageEvidence = wireUsageEvidenceOf(values);
+    const charge = wireChargeEvidenceOf(values);
+    const wireStatus = values
+        .map(recordOf)
+        .find((record) => Number.isInteger(record?.status))?.status;
+    const apiStatus = APICallError.isInstance(error) ? error.statusCode : undefined;
+    const status = Number.isInteger(apiStatus) && (apiStatus as number) >= 100 && (apiStatus as number) <= 599
+        ? apiStatus as number
+        : Number.isInteger(wireStatus) && (wireStatus as number) >= 100 && (wireStatus as number) <= 599
+            ? wireStatus as number
+            : undefined;
+    return {
+        ...(usage === undefined ? {} : { usage }),
+        chargeEvidence: {
+            ...(charge === undefined ? {} : { charge }),
+            ...(usageEvidence === undefined ? {} : { usage: usageEvidence }),
+            response: {},
+        },
+        ...(status === undefined ? {} : { status }),
+    };
 };
 
 const extractEvidence = (values: unknown[]): {

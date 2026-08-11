@@ -1,6 +1,4 @@
-import type { Provider, ProviderResponse, ProviderUsage, ChatMessage, PromptTokenMeasurement } from "./types.ts";
-import type { ProviderCost } from "@plurnk/plurnk-contracts";
-import { resolveProviderCost } from "./cost.ts";
+import type { Provider, ProviderRequestAccounting, ProviderResponse, ChatMessage, PromptTokenMeasurement } from "./types.ts";
 import { ProviderError, type ProviderErrorKind } from "./errors.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { assertPromptTokenMeasurement } from "./promptTokens.ts";
@@ -125,32 +123,38 @@ export default class Pool implements Provider {
             source: `pool:${sources}`,
         };
     }
-    calculateCost(usage: ProviderUsage): number { return this.#backends[0].calculateCost(usage); }
-    calculateCharge(usage: ProviderUsage): Exclude<ProviderCost, { kind: "authoritative" }> {
-        const backend = this.#backends[0];
-        return resolveProviderCost(undefined, backend.calculateCharge?.(usage)) as Exclude<ProviderCost, { kind: "authoritative" }>;
-    }
-
     // --- dispatch ---
 
-    async generate(args: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse> {
+    async generate(args: Parameters<Provider["generate"]>[0]): Promise<ProviderResponse> {
         const { workerId, signal } = args;
         if (workerId === undefined || workerId.length === 0) throw new Error("Pool.generate: workerId is required - affinity keys on it");
         const tried = new Set<number>();
+        const priorAccounting: ProviderRequestAccounting[] = [];
         let idx = this.#route(workerId);
-        let lastErr: unknown;
         for (;;) {
             tried.add(idx);
             try {
-                return await this.#backends[idx].generate(args);
+                const response = await this.#backends[idx].generate(args);
+                return priorAccounting.length === 0
+                    ? response
+                    : { ...response, accounting: [...priorAccounting, ...response.accounting] };
             } catch (err) {
-                lastErr = err;
-                if (signal?.aborted) throw err; // caller cancellation is never a failover
+                if (signal?.aborted) {
+                    if (err instanceof ProviderError) err.prependAccounting(priorAccounting);
+                    throw err;
+                }
                 // Only a backend-AVAILABILITY failure overflows; auth/quota/content/
                 // malformed fail the same on a peer, so they propagate.
-                if (!(err instanceof ProviderError) || !OVERFLOW_KINDS.has(err.kind)) throw err;
+                if (!(err instanceof ProviderError) || !OVERFLOW_KINDS.has(err.kind)) {
+                    if (err instanceof ProviderError) err.prependAccounting(priorAccounting);
+                    throw err;
+                }
                 const next = this.#nextUntried(tried);
-                if (next === null) throw lastErr; // the whole fleet is unavailable
+                if (next === null) {
+                    err.prependAccounting(priorAccounting);
+                    throw err;
+                }
+                priorAccounting.push(...err.accounting);
                 this.#affinity.set(workerId, next); // re-stick: the worker's cache moves with it
                 idx = next;
             }

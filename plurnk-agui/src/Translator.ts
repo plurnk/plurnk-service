@@ -145,12 +145,10 @@ export default class Translator {
             delta: [
                 { op: "replace", path: "/budget/contextTokens", value: n.usage.contextTokens },
                 { op: "replace", path: "/budget/promptBudget", value: n.usage.promptBudget },
-                { op: "replace", path: "/budget/promptTokens", value: n.usage.promptTokens },
-                { op: "replace", path: "/budget/completionTokens", value: n.usage.completionTokens },
             ],
         });
         // Family channel — the full terminal truth the core STATE_DELTA can't hold
-        // (loopId, turnIds, costUsd, usage meta, attribution) PLUS the daemon workspaceId, so a
+        // (loopId, turnIds, physical-request accounting, usage meta, attribution) PLUS the daemon workspaceId, so a
         // plurnk client rebuilds its json record from the stream with ONE schema
         // across transports (WS or bridge) — no second round-trip. Numbers verbatim
         // ({§agui-numbers-passthrough}). Generic frontends ignore it; the RUN_FINISHED/

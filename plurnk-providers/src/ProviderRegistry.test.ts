@@ -271,14 +271,17 @@ test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog fact
     assert.deepEqual(request.thinking, { type: "disabled" });
     assert.equal(provider.contextWindow, 1_000_000);
     assert.equal(response.assistant.content, "ok");
-    assert.deepEqual(response.assistant.usage, {
-        prompt: 10,
-        completion: 2,
-        reasoning: 0,
-        cached: 8,
-        total: 12,
+    assert.deepEqual(response.accounting[0]?.usage, {
+        inputTokens: 10,
+        outputTokens: 2,
+        totalTokens: 12,
+        inputTokenDetails: { noCacheTokens: 2, cacheReadTokens: 8 },
     });
-    assert.ok(Math.abs(provider.calculateCost(response.assistant.usage) - 0.0000008624) < 1e-15);
+    assert.deepEqual(response.accounting[0]?.cost, {
+        kind: "estimated",
+        amount: { amount: "0.0000008624", currency: "USD" },
+        source: "Models.dev catalog rates",
+    });
     mock.restoreAll();
 });
 

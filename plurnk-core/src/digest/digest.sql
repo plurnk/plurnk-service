@@ -16,17 +16,32 @@ FROM loops ORDER BY worker_id, sequence;
 
 -- PREP: digest_turns
 SELECT id, loop_id, sequence, status, packet,
-       usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost, usage_cost_usd,
        finish_reason, model, meta, timestamp
 FROM turns ORDER BY loop_id, sequence;
 
 -- PREP: digest_turn_attempts
 SELECT id, turn_id, sequence, state, accepted, response, failure,
        parse_errors, attributions,
-       usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost, usage_cost_usd,
        finish_reason, model, timestamp, completed_at
 FROM turn_attempts
 ORDER BY turn_id, sequence;
+
+-- PREP: digest_provider_requests
+-- Cardinal physical-request ledger with ownership coordinates for derived
+-- workspace/worker/loop/turn projections.
+SELECT pr.id, pr.turn_attempt_id, a.turn_id, t.loop_id, l.worker_id, w.workspace_id,
+       pr.sequence, pr.provider, pr.model, pr.state, pr.outcome, pr.status,
+       pr.usage_input, pr.usage_output, pr.usage_total,
+       pr.usage_input_no_cache, pr.usage_input_cache_read, pr.usage_input_cache_write,
+       pr.usage_output_text, pr.usage_output_reasoning,
+       pr.cost_kind, pr.cost_amount, pr.cost_currency, pr.cost_usd_equivalent,
+       pr.cost_source, pr.cost_reason, pr.started_at, pr.completed_at
+FROM provider_requests pr
+JOIN turn_attempts a ON a.id = pr.turn_attempt_id
+JOIN turns t ON t.id = a.turn_id
+JOIN loops l ON l.id = t.loop_id
+JOIN workers w ON w.id = l.worker_id
+ORDER BY w.id, l.sequence, t.sequence, a.sequence, pr.sequence;
 
 -- PREP: digest_log_entries
 SELECT id, worker_id, loop_id, turn_id, sequence, at, origin, source,
@@ -37,20 +52,12 @@ SELECT id, worker_id, loop_id, turn_id, sequence, at, origin, source,
 FROM log_entries ORDER BY loop_id, turn_id, sequence;
 
 -- PREP: digest_worker_rollups
--- Per-worker aggregates (token/cost SUMs, loop/turn COUNTs, last-turn status) —
--- the worker-summary data, computed in SQL rather than rolled up in JS.
+-- Structural per-worker aggregates. Accounting is derived through the shared
+-- exact-decimal provider contract rather than SQLite numeric arithmetic.
 SELECT
     r.id AS worker_id,
     COUNT(DISTINCT l.id) AS loops,
     COUNT(t.id) AS turns,
-    COALESCE(SUM(t.usage_prompt), 0) AS total_prompt,
-    COALESCE(SUM(t.usage_completion), 0) AS total_completion,
-    COALESCE(SUM(t.usage_reasoning), 0) AS total_reasoning,
-    COALESCE(SUM(t.usage_cached), 0) AS total_cached,
-    (SELECT CASE WHEN COUNT(*) FILTER (WHERE lc.cost_usd IS NULL) > 0
-                 THEN NULL ELSE COALESCE(SUM(lc.cost_usd), 0) END
-       FROM loop_costs lc
-      WHERE lc.worker_id = r.id) AS total_cost_usd,
     (SELECT t2.status FROM turns t2 JOIN loops l2 ON t2.loop_id = l2.id
      WHERE l2.worker_id = r.id ORDER BY l2.sequence DESC, t2.sequence DESC LIMIT 1) AS last_status
 FROM workers r

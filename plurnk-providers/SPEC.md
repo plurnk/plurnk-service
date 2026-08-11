@@ -42,8 +42,6 @@ interface Provider {
     signal?: AbortSignal,
   ): Promise<PromptTokenMeasurement>;
   tokenize?(text: string): Promise<number[]>;
-  calculateCost(usage: ProviderUsage): number;
-  calculateCharge?(usage: ProviderUsage): Exclude<ProviderCost, { kind: "authoritative" }>;
   generate(args: GenerateArgs): Promise<ProviderResponse>;
 }
 ```
@@ -75,20 +73,21 @@ hard; consumers do not reinterpret it as ordinary unavailability.
 endpoint exposes its real vocabulary. Content tokenization does not substitute
 for complete-request measurement.
 
-§provider-monetary-evidence One precedence path converts each provider response
-into {§provider-cost} evidence:
+§provider-monetary-evidence One precedence path converts each physical provider
+request into {§provider-cost} evidence before the request leaves the provider
+boundary:
 
 | Precedence | Evidence | Result |
 | --- | --- | --- |
-| 1 | A documented monetary field on that response | The adapter normalizes it as `ProviderResponse.charge`; its decimal USD equivalent wins. |
-| 2 | Exact response usage and the exact model's Models.dev rates | `calculateCharge` returns estimated USD, or explicit free when every applicable rate is zero. |
-| 3 | Neither | Unknown; no cost is reported. |
+| 1 | A documented monetary field on that response or error | The adapter validates and preserves its documented `charged` or `estimated` character; its exact amount wins. |
+| 2 | Known response usage and the exact model's Models.dev rates | The adapter returns an exact decimal USD `estimated` amount only when every differently-priced applicable category is known. |
+| 3 | Neither | `unknown` with a concrete reason. |
 
-Models.dev is the sole supported fallback rate table. Missing usage or rates
-never proves free. The numeric `calculateCost` method remains callable only as a
-frozen 1.x compatibility surface and is not a monetary-reporting authority.
-`providerCostUsd` exposes authoritative, estimated, and free evidence as decimal
-USD and returns `null` for unknown evidence.
+Models.dev is the sole supported fallback rate table. Missing usage, a missing
+applicable category, or missing rates never proves zero. An exact zero rate
+produces an ordinary estimated amount of USD `0`. Rate calculation is internal
+to the provider request; Core, digest, ping, and clients never call a parallel
+pricing method.
 
 ### Generation
 
@@ -101,19 +100,28 @@ USD and returns `null` for unknown evidence.
 - opaque attribution tags plus client, strike, workspace, loop, and turn metadata.
 
 A successful return carries the model's raw content and reasoning, normalized
-usage, normalized finish reason, model identity, opaque evidence, optional
-metadata, and optional notices. The provider transports and observes model
+finish reason, model identity, its ordered {§provider-request-accounting},
+opaque evidence, optional metadata, and optional notices. A `ProviderError`
+carries the same accounting array. The provider transports and observes model
 output; it never retries, discards, or repairs an otherwise completed exchange
 because PLURNK grammar did not accept it.
 
-Usage obeys:
+§provider-request-observer When a consumer supplies the request observer, the
+provider opens one durable identity through it immediately before each physical
+I/O and settles that identity with the resulting
+`ProviderRequestAccounting`. This applies to every automatic retry and capacity
+failover request. The observer is a durability sink, not an alternate evidence
+representation; the same ordered records remain on the final response or error.
+
+Usage obeys {§provider-usage}:
 
 ```text
-total = prompt + completion + reasoning
-cached ⊆ prompt
+totalTokens = inputTokens + outputTokens
+cacheReadTokens, cacheWriteTokens ⊆ inputTokens
+reasoningTokens ⊆ outputTokens
 ```
 
-`completion` excludes reasoning. Ordinary vendor finish reasons normalize to
+Unknown fields remain absent. Ordinary vendor finish reasons normalize to
 `stop`, `length`, `tool_calls`, or `content_filter`; an unknown value becomes
 `null` and emits a warning. `resource_interrupted` is the distinct failed-attempt
 disposition defined by {§provider-interrupted-attempt}.
@@ -133,9 +141,9 @@ explicit alias-scoped response style:
 
 Tag projection never runs when readable structured reasoning is already
 present. Streamed and buffered transports converge on this response boundary.
-When the upstream reports only combined output usage, the existing
-sum-preserving text-proportion estimate reclassifies completion versus reasoning
-without changing prompt, cached input, total output, or billed output.
+When the upstream reports only combined output usage, that value remains
+`outputTokens` and its unavailable text/reasoning detail stays absent. The
+adapter never apportions tokens from character lengths.
 
 Grammar evidence retains the exact pre-projection sentence and its Unicode
 content offset. Response classification cannot rewrite what a transported GBNF
@@ -220,11 +228,11 @@ Provider and model facts resolve independently:
 | Context window       | Catalog metadata or a local endpoint probe.            | `PLURNK_PROVIDERS_CONTEXT_WINDOW`.                   | Minimum when both exist; the sole value otherwise. A cataloged cloud miss fails construction; a compatible probe miss remains `null` with one warning. |
 | Completion envelope  | Catalog `maxOutput`; there is no live limit probe.     | `PLURNK_PROVIDERS_COMPLETION_RESERVE`.               | An absolute reserve wins. A percentage derives from the effective window and is capped by catalog `maxOutput` when present.                            |
 | Reasoning capability | Catalog `reasoning: true`, exposed by snapshot lookup. | Runtime activation, reserve, and adapter wire style. | The catalog bit is informational; provider construction neither activates nor blocks reasoning from it.                                                |
-| Estimated USD rates  | Models.dev input, output, and optional cache-read rates. | None. | Missing rates produce unknown evidence; explicit all-zero rates produce free evidence. No live price fetch exists. |
+| Estimated USD rates  | Models.dev input, output, and optional cache-read/cache-write rates. | None. | Missing differently-priced categories or rates produce unknown evidence; exact all-zero rates produce an estimated USD zero. No live price fetch exists. |
 
-Models.dev cache-read cost defaults to its input cost when omitted. Cache-write
-cost remains snapshot information; the current usage record has no cache-write
-quantity to price.
+Models.dev cache-read and cache-write cost default to input cost when omitted.
+When either differs from input, the corresponding usage detail must be known or
+the request estimate is unknown.
 
 `instantiateProvider` resolves in this order:
 
@@ -367,12 +375,13 @@ normal value. Retry exhaustion is preserved as `attempts` and
 `retryExhausted`, and the resulting Problem is not marked retryable after the
 provider has consumed its automatic retry budget.
 
-The AI SDK owns one attempt scheduler around the complete generation exchange.
+The provider adapter owns one attempt scheduler around the complete generation exchange.
 `PLURNK_PROVIDERS_RETRY_ATTEMPTS` is the maximum retry count, including a
 configured stream-chunk deadline that expires while consuming a response body.
 The total generation deadline and caller cancellation span that scheduler and
 every attempt; neither restarts during replay. Total and stream-chunk deadlines
-are separately configurable.
+are separately configurable. Every scheduler iteration produces one ordered
+{§provider-request-accounting} record, including response-less network failures.
 
 HTTP 408, 409, 429, and ordinary 5xx responses are retryable unless the endpoint
 explicitly says otherwise. Endpoint control responses 520–527 are final so a
@@ -387,10 +396,10 @@ completed exchange.
 | Concern                    | Contract                                                                                                                     |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Normalized finish reason   | Exact `insufficient_system_resource` becomes `resource_interrupted`; the raw value remains in `assistantRaw`.                |
-| `generate` outcome         | Throw `ProviderError(kind="resource_interrupted")` at local status 503 with the normalized attempt on `error.attempt`.       |
+| `generate` outcome         | Throw `ProviderError(kind="resource_interrupted")` at local status 503 with the normalized attempt on `error.attempt` and the same accounting on `error.accounting`. |
 | Partial response           | Preserve content, reasoning, usage, model, metadata, optional raw body, and other evidence without admitting it as success.  |
 | Automatic replay           | None; the Problem has `retryable: false`, and AI SDK retry scheduling has already completed at the successful transport.     |
-| Capacity-pool overflow     | None; a sibling success would erase the known billed failed attempt from the current `ProviderResponse` surface.             |
+| Capacity-pool overflow     | None under the existing routing policy; when other overflow-eligible failures do reach a sibling, the pool concatenates their request accounting. |
 | Consumer admission         | Persist the evidence as an unaccepted attempt; never parse it into executable work, even when its frame looks complete.      |
 
 ## §10 Grammar

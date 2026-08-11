@@ -18,7 +18,7 @@ const sendStmt = (status: number, body: string): SendStatement => ({
     lineMarker: null, body: { raw: body, json: null }, position: { line: 1, column: 1 },
 });
 const response = (ops: PlurnkStatement[]): MockResponse => ({
-    assistant: { content: "", ops, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: "", ops, reasoning: null },
 });
 const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([sendStmt(200, "ok")]));
 

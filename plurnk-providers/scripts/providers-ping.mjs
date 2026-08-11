@@ -4,9 +4,9 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import {
+    aggregateProviderAccounting,
     instantiateProvider,
     parseAliasesFromEnv,
-    providerCostFor,
     ProviderError,
 } from "../src/index.ts";
 import {
@@ -197,14 +197,16 @@ export const pingRequest = (route) => {
     };
 };
 
-const responseEvidence = (provider, response) => {
-    const cost = providerCostFor(provider, response.assistant.usage, response.charge);
+const accountingEvidence = (requests) => {
+    return { accounting: aggregateProviderAccounting(requests) };
+};
+
+const responseEvidence = (response) => {
     const raw = response.rawBody ?? response.assistantRaw;
     return {
         returnedModel: response.assistant.model,
         finishReason: response.assistant.finishReason,
-        usage: response.assistant.usage,
-        cost,
+        ...accountingEvidence(response.accounting),
         responseShape: responseShape(raw),
         responseShapeSource: response.rawBody === undefined ? "assistantRaw" : "rawBody",
     };
@@ -238,7 +240,7 @@ const invokeRoute = async (route, env, sensitiveValues) => {
             startedAt,
             finishedAt: new Date().toISOString(),
             status: "response",
-            ...responseEvidence(provider, response),
+            ...responseEvidence(response),
         };
     } catch (cause) {
         const attempt = cause instanceof ProviderError ? cause.attempt : undefined;
@@ -250,12 +252,12 @@ const invokeRoute = async (route, env, sensitiveValues) => {
             startedAt,
             finishedAt: new Date().toISOString(),
             status: "error",
-            ...(attempt === undefined || provider === undefined
+            ...(cause instanceof ProviderError
                 ? {
-                    usage: null,
-                    cost: { kind: "unknown", reason: "the provider returned no response evidence" },
+                    ...accountingEvidence(cause.accounting),
+                    ...(attempt === undefined ? {} : responseEvidence(attempt)),
                 }
-                : responseEvidence(provider, attempt)),
+                : accountingEvidence([])),
             error: errorEvidence(cause, sensitiveValues),
         };
     }
@@ -268,20 +270,7 @@ const artifactRoot = (env) => {
         : resolve(process.cwd(), configured);
 };
 
-const formatCost = (cost) => {
-    switch (cost.kind) {
-        case "authoritative":
-            return cost.amount.currency === "USD"
-                ? `${cost.amount.amount} USD (${cost.source})`
-                : `${cost.amount.amount} ${cost.amount.currency}; ${cost.usdEquivalent} USD (${cost.source})`;
-        case "estimated":
-            return `${cost.usd} USD (${cost.source})`;
-        case "free":
-            return `0 USD (${cost.source})`;
-        case "unknown":
-            return `unknown (${cost.reason})`;
-    }
-};
+const formatCost = (costUsd) => costUsd === null ? "unknown" : `${costUsd} USD`;
 
 const main = async () => {
     const plan = planProviderPings(process.env);
@@ -303,7 +292,7 @@ const main = async () => {
             const path = await writePingRecord(directory, record, sensitiveValues);
             process.stdout.write(
                 `${record.status === "response" ? "PASS" : "RED"} ${route.provider}/${route.model}: `
-                + `${formatCost(record.cost)}; evidence ${path}\n`,
+                + `${formatCost(record.accounting.costUsd)}; evidence ${path}\n`,
             );
             return { ...record, retained: true };
         } catch (cause) {

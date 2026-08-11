@@ -34,7 +34,7 @@ const FAT = 4000;       // chars of read-back body — renders into the log, the
 
 const heavy = (chars: number): string => "x".repeat(chars);
 const response = (ops: PlurnkStatement[]): MockResponse => ({
-    assistant: { content: "", ops, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistant: { content: "", ops, reasoning: null },
 });
 const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([sendStmt(200, null, "ok")]));
 // A turn that writes a fat entry then READS it back (the read RESULT renders into

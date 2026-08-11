@@ -1,7 +1,7 @@
 import { Problems, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { APICallError, RetryError } from "ai";
 import { providerSource } from "./notices.ts";
-import type { ProviderAttempt } from "./types.ts";
+import type { ProviderAttempt, ProviderRequestAccounting } from "./types.ts";
 
 export type ProviderErrorKind =
     | "rate_limit"
@@ -84,6 +84,7 @@ export class ProviderError extends Error {
     readonly kind: ProviderErrorKind;
     readonly problem: ProblemDetails;
     readonly attempt?: ProviderAttempt;
+    #accounting: ProviderRequestAccounting[];
 
     constructor(
         source: string,
@@ -95,6 +96,7 @@ export class ProviderError extends Error {
             retryable?: boolean;
             extensions?: Readonly<Record<string, unknown>>;
             attempt?: ProviderAttempt;
+            accounting?: readonly ProviderRequestAccounting[];
         } = {},
     ) {
         super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
@@ -102,6 +104,7 @@ export class ProviderError extends Error {
         this.source = providerSource(source);
         this.kind = kind;
         this.attempt = options.attempt;
+        this.#accounting = [...(options.accounting ?? options.attempt?.accounting ?? [])];
         const status = options.status !== null && options.status !== undefined
             && Number.isInteger(options.status) && options.status >= 400 && options.status <= 599
             ? options.status
@@ -118,6 +121,16 @@ export class ProviderError extends Error {
 
     get status(): number {
         return this.problem.status;
+    }
+
+    get accounting(): readonly ProviderRequestAccounting[] {
+        return this.#accounting;
+    }
+
+    // A capacity pool adds the already-settled requests from prior backends as
+    // the same failure crosses that orchestration boundary.
+    prependAccounting(accounting: readonly ProviderRequestAccounting[]): void {
+        if (accounting.length > 0) this.#accounting = [...accounting, ...this.#accounting];
     }
 }
 

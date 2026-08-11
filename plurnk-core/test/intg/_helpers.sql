@@ -59,31 +59,39 @@ ORDER BY CAST(substr(pathname, 2, instr(substr(pathname, 2), '/') - 1) AS INTEGE
 
 -- PREP: test_get_turn
 SELECT id, loop_id, sequence, status,
-       usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost, usage_cost_usd,
        finish_reason, model, packet
 FROM turns WHERE id = $id;
 
 -- PREP: test_turn_attempts
 SELECT id, sequence, state, accepted, response, failure, parse_errors,
        attributions,
-       usage_prompt, usage_completion, usage_reasoning, usage_cached, usage_cost_usd,
-       usage_cost, finish_reason, model, timestamp, completed_at
+       finish_reason, model, timestamp, completed_at
 FROM turn_attempts
 WHERE turn_id = $turn_id
 ORDER BY sequence;
+
+-- PREP: test_provider_requests
+SELECT pr.id, pr.turn_attempt_id, a.sequence AS attempt_sequence, pr.sequence,
+       pr.provider, pr.model, pr.state, pr.outcome, pr.status,
+       pr.usage_input, pr.usage_output, pr.usage_total,
+       pr.usage_input_no_cache, pr.usage_input_cache_read, pr.usage_input_cache_write,
+       pr.usage_output_text, pr.usage_output_reasoning,
+       pr.cost_kind, pr.cost_amount, pr.cost_currency, pr.cost_usd_equivalent,
+       pr.cost_source, pr.cost_reason, pr.started_at, pr.completed_at
+FROM provider_requests pr
+JOIN turn_attempts a ON a.id = pr.turn_attempt_id
+WHERE a.turn_id = $turn_id
+ORDER BY a.sequence, pr.sequence;
 
 -- PREP: test_get_log_entry_by_id
 SELECT id, status_rx, state, outcome, attrs, rx
 FROM log_entries WHERE id = $id;
 
--- PREP: test_get_workspace_cost
-SELECT cost_usd FROM workspaces WHERE id = $id;
-
--- PREP: test_get_worker_cost
-SELECT cost_usd FROM workers WHERE id = $id;
-
 -- PREP: test_count_turns
 SELECT COUNT(*) AS n FROM turns;
+
+-- PREP: test_count_provider_requests
+SELECT COUNT(*) AS n FROM provider_requests;
 
 -- PREP: test_count_entries_by_workspace
 SELECT COUNT(*) AS n FROM entries WHERE workspace_id = $workspace_id;

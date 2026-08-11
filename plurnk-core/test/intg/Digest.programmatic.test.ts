@@ -7,17 +7,20 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import type { ProviderAccounting, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import type { Db } from "../../src/core/Db.ts";
+import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
 
 interface DigestJson {
-    workspaces: Array<{ id: number; cost_usd: number | null }>;
-    workers: Array<{ id: number; workspace_id: number; cost_usd: number | null }>;
+    workspaces: Array<{ id: number; accounting: ProviderAccounting }>;
+    workers: Array<{ id: number; workspace_id: number; accounting: ProviderAccounting }>;
     loops: Array<{ id: number; worker_id: number; prompt: string }>;
-    turns: Array<{ id: number; loop_id: number; usage_prompt: number }>;
+    turns: Array<{ id: number; loop_id: number; accounting: ProviderAccounting }>;
     turn_attempts: Array<{ turn_id: number; model: string }>;
+    provider_requests: Array<{ turn_attempt_id: number; accounting: ProviderRequestAccounting }>;
     log_entries: Array<{ worker_id: number; loop_id: number; turn_id: number; target: string | null }>;
 }
 
@@ -48,14 +51,37 @@ const seedWorkerEvidence = async (
         model: `model-${marker}`,
     });
     if (attempt === undefined) throw new Error("digest fixture attempt did not open");
+    const accounting: ProviderRequestAccounting = {
+        provider: "provider:digest-fixture",
+        model: `model-${marker}`,
+        outcome: "response",
+        usage: {
+            inputTokens: ordinal * 100,
+            outputTokens: ordinal * 10,
+            totalTokens: ordinal * 110,
+            inputTokenDetails: { noCacheTokens: ordinal * 100, cacheReadTokens: 0 },
+            outputTokenDetails: { textTokens: ordinal * 9, reasoningTokens: ordinal },
+        },
+        cost: {
+            kind: "charged",
+            amount: { amount: `0.00${ordinal}`, currency: "USD" },
+            source: "digest fixture",
+        },
+    };
+    const request = await db.engine_open_provider_request.get<{ id: number }>({
+        turn_attempt_id: attempt.id,
+        sequence: 1,
+        provider: accounting.provider,
+        model: accounting.model,
+    });
+    if (request === undefined) throw new Error("digest fixture provider request did not open");
+    const settled = await db.engine_settle_provider_request.run(
+        providerRequestSettlementParams(request.id, accounting),
+    );
+    assert.equal(settled.changes, 1);
     await db.engine_observe_turn_attempt_response.run({
         id: attempt.id,
         response: JSON.stringify({ assistant: { reasoning: `reason-${marker}` } }),
-        usage_prompt: ordinal * 100,
-        usage_completion: ordinal * 10,
-        usage_reasoning: ordinal,
-        usage_cached: 0,
-        usage_cost: JSON.stringify({ kind: "unknown", reason: "awaiting classification" }),
         finish_reason: "stop",
         model: `model-${marker}`,
     });
@@ -64,13 +90,6 @@ const seedWorkerEvidence = async (
         accepted: 1,
         parse_errors: "[]",
         failure: null,
-        usage_cost: JSON.stringify({
-            kind: "authoritative",
-            amount: { amount: String(ordinal / 1000), currency: "USD" },
-            usdEquivalent: String(ordinal / 1000),
-            source: "digest fixture",
-        }),
-        usage_cost_usd: ordinal / 1000,
     });
     await db.engine_insert_log_entry.run({
         worker_id: workerId,
@@ -186,12 +205,13 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.deepEqual(worker.json.loops.map(({ id }) => id), [a1.loopId]);
         assert.deepEqual(worker.json.turns.map(({ id }) => id), [a1.turnId]);
         assert.deepEqual(worker.json.turn_attempts.map(({ turn_id }) => turn_id), [a1.turnId]);
+        assert.equal(worker.json.provider_requests.length, 1);
         assert.deepEqual(worker.json.log_entries.map(({ turn_id }) => turn_id), [a1.turnId]);
-        assert.deepEqual(worker.json.workers.map(({ cost_usd }) => cost_usd), [0.001]);
-        assert.deepEqual(worker.json.turns.map(({ usage_prompt }) => usage_prompt), [100]);
+        assert.deepEqual(worker.json.workers.map(({ accounting }) => accounting.costUsd), ["0.001"]);
+        assert.deepEqual(worker.json.turns.map(({ accounting }) => accounting.usage?.inputTokens), [100]);
         assert.match(worker.markdown, /prompt-a1/);
-        assert.match(worker.markdown, /Tokens:\s+prompt=100 completion=10 reasoning=1 cached=0/);
-        assert.match(worker.markdown, /Cost:\s+\$0\.001000/);
+        assert.match(worker.markdown, /Tokens:\s+input=100 output=10 reasoning=1 cache-read=0/);
+        assert.match(worker.markdown, /Cost:\s+\$0\.001/);
         assert.match(worker.markdown, /Op mix:\s+READ=1/);
         assert.match(worker.reasoning, /reason-a1/);
         assert.doesNotMatch(`${JSON.stringify(worker.json)}${worker.markdown}${worker.reasoning}`, /(?:prompt|reason)-(?:a2|b1)/);
@@ -209,12 +229,13 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.deepEqual(workspace.json.loops.map(({ id }) => id), [a1.loopId, a2.loopId]);
         assert.deepEqual(workspace.json.turns.map(({ id }) => id), [a1.turnId, a2.turnId]);
         assert.deepEqual(workspace.json.turn_attempts.map(({ turn_id }) => turn_id), [a1.turnId, a2.turnId]);
+        assert.equal(workspace.json.provider_requests.length, 2);
         assert.deepEqual(workspace.json.log_entries.map(({ turn_id }) => turn_id), [a1.turnId, a2.turnId]);
         assert.deepEqual(
             workspace.json.workers
                 .filter(({ id }) => id === a1.workerId || id === a2.workerId)
-                .map(({ cost_usd }) => cost_usd),
-            [0.001, 0.002],
+                .map(({ accounting }) => accounting.costUsd),
+            ["0.001", "0.002"],
         );
         assert.match(workspace.markdown, /prompt-a1/);
         assert.match(workspace.markdown, /prompt-a2/);
@@ -230,6 +251,7 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.deepEqual(intersection.json.loops, []);
         assert.deepEqual(intersection.json.turns, []);
         assert.deepEqual(intersection.json.turn_attempts, []);
+        assert.deepEqual(intersection.json.provider_requests, []);
         assert.deepEqual(intersection.json.log_entries, []);
         assert.doesNotMatch(`${intersection.markdown}${intersection.reasoning}`, /(?:prompt|reason)-(?:a1|a2|b1)/);
         assert.ok(!intersection.files.some((file) => file.startsWith("packet")));

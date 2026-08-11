@@ -109,8 +109,21 @@ test("#224: each attempted provider leaves one safe JSON record", async () => {
             model: "deepseek-v4-flash",
             status: "response",
             responseShape: { id: "string" },
-            usage: { prompt: 4, cached: 0, reasoning: 0, completion: 1, total: 5 },
-            cost: { kind: "estimated", usd: "0.000001", source: "Models.dev catalog rates" },
+            accounting: {
+                requests: [{
+                    provider: "provider:deepseek",
+                    model: "deepseek-v4-flash",
+                    outcome: "response",
+                    usage: { inputTokens: 4, outputTokens: 1, totalTokens: 5 },
+                    cost: {
+                        kind: "estimated",
+                        amount: { amount: "0.000001", currency: "USD" },
+                        source: "Models.dev catalog rates",
+                    },
+                }],
+                usage: { inputTokens: 4, outputTokens: 1, totalTokens: 5 },
+                costUsd: "0.000001",
+            },
         };
         const path = await writePingRecord(root, record, ["secret-key"]);
         assert.deepEqual(JSON.parse(await readFile(path, "utf8")), record);

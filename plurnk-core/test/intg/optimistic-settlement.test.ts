@@ -22,17 +22,25 @@ import {
     withDaemon,
 } from "./_rpc.ts";
 
+const requestAccounting = {
+    provider: "provider:controlled-settlement",
+    model: "controlled-settlement",
+    outcome: "response",
+    usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    cost: { kind: "estimated", amount: { amount: "0", currency: "USD" }, source: "controlled fixture" },
+} as const;
+
 const response = (content: string, grammar?: string): ProviderResponse => {
     const turn = content.startsWith("<<PLAN") ? content : `<<PLAN::PLAN\n${content}`;
     return {
         assistant: {
             content: turn,
             reasoning: null,
-            usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
             finishReason: "stop",
             model: "controlled-settlement",
         },
         assistantRaw: null,
+        accounting: [requestAccounting],
         ...(grammar === undefined
             ? {}
             : { grammarEvidence: { input: turn, contentStart: 0, transported: true } }),
@@ -76,16 +84,19 @@ class ControlledWorkerProvider implements Provider {
         });
     }
 
-    calculateCost(): number { return 0; }
-
     async generate({
         messages,
         workerId,
         primaryWorkerId,
         signal,
         grammar,
+        observeRequest,
     }: Parameters<Provider["generate"]>[0]): Promise<ProviderResponse> {
         signal?.throwIfAborted();
+        const settle = await observeRequest?.({
+            provider: requestAccounting.provider,
+            model: requestAccounting.model,
+        });
         if (workerId === primaryWorkerId) {
             const index = this.#parentCalls++;
             const content = this.#parentTurns[index];
@@ -93,6 +104,7 @@ class ControlledWorkerProvider implements Provider {
             this.#parentMessages[index] = messages;
             this.#parentStartedAt[index] = performance.now();
             this.#parentStarts[index]?.resolve();
+            await settle?.(requestAccounting);
             return response(content, grammar);
         }
 
@@ -101,6 +113,7 @@ class ControlledWorkerProvider implements Provider {
         if (this.#childCalls === this.#childReleases.length) this.childrenStarted.resolve();
         await this.#childReleases[index].promise;
         signal?.throwIfAborted();
+        await settle?.(requestAccounting);
         return response(`<<SEND[200]:child ${index + 1} done:SEND`, grammar);
     }
 

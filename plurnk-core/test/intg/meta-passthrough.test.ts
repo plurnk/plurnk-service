@@ -24,7 +24,6 @@ class MetaProvider implements Provider {
     countPromptTokens(...args: Parameters<Mock["countPromptTokens"]>): ReturnType<Mock["countPromptTokens"]> {
         return this.#base.countPromptTokens(...args);
     }
-    calculateCost(usage: Parameters<Mock["calculateCost"]>[0]): number { return this.#base.calculateCost(usage); }
     async generate(args: Parameters<Mock["generate"]>[0]): Promise<ProviderResponse> {
         return { ...(await this.#base.generate(args)), meta: this.#meta };
     }

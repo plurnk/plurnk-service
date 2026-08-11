@@ -155,7 +155,6 @@ test("a model turn joins an in-flight startup warm before calling its provider",
                 content: "",
                 ops: [{ op: "SEND", suffix: "", signal: 200, target: null, lineMarker: null, body: { raw: "ready", json: null }, position: { line: 1, column: 1 } }],
                 reasoning: null,
-                usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
             },
         };
         const provider = new Mock({ contextWindow: 4096, responses: [response] });

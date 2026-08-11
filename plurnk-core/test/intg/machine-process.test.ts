@@ -8,6 +8,7 @@ import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contract
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
+import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 import { foldStmt } from "./_dsl.ts";
 
@@ -139,17 +140,16 @@ test("a fork creates a worker while retaining the shared workspace", async () =>
     } finally { db.close(); }
 });
 
-test("{§machine-processes-fork-cost} — a fork inherits the log but spends no new money: workspace cost is not double-counted, the branch starts at 0", async () => {
+test("{§machine-processes-fork-cost} — a fork inherits history without copying provider requests", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1);
-        // Give the parent turn a real cost — the rollup triggers carry it to worker + workspace.
         await db.engine_close_turn.run({
             id: turnId, status: 200, packet: JSON.stringify({ tokens: 0, sections: [], attributions: [] }),
-            finish_reason: null, model: "mock", meta: "{}",
+            usage_prompt_budget: null, finish_reason: null, model: "mock", meta: "{}",
         });
         const attempt = await db.engine_open_turn_attempt.get<{ id: number }>({
             turn_id: turnId,
@@ -158,14 +158,26 @@ test("{§machine-processes-fork-cost} — a fork inherits the log but spends no 
             model: "mock",
         });
         assert.ok(attempt !== undefined);
+        const request = await db.engine_open_provider_request.get<{ id: number }>({
+            turn_attempt_id: attempt.id,
+            sequence: 1,
+            provider: "provider:fixture",
+            model: "mock",
+        });
+        await db.engine_settle_provider_request.run(providerRequestSettlementParams(request!.id, {
+            provider: "provider:fixture",
+            model: "mock",
+            outcome: "response",
+            usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+            cost: {
+                kind: "charged",
+                amount: { amount: "1000", currency: "USD" },
+                source: "machine fixture",
+            },
+        }));
         await db.engine_observe_turn_attempt_response.run({
             id: attempt.id,
             response: JSON.stringify({ assistant: { model: "mock" } }),
-            usage_prompt: 100,
-            usage_completion: 50,
-            usage_reasoning: 0,
-            usage_cached: 0,
-            usage_cost: JSON.stringify({ kind: "unknown", reason: "awaiting classification" }),
             finish_reason: null,
             model: "mock",
         });
@@ -174,32 +186,19 @@ test("{§machine-processes-fork-cost} — a fork inherits the log but spends no 
             accepted: 1,
             parse_errors: "[]",
             failure: null,
-            usage_cost: JSON.stringify({
-                kind: "authoritative",
-                amount: { amount: "1000", currency: "USD" },
-                usdEquivalent: "1000",
-                source: "machine fixture",
-            }),
-            usage_cost_usd: 1000,
         });
-        const workspaceCost = async () =>
-            (await db.envelope_list_workspaces.all<{ id: number; cost_usd: number }>({})).find((s) => s.id === workspaceId)?.cost_usd;
-        const workerCost = async (rid: number) =>
-            (await db.envelope_list_workers_for_workspace.all<{ id: number; cost_usd: number }>({ workspace_id: workspaceId })).find((r) => r.id === rid)?.cost_usd;
-
-        assert.equal(await workspaceCost(), 1000, "baseline: the parent turn's cost rolled up to the workspace");
-        assert.equal(await workerCost(workerId), 1000, "baseline: and to the parent worker");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        assert.equal((await engine.loopUsage(loopId)).accounting.costUsd, "1000");
+        assert.equal((await db.test_count_provider_requests.get<{ n: number }>())?.n, 1);
 
         const branchWorkerId = await Fork.fork(db, workerId);
 
-        // The fork copied the log (history) but charged nothing — no new generation happened.
-        assert.equal(await workspaceCost(), 1000, "workspace cost is NOT double-counted by the fork — true lifetime spend");
-        assert.equal(await workerCost(branchWorkerId), 0, "the branch's cost_usd starts at 0 — it accrues only what IT generates");
-        assert.equal(await workerCost(workerId), 1000, "the parent worker's cost is untouched");
+        assert.equal((await db.test_count_provider_requests.get<{ n: number }>())?.n, 1, "forking creates no provider request");
+        assert.equal((await engine.loopUsage(loopId)).accounting.costUsd, "1000", "parent evidence is untouched");
         const branchLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: branchWorkerId });
         assert.ok(branchLoop !== undefined);
-        const branchUsage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(branchLoop.id);
-        assert.equal(branchUsage.costUsd, 0);
-        assert.deepEqual(branchUsage.costs, [], "copied history carries no provider-call monetary evidence");
+        const branchUsage = await engine.loopUsage(branchLoop.id);
+        assert.equal(branchUsage.accounting.costUsd, "0");
+        assert.deepEqual(branchUsage.accounting.requests, [], "copied history carries no physical request evidence");
     } finally { db.close(); }
 });

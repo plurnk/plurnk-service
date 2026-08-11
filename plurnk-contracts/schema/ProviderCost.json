@@ -1,15 +1,15 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://plurnk.dev/schema/ProviderCost.json",
+    "$id": "https://schemas.plurnk.dev/ProviderCost.json",
     "title": "ProviderCost",
-    "description": "Validated monetary evidence for one provider attempt. Unknown is never represented as zero.",
+    "description": "Normalized monetary evidence for one physical provider request. Unknown is never represented as zero.",
     "oneOf": [
         {
             "type": "object",
             "additionalProperties": false,
-            "required": ["kind", "amount", "usdEquivalent", "source"],
+            "required": ["kind", "amount", "source"],
             "properties": {
-                "kind": { "const": "authoritative" },
+                "kind": { "const": "charged" },
                 "amount": { "$ref": "#/$defs/MonetaryAmount" },
                 "usdEquivalent": { "$ref": "#/$defs/DecimalAmount" },
                 "source": { "$ref": "#/$defs/NonEmptyString" }
@@ -18,19 +18,10 @@
         {
             "type": "object",
             "additionalProperties": false,
-            "required": ["kind", "usd", "source"],
+            "required": ["kind", "amount", "source"],
             "properties": {
                 "kind": { "const": "estimated" },
-                "usd": { "$ref": "#/$defs/DecimalAmount" },
-                "source": { "$ref": "#/$defs/NonEmptyString" }
-            }
-        },
-        {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["kind", "source"],
-            "properties": {
-                "kind": { "const": "free" },
+                "amount": { "$ref": "#/$defs/MonetaryAmount" },
                 "source": { "$ref": "#/$defs/NonEmptyString" }
             }
         },

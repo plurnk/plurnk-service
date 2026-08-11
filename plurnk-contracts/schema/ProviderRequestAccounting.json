@@ -1,0 +1,17 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/ProviderRequestAccounting.json",
+    "title": "ProviderRequestAccounting",
+    "description": "The normalized accounting disposition of one physical provider request.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["provider", "model", "outcome", "cost"],
+    "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "outcome": { "enum": ["response", "error"] },
+        "status": { "type": "integer", "minimum": 100, "maximum": 599 },
+        "usage": { "$ref": "https://schemas.plurnk.dev/ProviderUsage.json" },
+        "cost": { "$ref": "https://schemas.plurnk.dev/ProviderCost.json" }
+    }
+}

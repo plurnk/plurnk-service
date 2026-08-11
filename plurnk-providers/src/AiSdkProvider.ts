@@ -6,19 +6,36 @@
 // ordinary vendor protocol. The compatible URL path remains only for PLURNK
 // extensions and local endpoint probes the SDK cannot represent.
 
-import type { AuthoritativeChargeNormalizer, ChatMessage, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderResponse, ProviderUsage } from "./types.ts";
+import type {
+    ChatMessage,
+    GrammarEvidence,
+    PromptTokenMeasurement,
+    Provider,
+    ProviderCostNormalizer,
+    ProviderRequestAccounting,
+    ProviderRequestObserver,
+    ProviderRequestSettlement,
+    ProviderResponse,
+    ProviderUsage,
+} from "./types.ts";
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
 import type { Reasoning, ReasoningResponseStyle, ReserveSpec } from "./env.ts";
-import { executeAiSdkModel, executeOpenAICompatible } from "./aiSdkTransport.ts";
+import {
+    executeAiSdkModel,
+    executeOpenAICompatible,
+    transportFailureEvidence,
+} from "./aiSdkTransport.ts";
 import type { LanguageModel } from "ai";
+import { prepareRetries } from "ai/internal";
 import { toProviderError, ProviderError } from "./errors.ts";
-import { attributeUnitemizedReasoning } from "./usage.ts";
 import type { ProviderNotice } from "./notices.ts";
 import { validateGbnf } from "@plurnk/gbnf";
 import { assertPromptTokenMeasurement, estimatePromptTokens } from "./promptTokens.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk-meta";
-import { validateAuthoritativeCharge } from "./cost.ts";
+import { resolveProviderCost } from "./cost.ts";
+import { validateProviderRequestAccounting } from "./accounting.ts";
+import { validateProviderUsage } from "./usage.ts";
 
 export type ProviderFetch = typeof globalThis.fetch;
 
@@ -43,9 +60,8 @@ export type AiSdkProviderConfig = {
     reasoningStyle?: ReasoningStyle;          // default "none"
     reasoningResponseStyle?: ReasoningResponseStyle; // {§provider-tagged-reasoning}; default "verbatim"
     countPromptTokens?: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
-    calculateCost?: (usage: ProviderUsage) => number; // default () => 0
-    calculateCharge?: (usage: ProviderUsage) => Exclude<ProviderCost, { kind: "authoritative" }>;
-    normalizeCharge?: AuthoritativeChargeNormalizer;
+    estimateCost?: (usage: ProviderUsage | undefined) => ProviderCost;
+    normalizeCost?: ProviderCostNormalizer;
     source?: string;                           // notice/problem source, e.g. "provider:openai"; default "provider"
     grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
     // Send the OpenAI-standard `prompt_cache_key` set to workerId, so a
@@ -139,6 +155,20 @@ export type AiSdkProviderConfig = {
     // still passes through verbatim). Default true (floors ride).
     tuningFloors?: boolean;
 };
+
+class ProviderRequestObserverError extends Error {
+    constructor(cause: unknown) {
+        super("provider request accounting could not be durably settled", { cause });
+        this.name = "ProviderRequestObserverError";
+    }
+}
+
+class ProviderRequestAccountingError extends Error {
+    constructor(cause: unknown) {
+        super("provider request accounting could not be normalized", { cause });
+        this.name = "ProviderRequestAccountingError";
+    }
+}
 
 // Drop trailing occurrences of a server-rendered EOG marker. llama-server
 // under --special renders EOS as literal text, so a raw-EOS-ended turn carries a
@@ -257,9 +287,8 @@ export default class AiSdkProvider implements Provider {
     #reasoningResponseStyle: ReasoningResponseStyle;
     #countPromptTokens: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     #promptTokensUrl: string | undefined;
-    #calculateCost: (usage: ProviderUsage) => number;
-    #calculateCharge?: (usage: ProviderUsage) => Exclude<ProviderCost, { kind: "authoritative" }>;
-    #normalizeCharge?: AuthoritativeChargeNormalizer;
+    #estimateCost: (usage: ProviderUsage | undefined) => ProviderCost;
+    #normalizeCost?: ProviderCostNormalizer;
     #source: string;
     #grammarStyle: GrammarStyle;
     #promptCacheKey: boolean;
@@ -321,9 +350,12 @@ export default class AiSdkProvider implements Provider {
         }
         this.#countPromptTokens = config.countPromptTokens ?? ((messages) => estimatePromptTokens(messages));
         this.#promptTokensUrl = config.promptTokensUrl;
-        this.#calculateCost = config.calculateCost ?? (() => 0);
-        this.#calculateCharge = config.calculateCharge;
-        this.#normalizeCharge = config.normalizeCharge;
+        this.#estimateCost = config.estimateCost
+            ?? (() => ({
+                kind: "unknown",
+                reason: "the request reported no direct cost and no model rate is configured",
+            }));
+        this.#normalizeCost = config.normalizeCost;
         this.#source = config.source ?? "provider";
         this.#grammarStyle = config.grammarStyle ?? "none";
         this.#promptCacheKey = config.promptCacheKey ?? false;
@@ -439,12 +471,6 @@ export default class AiSdkProvider implements Provider {
             );
         }
     }
-    calculateCost(usage: ProviderUsage): number { return this.#calculateCost(usage); }
-    calculateCharge(usage: ProviderUsage): Exclude<ProviderCost, { kind: "authoritative" }> {
-        return this.#calculateCharge?.(usage)
-            ?? { kind: "unknown", reason: "no provider rate or settled charge is available" };
-    }
-
     // Reasoning activation and allowance are independent of grammar transport;
     // only the response representation becomes lossless when evidence is needed.
     // The llama-server template mapping is owned by {§llama-reasoning-request}.
@@ -627,7 +653,25 @@ export default class AiSdkProvider implements Provider {
         return out;
     }
 
-    async generate({ messages, workerId, primaryWorkerId, signal, grammar, maxTokens, attributions, client, strikes, workspaceId, loop, turn, sampling }: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse> {
+    #accounting(
+        outcome: ProviderRequestAccounting["outcome"],
+        usage: ProviderUsage | undefined,
+        evidence: Parameters<ProviderCostNormalizer>[0],
+        status?: number,
+    ): ProviderRequestAccounting {
+        const knownUsage = usage === undefined ? undefined : validateProviderUsage(usage);
+        const direct = this.#normalizeCost?.(evidence);
+        return validateProviderRequestAccounting({
+            provider: this.#source,
+            model: this.#model,
+            outcome,
+            ...(status === undefined ? {} : { status }),
+            ...(knownUsage === undefined ? {} : { usage: knownUsage }),
+            cost: resolveProviderCost(direct, this.#estimateCost(knownUsage)),
+        });
+    }
+
+    async generate({ messages, workerId, primaryWorkerId, signal, grammar, maxTokens, attributions, client, strikes, workspaceId, loop, turn, sampling, observeRequest }: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown>; observeRequest?: ProviderRequestObserver }): Promise<ProviderResponse> {
         // {§provider-interface} The worker identity is required.
         if (workerId === undefined || workerId.length === 0) throw new Error("generate: workerId is required — the worker's stable, opaque identity");
         // Reject before any wire call when already aborted
@@ -672,61 +716,147 @@ export default class AiSdkProvider implements Provider {
         const headers = Object.keys(metaHeaders).length === 0
             ? this.#headers
             : { ...this.#headers, ...metaHeaders };
+        const accounting: ProviderRequestAccounting[] = [];
+        const timeout = AbortSignal.timeout(this.#fetchTimeoutMs);
+        const operationSignal = signal === undefined
+            ? timeout
+            : AbortSignal.any([signal, timeout]);
+        const executeRequest = async () => {
+            let settle: ProviderRequestSettlement | undefined;
+            try {
+                settle = await observeRequest?.({
+                    provider: this.#source,
+                    model: this.#model,
+                });
+            } catch (cause) {
+                throw new ProviderRequestObserverError(cause);
+            }
+            const settleAccounting = async (
+                outcome: ProviderRequestAccounting["outcome"],
+                usage: ProviderUsage | undefined,
+                evidence: Parameters<ProviderCostNormalizer>[0],
+                status?: number,
+            ): Promise<ProviderRequestAccounting> => {
+                let requestAccounting: ProviderRequestAccounting;
+                let normalizationFailure: { cause: unknown } | undefined;
+                try {
+                    requestAccounting = this.#accounting(outcome, usage, evidence, status);
+                } catch (cause) {
+                    normalizationFailure = { cause };
+                    let knownUsage: ProviderUsage | undefined;
+                    try {
+                        knownUsage = usage === undefined ? undefined : validateProviderUsage(usage);
+                    } catch {
+                        knownUsage = undefined;
+                    }
+                    requestAccounting = validateProviderRequestAccounting({
+                        provider: this.#source,
+                        model: this.#model,
+                        outcome,
+                        ...(status === undefined ? {} : { status }),
+                        ...(knownUsage === undefined ? {} : { usage: knownUsage }),
+                        cost: {
+                            kind: "unknown",
+                            reason: "provider request accounting could not be normalized after physical I/O",
+                        },
+                    });
+                }
+                accounting.push(requestAccounting);
+                try {
+                    await settle?.(requestAccounting);
+                } catch (cause) {
+                    throw new ProviderRequestObserverError(cause);
+                }
+                if (normalizationFailure !== undefined) {
+                    throw new ProviderRequestAccountingError(normalizationFailure.cause);
+                }
+                return requestAccounting;
+            };
+            let response;
+            try {
+                response = this.#languageModel === undefined
+                    ? await executeOpenAICompatible({
+                        url: this.#url!,
+                        model: this.#model,
+                        headers,
+                        body,
+                        messages,
+                        signal: operationSignal,
+                        fetch: this.#fetch,
+                        fetchTimeoutMs: this.#fetchTimeoutMs,
+                        streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
+                        streaming: this.#streaming,
+                        captureRawBody: this.#rawBody,
+                    })
+                    : await executeAiSdkModel({
+                        languageModel: this.#languageModel,
+                        headers,
+                        messages,
+                        signal: operationSignal,
+                        fetchTimeoutMs: this.#fetchTimeoutMs,
+                        streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
+                        streaming: this.#streaming,
+                        captureRawBody: this.#rawBody,
+                        temperature: this.#tuningFloors
+                            ? (typeof sampling?.temperature === "number" ? sampling.temperature : this.#temperature)
+                            : typeof sampling?.temperature === "number" ? sampling.temperature : undefined,
+                        topP: typeof sampling?.top_p === "number" ? sampling.top_p : undefined,
+                        topK: typeof sampling?.top_k === "number" ? sampling.top_k : undefined,
+                        presencePenalty: typeof sampling?.presence_penalty === "number" ? sampling.presence_penalty : undefined,
+                        frequencyPenalty: typeof sampling?.frequency_penalty === "number"
+                            ? sampling.frequency_penalty
+                            : this.#tuningFloors && this.#frequencyPenalty > 0 ? this.#frequencyPenalty : undefined,
+                        stopSequences: typeof sampling?.stop === "string"
+                            ? [sampling.stop]
+                            : Array.isArray(sampling?.stop) && sampling.stop.every((value) => typeof value === "string")
+                                ? sampling.stop
+                                : undefined,
+                        seed: typeof sampling?.seed === "number" ? sampling.seed : undefined,
+                        maxOutputTokens: maxTokens,
+                        reasoning: this.#reasoning.mode === "off"
+                            ? "none"
+                            : this.#reasoning.mode === "adaptive"
+                                ? "provider-default"
+                                : effortFromBudget(this.#reasoning.budget!),
+                    });
+            } catch (error) {
+                const failure = transportFailureEvidence(error);
+                await settleAccounting(
+                    "error",
+                    failure.usage,
+                    failure.chargeEvidence,
+                    failure.status,
+                );
+                throw error;
+            }
+            await settleAccounting(
+                "response",
+                response.usage,
+                response.chargeEvidence,
+            );
+            return response;
+        };
+
         let raw;
         try {
-            raw = this.#languageModel === undefined
-                ? await executeOpenAICompatible({
-                    url: this.#url!,
-                    model: this.#model,
-                    headers,
-                    body,
-                    messages,
-                    signal,
-                    fetch: this.#fetch,
-                    fetchTimeoutMs: this.#fetchTimeoutMs,
-                    streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
-                    retryAttempts: this.#retryAttempts,
-                    streaming: this.#streaming,
-                    captureRawBody: this.#rawBody,
-                })
-                : await executeAiSdkModel({
-                    languageModel: this.#languageModel,
-                    headers,
-                    messages,
-                    signal,
-                    fetchTimeoutMs: this.#fetchTimeoutMs,
-                    streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
-                    retryAttempts: this.#retryAttempts,
-                    streaming: this.#streaming,
-                    captureRawBody: this.#rawBody,
-                    temperature: this.#tuningFloors
-                        ? (typeof sampling?.temperature === "number" ? sampling.temperature : this.#temperature)
-                        : typeof sampling?.temperature === "number" ? sampling.temperature : undefined,
-                    topP: typeof sampling?.top_p === "number" ? sampling.top_p : undefined,
-                    topK: typeof sampling?.top_k === "number" ? sampling.top_k : undefined,
-                    presencePenalty: typeof sampling?.presence_penalty === "number" ? sampling.presence_penalty : undefined,
-                    frequencyPenalty: typeof sampling?.frequency_penalty === "number"
-                        ? sampling.frequency_penalty
-                        : this.#tuningFloors && this.#frequencyPenalty > 0 ? this.#frequencyPenalty : undefined,
-                    stopSequences: typeof sampling?.stop === "string"
-                        ? [sampling.stop]
-                        : Array.isArray(sampling?.stop) && sampling.stop.every((value) => typeof value === "string")
-                            ? sampling.stop
-                            : undefined,
-                    seed: typeof sampling?.seed === "number" ? sampling.seed : undefined,
-                    maxOutputTokens: maxTokens,
-                    reasoning: this.#reasoning.mode === "off"
-                        ? "none"
-                        : this.#reasoning.mode === "adaptive"
-                            ? "provider-default"
-                            : effortFromBudget(this.#reasoning.budget!),
-                });
+            const { retry } = prepareRetries({
+                maxRetries: this.#retryAttempts,
+                abortSignal: operationSignal,
+            });
+            raw = await retry(executeRequest);
         } catch (err) {
+            if (err instanceof ProviderRequestObserverError
+                || err instanceof ProviderRequestAccountingError) throw err.cause;
             if (signal?.aborted) throw err;
             const pe = toProviderError(err, this.#source, this.#errorDetailLimit);
             if ((pe.status === 401 || pe.status === 403) && this.#hasApiKey && this.#apiKeyRejectedMessage !== undefined) {
-                throw new ProviderError(this.#source, "unauthorized", this.#apiKeyRejectedMessage, { status: pe.status, cause: err });
+                throw new ProviderError(this.#source, "unauthorized", this.#apiKeyRejectedMessage, {
+                    status: pe.status,
+                    cause: err,
+                    accounting,
+                });
             }
+            pe.prependAccounting(accounting);
             throw pe;
         }
 
@@ -779,12 +909,13 @@ export default class AiSdkProvider implements Provider {
         if (projectedReasoning.projected) {
             raw.content = projectedReasoning.content;
             raw.reasoning = projectedReasoning.reasoning;
-            raw.usage = attributeUnitemizedReasoning(raw.usage, raw.reasoning, raw.content);
         }
 
         let notices: ProviderNotice[] | undefined;
         const usage = raw.usage;
-        if (sendGrammar !== undefined && this.tokenize !== undefined) {
+        if (sendGrammar !== undefined
+            && this.tokenize !== undefined
+            && usage?.outputTokens !== undefined) {
             // Channel-escape detector: completion tokens
             // billed far beyond every visible channel mean the decode ESCAPED into
             // a server-discarded reasoning block mid-emission. This diagnostic
@@ -795,12 +926,12 @@ export default class AiSdkProvider implements Provider {
                     this.tokenize(raw.reasoning),
                 ]);
                 const visible = contentTokens.length + reasoningTokens.length;
-                if (usage.completion > visible + 64) {
+                if (usage.outputTokens > visible + 64) {
                     (notices ??= []).push({
                         source: this.#source,
                         kind: "grammar_unenforced",
                         level: "warn",
-                        message: `decode escaped the grammar: ${usage.completion} completion tokens billed but only ${visible} visible across content+reasoning — the balance ran unconstrained in a discarded reasoning channel`,
+                        message: `decode escaped the grammar: ${usage.outputTokens} output tokens billed but only ${visible} visible across content+reasoning — the balance ran unconstrained in a discarded reasoning channel`,
                         position: [...raw.content].length,
                     });
                 }
@@ -824,17 +955,12 @@ export default class AiSdkProvider implements Provider {
             ...(raw.reasoningEncrypted.length > 0
                 ? { reasoningEncrypted: raw.reasoningEncrypted }
                 : {}),
-            usage,
             model: raw.model,
             ...(logprobs !== undefined ? { logprobs, meanLogprob } : {}),
         };
-        const normalizedCharge = this.#normalizeCharge?.(raw.chargeEvidence);
-        const charge = normalizedCharge === undefined
-            ? undefined
-            : validateAuthoritativeCharge(normalizedCharge);
         const evidence = {
             assistantRaw: raw,
-            ...(charge === undefined ? {} : { charge }),
+            accounting,
             ...(grammarEvidence !== undefined ? { grammarEvidence } : {}),
             ...(raw.rawBody !== undefined ? { rawBody: raw.rawBody } : {}),
             ...(meta !== undefined ? { meta } : {}),
@@ -851,6 +977,7 @@ export default class AiSdkProvider implements Provider {
                 "The provider interrupted generation because inference resources were unavailable.",
                 {
                     attempt,
+                    accounting,
                     extensions: {
                         stage: "provider-response",
                         finishReason: "resource_interrupted",

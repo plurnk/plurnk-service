@@ -9,12 +9,12 @@ import { createTogetherAI } from "@ai-sdk/togetherai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { lookupProvider, type ProviderInfo } from "@plurnk/plurnk-models";
 import type { LanguageModel } from "ai";
-import { authoritativeChargeNormalizer } from "./accounting.ts";
-import type { AuthoritativeChargeNormalizer } from "./types.ts";
+import { providerCostNormalizer } from "./accounting.ts";
+import type { ProviderCostNormalizer } from "./types.ts";
 
 export type SdkModel = {
     readonly languageModel?: LanguageModel;
-    readonly normalizeCharge?: AuthoritativeChargeNormalizer;
+    readonly normalizeCost?: ProviderCostNormalizer;
     readonly compatible?: {
         readonly url: string;
         readonly headers: Readonly<Record<string, string>>;
@@ -107,7 +107,7 @@ export const createSdkModel = (
     const catalog = lookupProvider(provider) ?? configuredProviderInfo(provider, env);
     if (catalog === null) return null;
     const url = baseUrl(provider, env, catalog, baseUrlOverride);
-    const normalizeCharge = authoritativeChargeNormalizer(catalog.npm);
+    const normalizeCost = providerCostNormalizer(catalog.npm);
 
     switch (catalog.npm) {
         case "@ai-sdk/openai":
@@ -133,7 +133,7 @@ export const createSdkModel = (
         case "@ai-sdk/deepinfra":
             return {
                 languageModel: createDeepInfra({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).languageModel(model),
-                ...(normalizeCharge === undefined ? {} : { normalizeCharge }),
+                ...(normalizeCost === undefined ? {} : { normalizeCost }),
                 catalog,
             };
         case "@ai-sdk/google":
@@ -149,7 +149,7 @@ export const createSdkModel = (
                     url: `${compatibleBase}/chat/completions`,
                     headers: { Authorization: `Bearer ${key}` },
                 },
-                ...(normalizeCharge === undefined ? {} : { normalizeCharge }),
+                ...(normalizeCost === undefined ? {} : { normalizeCost }),
                 catalog,
             };
         }
@@ -180,7 +180,7 @@ export const createSdkModel = (
                         ...(env.OPENROUTER_X_TITLE === undefined ? {} : { "X-Title": env.OPENROUTER_X_TITLE }),
                     },
                 }).languageModel(model),
-                ...(normalizeCharge === undefined ? {} : { normalizeCharge }),
+                ...(normalizeCost === undefined ? {} : { normalizeCost }),
                 catalog,
             };
         case "@ai-sdk/openai-compatible":

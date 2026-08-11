@@ -496,30 +496,73 @@ disposition: ProposalDisposition
  */
 
 export type ProviderCost = ({
-kind: "authoritative"
+kind: "charged"
 amount: MonetaryAmount
-usdEquivalent: DecimalAmount
-source: NonEmptyString
+usdEquivalent?: string
+source: string
 } | {
 kind: "estimated"
-usd: DecimalAmount
-source: NonEmptyString
-} | {
-kind: "free"
-source: NonEmptyString
+amount: MonetaryAmount
+source: string
 } | {
 kind: "unknown"
-reason: NonEmptyString
+reason: string
 })
+
+/**
+ * Ordered physical provider-request evidence and its deterministic aggregate projection.
+ */
+
+export interface ProviderAccounting {
+requests: ProviderRequestAccounting[]
+usage: (ProviderUsage | null)
+costUsd: (string | null)
+}
+/**
+ * The normalized accounting disposition of one physical provider request.
+ */
+
+export interface ProviderRequestAccounting {
+provider: string
+model: string
+outcome: ("response" | "error")
+status?: number
+usage?: ProviderUsage
+cost: ProviderCost
+}
+/**
+ * Known token quantities for one provider request. Omitted fields are unknown; explicit zero is observed or exactly derived.
+ */
+
+export interface ProviderUsage {
+inputTokens?: number
+outputTokens?: number
+totalTokens?: number
+inputTokenDetails?: {
+noCacheTokens?: number
+cacheReadTokens?: number
+cacheWriteTokens?: number
+}
+outputTokenDetails?: {
+textTokens?: number
+reasoningTokens?: number
+}
+}
+
+export interface MonetaryAmount {
+amount: string
+currency: string
+}
 
 export type DecimalAmount = string
 
 export type NonEmptyString = string
 
-export interface MonetaryAmount {
-amount: DecimalAmount
-currency: string
-}
+export type Tokens = number
+
+/**
+ * Known token quantities for one provider request. Omitted fields are unknown; explicit zero is observed or exactly derived.
+ */
 
 export interface TextRegion {
 startLine: number

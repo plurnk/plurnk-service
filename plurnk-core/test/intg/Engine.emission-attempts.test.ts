@@ -4,19 +4,42 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock, ProviderError } from "@plurnk/plurnk-providers";
-import type { MockResponse, ProviderAttempt, ProviderUsage } from "@plurnk/plurnk-providers";
+import type { MockResponse, ProviderAttempt, ProviderRequestAccounting, ProviderUsage } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Digest from "../../src/digest/Digest.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection, seedEntryWithChannel } from "./_helpers.ts";
 
-const valid = (body = "done", usage?: Partial<ProviderUsage>): MockResponse => ({
+const requestUsage = (
+    inputTokens: number,
+    textTokens: number,
+    reasoningTokens = 0,
+    cacheReadTokens = 0,
+): ProviderUsage => ({
+    inputTokens,
+    outputTokens: textTokens + reasoningTokens,
+    totalTokens: inputTokens + textTokens + reasoningTokens,
+    inputTokenDetails: {
+        noCacheTokens: inputTokens - cacheReadTokens,
+        cacheReadTokens,
+        cacheWriteTokens: 0,
+    },
+    outputTokenDetails: { textTokens, reasoningTokens },
+});
+
+const estimatedCost = (usage: ProviderUsage) => ({
+    kind: "estimated" as const,
+    amount: { amount: String((usage.totalTokens ?? 0) / 1_000), currency: "USD" },
+    source: "attempt witness",
+});
+
+const valid = (body = "done", usage?: ProviderUsage): MockResponse => ({
     assistant: {
         content: `<<PLAN:complete the task:PLAN\n<<SEND[200]:${body}:SEND`,
         reasoning: null,
-        usage,
     },
+    ...(usage === undefined ? {} : { usage, cost: estimatedCost(usage) }),
 });
 
 const continuing = (body = "continue"): MockResponse => ({
@@ -26,20 +49,13 @@ const continuing = (body = "continue"): MockResponse => ({
     },
 });
 
-const invalid = (content: string, usage?: Partial<ProviderUsage>, reasoning: string | null = null): MockResponse => ({
-    assistant: { content, reasoning, usage },
+const invalid = (content: string, usage?: ProviderUsage, reasoning: string | null = null): MockResponse => ({
+    assistant: { content, reasoning },
+    ...(usage === undefined ? {} : { usage, cost: estimatedCost(usage) }),
 });
 
 class AttemptWitness extends Mock {
     readonly packets: string[] = [];
-
-    override calculateCost({ prompt, completion, reasoning }: ProviderUsage): number {
-        return (prompt + completion + reasoning) / 1_000;
-    }
-
-    override calculateCharge(usage: ProviderUsage) {
-        return { kind: "estimated" as const, usd: String(this.calculateCost(usage)), source: "attempt witness" };
-    }
 
     override async generate(args: Parameters<Mock["generate"]>[0]): ReturnType<Mock["generate"]> {
         this.packets.push(JSON.stringify(args.messages));
@@ -97,9 +113,9 @@ test("invalid emissions retry beneath one turn against the identical packet, the
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("prose without a turn", { prompt: 10, completion: 2, reasoning: 1, cached: 4, total: 13 }),
-                invalid("<<PLAN:started but never ended:PLAN", { prompt: 20, completion: 3, reasoning: 2, cached: 5, total: 25 }),
-                valid("accepted", { prompt: 30, completion: 4, reasoning: 3, cached: 6, total: 37 }),
+                invalid("prose without a turn", requestUsage(10, 2, 1, 4)),
+                invalid("<<PLAN:started but never ended:PLAN", requestUsage(20, 3, 2, 5)),
+                valid("accepted", requestUsage(30, 4, 3, 6)),
             ],
         });
 
@@ -121,31 +137,30 @@ test("invalid emissions retry beneath one turn against the identical packet, the
             sequence: number;
             accepted: number;
             parse_errors: string;
-            usage_prompt: number;
         }>({ turn_id: result.turnId });
-        assert.deepEqual(attempts.map(({ sequence, accepted, usage_prompt }) => ({ sequence, accepted, usage_prompt })), [
-            { sequence: 1, accepted: 0, usage_prompt: 10 },
-            { sequence: 2, accepted: 0, usage_prompt: 20 },
-            { sequence: 3, accepted: 1, usage_prompt: 30 },
+        assert.deepEqual(attempts.map(({ sequence, accepted }) => ({ sequence, accepted })), [
+            { sequence: 1, accepted: 0 },
+            { sequence: 2, accepted: 0 },
+            { sequence: 3, accepted: 1 },
         ]);
         assert.ok(JSON.parse(attempts[0]!.parse_errors).length > 0);
         assert.ok(JSON.parse(attempts[1]!.parse_errors).length > 0);
         assert.deepEqual(JSON.parse(attempts[2]!.parse_errors), []);
 
-        const turn = await db.test_get_turn.get<{
-            usage_prompt: number;
-            usage_completion: number;
-            usage_reasoning: number;
-            usage_cached: number;
-            usage_cost_usd: number | null;
-            usage_cost: string;
-            packet: string;
-        }>({ id: result.turnId });
-        assert.equal(turn?.usage_prompt, 60, "turn accounting includes every billed attempt");
-        assert.equal(turn?.usage_completion, 9);
-        assert.equal(turn?.usage_reasoning, 6);
-        assert.equal(turn?.usage_cached, 15);
-        assert.equal(turn?.usage_cost_usd, 0.075, "every response-bearing attempt contributes its reported or Models.dev-derived cost");
+        const requests = await db.test_provider_requests.all<{
+            attempt_sequence: number;
+            usage_input: number;
+        }>({ turn_id: result.turnId });
+        assert.deepEqual(
+            requests.map(({ attempt_sequence, usage_input }) => ({ attempt_sequence, usage_input })),
+            [
+                { attempt_sequence: 1, usage_input: 10 },
+                { attempt_sequence: 2, usage_input: 20 },
+                { attempt_sequence: 3, usage_input: 30 },
+            ],
+            "each emission attempt owns its physical request evidence",
+        );
+        const turn = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } };
         assert.equal(packet.assistant?.content, "<<PLAN:complete the task:PLAN\n<<SEND[200]:accepted:SEND");
         assert.doesNotMatch(JSON.stringify(packet), /prose without|never ended/, "rejected emissions never enter packet history");
@@ -155,11 +170,12 @@ test("invalid emissions retry beneath one turn against the identical packet, the
         assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "model_emission").length, 2, "only the turn-zero exemplar and accepted emission are mirrored");
 
         const loopUsage = await engine.loopUsage(loopId);
-        assert.equal(loopUsage.promptTokens, 60, "aggregate usage includes retries");
-        assert.equal(loopUsage.completionTokens, 9);
-        assert.equal(loopUsage.reasoningTokens, 6);
-        assert.equal(loopUsage.cachedTokens, 15);
-        assert.equal(loopUsage.costUsd, 0.075);
+        assert.equal(loopUsage.accounting.usage?.inputTokens, 60, "aggregate usage includes every request");
+        assert.equal(loopUsage.accounting.usage?.outputTokens, 15);
+        assert.equal(loopUsage.accounting.usage?.outputTokenDetails?.textTokens, 9);
+        assert.equal(loopUsage.accounting.usage?.outputTokenDetails?.reasoningTokens, 6);
+        assert.equal(loopUsage.accounting.usage?.inputTokenDetails?.cacheReadTokens, 15);
+        assert.equal(loopUsage.accounting.costUsd, "0.075");
         assert.equal(loopUsage.contextTokens, 30, "context occupancy is the latest attempt, not the billed sum");
     } finally {
         await db.close();
@@ -172,9 +188,9 @@ test("a provider-authoritative charge is the settled turn and loop cost", async 
         const provider = new Mock({
             contextWindow: 8_192,
             responses: [{
-                ...valid("settled", { prompt: 10, completion: 2, total: 12 }),
-                charge: {
-                    kind: "authoritative",
+                ...valid("settled", requestUsage(10, 2)),
+                cost: {
+                    kind: "charged",
                     amount: { amount: "123456", currency: "USDTICK" },
                     usdEquivalent: "0.0000123456",
                     source: "provider response billing fixture",
@@ -188,19 +204,26 @@ test("a provider-authoritative charge is the settled turn and loop cost", async 
             messages: [{ role: "user", content: "settle the call" }],
             provider,
         });
-        const turn = await db.test_get_turn.get<{
-            usage_cost: string;
-            usage_cost_usd: number | null;
-        }>({ id: result.turnId });
-        assert.equal(turn?.usage_cost_usd, 0.0000123456);
-        assert.deepEqual(JSON.parse(turn?.usage_cost ?? "[]"), [{
-            kind: "authoritative",
+        const requests = await db.test_provider_requests.all<{
+            cost_kind: string;
+            cost_amount: string;
+            cost_currency: string;
+            cost_usd_equivalent: string;
+            cost_source: string;
+        }>({ turn_id: result.turnId });
+        assert.deepEqual(requests.map(({ cost_kind, cost_amount, cost_currency, cost_usd_equivalent, cost_source }) => ({
+            kind: cost_kind,
+            amount: { amount: cost_amount, currency: cost_currency },
+            usdEquivalent: cost_usd_equivalent,
+            source: cost_source,
+        })), [{
+            kind: "charged",
             amount: { amount: "123456", currency: "USDTICK" },
             usdEquivalent: "0.0000123456",
             source: "provider response billing fixture",
         }]);
         const loopUsage = await engine.loopUsage(loopId);
-        assert.equal(loopUsage.costUsd, 0.0000123456);
+        assert.equal(loopUsage.accounting.costUsd, "0.0000123456");
     } finally {
         await db.close();
     }
@@ -703,8 +726,8 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid(rejected, { prompt: 10, completion: 2, total: 12 }, "rejected reasoning"),
-                valid("accepted bytes", { prompt: 10, completion: 3, total: 13 }),
+                invalid(rejected, requestUsage(10, 2), "rejected reasoning"),
+                valid("accepted bytes", requestUsage(10, 3)),
             ],
         });
         await engine.runTurn({
@@ -763,7 +786,7 @@ test("a provider failure after a rejected emission preserves both issued calls a
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("rejected before outage", { prompt: 10, completion: 2, total: 12 }),
+                invalid("rejected before outage", requestUsage(10, 2)),
             ],
         });
         const realGenerate = provider.generate.bind(provider);
@@ -772,7 +795,15 @@ test("a provider failure after a rejected emission preserves both issued calls a
             calls++;
             if (calls === 2) {
                 provider.packets.push(JSON.stringify(args.messages));
-                throw new ProviderError("mock", "network_failure", "provider went offline");
+                const accounting: ProviderRequestAccounting = {
+                    provider: "provider:mock",
+                    model: provider.model,
+                    outcome: "error",
+                    cost: { kind: "unknown", reason: "provider went offline before reporting monetary evidence" },
+                };
+                const settle = await args.observeRequest?.({ provider: accounting.provider, model: accounting.model });
+                await settle?.(accounting);
+                throw new ProviderError("mock", "network_failure", "provider went offline", { accounting: [accounting] });
             }
             return await realGenerate(args);
         };
@@ -794,20 +825,23 @@ test("a provider failure after a rejected emission preserves both issued calls a
 
         assert.equal(provider.packets.length, 2);
         assert.equal(new Set(provider.packets).size, 1, "the infrastructure failure occurred on the same-packet retry");
-        const turn = await db.test_turns_get_full.get<{
-            id: number;
-            usage_prompt: number;
-            usage_completion: number;
-            usage_cost_usd: number | null;
-            usage_cost: string;
-        }>({ loop_id: loopId });
-        assert.equal(turn?.usage_prompt, 10);
-        assert.equal(turn?.usage_completion, 2);
-        assert.equal(turn?.usage_cost_usd, null, "an unpriced provider failure makes the turn total unknown");
-        assert.deepEqual(JSON.parse(turn!.usage_cost), [
-            { kind: "estimated", usd: "0.012", source: "attempt witness" },
-            { kind: "unknown", reason: "provider call failed without response-bearing charge evidence" },
+        const turn = await db.test_turns_get_full.get<{ id: number }>({ loop_id: loopId });
+        const requests = await db.test_provider_requests.all<{
+            outcome: string;
+            usage_input: number | null;
+            cost_kind: string;
+            cost_amount: string | null;
+            cost_reason: string | null;
+        }>({ turn_id: turn!.id });
+        assert.deepEqual(requests.map(({ outcome, usage_input, cost_kind, cost_amount, cost_reason }) => ({
+            outcome,
+            input: usage_input,
+            cost: cost_kind === "unknown" ? cost_reason : cost_amount,
+        })), [
+            { outcome: "response", input: 10, cost: "0.012" },
+            { outcome: "error", input: null, cost: "provider went offline before reporting monetary evidence" },
         ]);
+        assert.equal((await engine.loopUsage(loopId)).accounting.costUsd, null);
         const attempts = await db.test_turn_attempts.all<{
             state: "response" | "error";
             accepted: number | null;
@@ -823,15 +857,160 @@ test("a provider failure after a rejected emission preserves both issued calls a
     }
 });
 
+test("a classified provider error retains billed usage and authoritative charge without a fabricated response", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const provider = new AttemptWitness({ contextWindow: 100_000, responses: [] });
+        provider.generate = async (args) => {
+            const accounting: ProviderRequestAccounting = {
+                provider: "provider:plurnk",
+                model: provider.model,
+                outcome: "error",
+                status: 422,
+                usage: requestUsage(8, 3, 0, 2),
+                cost: {
+                    kind: "charged",
+                    amount: { amount: "0.00000042", currency: "XMR" },
+                    usdEquivalent: "0.000071",
+                    source: "plurnk endpoint settlement",
+                },
+            };
+            const settle = await args.observeRequest?.({ provider: accounting.provider, model: accounting.model });
+            await settle?.(accounting);
+            throw new ProviderError(
+                "plurnk",
+                "grammar_invalid",
+                "The endpoint rejected the billed emission.",
+                {
+                    status: 422,
+                    accounting: [accounting],
+                },
+            );
+        };
+
+        await assert.rejects(
+            () => engine.runTurn({
+                provider,
+                workspaceId,
+                workerId,
+                loopId,
+                messages: [{ role: "user", content: "do the task" }],
+            }),
+            (error: unknown) => {
+                assert.ok(error instanceof OperationFailureError);
+                assert.equal(error.result.status, 422);
+                return true;
+            },
+        );
+
+        const turn = await db.test_turns_get_full.get<{ id: number }>({ loop_id: loopId });
+        const request = (await db.test_provider_requests.all<{
+            outcome: string;
+            status: number;
+            usage_input: number;
+            usage_output_text: number;
+            usage_input_cache_read: number;
+            cost_kind: string;
+            cost_amount: string;
+            cost_currency: string;
+            cost_usd_equivalent: string;
+        }>({ turn_id: turn!.id }))[0]!;
+        assert.equal(request.outcome, "error");
+        assert.equal(request.status, 422);
+        assert.equal(request.usage_input, 8);
+        assert.equal(request.usage_output_text, 3);
+        assert.equal(request.usage_input_cache_read, 2);
+        assert.equal(request.cost_kind, "charged");
+        assert.equal(request.cost_amount, "0.00000042");
+        assert.equal(request.cost_currency, "XMR");
+        assert.equal(request.cost_usd_equivalent, "0.000071");
+        assert.equal((await engine.loopUsage(loopId)).accounting.costUsd, "0.000071");
+
+        const attempts = await db.test_turn_attempts.all<{
+            state: string;
+            response: string | null;
+            failure: string;
+        }>({ turn_id: turn!.id });
+        assert.equal(attempts.length, 1);
+        assert.equal(attempts[0]!.state, "error");
+        assert.equal(attempts[0]!.response, null);
+        assert.equal(JSON.parse(attempts[0]!.failure).status, 422);
+    } finally {
+        await db.close();
+    }
+});
+
+test("Core rejects a ProviderError whose accounting differs from its observed physical requests", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const realConsoleError = console.error;
+    try {
+        const provider = new AttemptWitness({ contextWindow: 100_000, responses: [] });
+        const requestAccounting: ProviderRequestAccounting = {
+            provider: "provider:mock",
+            model: provider.model,
+            outcome: "error",
+            status: 503,
+            cost: { kind: "unknown", reason: "provider supplied no monetary evidence" },
+        };
+        provider.generate = async (args) => {
+            const settle = await args.observeRequest?.({
+                provider: requestAccounting.provider,
+                model: requestAccounting.model,
+            });
+            await settle?.(requestAccounting);
+            throw new ProviderError(
+                "mock",
+                "network_failure",
+                "provider omitted its accounting return",
+            );
+        };
+        console.error = () => {};
+
+        await assert.rejects(
+            () => engine.runTurn({
+                provider,
+                workspaceId,
+                workerId,
+                loopId,
+                messages: [{ role: "user", content: "do the task" }],
+            }),
+            (error: unknown) => {
+                assert.ok(error instanceof OperationFailureError);
+                assert.equal(error.result.status, 502);
+                assert.equal(
+                    error.result.problem.type,
+                    "https://problems.plurnk.dev/engine/provider/provider-contract-violation",
+                );
+                return true;
+            },
+        );
+
+        assert.deepEqual((await engine.loopUsage(loopId)).accounting.requests, [requestAccounting]);
+    } finally {
+        console.error = realConsoleError;
+        await db.close();
+    }
+});
+
 test("#161: a complete-looking resource-interrupted attempt is persisted but never admitted or replayed", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const content = "<<PLAN:looks complete:PLAN\n<<SEND[200]:must never dispatch:SEND";
+        const requestAccounting: ProviderRequestAccounting = {
+            provider: "provider:mock",
+            model: "interrupted-model",
+            outcome: "response",
+            usage: requestUsage(11, 7, 2, 3),
+            cost: {
+                kind: "estimated",
+                amount: { amount: "0.02", currency: "USD" },
+                source: "interrupted response fixture",
+            },
+        };
         const attempt: ProviderAttempt = {
             assistant: {
                 content,
                 reasoning: "partial reasoning",
-                usage: { prompt: 11, completion: 7, reasoning: 2, cached: 3, total: 20 },
                 finishReason: "resource_interrupted",
                 model: "interrupted-model",
             },
@@ -843,6 +1022,7 @@ test("#161: a complete-looking resource-interrupted attempt is persisted but nev
             rawBody: {
                 choices: [{ finish_reason: "insufficient_system_resource" }],
             },
+            accounting: [requestAccounting],
             meta: { requestId: "interrupted-1" },
         };
         const provider = new AttemptWitness({ contextWindow: 100_000, responses: [] });
@@ -850,12 +1030,18 @@ test("#161: a complete-looking resource-interrupted attempt is persisted but nev
         provider.generate = async (args) => {
             calls++;
             provider.packets.push(JSON.stringify(args.messages));
+            const settle = await args.observeRequest?.({
+                provider: requestAccounting.provider,
+                model: requestAccounting.model,
+            });
+            await settle?.(requestAccounting);
             throw new ProviderError(
                 "mock",
                 "resource_interrupted",
                 "The provider interrupted generation because inference resources were unavailable.",
                 {
                     attempt,
+                    accounting: [requestAccounting],
                     extensions: {
                         stage: "provider-response",
                         finishReason: "resource_interrupted",
@@ -889,21 +1075,14 @@ test("#161: a complete-looking resource-interrupted attempt is persisted but nev
             id: number;
             status: number;
             packet: string;
-            usage_prompt: number;
-            usage_completion: number;
-            usage_reasoning: number;
-            usage_cached: number;
-            usage_cost_usd: number | null;
             finish_reason: string | null;
             model: string;
             meta: string;
         }>({ loop_id: loopId });
         assert.equal(turn?.status, 503);
-        assert.equal(turn?.usage_prompt, 11);
-        assert.equal(turn?.usage_completion, 7);
-        assert.equal(turn?.usage_reasoning, 2);
-        assert.equal(turn?.usage_cached, 3);
-        assert.equal(turn?.usage_cost_usd, 0.02, "response-bearing interrupted attempts retain their supported fallback cost");
+        const accounting = (await engine.loopUsage(loopId)).accounting;
+        assert.deepEqual(accounting.usage, requestAccounting.usage);
+        assert.equal(accounting.costUsd, "0.02", "response-bearing interrupted requests retain their estimated cost");
         assert.equal(turn?.finish_reason, "resource_interrupted");
         assert.equal(turn?.model, "interrupted-model");
         assert.deepEqual(JSON.parse(turn?.meta ?? "{}"), { requestId: "interrupted-1" });
@@ -917,17 +1096,16 @@ test("#161: a complete-looking resource-interrupted attempt is persisted but nev
             accepted: number;
             response: string;
             parse_errors: string;
-            usage_cost_usd: number | null;
             finish_reason: string | null;
             model: string;
         }>({ turn_id: turn!.id });
         assert.equal(attempts.length, 1);
         assert.equal(attempts[0]!.accepted, 0);
         assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [], "the frame was complete but inadmissible");
-        assert.equal(attempts[0]!.usage_cost_usd, 0.02);
         assert.equal(attempts[0]!.finish_reason, "resource_interrupted");
         assert.equal(attempts[0]!.model, "interrupted-model");
-        const recordedAttempt = JSON.parse(attempts[0]!.response) as ProviderAttempt;
+        const recordedAttempt = JSON.parse(attempts[0]!.response) as Omit<ProviderAttempt, "accounting">;
+        assert.equal("accounting" in recordedAttempt, false, "the normalized ledger is the sole durable accounting representation");
         assert.equal(recordedAttempt.assistant.content, content);
         assert.equal(recordedAttempt.assistant.reasoning, "partial reasoning");
         assert.equal(
@@ -953,13 +1131,13 @@ test("#161: a complete-looking resource-interrupted attempt is persisted but nev
 test("an internal attempt-processing failure is not mislabeled as a provider failure", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const root = new Error("cost contract failed");
-        class BrokenCost extends AttemptWitness {
-            override calculateCharge(): never {
-                throw root;
-            }
-        }
-        const provider = new BrokenCost({
+        const root = new Error("attempt classification failed");
+        const classify = db.engine_classify_turn_attempt_response;
+        const originalRun = classify.run.bind(classify);
+        classify.run = async () => {
+            throw root;
+        };
+        const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [valid("accepted")],
         });
@@ -981,16 +1159,13 @@ test("an internal attempt-processing failure is not mislabeled as a provider fai
             state: string;
             accepted: number | null;
             response: string | null;
-            usage_cost: string;
         }>({ turn_id: turn!.id });
         assert.equal(attempts.length, 1);
         assert.equal(attempts[0]!.state, "response");
-        assert.equal(attempts[0]!.accepted, null, "parser/cost classification never erases the observed response");
+        assert.equal(attempts[0]!.accepted, null, "classification failure never erases the observed response");
         assert.notEqual(attempts[0]!.response, null);
-        assert.deepEqual(JSON.parse(attempts[0]!.usage_cost), {
-            kind: "unknown",
-            reason: "provider response retained before monetary classification",
-        });
+        assert.equal((await db.test_provider_requests.all({ turn_id: turn!.id })).length, 1);
+        classify.run = originalRun;
     } finally {
         await db.close();
     }

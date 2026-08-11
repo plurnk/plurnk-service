@@ -28,7 +28,7 @@ const okSend = (): MockResponse => ({
     assistant: {
         content: "",
         ops: [{ op: "SEND", suffix: "", signal: 200, target: null, lineMarker: null, body: { raw: "ok", json: null }, position: { line: 1, column: 1 } } as SendStatement],
-        reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
+        reasoning: null,
     },
 });
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];

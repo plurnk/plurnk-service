@@ -65,7 +65,7 @@ test("boot restores a drain for accepted queued work", async () => {
     }
 });
 
-test("boot closes a crash-open provider attempt and preserves unknown money", async () => {
+test("boot settles a crash-open physical request as unknown and closes its emission attempt", async () => {
     const db = await openMigrated();
     const mock = new Mock({ contextWindow: 16384, responses: [] });
     ProviderInstantiate.registerInstance(mock, providerSpec);
@@ -83,21 +83,29 @@ test("boot closes a crash-open provider attempt and preserves unknown money", as
             model: mock.model,
         });
         assert.ok(attempt !== undefined);
-        assert.equal(
-            (await db.test_cost_workspace.get<{ cost_usd: number | null }>({ id: workspaceId }))?.cost_usd,
-            null,
-            "an issued call is unknown before a response, never free",
-        );
+        const request = await db.engine_open_provider_request.get<{ id: number }>({
+            turn_attempt_id: attempt.id,
+            sequence: 1,
+            provider: "provider:mock",
+            model: mock.model,
+        });
+        assert.ok(request !== undefined);
 
         await daemon.start();
 
-        const usage = await db.engine_loop_usage.get<{ cost_usd: number | null }>({ loop_id: loopId });
-        assert.equal(usage?.cost_usd, null);
-        assert.equal(
-            (await db.test_cost_workspace.get<{ cost_usd: number | null }>({ id: workspaceId }))?.cost_usd,
-            null,
-            "recovery's unknown attempt evidence must replace the turn's initial zero",
-        );
+        const requests = await db.test_provider_requests.all<{
+            state: string;
+            outcome: string;
+            cost_kind: string;
+            cost_reason: string;
+        }>({ turn_id: turnId });
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.state, "settled");
+        assert.equal(requests[0]?.outcome, "error");
+        assert.equal(requests[0]?.cost_kind, "unknown");
+        assert.match(requests[0]?.cost_reason ?? "", /restarted before provider request evidence/);
+        const usage = await daemon.engine.loopUsage(loopId);
+        assert.equal(usage.accounting.costUsd, null);
     } finally {
         await daemon.stop();
         await db.close();
