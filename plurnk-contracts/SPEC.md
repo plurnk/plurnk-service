@@ -259,7 +259,9 @@ MOVE use one universal text algebra independent of mimetype:
 two-integer line selections normalize to the same exclusive-end `TextRegion`
 used by four-coordinate selections. Whole-line replacement deliberately
 accounts for newline separators; it is an ergonomic projection over exact
-replacement, not a different mimetype navigation mode. As an unadvertised
+replacement, not a different mimetype navigation mode. An end bound beyond
+the available content clamps to the final addressable endpoint; the start bound
+must resolve. As an unadvertised
 ingestion tolerance, the runtime accepts three integers as
 `startLine,startColumn,endLine` and immediately normalizes them to the complete
 four-coordinate region ending after the final code point of `endLine`.

@@ -53,6 +53,15 @@ test("lines selects line shorthand with stable source numbering", () => {
         },
     );
     assert.deepEqual(
+        Slicer.lines(TEXT, { marks: [1, 1_000] }).range,
+        {
+            unit: "line",
+            total: 4,
+            requested: [1, 1_000],
+            returned: [1, 4],
+        },
+    );
+    assert.deepEqual(
         withoutRange(Slicer.lines("", { marks: [1, -1] })),
         {
             status: 200,
@@ -158,9 +167,13 @@ test("lines tolerates three coordinates and reports the exact canonical region",
         canonical: [2, 2, 3, 6],
     }]);
 
-    const outOfRange = Slicer.lines("abc", { marks: [1, 2, 9] });
-    assert.equal(outOfRange.status, 416);
-    assert.deepEqual(outOfRange.problem?.requestedCoordinates, [1, 2, 9]);
+    const clampedEnd = Slicer.lines("abc", { marks: [1, 2, 9] });
+    assert.equal(clampedEnd.status, 200);
+    assert.equal(clampedEnd.text, "bc");
+    assert.deepEqual(clampedEnd.scopeNormalizations, [{
+        requested: [1, 2, 9],
+        canonical: [1, 2, 1, 4],
+    }]);
 
     const badStart = Slicer.lines("abc", { marks: [1, 9, 1] });
     assert.equal(badStart.status, 416);
@@ -179,12 +192,17 @@ test("lines rejects unaddressable exact regions", () => {
     assert.deepEqual(badStart.problem?.requestedCoordinates, [1, 5, 1, 6]);
 });
 
-test("a harmless end-column overshoot clamps to the line's end", () => {
+test("harmless exact end-bound overshoots clamp to available content", () => {
     // {§slicer-text-algebra} — <4,1,4,50> on a 30-char line serves the whole line.
     const clamped = Slicer.lines("one\ntwo\nthree\nfour", { marks: [4, 1, 4, 50] });
     assert.equal(clamped.status, 200);
     assert.equal(clamped.text, "four");
     assert.deepEqual(clamped.region, { startLine: 4, startColumn: 1, endLine: 4, endColumn: 5 });
+
+    const pastEof = Slicer.lines("one\ntwo", { marks: [1, 1, 1_000, 1_000] });
+    assert.equal(pastEof.status, 200);
+    assert.equal(pastEof.text, "one\ntwo");
+    assert.deepEqual(pastEof.region, { startLine: 1, startColumn: 1, endLine: 2, endColumn: 4 });
 
     // Start-column overshoot stays an error — the intent is ambiguous.
     const badStart = Slicer.lines("one\ntwo", { marks: [1, 50, 1, 60] });

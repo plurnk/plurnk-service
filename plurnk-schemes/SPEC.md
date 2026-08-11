@@ -341,9 +341,10 @@ Successful results carry schemes-owned, boundary-validated normalization
 evidence containing both the authored and canonical coordinates. Producers do
 not emit or proactively teach the tolerated form.
 
-A harmless end-column overshoot clamps to the line's end rather than erroring
-— the model asked for "through the end" and the line is shorter than it
-guessed. Start-column overshoot and out-of-range lines remain 416 errors.
+A harmless end-bound overshoot clamps rather than erroring: an oversized line
+range ends at the final line, an exact end line beyond the content ends at EOF,
+and an oversized end column ends at its line's final code point. Start-line and
+start-column overshoots remain 416 errors.
 
 - `Slicer.lines(content, marker)` returns the selected text, source
   `startLine`, and complete resolved `region`; `Slicer.linesRaw` preserves

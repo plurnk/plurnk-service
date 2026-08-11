@@ -217,6 +217,20 @@ test("File.read: lineMarker out of range returns 416", async () => {
     });
 });
 
+test("File.read: an invalid exact region remains a composed 416 result", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        await writeFile(join(root, "f.txt"), "one\ntwo\n");
+        await addMember(ctx, "f.txt");
+        const r = await readFileScheme(readStmt(urlPath("file", "/f.txt"), {
+            lineMarker: { marks: [2, 1, 2, -1] },
+        }), ctx);
+        assert.equal(r.status, 416);
+        assert.deepEqual(r.problem?.requestedCoordinates, [2, 1, 2, -1]);
+        assert.equal(Object.hasOwn(r, "range"), false);
+        assert.equal(r.content, null);
+    });
+});
+
 test("File.find: an exact matcher returns flat match locations", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "foo\nbar foo");

@@ -134,19 +134,22 @@ export default class Slicer {
         if (startLine < 1 || startLine > lines.length) {
             return { error: `Start line ${startLine} is outside the available line range 1..${lines.length}.` };
         }
-        if (endLine < 1 || endLine > lines.length) {
+        if (endLine < 1) {
             return { error: `End line ${endLine} is outside the available line range 1..${lines.length}.` };
         }
-        // A harmless end-column overshoot clamps to the line's end — the model
-        // asked for "through the end" and the line is shorter than it guessed.
-        const endLineData = lines[endLine - 1]!;
+        if (rawEndColumn < 1) {
+            return { error: `End column ${rawEndColumn} must be positive.` };
+        }
+        const pastEof = endLine > lines.length;
+        const resolvedEndLine = pastEof ? lines.length : endLine;
+        const endLineData = lines[resolvedEndLine - 1]!;
         const maxEndColumn = [...content.slice(endLineData.start, endLineData.contentEnd)].length + 1;
-        const endColumn = Math.min(rawEndColumn, maxEndColumn);
+        const endColumn = pastEof ? maxEndColumn : Math.min(rawEndColumn, maxEndColumn);
         let start: number;
         let end: number;
         try {
             start = TextCoordinates.offsetAtPosition(content, startLine, startColumn);
-            end = TextCoordinates.offsetAtPosition(content, endLine, endColumn);
+            end = TextCoordinates.offsetAtPosition(content, resolvedEndLine, endColumn);
         } catch (cause) {
             return { error: cause instanceof Error ? cause.message : String(cause) };
         }
@@ -155,7 +158,7 @@ export default class Slicer {
                 error: `Exact region ${startLine},${startColumn},${endLine},${rawEndColumn} ends before it starts.`,
             };
         }
-        return { start, end, body, startLine, endLine };
+        return { start, end, body, startLine, endLine: resolvedEndLine };
     }
 
     static #preferredSeparator(content: string, lines: readonly TextLine[]): string {
@@ -246,13 +249,17 @@ export default class Slicer {
             return { error: "A tolerated three-coordinate text region requires integer coordinates." };
         }
         const lines = TextCoordinates.lines(content);
-        const last = lines[endLine - 1];
-        if (endLine < 1 || last === undefined) {
+        if (endLine < 1) {
             return { error: `End line ${endLine} is outside the available line range 1..${lines.length}.` };
+        }
+        const resolvedEndLine = Math.min(endLine, lines.length);
+        const last = lines[resolvedEndLine - 1];
+        if (last === undefined) {
+            return { error: `End line ${endLine} cannot select from empty content.` };
         }
         const endColumn = [...content.slice(last.start, last.contentEnd)].length + 1;
         const requested: ScopeNormalization["requested"] = [startLine, startColumn, endLine];
-        const canonical: ScopeNormalization["canonical"] = [startLine, startColumn, endLine, endColumn];
+        const canonical: ScopeNormalization["canonical"] = [startLine, startColumn, resolvedEndLine, endColumn];
         return {
             marker: { ...marker, marks: [...canonical] },
             normalization: { requested, canonical },

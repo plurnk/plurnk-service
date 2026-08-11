@@ -28,11 +28,11 @@ export default class ReadResolve {
         if (sliced.status === 416) {
             return {
                 status: 416,
-                problem: sliced.problem,
                 content: null,
                 mimetype,
-                reason: sliced.problem?.detail,
-                range: sliced.range,
+                ...(sliced.problem === undefined ? {} : { problem: sliced.problem }),
+                ...(sliced.problem?.detail === undefined ? {} : { reason: sliced.problem.detail }),
+                ...(sliced.range === undefined ? {} : { range: sliced.range }),
             };
         }
         if (sliced.status !== 200) {
