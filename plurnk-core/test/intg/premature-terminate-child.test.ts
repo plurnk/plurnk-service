@@ -296,13 +296,13 @@ test("retrieval-and-conclude strikes out even when changing targets avoids cycle
                 assistant: { content: "", reasoning: null, ops: [readStmt(knownPath(pathname)), sendStmt(200, null, `read ${pathname}`)] },
             })),
         });
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 3 });
+        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
 
         assert.equal(result.reason, "strike_threshold", "habitual retrieval-and-conclude ends through strike accounting");
         assert.equal(result.result.status, 500, "distinct targets prove the cycle detector was not the terminating rail");
-        assert.equal(result.turnIds.length, 3, "each refused retrieval-and-conclude counts toward the threshold");
+        assert.equal(result.turnIds.length, 6, "the shipped six-strike threshold gives recovery room before abandonment");
         const refusals = await db.test_send_rows_for_worker.all<{ status_rx: number }>({ worker_id: workerId });
-        assert.equal(refusals.filter((r) => r.status_rx === 409).length, 3, "all three conclude-attempts refused — the gate never weakened");
+        assert.equal(refusals.filter((r) => r.status_rx === 409).length, 6, "all six conclude-attempts refused — patience never weakens the gate");
     } finally { await db.close(); }
 });
 

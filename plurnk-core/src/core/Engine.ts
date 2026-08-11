@@ -82,7 +82,7 @@ export type WorkspaceTurnCompleted = (args: {
     turnId: number;
 }) => Promise<void>;
 
-const DEFAULT_MAX_STRIKES = 3;
+const DEFAULT_MAX_STRIKES = 6;
 const RECORD_STREAM_MIMETYPES = new Set(["application/jsonl", "application/x-ndjson"]);
 
 const baseMimetype = (mimetype: string): string =>
