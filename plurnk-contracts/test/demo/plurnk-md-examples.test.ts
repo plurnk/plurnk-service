@@ -49,9 +49,10 @@ test("every ```plurnk fenced turn in plurnk.md parses clean", () => {
     assert.equal(failures.length, 0, `plurnk fenced blocks that do not parse:\n${failures.join("\n")}`);
 });
 
-test("{§turn-shape} model reference teaches the complete turn frame", () => {
+test("{§turn-shape}{§plan-intended-goals} model reference teaches PLAN and SEND roles", () => {
     assert.ok(plurnkMd.includes("A turn concatenates complete OPs;"));
-    assert.match(plurnkMd, /^\| PLAN \| open every turn with goals /m);
+    assert.match(plurnkMd, /^\| PLAN \| add working-state deltas .* new findings, questions, priorities \|$/m);
+    assert.ok(plurnkMd.includes("YOU MUST use PLAN to add new material conclusions or unresolved questions and this turn's priorities."));
     assert.match(plurnkMd, /^\| SEND \| close turn with submit code /m);
 });
 
