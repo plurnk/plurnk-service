@@ -1,16 +1,13 @@
-// Budget as a META-SCENARIO (owner's design): the storyline demos, re-run under a
-// tight virtual PROMPT_BUDGET. Budget pressure is a DIMENSION atop a real scenario,
-// not a bespoke fixture — if the same task still completes when the model must curate
-// to fit the window, the grinder works end-to-end with a real model. The intg layer
-// (budget-stories.test.ts) pins the exact mechanics; this pins the behavior with
-// a real task under a deliberately tight context limit.
+// Budget pressure as a meta-scenario: rerun ordinary storylines with a tight
+// virtual prompt gauge. The integration tier pins exact grinder mechanics; these
+// demos assert that a real model still delivers the requested outcome.
 //
 // The marquee (owner): a JUMBO prompt — SPEC.md itself, ~42k tokens — under a tight
-// ceiling. A whole-read overflows by ~10x, so on the next turn the grinder auto-folds
+// gauge. A whole-read drives the gauge deeply negative, so on the next turn the grinder auto-folds
 // it (pre-LLM) and the model must use patterns + chunks (matched / sliced READs) to
 // pull the one fact it needs from inside the folded prompt.
 //
-// Driven through the REAL prod loop (loop.run via the daemon). The ceiling is set
+// Driven through the REAL prod loop (loop.run via the daemon). The gauge is set
 // before liveWorkspace boots the daemon so its engine captures it at construction
 // (the budget-grind pattern). Stochastic: assert the OUTCOME (the fact surfaces),
 // not a strict terminal — stochastic model output makes a strict 200 assertion invalid.
@@ -27,8 +24,8 @@ import { seedDemoFixture } from "./_fixture.ts";
 import { initializeDemoRepository } from "./_git.ts";
 
 const TIMEOUT = Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
-// Ceilings are FLOOR-RELATIVE: each worker probes its own fixture's true turn-1 floor (a
-// zero-cost pre-generate hard-413, _floor-probe.ts) and pins ceiling = floor × factor —
+// Gauges are floor-relative: each worker probes its own fixture's true turn-1 floor
+// in one bounded turn and pins gauge = floor × factor —
 // teaching growth re-calibrates the pin instead of breaking it. TIGHT keeps the small
 // fixtures under real curation pressure; jumbo gets the same factor over its own floor.
 const TIGHT_FACTOR = 1.6; // enough headroom for recovery while the small fixtures still curate under real pressure
@@ -43,14 +40,14 @@ interface BudgetRun {
     dump: () => Promise<void>;
 }
 
-// runStory with a pinned budget ceiling. `projectRoot` overrides the default
+// Run a story with a pinned pressure gauge. `projectRoot` overrides the default
 // fixture (the SPEC demo).
-const runUnderBudget = async (opts: { label: string; prompt: string; factor?: number; projectRoot?: string; cleanupRoot?: () => Promise<void> }): Promise<BudgetRun> => {
+const runUnderPressure = async (opts: { label: string; prompt: string; factor?: number; projectRoot?: string; cleanupRoot?: () => Promise<void> }): Promise<BudgetRun> => {
     const fixture = opts.projectRoot === undefined ? await seedDemoFixture(opts.label) : null;
     const root = opts.projectRoot ?? fixture!.workspace;
     const floor = await measureFloor({ label: opts.label, projectRoot: root, prompt: opts.prompt });
-    const ceiling = Math.round(floor * (opts.factor ?? TIGHT_FACTOR));
-    const restore = pinAliasBudget({ PROMPT_BUDGET: String(ceiling) });
+    const gauge = Math.round(floor * (opts.factor ?? TIGHT_FACTOR));
+    const restore = pinAliasBudget({ PROMPT_BUDGET: String(gauge) });
     try {
         const s = await liveWorkspace({ name: `demo-budget-${opts.label}-${crypto.randomUUID()}`, projectRoot: root });
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: opts.prompt }, { timeoutMs: TIMEOUT });
@@ -59,7 +56,7 @@ const runUnderBudget = async (opts: { label: string; prompt: string; factor?: nu
             const r = await s.db.test_get_turn.get<{ packet: string }>({ id: tid });
             perTurn.push((JSON.parse(r?.packet ?? "{}") as { tokens?: number }).tokens ?? 0);
         }
-        console.error(`[budget-meta:${opts.label}] floor=${floor} ceiling=${ceiling} turns=${turnIds.length} finalStatus=${finalStatus} turn1=${perTurn[0]} peak=${Math.max(0, ...perTurn)} perTurn=[${perTurn.join(",")}]`);
+        console.error(`[budget-meta:${opts.label}] floor=${floor} gauge=${gauge} turns=${turnIds.length} finalStatus=${finalStatus} turn1=${perTurn[0]} peak=${Math.max(0, ...perTurn)} perTurn=[${perTurn.join(",")}]`);
         const dump = async (): Promise<void> => {
             for (const turnId of turnIds) {
                 const row = await s.db.test_get_turn.get<{ packet: string; status: number }>({ id: turnId });
@@ -81,7 +78,7 @@ const runUnderBudget = async (opts: { label: string; prompt: string; factor?: nu
 };
 
 // A git-committed workspace holding the real SPEC.md — a genuine ~42k-token member
-// the model can FIND/READ but cannot hold whole under the tight ceiling.
+// the model can FIND/READ but whose whole body drives the tight gauge negative.
 const seedLedgerFixture = async (): Promise<{ workspace: string; cleanup: () => Promise<void> }> => {
     const workspace = await mkdtemp(join(tmpdir(), "plurnk-budget-ledger-"));
     // UNIFORM line density, deliberately. The real SPEC.md was a token-sizing TRAP: its {§}-anchor
@@ -100,39 +97,38 @@ const seedLedgerFixture = async (): Promise<{ workspace: string; cleanup: () => 
     return { workspace, cleanup: async () => { await rm(workspace, { recursive: true, force: true }); } };
 };
 
-// 1 — an existing storyline (read the codename) under budget pressure. Same task,
-// tight window: the model must curate to fit and still answer "phoenix".
-test("budget-meta: the codename storyline still completes under a tight ceiling", { timeout: TIMEOUT }, async () => {
-    const run = await runUnderBudget({
+// 1 — an existing storyline (read the codename) under context pressure.
+test("budget-meta: the codename storyline still completes under a tight gauge", { timeout: TIMEOUT }, async () => {
+    const run = await runUnderPressure({
         label: "codename-tight",
         prompt: "What's the project codename? It's recorded in notes.md.",
     });
     try {
         if (!/phoenix/i.test(run.lastContent)) await run.dump();
-        assert.match(run.lastContent, /phoenix/i, `model curated under budget and still answered; got: ${run.lastContent.slice(0, 200)}`);
+        assert.match(run.lastContent, /phoenix/i, `model answered under context pressure; got: ${run.lastContent.slice(0, 200)}`);
     } finally { await run.cleanup(); }
 });
 
 // 2 — a second existing storyline (config host) under the same pressure.
-test("budget-meta: the config-host storyline still completes under a tight ceiling", { timeout: TIMEOUT }, async () => {
-    const run = await runUnderBudget({
+test("budget-meta: the config-host storyline still completes under a tight gauge", { timeout: TIMEOUT }, async () => {
+    const run = await runUnderPressure({
         label: "host-tight",
         prompt: "What's the value of the `host` field in src/config.json?",
     });
     try {
         if (!/db\.internal/.test(run.lastContent)) await run.dump();
-        assert.match(run.lastContent, /db\.internal/, `model curated under budget and still answered; got: ${run.lastContent.slice(0, 200)}`);
+        assert.match(run.lastContent, /db\.internal/, `model answered under context pressure; got: ${run.lastContent.slice(0, 200)}`);
     } finally { await run.cleanup(); }
 });
 
-// 3 — THE MARQUEE (owner): a jumbo prompt (SPEC.md, ~42k) under a tight ceiling. The
+// 3 — a jumbo prompt under a tight gauge. The
 // fact lives deep in {§grinder}; the doc cannot be held whole, so the model must read
 // patterns/chunks — and if it reads broadly first, the grinder auto-folds that read
 // and the model recovers with a sliced/matched re-read. Outcome: it finds that the
 // grinder reverts the PRIOR turn first.
-test("budget-meta: a jumbo uniform-density doc under a tight ceiling — FIND then precise chunk-read finds the buried fact", { timeout: TIMEOUT }, async () => {
+test("budget-meta: a jumbo uniform-density doc under a tight gauge — FIND then precise chunk-read finds the buried fact", { timeout: TIMEOUT }, async () => {
     const doc = await seedLedgerFixture();
-    const run = await runUnderBudget({
+    const run = await runUnderPressure({
         label: "ledger-jumbo",
         prompt: "ledger.md records an emergency shutdown code for the primary reactor core. What is that code?",
         projectRoot: doc.workspace,
@@ -140,7 +136,7 @@ test("budget-meta: a jumbo uniform-density doc under a tight ceiling — FIND th
     });
     try {
         if (!/CRIMSON-MERIDIAN-84/i.test(run.lastContent)) await run.dump();
-        // The doc cannot be held whole under the ceiling, so good-faith management is:
+        // The whole doc drives the gauge negative, so good-faith management is:
         // FIND(ledger.md):/shutdown/
         // to locate the one line, size a precise chunk-read around it from the reliable uniform
         // tokens/line clue, curate the rest, and answer. The buried code proves it read precisely and

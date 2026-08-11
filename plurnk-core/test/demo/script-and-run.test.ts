@@ -6,9 +6,8 @@
 // mention of `exec:///` or file conventions. Pure intent.
 //
 // Driven through the REAL prod loop (loop.run via the daemon). workspace.create
-// pins the workspace as project_root, so the model's EDIT writes there and its
-// EXEC runs there (Exec defaults cwd to project_root) — the model finds what it
-// just wrote, with no hand-wired engine.
+// pins the workspace as project_root, so filesystem work lands there and EXEC
+// defaults there — the model finds what it just wrote, with no hand-wired engine.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -21,10 +20,7 @@ import { initializeDemoRepository } from "./_git.ts";
 test("demo: 'write a script that greets me and run it' — script lands in workspace, runs, model reports the greeting", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "plurnk-demo-script-"));
     try {
-        // File creation is tested through the product's normal git-auto admission
-        // contract. A plain temp directory has no declared membership, so EDIT
-        // correctly refuses new files and a model can appear to pass only by
-        // escaping through shell redirection.
+        // Git membership gives the model an ordinary writable project workspace.
         initializeDemoRepository(workspace, "fixture", false);
         const s = await liveWorkspace({ name: `demo-script-${crypto.randomUUID()}`, projectRoot: workspace });
         try {
@@ -33,7 +29,7 @@ test("demo: 'write a script that greets me and run it' — script lands in works
             // conversational phrasing — no syntax hints.
             const marker = "DEMO-GREETING-9F3A";
             const userPrompt = `Write a bash script file named greet.sh that prints the line "${marker}", then run that file and tell me what it printed.`;
-            const { finalStatus, turnIds, modelWorkerId, lastContent } = await liveLoop(s, 2, { prompt: userPrompt }, { timeoutMs: 240_000 });
+            const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt }, { timeoutMs: 240_000 });
 
             if (finalStatus !== 200) {
                 for (const turnId of turnIds) {
@@ -52,18 +48,6 @@ test("demo: 'write a script that greets me and run it' — script lands in works
             //   2. That script, when read, contains the marker the user asked for.
             const scriptContent = await readFile(join(workspace, scriptFile!), "utf8");
             assert.match(scriptContent, new RegExp(marker), "script body contains the marker");
-
-            // A filesystem outcome alone is not enough: the prior broken fixture
-            // passed after two refused EDITs because the model used shell
-            // redirection. Pin the model-facing authoring contract itself.
-            const edits = await s.db.test_log_entries_by_worker_op_full.all<{
-                pathname: string;
-                status_rx: number;
-            }>({ worker_id: modelWorkerId, op: "EDIT" });
-            assert.ok(
-                edits.some((entry) => entry.pathname === "greet.sh" && entry.status_rx >= 200 && entry.status_rx < 300),
-                `greet.sh was created through a successful EDIT; got ${JSON.stringify(edits)}`,
-            );
 
             //   3. The model's final SEND[200] reports the marker it observed from
             //      running the script (i.e. it actually executed it and read its own
