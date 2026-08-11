@@ -48,7 +48,7 @@ A turn concatenates complete OPs; reference examples are alternatives unless sho
 YOU MUST use PLAN to add new material conclusions or unresolved questions and this turn's priorities.
 
 * Files you create are tracked automatically.
-* EXEC creates an output stream visible in subsequent turns.
+* OP results become visible only in a later turn.
 
 ### Pattern Filtering
 
@@ -126,7 +126,6 @@ Text scope (Line, StartLine, StartColumn, EndLine, EndColumn) has one meaning fo
 
 The log is your context and you are its curator: what you retrieve stays until you FOLD it, and folded bodies are hidden, not gone — OPEN brings them back.
 YOU SHOULD FOLD superseded PLANs and READs made stale by later changes before they pollute or exhaust the context window.
-KILL permanently erases addressed log items.
 
 Examples:
 
@@ -181,6 +180,7 @@ sequenceDiagram
 ### User messages
 
 Put every user-facing message in a SEND with a submit code.
+User-facing messages may contain markdown (GFM), mermaid diagrams, tables, lists, and/or prose.
 
 ### Tool choice
 
