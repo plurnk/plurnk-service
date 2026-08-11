@@ -369,6 +369,38 @@ test("whole-channel MOVE removes only the selected source channel", async () => 
     }
 });
 
+test("{§move-canonical-whole-source}: <1,-1> removes only the selected source channel", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        await seed("/source", {
+            channels: {
+                body: { content: "preserved", mimetype: "text/markdown" },
+                notes: { content: "moved", mimetype: "text/markdown" },
+            },
+            tags: ["source-tag"],
+        });
+
+        const result = await dispatch(moveStmt(
+            urlPath("multi", "/source", "notes"),
+            urlPath("multi", "/destination", "aux"),
+            null,
+            { marks: [1, -1] },
+        ));
+        assert.equal(result.status, 201);
+        assert.deepEqual(effectsOf(result), [
+            { target: "multi:///destination#aux", action: "create" },
+            { target: "multi:///source#notes", action: "delete" },
+        ]);
+        const source = await read("/source");
+        assert.equal(source.entry?.channels.body?.content, "preserved");
+        assert.equal(source.entry?.channels.notes, undefined);
+        assert.deepEqual(source.entry?.tags, ["source-tag"]);
+        assert.equal((await read("/destination")).entry?.channels.aux?.content, "moved");
+    } finally {
+        await db.close();
+    }
+});
+
 test("whole-channel MOVE removes the source entry when its final channel leaves", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {

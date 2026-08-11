@@ -1316,11 +1316,19 @@ export default class Dispatcher {
                 },
             );
         }
+        const sourceMarks = statement.lineMarker?.marks;
+        const sourceLineMarker = sourceMarks?.length === 2
+            && sourceMarks[0] === 1
+            && sourceMarks[1] === -1
+            ? null
+            : statement.lineMarker;
         return this.#moveOrchestration({
             statement,
             source: {
                 target: statement.target,
-                lineMarker: statement.lineMarker,
+                // Canonicalize only the execution selection. #writeLog retains
+                // the authored marker as operation evidence. {§move-canonical-whole-source}
+                lineMarker: sourceLineMarker,
             },
             destination: statement.body,
             ctx,

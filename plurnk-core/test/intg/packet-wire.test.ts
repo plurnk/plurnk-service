@@ -191,7 +191,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
         target: { scheme: "worker", pathname: "/source" },
         tx: {
             target: { scheme: "worker", pathname: "/source" },
-            lineMarker: null,
+            lineMarker: { marks: [1, -1] },
             body: {
                 target: { scheme: "worker", pathname: "/destination" },
                 lineMarker: null,
@@ -209,7 +209,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
         whole,
         /"effects":\[\{"target":"worker:\/\/\/destination","action":"create"\},\{"target":"worker:\/\/\/source","action":"delete"\}\]/,
     );
-    assert.match(whole, /"source":"worker:\/\/\/source"/);
+    assert.match(whole, /"source":"worker:\/\/\/source<1,-1>"/);
     assert.match(whole, /"destination":"worker:\/\/\/destination"/);
     assert.match(whole, /"body":""/);
     assert.match(whole, /"display":"none"/, "whole-channel effects invent no text receipt");

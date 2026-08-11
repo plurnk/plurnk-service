@@ -17,7 +17,7 @@ import Worker from "../../src/schemes/Worker.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { ParsedPath, KillStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { urlPath, localPath, editStmt, copyStmt, moveStmt } from "./_dsl.ts";
+import { urlPath, localPath, editStmt, copyStmt, moveStmt, fullReplace } from "./_dsl.ts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     let resolve!: (v: T) => void;
@@ -385,6 +385,25 @@ test("{§move-relocation-deletes-source}: file MOVE into a new subdir lands and 
         assert.equal(await readFile(join(root, "drafts/brief.md"), "utf8"), "the brief\n", "dest written into the freshly-created subdir");
         await assert.rejects(readFile(join(root, "brief.md"), "utf8"), "source file unlinked — a MOVE, not a COPY");
         assert.equal(await fileMember(ctx, "brief.md"), undefined, "source entry deregistered");
+    });
+});
+
+test("{§move-canonical-whole-source}: file MOVE with <1,-1> unlinks rather than hollows the source", async () => {
+    await withWorkspace(async (root, ctx) => {
+        await seedFileMember(ctx, root, "brief.md", "the brief\n");
+        const result = await proposeAndResolve(
+            ctx,
+            moveStmt(localPath("brief.md"), localPath("drafts/brief.md"), null, fullReplace),
+            "accept",
+        );
+        assert.equal(result.status, 200);
+        assert.deepEqual(result.effects, [
+            { target: "drafts/brief.md", action: "create" },
+            { target: "brief.md", action: "delete" },
+        ]);
+        assert.equal(await readFile(join(root, "drafts/brief.md"), "utf8"), "the brief\n");
+        await assert.rejects(readFile(join(root, "brief.md"), "utf8"), "the canonical whole-content MOVE unlinks its source");
+        assert.equal(await fileMember(ctx, "brief.md"), undefined, "the source member is deregistered");
     });
 });
 

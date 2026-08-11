@@ -1349,6 +1349,11 @@ body: ResourceSelection (destination), signal: tags | null }`.
 - §move-relocation-deletes-source MOVE first performs the destination mutation under {§copy}, then removes only
   the selected source region or channel. A whole-channel MOVE deletes the
   source entry only when that was its final channel.
+- §move-canonical-whole-source The canonical whole-content source scope
+  `<1,-1>` resolves as a whole-channel selection for MOVE: it removes the
+  selected channel and deletes the source entry when that was its final
+  channel. Every other source scope remains regional even when it currently
+  covers all available text; resource deletion is never inferred from extent.
 - A same-channel regional MOVE applies destination insertion and source
   deletion in one same-snapshot `editBatch`; overlapping regions are 409.
 - A cross-resource destination failure leaves the source untouched. A source

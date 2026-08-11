@@ -146,6 +146,57 @@ test("Engine.move relocates: source deleted, dest created", async () => {
     } finally { await db.close(); }
 });
 
+test("{§move-canonical-whole-source}: Engine.move treats <1,-1> as whole-channel source selection", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    try {
+        await new Worker().edit(editStmt(urlPath("worker", "/src"), "movable"), makeSchemeCtx({ db, workspaceId, workerId }));
+
+        const result = await dispatch(
+            engine,
+            { workspaceId, workerId, loopId, turnId },
+            moveStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"), null, fullReplace),
+        );
+        assert.equal(result.status, 201);
+        assert.deepEqual(result.effects, [
+            { target: "worker:///dst", action: "create" },
+            { target: "worker:///src", action: "delete" },
+        ]);
+        assert.equal(
+            await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/src" }),
+            undefined,
+            "the canonical whole-content marker removes the final source channel instead of hollowing it out",
+        );
+        const rows = await db.test_log_entries_by_loop.all<{ op: string; lineMarker: string | null }>({ loop_id: loopId });
+        assert.equal(
+            rows.find(({ op }) => op === "MOVE")?.lineMarker,
+            JSON.stringify(fullReplace),
+            "canonical cleanup does not erase the scope the model authored",
+        );
+    } finally { await db.close(); }
+});
+
+test("Engine.move keeps an ordinary source region regional when it covers the current content", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    try {
+        await new Worker().edit(editStmt(urlPath("worker", "/src"), "only line"), makeSchemeCtx({ db, workspaceId, workerId }));
+
+        const result = await dispatch(
+            engine,
+            { workspaceId, workerId, loopId, turnId },
+            moveStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"), null, { marks: [1] }),
+        );
+        assert.equal(result.status, 201);
+        assert.deepEqual(
+            (result.effects as Array<{ action: string }>).map(({ action }) => action),
+            ["create", "update"],
+        );
+        const source = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/src" });
+        assert.notEqual(source, undefined, "ordinary regional syntax retains the source resource");
+        const channel = await db.test_get_channel.get<{ content: string }>({ entry_id: source?.id, name: "body" });
+        assert.equal(channel?.content, "");
+    } finally { await db.close(); }
+});
+
 test("Engine.move with no destination → 400, source survives", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
