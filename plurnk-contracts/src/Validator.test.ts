@@ -181,14 +181,14 @@ test("Problems creates canonical typed occurrences", () => {
     );
     assert.equal(
         Problems.create(
-            "engine:grinder",
-            "budget-overflow",
+            "engine:context",
+            "context-envelope-admission-failed",
             413,
-            "No working room remains.",
+            "The configured context envelope cannot admit this request.",
             {},
-            { title: "Prompt budget exceeded" },
+            { title: "Context envelope admission failed" },
         ).title,
-        "Prompt budget exceeded",
+        "Context envelope admission failed",
     );
 });
 

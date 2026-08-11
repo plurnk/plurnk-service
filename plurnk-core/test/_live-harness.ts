@@ -167,7 +167,7 @@ export const lastRx = async (db: Db, modelWorkerId: number, op: string): Promise
 // over ambient operator settings and remains alias-agnostic when the demo model pivots.
 export const pinAliasBudget = (part: { PROMPT_BUDGET?: string; REASONING?: string; COMPLETION?: string; SAFETY?: string }): (() => void) => {
     const alias = resolveActiveAlias(process.env)?.alias ?? "";
-    // PROMPT_BUDGET is virtual model-facing/grinder policy; it never changes provider physics
+    // PROMPT_BUDGET is virtual model-facing/grinder policy; it never changes hard capacity
     // or response settings. The reserves are provider-tier ABSOLUTES (positive — a zero reserve
     // is unspellable by design, pin "1" for a nil slice); SAFETY stays core's.
     const entries: Array<readonly [string, string]> = ([

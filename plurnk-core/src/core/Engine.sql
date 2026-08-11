@@ -403,8 +403,7 @@ ORDER BY e.pathname;
 -- LogCoordinate pointers, forcing the model to confront failures instead of letting
 -- them rot in log:///. Window = the current turn AND the immediately-prior one
 -- (>= current_turn_seq - 1): prior-turn for action failures the model just caused,
--- current-turn so a same-turn engine error (the grinder's budget-overflow row, minted
--- pre-generate then re-derived) surfaces THIS turn rather than a turn late.
+-- current-turn so a pre-generate engine error surfaces THIS turn rather than a turn late.
 -- {§operation-result-uniform-error-channel}
 SELECT
     le.op, le.sequence, le.status_rx, le.rx, le.mimetype_rx,
@@ -472,7 +471,13 @@ SELECT
     le.query, le.fragment,
     le.status_rx, le.rx, le.mimetype_rx,
     le.tx, le.mimetype_tx,
-    le.state, le.outcome, le.expanded, le.source, le.attrs
+    le.state, le.outcome, le.expanded, le.source, le.attrs,
+    COALESCE((
+        SELECT json_group_array(ordered.tag)
+        FROM (
+            SELECT tag FROM log_tags WHERE log_entry_id = le.id ORDER BY tag
+        ) ordered
+    ), '[]') AS tags
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
@@ -571,8 +576,8 @@ LIMIT 1;
 -- errors the model cannot have seen (they land next packet). A [200] or already-drained [202] over
 -- them concludes blind past a failure — refused 409; [499] abandons regardless (declaring failure
 -- IS weighing it).
--- Actionless engine errors are excluded: the grinder's overflow row mints pre-packet, so the
--- recovery turn already saw it ({§grinder-hard-413-recovery}). A model-authored statement that
+-- Actionless engine errors are excluded because only model-authored failures can make
+-- the model's concluding disposition blind. A model-authored statement that
 -- failed grammar parsing is different: source='grammar' records a bounded operation failure
 -- from the accepted emission, unseen until the next packet, so it gates completion like every
 -- other failed model operation.

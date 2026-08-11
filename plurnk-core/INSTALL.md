@@ -40,11 +40,11 @@ When a value is required, an unset or retired name fails boot naming the violate
 
 These are relationships *between* flags. Set them as a unit.
 
-- **Provider capacity and PLURNK pressure are separate.** Providers report
-  physical context and response capacity. Core derives the natural input
-  budget from those facts. Optional `PLURNK_SERVICE_PROMPT_BUDGET_<alias>`
+- **Hard capacity and PLURNK pressure are separate.** Providers report the
+  effective total context envelope and generation capacity. Core derives the
+  natural prompt gauge from those facts. Optional `PLURNK_SERVICE_PROMPT_BUDGET_<alias>`
   only tightens the model-facing gauge and grinder; it is never sent to the
-  provider and never changes generation settings.
+  provider and never changes hard admission or generation settings.
 - **Reasoning capacity is request-scoped on llama-server.**
   `PLURNK_PROVIDERS_REASONING_RESERVE_<alias>` is the adaptive cumulative
   response allowance. An explicit `PLURNK_PROVIDERS_REASONING_BUDGET_<alias>`

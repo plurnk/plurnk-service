@@ -17,7 +17,7 @@ export interface ChatMessage {
 }
 
 // Preflight evidence for the complete provider request. An empirical estimate
-// is useful telemetry but cannot authorize a hard physical-capacity decision.
+// is useful telemetry but cannot authorize hard context-envelope admission.
 export type PromptTokenMeasurement =
     | {
         readonly kind: "exact" | "upper_bound";
@@ -207,8 +207,9 @@ export interface Provider {
     // everywhere else. Coordinates are 1-based: absent/0 emits no header (no
     // strikes-style zero exception). Headers only, never the packet.
     generate(args: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown> }): Promise<ProviderResponse>;
-    // {§model-fact-resolution} — effective physical context in tokens. `null`
-    // means unknown; under llama-server parallelism the probed value is per slot.
+    // {§model-fact-resolution} — effective total context envelope in tokens,
+    // including any stricter operator cap. `null` means unknown; under
+    // llama-server parallelism the probed natural value is per slot.
     readonly contextWindow: number | null;
     readonly model: string;
     // Optional: the backend's self-reported served model id, from a
@@ -231,7 +232,7 @@ export interface Provider {
     // with no declared envelope, instead of dying mid-turn in partition math.
     readonly requiresMaxTokens?: boolean;
     // Optional generation-envelope reserves ({§provider-generation-envelope}) — the amounts of
-    // the DETECTED window reserved for reasoning and completion: floor
+    // the effective window reserved for reasoning and completion: floor
     // percentages of `contextWindow`, or absolute per-alias pins that win
     // outright. The consumer's prompt budget is `contextWindow - reasoningReserve
     // - completionReserve - <its own packing-safety margin>`; the generation cap
@@ -242,7 +243,7 @@ export interface Provider {
     readonly completionReserve?: number | null;
     // Provider-owned preflight measurement of the complete chat request,
     // including provider/template framing when the adapter can know it.
-    // Estimates are explicit and MUST NOT authorize hard physical admission.
+    // Estimates are explicit and MUST NOT authorize hard context-envelope admission.
     countPromptTokens(messages: readonly ChatMessage[], signal?: AbortSignal): Promise<PromptTokenMeasurement>;
     // OPTIONAL capability: exact tokenization served by the backend's own vocab
     // (llama-server /tokenize) — token ids in the model's real vocabulary.

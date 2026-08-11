@@ -10,8 +10,8 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
-import ProblemLog from "../../src/core/ProblemLog.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, packetSection, seedEntryWithChannel } from "./_helpers.ts";
+import { readStmt, urlPath } from "./_dsl.ts";
 
 const sendStmt = (status: number, body: string): SendStatement => ({
     op: "SEND", suffix: "", signal: status, target: null,
@@ -27,8 +27,7 @@ const TINY = 2;          // absolute wall far below any real packet → forces o
 const WIDE = 1_000_000;  // absolute wall capped to the window → never overflows
 
 // {§tokenomics-window-partition} — the envelope is provider-owned, so the policy ceiling pins via reserves against the
-// provider's own window: promptBudget = window − reserves keeps an over-policy packet PHYSICALLY
-// sendable (the recovery-turn semantics the old env policy-window provided). parseReserve rejects
+// provider's own window: promptBudget = window − reserves. parseReserve rejects
 // 0, so the pin is rr=1 + cr = window − ceiling − 1; a full-window ceiling is window − 2 (immaterial
 // to overflow tests). SAFETY (core's one knob) is zeroed file-wide below.
 process.env.PLURNK_SERVICE_SAFETY = "0";
@@ -43,16 +42,16 @@ const mockAt = (ceiling: number, responses: MockResponse[], window = 4096): Mock
     RESERVE_KEYS.forEach((k, i) => { if (prev[i] === undefined) delete process.env[k]; else process.env[k] = prev[i]; });
     return m;
 };
-// {§tokenomics-window-partition} — the over-budget-but-sendable state (the recovery turn's premise) is the SAFETY gap:
-// budget = window − reserves − safety, sendability = window − reserves. Pin safety big → tiny
-// policy ceiling with honest physics. Restore via the returned fn.
+// {§tokenomics-window-partition} — the negative-ruler-but-admissible state is the SAFETY gap:
+// budget = window − reserves − safety, while hard prompt capacity is window − reserves.
+// Pin safety high to isolate soft curation pressure. Restore via the returned fn.
 const pinSafety = (n: number): (() => void) => {
     const p = process.env.PLURNK_SERVICE_SAFETY;
     process.env.PLURNK_SERVICE_SAFETY = String(n);
     return () => { process.env.PLURNK_SERVICE_SAFETY = p ?? "0"; };
 };
 // Null reserves (no envelope claimed) exercise {§tokenomics-window-unpollable-deliberate};
-// provider physics alone bounds the request.
+// provider capacity alone bounds the request.
 const mockNoEnvelope = (window: number, responses: MockResponse[]): Mock => {
     const prev = RESERVE_KEYS.map((k) => process.env[k]);
     RESERVE_KEYS.forEach((k) => delete process.env[k]);
@@ -154,20 +153,44 @@ test("the grinder never folds older history - the model owns its visibility", as
     } finally { await db.close(); }
 });
 
-test("a second consecutive hard overflow after recovery terminates at 413", async () => {
+test("repeated negative ruler pressure remains soft while the effective context envelope admits the request", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
-        // Sendable within the 4096 window, over the TINY policy ceiling: recovery turn granted;
-        // a continuing recovery remains over, so the second hard overflow is the abort.
-        const result = await engine.runLoop({ provider: mockAt(TINY, [response([sendStmt(102, "carrying on")]), response([sendStmt(102, "carrying on")])]), workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
-        assert.equal(result.result.status, 413, "hard-stop abandons the loop at 413 Content Too Large");
-        assert.equal(result.reason, "budget_overflow", "abandonment reason is the budget, not a strike or max-turns");
+        await seedEntryWithChannel(db, {
+            workspaceId,
+            scheme: "worker",
+            pathname: "/pressure-evidence",
+            content: "ordinary retrieval evidence",
+        });
+        const restore = pinSafety(199_990);
+        const provider = mockAt(199_998, [
+            response([readStmt(urlPath("worker", "pressure-evidence")), sendStmt(102, "carrying on")]),
+            response([readStmt(urlPath("worker", "pressure-evidence")), sendStmt(102, "still carrying on")]),
+            response([sendStmt(200, "done")]),
+        ], 200_000);
+        let result: Awaited<ReturnType<Engine["runLoop"]>>;
+        try {
+            result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5, maxStrikes: 1, minCycles: 4 });
+        } finally {
+            restore();
+        }
+        assert.equal(result.result.status, 200, "ruler debt never becomes a one-turn quota or strike");
+        assert.equal(result.reason, "external", "the ordinary terminal disposition remains authoritative");
+        assert.equal(provider.remaining, 0, "all three admitted turns reached the provider");
+        for (const turnId of result.turnIds) {
+            const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
+            const budget = packetSection(JSON.parse(row!.packet), "budget");
+            assert.match(budget, /Tokens Free -\d+/, "the model sees honest negative curation pressure");
+            assert.equal(budget.match(/Context Token Budget Panic:/gu)?.length, 1, "the pressure instruction is transient and singular");
+        }
+        const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
+        assert.deepEqual(errors, [], "soft pressure creates no durable failure row");
     } finally { await db.close(); }
 });
 
-test("a recovery turn may conclude cleanly at 200", async () => {
+test("negative ruler pressure may conclude cleanly at 200", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -175,53 +198,29 @@ test("a recovery turn may conclude cleanly at 200", async () => {
         const restore = pinSafety(4092); // budget = 4096−2−4092 = TINY; sendable to 4094
         try {
             const result = await engine.runLoop({ provider: mockAt(4094, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
-            assert.equal(result.result.status, 200, "the recovery turn concluded cleanly");
+            assert.equal(result.result.status, 200, "curation pressure does not prevent an admitted conclusion");
         } finally { restore(); }
     } finally { await db.close(); }
 });
 
-test("a grinder fire past the first turn counts toward the strike streak", async () => {
+test("automatic pressure folding is visible through overflow tags without minting an error", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
-        const t2 = await engine.runTurn({ provider: mockAt(TINY, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        assert.equal(t2.budgetStruck, true, "overflow on turn 2 strikes (model over-subscribed)");
-    } finally { await db.close(); }
-});
-
-test("turn-1 overflow folds the turn's own foists and STRIKES — no soft exemption", async () => {
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const engine = plainEngine(db);
-        const restore = pinSafety(4092);
-        let t1: Awaited<ReturnType<Engine["runTurn"]>>;
-        try { t1 = await engine.runTurn({ provider: mockAt(4094, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 }); } finally { restore(); }
-        assert.equal(t1.budgetStruck, true, "every grinder fold strikes - turn 1 is not exempt");
-        // {§grinder-hard-413-recovery}: the first hard overflow is now the RECOVERY turn (sendable
-        // within the 4096 window), not a hard stop — the strike above is what this test pins.
-        assert.equal(t1.budgetHardStop, false, "first overflow → recovery turn, not death");
-    } finally { await db.close(); }
-});
-
-test("overflow is a terse op='error' log row (413) surfaced THIS turn as a LogCoordinate — not a by-scheme JSON event", async () => {
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const engine = plainEngine(db);
-        const wideP = mockAt(4096, okSends(2));
-        const tinyP = mockAt(TINY, okSends(2));
-        // Turn 1 under WIDE leaves an open SEND (the prompt row is grinder-exempt);
-        // turn 2 overflows under TINY → the grinder folds that SEND AND mints a terse 'Budget Overflow'
-        // op='error' row, re-derived into turn 2's OWN packet (same-turn, not a turn late).
-        await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const t2 = await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        await engine.runTurn({ provider: mockAt(4096, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const restore = pinSafety(199_990);
+        let t2: Awaited<ReturnType<Engine["runTurn"]>>;
+        try {
+            t2 = await engine.runTurn({ provider: mockAt(199_998, okSends(1), 200_000), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        } finally {
+            restore();
+        }
+        assert.equal(t2.status, 200);
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row!.packet);
-        const errors = packetSection(packet, "errors");
-        assert.match(errors, /^\* 413 log:\/\/\/.+\/error$/m, "the overflow surfaced THIS turn as a 413 LogCoordinate pointer");
-        assert.doesNotMatch(errors, /folded|layer/, "no by-scheme mechanism vocabulary — terseness");
+        assert.match(packetSection(packet, "log"), /"tags":\["overflow"\]/, "the ambient folded row explains why it was folded");
+        assert.equal(packetSection(packet, "errors"), "", "soft pressure is not a durable failure");
     } finally { await db.close(); }
 });
 
@@ -247,7 +246,7 @@ test("{§grinder-layer1-rollback}: a huge current-turn engine row folds with the
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
         // {§tokenomics-window-partition} — one builder; the ceiling pins on the provider (window − reserves): a wide probe
         // measures the open packet, then a provider pinned just under it forces the stage-2 fold.
-        const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
+        const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
         const wideProbe = mockAt(999_998, [], 1_000_000);
         const args = { initialMessages: MESSAGES, workspaceId, workerId, loopId, currentTurnSeq: 2, provider: wideProbe, gitStatus: null };
         const open = await builder.buildRequestPacket(args);
@@ -256,33 +255,18 @@ test("{§grinder-layer1-rollback}: a huge current-turn engine row folds with the
         args.provider = provider;
         const packet = await builder.buildRequestPacket(args);
         const result = await builder.enforceBudget({
-            packet, provider, workerId, loopId, turnId, mintSequence: 99,
+            packet, provider, loopId, turnId,
             rebuild: () => builder.buildRequestPacket(args),
         });
-        assert.equal(result.struck, true, "the grinder fold struck once");
         assert.equal(result.fit, true, "stage 2 folded the current turn's engine row — the packet fits, no 413");
-        const rows = await db.engine_render_log.all<{ turn_seq: number; op: string; expanded: number }>({ worker_id: workerId });
+        const rows = await db.engine_render_log.all<{ turn_seq: number; op: string; expanded: number; tags: string }>({ worker_id: workerId });
         const bigRow = rows.find((r) => r.turn_seq === 2 && r.op === "READ");
         assert.ok(bigRow !== undefined, "the wake row is still LISTED (folded, not deleted)");
         assert.equal(bigRow.expanded, 0, "the wake row is FOLDED (re-OPENable) — and not fatal");
+        assert.deepEqual(JSON.parse(bigRow.tags), ["overflow"], "the automatic fold stamps its canonical reason tag");
+        assert.match(packetSection(result.packet, "log"), /"tags":\["overflow"\]/, "the rebuilt ambient projection exposes the persisted tag");
         const errorRows = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        const overflow = errorRows
-            .map(({ rx }) => JSON.parse(rx) as {
-                problem?: {
-                    detail?: string;
-                    resolution?: string;
-                    recovery?: string;
-                };
-            })
-            .find(({ problem }) => problem?.resolution === "newest-log-items-folded")
-            ?.problem;
-        assert.ok(overflow !== undefined, "the recovered overflow states how the packet was made safe");
-        assert.match(overflow.detail ?? "", /rebuilt packet now fits/);
-        assert.doesNotMatch(overflow.detail ?? "", /No working room remains/);
-        assert.equal(
-            overflow.recovery,
-            "Keep irrelevant log items FOLDed or KILL them, and use smaller retrieval ranges.",
-        );
+        assert.deepEqual(errorRows, [], "a successful curation fold does not manufacture a Problem row");
     } finally { await db.close(); }
 });
 
@@ -290,7 +274,7 @@ test("the ceiling is the real window partition (window − reserves), no calibra
     const db = await openMigrated();
     try {
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
-        const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
+        const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
         // {§tokenomics-window-partition} — the provider window drives; reserves 1+1
         // (parseReserve floor) → ceiling 9998.
         // No ratio: the model-facing measure is the chars/2 ruler, and comparing ruler-weight to
@@ -300,7 +284,7 @@ test("the ceiling is the real window partition (window − reserves), no calibra
     } finally { await db.close(); }
 });
 
-test("the 413 row reports the exact measured budget violation", async () => {
+test("a failed effective context-envelope admission records the exact 413 evidence", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -313,7 +297,7 @@ test("the 413 row reports the exact measured budget violation", async () => {
         const packet = JSON.parse(row!.packet);
         assert.match(packetSection(packet, "errors"), /^\* 413 log:\/\/\/.+\/error$/m, "the overflow pointer surfaced (terse LogCoordinate)");
         const errRow = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        const overflow = errRow
+        const failure = errRow
             .map((row) => JSON.parse(row.rx) as {
                 problem?: {
                     type?: string;
@@ -325,31 +309,31 @@ test("the 413 row reports the exact measured budget violation", async () => {
                     deficit?: number;
                     stage?: string;
                     retryable?: boolean;
-                    physicalAdmission?: string;
-                    physicalCapacity?: number;
-                    physicalTokens?: number;
-                    physicalTokenKind?: string;
-                    physicalTokenSource?: string;
+                    contextAdmission?: string;
+                    contextCapacity?: number;
+                    promptTokens?: number;
+                    tokenKind?: string;
+                    tokenSource?: string;
                 };
             })
-            .find((row) => row.problem?.type === "https://problems.plurnk.dev/engine/grinder/budget-overflow")
+            .find((row) => row.problem?.type === "https://problems.plurnk.dev/engine/context/context-envelope-admission-failed")
             ?.problem;
-        assert.ok(overflow !== undefined);
-        assert.equal(overflow.title, "Prompt budget exceeded");
-        assert.equal(overflow.status, 413);
-        assert.equal(overflow.ceiling, TINY);
-        assert.ok((overflow.usage ?? 0) > TINY);
-        assert.equal(overflow.deficit, (overflow.usage ?? 0) - TINY);
-        assert.equal(overflow.stage, "overflow-detection");
-        assert.equal(overflow.retryable, false);
-        assert.equal(overflow.physicalAdmission, "over_capacity");
-        assert.equal(overflow.physicalCapacity, TINY);
-        assert.equal(overflow.physicalTokens, overflow.usage);
-        assert.equal(overflow.physicalTokenKind, "exact");
-        assert.equal(overflow.physicalTokenSource, "mock:chars2");
+        assert.ok(failure !== undefined);
+        assert.equal(failure.title, "Context envelope admission failed");
+        assert.equal(failure.status, 413);
+        assert.equal(failure.ceiling, TINY);
+        assert.ok((failure.usage ?? 0) > TINY);
+        assert.equal(failure.deficit, (failure.usage ?? 0) - TINY);
+        assert.equal(failure.stage, "context-envelope-admission");
+        assert.equal(failure.retryable, false);
+        assert.equal(failure.contextAdmission, "over_capacity");
+        assert.equal(failure.contextCapacity, TINY);
+        assert.ok((failure.promptTokens ?? 0) > TINY);
+        assert.equal(failure.tokenKind, "exact");
+        assert.equal(failure.tokenSource, "mock:chars2");
         assert.equal(
-            overflow.detail,
-            `At overflow detection, Token Usage ${(overflow.usage ?? 0).toLocaleString("en-US")} exceeds Token Ceiling ${TINY.toLocaleString("en-US")} by ${(overflow.deficit ?? 0).toLocaleString("en-US")}. No working room remains. Physical recovery was not admitted: exact prompt measurement ${overflow.physicalTokens} exceeds physical prompt capacity ${overflow.physicalCapacity}.`,
+            failure.detail,
+            `The configured context envelope cannot admit this request: exact prompt measurement ${failure.promptTokens} exceeds effective prompt capacity ${failure.contextCapacity}.`,
         );
     } finally { await db.close(); }
 });
@@ -366,12 +350,12 @@ test("SAFETY resolves per alias — the suffix wins over the bare fallback", asy
         try {
             process.env.PLURNK_SERVICE_SAFETY = "1024";
             delete process.env.PLURNK_MODEL; delete process.env.PLURNK_MODEL_rig; delete process.env.PLURNK_SERVICE_SAFETY_rig;
-            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
+            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
             const p1 = mockAt(8192 - 2, [], 8192); // rr=1, cr=1
             assert.equal(bare.promptBudgetFor(p1), 8192 - 1 - 1 - 1024, "no alias → the bare SAFETY margin applies");
             process.env.PLURNK_MODEL = "rig"; process.env.PLURNK_MODEL_rig = "openai/local.gguf";
             process.env.PLURNK_SERVICE_SAFETY_rig = "64";
-            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
+            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
             const p2 = mockAt(8192 - 2, [], 8192);
             assert.equal(rig.promptBudgetFor(p2), 8192 - 1 - 1 - 64, "the active alias's suffixed SAFETY wins over bare");
         } finally {
@@ -393,14 +377,14 @@ test("virtual PROMPT_BUDGET resolves per alias without changing the provider env
             delete process.env.PLURNK_MODEL_rig;
             delete process.env.PLURNK_SERVICE_PROMPT_BUDGET_rig;
             const provider = mockAt(8192 - 2, [], 8192);
-            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
+            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
             assert.equal(bare.promptBudgetFor(provider), 7000);
             assert.equal(bare.maxTokensFor(provider), 2);
 
             process.env.PLURNK_MODEL = "rig";
             process.env.PLURNK_MODEL_rig = "openai/local.gguf";
             process.env.PLURNK_SERVICE_PROMPT_BUDGET_rig = "4000";
-            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), problems: new ProblemLog(db), executors: () => undefined });
+            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
             assert.equal(rig.promptBudgetFor(provider), 4000);
             assert.equal(rig.maxTokensFor(provider), 2, "virtual pressure never changes provider generation");
         } finally {
@@ -414,66 +398,7 @@ test("virtual PROMPT_BUDGET resolves per alias without changing the provider env
     }
 });
 
-test("the FIRST hard overflow is an informed normal turn; the SECOND terminates 413", async () => {
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const engine = plainEngine(db);
-        // Physically sendable (window 200k >> the packet) but hopelessly over the policy ceiling:
-        // the SAFETY pin holds the budget at ~TINY while sendability stays 199,998. The model gets
-        // one informed recovery turn under the ordinary operation contract. A continuing response remains over, so
-        // the second hard overflow terminates.
-        const restore = pinSafety(199_990);
-        const mock = mockAt(199_998, [response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")]), response([sendStmt(102, "still working")])], 200_000);
-        let result: Awaited<ReturnType<Engine["runLoop"]>>;
-        try { result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 }); } finally { restore(); }
-        assert.equal(result.result.status, 413, "a second consecutive hard overflow terminates 413");
-        assert.equal(result.reason, "budget_overflow");
-        assert.equal(mock.remaining, 2, "generate ran EXACTLY once — the recovery turn happened; the second overflow skipped the LLM");
-        const recoveryPacketRow = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[0] });
-        const recoveryPacket = JSON.parse(recoveryPacketRow!.packet);
-        const recoveryErrors = packetSection(recoveryPacket, "errors");
-        assert.match(recoveryErrors, /^\* 413 log:\/\/\/.+\/error$/m);
-        assert.doesNotMatch(recoveryErrors, /Prompt budget exceeded|overflow-detection|FOLDing/, "Errors remains a terse index, not a duplicate Problem");
-        const recoveryLog = packetSection(recoveryPacket, "log");
-        assert.equal(
-            recoveryLog.match(/Restore working room before the next turn: FOLD or KILL irrelevant log items, or use smaller retrieval ranges\./g)?.length,
-            1,
-            "the complete recovery instruction appears once on the inline error row",
-        );
-        assert.match(recoveryLog, /"stage":"overflow-detection"/);
-        const errs = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        const recovery = errs
-            .map((e) => JSON.parse(e.rx) as {
-                problem?: {
-                    type?: string;
-                    title?: string;
-                    usage?: number;
-                    ceiling?: number;
-                    deficit?: number;
-                    stage?: string;
-                    recovery?: string;
-                    retryable?: boolean;
-                };
-            })
-            .find((e) => e.problem?.type === "https://problems.plurnk.dev/engine/grinder/budget-overflow"
-                && e.problem.stage === "overflow-detection")
-            ?.problem;
-        assert.ok(recovery !== undefined, "the recovery occurrence reports the measured overflow");
-        assert.equal(recovery.title, "Prompt budget exceeded");
-        assert.equal(
-            recovery.recovery,
-            "Restore working room before the next turn: FOLD or KILL irrelevant log items, or use smaller retrieval ranges.",
-        );
-        assert.equal(recovery.stage, "overflow-detection");
-        assert.equal(recovery.retryable, false);
-        assert.equal(recovery.ceiling, 8);
-        assert.ok((recovery.usage ?? 0) > (recovery.ceiling ?? 0));
-        assert.equal(recovery.deficit, (recovery.usage ?? 0) - (recovery.ceiling ?? 0));
-    } finally { await db.close(); }
-});
-
-test("budget recovery preserves the ordinary operation contract", async () => {
+test("negative ruler pressure preserves the ordinary operation contract", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -481,7 +406,7 @@ test("budget recovery preserves the ordinary operation contract", async () => {
         await seedEntryWithChannel(db, {
             workspaceId,
             scheme: "worker",
-            pathname: "/available-during-recovery",
+            pathname: "/available-under-pressure",
             content: "ordinary read result",
         });
         const read: PlurnkStatement = {
@@ -490,13 +415,13 @@ test("budget recovery preserves the ordinary operation contract", async () => {
             signal: null,
             target: {
                 kind: "url",
-                raw: "worker:///available-during-recovery",
+                raw: "worker:///available-under-pressure",
                 scheme: "worker",
                 username: null,
                 password: null,
                 hostname: null,
                 port: null,
-                pathname: "/available-during-recovery",
+                pathname: "/available-under-pressure",
                 query: null,
                 fragment: null,
             },
@@ -539,22 +464,22 @@ test("budget recovery preserves the ordinary operation contract", async () => {
                 },
             }))
             .find((row) => row.result.content === "ordinary read result");
-        assert.ok(delivered !== undefined, "an ordinary READ executes during the informed recovery turn");
+        assert.ok(delivered !== undefined, "an ordinary READ executes while the curation gauge is negative");
         assert.equal(delivered.status_rx, 200);
     } finally { await db.close(); }
 });
 
-test("physically unsendable → 413 IMMEDIATELY, no recovery generate — physics doesn't negotiate", async () => {
+test("a request outside the effective context envelope returns 413 before generation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
-        // A 4-token window with an honest 2-token decode envelope: no packet fits window − decode —
-        // the packet cannot reach the model at all, and physics does not negotiate.
+        // A 4-token effective envelope with a 2-token generation reserve cannot
+        // admit even the packet frame.
         const mock = mockAt(TINY, okSends(3), 4);
         const result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
         assert.equal(result.result.status, 413);
-        assert.equal(mock.remaining, 3, "generate never ran — an unsendable packet earns no recovery turn");
+        assert.equal(mock.remaining, 3, "generate never ran because admission is final");
         const row = await db.test_get_packet.get<{ packet: string | null }>({ id: result.turnIds[0] });
         assert.ok(row?.packet !== null && row?.packet !== undefined);
         const packet = JSON.parse(row.packet) as Record<string, unknown>;
@@ -563,7 +488,7 @@ test("physically unsendable → 413 IMMEDIATELY, no recovery generate — physic
     } finally { await db.close(); }
 });
 
-test("an estimate cannot authorize physical recovery, even when chars/2 reports room", async () => {
+test("an estimate cannot authorize hard context-envelope admission", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -589,33 +514,33 @@ test("an estimate cannot authorize physical recovery, even when chars/2 reports 
             restore();
         }
         assert.equal(result.result.status, 413);
-        assert.equal(mock.remaining, 3, "an empirical estimate cannot spend the one recovery call");
+        assert.equal(mock.remaining, 3, "an empirical estimate cannot authorize generation against a hard envelope");
         assert.deepEqual(
             measuredMessages?.map(({ role }) => role),
             ["system", "user"],
-            "physical admission measured the same two rendered slots dispatched by PacketWire",
+            "context-envelope admission measured the same two rendered slots dispatched by PacketWire",
         );
         const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        const physical = errors
+        const failure = errors
             .map(({ rx }) => JSON.parse(rx) as {
                 problem?: {
-                    physicalAdmission?: string;
-                    physicalTokenKind?: string;
-                    physicalTokenSource?: string;
+                    contextAdmission?: string;
+                    tokenKind?: string;
+                    tokenSource?: string;
                     detail?: string;
                 };
             })
-            .find(({ problem }) => problem?.physicalAdmission === "estimate")
+            .find(({ problem }) => problem?.contextAdmission === "estimate")
             ?.problem;
-        assert.equal(physical?.physicalTokenKind, "estimate");
-        assert.equal(physical?.physicalTokenSource, "heuristic:chars2");
-        assert.match(physical?.detail ?? "", /cannot authorize physical recovery/);
+        assert.equal(failure?.tokenKind, "estimate");
+        assert.equal(failure?.tokenSource, "heuristic:chars2");
+        assert.match(failure?.detail ?? "", /cannot verify the effective context envelope/);
     } finally {
         await db.close();
     }
 });
 
-test("a proven prompt-token upper bound can authorize the one physical recovery turn", async () => {
+test("a proven prompt-token upper bound can authorize context-envelope admission", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -635,64 +560,7 @@ test("a proven prompt-token upper bound can authorize the one physical recovery 
             restore();
         }
         assert.equal(result.result.status, 200);
-        assert.equal(mock.remaining, 0, "the bounded request spent exactly one recovery call");
-    } finally {
-        await db.close();
-    }
-});
-
-test("physical admission includes the recovery occurrence added by the final rebuild (#65)", async () => {
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const engine = plainEngine(db);
-        const recoveryInstruction = "Restore working room before the next turn: FOLD or KILL irrelevant log items, or use smaller retrieval ranges.";
-        const measuredRequests: string[] = [];
-        const mock = Object.assign(
-            mockAt(1, [response([sendStmt(200, "must not run")])], 3),
-            {
-                countPromptTokens: async (messages: readonly { role: string; content: string }[]) => {
-                    const request = messages.map(({ role, content }) => `${role}:${content}`).join("\n");
-                    measuredRequests.push(request);
-                    return {
-                        kind: "exact" as const,
-                        tokens: request.includes(recoveryInstruction) ? 2 : 1,
-                        source: "test:recovery-occurrence-vocabulary",
-                    };
-                },
-            },
-        );
-
-        const result = await engine.runLoop({
-            provider: mock,
-            workspaceId,
-            workerId,
-            loopId,
-            messages: MESSAGES,
-            maxTurns: 5,
-        });
-
-        assert.equal(result.result.status, 413);
-        assert.equal(mock.remaining, 1, "the final unsendable request never reaches provider.generate");
-        assert.equal(measuredRequests.length, 2, "admission measures both the pre-occurrence and final requests");
-        assert.doesNotMatch(measuredRequests[0] ?? "", new RegExp(recoveryInstruction));
-        assert.match(measuredRequests[1] ?? "", new RegExp(recoveryInstruction));
-
-        const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        const hardStop = errors
-            .map(({ rx }) => JSON.parse(rx) as {
-                problem?: {
-                    physicalAdmission?: string;
-                    physicalCapacity?: number;
-                    physicalTokens?: number;
-                    physicalTokenSource?: string;
-                };
-            })
-            .find(({ problem }) => problem?.physicalTokenSource === "test:recovery-occurrence-vocabulary")
-            ?.problem;
-        assert.equal(hardStop?.physicalAdmission, "over_capacity");
-        assert.equal(hardStop?.physicalCapacity, 1);
-        assert.equal(hardStop?.physicalTokens, 2);
+        assert.equal(mock.remaining, 0, "the proven bound admits the request to generation");
     } finally {
         await db.close();
     }

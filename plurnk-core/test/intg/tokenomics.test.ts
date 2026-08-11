@@ -9,7 +9,7 @@ import { sendStmt } from "./_dsl.ts";
 
 // {§tokenomics}: entry and log content-depth is stamped at write time in the
 // model-independent ruler used by production: ceil(chars/2). Provider-reported
-// usage and provider-owned physical recovery admission are separate quantities.
+// usage and provider-owned hard context-envelope admission are separate quantities.
 
 const urlPath = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -128,7 +128,7 @@ test("budget headline shows usage as a percent of the ceiling", async () => {
     } finally { await db.close(); }
 });
 
-test("the UN-FOLDABLE hard-413 record renders the overshoot honestly (free floors at 0, percent passes 100) — never delivered to the model", async () => {
+test("a hard context-envelope rejection preserves negative curation debt and over-100% pressure in its stored evidence", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-over-${crypto.randomUUID()}`);
@@ -145,18 +145,24 @@ test("the UN-FOLDABLE hard-413 record renders the overshoot honestly (free floor
         // scaffolding alone blows past it and CANNOT fold under
         // (turn 1, nothing to roll back) → the un-foldable corner case. The loop hard-413s rather than
         // DELIVER an over-budget packet; the stored record below is engine forensics, NOT a packet the
-        // model saw — the grinder never sends a >100% packet (a delivered budget is always ≤100%).
+        // model saw. The ruler may otherwise remain above 100% when authoritative
+        // context-envelope admission proves that the request still fits.
         const provider = new Mock({ contextWindow: 11, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.equal(result.status, 413, "un-foldable → hard-413; the loop fails rather than deliver an over-budget packet");
         // The STORED failure record renders the overshoot honestly — never clamped to hide the degenerate state.
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
-        const m = budget.match(/Token Ceiling (\d+) · Token Usage\s+(\d+) \(\s*(\d+)%\) · Tokens Free\s+(\d+)/);
+        const m = budget.match(/Token Ceiling (\d+) · Token Usage\s+(\d+) \(\s*(\d+)%\) · Tokens Free\s+(-?\d+)/);
         assert.ok(m, `headline present; got: ${budget}`);
-        const usage = Number(m![2]); const percent = Number(m![3]); const free = Number(m![4]);
-        assert.ok(usage > 9, `usage ${usage} exceeds the ceiling of 9`);
-        assert.equal(free, 0, "free floors at 0 — never negative");
+        const ceiling = Number(m![1]); const usage = Number(m![2]); const percent = Number(m![3]); const free = Number(m![4]);
+        assert.ok(usage > ceiling, `usage ${usage} exceeds the ceiling of ${ceiling}`);
+        assert.equal(free, ceiling - usage, "free tokens preserve the exact negative curation debt");
         assert.ok(percent > 100, `percent ${percent} honestly recorded past 100 in the failure record`);
+        assert.equal(
+            budget.match(/Context Token Budget Panic: YOU MUST FOLD or KILL enough less-relevant log items to restore free tokens\./gu)?.length,
+            1,
+            "negative debt carries exactly one transient curation instruction",
+        );
     } finally { await db.close(); }
 });
 

@@ -79,8 +79,8 @@ export const contextWindowFromEnv = (env: NodeJS.ProcessEnv, label: string): num
     return parseOptionalInt(env.PLURNK_PROVIDERS_CONTEXT_WINDOW, "PLURNK_PROVIDERS_CONTEXT_WINDOW", label);
 };
 
-// {§model-fact-resolution} — an operator value caps known model physics and
-// declares the window only when no natural value is known.
+// {§model-fact-resolution} — an operator value caps known natural model
+// capacity and declares the envelope only when no natural value is known.
 export function effectiveContextWindow(operatorCap: number | null, naturalWindow: number): number;
 export function effectiveContextWindow(operatorCap: number | null, naturalWindow: number | null): number | null;
 export function effectiveContextWindow(operatorCap: number | null, naturalWindow: number | null): number | null {
@@ -92,10 +92,10 @@ export function effectiveContextWindow(operatorCap: number | null, naturalWindow
 }
 
 // {§provider-generation-envelope} How much of a
-// DETECTED context window is reserved for reasoning and for completion — the
+// effective context window is reserved for reasoning and for completion — the
 // remainder (minus the consumer's own packing-safety margin) is the prompt
-// budget. Provider-owned: the window is a provider fact and these are amounts OF
-// it. Each knob accepts a percentage of the window
+// gauge. Provider-owned: the window is the effective hard envelope and these are
+// amounts OF it. Each knob accepts a percentage of the window
 // ("10%") or an absolute token count ("4096"); the floor ships percentages so
 // every window-advertising endpoint (llama-server n_ctx, the plurnk.ai router,
 // a cataloged cloud model) arrives at sane defaults with ZERO operator tuning.

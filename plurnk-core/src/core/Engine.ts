@@ -43,7 +43,6 @@ import PacketWire from "./packet-wire.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
 import BranchReceipt from "./BranchReceipt.ts";
 import TerminalResult from "./TerminalResult.ts";
-import BudgetOverflow, { type BudgetOverflowMeasurement } from "./BudgetOverflow.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
 import JournalTurn from "./JournalTurn.ts";
 
@@ -52,7 +51,7 @@ import JournalTurn from "./JournalTurn.ts";
 import NoticeChannel from "./NoticeChannel.ts";
 import ProblemLog from "./ProblemLog.ts";
 import StrikeRail, { type StrikeOutcome } from "./StrikeRail.ts";
-import PacketBuilder, { type ChatMessage } from "./PacketBuilder.ts";
+import PacketBuilder, { type ChatMessage, type ContextEnvelopeAdmission } from "./PacketBuilder.ts";
 import StoredPacket, { type PacketAssistant } from "./StoredPacket.ts";
 import ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
@@ -203,14 +202,47 @@ type EngineTurnResult = {
     status: number;
     outcomes: StrikeOutcome[];
     fingerprint: string;
-    budgetStruck: boolean;
     budgetHardStop: boolean;
     steerStruck: boolean;
     emissionAttempts: number;
     emissionExhausted: boolean;
     rejectedModelEntryId?: number;
-    budget?: BudgetOverflowMeasurement;
+    budgetFailure?: SchemeResult;
 };
+
+type BudgetPressure = {
+    readonly usage: number;
+    readonly ceiling: number;
+    readonly deficit: number;
+};
+
+const budgetPressure = (usage: number, ceiling: number): BudgetPressure => {
+    if (usage <= ceiling) throw new Error("context-envelope admission requires positive ruler debt");
+    return { usage, ceiling, deficit: usage - ceiling };
+};
+
+const contextEnvelopeFailure = (
+    pressure: BudgetPressure,
+    admission: Extract<ContextEnvelopeAdmission, { admitted: false }>,
+): SchemeResult => Results.failure(
+    "engine:context",
+    "context-envelope-admission-failed",
+    413,
+    `The configured context envelope cannot admit this request: ${admission.detail}.`,
+    {},
+    {
+        ...pressure,
+        stage: "context-envelope-admission",
+        contextAdmission: admission.reason,
+        contextCapacity: admission.capacity,
+        ...(admission.measurement === undefined ? {} : {
+            promptTokens: admission.measurement.tokens,
+            tokenKind: admission.measurement.kind,
+            tokenSource: admission.measurement.source,
+        }),
+        retryable: false,
+    },
+);
 
 export type LoopUsage = {
     promptTokens: number;
@@ -292,9 +324,6 @@ export default class Engine {
     #notices: NoticeChannel;
     #problems: ProblemLog;
     #strikes: StrikeRail;
-    // {§grinder-hard-413-recovery} - loops granted their one over-ceiling recovery turn. Cleared on a
-    // fitting turn so a later independent overflow can earn a fresh recovery, and at loop cleanup.
-    #hardOverflowRecovery = new Set<number>();
     #packets: PacketBuilder;
     readonly searchGate = new SearchGate();
     #proposals: ProposalLifecycle;
@@ -506,7 +535,8 @@ export default class Engine {
             discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] },
         });
         // {§tokenomics-agnostic-ruler} — standalone construction and the daemon
-        // use the same default; provider counting is confined to physical admission.
+        // use the same default; provider counting is confined to hard
+        // context-envelope admission.
         this.#tokenize = tokenize ?? rulerCount;
 
         const executors = (): ExecutorRegistry | undefined => this.#executors;
@@ -517,7 +547,6 @@ export default class Engine {
         this.#packets = new PacketBuilder({
             db,
             schemes,
-            problems: this.#problems,
             executors,
         });
         this.#proposals = new ProposalLifecycle({
@@ -702,7 +731,7 @@ export default class Engine {
         origin?: WriterTier;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
-    }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "budget_overflow" | "invalid_emission" | "loop_timeout" | "external" | null }> {
+    }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "context_envelope" | "invalid_emission" | "loop_timeout" | "external" | null }> {
         // A 202 park suspends this durable loop and a later wake re-enters runLoop.
         // Its ceiling therefore counts every prior turn, not merely this process-local
         // execution segment.
@@ -748,7 +777,7 @@ export default class Engine {
         //   are ALLOWED to outlive the loop — they complete naturally, write final
         //   channel state, and wake-on-completion (E.4) opens a fresh loop. 202 is
         //   the only terminal that means "keep my async work."
-        // - "forceful" (SEND[200] done, max_turns, strike, cancel, budget, 4xx/5xx):
+        // - "forceful" (SEND[200] done, max_turns, strike, cancel, context-envelope rejection, 4xx/5xx):
         //   fire the loop-level abort so leftover spawns tear down. "Done" reaps.
         const cleanup = (kind: "graceful" | "forceful", reason?: string): void => {
             clearTimeout(wall);
@@ -758,7 +787,6 @@ export default class Engine {
             this.#loopAborts.delete(loopId);
             this.#strikes.delete(loopId);
             this.searchGate.cleanup(loopId);
-            this.#hardOverflowRecovery.delete(loopId);
             this.#notices.delete(loopId);
         };
 
@@ -891,29 +919,23 @@ export default class Engine {
             }
             invalidEmissionRecoveryEntryId = null;
 
-            // SPEC {§grinder}: budget hard-stop — packet won't fit even collapsed → abandon.
+            // SPEC {§grinder}: the effective context envelope rejected the request.
             if (turn.budgetHardStop) {
-                if (turn.budget === undefined) {
-                    throw new Error("a budget hard-stop requires its measured overflow");
+                if (turn.budgetFailure === undefined) {
+                    throw new Error("a context-envelope hard-stop requires its exact failure");
                 }
-                const failure = BudgetOverflow.result(
-                    turn.budget.usage,
-                    turn.budget.ceiling,
-                    false,
-                );
-                const result = await this.#lifecycle.finish(loopId, failure);
+                const result = await this.#lifecycle.finish(loopId, turn.budgetFailure);
                 if (result === null) throw new Error(`loop ${loopId} became terminal before budget settlement`);
-                cleanup("forceful", "budget_overflow");
-                return { turnIds, result, hitMaxTurns: false, reason: "budget_overflow" };
+                cleanup("forceful", "context_envelope");
+                return { turnIds, result, hitMaxTurns: false, reason: "context_envelope" };
             }
 
-            // {§engine-rails} — per-turn strike accounting (cycle detection, the
-            // grinder/steer coupling, hard operation outcomes). StrikeRail owns the
+            // {§engine-rails} — per-turn strike accounting (cycle detection,
+            // steer coupling, hard operation outcomes). StrikeRail owns the
             // bookkeeping; runLoop owns abandonment.
             const verdict = this.#strikes.assess(loopId, {
                 fingerprint: turn.fingerprint,
                 outcomes: turn.outcomes,
-                budgetStruck: turn.budgetStruck,
                 steerStruck: turn.steerStruck,
                 minCycles, maxCyclePeriod, maxStrikes,
             });
@@ -1288,95 +1310,46 @@ export default class Engine {
         });
         // SPEC {§grinder} — budget grinder, pre-LLM: reclaim window on actual overflow.
         const enforced = await this.#packets.enforceBudget({
-            packet: requestPacket, provider, workerId, loopId, turnId,
-            // The overflow error row is minted at the turn's running sequence (nextActionIndex), pre-generate;
-            // runTurn advances the counter past it below so the post-generate dispatch rows never collide.
-            mintSequence: nextActionIndex,
-            // Rebuilds re-derive durable errors and retain the one drained notice
-            // set; neither path can duplicate or swallow a product failure.
+            packet: requestPacket, provider, loopId, turnId,
             rebuild: () => this.#packets.buildRequestPacket({
                 initialMessages: messages, requirements, workspaceId, workerId, loopId,
                 currentTurnSeq: seq, provider, gitStatus, notices, transientOpenLogEntryId,
             }),
         });
-        if (enforced.recorded) nextActionIndex += 1; // a fold-to-fit Problem consumed the reserved sequence
         requestPacket = enforced.packet;
         if (!enforced.fit) {
-            // {§grinder-hard-413-recovery}/{§grinder-hard-413-abort} — admit
-            // one physically sendable informed recovery turn; a physical
-            // overflow or consecutive policy overflow terminates immediately.
-            let physicalAdmission = await this.#packets.physicalAdmission(
+            // {§tokenomics-context-envelope-admission}: ruler debt is model-facing
+            // curation pressure, not a failure. Only the effective total context
+            // envelope can reject the request.
+            const contextAdmission = await this.#packets.contextEnvelopeAdmission(
                 requestPacket,
                 provider,
                 this.#loopAborts.get(loopId)?.signal,
             );
-            let recoveryAdmitted = false;
-            if (physicalAdmission.admitted && !this.#hardOverflowRecovery.has(loopId)) {
+            if (!contextAdmission.admitted) {
                 const ceiling = this.#packets.ceilingFor(provider);
                 if (ceiling === null) {
-                    throw new Error("an unbounded prompt budget cannot enter budget recovery");
+                    throw new Error("an unbounded prompt budget cannot enter context-envelope admission");
                 }
+                const failure = contextEnvelopeFailure(
+                    budgetPressure(requestPacket.tokens, ceiling),
+                    contextAdmission,
+                );
                 await this.#problems.record({
                     workerId,
                     loopId,
                     turnId,
                     sequence: nextActionIndex++,
-                    origin: "model",
+                    origin: "plurnk",
                     source: "engine",
-                    result: BudgetOverflow.result(requestPacket.tokens, ceiling, true),
+                    result: failure,
                 });
-                // Rebuild so the recovery-steer row just minted renders in THIS packet's log +
-                // errors sections (the same re-derive contract the soft grind uses).
+                // Preserve the exact terminal evidence in the stored request. It is
+                // never sent because admission has already failed.
                 requestPacket = await this.#packets.buildRequestPacket({
                     initialMessages: messages, requirements, workspaceId, workerId, loopId,
                     currentTurnSeq: seq, provider, gitStatus, notices, transientOpenLogEntryId,
                 });
-                physicalAdmission = await this.#packets.physicalAdmission(
-                    requestPacket,
-                    provider,
-                    this.#loopAborts.get(loopId)?.signal,
-                );
-                if (physicalAdmission.admitted) {
-                    this.#hardOverflowRecovery.add(loopId);
-                    recoveryAdmitted = true;
-                }
-            }
-            if (!recoveryAdmitted) {
-                // Hard 413: physically unsendable, or still over after the informed recovery turn.
-                const ceiling = this.#packets.ceilingFor(provider);
-                if (ceiling === null) {
-                    throw new Error("an unbounded prompt budget cannot hard-stop");
-                }
-                if (!enforced.recorded || !physicalAdmission.admitted) {
-                    await this.#problems.record({
-                        workerId,
-                        loopId,
-                        turnId,
-                        sequence: nextActionIndex++,
-                        origin: "plurnk",
-                        source: "engine",
-                        result: BudgetOverflow.result(
-                            requestPacket.tokens,
-                            ceiling,
-                            false,
-                            physicalAdmission.admitted
-                                ? undefined
-                                : {
-                                    reason: physicalAdmission.reason,
-                                    detail: physicalAdmission.detail,
-                                    capacity: physicalAdmission.capacity,
-                                    tokens: physicalAdmission.measurement?.tokens,
-                                    tokenKind: physicalAdmission.measurement?.kind,
-                                    tokenSource: physicalAdmission.measurement?.source,
-                                },
-                        ),
-                    });
-                    requestPacket = await this.#packets.buildRequestPacket({
-                        initialMessages: messages, requirements, workspaceId, workerId, loopId,
-                        currentTurnSeq: seq, provider, gitStatus, notices, transientOpenLogEntryId,
-                    });
-                }
-                // Skip the LLM, close the turn, and let runLoop abandon.
                 await this.#db.engine_close_turn.run({
                     id: turnId, status: 413, packet: StoredPacket.stringify(requestPacket),
                     // The attempted turn retains its effective allowance even
@@ -1389,18 +1362,13 @@ export default class Engine {
                     status: 413,
                     outcomes: [],
                     fingerprint: "",
-                    budgetStruck: enforced.struck,
                     budgetHardStop: true,
                     steerStruck: false,
                     emissionAttempts: 0,
                     emissionExhausted: false,
-                    budget: BudgetOverflow.measure(requestPacket.tokens, ceiling),
+                    budgetFailure: failure,
                 };
             }
-        } else {
-            // A fitting turn clears the recovery grant; a later independent overflow can earn
-            // a fresh recovery turn (chronic overflow still strikes out via the rail).
-            this.#hardOverflowRecovery.delete(loopId);
         }
         const modelMessages = PacketWire.packetToWireMessages(requestPacket) as ChatMessage[];
         // Packet pressure and provider generation are independent. The grinder governs
@@ -1684,7 +1652,6 @@ export default class Engine {
                 status: allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500,
                 outcomes: [],
                 fingerprint: "",
-                budgetStruck: enforced.struck,
                 budgetHardStop: false,
                 steerStruck: false,
                 emissionAttempts,
@@ -2017,7 +1984,6 @@ export default class Engine {
             status: turnStatus,
             outcomes,
             fingerprint: StrikeRail.fingerprintTurn(packetAssistant.ops),
-            budgetStruck: enforced.struck,
             budgetHardStop: false,
             steerStruck,
             emissionAttempts,

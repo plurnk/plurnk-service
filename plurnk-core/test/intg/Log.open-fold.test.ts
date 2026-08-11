@@ -339,6 +339,9 @@ test("FOLD[tag] applies + folds; OPEN[tag]/FIND[tag] filter by ALL-tags — name
         assert.equal(found.status, 200);
         assert.equal(found.results.length, 1, "only the tagged row matches");
         assert.match(found.results[0]?.path ?? "", /1\/1\/2/, "and it is row 2");
+        const foundItem = found.results[0];
+        assert.ok(foundItem !== undefined && "tags" in foundItem);
+        assert.deepEqual(foundItem.tags, ["projectB"], "the catalog exposes the tag used to name the working set");
 
         // RECALL: a TARGETLESS OPEN[projectB] reopens the whole named working-set.
         const open = await log.open({ ...openStmt(null), signal: ["projectB"] }, mk());
@@ -354,7 +357,11 @@ test("FOLD[tag] applies + folds; OPEN[tag]/FIND[tag] filter by ALL-tags — name
 
         // Additive apply + ALL-tags AND: stamp a second tag on row 2, then FIND[both] matches, FIND[one-missing] doesn't.
         await log.fold({ ...foldStmt(urlPath("log", "/1/1/2")), signal: ["hot"] }, mk());
-        assert.equal((await log.find(findStmt(urlPath("log", "/"), null, ["projectB", "hot"]), mk())).results.length, 1, "row 2 carries BOTH tags (additive) — ALL-tags AND matches");
+        const both = await log.find(findStmt(urlPath("log", "/"), null, ["projectB", "hot"]), mk());
+        assert.equal(both.results.length, 1, "row 2 carries BOTH tags (additive) — ALL-tags AND matches");
+        const bothItem = both.results[0];
+        assert.ok(bothItem !== undefined && "tags" in bothItem);
+        assert.deepEqual(bothItem.tags, ["hot", "projectB"], "the complete additive folksonomy is visible, not merely the filter input");
         assert.deepEqual((await log.find(findStmt(urlPath("log", "/"), null, ["projectB", "cold"]), mk())).results, [], "missing one ANDed tag → empty catalog survey");
     } finally { await db.close(); }
 });
@@ -362,19 +369,17 @@ test("FOLD[tag] applies + folds; OPEN[tag]/FIND[tag] filter by ALL-tags — name
 test("FOLD/OPEN curate engine-minted error rows through the same operation coordinate grammar", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
-        // An engine-minted ERROR row (op='error', LOWERCASE) at seq=2 — the kind that bloats the log
-        // under budget pressure and MUST be curatable. A `[A-Z]+`-only coordinate suffix silently 400'd
-        // FOLD(log:///1/1/2/error), so the model could not reclaim budget by folding its own error rows
-        // and spiralled to a hard-413 (the jumbo failure). Curation must work IDENTICALLY on every log
-        // row, engine-minted or model-authored — the universal-op contract admits no exception.
+        // An engine-minted ERROR row (op='error', LOWERCASE) at seq=2. A
+        // `[A-Z]+`-only coordinate suffix once made these rows incuratable.
+        // Curation must work identically on every log row.
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 2,
-            origin: "model", source: null, op: "error", suffix: "", signal: null,
+            origin: "plurnk", source: "rail", op: "error", suffix: "", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
-            rx: JSON.stringify({ status: 413, kind: "budget_overflow", message: "over budget" }),
-            mimetype_rx: "application/json", status_rx: 413, tokens: 50, state: "failed", outcome: "budget_overflow", attrs: "{}",
+            rx: JSON.stringify({ status: 429, kind: "max_commands_exceeded", message: "too many commands" }),
+            mimetype_rx: "application/json", status_rx: 429, tokens: 50, state: "failed", outcome: "max_commands_exceeded", attrs: "{}",
         });
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" });
         // The model's EXACT gesture — fold the error row by its self-documenting coordinate.

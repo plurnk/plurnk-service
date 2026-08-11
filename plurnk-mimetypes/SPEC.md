@@ -1042,8 +1042,8 @@ The exported `TokenizerResolution` type owns the surface:
 The fallback is an empirical estimate, not an exact count or a proven upper
 bound for arbitrary content and vocabularies. Correctness-sensitive consumers
 must branch on `exact`; `{ strict: true }` rejects either degradation instead.
-Provider packet admission uses the provider's separate physical-counting
-contract ({§tokenomics-physical-admission}).
+Hard context-envelope admission uses the provider's separate request-counting
+contract ({§tokenomics-context-envelope-admission}).
 
 `tokenizerId` identifies vocabulary bytes rather than a model name. Exact
 resolutions sharing a vocabulary therefore share the identity. A persisted

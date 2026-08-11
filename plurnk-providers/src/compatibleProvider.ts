@@ -165,7 +165,7 @@ export const compatibleProviderFromEnv = async (
 
     if (!llamaServer) {
         emitWarningOnce(
-            `${provider} provider: physical prompt counting is a chars/2 estimate; over-policy recovery fails closed without exact or bounded request evidence`,
+            `${provider} provider: request-level prompt counting is a chars/2 estimate; hard context-envelope admission fails closed without exact or bounded evidence`,
             "PLURNK_PROMPT_COUNT_ESTIMATE",
         );
     }

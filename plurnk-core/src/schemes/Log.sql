@@ -53,7 +53,13 @@ DELETE FROM log_entries WHERE id = $id;
 -- fields Log's rx projection renders (FIND must match exactly what READ shows). Coordinate-ordered.
 SELECT
     (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate,
-    le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash, le.attrs
+    le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash, le.attrs,
+    COALESCE((
+        SELECT json_group_array(ordered.tag)
+        FROM (
+            SELECT tag FROM log_tags WHERE log_entry_id = le.id ORDER BY tag
+        ) ordered
+    ), '[]') AS tags
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
@@ -96,7 +102,13 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- {§log-region-tagging} — FIND[tag](log): log_find_candidates PLUS the same ALL-tags AND filter.
 SELECT
     (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate,
-    le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash, le.attrs
+    le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash, le.attrs,
+    COALESCE((
+        SELECT json_group_array(ordered.tag)
+        FROM (
+            SELECT tag FROM log_tags WHERE log_entry_id = le.id ORDER BY tag
+        ) ordered
+    ), '[]') AS tags
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id

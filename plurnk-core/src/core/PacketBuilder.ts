@@ -2,7 +2,6 @@ import type { Notice } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
-import type ProblemLog from "./ProblemLog.ts";
 import type { GitStatus } from "./git-state.ts";
 import { renderAddress, promptLoopPrefix } from "./plurnk-uri.ts";
 import { rulerCount } from "./token-ruler.ts";
@@ -25,7 +24,6 @@ import type { RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
 import type { ChatMessage, PromptTokenMeasurement, Provider } from "@plurnk/plurnk-providers";
 import { assertPromptTokenMeasurement, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
-import BudgetOverflow from "./BudgetOverflow.ts";
 import BudgetReadout from "./BudgetReadout.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
@@ -100,7 +98,7 @@ const compactDefinitionTables = (markdown: string): string => {
 
 // {§tokenomics-window-partition} — the four partition numbers. REQUIRED (fail-hard, the
 // providers-env convention): the ceiling is DERIVED from these, never set directly
-// (PLURNK_BUDGET_CEILING is retired — a settable ceiling let policy contradict physics).
+// (PLURNK_BUDGET_CEILING is retired — a second settable ceiling contradicted the owning envelopes).
 const readPartitionIntFrom = (env: NodeJS.ProcessEnv, name: string, min: number): number => {
     const raw = env[name];
     const n = Number.parseInt(raw ?? "", 10);
@@ -118,7 +116,7 @@ const readOptionalPositiveIntFrom = (env: NodeJS.ProcessEnv, name: string): numb
 
 export type { ChatMessage } from "@plurnk/plurnk-providers";
 
-export type PhysicalPromptAdmission =
+export type ContextEnvelopeAdmission =
     | {
         readonly admitted: true;
         readonly capacity: number;
@@ -138,22 +136,19 @@ export default class PacketBuilder {
 
     #db: Db;
     #schemes: SchemeRegistry;
-    #problems: ProblemLog;
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
     #executors: () => ExecutorRegistry | undefined;
     // {§tokenomics-window-partition} — the partition is PER-ALIAS, resolved per provider in
     // #partitionFor and cached by alias; no boot-time global read.
 
-    constructor({ db, schemes, problems, executors }: {
+    constructor({ db, schemes, executors }: {
         db: Db;
         schemes: SchemeRegistry;
-        problems: ProblemLog;
         executors: () => ExecutorRegistry | undefined;
     }) {
         this.#db = db;
         this.#schemes = schemes;
-        this.#problems = problems;
         this.#executors = executors;
         // {§tokenomics-window-partition} — the envelope rides the provider; construction only runs the retired-knob shed
         // so a stale operator .env fails at BOOT, not first use.
@@ -212,7 +207,7 @@ export default class PacketBuilder {
     // {§tokenomics-window-partition} — the natural prompt ceiling is the provider's
     // effective context window minus its response reserves and the service's ruler
     // safety. An optional service prompt budget may only tighten that result. It is
-    // model-facing grinder policy, never provider physics or a generation setting.
+    // model-facing grinder policy, never hard capacity or a generation setting.
     // The client-facing gauge, grinder ceiling, and persisted promptBudget use this one value.
     promptBudgetFor(provider: Provider): number | null {
         return this.ceilingFor(provider); // ONE derivation — the gauge denominator IS the grinder ceiling
@@ -222,11 +217,11 @@ export default class PacketBuilder {
     // NO calibration ratio: the model-facing measure is the chars/2 ruler (an over-count for
     // typical text), so comparing ruler-weight to the real-token ceiling is itself the conservative
     // bias - the packet reports less room than the provider usually has; authoritative
-    // provider request evidence guards the pathological tail at recovery admission.
+    // provider request evidence guards the pathological tail at hard admission.
     ceilingFor(provider: Provider): number | null {
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
         const operatorCap = this.#promptBudgetCapFor(alias);
-        // Unknown provider physics stays unknown; an explicit virtual ceiling still bounds
+        // Unknown provider capacity stays unknown; an explicit virtual ceiling still gauges
         // PLURNK's packet without pretending to describe the backend.
         if (provider.contextWindow === null) return operatorCap;
         const { reasoning, completion, safety } = this.#partitionFor(provider);
@@ -451,74 +446,44 @@ export default class PacketBuilder {
     }
 
     // SPEC {§grinder} — the budget grinder. Runs pre-LLM (in runTurn, after the packet
-    // is built, before provider.generate); fires only on actual overflow. One rule:
-    // fold the NEWEST turn boundary's open rows (errors exempt) — never history —
-    // strike, rebuild, re-measure. Folds (never deletes). The strike it raises and
-    // the hard-stop it can signal are returned to runLoop, which owns abandonment.
+    // is built, before provider.generate); fires only on actual ruler overflow. One
+    // reversible rule: fold the NEWEST turn boundary's eligible open rows — never
+    // older history — then rebuild and re-measure.
     // {§grinder-overflow-only} — fires only on actual overflow, never speculatively
-    async enforceBudget({ packet, provider, workerId, loopId, turnId, mintSequence, rebuild }: {
+    async enforceBudget({ packet, provider, loopId, turnId, rebuild }: {
         packet: RequestPacket; provider: Provider;
-        workerId: number; loopId: number; turnId: number; mintSequence: number;
+        loopId: number; turnId: number;
         rebuild: () => Promise<RequestPacket>;
-    }): Promise<{ packet: RequestPacket; fit: boolean; struck: boolean; recorded: boolean }> {
+    }): Promise<{ packet: RequestPacket; fit: boolean }> {
         const ceiling = this.ceilingFor(provider);
         const measure = (p: RequestPacket): number => p.tokens;
-        // {§tokenomics-window-unpollable-deliberate} — a null policy ceiling never triggers grinding. If a virtual ceiling
-        // does trigger recovery while provider physics is unknown, physical admission
-        // separately fails closed under {§tokenomics-physical-admission}.
+        // {§tokenomics-window-unpollable-deliberate} — a null policy ceiling never triggers grinding.
         if (ceiling === null || measure(packet) <= ceiling) {
-            return { packet, fit: true, struck: false, recorded: false };
+            return { packet, fit: true };
         }
 
         // ONE rule, every turn — turn 1 and turn 101 alike ({§grinder-layer1-rollback}): fold the
-        // NEWEST turn boundary's still-open rows (the prior turn's emissions + this turn's
-        // pre-model rows; errors exempt) in one set-op, strike once, rebuild, re-measure.
-        // The model owns history visibility. The grinder never reaches back; it folds only the
-        // newest boundary required to produce a physically valid packet. Continued overflow
-        // follows the explicit recovery/hard-stop contract ({§grinder-fold-strikes}).
-        const usage = measure(packet);
+        // NEWEST turn boundary's still-open rows in one set-op. The model owns older
+        // history visibility; a remaining ruler deficit is reported in Budget and is
+        // not itself a failure or strike.
         await this.#db.engine_grinder_fold_newest_turn({ loop_id: loopId, turn_id: turnId });
-        let current = await rebuild();
-        if (measure(current) > ceiling) {
-            // Engine owns the hard-overflow branch and records its one occurrence with
-            // the enforced recovery constraint (or terminal physics), so this layer does
-            // not mint a second, weaker account of the same failure.
-            return { packet: current, fit: false, struck: true, recorded: false };
-        }
-
-        // The fold recovered the request. Preserve the triggering measurements on one
-        // actionless row and rebuild once so its Problem surfaces in this same packet.
-        await this.#problems.record({
-            workerId,
-            loopId,
-            turnId,
-            sequence: mintSequence,
-            origin: "plurnk",
-            source: "rail",
-            result: BudgetOverflow.foldedResult(usage, ceiling),
-        });
-        current = await rebuild();
-        return {
-            packet: current,
-            fit: measure(current) <= ceiling,
-            struck: true,
-            recorded: true,
-        };
+        const current = await rebuild();
+        return { packet: current, fit: measure(current) <= ceiling };
     }
 
-    // {§tokenomics-physical-admission}: one request-shaped physical predicate.
-    // The exact PacketWire messages used for dispatch are the measurement input;
-    // empirical estimates cannot authorize recovery against a hard window.
-    async physicalAdmission(
+    // {§tokenomics-context-envelope-admission}: one request-shaped predicate against
+    // the effective total context envelope. Provider.contextWindow already includes
+    // any stricter operator cap; exact or proven-bounded request evidence is required.
+    async contextEnvelopeAdmission(
         packet: RequestPacket,
         provider: Provider,
         signal?: AbortSignal,
-    ): Promise<PhysicalPromptAdmission> {
+    ): Promise<ContextEnvelopeAdmission> {
         if (provider.contextWindow === null) {
             return {
                 admitted: false,
                 reason: "unknown_context_window",
-                detail: `provider ${JSON.stringify(provider.model)} reports no physical context window`,
+                detail: `provider ${JSON.stringify(provider.model)} reports no effective context envelope`,
                 capacity: null,
             };
         }
@@ -527,7 +492,7 @@ export default class PacketBuilder {
             return {
                 admitted: false,
                 reason: "unknown_output_envelope",
-                detail: `provider ${JSON.stringify(provider.model)} reports no resolved output envelope`,
+                detail: `provider ${JSON.stringify(provider.model)} reports no resolved generation envelope`,
                 capacity: null,
             };
         }
@@ -543,7 +508,7 @@ export default class PacketBuilder {
             return {
                 admitted: false,
                 reason: "estimate",
-                detail: `${measurement.source} is an empirical estimate and cannot authorize physical recovery: ${measurement.detail}`,
+                detail: `${measurement.source} is an empirical estimate and cannot verify the effective context envelope: ${measurement.detail}`,
                 capacity,
                 measurement,
             };
@@ -552,7 +517,7 @@ export default class PacketBuilder {
             return {
                 admitted: false,
                 reason: "over_capacity",
-                detail: `${measurement.kind} prompt measurement ${measurement.tokens} exceeds physical prompt capacity ${capacity}`,
+                detail: `${measurement.kind} prompt measurement ${measurement.tokens} exceeds effective prompt capacity ${capacity}`,
                 capacity,
                 measurement,
             };
@@ -597,6 +562,7 @@ export default class PacketBuilder {
             query: string | null; fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
             tx: string; mimetype_tx: string; expanded: number; source: string | null; attrs: string | null;
+            tags: string;
         }>({ worker_id: workerId });
         return rows.map((r) => ({
             coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
@@ -620,6 +586,7 @@ export default class PacketBuilder {
             folded: r.expanded === 0 && r.id !== transientOpenLogEntryId,
             source: r.source,
             attrs: r.attrs === null ? null : JSON.parse(r.attrs),
+            tags: JSON.parse(r.tags),
         }));
     }
 }

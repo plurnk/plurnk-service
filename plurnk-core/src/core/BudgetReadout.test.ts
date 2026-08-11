@@ -40,7 +40,7 @@ test("BudgetReadout: decimal-width boundaries converge without off-by-one substi
             name: "overshoot expands usage and percentage by several widths",
             ceiling: 9,
             baseWeight: 62,
-            expected: "Token Ceiling 9 · Token Usage 90 (1000%) · Tokens Free 0",
+            expected: "Token Ceiling 9 · Token Usage 145 (1611%) · Tokens Free -136\nContext Token Budget Panic: YOU MUST FOLD or KILL enough less-relevant log items to restore free tokens.",
         },
     ] as const;
 
@@ -51,6 +51,12 @@ test("BudgetReadout: decimal-width boundaries converge without off-by-one substi
             assert.equal(usage, Number(/Token Usage\s+(\d+)/u.exec(content)?.[1]));
         });
     }
+});
+
+test("BudgetReadout: negative pressure is explicit and carries one transient curation imperative", () => {
+    const { content, usage } = resolve(9, 62);
+    assert.equal(content.match(/Context Token Budget Panic:/gu)?.length, 1);
+    assert.match(content, new RegExp(`Token Usage\\s+${usage} \\(\\d+%\\) · Tokens Free -\\d+`));
 });
 
 test("BudgetReadout: malformed templates and measurements fail at their owner", () => {

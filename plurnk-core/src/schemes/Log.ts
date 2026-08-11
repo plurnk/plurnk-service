@@ -261,6 +261,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             tokens: number;
             deep_hash: string | null;
             attrs: string;
+            tags: string;
         };
         const candidateRows = tags.length > 0
             ? await db.log_find_candidates_tagged.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix, tags: JSON.stringify(tags) })
@@ -446,6 +447,11 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 path,
                 channels: { [path]: { mimetype: proj.mimetype, tokens: row.tokens, lines: proj.content.length === 0 ? 0 : proj.content.split("\n").length } },
             };
+            const storedTags = JSON.parse(row.tags) as unknown;
+            if (!Array.isArray(storedTags) || !storedTags.every((tag) => typeof tag === "string" && tag.length > 0)) {
+                throw new TypeError(`Log row ${m.pathname} contains invalid tag storage.`);
+            }
+            if (storedTags.length > 0) item.tags = storedTags;
             resources.push({ item, match: m });
         }
         const scopes: CatalogScope[] = [];

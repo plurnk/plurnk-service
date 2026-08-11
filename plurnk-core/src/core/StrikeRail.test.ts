@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import StrikeRail, { type StrikeOutcome } from "./StrikeRail.ts";
 import { parsePath, type ReadStatement } from "@plurnk/plurnk-contracts";
 
-const base = { fingerprint: "READ(x)", budgetStruck: false, steerStruck: false, minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
+const base = { fingerprint: "READ(x)", steerStruck: false, minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
 const outcome = (op: StrikeOutcome["op"], status: number): StrikeOutcome => ({ op, status });
 
 test("a 409 status alone is soft because Engine supplies the premature-terminate strike", () => {
@@ -44,14 +44,12 @@ test("EXEC errors are soft regardless of status", () => {
     assert.equal(rail.streak(1), 0, "an executor error remains evidence without pricing experimentation into the strike rail");
 });
 
-test("hard outcomes, grinder fires, and terminal steering are the three non-cycle strike sources", () => {
+test("hard outcomes and terminal steering are the two non-cycle strike sources", () => {
     const rail = new StrikeRail();
     assert.equal(rail.assess(1, { ...base, fingerprint: "hard", outcomes: [outcome(null, 400)] }).thresholdCrossed, false);
     assert.equal(rail.streak(1), 1);
-    assert.equal(rail.assess(1, { ...base, fingerprint: "budget", outcomes: [], budgetStruck: true }).thresholdCrossed, false);
+    assert.equal(rail.assess(1, { ...base, fingerprint: "steer", outcomes: [], steerStruck: true }).thresholdCrossed, false);
     assert.equal(rail.streak(1), 2);
-    assert.equal(rail.assess(1, { ...base, fingerprint: "steer", outcomes: [], steerStruck: true }).thresholdCrossed, true);
-    assert.equal(rail.streak(1), 3);
 });
 
 test("multiple sources still count once per turn, and a clean turn resets the streak", () => {
@@ -59,7 +57,6 @@ test("multiple sources still count once per turn, and a clean turn resets the st
     const struck = rail.assess(1, {
         ...base,
         outcomes: [outcome("EDIT", 500)],
-        budgetStruck: true,
         steerStruck: true,
         maxStrikes: 2,
     });

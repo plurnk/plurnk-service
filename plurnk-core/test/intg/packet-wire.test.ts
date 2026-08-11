@@ -81,6 +81,19 @@ test("log entry: a no-body row renders explicit display:none and body:\"\" — p
     assert.match(out, /\{"body":"","display":"none","op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt","tokens":0\}/, "jsonplurnk object; display:none carries body:\"\"; path = log URI identity; target = action operand; tokens:0");
 });
 
+test("log entry: durable folksonomic tags remain visible when the body is folded", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/2",
+        origin: "model",
+        op: "READ",
+        status: 200,
+        folded: true,
+        tags: ["overflow", "research"],
+        rx: { content: "large result", mimetype: "text/plain" },
+    }], tok);
+    assert.match(out, /"tags":\["overflow","research"\]/, "the folded row explains its named working sets without reopening its body");
+});
+
 test("environment-delta provenance renders as source, never a fictitious run entity", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",

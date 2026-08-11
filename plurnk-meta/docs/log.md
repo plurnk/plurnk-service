@@ -19,7 +19,8 @@ OPEN and FOLD change packet visibility, not history. Applying the current state 
 
 KILL permanently erases a log row.
 
-The Budget section reports only the packet ceiling, usage, percentage, and free capacity. Each
-log row carries its own token weight. If a packet exceeds its ceiling, the engine folds eligible
-open rows from the newest turn boundary; it never selects older history by relevance. Continued
-overflow follows the reported recovery or hard-413 contract.
+The Budget section reports the packet ceiling, usage, percentage, and free capacity; negative
+free capacity adds one curation alarm. Each log row carries its own token weight. If a packet
+exceeds the gauge, the engine folds eligible open rows from the newest turn boundary and tags
+them `overflow`; it never selects older history by relevance. Remaining ruler debt is soft when
+the request fits the hard context envelope; otherwise admission stops at 413 before generation.

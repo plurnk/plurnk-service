@@ -89,6 +89,7 @@ interface LogEntryView {
     folded?: boolean;
     source?: unknown;
     attrs?: unknown;
+    tags?: unknown;
 }
 interface FailurePointer { status?: unknown; coordinate?: unknown }
 interface NoticeView {
@@ -362,6 +363,17 @@ export default class PacketWire {
                 meta.git = git;
             }
             if (typeof e.status === "number") meta.status = e.status;
+            if (e.tags !== undefined) {
+                const storedTags = e.tags;
+                if (!Array.isArray(storedTags) || !storedTags.every((tag) => typeof tag === "string" && tag.length > 0)) {
+                    throw new TypeError("A log row carries malformed folksonomic tags.");
+                }
+                const tags = [...new Set(storedTags)].toSorted();
+                if (tags.length !== storedTags.length || tags.some((tag, index) => tag !== storedTags[index])) {
+                    throw new TypeError("A log row's folksonomic tags must be unique and sorted.");
+                }
+                if (tags.length > 0) meta.tags = tags;
+            }
             const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
             const target = PacketWire.#renderActionTarget(e.target);
             if (op === "COPY" || op === "MOVE") {

@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import ProblemLog from "../../src/core/ProblemLog.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-contracts";
@@ -75,7 +74,7 @@ test("Engine.runTurn: budget readout — partition-derived ceiling, free reconci
     } finally { await db.close(); }
 });
 
-test("a virtual prompt budget tightens the gauge and grinder without changing provider physics or generation", async () => {
+test("a virtual prompt budget tightens the gauge and grinder without changing hard capacity or generation", async () => {
     const db = await openMigrated();
     const prev = {
         cap: process.env.PLURNK_SERVICE_PROMPT_BUDGET,
@@ -92,13 +91,12 @@ test("a virtual prompt budget tightens the gauge and grinder without changing pr
         const packets = new PacketBuilder({
             db,
             schemes,
-            problems: new ProblemLog(db),
             executors: () => undefined,
         });
         const provider = new Mock({ contextWindow: 1_048_575, responses: [] });
         const budget = packets.promptBudgetFor(provider);
         assert.equal(budget, 128_000);
-        assert.equal(provider.contextWindow, 1_048_575, "virtual pressure does not rewrite physical context");
+        assert.equal(provider.contextWindow, 1_048_575, "virtual pressure does not rewrite the effective context envelope");
         assert.equal(provider.reasoningReserve, 4915, "virtual pressure does not rewrite reasoning settings");
         assert.equal(provider.completionReserve, 12288, "virtual pressure does not rewrite completion settings");
         assert.equal(packets.maxTokensFor(provider), 4915 + 12288, "virtual pressure does not rewrite maxTokens");
@@ -107,12 +105,12 @@ test("a virtual prompt budget tightens the gauge and grinder without changing pr
         assert.equal(
             packets.promptBudgetFor(provider),
             1_048_575 - 4915 - 12288 - 1024,
-            "a virtual cap cannot widen the natural physical prompt budget",
+            "a virtual cap cannot widen the natural prompt gauge",
         );
 
         const unknown = new Mock({ contextWindow: null, responses: [] });
         process.env.PLURNK_SERVICE_PROMPT_BUDGET = "64000";
-        assert.equal(packets.promptBudgetFor(unknown), 64_000, "virtual pressure remains usable when provider physics are unknown");
+        assert.equal(packets.promptBudgetFor(unknown), 64_000, "virtual pressure remains usable when provider capacity is unknown");
     } finally {
         for (const [k, v] of [["PLURNK_SERVICE_PROMPT_BUDGET", prev.cap], ["PLURNK_PROVIDERS_REASONING_RESERVE", prev.rr], ["PLURNK_PROVIDERS_COMPLETION_RESERVE", prev.cr]] as const) {
             if (v === undefined) delete process.env[k]; else process.env[k] = v;

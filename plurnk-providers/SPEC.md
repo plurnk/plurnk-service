@@ -48,18 +48,19 @@ interface Provider {
 }
 ```
 
-`contextWindow` is provider physics and resolves under
-{§model-fact-resolution}. `null` means genuinely unknown; a consumer MUST NOT
-invent a stand-in. The context-window knob never carries model-facing prompt
-policy or grinder pressure.
+`contextWindow` is the effective total context envelope resolved under
+{§model-fact-resolution}: the minimum of known model capacity and any stricter
+operator cap. `null` means genuinely unknown; a consumer MUST NOT invent a
+stand-in. The context-window knob is a hard cap, never model-facing grinder
+pressure.
 
 `PromptTokenMeasurement` is a discriminated request-level result:
 
-| `kind`        | Meaning                                                | May authorize physical admission |
-| ------------- | ------------------------------------------------------ | -------------------------------- |
-| `exact`       | Exact count for the complete provider request.         | Yes.                             |
-| `upper_bound` | Proven upper bound for the complete provider request.  | Yes.                             |
-| `estimate`    | Empirical prediction with required causal `detail`.    | No.                              |
+| `kind`        | Meaning                                                | May authorize hard context-envelope admission |
+| ------------- | ------------------------------------------------------ | --------------------------------------------- |
+| `exact`       | Exact count for the complete provider request.         | Yes.                                          |
+| `upper_bound` | Proven upper bound for the complete provider request.  | Yes.                                          |
+| `estimate`    | Empirical prediction with required causal `detail`.    | No.                                           |
 
 Every result carries a non-negative integer `tokens` and a non-empty `source`.
 `countPromptTokens` receives the same messages supplied to `generate` and may

@@ -122,7 +122,6 @@ export default class StrikeRail {
     assess(loopId: number, turn: {
         fingerprint: string;
         outcomes: ReadonlyArray<StrikeOutcome>;
-        budgetStruck: boolean;
         steerStruck: boolean;
         minCycles: number;
         maxCyclePeriod: number;
@@ -137,7 +136,7 @@ export default class StrikeRail {
         const recordedFailed = turn.outcomes.some(
             ({ op, status }) => op !== "EXEC" && status >= 400 && !SOFT_FAILURE_STATUSES.has(status),
         );
-        const struck = recordedFailed || turn.budgetStruck || turn.steerStruck || cycle.detected;
+        const struck = recordedFailed || turn.steerStruck || cycle.detected;
         let thresholdCrossed = false;
         if (struck) {
             state.streak++;

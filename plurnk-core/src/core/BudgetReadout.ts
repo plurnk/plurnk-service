@@ -2,6 +2,7 @@ const TOKENS_FREE_PLACEHOLDER = "{{tokensFree}}";
 const TOKEN_USAGE_PLACEHOLDER = "{{tokenUsage}}";
 const TOKEN_PERCENT_PLACEHOLDER = "{{tokenPercent}}";
 const MAX_WIDTH_PASSES = 64;
+const PANIC = "Context Token Budget Panic: YOU MUST FOLD or KILL enough less-relevant log items to restore free tokens.";
 
 interface FieldWidths {
     readonly usage: number;
@@ -23,6 +24,16 @@ export default class BudgetReadout {
     static resolve(template: string, ceiling: number, measurePacket: MeasurePacket): string {
         BudgetReadout.#assertCeiling(ceiling);
         BudgetReadout.#assertTemplate(template);
+        const ordinary = BudgetReadout.#resolveTemplate(template, ceiling, measurePacket);
+        if (ordinary.usage <= ceiling) return ordinary.content;
+        return BudgetReadout.#resolveTemplate(`${template}\n${PANIC}`, ceiling, measurePacket).content;
+    }
+
+    static #resolveTemplate(
+        template: string,
+        ceiling: number,
+        measurePacket: MeasurePacket,
+    ): { content: string; usage: number } {
         let widths: FieldWidths = { usage: 1, percent: 1, free: 1 };
 
         for (let pass = 0; pass < MAX_WIDTH_PASSES; pass += 1) {
@@ -35,7 +46,7 @@ export default class BudgetReadout {
             const values = {
                 usage: String(usage),
                 percent: BudgetReadout.#percent(usage, ceiling),
-                free: String(Math.max(0, ceiling - usage)),
+                free: String(ceiling - usage),
             };
             const expanded = {
                 usage: Math.max(widths.usage, values.usage.length),
@@ -56,7 +67,7 @@ export default class BudgetReadout {
             if (finalWeight !== usage) {
                 throw new Error(`Budget readout measurement changed after fixed-width substitution: ${usage} -> ${finalWeight}`);
             }
-            return content;
+            return { content, usage };
         }
 
         throw new Error(`Budget readout field widths did not converge after ${MAX_WIDTH_PASSES} passes`);
