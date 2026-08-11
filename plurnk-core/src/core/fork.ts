@@ -103,12 +103,31 @@ export default class Fork {
         // entries → new entries: worker/loop/turn ids remapped; fold-state and
         // attribution and content all preserved.
         const entries = await db.fork_get_log_entries.all<{ id: number; loop_id: number; turn_id: number; [k: string]: unknown }>({ worker_id: parentWorkerId });
+        const logMap = new Map<number, number>();
         for (const e of entries) {
             const { id: oldLogId, ...row } = e;
             const ne = await db.fork_insert_log_entry.get<{ id: number }>({ ...row, worker_id: branchWorkerId, loop_id: loopMap.get(e.loop_id), turn_id: turnMap.get(e.turn_id) });
             if (ne === undefined) throw new Error("fork: log entry copy returned no row");
+            logMap.set(oldLogId, ne.id);
             // {§log-region-tagging} — carry the row's region tags onto the copy (no-op when untagged).
             await db.fork_copy_log_tags.run({ old_log_id: oldLogId, new_log_id: ne.id });
+        }
+        const curationEffects = await db.fork_get_log_curation_effects.all<{
+            operation_log_entry_id: number;
+            target_log_entry_id: number;
+            expanded_before: 0 | 1;
+        }>({ worker_id: parentWorkerId });
+        for (const effect of curationEffects) {
+            const operationLogEntryId = logMap.get(effect.operation_log_entry_id);
+            const targetLogEntryId = logMap.get(effect.target_log_entry_id);
+            if (operationLogEntryId === undefined || targetLogEntryId === undefined) {
+                throw new Error("fork: curation effect references a log row outside copied history");
+            }
+            await db.fork_insert_log_curation_effect.run({
+                operation_log_entry_id: operationLogEntryId,
+                target_log_entry_id: targetLogEntryId,
+                expanded_before: effect.expanded_before,
+            });
         }
 
         // {§worker-scheme} — inherit the parent's private scratch: same pathnames, the BRANCH as owner

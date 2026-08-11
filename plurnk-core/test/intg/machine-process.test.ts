@@ -9,6 +9,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
+import { foldStmt } from "./_dsl.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -59,9 +60,11 @@ test("a fork copies the parent's log (rows + their fold-state)", async () => {
         const turnId = await insertTurn(db, loopId, 1);
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/a.md"), "first"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/b.md"), "second"), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
-        // Fold the first row — a fold-state bit on the parent's own log.
-        const ids = await db.test_log_entries_by_worker.all<{ id: number }>({ worker_id: workerId });
-        await db.log_set_expanded_by_id.run({ id: ids[0].id, expanded: 0 });
+        // Fold the first row through the real curation event path.
+        await engine.dispatch({
+            statement: foldStmt(urlPath("log", "/1/1/1")),
+            workspaceId, workerId, loopId, turnId, sequence: 3, origin: "model",
+        });
 
         const branchWorkerId = await Fork.fork(db, workerId);
 
@@ -70,6 +73,16 @@ test("a fork copies the parent's log (rows + their fold-state)", async () => {
         const branchLog = await db.engine_render_log.all<{ op: string; pathname: string; expanded: number }>({ worker_id: branchWorkerId });
         assert.deepEqual(shape(branchLog), shape(parentLog), "the branch's log mirrors the parent's — rows and fold-state");
         assert.ok(branchLog.some((r) => r.expanded === 0), "the row folded on the parent stayed folded in the branch");
+        const effectShape = (rows: Array<{ op: string; operation_sequence: number; target_sequence: number; expanded_before: number }>) =>
+            rows.map((row) => `${row.op}:${row.operation_sequence}->${row.target_sequence}:${row.expanded_before}`);
+        const parentEffects = await db.test_log_curation_effects_by_worker.all<{
+            op: string; operation_sequence: number; target_sequence: number; expanded_before: number;
+        }>({ worker_id: workerId });
+        const branchEffects = await db.test_log_curation_effects_by_worker.all<{
+            op: string; operation_sequence: number; target_sequence: number; expanded_before: number;
+        }>({ worker_id: branchWorkerId });
+        assert.deepEqual(effectShape(branchEffects), effectShape(parentEffects), "the branch retains the exact FOLD event effect with remapped row identities");
+        assert.deepEqual(effectShape(branchEffects), ["FOLD:3->1:1"]);
     } finally { db.close(); }
 });
 

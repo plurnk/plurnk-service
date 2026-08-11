@@ -71,6 +71,7 @@ import {
 } from "@plurnk/plurnk-schemes";
 import type { ProviderEncryptedReasoningItem } from "@plurnk/plurnk-providers";
 import DurableStatement from "./DurableStatement.ts";
+import type { LogCurationEffect, LogCurationOutcome } from "../schemes/Log.ts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
@@ -110,8 +111,7 @@ interface PreparedRepresentation {
 import type { SchemeCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
 type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
 type LogCurationHandler = {
-    open(statement: OpenStatement, ctx: SchemeCtx): Promise<DispatchResult>;
-    fold(statement: FoldStatement, ctx: SchemeCtx): Promise<DispatchResult>;
+    curate(statement: OpenStatement | FoldStatement, ctx: SchemeCtx): Promise<LogCurationOutcome>;
 };
 type PreparedEditBatch = {
     readonly initial: DispatchResult;
@@ -570,6 +570,7 @@ export default class Dispatcher {
         } = context;
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin });
         let result: DispatchResult;
+        let curationEffects: ReadonlyArray<LogCurationEffect> = [];
         let denial = this.#checkWritable(statement, origin);
         if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
         if (denial !== null) {
@@ -614,7 +615,9 @@ export default class Dispatcher {
                 } else if (statement.op === "SEND" && statement.target === null) {
                     result = await this.#handleSendBroadcast(statement, { workspaceId, workerId, loopId, turnId, sequence });
                 } else if (statement.op === "OPEN" || statement.op === "FOLD") {
-                    result = await this.#runLogCuration(statement, schemeCtx);
+                    const curation = await this.#runLogCuration(statement, schemeCtx);
+                    result = curation.result;
+                    curationEffects = curation.effects;
                 } else if (statement.op === "FORK" || statement.op === "WORK") {
                     result = await this.#handleWorkerControl(statement, schemeCtx);
                 } else if (statement.op === "COPY") {
@@ -659,6 +662,12 @@ export default class Dispatcher {
         // {§join-blocking-collect}
         if (typeof (result as { awaitWorker?: unknown }).awaitWorker === "string") this.#joinTargets.add(loopId);
         const logEntryId = await this.#writeLog({ statement, result, workspaceId, workerId, loopId, turnId, sequence, origin });
+        if (curationEffects.length > 0) {
+            await this.#db.log_record_curation_effects.run({
+                operation_log_entry_id: logEntryId,
+                effects: JSON.stringify(curationEffects),
+            });
+        }
         // {§search-gate} — register successful searches AFTER #writeLog stamps the runtime
         // entry's coordinate onto result.attrs.pathname (the gate's dedup serves from it).
         if (statement.op === "EXEC" && result.status < 400) {
@@ -3124,20 +3133,23 @@ export default class Dispatcher {
     async #runLogCuration(
         statement: OpenStatement | FoldStatement,
         ctx: PlurnkSchemeContext,
-    ): Promise<DispatchResult> {
+    ): Promise<LogCurationOutcome> {
         const addressedScheme = schemeNameOf(statement.target);
         if (addressedScheme !== null && addressedScheme !== "log") {
-            return Dispatcher.#failure(
-                "operation-not-implemented",
-                501,
-                `Scheme '${addressedScheme}' does not implement ${statement.op}.`,
-                {},
-                {
-                    scheme: addressedScheme,
-                    operation: statement.op,
-                    retryable: false,
-                },
-            );
+            return {
+                result: Dispatcher.#failure(
+                    "operation-not-implemented",
+                    501,
+                    `Scheme '${addressedScheme}' does not implement ${statement.op}.`,
+                    {},
+                    {
+                        scheme: addressedScheme,
+                        operation: statement.op,
+                        retryable: false,
+                    },
+                ),
+                effects: [],
+            };
         }
         const handler = this.#schemes.get("log") as LogCurationHandler | undefined;
         const manifest = this.#schemes.manifestFor("log");
@@ -3145,9 +3157,8 @@ export default class Dispatcher {
             throw new Error("the core log curation owner is not registered");
         }
         const schemeCtx = new SchemeCtxImpl(ctx, "log", manifest, this.#liveSubscriptions);
-        return statement.op === "OPEN"
-            ? Results.assert(await handler.open(statement, schemeCtx))
-            : Results.assert(await handler.fold(statement, schemeCtx));
+        const outcome = await handler.curate(statement, schemeCtx);
+        return { result: Results.assert(outcome.result), effects: outcome.effects };
     }
 
     // {§proposal}/{§send} — status 202 is a proposal except for broadcast

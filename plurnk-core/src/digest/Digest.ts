@@ -138,6 +138,11 @@ interface LogRow {
     pathname: string | null; query: string | null; fragment: string | null;
     rx: string | null; status_rx: number; state: string; outcome: string | null;
 }
+interface LogCurationEffectRow {
+    operation_log_entry_id: number;
+    target_log_entry_id: number;
+    expanded_before: 0 | 1;
+}
 interface WorkerRollupRow {
     worker_id: number; loops: number; turns: number;
     total_prompt: number; total_completion: number; total_reasoning: number;
@@ -157,6 +162,7 @@ interface DigestModel {
     turns: TurnRow[];
     turnAttempts: TurnAttemptRow[];
     logEntries: LogRow[];
+    curationEffects: LogCurationEffectRow[];
     workersByWorkspace: Map<number, WorkerRow[]>;
     loopsByWorker: Map<number, LoopRow[]>;
     turnsByLoop: Map<number, TurnRow[]>;
@@ -659,6 +665,7 @@ export default class Digest {
                     : { stream: Digest.#renderStream(le) }),
                 ...(le.status_rx >= 400 ? { problem: Digest.#rowProblem(le) } : {}),
             })),
+            log_curation_effects: m.curationEffects,
         }, null, 2);
     }
 
@@ -930,6 +937,7 @@ export default class Digest {
             }));
         let turnAttempts = (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all();
         let logEntries = (db.digest_log_entries as SyncPrep<LogRow>).all();
+        let curationEffects: LogCurationEffectRow[] = [];
         let workerRollupRows = (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all();
         let opMixRows = (db.digest_worker_op_mix as SyncPrep<OpMixRow>).all();
         // The semantic-state analytic (owner ask), feature-detected per table: a HISTORICAL
@@ -941,6 +949,13 @@ export default class Digest {
         const hasColumn = (table: string, column: string): boolean => probe.prepare(`SELECT 1 FROM pragma_table_info(?) WHERE name=?`).get(table, column) !== undefined;
         const one = (q: string): number => Number((probe.prepare(q).get() as { n: number }).n);
         const semanticStateAvailable = has("entries") && has("entry_channels") && hasColumn("entries", "deep_hash");
+        if (has("log_curation_effects")) {
+            curationEffects = probe.prepare(`
+                SELECT operation_log_entry_id, target_log_entry_id, expanded_before
+                FROM log_curation_effects
+                ORDER BY operation_log_entry_id, target_log_entry_id
+            `).all() as unknown as LogCurationEffectRow[];
+        }
         const body = semanticStateAvailable
             ? "FROM entries e JOIN entry_channels ec ON ec.entry_id=e.id AND ec.name='body'"
             : "";
@@ -984,6 +999,10 @@ export default class Digest {
             const keptTurnIds = new Set(turns.map((t) => t.id));
             turnAttempts = turnAttempts.filter((attempt) => keptTurnIds.has(attempt.turn_id));
             logEntries = logEntries.filter((le) => keptTurnIds.has(le.turn_id));
+            const keptLogEntryIds = new Set(logEntries.map((entry) => entry.id));
+            curationEffects = curationEffects.filter((effect) =>
+                keptLogEntryIds.has(effect.operation_log_entry_id)
+                && keptLogEntryIds.has(effect.target_log_entry_id));
             workerRollupRows = workerRollupRows.filter((r) => keptWorkerIds.has(r.worker_id));
             opMixRows = opMixRows.filter((o) => keptWorkerIds.has(o.worker_id));
         }
@@ -1014,7 +1033,7 @@ export default class Digest {
         for (const o of opMixRows) { const arr = opMixByWorker.get(o.worker_id) ?? []; arr.push(o); opMixByWorker.set(o.worker_id, arr); }
 
         const m: DigestModel = {
-            dbPath, digestDir, workspaces, workers, loops, turns, turnAttempts, logEntries,
+            dbPath, digestDir, workspaces, workers, loops, turns, turnAttempts, logEntries, curationEffects,
             workersByWorkspace, loopsByWorker, turnsByLoop, attemptsByTurn, logEntriesByTurn, loopsById, workersById,
             workerRollups, opMixByWorker, embeddings,
         };
@@ -1027,6 +1046,6 @@ export default class Digest {
 
         console.log(`digest: wrote ${digestDir}/{digest.md,digest.json,reasoning.md} + ${packetFiles.length} packet section files (${packetIds.join(", ") || "none"})`);
         console.log(`  source: ${dbPath}`);
-        console.log(`  workspaces=${workspaces.length} workers=${workers.length} loops=${loops.length} turns=${turns.length} turn_attempts=${turnAttempts.length} log_entries=${logEntries.length}`);
+        console.log(`  workspaces=${workspaces.length} workers=${workers.length} loops=${loops.length} turns=${turns.length} turn_attempts=${turnAttempts.length} log_entries=${logEntries.length} log_curation_effects=${curationEffects.length}`);
     }
 }

@@ -78,6 +78,19 @@ RETURNING id;
 INSERT INTO log_tags (log_entry_id, tag)
 SELECT $new_log_id, tag FROM log_tags WHERE log_entry_id = $old_log_id;
 
+-- PREP: fork_get_log_curation_effects
+-- Exact OPEN/FOLD event effects are part of the copied log history, not
+-- process-local grinder bookkeeping. Both row identities are remapped below.
+SELECT effect.operation_log_entry_id, effect.target_log_entry_id, effect.expanded_before
+FROM log_curation_effects effect
+JOIN log_entries operation ON operation.id = effect.operation_log_entry_id
+WHERE operation.worker_id = $worker_id
+ORDER BY effect.operation_log_entry_id, effect.target_log_entry_id;
+
+-- PREP: fork_insert_log_curation_effect
+INSERT INTO log_curation_effects (operation_log_entry_id, target_log_entry_id, expanded_before)
+VALUES ($operation_log_entry_id, $target_log_entry_id, $expanded_before);
+
 -- {§worker-scheme} — a fork inherits the parent's private entries, distinct
 -- from the shared workspace world above: "fork = everything-in-common-but-name, then diverges". The
 -- entries are deep-copied (new ids) with the owner remapped (parent → branch), so

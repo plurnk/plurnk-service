@@ -25,6 +25,16 @@ import { pathFolderSummaries, pathScope, pathScopeMatches } from "./_path-scope.
 
 type OpenFoldResult = SchemeResultBase & { matched?: number };
 
+export interface LogCurationEffect {
+    readonly targetLogEntryId: number;
+    readonly expandedBefore: 0 | 1;
+}
+
+export interface LogCurationOutcome {
+    readonly result: OpenFoldResult;
+    readonly effects: ReadonlyArray<LogCurationEffect>;
+}
+
 // log:///<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
 // is wire-rendering self-documentation derived from the row's `op` field;
 // parsing accepts it (or omits it) and identifies the row by coordinate. The op
@@ -476,6 +486,19 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return this.#setExpanded(statement, this.coreContext(ctx), 0);
     }
 
+    // Core dispatch retains the exact landed effect beside the suppressed
+    // OPEN/FOLD event. Direct scheme callers receive the ordinary result above.
+    async curate(statement: OpenStatement | FoldStatement, ctx: CoreSchemeCallContext): Promise<LogCurationOutcome> {
+        const effects: LogCurationEffect[] = [];
+        const result = await this.#setExpanded(
+            statement,
+            this.coreContext(ctx),
+            statement.op === "OPEN" ? 1 : 0,
+            effects,
+        );
+        return { result, effects };
+    }
+
     // Resolve a log:/// target — a concrete coordinate or path-glob — to the matched row ids.
     // OPEN/FOLD/KILL share this one path selection; log curation has no positional pagination.
     async #resolveIds(pathname: string, ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {
@@ -576,15 +599,37 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         expanded: 0 | 1,
         tags: string[],
         ctx: PlurnkSchemeContext,
+        effects?: LogCurationEffect[],
     ): Promise<OpenFoldResult> {
-        for (const id of ids) await ctx.db.log_set_expanded_by_id.run({ id, expanded });
+        for (const id of ids) {
+            if (effects === undefined) {
+                await ctx.db.log_set_expanded_by_id.run({ id, expanded });
+                continue;
+            }
+            const changed = await ctx.db.log_set_expanded_by_id.get<{ id: number }>({ id, expanded });
+            if (changed !== undefined) {
+                effects.push({ targetLogEntryId: id, expandedBefore: expanded === 1 ? 0 : 1 });
+                continue;
+            }
+            const current = await ctx.db.log_expanded_by_id.get<{ expanded: 0 | 1 }>({ id });
+            if (current === undefined) throw new Error(`Log curation target ${id} disappeared after selection.`);
+            if (current.expanded !== expanded) {
+                throw new Error(`Log curation target ${id} did not reach visibility ${expanded}.`);
+            }
+            effects.push({ targetLogEntryId: id, expandedBefore: current.expanded });
+        }
         if (expanded === 0) {
             for (const id of ids) for (const tag of tags) await ctx.db.log_write_tag.run({ log_entry_id: id, tag });
         }
         return { status: 200, matched: ids.length };
     }
 
-    async #setExpanded(statement: OpenStatement | FoldStatement, ctx: PlurnkSchemeContext, expanded: 0 | 1): Promise<OpenFoldResult> {
+    async #setExpanded(
+        statement: OpenStatement | FoldStatement,
+        ctx: PlurnkSchemeContext,
+        expanded: 0 | 1,
+        effects?: LogCurationEffect[],
+    ): Promise<OpenFoldResult> {
         const signal = Array.isArray(statement.signal) ? statement.signal : [];
         if (statement.body !== null) {
             const matched = await this.#resolveByMatcher(statement, expanded === 1, ctx);
@@ -600,7 +645,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     "No log entry matches the requested selection.",
                 ) as OpenFoldResult;
             }
-            return this.#applyExpanded(matched.ids, expanded, signal, ctx);
+            return this.#applyExpanded(matched.ids, expanded, signal, ctx, effects);
         }
 
         // {§log-region-tagging} — OPEN[tag] is the READ side: recall rows by tag, target optional (a bare
@@ -627,7 +672,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     },
                 ) as OpenFoldResult;
             }
-            return this.#applyExpanded(rt.ids, 1, signal, ctx);
+            return this.#applyExpanded(rt.ids, 1, signal, ctx, effects);
         }
 
         if (statement.target === null) {
@@ -664,7 +709,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 },
             ) as OpenFoldResult;
         }
-        return this.#applyExpanded(r.ids, expanded, signal, ctx);
+        return this.#applyExpanded(r.ids, expanded, signal, ctx, effects);
     }
 
     // KILL shares OPEN/FOLD's address resolution, deletes instead of flipping visibility,

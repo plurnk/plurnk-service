@@ -225,6 +225,8 @@ export class SqlRiteSync {
 	fork_get_log_entries: SqlRiteSyncPreparedStatements;
 	fork_insert_log_entry: SqlRiteSyncPreparedStatements;
 	fork_copy_log_tags: SqlRiteSyncPreparedStatements;
+	fork_get_log_curation_effects: SqlRiteSyncPreparedStatements;
+	fork_insert_log_curation_effect: SqlRiteSyncPreparedStatements;
 	fork_get_private_entries: SqlRiteSyncPreparedStatements;
 	fork_insert_private_entry: SqlRiteSyncPreparedStatements;
 	fork_copy_entry_channels: SqlRiteSyncPreparedStatements;
@@ -244,6 +246,8 @@ export class SqlRiteSync {
 	log_id_by_coordinate: SqlRiteSyncPreparedStatements;
 	log_match_coordinates: SqlRiteSyncPreparedStatements;
 	log_set_expanded_by_id: SqlRiteSyncPreparedStatements;
+	log_expanded_by_id: SqlRiteSyncPreparedStatements;
+	log_record_curation_effects: SqlRiteSyncPreparedStatements;
 	log_delete_by_id: SqlRiteSyncPreparedStatements;
 	log_find_candidates: SqlRiteSyncPreparedStatements;
 	log_write_tag: SqlRiteSyncPreparedStatements;
@@ -457,6 +461,8 @@ export default class SqlRite {
 	fork_get_log_entries: SqlRitePreparedStatements;
 	fork_insert_log_entry: SqlRitePreparedStatements;
 	fork_copy_log_tags: SqlRitePreparedStatements;
+	fork_get_log_curation_effects: SqlRitePreparedStatements;
+	fork_insert_log_curation_effect: SqlRitePreparedStatements;
 	fork_get_private_entries: SqlRitePreparedStatements;
 	fork_insert_private_entry: SqlRitePreparedStatements;
 	fork_copy_entry_channels: SqlRitePreparedStatements;
@@ -476,6 +482,8 @@ export default class SqlRite {
 	log_id_by_coordinate: SqlRitePreparedStatements;
 	log_match_coordinates: SqlRitePreparedStatements;
 	log_set_expanded_by_id: SqlRitePreparedStatements;
+	log_expanded_by_id: SqlRitePreparedStatements;
+	log_record_curation_effects: SqlRitePreparedStatements;
 	log_delete_by_id: SqlRitePreparedStatements;
 	log_find_candidates: SqlRitePreparedStatements;
 	log_write_tag: SqlRitePreparedStatements;

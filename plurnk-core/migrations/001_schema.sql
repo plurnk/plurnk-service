@@ -692,6 +692,40 @@ CREATE TABLE IF NOT EXISTS log_tags (
 
 CREATE INDEX IF NOT EXISTS log_tags_tag ON log_tags (tag);
 
+-- Successful OPEN/FOLD rows are durable curation events even though their
+-- ordinary packet projection is suppressed ({§fold-open-meta-operations}).
+-- Preserve the exact selected set and each target's pre-event visibility so a
+-- broad selector never collapses into the lossy fact `matched: N`.
+CREATE TABLE IF NOT EXISTS log_curation_effects (
+    operation_log_entry_id INTEGER NOT NULL,
+    target_log_entry_id    INTEGER NOT NULL,
+    expanded_before        INTEGER NOT NULL CHECK (expanded_before IN (0, 1)),
+    PRIMARY KEY (operation_log_entry_id, target_log_entry_id),
+    CHECK (operation_log_entry_id != target_log_entry_id),
+    FOREIGN KEY (operation_log_entry_id) REFERENCES log_entries(id) ON DELETE CASCADE,
+    FOREIGN KEY (target_log_entry_id)    REFERENCES log_entries(id) ON DELETE CASCADE
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS log_curation_effects_target
+    ON log_curation_effects (target_log_entry_id);
+
+-- Make an invalid curation record structurally unavailable: the event must be
+-- one successful OPEN/FOLD row and both rows must belong to the same worker.
+CREATE TRIGGER IF NOT EXISTS log_curation_effects_valid
+BEFORE INSERT ON log_curation_effects
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM log_entries operation
+    JOIN log_entries target ON target.id = NEW.target_log_entry_id
+    WHERE operation.id = NEW.operation_log_entry_id
+      AND operation.op IN ('OPEN', 'FOLD')
+      AND operation.status_rx < 400
+      AND operation.worker_id = target.worker_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'log curation effects require one successful same-worker OPEN/FOLD event');
+END;
+
 -- Column-scoped immutability: the original action's identity and target
 -- never change; the proposal lifecycle is allowed to mutate state,
 -- outcome, status_rx, rx, expanded.

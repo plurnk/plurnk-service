@@ -421,21 +421,39 @@ ORDER BY t.sequence, le.sequence;
 
 -- TX: engine_grinder_fold_newest_turn
 -- {§grinder-layer1-rollback} — THE DOCTRINE: the log is the model's memory and the model ALONE
--- curates it (FOLD/KILL). The grinder never touches history — it only blocks NEW memories from
--- landing when there is no room: one set-op folds the still-open rows of the newest turn
--- boundary — the immediately-prior turn's emissions and the current turn's pre-model rows
--- (foists, wake surfaces). Turn 1 is the same rule (no prior turn; its foists are the newest).
+-- curates it (FOLD/KILL). The grinder rolls back only context introduced by the newest turn
+-- boundary: rows born in the immediately-prior/current turn plus exact older rows that a successful
+-- OPEN in the immediately-prior turn transitioned from folded to open. The durable effect relation
+-- owns that landed set; never re-run an authored glob/tag/matcher against later state. An OPEN no-op
+-- contributes no older row. Turn 1 is the same rule (no prior turn; its foists are the newest).
 -- Folded, never deleted; THREE exemptions ({§grinder-errors-exempt}): op='error',
 -- the user prompt, and PLAN. The temporary set captures the
 -- selection once so folding and additive `overflow` tagging cannot diverge.
 CREATE TEMP TABLE IF NOT EXISTS engine_grinder_fold_set (id INTEGER PRIMARY KEY);
 DELETE FROM engine_grinder_fold_set;
+WITH previous_turn AS (
+    SELECT MAX(id) AS id FROM turns WHERE loop_id = $loop_id AND id < $turn_id
+)
 INSERT INTO engine_grinder_fold_set (id)
-SELECT id FROM log_entries
-WHERE loop_id = $loop_id AND expanded = 1 AND COALESCE(op, '') NOT IN ('error', 'PLAN')
-  AND COALESCE(scheme, '') != 'prompt'  -- the task frame ({§prompt-self-only}); NULL-safe: a model-emission row's scheme is NULL
-  AND (turn_id = $turn_id
-       OR turn_id = (SELECT MAX(id) FROM turns WHERE loop_id = $loop_id AND id < $turn_id));
+SELECT boundary.id
+FROM log_entries boundary
+WHERE boundary.loop_id = $loop_id
+  AND boundary.expanded = 1
+  AND COALESCE(boundary.op, '') NOT IN ('error', 'PLAN')
+  AND COALESCE(boundary.scheme, '') != 'prompt'  -- the task frame ({§prompt-self-only}); NULL-safe: a model-emission row's scheme is NULL
+  AND (boundary.turn_id = $turn_id OR boundary.turn_id = (SELECT id FROM previous_turn))
+UNION
+SELECT target.id
+FROM log_curation_effects effect
+JOIN log_entries operation ON operation.id = effect.operation_log_entry_id
+JOIN log_entries target ON target.id = effect.target_log_entry_id
+WHERE operation.turn_id = (SELECT id FROM previous_turn)
+  AND operation.op = 'OPEN'
+  AND operation.status_rx < 400
+  AND effect.expanded_before = 0
+  AND target.expanded = 1
+  AND COALESCE(target.op, '') NOT IN ('error', 'PLAN')
+  AND COALESCE(target.scheme, '') != 'prompt';
 
 UPDATE log_entries SET expanded = 0
 WHERE id IN (SELECT id FROM engine_grinder_fold_set);

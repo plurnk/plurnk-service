@@ -33,6 +33,17 @@ JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
+-- PREP: test_log_curation_effects_by_worker
+SELECT effect.operation_log_entry_id, effect.target_log_entry_id, effect.expanded_before,
+       operation.op, operation.turn_id,
+       operation.sequence AS operation_sequence,
+       target.sequence AS target_sequence
+FROM log_curation_effects effect
+JOIN log_entries operation ON operation.id = effect.operation_log_entry_id
+JOIN log_entries target ON target.id = effect.target_log_entry_id
+WHERE operation.worker_id = $worker_id
+ORDER BY effect.operation_log_entry_id, effect.target_log_entry_id;
+
 -- PREP: test_get_loop_status
 SELECT status FROM loops WHERE id = $id;
 

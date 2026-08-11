@@ -40,7 +40,31 @@ WHERE l.worker_id = $worker_id
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: log_set_expanded_by_id
-UPDATE log_entries SET expanded = $expanded WHERE id = $id;
+-- RETURNING distinguishes a real 0↔1 transition from a successful visibility
+-- no-op without a separate pre-write snapshot.
+UPDATE log_entries SET expanded = $expanded
+WHERE id = $id AND expanded != $expanded
+RETURNING id;
+
+-- PREP: log_expanded_by_id
+-- A conditional update returns no row for a no-op. Confirm the target still
+-- exists and retain its exact pre-event state for the durable effect record.
+SELECT expanded FROM log_entries WHERE id = $id;
+
+-- PREP: log_record_curation_effects
+-- {§fold-open-meta-operations} — the successful operation row remains the
+-- event; this relation makes its exact selected set and prior visibility
+-- durable without projecting internal row identities to the model.
+INSERT INTO log_curation_effects (
+    operation_log_entry_id,
+    target_log_entry_id,
+    expanded_before
+)
+SELECT
+    $operation_log_entry_id,
+    json_extract(value, '$.targetLogEntryId'),
+    json_extract(value, '$.expandedBefore')
+FROM json_each($effects);
 
 -- PREP: log_delete_by_id
 -- {§model-entry-log-curation} — permanent row deletion; the derived errors pointer for an

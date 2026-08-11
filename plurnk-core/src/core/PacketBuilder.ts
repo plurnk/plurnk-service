@@ -447,8 +447,9 @@ export default class PacketBuilder {
 
     // SPEC {§grinder} — the budget grinder. Runs pre-LLM (in runTurn, after the packet
     // is built, before provider.generate); fires only on actual ruler overflow. One
-    // reversible rule: fold the NEWEST turn boundary's eligible open rows — never
-    // older history — then rebuild and re-measure.
+    // reversible rule: roll back context introduced by the NEWEST turn boundary —
+    // rows born there plus exact older rows it transitioned folded→open — then
+    // rebuild and re-measure.
     // {§grinder-overflow-only} — fires only on actual overflow, never speculatively
     async enforceBudget({ packet, provider, loopId, turnId, rebuild }: {
         packet: RequestPacket; provider: Provider;
@@ -462,10 +463,9 @@ export default class PacketBuilder {
             return { packet, fit: true };
         }
 
-        // ONE rule, every turn — turn 1 and turn 101 alike ({§grinder-layer1-rollback}): fold the
-        // NEWEST turn boundary's still-open rows in one set-op. The model owns older
-        // history visibility; a remaining ruler deficit is reported in Budget and is
-        // not itself a failure or strike.
+        // ONE rule, every turn ({§grinder-layer1-rollback}): atomically fold/tag
+        // context introduced by the newest boundary. Other older history remains
+        // model-owned; remaining ruler debt is neither failure nor strike.
         await this.#db.engine_grinder_fold_newest_turn({ loop_id: loopId, turn_id: turnId });
         const current = await rebuild();
         return { packet: current, fit: measure(current) <= ceiling };
