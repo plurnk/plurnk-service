@@ -1239,6 +1239,10 @@ A `file:///` member EDIT diverges from this immediate-write contract: it diffs a
 
 AST: `{ op: "READ", target, body: null, signal: tags | null, lineMarker? }`.
 
+Matcher-bearing or path-glob READ syntax has already normalized to canonical
+FIND before dispatch under {§read-find-normalization}; core has no second READ
+selection or fan-out path.
+
 - §read-read-content Returns channel content and mimetype.
 - §read-read-404 Returns 404 when the channel is absent.
 - §read-selection-projection READ applies `lineMarker` as text coordinates to one

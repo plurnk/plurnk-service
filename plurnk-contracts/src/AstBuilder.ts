@@ -140,7 +140,7 @@ export default class AstBuilder {
     }
 
     // LOOK / BUFF are client-tier matcher observations. They share the tag slots
-    // but deliberately retain matcher bodies that exact-target READ forbids.
+    // and parse matcher bodies directly for their client-owned lifecycles.
     static #buildLook(ctx: LookStatementContext): LookStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
@@ -167,20 +167,22 @@ export default class AstBuilder {
         };
     }
 
-    static #buildRead(ctx: ReadStatementContext): ReadStatement {
+    static #buildRead(ctx: ReadStatementContext): FindStatement | ReadStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         const targetPath = slots.target?.kind === "url"
             ? slots.target.pathname
             : slots.target?.raw;
-        if ((raw !== null && raw.trim() !== "") || (targetPath !== undefined && PathSyntax.hasGlob(targetPath))) {
-            throw new PlurnkParseError(
-                position.line,
-                position.column,
-                "visitor",
-                "READ requires one exact target with an empty body; use FIND for path globs or content matchers",
-            );
+        const hasMatcher = raw !== null && raw.trim() !== "";
+        if (hasMatcher || (targetPath !== undefined && PathSyntax.hasGlob(targetPath))) {
+            return {
+                op: "FIND",
+                suffix: AstBuilder.#splitSuffix(ctx.OPEN_READ().getText(), "READ"),
+                ...slots,
+                body: hasMatcher ? AstBuilder.#parseMatcherBody(raw, position) : null,
+                position,
+            };
         }
         return {
             op: "READ",

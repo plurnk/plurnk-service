@@ -266,12 +266,19 @@ four-coordinate region ending after the final code point of `endLine`.
 Producers never emit that form. Other arities and decimal text coordinates are
 runtime 416 failures.
 
-§read-exact-target READ targets one exact resource (a local path or scheme URL,
-with optional `#channel` fragment or `{header: value}` metadata). READ does not
-admit globs or matcher bodies; pattern matching belongs to FIND. A `<scope>` on
-READ selects a text region from that exact target. Without a scope, READ
-defaults to `<1,16>`; `<1,-1>` explicitly selects all text. Decimal scope
-components are invalid on READ.
+§read-find-normalization An authored READ with a nonempty matcher body or a
+target path classified as a glob normalizes during AST construction to one
+ordinary FIND statement. Target, signals, scope, and matcher are preserved;
+FIND's result pagination and projection contract then applies. The canonical
+AST retains no parallel matcher-READ mode, and the runtime performs no READ
+fan-out.
+
+§read-exact-target After normalization, READ targets one exact resource (a
+local path or scheme URL, with optional `#channel` fragment or
+`{header: value}` metadata) and has no matcher body. A `<scope>` on READ selects
+a text region from that exact target. Without a scope, READ defaults to
+`<1,16>`; `<1,-1>` explicitly selects all text. Decimal scope components are
+invalid on READ.
 
 Mutation semantics:
 
@@ -394,9 +401,10 @@ ingestion restriction: the parser decomposes arbitrary URL authorities.
 
 ## §matcher-prefix-claims 6. Bulk pattern matching
 
-FIND, OPEN, and FOLD accept an optional body matcher. READ requires an exact target
-and an empty body. The lexer preserves the body opaquely; AstBuilder assigns the dialect
-from its leading characters.
+FIND, OPEN, FOLD, and authored READ accept an optional body matcher. The lexer
+preserves the body opaquely; AstBuilder assigns the dialect from its leading
+characters, then normalizes matcher-bearing READ to FIND under
+{§read-find-normalization}.
 A leading prefix claims its dialect. Invalid claimed syntax is a positioned
 visitor error and never falls back to glob matching.
 
@@ -422,9 +430,9 @@ statements remain recoverable when their boundaries are trustworthy.
 
 - §pattern-body-single-line The GBNF rail permits only single-line matcher
   bodies. A regex that matches a newline uses the two-character `\n` escape.
-  During ingestion, a FIND body that reaches a physical newline without its
-  close tag closes at that boundary with one recoverable lexer diagnostic, so
-  the following statement remains independently parseable.
+  During ingestion, a FIND or READ matcher body that reaches a physical newline
+  without its close tag closes at that boundary with one recoverable lexer
+  diagnostic, so the following statement remains independently parseable.
 - §pattern-body-leading-colon The GBNF rail forbids `:` as the first matcher
   character. Empty matchers and later colons remain valid; a regex such as
   `/^:needle/` expresses a pattern beginning with a literal colon.
@@ -434,6 +442,9 @@ statements remain recoverable when their boundaries are trustworthy.
 The model-facing slot is `<scope>`; the AST field remains the historical
 `lineMarker: { marks: number[] }`. The parser preserves ordered numeric
 components, while the operation owner assigns their roles.
+
+The operation column names the canonical AST operation after
+{§read-find-normalization}.
 
 | Operation             | Canonical components                         | Meaning                                                      |
 |-----------------------|----------------------------------------------|--------------------------------------------------------------|

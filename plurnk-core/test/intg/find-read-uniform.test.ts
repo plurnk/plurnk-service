@@ -313,6 +313,33 @@ test("FIND on an exact target with a content matcher pages flat match locations"
     } finally { await db.close(); }
 });
 
+test("{§read-find-normalization}: authored READ aggregates use canonical FIND pagination", async () => {
+    const { db, workspaceId, workerId, ctx } = await setup();
+    try {
+        await seedRaw(ctx, "a.md", "target one\ntarget two");
+        await seedRaw(ctx, "b.md", "other");
+        const worker = new Worker();
+
+        const globRead = parseOp<FindStatement>("<<READ(worker:///*.md)<2>::READ", "FIND");
+        const resourcePage = await worker.find(
+            globRead,
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
+        );
+        assert.equal(resourcePage.range?.unit, "resource");
+        assert.deepEqual(resourcePage.results.map(({ path }) => path), ["worker:///b.md"]);
+
+        const matcherRead = parseOp<FindStatement>("<<READ(worker:///a.md)<2>:/target/:READ", "FIND");
+        const locationPage = await worker.find(
+            matcherRead,
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
+        );
+        assert.equal(locationPage.range?.unit, "matchLocation");
+        assert.deepEqual(locationPage.results[0]?.region, {
+            startLine: 2, startColumn: 1, endLine: 2, endColumn: 7,
+        });
+    } finally { await db.close(); }
+});
+
 test("broad FIND pagination counts selected resources, not match locations", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {

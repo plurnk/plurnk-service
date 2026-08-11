@@ -1412,20 +1412,69 @@ test("MatcherBody: valid xpath still dispatches xpath even after disambiguation"
     assert.equal(b.raw, "//h1/text()");
 });
 
-test("READ rejects matcher bodies and path globs instead of changing operations", () => {
-    for (const input of [
-        "<<READ(page.html):/header/:READ",
-        "<<READ(package.json):TODO:READ",
-        "<<READ(src/**/*.ts)::READ",
-        "<<READ(worker:///src/**/*.ts)::READ",
-    ]) {
+test("{§read-find-normalization}: READ aggregate forms normalize to schema-valid FIND", () => {
+    const cases = [
+        {
+            input: "<<READ(worker:///page.md)<2,4>::READ",
+            op: "READ",
+            dialect: null,
+            marks: [2, 4],
+            signal: null,
+        },
+        {
+            input: "<<READ[review](worker:///page.md)<3,5>:/header/i:READ",
+            op: "FIND",
+            dialect: "regex",
+            marks: [3, 5],
+            signal: ["review"],
+        },
+        {
+            input: "<<READ(src/**/*.ts)<2>::READ",
+            op: "FIND",
+            dialect: null,
+            marks: [2],
+            signal: null,
+        },
+        {
+            input: "<<READ(worker:///src/**/*.ts)<4,8>::READ",
+            op: "FIND",
+            dialect: null,
+            marks: [4, 8],
+            signal: null,
+        },
+        {
+            input: "<<READ(worker:///src/**/*.ts):TODO:READ",
+            op: "FIND",
+            dialect: "glob",
+            marks: null,
+            signal: null,
+        },
+    ] as const;
+
+    for (const { input, op, dialect, marks, signal } of cases) {
         const result = PlurnkParser.parseStatements(input);
-        assert.equal(result.items.some((item) => item.kind === "statement"), false);
         const errors = result.items.filter((item) => item.kind === "error");
-        assert.equal(errors.length, 1, `one actionable diagnostic for ${input}`);
-        assert.equal(errors[0]?.error.source, "visitor");
-        assert.match(errors[0]?.error.message ?? "", /READ requires one exact target.*use FIND/i);
+        assert.equal(errors.length, 0, `no diagnostic for ${input}`);
+        const statements = result.items.filter((item) => item.kind === "statement");
+        assert.equal(statements.length, 1, `one canonical statement for ${input}`);
+        const statement = statements[0]!.statement;
+        assert.equal(statement.op, op, input);
+        assert.deepEqual(statement.lineMarker?.marks ?? null, marks, input);
+        assert.deepEqual(statement.signal, signal, input);
+        const body = statement.op === "FIND" ? statement.body : null;
+        assert.equal(body?.dialect ?? null, dialect, input);
+        const validation = Validator.validatePlurnkStatement(statement);
+        assert.equal(validation.valid, true, `${input}: ${JSON.stringify(validation.errors)}`);
     }
+});
+
+test("{§read-find-normalization}: READ matcher admission retains positioned dialect errors", () => {
+    const result = PlurnkParser.parseStatements("<<READ(page.html):// foo {bar}:READ");
+    assert.equal(result.items.some((item) => item.kind === "statement"), false);
+    const errors = result.items.filter((item) => item.kind === "error");
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0]?.error.source, "visitor");
+    assert.match(errors[0]?.error.message ?? "", /is not a valid xpath selector/);
 });
 
 test("COPY body carries a destination selection", () => {
