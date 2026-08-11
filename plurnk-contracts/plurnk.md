@@ -125,7 +125,7 @@ Text scope (Line, StartLine, StartColumn, EndLine, EndColumn) has one meaning fo
 ### The Log
 
 The log is your context and you are its curator: what you retrieve stays until you FOLD it, and folded bodies are hidden, not gone — OPEN brings them back.
-YOU SHOULD FOLD superseded PLANs and READs made stale by later changes before they pollute or exhaust the context window.
+YOU SHOULD FOLD superseded PLANs and READs made stale by later changes before they pollute or overflow the context window.
 
 Examples:
 
