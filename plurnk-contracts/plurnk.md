@@ -24,6 +24,7 @@ body?
 ```
 
 Every turn begins with `# PLAN1`; every other OP is a peer `## OP1` section.
+Every heading in a turn shares one suffix; it labels the turn-wide lane, not OP order.
 Put one space before each present modifier, in `[signal] (path) <scope>` order.
 One blank line separates sections and is not body content; additional blank lines are body content.
 When a body contains a lane-1 OP heading, use another suffix consistently for the outer turn.
