@@ -56,10 +56,10 @@ test("runtime declaration has one catalog face and one tool-call shape", () => {
     const declaration = runtimeDecl("echo");
     assert.equal(
         declaration.example,
-        "## EXEC1 [echo] (tool_name)\n{\"argument\":\"value\"}",
+        "## EXEC0 [echo] (tool_name)\n{\"argument\":\"value\"}",
     );
-    assert.ok(declaration.documentation?.includes("## READ1 (echo:///)"));
-    assert.equal(declaration.documentation?.includes("## EXEC1 [echo]\n?"), false);
+    assert.ok(declaration.documentation?.includes("## READ0 (echo:///)"));
+    assert.equal(declaration.documentation?.includes("## EXEC0 [echo]\n?"), false);
 });
 
 test("MCP executor requires a tool target instead of duplicating catalog discovery", async () => {

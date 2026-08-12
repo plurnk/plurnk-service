@@ -10,7 +10,7 @@
  * - A per-request repeat_penalty > 1.0 is required; greedy decoding under hard
  *   constraint masks degenerates into repetition loops without it.
  * - The grammar constrains the raw decode to exactly one Gemma Harmony reasoning
- *   enclosure, then `sep`, mandatory `# PLAN1`, H2 operations, and terminal SEND.
+ *   enclosure, then `sep`, mandatory `# PLAN0`, H2 operations, and terminal SEND.
  *   llama-server applies `reasoning_format: "auto"` after that constrained decode,
  *   projecting the enclosure body out of `content` into `reasoning_content`.
  */

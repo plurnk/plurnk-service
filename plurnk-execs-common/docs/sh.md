@@ -1,7 +1,7 @@
 # sh
 
 A shell command line, run via `sh -c`. Bare `EXEC` (no runtime tag) defaults
-to `sh`, so `## EXEC1` and `## EXEC1 [sh]` are equivalent headings.
+to `sh`, so `## EXEC0` and `## EXEC0 [sh]` are equivalent headings.
 
 ## Environment
 
@@ -11,14 +11,14 @@ read plurnk's credentials. The project's environment passes through.
 
 ## Working directory
 
-`## EXEC1 [sh] (./dir)` runs in `./dir`. With no target, the command runs in the
+`## EXEC0 [sh] (./dir)` runs in `./dir`. With no target, the command runs in the
 workspace project root where file operations write—not in the daemon's own
 working directory.
 
 The target's filesystem type selects its role:
 
 - A directory becomes the working directory.
-- A file is the script to run. `## EXEC1 [sh] (greet.sh)` runs it with an
+- A file is the script to run. `## EXEC0 [sh] (greet.sh)` runs it with an
   empty stdin; a nonempty body becomes stdin.
 
 The interpreter reads a targeted file directly, so it needs no executable bit.
@@ -40,16 +40,16 @@ because either may carry the useful diagnostic.
 For a long-running command, the `<L>` slot carries `<TIMEOUT_SECONDS, POLL_SECONDS>` (both seconds):
 
 ```plurnk
-## EXEC1 <1800>
+## EXEC0 <1800>
 npm run build
 
-## EXEC1 <1800,300>
+## EXEC0 <1800,300>
 npm run e2e
 
-## EXEC1 <-1,300>
+## EXEC0 <-1,300>
 npm run test
 
-## EXEC1 <-1,0>
+## EXEC0 <-1,0>
 tail -f app.log
 ```
 

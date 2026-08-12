@@ -10,16 +10,16 @@ const errors = (input: string) =>
 
 test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exact section bodies", () => {
     const input = [
-        "# PLAN1",
+        "# PLAN0",
         "Update the note, then read it.",
         "",
-        "## EDIT1 [draft] (worker:///note.md) <1,-1>",
+        "## EDIT0 [draft] (worker:///note.md) <1,-1>",
         "alpha",
         "beta",
         "",
-        "## READ1 (worker:///note.md)",
+        "## READ0 (worker:///note.md)",
         "",
-        "## SEND1 [102]",
+        "## SEND0 [102]",
         "Waiting for the read result.",
     ].join("\n");
 
@@ -28,10 +28,10 @@ test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exac
     assert.equal(result.unparsedTail, undefined);
     const parsed = statements(input);
     assert.deepEqual(parsed.map(({ op, suffix }) => [op, suffix]), [
-        ["PLAN", "1"],
-        ["EDIT", "1"],
-        ["READ", "1"],
-        ["SEND", "1"],
+        ["PLAN", "0"],
+        ["EDIT", "0"],
+        ["READ", "0"],
+        ["SEND", "0"],
     ]);
     assert.equal(parsed[0].body, "Update the note, then read it.");
     assert.equal(parsed[1].body, "alpha\nbeta");
@@ -40,7 +40,7 @@ test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exac
 });
 
 test("{§section-boundary}: one separator line is structural and additional blank lines remain body content", () => {
-    const input = "# PLAN1\np\n\n## EDIT1 (worker:///note.md)\nalpha\n\n\n## SEND1 [200]\ndone";
+    const input = "# PLAN0\np\n\n## EDIT0 (worker:///note.md)\nalpha\n\n\n## SEND0 [200]\ndone";
     const parsed = statements(input);
     assert.equal(parsed[1].body, "alpha\n");
 });
@@ -51,10 +51,10 @@ test("{§suffix-discipline}: differently suffixed headings remain character-perf
         "Store a quoted turn.",
         "",
         "## EDIT2 (worker:///quoted.plurnk)",
-        "# PLAN1",
+        "# PLAN0",
         "Answer from memory.",
         "",
-        "## SEND1 [200]",
+        "## SEND0 [200]",
         "Paris.",
         "",
         "## SEND2 [200]",
@@ -63,21 +63,21 @@ test("{§suffix-discipline}: differently suffixed headings remain character-perf
     const parsed = statements(quoted);
     assert.equal(parsed.length, 3);
     assert.equal(parsed[1].op, "EDIT");
-    assert.equal(parsed[1].body, "# PLAN1\nAnswer from memory.\n\n## SEND1 [200]\nParis.");
+    assert.equal(parsed[1].body, "# PLAN0\nAnswer from memory.\n\n## SEND0 [200]\nParis.");
 });
 
 test("{§tier-entrypoints}: parseLog uses consecutive PLAN turns without a TURN wrapper", () => {
     const input = [
-        "# PLAN1",
+        "# PLAN0",
         "First.",
         "",
-        "## SEND1 [200]",
+        "## SEND0 [200]",
         "One.",
         "",
-        "# PLAN1",
+        "# PLAN0",
         "Second.",
         "",
-        "## SEND1 [200]",
+        "## SEND0 [200]",
         "Two.",
     ].join("\n");
     const result = PlurnkParser.parseLog(input);
@@ -111,7 +111,7 @@ test("{§lane-match}: parseLog establishes a fresh lane after each terminal SEND
 });
 
 test("{§tier-entrypoints}: client-only operations use H2 sections", () => {
-    const result = PlurnkParser.parseClient("## LOOK1 [draft] (worker:///note.md) <1,20>\n~recent thoughts");
+    const result = PlurnkParser.parseClient("## LOOK0 [draft] (worker:///note.md) <1,20>\n~recent thoughts");
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     const item = result.items.find((candidate) => candidate.kind === "statement");
     assert.equal(item?.kind === "statement" ? item.statement.op : null, "LOOK");

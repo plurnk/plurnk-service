@@ -64,7 +64,7 @@ export default class EntrySend {
         // #fragment, deletes just that channel; without, deletes the whole entry.
         if (status === 410) {
             const pathname = EntrySend.#pathnameOf(statement);
-            if (pathname === null) return failure("target-required", 400, "`## SEND1 [410]` requires a target path.");
+            if (pathname === null) return failure("target-required", 400, "`## SEND0 [410]` requires a target path.");
             const target = renderAddress(scheme, pathname);
             const fragment = EntrySend.#fragmentOf(statement);
             if (fragment !== null) {
@@ -103,7 +103,7 @@ export default class EntrySend {
         // findActiveSubscription, then call their teardown using the stored handle.
         if (status === 499) {
             const pathname = EntrySend.#pathnameOf(statement);
-            if (pathname === null) return failure("target-required", 400, "`## SEND1 [499]` requires a target path.");
+            if (pathname === null) return failure("target-required", 400, "`## SEND0 [499]` requires a target path.");
             const target = renderAddress(scheme, pathname);
             const { db, workspaceId, workerId } = ctx;
             const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, pathname });

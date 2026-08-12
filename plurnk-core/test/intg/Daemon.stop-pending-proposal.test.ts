@@ -8,7 +8,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, subscribeNotifications,
 test("{§worker-lifecycle-total-reap}: Daemon.stop terminates with a pending proposal", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         // A non-auto host EXEC proposes (202) and stops the world; nobody ever resolves it.
-        makeMockResponse("# PLAN1\nrun\n\n## EXEC1 [sh]\necho pending\n\n## SEND1 [102]\nproposed", 10),
+        makeMockResponse("# PLAN0\nrun\n\n## EXEC0 [sh]\necho pending\n\n## SEND0 [102]\nproposed", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

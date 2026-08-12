@@ -16,10 +16,10 @@ test("a polled EXEC <T,P> wakes a hibernating (202) loop every P seconds", async
     // 16384: base-packet growth (grammar 0.76.5 + sibling teaching) crested this accumulation's 8192 edge — headroom scaffolding, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: background a long spawn with a 1s poll, then hibernate.
-        makeMockResponse("## EXEC1 [sh] <30,1>\nsleep 30\n\n## SEND1 [202] <-1>\nhibernating; will poll", 10),
+        makeMockResponse("## EXEC0 [sh] <30,1>\nsleep 30\n\n## SEND0 [202] <-1>\nhibernating; will poll", 10),
         // Turn 2 only happens if something resumed the parked loop. The spawn is still running at ~1s,
         // so a stream conclusion did NOT wake it — the poll did. Abandon (499 reaps the live spawn).
-        makeMockResponse("## SEND1 [499]\nwoke via poll; abandoning", 10),
+        makeMockResponse("## SEND0 [499]\nwoke via poll; abandoning", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -40,8 +40,8 @@ test("an EXEC without an explicit cadence wakes on the exponential-backoff floor
     const previous = process.env.PLURNK_SERVICE_EXEC_POLL_SEC;
     process.env.PLURNK_SERVICE_EXEC_POLL_SEC = "1";
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("## EXEC1 [sh] <30>\nsleep 30\n\n## SEND1 [202]\nwaiting under backoff", 10),
-        makeMockResponse("## SEND1 [499]\nobserved the still-open stream on a backoff wake", 10),
+        makeMockResponse("## EXEC0 [sh] <30>\nsleep 30\n\n## SEND0 [202]\nwaiting under backoff", 10),
+        makeMockResponse("## SEND0 [499]\nobserved the still-open stream on a backoff wake", 10),
     ] });
     try {
         await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -65,8 +65,8 @@ test("an explicit zero cadence stays blind while open but still wakes exactly on
     const previous = process.env.PLURNK_SERVICE_EXEC_POLL_SEC;
     process.env.PLURNK_SERVICE_EXEC_POLL_SEC = "0.1";
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("## EXEC1 [sh] <10,0>\nsleep 3; echo closed\n\n## SEND1 [202]\nwaiting blindly for closure", 10),
-        makeMockResponse("## SEND1 [200]\nobserved terminal closure", 10),
+        makeMockResponse("## EXEC0 [sh] <10,0>\nsleep 3; echo closed\n\n## SEND0 [202]\nwaiting blindly for closure", 10),
+        makeMockResponse("## SEND0 [200]\nobserved terminal closure", 10),
     ] });
     try {
         await withDaemon(mock, async (_db, _daemon, addr) => {

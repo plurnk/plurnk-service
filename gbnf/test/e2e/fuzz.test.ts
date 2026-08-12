@@ -21,8 +21,8 @@ const rng = (seed: number) => () => {
 // landing on a rich mix of accept / incomplete / reject verdicts.
 const FRAGMENTS = [
     "<|channel>thought\n", "<channel|>", "\n", "\n\n", " ", "\t",
-    "# PLAN1", "# PLAN2", "## FIND1", "## READ1", "## EDIT1", "## SEND1", "## EXEC1",
-    "## COPY1", "## MOVE1", "## OPEN1", "## FOLD1", "## KILL1", "## EDIT2", " ## FIND1", "",
+    "# PLAN0", "# PLAN2", "## FIND0", "## READ0", "## EDIT0", "## SEND0", "## EXEC0",
+    "## COPY0", "## MOVE0", "## OPEN0", "## FOLD0", "## KILL0", "## EDIT2", " ## FIND0", "",
     "(known:///**)", "(plurnk:///manifest.json)", "(README.md)", "(run://x)", "(#re#i)", "()",
     "[200]", "[philosophy,france]", "[]",
     "<1,2>", "<0.7>", "<-1>", "<2.5>",
@@ -51,7 +51,7 @@ const genNoise = (r: () => number): string => {
 };
 
 const genMultibyte = (r: () => number): string => {
-    let s = "<|channel>thought\n<channel|>\n# PLAN1\nanswer\n\n## SEND1 [200]\n";
+    let s = "<|channel>thought\n<channel|>\n# PLAN0\nanswer\n\n## SEND0 [200]\n";
     const n = Math.floor(r() * 6);
     for (let i = 0; i < n; i++) s += r() < 0.5 ? pick(r, MULTIBYTE) : PRINTABLE[Math.floor(r() * PRINTABLE.length)];
     return s;

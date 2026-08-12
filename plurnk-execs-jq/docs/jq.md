@@ -3,13 +3,13 @@
 The system `jq` as a runtime: the **body is the jq program**, the **`(target)` is the data source**.
 
 ```plurnk
-## EXEC1 [jq]
+## EXEC0 [jq]
 [1,2,3] | add
 
-## EXEC1 [jq] (data.json)
+## EXEC0 [jq] (data.json)
 .users[].name
 
-## EXEC1 [jq] (search:///1/2/3#results)
+## EXEC0 [jq] (search:///1/2/3#results)
 .[] | .title
 ```
 

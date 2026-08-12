@@ -169,10 +169,10 @@ const channel = (body = ""): string => `${CHANNEL_OPEN}${body}${CHANNEL_CLOSE}`;
 const derivesTurn = (content: string, reasoning = "", separator = ""): boolean =>
     derives("root-turn", `${channel(reasoning)}${separator}${content}`);
 
-const plan = (body: string): string => `# PLAN1\n${body}\n\n`;
+const plan = (body: string): string => `# PLAN0\n${body}\n\n`;
 const mid = (op: string, slots = "", body?: string): string =>
-    body === undefined ? `## ${op}1${slots}\n\n` : `## ${op}1${slots}\n${body}\n\n`;
-const terminal = (code: number, body: string, slots = ""): string => `## SEND1 [${code}]${slots}\n${body}`;
+    body === undefined ? `## ${op}0${slots}\n\n` : `## ${op}0${slots}\n${body}\n\n`;
+const terminal = (code: number, body: string, slots = ""): string => `## SEND0 [${code}]${slots}\n${body}`;
 const turn = (planBody: string, operations: string[], code = 200, sendBody = "done", sendSlots = ""): string =>
     `${plan(planBody)}${operations.join("")}${terminal(code, sendBody, sendSlots)}`;
 
@@ -321,8 +321,8 @@ test("GBNF mid-turn SENDs are statusless or carry non-disposition three-digit co
     for (const code of [102, 200, 202, 300, 499]) {
         assert.equal(derivesTurn(turn("p", [mid("SEND", ` [${code}]`, "not terminal")], 200, "done")), false, String(code));
     }
-    assert.equal(derives("send-statement", "## SEND1 [40]\nmessage\n\n"), false);
-    assert.equal(derives("send-statement", "## SEND1 [4000]\nmessage\n\n"), false);
+    assert.equal(derives("send-statement", "## SEND0 [40]\nmessage\n\n"), false);
+    assert.equal(derives("send-statement", "## SEND0 [4000]\nmessage\n\n"), false);
 });
 
 test("GBNF EXEC, WORK, and FORK retain their operation-specific slots and bodies", () => {
@@ -334,20 +334,20 @@ test("GBNF EXEC, WORK, and FORK retain their operation-specific slots and bodies
     assert.equal(derives("statement", mid("FORK", " (worker://child)")), false);
 });
 
-test("GBNF PLAN is a nonempty slotless H1 lane-1 anchor only", () => {
+test("GBNF PLAN is a nonempty slotless H1 lane-0 anchor only", () => {
     assert.equal(derivesTurn(turn("intent", [], 200, "done")), true);
-    assert.equal(derivesTurn(`# PLAN1 [tag]\nintent\n\n${terminal(200, "done")}`), false);
-    assert.equal(derivesTurn(`# PLAN1\n\n${terminal(200, "done")}`), false);
+    assert.equal(derivesTurn(`# PLAN0 [tag]\nintent\n\n${terminal(200, "done")}`), false);
+    assert.equal(derivesTurn(`# PLAN0\n\n${terminal(200, "done")}`), false);
     assert.equal(derivesTurn(`# PLAN\nintent\n\n${terminal(200, "done")}`), false);
     assert.equal(derivesTurn(`# PLANouter\nintent\n\n${terminal(200, "done")}`), false);
     assert.equal(derives("statement", mid("PLAN", "", "intent")), false);
 });
 
 // {§rail-heading-boundaries}
-test("GBNF reserves every operation heading stem for canonical lane 1", () => {
-    assert.equal(derivesTurn(turn("quote ## READ1 here", [], 200, "done")), false);
+test("GBNF reserves every operation heading stem for canonical lane 0", () => {
+    assert.equal(derivesTurn(turn("quote ## READ0 here", [], 200, "done")), false);
     assert.equal(derivesTurn(turn("# PLAN2\nquoted plan\n\n## SEND2 [200]\nquoted answer", [], 200, "done")), false);
-    assert.equal(derives("statement", mid("EDIT", " (note.md)", "## READ1 (x)")), false);
+    assert.equal(derives("statement", mid("EDIT", " (note.md)", "## READ0 (x)")), false);
     assert.equal(derives("statement", mid("EDIT", " (note.md)", "## READ2 (x)")), false);
     assert.equal(derives("statement", mid("EXEC", " [sh]", "pwd\n\n## SEND0 [102]\nnot a terminal section")), false);
 });
@@ -355,16 +355,16 @@ test("GBNF reserves every operation heading stem for canonical lane 1", () => {
 test("GBNF terminal SEND body is required and target is optional", () => {
     assert.equal(derivesTurn(turn("p", [], 200, "done")), true);
     assert.equal(derivesTurn(turn("p", [], 200, "done", " (worker://parent)")), true);
-    assert.equal(derivesTurn(`${plan("p")}## SEND1 [200]`), false);
-    assert.equal(derivesTurn(`${plan("p")}## SEND1 [200]\n`), false);
+    assert.equal(derivesTurn(`${plan("p")}## SEND0 [200]`), false);
+    assert.equal(derivesTurn(`${plan("p")}## SEND0 [200]\n`), false);
 });
 
-test("GBNF fixes lane 1 and canonical comma scopes while ANTLR tolerates wider lanes and dash scopes", () => {
-    assert.equal(derives("statement", "## READ1 (x)\n\n"), true);
+test("GBNF fixes lane 0 and canonical comma scopes while ANTLR tolerates wider lanes and dash scopes", () => {
+    assert.equal(derives("statement", "## READ0 (x)\n\n"), true);
     assert.equal(derives("statement", "## READouter (x)\n\n"), false);
     assert.equal(derives("statement", "## READ (x)\n\n"), false);
-    assert.equal(derives("statement", "## READ1 (x) <1,5>\n\n"), true);
-    assert.equal(derives("statement", "## READ1 (x) <1-5>\n\n"), false);
+    assert.equal(derives("statement", "## READ0 (x) <1,5>\n\n"), true);
+    assert.equal(derives("statement", "## READ0 (x) <1-5>\n\n"), false);
 
     assert.equal(PlurnkParser.parseStatements("## READouter (x) <1-5>").items.some((item) => item.kind === "error"), false);
     assert.equal(PlurnkParser.parseStatements("## READ (x) <1-5>").items.some((item) => item.kind === "error"), false);
@@ -372,19 +372,19 @@ test("GBNF fixes lane 1 and canonical comma scopes while ANTLR tolerates wider l
 
 // {§path-parentheses}
 test("GBNF targets require canonical escaping for delimiters and parentheses", () => {
-    assert.equal(derives("statement", "## READ1 (https://example.test/a%28b%29)\n\n"), true);
-    assert.equal(derives("statement", String.raw`## READ1 (https://example.test/a\(b\))
+    assert.equal(derives("statement", "## READ0 (https://example.test/a%28b%29)\n\n"), true);
+    assert.equal(derives("statement", String.raw`## READ0 (https://example.test/a\(b\))
 
 `), true);
-    assert.equal(derives("statement", "## READ1 (https://example.test/a(b))\n\n"), false);
-    assert.equal(derives("statement", "## READ1 (a<b)\n\n"), false);
+    assert.equal(derives("statement", "## READ0 (https://example.test/a(b))\n\n"), false);
+    assert.equal(derives("statement", "## READ0 (a<b)\n\n"), false);
 });
 
 // {§slot-order}
 test("GBNF emits spaced canonical slot order while ANTLR accepts spaced permutations", () => {
-    const canonical = "## FIND1 [tag] (source) <1,5>\nneedle\n\n";
-    const reordered = "## FIND1 (source) [tag] <1,5>\nneedle\n\n";
-    const compact = "## FIND1 [tag](source)<1,5>\nneedle\n\n";
+    const canonical = "## FIND0 [tag] (source) <1,5>\nneedle\n\n";
+    const reordered = "## FIND0 (source) [tag] <1,5>\nneedle\n\n";
+    const compact = "## FIND0 [tag](source)<1,5>\nneedle\n\n";
     assert.equal(derives("statement", canonical), true);
     assert.equal(derives("statement", reordered), false);
     assert.equal(derives("statement", compact), false);
@@ -420,8 +420,8 @@ test("100 seeded turn derivations preserve the PLAN-through-terminal-SEND frame"
         const generated = sample("root-turn", mulberry32(seed));
         assert.equal(derives("root-turn", generated), true, `seed ${seed}`);
         assert.ok(generated.startsWith(CHANNEL_OPEN), `seed ${seed}`);
-        assert.ok(generated.includes("# PLAN1\n"), `seed ${seed}`);
-        const projected = generated.slice(generated.indexOf("# PLAN1"));
+        assert.ok(generated.includes("# PLAN0\n"), `seed ${seed}`);
+        const projected = generated.slice(generated.indexOf("# PLAN0"));
         const result = PlurnkParser.parse(projected);
         assert.equal(result.unparsedTail, undefined, `seed ${seed}`);
         const statements = result.items.filter((item) => item.kind === "statement");

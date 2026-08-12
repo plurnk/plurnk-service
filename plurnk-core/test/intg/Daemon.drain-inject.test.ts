@@ -10,7 +10,7 @@ import { rpcCall, flush, connect, withDaemon, makeMockResponse, subscribeNotific
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
 test("loop.run: enqueues + drains + returns first loop's result", async () => {
-    const dsl = "## EDIT1 (worker:///x)\nhello\n\n## SEND1 [200]\ndone";
+    const dsl = "## EDIT0 (worker:///x)\nhello\n\n## SEND0 [200]\ndone";
     const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -32,8 +32,8 @@ test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distin
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("## SEND1 [200]\nfirst concurrent loop"),
-            sendOnly("## SEND1 [200]\nsecond concurrent loop"),
+            sendOnly("## SEND0 [200]\nfirst concurrent loop"),
+            sendOnly("## SEND0 [200]\nsecond concurrent loop"),
         ],
     });
 
@@ -88,9 +88,9 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("## EXEC1 [sh]\nsleep 30\n\n## SEND1 [102]\nrunning"),
-            sendOnly("## SEND1 [200]\ndone"),
-            sendOnly("## SEND1 [200]\ndone"),
+            sendOnly("## EXEC0 [sh]\nsleep 30\n\n## SEND0 [102]\nrunning"),
+            sendOnly("## SEND0 [200]\ndone"),
+            sendOnly("## SEND0 [200]\ndone"),
         ],
     });
 
@@ -137,7 +137,7 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
 });
 
 test("loop.cancel: no active drain → cancelled=false", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("## SEND1 [200]\ndone")] });
+    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("## SEND0 [200]\ndone")] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -157,10 +157,10 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("## EXEC1 [sh]\nsleep 30\n\n## SEND1 [102]\nrunning"),
-            sendOnly("## SEND1 [200]\ndone"),
-            sendOnly("## SEND1 [200]\ndone"),
-            sendOnly("## SEND1 [200]\ndone"),
+            sendOnly("## EXEC0 [sh]\nsleep 30\n\n## SEND0 [102]\nrunning"),
+            sendOnly("## SEND0 [200]\ndone"),
+            sendOnly("## SEND0 [200]\ndone"),
+            sendOnly("## SEND0 [200]\ndone"),
         ],
     });
 
@@ -213,8 +213,8 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("## EXEC1 [sh]\ntrue\n\n## SEND1 [102]\ncontinue after review"), // proposal pauses before the required disposition
-            sendOnly("## SEND1 [200]\ndone"),      // turn 2 consumes the injected prompt, ends
+            sendOnly("## EXEC0 [sh]\ntrue\n\n## SEND0 [102]\ncontinue after review"), // proposal pauses before the required disposition
+            sendOnly("## SEND0 [200]\ndone"),      // turn 2 consumes the injected prompt, ends
         ],
     });
 
@@ -284,8 +284,8 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("## EXEC1 [sh]\nsleep 30\n\n## SEND1 [202] <-1>\npark"),
-            sendOnly("## SEND1 [499]\ndone with the parked work"),
+            sendOnly("## EXEC0 [sh]\nsleep 30\n\n## SEND0 [202] <-1>\npark"),
+            sendOnly("## SEND0 [499]\ndone with the parked work"),
         ],
     });
 
@@ -345,8 +345,8 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
         responses: [
             // The rejected EXEC is a same-turn failure — {§send-premature-terminate} refuses a [200] over
             // it, so loop 1 ends turn 1 by ABANDON (499, never gated): the orphan premise holds.
-            sendOnly("## EXEC1 [sh]\ntrue\n\n## SEND1 [499]\nloop 1 abandons at turn 1"),  // pause, then end
-            sendOnly("## SEND1 [200]\nreconciled loop ran"),                              // the promoted loop
+            sendOnly("## EXEC0 [sh]\ntrue\n\n## SEND0 [499]\nloop 1 abandons at turn 1"),  // pause, then end
+            sendOnly("## SEND0 [200]\nreconciled loop ran"),                              // the promoted loop
         ],
     });
 
@@ -445,8 +445,8 @@ test("loop.cancel reaps the worker's open streams by the subscription registry (
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("## EXEC1 [sh]\nsleep 30\n\n## SEND1 [202] <-1>\nbackgrounded"),
-            sendOnly("## SEND1 [200]\ndone"),
+            sendOnly("## EXEC0 [sh]\nsleep 30\n\n## SEND0 [202] <-1>\nbackgrounded"),
+            sendOnly("## SEND0 [200]\ndone"),
         ],
     });
 
@@ -485,8 +485,8 @@ test("a cancelled worker is not revived by its straggler stream's conclusion", a
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("## EXEC1 [sh]\nsleep 30\n\n## SEND1 [202] <-1>\nbackgrounded"),
-            sendOnly("## SEND1 [200]\nshould never run"),
+            sendOnly("## EXEC0 [sh]\nsleep 30\n\n## SEND0 [202] <-1>\nbackgrounded"),
+            sendOnly("## SEND0 [200]\nshould never run"),
         ],
     });
 

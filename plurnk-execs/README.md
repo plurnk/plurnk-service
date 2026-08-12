@@ -36,7 +36,7 @@ runtime declarations, and a default-exported `BaseExecutor` subclass.
       {
         "name": "cobol",
         "glyph": "🗄",
-        "example": "## EXEC1 [cobol]\nDISPLAY 'HI'."
+        "example": "## EXEC0 [cobol]\nDISPLAY 'HI'."
       }
     ]
   }

@@ -38,14 +38,14 @@ pathnames, `%28` and `%29` canonicalize to literal parentheses.
 
 | Operation                                  | Remote action                         | Contract                                                                                |
 | ------------------------------------------ | ------------------------------------- | --------------------------------------------------------------------------------------- |
-| Exact `## READ1 (url) <scope?>`            | GET unless a fresh GET copy is usable | Prepare one complete canonical representation, then let core select and project it      |
-| Exact `## FIND1 (url)`                     | GET only when acquisition is required | Use the same preparation, then universal query, matcher, weighting, and pagination      |
-| `## FIND1 (pattern-url)`                   | None                                  | Query already-materialized web entries; a path pattern does not discover the remote web |
-| `## SEND1 [200] (url)` with body           | POST                                  | Stream and persist the response under the addressed URL                                 |
-| `## EDIT1 (url)` with body                 | PUT                                   | Replace the whole remote resource; a line marker is invalid                             |
-| `## KILL1 (url)`                           | DELETE                                | Delete the remote resource and stream its response                                      |
-| `## SEND1 [410] (url)`                     | None                                  | Delete the local stored entry                                                           |
-| `## SEND1 [499] (url)`                     | Cancellation is engine-routed         | The routed subscription handle aborts the live owner; scheme dispatch is a `200` no-op  |
+| Exact `## READ0 (url) <scope?>`            | GET unless a fresh GET copy is usable | Prepare one complete canonical representation, then let core select and project it      |
+| Exact `## FIND0 (url)`                     | GET only when acquisition is required | Use the same preparation, then universal query, matcher, weighting, and pagination      |
+| `## FIND0 (pattern-url)`                   | None                                  | Query already-materialized web entries; a path pattern does not discover the remote web |
+| `## SEND0 [200] (url)` with body           | POST                                  | Stream and persist the response under the addressed URL                                 |
+| `## EDIT0 (url)` with body                 | PUT                                   | Replace the whole remote resource; a line marker is invalid                             |
+| `## KILL0 (url)`                           | DELETE                                | Delete the remote resource and stream its response                                      |
+| `## SEND0 [410] (url)`                     | None                                  | Delete the local stored entry                                                           |
+| `## SEND0 [499] (url)`                     | Cancellation is engine-routed         | The routed subscription handle aborts the live owner; scheme dispatch is a `200` no-op  |
 
 Finite GET uses scope-blind representation preparation; POST, PUT, DELETE,
 and genuinely live GET responses retain the subscription path. Request
@@ -463,11 +463,11 @@ stateDiagram-v2
 
 | Operation or event                | Contract                                                                                                         |
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `## READ1 (ws(s)://…)`            | Claim, seed/subscribe, construct `CONNECTING`, then return `102` after native `open` plus durable activation     |
+| `## READ0 (ws(s)://…)`            | Claim, seed/subscribe, construct `CONNECTING`, then return `102` after native `open` plus durable activation     |
 | Concurrent duplicate READ         | `409` in `claimed`, `connecting`, `open`, or `settling`; cleanup releases the only claim                         |
-| `## SEND1 [200] (ws(s)://…)`      | Send only for owner `open` plus native `readyState=OPEN`; absent or non-open owner is `409`; send throw is `502` |
-| `## SEND1 [499] (ws(s)://…)`      | Engine-routed cancellation closes the owning READ; scheme dispatch returns `200`                                 |
-| `## KILL1 (ws(s)://…)`            | Close/cancel the claimed owner; no owner is `404`; an attempted close throw is `502`                             |
+| `## SEND0 [200] (ws(s)://…)`      | Send only for owner `open` plus native `readyState=OPEN`; absent or non-open owner is `409`; send throw is `502` |
+| `## SEND0 [499] (ws(s)://…)`      | Engine-routed cancellation closes the owning READ; scheme dispatch returns `200`                                 |
+| `## KILL0 (ws(s)://…)`            | Close/cancel the claimed owner; no owner is `404`; an attempted close throw is `502`                             |
 | Inbound frame after native `open` | Join the owner's persistence chain; the next write begins only after the preceding write succeeds               |
 | Binary frame after native `open`  | Retain the text prefix, prune the binary and later frames, settle `415 binary-frame-unsupported`, close with private-use code `4003` |
 | First inbound persistence failure | Retain the successful prefix, prune queued and later frames, and settle with `500 message-persistence-failed`    |

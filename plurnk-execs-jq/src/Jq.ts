@@ -7,8 +7,8 @@ import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } f
 //   body = the jq program (defaults to `.` identity if empty)
 //   target = optional data source; present → jq reads that file; absent → `-n`
 //            (null input) so the body is self-contained.
-// So `## EXEC1 [jq] (data.json)` filters a file with its body, while a targetless
-// `## EXEC1 [jq]` runs its body against null input. A tag-addressed prior stream can be the target
+// So `## EXEC0 [jq] (data.json)` filters a file with its body, while a targetless
+// `## EXEC0 [jq]` runs its body against null input. A tag-addressed prior stream can be the target
 // once the consumer resolves it to a path ({§executor-output-address}).
 //
 // jq is a leaf process (no shell, no grandchildren), so a plain signal-based

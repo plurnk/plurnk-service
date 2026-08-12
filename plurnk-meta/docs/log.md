@@ -5,7 +5,7 @@ Every operation is recorded at `log:///<loop>/<turn>/<seq>`. The row identifies 
 ## Log and catalog
 
 - **Log** - operations and results in order.
-- **Catalog** - `## FIND1 (scheme:///**)` lists the resources a scheme currently holds.
+- **Catalog** - `## FIND0 (scheme:///**)` lists the resources a scheme currently holds.
 
 ## Visibility
 

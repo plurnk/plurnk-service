@@ -35,7 +35,7 @@
             {
                 "name": "jq",
                 "glyph": "🧰",
-                "example": "## EXEC1 [jq]\n[1,2,3] | add"
+                "example": "## EXEC0 [jq]\n[1,2,3] | add"
             }
         ]
     },

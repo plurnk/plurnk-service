@@ -72,8 +72,8 @@ export default class PlurnkParser {
         );
         if (hasSpecificError) return;
         const fix = !hasPlan
-            ? "a turn must begin with `# PLAN1`"
-            : "a turn must end with a terminal `## SEND1 [code]` section";
+            ? "a turn must begin with `# PLAN0`"
+            : "a turn must end with a terminal `## SEND0 [code]` section";
         items.push({ kind: "error", error: new PlurnkParseError(anchor.line, anchor.column, "parser", fix) });
     }
 
@@ -229,7 +229,7 @@ export default class PlurnkParser {
                         st.position.line,
                         st.position.column,
                         "parser",
-                        `\`## ${st.op}${st.suffix}\` has no \`(target)\` - that path sits in the \`[…]\` tag slot; a target goes in \`(…)\`. Try \`## ${st.op}${st.suffix || "1"} (${path})\``,
+                        `\`## ${st.op}${st.suffix}\` has no \`(target)\` - that path sits in the \`[…]\` tag slot; a target goes in \`(…)\`. Try \`## ${st.op}${st.suffix || "0"} (${path})\``,
                         "warning",
                     ),
                 },

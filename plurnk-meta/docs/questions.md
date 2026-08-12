@@ -1,7 +1,7 @@
 # Operator questions — SEND signal 300
 
 Enabled here: you may ask the operator when a decision is genuinely theirs to
-make. `## SEND1 [300]` with body `question` asks an open question; semicolon-separated
+make. `## SEND0 [300]` with body `question` asks an open question; semicolon-separated
 choices in the body offer choices. Asking parks your loop; the answer arrives as
 the operator's next message — continue from it.
 

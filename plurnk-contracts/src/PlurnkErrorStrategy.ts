@@ -61,7 +61,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         // EXEC's identifier cannot start with a digit or `-`, making a leading numeric
         // value an unambiguous misplaced timing scope. {§signal-scope-redirect}
         if (modeName === "SIGNAL_IDENT" && /^'[-\d]'$/.test(ch)) {
-            return `unrecognized character ${ch} in signal - timeout/poll ride the \`<scope>\` slot; try \`## EXEC1 <-1,300>\``;
+            return `unrecognized character ${ch} in signal - timeout/poll ride the \`<scope>\` slot; try \`## EXEC0 <-1,300>\``;
         }
         // Redirect an unambiguous matcher prefix in the slot region into the body. Slash-led
         // regex and XPath are excluded because `/` may instead be a target whose `(...)` wrap

@@ -8,7 +8,7 @@ const OPERATIONS = ["init", "status", "add", "commit", "log", "branch", "checkou
 
 // Explicit in-process Git subset for deployments that cannot execute native
 // Git. The separate `isogit` identity is load-bearing: this implementation
-// does not emulate Git's complete CLI and never substitutes for `## EXEC1 [git]`.
+// does not emulate Git's complete CLI and never substitutes for `## EXEC0 [git]`.
 export default class Isogit extends BaseExecutor {
     get channels(): Readonly<Record<string, ChannelDecl>> {
         return { results: { mimetype: "application/json" } };
@@ -105,7 +105,7 @@ export default class Isogit extends BaseExecutor {
                             400,
                             {
                                 operation: "add",
-                                recovery: "Provide paths without native Git options, or use `## EXEC1 [git]`.",
+                                recovery: "Provide paths without native Git options, or use `## EXEC0 [git]`.",
                                 retryable: false,
                             },
                         );
@@ -123,7 +123,7 @@ export default class Isogit extends BaseExecutor {
                             400,
                             {
                                 operation: "commit",
-                                recovery: "Use 'commit -m <message>', or use `## EXEC1 [git]` for other commit forms.",
+                                recovery: "Use 'commit -m <message>', or use `## EXEC0 [git]` for other commit forms.",
                                 retryable: false,
                             },
                         );
@@ -189,7 +189,7 @@ export default class Isogit extends BaseExecutor {
                             400,
                             {
                                 operation: "checkout",
-                                recovery: "Use 'branch <name>' then 'checkout <name>', or use `## EXEC1 [git]` for native Git syntax.",
+                                recovery: "Use 'branch <name>' then 'checkout <name>', or use `## EXEC0 [git]` for native Git syntax.",
                                 retryable: false,
                             },
                         );
@@ -205,7 +205,7 @@ export default class Isogit extends BaseExecutor {
                         {
                             operation: verb ?? "",
                             availableOperations: OPERATIONS,
-                            recovery: "Use a supported isogit operation or `## EXEC1 [git]` for native Git.",
+                            recovery: "Use a supported isogit operation or `## EXEC0 [git]` for native Git.",
                             retryable: false,
                         },
                     );
@@ -228,7 +228,7 @@ export default class Isogit extends BaseExecutor {
                 500,
                 {
                     operation: verb ?? "",
-                    recovery: "Correct the operation or use `## EXEC1 [git]` for native Git semantics.",
+                    recovery: "Correct the operation or use `## EXEC0 [git]` for native Git semantics.",
                     retryable: false,
                 },
             );
@@ -250,7 +250,7 @@ const unsupportedForm = (fail: Fail, operation: string): ExecResult =>
         400,
         {
             operation,
-            recovery: "Use the documented isogit form or `## EXEC1 [git]` for native Git syntax.",
+            recovery: "Use the documented isogit form or `## EXEC0 [git]` for native Git syntax.",
             retryable: false,
         },
     );

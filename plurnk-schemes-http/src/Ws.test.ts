@@ -223,7 +223,7 @@ test("manifest: wss scheme - messages channel, requiresWeb, network-volatile", (
     assert.deepEqual(Object.keys(Ws.manifest.channels), ["messages"]);
     assert.equal(Ws.manifest.flags?.requiresWeb, true);
     assert.equal(Ws.manifest.volatile, true);
-    const op = (Ws.manifest.example ?? "").match(/^## ([A-Z]+)1 \(.+\)$/);
+    const op = (Ws.manifest.example ?? "").match(/^## ([A-Z]+)0 \(.+\)$/);
     assert.ok(op, `example must be one bodyless operation heading, got: ${Ws.manifest.example}`);
     assert.equal(op[1], "READ");
 });

@@ -51,8 +51,8 @@ test("manifest declares the sqlite runtime tag", async () => {
     // avoids integer-division truncation.
     const examples = pkg.plurnk.runtimes[0].example.split("\n\n");
     assert.equal(examples.length, 2);
-    assert.match(examples[0], /^## EXEC1 \[sqlite\] \(\.\/app\.db\)\n.+$/);
-    assert.match(examples[1], /^## EXEC1 \[sqlite\]\n.*\*1\.0.*$/);
+    assert.match(examples[0], /^## EXEC0 \[sqlite\] \(\.\/app\.db\)\n.+$/);
+    assert.match(examples[1], /^## EXEC0 \[sqlite\]\n.*\*1\.0.*$/);
 });
 
 test("declares a results channel (application/json)", () => {

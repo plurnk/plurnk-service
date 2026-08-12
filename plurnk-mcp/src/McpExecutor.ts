@@ -20,14 +20,14 @@ const CHANNEL = "body";
 export const runtimeDecl = (name: string): RuntimeDecl => ({
     name,
     glyph: "🔌",
-    example: `## EXEC1 [${name}] (tool_name)\n{"argument":"value"}`,
+    example: `## EXEC0 [${name}] (tool_name)\n{"argument":"value"}`,
     documentation: `# ${name}
 
 This configured MCP server is available as an executable tool family and an
 addressable resource family.
 
 \`\`\`plurnk
-## READ1 (${name}:///)\n\n## EXEC1 [${name}] (tool_name)\n{"argument":"value"}
+## READ0 (${name}:///)\n\n## EXEC0 [${name}] (tool_name)\n{"argument":"value"}
 \`\`\`
 
 READ returns the live catalog. Tool arguments are one JSON object. Tool results

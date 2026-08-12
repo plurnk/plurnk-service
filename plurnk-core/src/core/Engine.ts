@@ -117,7 +117,7 @@ const ENGINE_PROBLEMS = Object.freeze({
     idle_turn: {
         status: 409,
         code: "idle-turn",
-        detail: "`## SEND1 [102]` was emitted without an operation to continue from.",
+        detail: "`## SEND0 [102]` was emitted without an operation to continue from.",
     },
 } as const);
 type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
@@ -1238,7 +1238,7 @@ export default class Engine {
                     // (the model's own survey, mirrored OPEN). An explicit file cap rides as
                     // `<1,N>`; ordinary surveys teach the safe markerless default by example.
                     const target = isFile ? pattern : `${scheme}:///${pattern}`;
-                    turnZeroMoves.push(`## FIND1 (${target})${cap === null ? "" : ` <1,${cap}>`}`);
+                    turnZeroMoves.push(`## FIND0 (${target})${cap === null ? "" : ` <1,${cap}>`}`);
                 }
                 // The kernel's self-documenting surface — kernel-doc FIND, uncapped,
                 // always ({§schemes-directory}, published under {§entry-owner}).
@@ -1250,7 +1250,7 @@ export default class Engine {
                 };
                 await this.dispatch({ statement: kernelDocsFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                 nextActionIndex++;
-                turnZeroMoves.push("## FIND1 (worker://plurnk/docs/**) <1,-1>");
+                turnZeroMoves.push("## FIND0 (worker://plurnk/docs/**) <1,-1>");
                 // {§worker-scheme} — the building worker's own scratch gets the same markerless
                 // one-level survey in its perspective alone. It always executes: an empty private
                 // space is useful orientation, not grounds to hide the surface.
@@ -1261,14 +1261,14 @@ export default class Engine {
                 };
                 await this.dispatch({ statement: ownFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                 nextActionIndex++;
-                turnZeroMoves.push("## FIND1 (worker://~/*)");  // {§model-entry} — the own-space survey, into the turn-0 echo
+                turnZeroMoves.push("## FIND0 (worker://~/*)");  // {§model-entry} — the own-space survey, into the turn-0 echo
             }
             // {§model-entry} — mirror the model's turn-0 OPEN at sequence 1: PLAN → the FINDs actually
             // foisted above (real, their results already in the log) → SEND signal 102. Dynamic — it reflects
             // the true survey, never a frozen print — and OPEN: the worked example the model orients on,
             // so the grammar can stay thin. Subsequent turns mirror the model's real output, folded.
             if (workerFirstLoop) {
-                const emission = ["# PLAN1\nSurvey context, then address the prompt.", ...turnZeroMoves, "## SEND1 [102]\nNext, address the prompt using the survey."].join("\n\n");
+                const emission = ["# PLAN0\nSurvey context, then address the prompt.", ...turnZeroMoves, "## SEND0 [102]\nNext, address the prompt using the survey."].join("\n\n");
                 await this.#dispatcher.writeModelEntry({ verbatim: emission, workerId, loopId, turnId, sequence: 1, folded: false, origin: "plurnk" });
             }
         }
@@ -2007,7 +2007,7 @@ export default class Engine {
                 }
                 : {
                     stage: "turn",
-                    recovery: "Perform an operation before continuing with `## SEND1 [102]`.",
+                    recovery: "Perform an operation before continuing with `## SEND0 [102]`.",
                     retryable: false,
                 };
             await this.#problems.record({

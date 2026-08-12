@@ -785,7 +785,7 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.doesNotMatch(out, /## EDIT1 \(/);
+    assert.doesNotMatch(out, /## EDIT0 \(/);
 });
 
 test("notice render: message and content-offset share one bounded line, no snippet fence", () => {
@@ -861,7 +861,7 @@ test("a folded model-emission row renders meta-only without inventing an operati
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: true,
         attrs: { kind: "model_emission" },
-        rx: { content: "# PLAN1\nInitialize\n\n## SEND1 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
+        rx: { content: "# PLAN0\nInitialize\n\n## SEND0 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /\{"display":"folded","kind":"model_emission","lines":5,"origin":"model","path":"log:\/\/\/1\/1\/1"/, "the actionless row has an undecorated coordinate and explicit kind");
     assert.doesNotMatch(out, /"op":"model"/, "an emission artifact never masquerades as a grammar operation");
@@ -872,11 +872,11 @@ test("an open model-emission row mirrors the model's own emission back, line-num
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: false,
         attrs: { kind: "model_emission" },
-        rx: { content: "# PLAN1\nInitialize\n\n## SEND1 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
+        rx: { content: "# PLAN0\nInitialize\n\n## SEND0 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /"display":"open","kind":"model_emission"/, "open → display:open — lines counts the navigable body");
-    assert.match(out, /1:# PLAN1\n2:Initialize/, "the model sees its own PLAN section");
-    assert.match(out, /4:## SEND1 \[102\]\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
+    assert.match(out, /1:# PLAN0\n2:Initialize/, "the model sees its own PLAN section");
+    assert.match(out, /4:## SEND0 \[102\]\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
 });
 
 test("the Log renders as a fenced jsonplurnk array that strips to valid JSON — one carve-out, deterministically", () => {

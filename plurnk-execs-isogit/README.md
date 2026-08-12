@@ -9,7 +9,7 @@ execution, and is disabled by default.
 This package is deliberately outside the batteries-included executor inventory.
 It implements a limited, overlapping Git dialect for deployments without a
 native Git executable; the default inventory carries the complete native
-native `## EXEC1 [git]` capability instead of presenting most deployments with two choices
+native `## EXEC0 [git]` capability instead of presenting most deployments with two choices
 that are not interchangeable.
 
 Install the package into the same Node module graph as the service. A setting
@@ -37,14 +37,14 @@ Supported operations are `init`, `status`, `add`, `commit -m`, `log -n`,
 repo directory.
 
 ```plurnk
-## EXEC1 [isogit]
+## EXEC0 [isogit]
 status
 
-## EXEC1 [isogit]
+## EXEC0 [isogit]
 branch feature/example
 
-## EXEC1 [isogit]
+## EXEC0 [isogit]
 checkout feature/example
 ```
 
-Use `## EXEC1 [git]` when native Git semantics are required.
+Use `## EXEC0 [git]` when native Git semantics are required.

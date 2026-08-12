@@ -8,11 +8,11 @@ are never presented by default.
 
 | Operation                                      | Remote action | Effect                                                                    |
 | ---------------------------------------------- | ------------- | ------------------------------------------------------------------------- |
-| `## READ1 (http(s)://…) <scope?>`              | GET if needed | Acquire/reuse the complete response, then return the selected scoped text |
-| `## FIND1 (http(s)://…)` with matcher body     | GET if needed | Prepare an exact URL, then return flat match locations                    |
-| `## SEND1 [200] (http(s)://…)` with body       | POST          | Submit the body and stream the response                                  |
-| `## EDIT1 (http(s)://…)` with body             | PUT           | Replace the whole remote resource; do not use a line scope               |
-| `## KILL1 (http(s)://…)`                       | DELETE        | Delete the remote resource and stream the response                       |
+| `## READ0 (http(s)://…) <scope?>`              | GET if needed | Acquire/reuse the complete response, then return the selected scoped text |
+| `## FIND0 (http(s)://…)` with matcher body     | GET if needed | Prepare an exact URL, then return flat match locations                    |
+| `## SEND0 [200] (http(s)://…)` with body       | POST          | Submit the body and stream the response                                  |
+| `## EDIT0 (http(s)://…)` with body             | PUT           | Replace the whole remote resource; do not use a line scope               |
+| `## KILL0 (http(s)://…)`                       | DELETE        | Delete the remote resource and stream the response                       |
 
 A path-pattern FIND searches only web entries already materialized in the
 workspace; a pattern cannot discover the remote web. FIND returns navigation
@@ -92,9 +92,9 @@ Request headers ride inside the target as ordered trailing `{Key: value}`
 blocks, one header per block:
 
 ```plurnk
-## READ1 (https://api.example.com/v1/me{Authorization: Bearer TOKEN}{Accept: application/json})
+## READ0 (https://api.example.com/v1/me{Authorization: Bearer TOKEN}{Accept: application/json})
 
-## EDIT1 (https://api.example.com/v1/thing/42{Authorization: Bearer TOKEN}{Content-Type: application/json})
+## EDIT0 (https://api.example.com/v1/thing/42{Authorization: Bearer TOKEN}{Content-Type: application/json})
 {"done":true}
 ```
 
@@ -111,7 +111,7 @@ identity. POST, PUT, and DELETE never use that rewrite.
 
 | Control                  | Effect                                                                |
 | ------------------------ | --------------------------------------------------------------------- |
-| `## SEND1 [499] (http(s)://…)` | Cancel the routed in-flight acquisition                               |
-| `## SEND1 [410] (http(s)://…)` | Delete the local stored response; the next READ must acquire it again |
+| `## SEND0 [499] (http(s)://…)` | Cancel the routed in-flight acquisition                               |
+| `## SEND0 [410] (http(s)://…)` | Delete the local stored response; the next READ must acquire it again |
 
 For a persistent bidirectional connection, use `wss://`.

@@ -21,7 +21,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, lo
 process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
 const parseOp = <T extends PlurnkStatement>(dsl: string, op: T["op"]): T => {
-    const found = PlurnkParser.parse(`# PLAN1\n${dsl}`).items.find((i) => i.kind === "statement" && i.statement.op === op);
+    const found = PlurnkParser.parse(`# PLAN0\n${dsl}`).items.find((i) => i.kind === "statement" && i.statement.op === op);
     if (found === undefined) throw new Error(`no ${op} parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: T }).statement;
 };
@@ -43,7 +43,7 @@ const setup = async () => {
 // delimiter collisions: parse a minimal statement, then replace its typed AST body.
 const seedRaw = async (ctx: ReturnType<typeof makeSchemeCtx>, name: string, content: string): Promise<void> => {
     const k = new Worker();
-    const stmt = parseOp<EditStatement>(`## EDIT1 (worker:///${name})\nx`, "EDIT");
+    const stmt = parseOp<EditStatement>(`## EDIT0 (worker:///${name})\nx`, "EDIT");
     await k.edit({ ...stmt, body: content }, ctx);
 };
 
@@ -84,7 +84,7 @@ test("FIND recognizes shell character-class paths as globs", async () => {
         await seedRaw(ctx, "a1.md", "one");
         await seedRaw(ctx, "a2.md", "two");
         await seedRaw(ctx, "nested/a3.md", "three");
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND1 (worker:///a[12].md)", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND0 (worker:///a[12].md)", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -93,7 +93,7 @@ test("exact glob-pattern FIND returns flat matched-line locations", async () => 
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "log.md", "alpha target\nbeta\ngamma target\ndelta target");
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND1 (worker:///log.md)\n*target*", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND0 (worker:///log.md)\n*target*", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -104,7 +104,7 @@ test("regex FIND returns matched resources", async () => {
         await seedRaw(ctx, "a.md", "intro\nerror: one\ntail");
         await seedRaw(ctx, "b.md", "error: two\nmore");
         await seedRaw(ctx, "c.md", "clean");
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND1 (worker:///**)\n/error: \\w+/", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND0 (worker:///**)\n/error: \\w+/", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -113,7 +113,7 @@ test("exact jsonpath FIND returns flat locators with exact regions", async () =>
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "team.json", '{\n  "users": [\n    { "name": "Alice" },\n    { "name": "Bob" },\n    { "name": "Carol" }\n  ]\n}');
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND1 (worker:///team.json)\n$.users[*].name", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND0 (worker:///team.json)\n$.users[*].name", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -122,7 +122,7 @@ test("two structural matches on one source line remain distinguishable by locato
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "one.json", '{"users":[{"name":"Alice"},{"name":"Bob"}]}');
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND1 (worker:///one.json)\n$.users[*].name", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND0 (worker:///one.json)\n$.users[*].name", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -131,7 +131,7 @@ test("a matcher FIND with zero matches returns 204", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "a.md", "nothing here");
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND1 (worker:///**)\n*absent*", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND0 (worker:///**)\n*absent*", "FIND"));
         assert.equal(result.status, 204);
     } finally { await db.close(); }
 });
@@ -142,7 +142,7 @@ test("semantic FIND uses ranking to select resources", async () => {
         await seedRaw(ctx, "db.md", "the database connection failed with a timeout error");
         await seedRaw(ctx, "cake.md", "preheat the oven and frost the birthday cake");
         await SearchIndex.maintain(makeSchemeCtx({ db, ...ids, mimetypes }));
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND1 (worker:///**)\n~database connection error", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND0 (worker:///**)\n~database connection error", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -151,7 +151,7 @@ test("exact xpath FIND returns flat locator evidence", async () => {
     const { db, engine, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "page.html", "<ul>\n  <li>one</li>\n  <li>two</li>\n</ul>");
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND1 (worker:///page.html)\n//li", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND0 (worker:///page.html)\n//li", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -162,7 +162,7 @@ test("broad @graph FIND returns selected resource rows", async () => {
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
         await seedRaw(ctx, "b.ts", "import { foo } from \"./a\";\nfoo();\nfoo();\n");
         await SearchIndex.maintain(makeSchemeCtx({ db, ...ids, mimetypes }));
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND1 (worker:///**)\n@<foo", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND0 (worker:///**)\n@<foo", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -173,7 +173,7 @@ test("broad @graph FIND reports each resource's location count without nesting c
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
         await seedRaw(ctx, "b.ts", "import { foo } from \"./a\";\nfoo();\nfoo();\n");
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, mimetypes }));
-        const r = await new Worker().find(parseOp<FindStatement>("## FIND1 (worker:///**)\n@<foo", "FIND"), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+        const r = await new Worker().find(parseOp<FindStatement>("## FIND0 (worker:///**)\n@<foo", "FIND"), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         assert.equal(r.status, 200);
         assert.ok(r.results.length >= 1);
         assert.ok(r.results.every((x) => "path" in x && (x.matchLocationCount ?? 0) >= 1));
@@ -189,7 +189,7 @@ test("FIND(bare entry) is the one entry, never a prefix that pulls siblings", as
     try {
         await seedRaw(ctx, "config.md", "the config");
         await seedRaw(ctx, "config.md.bak", "the backup");
-        const r = await new Worker().find(parseOp<FindStatement>("## FIND1 (worker:///config.md)", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await new Worker().find(parseOp<FindStatement>("## FIND0 (worker:///config.md)", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.deepEqual(r.results.map((x) => x.path), ["worker:///config.md"], "bare = exact: config.md.bak is NOT pulled in");
     } finally { await db.close(); }
@@ -201,7 +201,7 @@ test("FIND(folder/) returns the folder's contents; a glob is a scope", async () 
         await seedRaw(ctx, "docs/a.md", "alpha");
         await seedRaw(ctx, "docs/b.md", "beta");
         await seedRaw(ctx, "top.md", "top");
-        const r = await new Worker().find(parseOp<FindStatement>("## FIND1 (worker:///docs/)", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await new Worker().find(parseOp<FindStatement>("## FIND0 (worker:///docs/)", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.deepEqual(r.results.map((x) => x.path).toSorted(), ["worker:///docs/a.md", "worker:///docs/b.md"], "folder/ = its contents, not top.md");
     } finally { await db.close(); }
@@ -213,7 +213,7 @@ test("FIND(folder/) locates the folder's contents", async () => {
         await seedRaw(ctx, "docs/a.md", "alpha body");
         await seedRaw(ctx, "docs/b.md", "beta body");
         await seedRaw(ctx, "top.md", "top body");
-        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND1 (worker:///docs/)", "FIND"));
+        const { result } = await dispatchRows(db, engine, ids, parseOp<FindStatement>("## FIND0 (worker:///docs/)", "FIND"));
         assert.equal(result.status, 200);
     } finally { await db.close(); }
 });
@@ -224,7 +224,7 @@ test("broad matcher FIND emits one item per resource with a complete location co
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "log.md", "alpha target\nbeta\ngamma target");
-        const r = await new Worker().find(parseOp<FindStatement>("## FIND1 (worker:///**)\n*target*", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await new Worker().find(parseOp<FindStatement>("## FIND0 (worker:///**)\n*target*", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 1);
         assert.equal(r.results[0]?.path, "worker:///log.md");
@@ -242,7 +242,7 @@ test("a glob remains resource mode when it resolves to one matching path", async
         await seedRaw(ctx, "only.md", "first target\nsecond target");
         await seedRaw(ctx, "other.txt", "target");
         const r = await new Worker().find(
-            parseOp<FindStatement>("## FIND1 (worker:///*.md)\n*target*", "FIND"),
+            parseOp<FindStatement>("## FIND0 (worker:///*.md)\n*target*", "FIND"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.deepEqual(r.results.map(({ path, matchLocationCount }) => ({ path, matchLocationCount })), [{
@@ -259,7 +259,7 @@ test("markerless exact matcher FIND returns the first 16 locations and <1,-1> re
         await seedRaw(ctx, "many.md", Array.from({ length: 20 }, (_, i) => `target ${i + 1}`).join("\n"));
         const worker = new Worker();
         const first = await worker.find(
-            parseOp<FindStatement>("## FIND1 (worker:///many.md)\n*target*", "FIND"),
+            parseOp<FindStatement>("## FIND0 (worker:///many.md)\n*target*", "FIND"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(first.results.length, 16);
@@ -270,7 +270,7 @@ test("markerless exact matcher FIND returns the first 16 locations and <1,-1> re
         assert.deepEqual(first.range?.returned, [1, 16]);
 
         const all = await worker.find(
-            parseOp<FindStatement>("## FIND1 (worker:///many.md) <1,-1>\n*target*", "FIND"),
+            parseOp<FindStatement>("## FIND0 (worker:///many.md) <1,-1>\n*target*", "FIND"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(all.results.length, 20);
@@ -279,13 +279,13 @@ test("markerless exact matcher FIND returns the first 16 locations and <1,-1> re
 });
 
 test("FIND on an exact target with a result-position scope", async () => {
-    // ## FIND1 (worker:///doc.md) <1> — the scope selects the first result of
+    // ## FIND0 (worker:///doc.md) <1> — the scope selects the first result of
     // an exact-target listing; a single-target FIND returns that target.
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "doc.md", "hello world hello again");
         const result = await new Worker().find(
-            parseOp<FindStatement>("## FIND1 (worker:///doc.md) <1>", "FIND"),
+            parseOp<FindStatement>("## FIND0 (worker:///doc.md) <1>", "FIND"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(result.results.length, 1);
@@ -298,7 +298,7 @@ test("FIND on an exact target with a content matcher pages flat match locations"
     try {
         await seedRaw(ctx, "doc.md", "hello world hello again");
         const result = await new Worker().find(
-            parseOp<FindStatement>("## FIND1 (worker:///doc.md) <1>\n/hello/", "FIND"),
+            parseOp<FindStatement>("## FIND0 (worker:///doc.md) <1>\n/hello/", "FIND"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(result.results.length, 1);
@@ -320,7 +320,7 @@ test("{§read-find-normalization}: authored READ aggregates use canonical FIND p
         await seedRaw(ctx, "b.md", "other");
         const worker = new Worker();
 
-        const globRead = parseOp<FindStatement>("## READ1 (worker:///*.md) <2>", "FIND");
+        const globRead = parseOp<FindStatement>("## READ0 (worker:///*.md) <2>", "FIND");
         const resourcePage = await worker.find(
             globRead,
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
@@ -328,7 +328,7 @@ test("{§read-find-normalization}: authored READ aggregates use canonical FIND p
         assert.equal(resourcePage.range?.unit, "resource");
         assert.deepEqual(resourcePage.results.map(({ path }) => path), ["worker:///b.md"]);
 
-        const matcherRead = parseOp<FindStatement>("## READ1 (worker:///a.md) <2>\n/target/", "FIND");
+        const matcherRead = parseOp<FindStatement>("## READ0 (worker:///a.md) <2>\n/target/", "FIND");
         const locationPage = await worker.find(
             matcherRead,
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
@@ -346,7 +346,7 @@ test("broad FIND pagination counts selected resources, not match locations", asy
         await seedRaw(ctx, "a.md", "target one\ntarget two\ntarget three");
         await seedRaw(ctx, "b.md", "target four");
         const result = await new Worker().find(
-            parseOp<FindStatement>("## FIND1 (worker:///**) <2>\n*target*", "FIND"),
+            parseOp<FindStatement>("## FIND0 (worker:///**) <2>\n*target*", "FIND"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.deepEqual(result.results.map(({ path }) => path), ["worker:///b.md"]);
@@ -374,7 +374,7 @@ test("FIND coordinates compose into scoped READ for structured JSON", async () =
         ].join("\n"));
         const worker = new Worker();
         const found = await worker.find(
-            parseOp<FindStatement>('## FIND1 (worker:///users.json)\n$[?(@.role=="admin")]', "FIND"),
+            parseOp<FindStatement>('## FIND0 (worker:///users.json)\n$[?(@.role=="admin")]', "FIND"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.deepEqual(found.results, [{
@@ -385,7 +385,7 @@ test("FIND coordinates compose into scoped READ for structured JSON", async () =
         assert.ok(span?.region);
         const read = await lookThroughScheme("worker", null,
             {
-                ...parseOp<ReadStatement>("## READ1 (worker:///users.json) <1,1,1,1>", "READ"),
+                ...parseOp<ReadStatement>("## READ0 (worker:///users.json) <1,1,1,1>", "READ"),
                 lineMarker: {
                     marks: [
                         span.region.startLine,
@@ -407,7 +407,7 @@ test("body-less FIND is the catalog without match metadata", async () => {
     try {
         await seedRaw(ctx, "a.md", "alpha");
         await seedRaw(ctx, "b.md", "beta");
-        const r = await new Worker().find(parseOp<FindStatement>("## FIND1 (worker:///**)", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await new Worker().find(parseOp<FindStatement>("## FIND0 (worker:///**)", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.results.length, 2, "two entries → two catalog rows");
         assert.ok(r.results.every((x) => !("matches" in x)));
         assert.equal(r.range?.unit, "resource");

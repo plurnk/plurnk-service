@@ -138,8 +138,8 @@ export default class Exec extends CoreSchemeAdapterBase {
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,
-        example: "## EXEC1 [sqlite]\nSELECT 22.0 / 7.0",
-        documentation: "Runs a command in a runtime — `## EXEC1 [runtime] (target)\ncommand` — output streams into the worker's `<runtime>:///<loop>/<turn>/<seq>` entry on the runtime's own channels (a subprocess → stdout/stderr; a computational runtime like sqlite/jq → a JSON `results` channel). A host-effecting command proposes for review before it runs; a read-only/pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes to you automatically — folded while the command runs, opened when it finishes.",
+        example: "## EXEC0 [sqlite]\nSELECT 22.0 / 7.0",
+        documentation: "Runs a command in a runtime — `## EXEC0 [runtime] (target)\ncommand` — output streams into the worker's `<runtime>:///<loop>/<turn>/<seq>` entry on the runtime's own channels (a subprocess → stdout/stderr; a computational runtime like sqlite/jq → a JSON `results` channel). A host-effecting command proposes for review before it runs; a read-only/pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes to you automatically — folded while the command runs, opened when it finishes.",
         flags: {
             excludedInAsk: true,
         },
@@ -272,7 +272,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     }
 
     // EXEC op handler — the actual model-facing entry point per plurnk.md.
-    // `## EXEC1 [runtime] (target)\ncommand` →
+    // `## EXEC0 [runtime] (target)\ncommand` →
     //   signal=runtime, target=optional source/program/cwd, body=command.
     //
     // Proposes (status=202) with attrs={runtime, cwd, command, pathname}.

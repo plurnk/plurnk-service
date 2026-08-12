@@ -28,19 +28,19 @@ test("line number tracks the offending prose block", () => {
 });
 
 test("a bare Plurnk op inside a prose block is flagged for fencing", () => {
-    const source = "Here is an example.\n# PLAN1\ndo the thing\nThat op should be fenced.";
+    const source = "Here is an example.\n# PLAN0\ndo the thing\nThat op should be fenced.";
     const opFence = linter.lint(source).filter(d => d.rule === "op-fence");
     assert.equal(opFence.length, 1);
     assert.equal(opFence[0].line, 2);
 });
 
 test("an op inside a plurnk fence is exempt from op-fence", () => {
-    const source = "```plurnk\n# PLAN1\ndo the thing\n```";
+    const source = "```plurnk\n# PLAN0\ndo the thing\n```";
     assert.deepEqual(linter.lint(source).filter(d => d.rule === "op-fence"), []);
 });
 
 test("a malformed op inside a plurnk fence is flagged by op-syntax", () => {
-    const source = "```plurnk\n## READ1 (file.md) <N>\n```"; // <N> — letters aren't valid scope
+    const source = "```plurnk\n## READ0 (file.md) <N>\n```"; // <N> — letters aren't valid scope
     const diagnostics = linter.lint(source).filter(d => d.rule === "op-syntax");
     assert.equal(diagnostics.length >= 1, true, JSON.stringify(diagnostics));
     assert.equal(diagnostics[0].line, 2); // the op line inside the fence
@@ -48,7 +48,7 @@ test("a malformed op inside a plurnk fence is flagged by op-syntax", () => {
 
 // {§packet-operation-fences} {§unparsed-tail-boundary}
 test("an unfinished modifier in an op fence surfaces the parser-owned tail diagnostic", () => {
-    const source = "```plurnk\n## EDIT1 (worker:///note.md\n```";
+    const source = "```plurnk\n## EDIT0 (worker:///note.md\n```";
     const diagnostics = linter.lint(source).filter(d => d.rule === "op-syntax");
     assert.equal(diagnostics.length, 1, JSON.stringify(diagnostics));
     assert.equal(diagnostics[0].severity, "error");
@@ -57,12 +57,12 @@ test("an unfinished modifier in an op fence surfaces the parser-owned tail diagn
 });
 
 test("valid ops inside a plurnk fence pass op-syntax", () => {
-    const source = "```plurnk\n# PLAN1\ngo\n\n## READ1 (file.md) <5>\n```";
+    const source = "```plurnk\n# PLAN0\ngo\n\n## READ0 (file.md) <5>\n```";
     assert.deepEqual(linter.lint(source).filter(d => d.rule === "op-syntax"), []);
 });
 
 test("a plain (non-plurnk) fence is never op-validated", () => {
-    const source = "```\n## READ1 (file.md) <N>\n```";
+    const source = "```\n## READ0 (file.md) <N>\n```";
     assert.deepEqual(linter.lint(source).filter(d => d.rule === "op-syntax"), []);
 });
 

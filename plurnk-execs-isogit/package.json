@@ -34,7 +34,7 @@
             {
                 "name": "isogit",
                 "glyph": "git",
-                "example": "## EXEC1 [isogit]\nstatus"
+                "example": "## EXEC0 [isogit]\nstatus"
             }
         ]
     },

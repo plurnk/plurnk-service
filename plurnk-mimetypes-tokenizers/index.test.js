@@ -12,7 +12,7 @@ const manifest = JSON.parse(readFileSync(new URL("./tokenizers/manifest.json", i
 const REFS = Object.fromEntries(Object.keys(manifest).map((family) => [family, family]));
 
 // Representative {§mimetype-tokenizer} input: English + code + plurnk DSL.
-const SAMPLE = 'READ## EDIT1 [fix] (src/index.ts) <12>\nconst x = users.filter((u) => u.active); — apply the patch, then re-run the failing test and report the count.';
+const SAMPLE = 'READ## EDIT0 [fix] (src/index.ts) <12>\nconst x = users.filter((u) => u.active); — apply the patch, then re-run the failing test and report the count.';
 
 describe("every bundled family loads and counts", () => {
     for (const [family, ref] of Object.entries(REFS)) {

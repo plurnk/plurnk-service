@@ -42,7 +42,7 @@ test("boot restores a drain for accepted queued work", async () => {
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("## SEND1 [200]\nrecovered queued work")],
+        responses: [makeMockResponse("## SEND0 [200]\nrecovered queued work")],
     });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
@@ -116,7 +116,7 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
     const db = await openMigrated();
     const firstProvider = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("## SEND1 [200]\nrecovered orphan frames")],
+        responses: [makeMockResponse("## SEND0 [200]\nrecovered orphan frames")],
     });
     ProviderInstantiate.registerInstance(firstProvider, providerSpec);
     const firstDaemon = new Daemon({ db, provider: firstProvider });
@@ -185,7 +185,7 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
 
         const secondProvider = new Mock({
             contextWindow: 16384,
-            responses: [makeMockResponse("## SEND1 [200]\nmust remain unused")],
+            responses: [makeMockResponse("## SEND0 [200]\nmust remain unused")],
         });
         ProviderInstantiate.registerInstance(secondProvider, providerSpec);
         secondDaemon = new Daemon({ db, provider: secondProvider });
@@ -293,7 +293,7 @@ test("boot settles vanished owners and resumes the now-unblocked parent topology
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("## SEND1 [200]\nparent observed the interrupted child")],
+        responses: [makeMockResponse("## SEND0 [200]\nparent observed the interrupted child")],
     });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
@@ -371,7 +371,7 @@ test("a child drain exception still propagates the parent wake edge", async () =
     const db = await openMigrated();
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("## SEND1 [200]\nparent handled child failure")],
+        responses: [makeMockResponse("## SEND0 [200]\nparent handled child failure")],
     });
     const generate = mock.generate.bind(mock);
     let calls = 0;

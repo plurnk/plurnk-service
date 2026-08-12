@@ -11,7 +11,7 @@ import {
 type Op = "PLAN" | "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "OPEN" | "FOLD"
     | "SEND" | "EXEC" | "WORK" | "FORK" | "KILL";
 
-const section = (op: Op, slots = "", body?: string, suffix = "1"): string => {
+const section = (op: Op, slots = "", body?: string, suffix = "0"): string => {
     const level = op === "PLAN" ? "#" : "##";
     const heading = `${level} ${op}${suffix}${slots}`;
     return body === undefined ? heading : `${heading}\n${body}`;
@@ -73,7 +73,7 @@ test("protocol operations parse as Markdown sections", () => {
     for (const [op, slots, body] of cases) {
         const statement = oneStatement(section(op, slots, body));
         assert.equal(statement.op, op, op);
-        assert.equal(statement.suffix, "1", op);
+        assert.equal(statement.suffix, "0", op);
     }
 });
 
@@ -87,11 +87,11 @@ test("balanced parentheses are ordinary target content", () => {
 });
 
 test("unmatched target parentheses require escaped or percent-encoded spelling", () => {
-    assert.ok(errorsOf("## READ1 (https://example.test/a)b)").length > 0);
+    assert.ok(errorsOf("## READ0 (https://example.test/a)b)").length > 0);
 
-    const unclosed = PlurnkParser.parseStatements("## READ1 (https://example.test/a(b");
+    const unclosed = PlurnkParser.parseStatements("## READ0 (https://example.test/a(b");
     assert.equal(unclosed.items.length, 0);
-    assert.match(unclosed.unparsedTail?.reason ?? "", /target slot of `## READ1`.*add `\)`/);
+    assert.match(unclosed.unparsedTail?.reason ?? "", /target slot of `## READ0`.*add `\)`/);
 
     for (const encoded of ["a%28b", "a%29b"]) {
         assert.equal(oneStatement(section("READ", ` (https://example.test/${encoded})`)).op, "READ");
@@ -99,7 +99,7 @@ test("unmatched target parentheses require escaped or percent-encoded spelling",
 });
 
 test("target escapes preserve literal and percent-encoded URI spelling", () => {
-    const statement = oneStatement(String.raw`## READ1 (https://example.test/x?literal=\)&encoded=%29#preview\()`);
+    const statement = oneStatement(String.raw`## READ0 (https://example.test/x?literal=\)&encoded=%29#preview\()`);
     assert.equal(statement.target?.raw, "https://example.test/x?literal=)&encoded=%29#preview(");
     if (statement.target?.kind !== "url") assert.fail("expected URL target");
     assert.equal(statement.target.query, "literal=)&encoded=%29");
@@ -107,7 +107,7 @@ test("target escapes preserve literal and percent-encoded URI spelling", () => {
 });
 
 test("COPY and MOVE destinations use the target escape layer", () => {
-    const statement = oneStatement(String.raw`## COPY1 (worker:///draft)
+    const statement = oneStatement(String.raw`## COPY0 (worker:///draft)
 https://example.test/archive?literal=\)&encoded=%29`);
     if (statement.op !== "COPY" || statement.body?.target.kind !== "url") assert.fail("expected COPY URL destination");
     assert.equal(statement.body.target.raw, "https://example.test/archive?literal=)&encoded=%29");
@@ -185,33 +185,33 @@ test("same-lane sections compose and section whitespace is structural", () => {
 test("an unfinished modifier establishes an unparsed-tail trust boundary", () => {
     const result = PlurnkParser.parseStatements(sections(
         section("EDIT", " (first.md)", "one"),
-        "## EDIT1 (broken",
+        "## EDIT0 (broken",
         section("EDIT", " (third.md)", "three"),
     ));
     const statements = result.items.filter((item) => item.kind === "statement");
     assert.equal(statements.length, 1);
     assert.equal(statements[0]?.statement.target?.raw, "first.md");
     assert.deepEqual(result.unparsedTail?.from, { line: 4, column: 0 });
-    assert.match(result.unparsedTail?.reason ?? "", /target slot of `## EDIT1`/);
+    assert.match(result.unparsedTail?.reason ?? "", /target slot of `## EDIT0`/);
 });
 
 test("clean section EOF is a body boundary, while open slots are not", () => {
     assert.equal(PlurnkParser.parseStatements(section("EDIT", " (p)", "body")).unparsedTail, undefined);
-    assert.ok(PlurnkParser.parseStatements("## EDIT1 [tag").unparsedTail);
-    assert.ok(PlurnkParser.parseStatements("## EDIT1 (path").unparsedTail);
+    assert.ok(PlurnkParser.parseStatements("## EDIT0 [tag").unparsedTail);
+    assert.ok(PlurnkParser.parseStatements("## EDIT0 (path").unparsedTail);
 });
 
 test("turn-shape diagnostics name the heading contract", () => {
     const missingPlan = PlurnkParser.parse(section("READ", " (x)"));
     const planError = missingPlan.items.find((item) => item.kind === "error");
     assert.equal(planError?.kind, "error");
-    if (planError?.kind === "error") assert.equal(planError.error.message, "a turn must begin with `# PLAN1`");
+    if (planError?.kind === "error") assert.equal(planError.error.message, "a turn must begin with `# PLAN0`");
 
     const missingSend = PlurnkParser.parse(section("PLAN", "", "inspect"));
     const sendError = missingSend.items.find((item) => item.kind === "error");
     assert.equal(sendError?.kind, "error");
     if (sendError?.kind === "error") {
-        assert.equal(sendError.error.message, "a turn must end with a terminal `## SEND1 [code]` section");
+        assert.equal(sendError.error.message, "a turn must end with a terminal `## SEND0 [code]` section");
     }
 });
 
@@ -235,7 +235,7 @@ test("202 remains a terminal wait disposition", () => {
 });
 
 test("a malformed signal produces one bounded lexer diagnostic", () => {
-    const errors = errorsOf("## EXEC1 [-1,300]\nrun");
+    const errors = errorsOf("## EXEC0 [-1,300]\nrun");
     assert.equal(errors.length, 1, errors.map(({ message }) => message).join(" | "));
     assert.match(errors[0]!.message, /timeout\/poll ride the `<scope>` slot/);
 });
@@ -275,9 +275,9 @@ test("empty and permissive signal spellings retain their typed meanings", () => 
 
 test("invalid operation-specific signals fail in the lexer", () => {
     for (const input of [
-        "## SEND1 [abc]\nmessage",
-        "## SEND1 [200,extra]\nmessage",
-        "## EXEC1 [node,extra] (./)\ncommand",
+        "## SEND0 [abc]\nmessage",
+        "## SEND0 [200,extra]\nmessage",
+        "## EXEC0 [node,extra] (./)\ncommand",
     ]) {
         const errors = errorsOf(input);
         assert.ok(errors.length >= 1, input);
@@ -288,12 +288,12 @@ test("invalid operation-specific signals fail in the lexer", () => {
 // {§slot-order}
 test("slot permutations produce equivalent AST values", () => {
     const variants = [
-        "## FIND1 [t] (p) <2>\nm",
-        "## FIND1 [t] <2> (p)\nm",
-        "## FIND1 (p) [t] <2>\nm",
-        "## FIND1 (p) <2> [t]\nm",
-        "## FIND1 <2> [t] (p)\nm",
-        "## FIND1 <2> (p) [t]\nm",
+        "## FIND0 [t] (p) <2>\nm",
+        "## FIND0 [t] <2> (p)\nm",
+        "## FIND0 (p) [t] <2>\nm",
+        "## FIND0 (p) <2> [t]\nm",
+        "## FIND0 <2> [t] (p)\nm",
+        "## FIND0 <2> (p) [t]\nm",
     ];
     for (const input of variants) {
         const statement = oneStatement(input);
@@ -303,19 +303,19 @@ test("slot permutations produce equivalent AST values", () => {
         assert.deepEqual(statement.lineMarker, { marks: [2] });
     }
 
-    const reversedSend = oneStatement("## SEND1 (agent://named) [200]\nmessage");
+    const reversedSend = oneStatement("## SEND0 (agent://named) [200]\nmessage");
     assert.equal(reversedSend.signal, 200);
     assert.equal(reversedSend.target?.kind, "url");
 });
 
 test("duplicate slots and missing inter-slot spaces are rejected", () => {
     for (const input of [
-        "## FIND1 [a] [b] (p)\nm",
-        "## FIND1 (p1) (p2)\nm",
-        "## FIND1 <1> <2> (p)\nm",
-        "## FIND1[a] (p)\nm",
-        "## FIND1 [a](p)\nm",
-        "## FIND1 (p)<2>\nm",
+        "## FIND0 [a] [b] (p)\nm",
+        "## FIND0 (p1) (p2)\nm",
+        "## FIND0 <1> <2> (p)\nm",
+        "## FIND0[a] (p)\nm",
+        "## FIND0 [a](p)\nm",
+        "## FIND0 (p)<2>\nm",
     ]) {
         assert.ok(errorsOf(input).length >= 1, input);
     }
@@ -333,7 +333,7 @@ test("a path misplaced in a mutating tag slot gets one narrow correction", () =>
     assert.equal(warning?.kind, "error");
     if (warning?.kind !== "error") return;
     assert.match(warning.error.message, /path sits in the `\[…\]` tag slot/);
-    assert.match(warning.error.message, /Try `## EDIT1 \(src\/functions\.ts\)`/);
+    assert.match(warning.error.message, /Try `## EDIT0 \(src\/functions\.ts\)`/);
 });
 
 test("correct targets, ordinary tags, and read operations do not trigger the mutation advisory", () => {
@@ -374,7 +374,7 @@ test("SEND terminal scope is retained while mid SEND rejects it; EXEC admits tim
     assert.deepEqual(terminal.lineMarker, { marks: [30] });
     assert.deepEqual(oneStatement(section("SEND", " [102] <-1>", "standing by")).lineMarker, { marks: [-1] });
     assert.ok(errorsOf(section("SEND", " [400] <5>", "message")).length >= 1);
-    assert.deepEqual(oneStatement("## EXEC1 [node] <60,5> (./)\ncommand").lineMarker, { marks: [60, 5] });
+    assert.deepEqual(oneStatement("## EXEC0 [node] <60,5> (./)\ncommand").lineMarker, { marks: [60, 5] });
 });
 
 test("OPEN and FOLD reject positional scope", () => {
@@ -598,26 +598,26 @@ test("multiline EDIT and EXEC bodies remain character-perfect raw strings", () =
 });
 
 test("header diagnostics use PLURNK vocabulary and point to the malformed slot", () => {
-    const executor = firstError("## EXEC1 [!bad]\ncommand");
+    const executor = firstError("## EXEC0 [!bad]\ncommand");
     assert.match(executor.message, /expected executor for EXEC/);
 
-    const matcher = firstError("## FIND1 (data.json) $.role");
+    const matcher = firstError("## FIND0 (data.json) $.role");
     assert.match(matcher.message, /matcher belongs on the first body line/);
 
-    const target = PlurnkParser.parseStatements("## EDIT1 (path").unparsedTail;
-    assert.match(target?.reason ?? "", /target slot of `## EDIT1`.*add `\)`/);
+    const target = PlurnkParser.parseStatements("## EDIT0 (path").unparsedTail;
+    assert.match(target?.reason ?? "", /target slot of `## EDIT0`.*add `\)`/);
 
-    const signal = PlurnkParser.parseStatements("## EDIT1 [tag").unparsedTail;
-    assert.match(signal?.reason ?? "", /signal slot of `## EDIT1`.*add `]`/);
+    const signal = PlurnkParser.parseStatements("## EDIT0 [tag").unparsedTail;
+    assert.match(signal?.reason ?? "", /signal slot of `## EDIT0`.*add `]`/);
 });
 
 test("diagnostics do not leak ANTLR implementation vocabulary", () => {
     const forbidden = /token recognition|mismatched|extraneous|expecting|no viable|RPAREN|LBRACKET|RBRACKET|LPAREN|BODY_TEXT|<EOF>|ATN/;
     for (const input of [
-        "## EDIT1 (path",
-        "## EDIT1 [tag",
-        "## EDIT1 (p) stray",
-        "## SEND1 [bad]\nmessage",
+        "## EDIT0 (path",
+        "## EDIT0 [tag",
+        "## EDIT0 (p) stray",
+        "## SEND0 [bad]\nmessage",
     ]) {
         const result = PlurnkParser.parseStatements(input);
         for (const item of result.items) {
@@ -687,11 +687,11 @@ test("parseLog requires at least one complete turn", () => {
 });
 
 test("parser positions count Unicode code points and CRLF lines", () => {
-    const unicode = PlurnkParser.parseStatements("## EDIT1 (🙂) X");
+    const unicode = PlurnkParser.parseStatements("## EDIT0 (🙂) X");
     const error = unicode.items.find((item) => item.kind === "error");
     assert.equal(error?.kind, "error");
     if (error?.kind === "error") assert.deepEqual({ line: error.error.line, column: error.error.column }, { line: 1, column: 13 });
 
-    const crlf = oneStatement("## EDIT1 (p)\r\nline one\r\nline two");
+    const crlf = oneStatement("## EDIT0 (p)\r\nline one\r\nline two");
     assert.equal(crlf.body, "line one\r\nline two");
 });

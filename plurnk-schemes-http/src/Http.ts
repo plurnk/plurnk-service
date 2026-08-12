@@ -235,7 +235,7 @@ export default class Http implements SchemeHandler {
         volatile: true,        // remote content can change between fetches
         modelVisible: true,
         glyph: "🌐",
-        example: "## READ1 (https://example.com/page)",
+        example: "## READ0 (https://example.com/page)",
         documentation,
         flags: {
             requiresWeb: true, // excluded under the loop's noWeb flag

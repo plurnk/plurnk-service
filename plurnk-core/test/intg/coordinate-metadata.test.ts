@@ -27,7 +27,7 @@ test("generate carries the workspace/loop/turn coordinate, using loop sequence r
         const loopId = await insertLoop(db, workerId, 5, "go");
         assert.notEqual(loopId, 5, "the loop's db id and its sequence diverge for this pin");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const mock = new CoordMock({ contextWindow: viableWindow(), responses: [makeMockResponse("## SEND1 [200]\ndone", 50)] });
+        const mock = new CoordMock({ contextWindow: viableWindow(), responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
         await engine.runTurn({ provider: mock, workspaceId, workerId, loopId, messages: [{ role: "system", content: "x" }, { role: "user", content: "go" }] });
         assert.equal(mock.seen.workspaceId, String(workspaceId), "Plurnk-Workspace-Id — the workspace id, stringified");
         assert.equal(mock.seen.loop, 5, "Plurnk-Loop — the loop's SEQUENCE (coordinate), not its db id");
@@ -45,14 +45,14 @@ test("generate carries primaryWorkerId — a spawned child's differs from its Wo
 
         // The PRIMARY (root) worker: Worker-Primary == Worker-Id (pin 2 — always stamped, self-equal).
         const rootLoop = await insertLoop(db, root, 1, "go");
-        const m1 = new CoordMock({ contextWindow: viableWindow(), responses: [makeMockResponse("## SEND1 [200]\ndone", 50)] });
+        const m1 = new CoordMock({ contextWindow: viableWindow(), responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
         await engine.runTurn({ provider: m1, workspaceId, workerId: root, loopId: rootLoop, messages: [{ role: "system", content: "x" }, { role: "user", content: "go" }] });
         assert.equal(m1.seen.primaryWorkerId, String(root), "the primary's own turn stamps Worker-Primary");
         assert.equal(m1.seen.primaryWorkerId, m1.seen.workerId, "Worker-Primary == Worker-Id on the primary — the endpoint routes it to the strong model");
 
         // A SPAWNED child: Worker-Primary is the ROOT, != its own Worker-Id (endpoint routes it cheap).
         const childLoop = await insertLoop(db, child, 1, "go");
-        const m2 = new CoordMock({ contextWindow: viableWindow(), responses: [makeMockResponse("## SEND1 [200]\ndone", 50)] });
+        const m2 = new CoordMock({ contextWindow: viableWindow(), responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
         await engine.runTurn({ provider: m2, workspaceId, workerId: child, loopId: childLoop, messages: [{ role: "system", content: "x" }, { role: "user", content: "go" }] });
         assert.equal(m2.seen.primaryWorkerId, String(root), "a spawned child carries the ROOT as Worker-Primary");
         assert.notEqual(m2.seen.primaryWorkerId, m2.seen.workerId, "Worker-Primary != Worker-Id on a spawn — routed to the cheap model");

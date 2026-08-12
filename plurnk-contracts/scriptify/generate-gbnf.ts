@@ -1,4 +1,4 @@
-// Generates dist/plurnk.gbnf — the llama.cpp rail for canonical lane-1 turns.
+// Generates dist/plurnk.gbnf — the llama.cpp rail for canonical lane-0 turns.
 // ANTLR remains the accepted-language authority; this deliberately narrower
 // grammar makes useful, parseable local-model output likely and bounded.
 import { mkdir, writeFile } from "node:fs/promises";
@@ -109,8 +109,8 @@ const emptySection = (model: GModel, name: string, header: GSeq): void => {
 
 export const buildModel = (): GModel => {
     const model: GModel = new Map();
-    // Reserve operation-heading stems rather than only their canonical lane-1
-    // spellings. The rail can then force the `1` instead of swallowing a
+    // Reserve operation-heading stems rather than only their canonical lane-0
+    // spellings. The rail can then force the `0` instead of swallowing a
     // wrong-lane pseudo-heading as literal body text. ANTLR remains the wider
     // language for intentional alternate-lane literals.
     const structuralHeadings = ["# PLAN", ...OPS.map((op) => `## ${op}`)];
@@ -128,33 +128,33 @@ export const buildModel = (): GModel => {
     const target = [ref("target-slot")];
     const line = [ref("line-slot")];
     const taggedTargetScope = (op: string): GSeq => [
-        lit(`## ${op}1`),
+        lit(`## ${op}0`),
         opt(tags[0]),
         target[0],
         opt(line[0]),
     ];
 
-    requiredBodySection(model, "plan", [lit("# PLAN1")]);
+    requiredBodySection(model, "plan", [lit("# PLAN0")]);
     optionalBodySection(model, "find", taggedTargetScope("FIND"), "pattern-body");
     optionalBodySection(model, "read", taggedTargetScope("READ"), "pattern-body");
     optionalBodySection(model, "edit", taggedTargetScope("EDIT"), "section-body");
     requiredBodySection(model, "copy", taggedTargetScope("COPY"));
     requiredBodySection(model, "move", taggedTargetScope("MOVE"));
-    optionalBodySection(model, "open", [lit("## OPEN1"), opt(tags[0]), target[0]], "pattern-body");
-    optionalBodySection(model, "fold", [lit("## FOLD1"), opt(tags[0]), target[0]], "pattern-body");
+    optionalBodySection(model, "open", [lit("## OPEN0"), opt(tags[0]), target[0]], "pattern-body");
+    optionalBodySection(model, "fold", [lit("## FOLD0"), opt(tags[0]), target[0]], "pattern-body");
     optionalBodySection(model, "exec", [
-        lit("## EXEC1"),
+        lit("## EXEC0"),
         opt(ref("exec-slot")),
         opt(target[0]),
         opt(line[0]),
     ], "section-body");
-    requiredBodySection(model, "work", [lit("## WORK1"), opt(ref("branch-slot")), target[0]]);
-    requiredBodySection(model, "fork", [lit("## FORK1"), opt(ref("branch-slot")), target[0]]);
-    emptySection(model, "kill", [lit("## KILL1"), opt(ref("kill-slot")), target[0]]);
+    requiredBodySection(model, "work", [lit("## WORK0"), opt(ref("branch-slot")), target[0]]);
+    requiredBodySection(model, "fork", [lit("## FORK0"), opt(ref("branch-slot")), target[0]]);
+    emptySection(model, "kill", [lit("## KILL0"), opt(ref("kill-slot")), target[0]]);
 
     const sendMidHeaders: GSeq[] = [
-        [lit("## SEND1"), ref("status-mid-slot"), opt(ref("target-slot"))],
-        [lit("## SEND1"), opt(ref("target-slot"))],
+        [lit("## SEND0"), ref("status-mid-slot"), opt(ref("target-slot"))],
+        [lit("## SEND0"), opt(ref("target-slot"))],
     ];
     model.set("send-mid", sendMidHeaders.flatMap((header): GRule => [
         [...header, lit("\n\n")],
@@ -163,7 +163,7 @@ export const buildModel = (): GModel => {
 
     const final = (name: string, signal: string, park: boolean): void => {
         model.set(name, [[
-            lit(`## SEND1 [${signal}]`),
+            lit(`## SEND0 [${signal}]`),
             opt(ref("target-slot")),
             ...(park ? [opt(ref("park-slot"))] : []),
             lit("\n"),
@@ -322,5 +322,5 @@ if (import.meta.main) {
     await mkdir("dist", { recursive: true });
     const model = buildModel();
     await writeFile("dist/plurnk.gbnf", serializeGbnf(model, "root-turn"));
-    process.stderr.write("Generated dist/plurnk.gbnf (raw turn: CHANNEL + # PLAN1 + ## OP1 sections)\n");
+    process.stderr.write("Generated dist/plurnk.gbnf (raw turn: CHANNEL + # PLAN0 + ## OP0 sections)\n");
 }

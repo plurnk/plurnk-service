@@ -16,18 +16,16 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|W
 ### Syntax
 
 ```plurnk
-# PLAN1
+# PLAN0
 new findings, unresolved questions, current priorities
 
-## OP1 [signal]? (path)? <scope>?
+## OP0 [signal]? (path)? <scope>?
 body?
 ```
 
-Every turn begins with `# PLAN1`; every other OP is a peer `## OP1` section.
-Every heading in a turn shares one suffix; it labels the turn-wide lane, not OP order.
-Put one space before each present modifier, in `[signal] (path) <scope>` order.
-One blank line separates sections and is not body content; additional blank lines are body content.
-When a body contains a lane-1 OP heading, use another suffix consistently for the outer turn.
+Every turn begins with `# PLAN0`.
+Every other OP is a peer `## OP0` section.
+A single blank line between sections is optional and is not body content; additional blank lines are body content.
 Body content is character-perfect, exactly matching whitespace.
 PLURNK does not decode body escapes: `\n` is backslash plus `n`.
 Emit a physical newline when literal body content needs one.
@@ -76,12 +74,12 @@ Matcher bodies select treemapped resources by their content.
 
 Examples:
 
-* Regex: `## FIND1 (src/**/*.ts)` with body `/createCoder/i`.
-* XPath: `## FIND1 (config/**/*.xml)` with body `//user[@role='admin']`.
-* JSONPath: `## FIND1 (data/users.json)` with body `$[?(@.role=="admin")]`.
-* Semantic threshold/range: `## FIND1 (worker:///**) <0.7,1,50>` with body `~french revolutionary history`.
-* Graph: `## FIND1 (src/**)` with body `@<createCoder`.
-* Glob body: `## FIND1 (worker:///**)` with body `*revolution*`.
+* Regex: `## FIND0 (src/**/*.ts)` with body `/createCoder/i`.
+* XPath: `## FIND0 (config/**/*.xml)` with body `//user[@role='admin']`.
+* JSONPath: `## FIND0 (data/users.json)` with body `$[?(@.role=="admin")]`.
+* Semantic threshold/range: `## FIND0 (worker:///**) <0.7,1,50>` with body `~french revolutionary history`.
+* Graph: `## FIND0 (src/**)` with body `@<createCoder`.
+* Glob body: `## FIND0 (worker:///**)` with body `*revolution*`.
 
 ### `(path)`
 
@@ -94,8 +92,8 @@ Examples:
 
 Examples:
 
-* Parent traversal: `## READ1 (../AGENTS.md) <2>` reads line 2.
-* Stream channel: `## READ1 (sh:///1/2/3#stderr) <1,40>` reads stderr lines 1–40.
+* Parent traversal: `## READ0 (../AGENTS.md) <2>` reads line 2.
+* Stream channel: `## READ0 (sh:///1/2/3#stderr) <1,40>` reads stderr lines 1–40.
 
 ### The Worker Knowledgebase
 
@@ -106,9 +104,9 @@ Examples:
 
 Examples:
 
-* Preserve tagged research: `## EDIT1 [research,france] (worker://~/research.md)` with body `Paris is the capital of France.`
-* Read a shared entry: `## READ1 (worker:///notes.md)`.
-* Read another worker's entry: `## READ1 (worker://other-worker/notes.md)`.
+* Preserve tagged research: `## EDIT0 [research,france] (worker://~/research.md)` with body `Paris is the capital of France.`
+* Read a shared entry: `## READ0 (worker:///notes.md)`.
+* Read another worker's entry: `## READ0 (worker://other-worker/notes.md)`.
 
 ### `<scope>`
 
@@ -123,10 +121,10 @@ Text scope (Line, StartLine, StartColumn, EndLine, EndColumn) has one meaning fo
 
 Examples:
 
-* One line: `## READ1 (notes.md) <2>` reads only line 2; an empty `## EDIT1 (notes.md) <2>` section deletes line 2.
-* Inclusive line range: `## READ1 (notes.md) <2,3>` reads lines 2 and 3.
-* Exclusive column endpoint: `## READ1 (notes.md) <2,1,2,5>` reads columns 1-4 of line 2.
-* Zero-width position: `## EDIT1 (notes.md) <2,5,2,5>` with body `inserted text` inserts at line 2, column 5.
+* One line: `## READ0 (notes.md) <2>` reads only line 2; an empty `## EDIT0 (notes.md) <2>` section deletes line 2.
+* Inclusive line range: `## READ0 (notes.md) <2,3>` reads lines 2 and 3.
+* Exclusive column endpoint: `## READ0 (notes.md) <2,1,2,5>` reads columns 1-4 of line 2.
+* Zero-width position: `## EDIT0 (notes.md) <2,5,2,5>` with body `inserted text` inserts at line 2, column 5.
 
 * Lines and Unicode code-point columns are 1-based.
 * Rendered `L:` prefixes are coordinates, not content; edit from a recent READ.
@@ -141,15 +139,15 @@ YOU SHOULD FOLD superseded PLANs and READs made stale by later changes before th
 
 Examples:
 
-* File this body under the capitalTrivia tag (saves tokens): `## FOLD1 [capitalTrivia] (log:///42/7/5)`.
-* Recall bodies filed under the capitalTrivia tag (spends tokens): `## OPEN1 [capitalTrivia] (log:///**)`.
+* File this body under the capitalTrivia tag (saves tokens): `## FOLD0 [capitalTrivia] (log:///42/7/5)`.
+* Recall bodies filed under the capitalTrivia tag (spends tokens): `## OPEN0 [capitalTrivia] (log:///**)`.
 
 ## Delegation
 
-* Work on a Git branch: `## WORK1 [feature/recheck] (worker://recheck)` with body `Implement the alternative`.
-* Send a worker another message: `## SEND1 (worker://recheck)` with body `Also, what is the capital of Germany?`.
-* Fork with inherited history: `## FORK1 (worker://recheck)` with body `Re-derive the capital from a primary source`.
-* Terminate a worker: `## KILL1 (worker://recheck)`.
+* Work on a Git branch: `## WORK0 [feature/recheck] (worker://recheck)` with body `Implement the alternative`.
+* Send a worker another message: `## SEND0 (worker://recheck)` with body `Also, what is the capital of Germany?`.
+* Fork with inherited history: `## FORK0 (worker://recheck)` with body `Re-derive the capital from a primary source`.
+* Terminate a worker: `## KILL0 (worker://recheck)`.
 
 Before using a branch tag, ensure the repository is clean.
 
@@ -159,28 +157,28 @@ sequenceDiagram
     participant You
     participant Worker as capital-checker
     User->>You: What is the capital of France?
-    You->>Worker: WORK1 - find the capital of France
-    Note over You: SEND1 [202] - await the worker
+    You->>Worker: WORK0 - find the capital of France
+    Note over You: SEND0 [202] - await the worker
     Worker-->>You: result enters the Log and wakes you
-    You->>User: SEND1 [200] - The capital of France is Paris.
+    You->>User: SEND0 [200] - The capital of France is Paris.
 ```
 
 ```plurnk
-# PLAN1
+# PLAN0
 Delegate the capital question, then wait.
 
-## WORK1 (worker://capital-checker)
+## WORK0 (worker://capital-checker)
 Find the capital of France from a primary source
 
-## SEND1 [202]
+## SEND0 [202]
 Awaiting capital-checker.
 ```
 
 ```plurnk
-# PLAN1
+# PLAN0
 Deliver the collected answer.
 
-## SEND1 [200]
+## SEND0 [200]
 The capital of France is Paris.
 ```
 

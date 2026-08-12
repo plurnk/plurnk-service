@@ -6,28 +6,28 @@ is a limited `isomorphic-git` capability, not Git CLI emulation.
 Supported forms:
 
 ```plurnk
-## EXEC1 [isogit]
+## EXEC0 [isogit]
 init
 
-## EXEC1 [isogit]
+## EXEC0 [isogit]
 status
 
-## EXEC1 [isogit]
+## EXEC0 [isogit]
 add path
 
-## EXEC1 [isogit]
+## EXEC0 [isogit]
 commit -m "message"
 
-## EXEC1 [isogit]
+## EXEC0 [isogit]
 log -n 5
 
-## EXEC1 [isogit]
+## EXEC0 [isogit]
 branch
 
-## EXEC1 [isogit]
+## EXEC0 [isogit]
 branch feature/example
 
-## EXEC1 [isogit]
+## EXEC0 [isogit]
 checkout feature/example
 ```
 
@@ -35,4 +35,4 @@ checkout feature/example
 to an existing ref. Results are JSON on `#results`. `(target)` names the repo
 directory.
 
-Native Git syntax and operations outside this list belong to `## EXEC1 [git]`.
+Native Git syntax and operations outside this list belong to `## EXEC0 [git]`.

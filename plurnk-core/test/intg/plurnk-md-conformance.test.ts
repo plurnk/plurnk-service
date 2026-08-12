@@ -10,8 +10,8 @@
 // Contract (plurnk.md "Pattern Filtering"): the
 // (target) selects WHICH entries are candidates; the body matcher runs against
 // the entry CONTENT. The canonical examples are unambiguous about this:
-//   ## FIND1 (config/**/*.xml)\n//user[@role='admin']   — xpath over XML content
-//   ## FIND1 (log:///**/error)\n/timeout|deadline exceeded/i — regex over log content
+//   ## FIND0 (config/**/*.xml)\n//user[@role='admin']   — xpath over XML content
+//   ## FIND0 (log:///**/error)\n/timeout|deadline exceeded/i — regex over log content
 // The path-globs live in the (target); the body is the content matcher.
 //
 // READ resolves via read-resolve; FIND runs its body matcher through
@@ -100,7 +100,7 @@ test("[plurnk.md-FIND-regex-on-content] FIND regex body matches entry CONTENT, n
     } finally { db.close(); }
 });
 
-// plurnk.md: ## READ1 (/etc/hosts) <2> — the line-slice rides the <L> marker
+// plurnk.md: ## READ0 (/etc/hosts) <2> — the line-slice rides the <L> marker
 // slot (NOT the body matcher). Read line 2 of a 3-line entry → just that line.
 // Pins the <L>?:body? slot order — the seam the live READ-<2> mis-slot exposed.
 test("[plurnk.md-ex-READ-line-slice] READ <L> slices by line via the marker slot, not the body", async () => {
@@ -120,7 +120,7 @@ test("[plurnk.md-ex-READ-line-slice] READ <L> slices by line via the marker slot
 // is NOT the entry that matches by PATHNAME. The impl selects the content-bearing
 // entry — a pathname-matcher (the old divergence) would return the other one.
 
-// plurnk.md: ## FIND1 (log:///**/error)\n/timeout|deadline exceeded/i
+// plurnk.md: ## FIND0 (log:///**/error)\n/timeout|deadline exceeded/i
 //   → select entries whose CONTENT matches the regex.
 test("[plurnk.md-ex-FIND-regex-on-content] FIND regex body selects entries by CONTENT, not pathname", async () => {
     const { db, workspaceId, workerId } = await setup();
@@ -150,7 +150,7 @@ test("[plurnk.md-ex-FIND-glob-on-content] FIND glob body selects entries by CONT
 });
 
 // --- FIND with structural dialects (jsonpath/xpath) over native content -------
-// plurnk.md: ## FIND1 (config/**/*.xml)\n//user[@role='admin'] — xpath over XML.
+// plurnk.md: ## FIND0 (config/**/*.xml)\n//user[@role='admin'] — xpath over XML.
 // The dialects route through the plugin's deep-json / deep-xml channels; these
 // prove they are wired through FIND end-to-end on their native mimetypes (NOT 501).
 
@@ -215,7 +215,7 @@ test("[plurnk.md-ex-FIND-jsonpath-on-xml] FIND jsonpath selects XML entries by s
     } finally { db.close(); }
 });
 
-// plurnk.md: `## FIND1 (worker:///**)\n~constitutional history`
+// plurnk.md: `## FIND0 (worker:///**)\n~constitutional history`
 // — markerless RAG semantic similarity, using the universal first-16 page. Runs against the REAL embedder
 // (all-MiniLM-L6-v2 via @plurnk/plurnk-mimetypes-embeddings) — the production tile+embed
 // path, not a model-free stub. Semantics is normal intg coverage; the model load is an

@@ -1,5 +1,5 @@
 // Exec scheme — the EXEC op handler per plurnk.md.
-//   ## EXEC1 [runtime] (cwd)\ncommand
+//   ## EXEC0 [runtime] (cwd)\ncommand
 // Auto-generates a `<runtime>:///<loop>/<turn>/<seq>` entry (the runtime tag IS the
 // authority); spawns the subprocess; streams stdout/stderr into channels; closes
 // subscription + transitions channel state at exit.

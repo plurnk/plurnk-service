@@ -82,7 +82,7 @@ static manifest: SchemeManifest = {
   volatile: false,
   modelVisible: true,
   glyph: "🦊",                          // optional client-only display marker
-  example: "## READ1 (foo://thing/42)", // terse hot-path one-liner, rendered every turn
+  example: "## READ0 (foo://thing/42)", // terse hot-path one-liner, rendered every turn
   documentation,                        // deep doc from docs/foo.md, pulled at worker://plurnk/docs/foo.md
 };
 ```

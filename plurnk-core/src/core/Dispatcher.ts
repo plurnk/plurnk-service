@@ -2733,12 +2733,12 @@ export default class Dispatcher {
             return Dispatcher.#failure(
                 "send-scope-invalid",
                 400,
-                "`## SEND1 [102]` does not accept a scope.",
+                "`## SEND0 [102]` does not accept a scope.",
                 {},
                 {
                     requestedStatus: 102,
                     scope: statement.lineMarker,
-                    recovery: "Use `## SEND1 [202] <scope>` to wait, or remove the scope to continue.",
+                    recovery: "Use `## SEND0 [202] <scope>` to wait, or remove the scope to continue.",
                     retryable: false,
                 },
             );
@@ -2843,7 +2843,7 @@ export default class Dispatcher {
                         {
                             pending: [...pending],
                             stage: "completion",
-                            recovery: "Review the results, then use only `# PLAN1` and `## SEND1 [200]` to conclude.",
+                            recovery: "Review the results, then use only `# PLAN0` and `## SEND0 [200]` to conclude.",
                             retryable: false,
                         },
                     );

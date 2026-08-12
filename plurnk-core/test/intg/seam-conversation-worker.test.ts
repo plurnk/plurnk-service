@@ -6,7 +6,7 @@ import { OperationFailureError } from "../../src/core/results.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, waitFor } from "./_rpc.ts";
 
 test("{§methods-conversation-worker}: fresh named conversation — empty log, runLoop accepts, stable door unaffected", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("## SEND1 [200]\nhello from thread-2", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("## SEND0 [200]\nhello from thread-2", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {

@@ -31,7 +31,7 @@ const loopStatus = async (db: Db, loopId: number): Promise<number> => {
     return row.status;
 };
 
-test("## SEND1 [200]\ndone (null path, terminal success) → loop.status = 200", async () => {
+test("## SEND0 [200]\ndone (null path, terminal success) → loop.status = 200", async () => {
     const { db, env, engine } = await setup();
     try {
         assert.equal(await loopStatus(db, env.loopId), 102, "starts at 102 (continuing)");
@@ -47,7 +47,7 @@ test("## SEND1 [200]\ndone (null path, terminal success) → loop.status = 200",
     } finally { await db.close(); }
 });
 
-test("## SEND1 [499]\ncancelled → loop.status = 499", async () => {
+test("## SEND0 [499]\ncancelled → loop.status = 499", async () => {
     const { db, env, engine } = await setup();
     try {
         const result = await engine.dispatch({
@@ -60,7 +60,7 @@ test("## SEND1 [499]\ncancelled → loop.status = 499", async () => {
     } finally { await db.close(); }
 });
 
-test("## SEND1 [102]\ncontinuing → loop.status unchanged (still 102, non-terminal)", async () => {
+test("## SEND0 [102]\ncontinuing → loop.status unchanged (still 102, non-terminal)", async () => {
     const { db, env, engine } = await setup();
     try {
         const result = await engine.dispatch({
@@ -75,7 +75,7 @@ test("## SEND1 [102]\ncontinuing → loop.status unchanged (still 102, non-termi
     } finally { await db.close(); }
 });
 
-test("## SEND1 [404]\nnot found (non-terminal client error) → loop.status unchanged", async () => {
+test("## SEND0 [404]\nnot found (non-terminal client error) → loop.status unchanged", async () => {
     const { db, env, engine } = await setup();
     try {
         const result = await engine.dispatch({

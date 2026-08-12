@@ -11,10 +11,10 @@ test("registered executable tools render as a closed, titled catalogue; omitted 
         { name: "definition", slot: "user", header: null, content: "...plurnk.md...", tokens: 0 },
         { name: "tools", slot: "user", header: "Registered Executable Tools", content: tools, tokens: 0 },
     ];
-    const withTools = PacketWire.renderSlot(userSections("```plurnk\n## EXEC1 [node]\nconsole.log(42)\n```"), "user");
-    assert.match(withTools, /## EXEC1 \[node\]/, "the registered executable example renders");
+    const withTools = PacketWire.renderSlot(userSections("```plurnk\n## EXEC0 [node]\nconsole.log(42)\n```"), "user");
+    assert.match(withTools, /## EXEC0 \[node\]/, "the registered executable example renders");
     assert.match(withTools, /## Registered Executable Tools/, "the heading defines the examples as registered selectors");
-    const toolsIdx = withTools.indexOf("## EXEC1 [node]");
+    const toolsIdx = withTools.indexOf("## EXEC0 [node]");
     assert.ok(toolsIdx > withTools.indexOf("...plurnk.md..."), "tools render after the definition");
 
     const noTools = PacketWire.renderSlot(userSections(""), "user");

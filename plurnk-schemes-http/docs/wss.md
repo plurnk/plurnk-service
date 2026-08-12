@@ -7,11 +7,11 @@ operations address that owner.
 
 | Operation                                      | Effect                                                                                  |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `## READ1 (wss://host/path)`                   | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames |
+| `## READ0 (wss://host/path)`                   | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames |
 | A second READ of the same address              | Return `409` until the existing owner's terminal cleanup releases the claim             |
-| `## SEND1 [200] (wss://host/path)` with body   | Send only through an open socket; non-open owners return `409`                          |
-| `## SEND1 [499] (wss://host/path)`             | Cancel the owning READ through its routed subscription handle                           |
-| `## KILL1 (wss://host/path)`                   | Close or cancel the claimed owner; an address with no owner is `404`                    |
+| `## SEND0 [200] (wss://host/path)` with body   | Send only through an open socket; non-open owners return `409`                          |
+| `## SEND0 [499] (wss://host/path)`             | Cancel the owning READ through its routed subscription handle                           |
+| `## KILL0 (wss://host/path)`                   | Close or cancel the claimed owner; an address with no owner is `404`                    |
 
 | Owner state  | Meaning                                              | SEND with signal `200`                           |
 | ------------ | ---------------------------------------------------- | ------------------------------------------------ |

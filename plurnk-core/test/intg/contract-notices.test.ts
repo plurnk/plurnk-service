@@ -21,7 +21,7 @@ const contentResponse = (content: string): MockResponse => ({
         // Turns lead with PLAN; the Engine re-parses the supplied content.
         content: content.startsWith("# PLAN")
             ? content
-            : `# PLAN1\nadmit the supplied turn\n\n${content}`,
+            : `# PLAN0\nadmit the supplied turn\n\n${content}`,
         reasoning: null,
     },
     assistantRaw: null,
@@ -29,14 +29,14 @@ const contentResponse = (content: string): MockResponse => ({
 
 // A complete, admitted draining turn. Its only job is to run so the model's
 // next packet drains the notices buffer on read.
-const drainTurn = contentResponse("## SEND1 [200]\ndrained");
+const drainTurn = contentResponse("## SEND0 [200]\ndrained");
 
 // A provider transport anomaly notice. Grammar verdicts are engine-owned under
 // {§rail-truth-engine-verdict}; the provider notice path remains for observations
 // such as a decode escaping into a discarded channel.
 // `extraDrains` clean turns follow so the buffer can be observed draining.
-const NOTICE_CONTENT = "# PLAN1\nreasoning\n\n## SEND1 [200]\nnoted";
-const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("## SEND1") + 3)).length;
+const NOTICE_CONTENT = "# PLAN0\nreasoning\n\n## SEND0 [200]\nnoted";
+const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("## SEND0") + 3)).length;
 const noticeProvider = (extraDrains: number) => {
     const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
     const real = provider.generate.bind(provider);
@@ -339,7 +339,7 @@ test("a parser warning remains advisory while the independently invalid mutation
                 broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } });
             },
         });
-        const emission = "# PLAN1\nedit the file\n\n## EDIT1 [src/example.ts]\nbody\n\n## SEND1 [200]\ndone";
+        const emission = "# PLAN0\nedit the file\n\n## EDIT0 [src/example.ts]\nbody\n\n## SEND0 [200]\ndone";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [

@@ -55,7 +55,7 @@ test("manifest declares the native git runtime with valid examples", async () =>
     const examples = pkg.plurnk.runtimes[0].example.split("\n\n");
     assert.equal(examples.length, 2);
     for (const example of examples) {
-        assert.match(example, /^## EXEC1 \[git\]\n.+$/);
+        assert.match(example, /^## EXEC0 \[git\]\n.+$/);
     }
 });
 

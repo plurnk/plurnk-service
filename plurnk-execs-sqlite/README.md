@@ -15,10 +15,10 @@ A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.co
 The EXEC target slot is the database file; with no target it defaults to an ephemeral in-memory db:
 
 ```plurnk
-## EXEC1 [sqlite]
+## EXEC0 [sqlite]
 SELECT * FROM users
 
-## EXEC1 [sqlite] (./app.db)
+## EXEC0 [sqlite] (./app.db)
 SELECT * FROM users
 ```
 
@@ -30,7 +30,7 @@ State does not persist across EXECs. Pass a file path for persistence.
 With no target, `:memory:` is a scratch calculator over ad-hoc tables — build one inline with `VALUES` and aggregate, no schema or file needed:
 
 ```plurnk
-## EXEC1 [sqlite]
+## EXEC0 [sqlite]
 WITH t(item,qty,price) AS (VALUES ('a',3,2),('b',1,5)) SELECT sum(qty*price) AS total, sum(qty*price)*1.0/sum(qty) AS avg_price FROM t
 ```
 

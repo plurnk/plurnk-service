@@ -144,13 +144,13 @@ root-turn ::= channel sep plan sep tail-0
 `<|channel>thought\n` and ending `<channel|>`. Its body may be empty but cannot
 contain another opener or the closer. `sep` is zero through seven whitespace
 characters. No channel is legal after the leading one. The PLURNK content begins
-with `# PLAN1`; every following operation is a same-lane `## OP1` section.
+with `# PLAN0`; every following operation is a same-lane `## OP0` section.
 `tail-0` admits zero through fourteen internal operations followed by exactly
 one terminal SEND under the existing terminal-eligibility rules.
 
 ```mermaid
 flowchart LR
-    raw["Raw constrained decode<br/>channel · sep · # PLAN1 · H2 operations"]
+    raw["Raw constrained decode<br/>channel · sep · # PLAN0 · H2 operations"]
     split["llama.cpp<br/>reasoning_format: auto"]
     reasoning["reasoning_content<br/>channel body"]
     content["content<br/>PLAN through terminal SEND"]
@@ -167,9 +167,9 @@ revalidated as though it still contained the required channel. Provider and
 core own the projection evidence and rail-verdict boundary; this package owns
 only the raw language and the parser/AstBuilder result.
 
-§rail-heading-boundaries On the GBNF rail, PLAN and every operation use lane `1`.
+§rail-heading-boundaries On the GBNF rail, PLAN and every operation use lane `0`.
 Every reserved PLAN or operation heading stem is structural, regardless of the
-suffix a model attempts next, so a non-`1` pseudo-heading cannot be swallowed as
+suffix a model attempts next, so a non-`0` pseudo-heading cannot be swallowed as
 literal body text. Rail bodies therefore cannot quote reserved headings from any
 lane. This makes both the canonical suffix and section boundary structurally
 available during constrained generation; ANTLR remains the wider language and
@@ -217,7 +217,7 @@ The following constraints are structural:
 - A header occupies one physical line.
 - Each admitted signal, target, and scope slot appears at most once.
 - OPEN, FOLD, WORK, FORK, and KILL do not admit a scope slot.
-- An ingested suffix is `[A-Za-z0-9_]*`; canonical teaching and the GBNF use `1`.
+- An ingested suffix is `[A-Za-z0-9_]*`; canonical teaching and the GBNF use `0`.
 
 §slot-order Canonical producers and the GBNF rail emit signal, then target, then
 scope, with one ASCII space before every present slot. The tolerant ANTLR
@@ -232,7 +232,7 @@ or safely execute understandable input:
 |---------------------------------------------------|---------------------------------------------------------------------|
 | Reordered admitted slots                          | Producers retain signal → target → scope order                      |
 | Missing target on a generally targeted operation | AST carries `null`; the runtime rejects when the target is required |
-| PLAN modifiers or a non-`1` lane                  | Model canon keeps PLAN slotless and uses lane `1`                   |
+| PLAN modifiers or a non-`0` lane                  | Model canon keeps PLAN slotless and uses lane `0`                   |
 | KILL annotation body                              | AST preserves it; model teaching leaves the KILL section empty      |
 | Dash-separated or comma-space scope numbers       | Producers use adjacent comma-separated numbers                      |
 | Empty content where semantics require a body      | The empty section normalizes null; the operation owner rejects it   |
@@ -531,32 +531,32 @@ Suffix rules:
 - The H1 PLAN establishes the lane; every real H2 operation heading in that
   turn has the exact same suffix.
 - An empty suffix is accepted only by ANTLR ingestion. Canonical teaching and
-  the generated rail use `1` on PLAN and every operation.
+  the generated rail use `0` on PLAN and every operation.
 - A body may contain any heading whose suffix differs from the active lane.
-- To carry a nested turn written with lane `1`, choose another suffix for the
+- To carry a nested turn written with lane `0`, choose another suffix for the
   outer turn and repeat it on every outer heading.
-- The GBNF deliberately emits only lane `1`. It cannot emit body content that
+- The GBNF deliberately emits only lane `0`. It cannot emit body content that
   contains a same-lane structural heading; unconstrained producers use another
   outer lane when that representation is required.
 
-Example — a lane-1 turn stored inside a lane-2 EDIT body:
+Example — a lane-0 turn stored inside a lane-2 EDIT body:
 
 ```
 # PLAN2
 Store the quoted turn.
 
 ## EDIT2 (worker:///quoted.plurnk)
-# PLAN1
+# PLAN0
 Answer from memory.
 
-## SEND1 [200]
+## SEND0 [200]
 Paris.
 
 ## SEND2 [200]
 Stored the quoted turn.
 ```
 
-The lane-1 headings are ordinary EDIT body text because the outer turn's
+The lane-0 headings are ordinary EDIT body text because the outer turn's
 structural lane is `2`. This rule belongs to section framing and applies to
 every operation, not to EDIT semantics.
 
@@ -600,7 +600,7 @@ structural:
 - §no-idle-102 A **zero-statement turn may not conclude `[102]`** — "continue"
   with nothing submitted is a spin. The GBNF's `tail-0` exits through
   a terminal trie without the `[102]` tail, so the idle turn (`PLAN`
-  straight into `## SEND1 [102]`) is unemittable; one statement restores
+  straight into `## SEND0 [102]`) is unemittable; one statement restores
   the full disposition set. The other four stay legal bare (a zero-op
   `[202]` is the engine's obligation check). ANTLR stays tolerant
   (ingest side). A dispatch-emptied turn — ops emitted but failing
@@ -663,7 +663,7 @@ possible. EOF is a valid body boundary. An unfinished signal or target produces
 
 | Location                    | Canonical generation                  | Tolerant ANTLR ingestion                                  |
 |-----------------------------|---------------------------------------|-----------------------------------------------------------|
-| Heading marker              | `# PLAN1` or `## OP1` at column zero  | Exact heading depth and column are structural             |
+| Heading marker              | `# PLAN0` or `## OP0` at column zero  | Exact heading depth and column are structural             |
 | Between OP and suffix       | Adjacent                              | Must remain adjacent                                      |
 | Before each header slot     | One ASCII space                       | One or more horizontal whitespace characters             |
 | Inside signal               | Adjacent values                       | Horizontal whitespace is ignored; newline is invalid      |
@@ -945,14 +945,14 @@ and 3.30.2](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html).
 the sole and complete owner of syntax-error messaging because it holds the
 parse state, lexer mode, and expected-token set that no consumer has. It
 produces the final diagnostic message, deduplicated expected-token lists,
-turn-shape imperatives (begin with `# PLAN1`, end with a terminal
-`## SEND1 [code]`), and these targeted diagnostics:
+turn-shape imperatives (begin with `# PLAN0`, end with a terminal
+`## SEND0 [code]`), and these targeted diagnostics:
 
 - §signal-scope-redirect **EXEC scope in the signal slot.** When EXEC's
   `[signal]` slot (executor-ident mode) hits a leading `-` or digit —
   mark-shaped `<timeout, poll>` scope content mistyped into the brackets — the
   lexer message becomes `timeout/poll ride the \`<scope>\` slot; try
-  \`## EXEC1 <-1,300>\`` instead of a raw `unrecognized character`. The redirect is
+  \`## EXEC0 <-1,300>\`` instead of a raw `unrecognized character`. The redirect is
   EXEC-scoped because its signal mode is exclusive; SEND/KILL are untouched.
 - §matcher-body-redirect **Matcher body in the slot region.** When the
   post-target header region begins with `$`, `~`, or `@`, the lexer redirects
@@ -962,8 +962,8 @@ turn-shape imperatives (begin with `# PLAN1`, end with a terminal
 - §misplaced-target-advisory **Mutation target in the signal slot.** When a
   mutating op (EDIT/COPY/MOVE) parses with a null `(target)` and a path-shaped
   `[signal]` element (a `/` or a dotted extension), the message redirects the
-  path into `(…)` (`\`## EDIT1\` has no \`(target)\` - that path sits in the
-  \`[…]\` tag slot; a target goes in \`(…)\`. Try \`## EDIT1 (path)\``). It is
+  path into `(…)` (`\`## EDIT0\` has no \`(target)\` - that path sits in the
+  \`[…]\` tag slot; a target goes in \`(…)\`. Try \`## EDIT0 (path)\``). It is
   gated on a path-shaped signal so a genuine tags-only slip is not mis-steered
   toward a path it lacks.
 
@@ -988,7 +988,7 @@ Examples of canonical hard facts:
 - `unrecognized character '<' in target`
 - `unrecognized character ':' in signal`
 - `unrecognized character 'X' in statement header`
-- `a turn must begin with \`# PLAN1\``
+- `a turn must begin with \`# PLAN0\``
 - `expected ')'; got ':'`
 
 Each malformed statement produces at most one hard error. The first recorded
@@ -1023,6 +1023,6 @@ runtime constructs this; the parser provides the fields):
     "column": 12,
     "source": "parser",
     "severity": "error",
-    "message": "target slot of `## READ1` opened at line 1 but never closed - add `)`"
+    "message": "target slot of `## READ0` opened at line 1 but never closed - add `)`"
 }
 ```

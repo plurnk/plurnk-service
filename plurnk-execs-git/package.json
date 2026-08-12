@@ -33,7 +33,7 @@
             {
                 "name": "git",
                 "glyph": "🔀",
-                "example": "## EXEC1 [git]\nstatus --short\n\n## EXEC1 [git]\ncommit -m \"save work\""
+                "example": "## EXEC0 [git]\nstatus --short\n\n## EXEC0 [git]\ncommit -m \"save work\""
             }
         ]
     },

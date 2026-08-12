@@ -35,7 +35,7 @@
             {
                 "name": "search",
                 "glyph": "🔎",
-                "example": "## EXEC1 [search]\nfrance population"
+                "example": "## EXEC0 [search]\nfrance population"
             },
             {
                 "name": "images",

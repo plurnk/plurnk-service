@@ -47,7 +47,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         // Thread A (== workspace name: the default conversation) dispatches one ordered
         // multi-statement action against a shared entry. {§agui-op-parse}
         const edit = await action(port, "shared-world", "shared-world", "op.parse", {
-            text: "## EDIT1 (worker:///notes.md)\nfirst\n\n## EDIT1 (worker:///notes.md) <1,-1>\nthe world is one",
+            text: "## EDIT0 (worker:///notes.md)\nfirst\n\n## EDIT0 (worker:///notes.md) <1,-1>\nthe world is one",
         });
         assert.equal(edit.ok, true, JSON.stringify(edit.problem));
         const editResults = (edit.result as { results: Array<{ status: number }> }).results;
@@ -56,7 +56,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         // {§agui-op-parse} {§unparsed-tail-boundary} — one real daemon action keeps the
         // valid prefix, surfaces the boundary loss once, and never mutates from recovered tail AST.
         const tailed = await action(port, "shared-world", "shared-world", "op.parse", {
-            text: "## EDIT1 (worker:///tail-trusted.md)\nkept\n\n## EDIT1 (worker:///tail-untrusted.md",
+            text: "## EDIT0 (worker:///tail-trusted.md)\nkept\n\n## EDIT0 (worker:///tail-untrusted.md",
         });
         assert.equal(tailed.ok, true, JSON.stringify(tailed.problem));
         const tailResults = (tailed.result as {
@@ -67,7 +67,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
             type: "https://problems.plurnk.dev/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
-            detail: "target slot of `## EDIT1` opened at line 4 but never closed - add `)`",
+            detail: "target slot of `## EDIT0` opened at line 4 but never closed - add `)`",
             line: 4,
             column: 0,
             source: "grammar",
@@ -76,13 +76,13 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
             retryable: false,
         });
         const untrusted = await action(port, "shared-world", "shared-world", "op.parse", {
-            text: "## READ1 (worker:///tail-untrusted.md)",
+            text: "## READ0 (worker:///tail-untrusted.md)",
         });
         const untrustedResults = (untrusted.result as { results: Array<{ status: number }> }).results;
         assert.equal(untrustedResults[0]?.status, 404, "the statement recovered from the undefined tail never dispatched");
 
         // Thread B — a DISTINCT conversation over the SAME world.
-        const read = await action(port, "second-look", "shared-world", "op.parse", { text: "## READ1 (worker:///notes.md)\n" });
+        const read = await action(port, "second-look", "shared-world", "op.parse", { text: "## READ0 (worker:///notes.md)\n" });
         assert.equal(read.ok, true, JSON.stringify(read.problem));
         const readResults = (read.result as { results: Array<{ status: number; [k: string]: unknown }> }).results;
         assert.equal(readResults[0]?.status, 200, `thread B READs what thread A wrote: ${JSON.stringify(readResults)}`);
@@ -92,7 +92,7 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         const beforeLook = await action(port, "second-look", "shared-world", "log.read");
         const entriesBeforeLook = (beforeLook.result as { entries: unknown[] }).entries.length;
         const looked = await action(port, "second-look", "shared-world", "op.look", {
-            text: "## LOOK1 (worker:///notes.md)",
+            text: "## LOOK0 (worker:///notes.md)",
         });
         assert.equal(looked.ok, true, JSON.stringify(looked.problem));
         assert.equal(looked.result?.status, 200);
@@ -105,13 +105,13 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         );
 
         const ambiguousLook = await action(port, "second-look", "shared-world", "op.look", {
-            text: "## LOOK1 (worker:///notes.md)\n\n## EDIT1 (worker:///notes.md)\nmust-not-dispatch",
+            text: "## LOOK0 (worker:///notes.md)\n\n## EDIT0 (worker:///notes.md)\nmust-not-dispatch",
         });
         assert.equal(ambiguousLook.ok, false);
         assert.equal(ambiguousLook.problem?.type, "https://problems.plurnk.dev/agui/action/invalid-action-parameters");
         assert.equal(ambiguousLook.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required.");
         const unchanged = await action(port, "second-look", "shared-world", "op.look", {
-            text: "## LOOK1 (worker:///notes.md)",
+            text: "## LOOK0 (worker:///notes.md)",
         });
         assert.equal(unchanged.result?.content, "the world is one", "the rejected second statement never reaches the daemon");
 

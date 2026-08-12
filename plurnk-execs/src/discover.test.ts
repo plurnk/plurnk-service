@@ -32,7 +32,7 @@ test("discover: registers each runtime tag of an exec package", async () => {
         plurnk: {
             kind: "exec",
             runtimes: [
-                { name: "search", glyph: "🔎", example: "## EXEC1 [search]\nfrance population", documentation: "# search\n\nSearXNG-backed." },
+                { name: "search", glyph: "🔎", example: "## EXEC0 [search]\nfrance population", documentation: "# search\n\nSearXNG-backed." },
                 { name: "news", glyph: "📰" },
             ],
         },
@@ -42,7 +42,7 @@ test("discover: registers each runtime tag of an exec package", async () => {
     assert.equal(registry.size, 2);
     // `example` + `documentation` flow through verbatim when declared, "" when not.
     assert.deepEqual(registry.get("search"), {
-        runtime: "search", glyph: "🔎", example: "## EXEC1 [search]\nfrance population",
+        runtime: "search", glyph: "🔎", example: "## EXEC0 [search]\nfrance population",
         documentation: "# search\n\nSearXNG-backed.", packageName: "@plurnk/plurnk-execs-search",
     });
     assert.deepEqual(registry.get("news"), {
@@ -155,7 +155,7 @@ test("discover: dynamic runtimesModule hook materializes per-deployment tags", a
         "@plurnk/plurnk-execs-dynamic-fixture",
         `export async function runtimes() {
             return [
-                { name: "github", glyph: "🐙", example: "## EXEC1 [github]\\ncreate_issue {}", documentation: "gh tools" },
+                { name: "github", glyph: "🐙", example: "## EXEC0 [github]\\ncreate_issue {}", documentation: "gh tools" },
                 { name: "figma", glyph: "🎨" },
             ];
         }`,
@@ -164,7 +164,7 @@ test("discover: dynamic runtimesModule hook materializes per-deployment tags", a
 
     assert.equal(registry.size, 2);
     assert.deepEqual(registry.get("github"), {
-        runtime: "github", glyph: "🐙", example: "## EXEC1 [github]\ncreate_issue {}",
+        runtime: "github", glyph: "🐙", example: "## EXEC0 [github]\ncreate_issue {}",
         documentation: "gh tools", packageName: "@plurnk/plurnk-execs-dynamic-fixture",
     });
     assert.deepEqual(registry.get("figma"), {

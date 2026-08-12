@@ -148,8 +148,8 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses the fixed
 {"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/3/100/READ","status":200,"target":"evaluator/functions.go","tokens":874},
 {"display":"folded","error":"Max Commands Exceeded","op":"error","origin":"plurnk","path":"log:///1/3/101/error","worker":"rail","status":429,"tokens":36},
 {"display":"folded","error":"output truncated at the completion cap (65536 tokens) mid-emission — the parse errors below are truncation artifacts; emit fewer ops per turn and continue","op":"error","origin":"model","path":"log:///1/3/102/error","worker":"engine","status":413,"tokens":102},
-{"display":"folded","error":"Plurnk parser error at line 3992:26 - a turn must end with a terminal `## SEND1 [code]` section","op":"error","origin":"model","path":"log:///1/3/103/error","worker":"grammar","status":400,"tokens":71},
-{"display":"folded","error":"target slot of `## READ1` opened at line 3992 but never closed - add `)`","op":"error","origin":"model","path":"log:///1/3/104/error","worker":"grammar","status":400,"tokens":72},
+{"display":"folded","error":"Plurnk parser error at line 3992:26 - a turn must end with a terminal `## SEND0 [code]` section","op":"error","origin":"model","path":"log:///1/3/103/error","worker":"grammar","status":400,"tokens":71},
+{"display":"folded","error":"target slot of `## READ0` opened at line 3992 but never closed - add `)`","op":"error","origin":"model","path":"log:///1/3/104/error","worker":"grammar","status":400,"tokens":72},
 {"display":"folded","kind":"model_emission","lines":3992,"origin":"model","path":"log:///1/3/105","status":200,"tokens":105681},
 {"display":"folded","error":"Budget Overflow: newest log items automatically FOLDed — a retrieval larger than Tokens Free arrives folded; FOLD older items first, then fetch within the room made","op":"error","origin":"plurnk","path":"log:///1/4/1/error","worker":"rail","status":413,"tokens":105},
 {"display":"folded","lines":1,"op":"PLAN","origin":"model","path":"log:///1/4/2/PLAN","status":200,"tokens":160},
@@ -283,7 +283,7 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses the fixed
 {"display":"folded","kind":"model_emission","lines":13,"origin":"model","path":"log:///1/10/11","status":200,"tokens":470},
 {"display":"open","lines":1,"op":"PLAN","origin":"model","path":"log:///1/11/1/PLAN","status":200,"tokens":179,"body":
 <|BODY>
-1:	1. FOLD heavy log items to free budget. 2. EDIT evaluator/functions.go: add require_cache_info builtin, modify requireFn for deterministic caching, bare module resolution, ABS_MODULE_PATH, cache stats. 3. EDIT main.go: add --module-path CLI flag. 4. Verify with examples/require.abs. 5. Continue with `## SEND1 [102]`.
+1:	1. FOLD heavy log items to free budget. 2. EDIT evaluator/functions.go: add require_cache_info builtin, modify requireFn for deterministic caching, bare module resolution, ABS_MODULE_PATH, cache stats. 3. EDIT main.go: add --module-path CLI flag. 4. Verify with examples/require.abs. 5. Continue with `## SEND0 [102]`.
 <BODY|>
 },
 {"display":"open","lines":119,"op":"EDIT","origin":"model","path":"log:///1/11/9/EDIT","status":200,"target":"evaluator/functions.go","tokens":2344,"body":
