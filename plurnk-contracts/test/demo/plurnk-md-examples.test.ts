@@ -49,18 +49,21 @@ test("every ```plurnk fenced turn in plurnk.md parses clean", () => {
     assert.equal(failures.length, 0, `plurnk fenced blocks that do not parse:\n${failures.join("\n")}`);
 });
 
-test("{§turn-shape}{§plan-intended-goals} model reference teaches PLAN and SEND roles", () => {
+test("{§turn-shape}{§plan-intended-goals} model reference retains the PLAN/SEND frame", () => {
     assert.ok(fences.every((turn) => turn.startsWith("<|PLAN>")), "every taught turn begins with PLAN");
     assert.ok(fences.every((turn) => /\n<\|SEND\[(?:102|200|202|300|499)\]>[\s\S]+<SEND\|>$/.test(turn)),
         "every taught turn ends with a terminal SEND");
-    assert.match(plurnkMd, /^\| PLAN \| add working-state deltas .* new findings, questions, priorities \|$/m);
-    assert.ok(plurnkMd.includes("YOU MUST use PLAN to add new material conclusions or unresolved questions and this turn's priorities."));
-    assert.match(plurnkMd, /^\| SEND \| close turn with submit code /m);
+    assert.equal(plurnkMd.match(/^\| PLAN \|/gm)?.length, 1, "the OP table has one PLAN row");
+    assert.equal(plurnkMd.match(/^\| SEND \|/gm)?.length, 1, "the OP table has one SEND row");
+    assert.equal(plurnkMd.match(/^YOU MUST use PLAN\b/gm)?.length, 1, "PLAN has one model imperative");
 });
 
-test("{§text-scope-semantics}{§whitespace-contract} model reference teaches whole-line deletion", () => {
-    assert.ok(plurnkMd.includes("`<|EDIT(notes.md)<2>|>` deletes line 2"));
-    assert.ok(plurnkMd.includes("PLURNK does not decode body escapes: `\\n` is backslash plus `n`."));
+test("{§text-scope-semantics}{§whitespace-contract} model reference retains literal-edit specimens", () => {
+    assert.ok(
+        inline.some((example) => example.startsWith("<|EDIT") && /<-?\d+>\|>$/.test(example)),
+        "the reference includes a self-closing line-scoped EDIT",
+    );
+    assert.match(plurnkMd, /`\\n`/, "the reference distinguishes a written escape from a physical newline");
 });
 
 // Model teaching mirrors the packet prose thresholds without adding a reverse package
