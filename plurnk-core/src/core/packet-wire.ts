@@ -325,7 +325,18 @@ export default class PacketWire {
             if (newline === -1) break;
             if (line === maxLines - 1) lineEnd = newline + 1;
         }
-        const end = Math.min(text.length, lineEnd, maxChars);
+        let end = Math.min(text.length, lineEnd, maxChars);
+        // A character cap still cuts a single-line bomb in place. Once the
+        // preview contains a complete physical line, stop at that boundary so
+        // truncation cannot manufacture a partial next-line prefix (for
+        // example `14` from an already numbered `14:...` body).
+        if (end === maxChars && end < text.length) {
+            const previousBreak = Math.max(
+                text.lastIndexOf("\n", end - 1),
+                text.lastIndexOf("\r", end - 1),
+            );
+            if (previousBreak >= 0) end = previousBreak + 1;
+        }
         return { text: text.slice(0, end), cut: end < text.length };
     }
 

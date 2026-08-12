@@ -1009,6 +1009,32 @@ test("every non-retrieval body producer uses the same addressable preview", () =
     });
 });
 
+test("{§jsonplurnk}: a character preview never cuts a numbered body inside its next line prefix", () => {
+    const previousLines = process.env.PLURNK_SERVICE_PREVIEW_LINES;
+    const previousChars = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+    try {
+        process.env.PLURNK_SERVICE_PREVIEW_LINES = "16";
+        process.env.PLURNK_SERVICE_PREVIEW_CHARS = "24";
+        const rendered = PacketWire.renderLog([{
+            coordinate: "1/1/1",
+            origin: "plurnk",
+            op: "EDIT",
+            status: 201,
+            target: { scheme: "https", pathname: "/example.test/result" },
+            rx: { span: "1:abcdefghijklmnopqrst\n2:tail" },
+        }], tok);
+
+        assert.match(rendered, /1:abcdefghijklmnopqrst/, "the complete line before the character boundary remains visible");
+        assert.doesNotMatch(rendered, /\n2\n"/, "the preview does not manufacture a dangling line-number prefix");
+        assert.match(rendered, /"overflow":"Body content truncated\. Full body: log:\/\/\/1\/1\/1\/EDIT"/);
+    } finally {
+        if (previousLines === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES;
+        else process.env.PLURNK_SERVICE_PREVIEW_LINES = previousLines;
+        if (previousChars === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+        else process.env.PLURNK_SERVICE_PREVIEW_CHARS = previousChars;
+    }
+});
+
 test("preview bounds are exact and reject invalid configuration", () => {
     const previousLines = process.env.PLURNK_SERVICE_PREVIEW_LINES;
     const previousChars = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
