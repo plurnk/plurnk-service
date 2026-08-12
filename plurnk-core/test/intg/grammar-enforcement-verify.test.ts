@@ -89,6 +89,17 @@ test("no grammar requested → verification is a no-op", async () => {
     // no throw = unconstrained is a legitimate deliberate mode
 });
 
+test("{§grammar-enforcement-verified-at-boot} debug comparison skips the transport enforcement probe", async () => {
+    const calls: Array<{ grammar?: string }> = [];
+    await ProviderInstantiate.verifyGrammarEnforcement(fakeProvider("unconstrained native output", calls), {
+        PLURNK_MODEL: "rig",
+        PLURNK_MODEL_rig: "openai/local",
+        PLURNK_PROVIDERS_GBNF_rig: "plurnk.gbnf",
+        PLURNK_PROVIDERS_GBNF_DEBUG_rig: "1",
+    });
+    assert.deepEqual(calls, [], "debug mode withholds the forcing probe instead of demanding transported enforcement");
+});
+
 test("a configured GBNF fails hard when the provider does not advertise local transport", async () => {
     const nonClaiming = { ...fakeProvider("garbage the probe would reject"), constrainsOutput: false } as unknown as Provider;
     await assert.rejects(

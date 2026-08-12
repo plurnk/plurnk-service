@@ -746,6 +746,9 @@ probe whose pre-projection sentence is one reasoning enclosure followed by the
 `PLURNK-RAILS-LIVE` sentinel, or boot fails. The setting is resolved
 per alias and is unset by default. Configuring it on a cloud or endpoint-managed
 provider is an error, not a request for best-effort filtering.
+Alias-scoped `PLURNK_PROVIDERS_GBNF_DEBUG` deliberately withholds transport, so
+boot skips the enforcement probe while real requests retain the configured rail
+for local syntax validation and the engine's withheld-rail verdict.
 Runtime injection uses the provider's registered alias, falling back only to
 the process's active alias. Suffixed rail settings with neither identity fail
 instead of guessing. A configured package variant or explicit path that cannot
