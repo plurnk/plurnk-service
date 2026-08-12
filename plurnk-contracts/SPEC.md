@@ -179,6 +179,12 @@ lane. This makes both the canonical suffix and section boundary structurally
 available during constrained generation; ANTLR remains the wider language and
 accepts intentional alternate-lane literals during ingestion.
 
+§gbnf-curation-shaping The rail admits OPEN/FOLD curation terms, a canonical
+`log:` target, and a matcher independently. It accepts any ordered mixture of
+unsigned, `+`, and `-` terms without proving that the combination selects a log
+item; ANTLR and AstBuilder own that condition, while runtime owns wider ingested
+target resolution.
+
 ## §canonical-statement 2. Canonical statement form
 
 ```text

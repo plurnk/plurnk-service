@@ -282,12 +282,32 @@ test("GBNF matcher bodies are one line while content bodies may be multiline", (
     assert.equal(derivesTurn(turn("p", [], 200, "multi\nline")), true);
 });
 
-test("GBNF OPEN and FOLD admit tag and target selection but no scope", () => {
+// {§gbnf-curation-shaping}
+test("GBNF OPEN and FOLD shape curation syntax while the parser owns selection validity", () => {
     for (const op of ["OPEN", "FOLD"]) {
         assert.equal(derivesTurn(turn("p", [mid(op, " [memory]")], 102, "done")), true, `${op} targetless tag filter`);
+        assert.equal(derivesTurn(turn("p", [mid(op, "", "needle")], 102, "done")), true, `${op} matcher-only selection`);
         assert.equal(derivesTurn(turn("p", [mid(op, " [memory,+archive,-stale] (log:///**)", "needle")], 102, "done")), true, op);
+        assert.equal(derivesTurn(turn("p", [mid(op, " [+archive,memory,-stale]")], 102, "done")), true, `${op} mixed curation terms`);
         assert.equal(derivesTurn(turn("p", [mid(op, " [+archive] (log:///**)")], 102, "done")), true, `${op} target-selected mutation`);
-        assert.equal(derivesTurn(turn("p", [mid(op, " [+archive]")], 102, "done")), false, `${op} mutation does not select`);
+        assert.equal(derivesTurn(turn("p", [mid(op, " [+archive]", "needle")], 102, "done")), true, `${op} matcher-selected mutation`);
+
+        const signedOnly = turn("p", [mid(op, " [+archive]")], 102, "done");
+        assert.equal(derivesTurn(signedOnly), true, `${op} rail leaves selector validity to the parser`);
+        assert.deepEqual(
+            PlurnkParser.parse(signedOnly).items
+                .filter((item) => item.kind === "error")
+                .map((item) => item.error.message),
+            ["signed tags modify selected log items but do not select them - add a path, body pattern, or unsigned tag"],
+        );
+
+        const localTarget = turn("p", [mid(op, " (notes.md)")], 102, "done");
+        assert.equal(derivesTurn(localTarget), false, `${op} rail emits canonical log targets only`);
+        assert.deepEqual(
+            PlurnkParser.parse(localTarget).items.filter((item) => item.kind === "error"),
+            [],
+            `${op} tolerant ingestion leaves target ownership to runtime`,
+        );
         assert.equal(derivesTurn(turn("p", [mid(op, " [memory] (log:///**) <1,2>")], 102, "done")), false, op);
     }
 });
