@@ -54,7 +54,7 @@ test("manifest declares only the explicit isogit runtime, disabled by its shippe
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
     assert.equal(pkg.plurnk.kind, "exec");
     assert.deepEqual(pkg.plurnk.runtimes.map((runtime: { name: string }) => runtime.name), ["isogit"]);
-    assert.match(pkg.plurnk.runtimes[0].example, /^<<EXEC\[isogit\]:.+:EXEC$/);
+    assert.match(pkg.plurnk.runtimes[0].example, /^<\|EXEC\[isogit\]>.+<EXEC\|>$/);
     assert.match(await readFile(new URL("../.env.defaults", import.meta.url), "utf8"), /^PLURNK_EXECS_ISOGIT=0$/m);
 });
 

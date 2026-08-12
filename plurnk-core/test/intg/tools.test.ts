@@ -11,13 +11,13 @@ test("registered executable tools render as a closed, titled catalogue; omitted 
         { name: "definition", slot: "user", header: null, content: "...plurnk.md...", tokens: 0 },
         { name: "tools", slot: "user", header: "Registered Executable Tools", content: tools, tokens: 0 },
     ];
-    const withTools = PacketWire.renderSlot(userSections("```plurnk\n<<EXEC[node]:console.log(42):EXEC\n```"), "user");
-    assert.match(withTools, /<<EXEC\[node\]/, "the registered executable example renders");
+    const withTools = PacketWire.renderSlot(userSections("```plurnk\n<|EXEC[node]>console.log(42)<EXEC|>\n```"), "user");
+    assert.match(withTools, /<\|EXEC\[node\]/, "the registered executable example renders");
     assert.match(withTools, /## Registered Executable Tools/, "the heading defines the examples as registered selectors");
-    const toolsIdx = withTools.indexOf("<<EXEC[node]");
+    const toolsIdx = withTools.indexOf("<|EXEC[node]");
     assert.ok(toolsIdx > withTools.indexOf("...plurnk.md..."), "tools render after the definition");
 
     const noTools = PacketWire.renderSlot(userSections(""), "user");
-    assert.doesNotMatch(noTools, /<<EXEC/, "no tools content rendered when nothing is enabled");
+    assert.doesNotMatch(noTools, /<\|EXEC/, "no tools content rendered when nothing is enabled");
     assert.doesNotMatch(noTools, /Registered Executable Tools/, "an empty catalogue emits no heading");
 });

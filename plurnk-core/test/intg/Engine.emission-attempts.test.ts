@@ -36,7 +36,7 @@ const estimatedCost = (usage: ProviderUsage) => ({
 
 const valid = (body = "done", usage?: ProviderUsage): MockResponse => ({
     assistant: {
-        content: `<<PLAN:complete the task:PLAN\n<<SEND[200]:${body}:SEND`,
+        content: `<|PLAN>complete the task<PLAN|>\n<|SEND[200]>${body}<SEND|>`,
         reasoning: null,
     },
     ...(usage === undefined ? {} : { usage, cost: estimatedCost(usage) }),
@@ -44,7 +44,7 @@ const valid = (body = "done", usage?: ProviderUsage): MockResponse => ({
 
 const continuing = (body = "continue"): MockResponse => ({
     assistant: {
-        content: `<<PLAN:continue the task:PLAN\n<<FIND(log:///**)<1,1>::FIND\n<<SEND[102]:${body}:SEND`,
+        content: `<|PLAN>continue the task<PLAN|>\n<|FIND(log:///**)<1,1>|>\n<|SEND[102]>${body}<SEND|>`,
         reasoning: null,
     },
 });
@@ -114,7 +114,7 @@ test("invalid emissions retry beneath one turn against the identical packet, the
             contextWindow: 100_000,
             responses: [
                 invalid("prose without a turn", requestUsage(10, 2, 1, 4)),
-                invalid("<<PLAN:started but never ended:PLAN", requestUsage(20, 3, 2, 5)),
+                invalid("<|PLAN>started but never ended<PLAN|>", requestUsage(20, 3, 2, 5)),
                 valid("accepted", requestUsage(30, 4, 3, 6)),
             ],
         });
@@ -162,7 +162,7 @@ test("invalid emissions retry beneath one turn against the identical packet, the
         );
         const turn = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } };
-        assert.equal(packet.assistant?.content, "<<PLAN:complete the task:PLAN\n<<SEND[200]:accepted:SEND");
+        assert.equal(packet.assistant?.content, "<|PLAN>complete the task<PLAN|>\n<|SEND[200]>accepted<SEND|>");
         assert.doesNotMatch(JSON.stringify(packet), /prose without|never ended/, "rejected emissions never enter packet history");
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string }>({ turn_id: result.turnId });
@@ -233,11 +233,11 @@ test("finish=length is forensic evidence: an incomplete frame retries wholesale 
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const rejectedPrefix = [
-            "<<PLAN:inspect first:PLAN",
-            "<<READ(worker:///missing)::READ",
-            "<<EDIT(worker:///notes.md):never closed",
+            "<|PLAN>inspect first<PLAN|>",
+            "<|READ(worker:///missing)|>",
+            "<|EDIT(worker:///notes.md)>never closed",
         ].join("\n");
-        const accepted = "<<PLAN:complete despite the cap:PLAN\n<<SEND[200]:done:SEND";
+        const accepted = "<|PLAN>complete despite the cap<PLAN|>\n<|SEND[200]>done<SEND|>";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
@@ -278,7 +278,7 @@ test("finish=length is forensic evidence: an incomplete frame retries wholesale 
             { accepted: 1, finish_reason: "length" },
         ]);
         assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [{
-            message: "body of `<<EDIT` opened at line 3 but never closed - add `:EDIT` to terminate",
+            message: "body of `<|EDIT` opened at line 3 but never closed - add `<EDIT|>` to terminate",
             line: 3,
             column: 0,
             source: "grammar",
@@ -304,15 +304,15 @@ test("a GBNF-legal $fC matcher failure is bounded, admitted once, and made model
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const malformed = [
-            "<<PLAN:inspect relevant modules:PLAN",
-            "<<FIND(worker:///x):$fC:FIND",
-            "<<SEND[102]:inspect the results next:SEND",
+            "<|PLAN>inspect relevant modules<PLAN|>",
+            "<|FIND(worker:///x)>$fC<FIND|>",
+            "<|SEND[102]>inspect the results next<SEND|>",
         ].join("\n");
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
                 invalid(malformed),
-                invalid("<<PLAN:weigh the failed operation:PLAN\n<<SEND[499]:the matcher was malformed:SEND"),
+                invalid("<|PLAN>weigh the failed operation<PLAN|>\n<|SEND[499]>the matcher was malformed<SEND|>"),
             ],
         });
 
@@ -404,9 +404,9 @@ test("a bounded malformed operation prevents same-turn completion until the mode
             contextWindow: 100_000,
             responses: [
                 invalid([
-                    "<<PLAN:search and conclude:PLAN",
-                    "<<FIND(**):/unterminated[:FIND",
-                    "<<SEND[200]:done:SEND",
+                    "<|PLAN>search and conclude<PLAN|>",
+                    "<|FIND(**)>/unterminated[<FIND|>",
+                    "<|SEND[200]>done<SEND|>",
                 ].join("\n")),
             ],
         });
@@ -463,9 +463,9 @@ test("{§destination-scope-boundary} a malformed COPY destination cannot dispatc
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid([
-                "<<PLAN:copy the selected source lines:PLAN",
-                "<<COPY(worker:///src.md)<2,3>:worker:///slice.md<0>::COPY",
-                "<<SEND[102]:inspect the copy result:SEND",
+                "<|PLAN>copy the selected source lines<PLAN|>",
+                "<|COPY(worker:///src.md)<2,3>>worker:///slice.md<0>:<COPY|>",
+                "<|SEND[102]>inspect the copy result<SEND|>",
             ].join("\n"))],
         });
 
@@ -514,9 +514,9 @@ test("a hard parse error outside the PLAN...SEND frame retries wholesale", async
             contextWindow: 100_000,
             responses: [
                 invalid([
-                    "<<PLAN:conclude too early:PLAN",
-                    "<<SEND[200]:done:SEND",
-                    "<<EDIT(worker:///must-not-exist):value:EDIT",
+                    "<|PLAN>conclude too early<PLAN|>",
+                    "<|SEND[200]>done<SEND|>",
+                    "<|EDIT(worker:///must-not-exist)>value<EDIT|>",
                 ].join("\n")),
                 valid("accepted retry"),
             ],
@@ -551,9 +551,9 @@ test("a hard parse error outside the PLAN...SEND frame retries wholesale", async
 test("{§invalid-emission-attempts} exhausted private attempts expose only the latest response and generic notice on one recovery turn", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     const latestRejected = [
-        "<PLAN:inspect the source:PLAN",
-        "<READ(file:///main.go)::READ",
-        "<SEND[102]:continue after inspection:SEND",
+        "<|PLAN>inspect the source<PLAN|>",
+        "<|READ(file:///main.go",
+        "<|SEND[102]>continue after inspection<SEND|>",
     ].join("\n");
     try {
         const provider = new AttemptWitness({
@@ -594,10 +594,10 @@ test("{§invalid-emission-attempts} exhausted private attempts expose only the l
         assert.equal(new Set(provider.packets.slice(0, 3)).size, 1, "private attempts retain one exact packet");
         assert.notEqual(provider.packets[3], provider.packets[2], "the informed recovery has its own packet");
         assert.match(provider.packets[3]!, /Your previous response contained an unrecoverable syntax error\. No operations were performed\. Try again\./);
-        assert.match(provider.packets[3]!, /<PLAN:inspect the source:PLAN/);
+        assert.match(provider.packets[3]!, /<\|PLAN>inspect the source<PLAN\|>/);
         assert.doesNotMatch(provider.packets[3]!, /first private invalid|second private invalid/);
         assert.doesNotMatch(provider.packets[3]!, /line [0-9]+|missing|expected/i, "no parser diagnosis is manufactured");
-        assert.doesNotMatch(provider.packets[4]!, /<PLAN:inspect the source:PLAN/, "the rejected emission is projected only into its recovery packet");
+        assert.doesNotMatch(provider.packets[4]!, /<\|PLAN>inspect the source<PLAN\|>/, "the rejected emission is projected only into its recovery packet");
 
         const [failedTurnId, recoveryTurnId, finalTurnId] = result.turnIds;
         const failedTurn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: failedTurnId });
@@ -625,7 +625,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose only the l
         assert.ok(rejectedMirror !== undefined);
         assert.equal(rejectedMirror.turn_seq, 1);
         assert.equal(rejectedMirror.expanded, 0, "the rejected model item remains durably folded");
-        assert.match(rejectedMirror.rx, /<READ\(file:\/\/\/main\.go\)::READ/);
+        assert.match(rejectedMirror.rx, /<\|READ\(file:\/\/\/main\.go/);
         assert.equal(rows.filter((row) => row.origin === "model" && row.op === "READ").length, 0, "no rejected operation dispatches");
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "the lifeline does not fabricate an operation failure");
     } finally {
@@ -643,8 +643,8 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
             contextWindow: 100_000,
             responses: [
                 invalid("first invalid"),
-                invalid("<<PLAN:no terminal:PLAN"),
-                invalid("<<SEND[200]:no plan:SEND"),
+                invalid("<|PLAN>no terminal<PLAN|>"),
+                invalid("<|SEND[200]>no plan<SEND|>"),
                 invalid("recovery invalid one"),
                 invalid("recovery invalid two"),
                 invalid("recovery invalid three"),
@@ -669,7 +669,7 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
         assert.equal(new Set(provider.packets.slice(3)).size, 1);
         assert.notEqual(provider.packets[2], provider.packets[3]);
         assert.match(provider.packets[3]!, /Your previous response contained an unrecoverable syntax error\. No operations were performed\. Try again\./);
-        assert.match(provider.packets[3]!, /<<SEND\[200\]:no plan:SEND/);
+        assert.match(provider.packets[3]!, /<\|SEND\[200\]>no plan<SEND\|>/);
 
         const [firstTurnId, recoveryTurnId] = result.turnIds;
         const firstAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: firstTurnId });
@@ -701,10 +701,10 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
         );
         const informedPacket = await readFile(join(digestDir, "packet001.user.md"), "utf8");
         assert.match(informedPacket, /Your previous response contained an unrecoverable syntax error\. No operations were performed\. Try again\./);
-        assert.match(informedPacket, /<<SEND\[200\]:no plan:SEND/);
+        assert.match(informedPacket, /<\|SEND\[200\]>no plan<SEND\|>/);
         assert.equal(
             await readFile(join(digestDir, "packet000.attempt003.rejected.assistant.md"), "utf8"),
-            "<<SEND[200]:no plan:SEND",
+            "<|SEND[200]>no plan<SEND|>",
         );
         assert.equal(
             await readFile(join(digestDir, "packet001.attempt003.rejected.assistant.md"), "utf8"),
@@ -761,7 +761,7 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
         );
         assert.equal(
             await readFile(join(digestDir, "packet000.assistant.md"), "utf8"),
-            "<<PLAN:complete the task:PLAN\n<<SEND[200]:accepted bytes:SEND",
+            "<|PLAN>complete the task<PLAN|>\n<|SEND[200]>accepted bytes<SEND|>",
         );
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.match(markdown, /rejected-emissions=1\/2/);
@@ -995,7 +995,7 @@ test("Core rejects a ProviderError whose accounting differs from its observed ph
 test("#161: a complete-looking resource-interrupted attempt is persisted but never admitted or replayed", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const content = "<<PLAN:looks complete:PLAN\n<<SEND[200]:must never dispatch:SEND";
+        const content = "<|PLAN>looks complete<PLAN|>\n<|SEND[200]>must never dispatch<SEND|>";
         const requestAccounting: ProviderRequestAccounting = {
             provider: "provider:mock",
             model: "interrupted-model",
@@ -1194,13 +1194,13 @@ test("a valid turn with a failed operation remains recoverable and model-visible
             responses: [
                 {
                     assistant: {
-                        content: "<<PLAN:attempt the edit:PLAN\n<<EDIT(sealed:///x):value:EDIT\n<<SEND[200]:done:SEND",
+                        content: "<|PLAN>attempt the edit<PLAN|>\n<|EDIT(sealed:///x)>value<EDIT|>\n<|SEND[200]>done<SEND|>",
                         reasoning: null,
                     },
                 },
                 {
                     assistant: {
-                        content: "<<PLAN:weigh the failure:PLAN\n<<SEND[499]:cannot write that resource:SEND",
+                        content: "<|PLAN>weigh the failure<PLAN|>\n<|SEND[499]>cannot write that resource<SEND|>",
                         reasoning: null,
                     },
                 },

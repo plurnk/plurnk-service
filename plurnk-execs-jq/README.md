@@ -12,11 +12,11 @@ is self-contained.
 
 | EXEC                                                     | Runs                              | Purpose                            |
 | -------------------------------------------------------- | --------------------------------- | ---------------------------------- |
-| `<<EXEC[jq]:{"a":1}:EXEC`                                | `jq -n '{"a":1}'`                 | Construct or validate inline JSON. |
-| `<<EXEC[jq]:[1,2,3] \| add:EXEC`                         | `jq -n '[1,2,3] \| add'`          | Compute without input.             |
-| `<<EXEC[jq](data.json):.users[].name:EXEC`               | `jq '.users[].name' data.json`    | Filter a file.                     |
-| `<<EXEC[jq](data.json):EXEC`                             | `jq '.' data.json`                | Apply identity to a file.          |
-| `<<EXEC[jq](search:///1/2/3#results):.[] \| .title:EXEC` | Consumer materializes the target. | Filter a prior runtime's output.   |
+| `<|EXEC[jq]>{"a":1}<EXEC|>`                                | `jq -n '{"a":1}'`                 | Construct or validate inline JSON. |
+| `<|EXEC[jq]>[1,2,3] \| add<EXEC|>`                         | `jq -n '[1,2,3] \| add'`          | Compute without input.             |
+| `<|EXEC[jq](data.json)>.users[].name<EXEC|>`               | `jq '.users[].name' data.json`    | Filter a file.                     |
+| `<|EXEC[jq](data.json)|>`                             | `jq '.' data.json`                | Apply identity to a file.          |
+| `<|EXEC[jq](search:///1/2/3#results)>.[] \| .title<EXEC|>` | Consumer materializes the target. | Filter a prior runtime's output.   |
 
 Output streams to `#results` as `application/jsonl`: one compact JSON value per
 line ({§executor-output-address}).

@@ -5,7 +5,7 @@ import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockRe
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 
 test("loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
-    const dsl = "<<EDIT(worker:///france/capital):Paris:EDIT\n<<SEND[200]:Paris is the capital.:SEND";
+    const dsl = "<|EDIT(worker:///france/capital)>Paris<EDIT|>\n<|SEND[200]>Paris is the capital.<SEND|>";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142)] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -41,8 +41,8 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
 
 test("loop.inject speaks into an existing worker; errors when there's none", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("<<SEND[200]:first done:SEND", 10),
-        makeMockResponse("<<SEND[200]:injected done:SEND", 10),
+        makeMockResponse("<|SEND[200]>first done<SEND|>", 10),
+        makeMockResponse("<|SEND[200]>injected done<SEND|>", 10),
     ] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -78,7 +78,7 @@ test("loop.inject speaks into an existing worker; errors when there's none", asy
 });
 
 test("run.fork branches the model worker into a named worker; errors with no worker", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<EDIT(worker:///x):hi:EDIT\n<<SEND[200]:done:SEND", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<|EDIT(worker:///x)>hi<EDIT|>\n<|SEND[200]>done<SEND|>", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -125,7 +125,7 @@ test("run.fork branches the model worker into a named worker; errors with no wor
 });
 
 test("loop.run streams log/entry notifications during execution", async () => {
-    const dsl = "<<EDIT(worker:///x):hello:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<|EDIT(worker:///x)>hello<EDIT|>\n<|SEND[200]>done<SEND|>";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -160,7 +160,7 @@ test("loop.run streams log/entry notifications during execution", async () => {
 });
 
 test("loop.run fires loop/terminated notification on completion", async () => {
-    const dsl = "<<EDIT(worker:///x):body:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<|EDIT(worker:///x)>body<EDIT|>\n<|SEND[200]>done<SEND|>";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -196,7 +196,7 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
     // strike-abandonment) must STILL broadcast loop/terminated: loop.run only acked 100, so it's the
     // async client's sole outcome channel. One non-terminal turn, then the Mock exhausts and returns
     // its typed invalid-response failure; the drain must still publish it ({§notifications}).
-    const dsl = "<<EDIT(worker:///x):iter:EDIT\n<<SEND[102]:continue:SEND";
+    const dsl = "<|EDIT(worker:///x)>iter<EDIT|>\n<|SEND[102]>continue<SEND|>";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 10)] });
     // The failure must reach daemon diagnostics too. Capture stderr around the loop.
     const logged: string[] = [];
@@ -279,7 +279,7 @@ test("loop.run requires non-empty prompt", async () => {
 });
 
 test("loop.run respects maxTurns cap when model emits non-terminal statuses repeatedly", async () => {
-    const dsl = "<<EDIT(worker:///x):iter:EDIT\n<<SEND[102]:continue:SEND";
+    const dsl = "<|EDIT(worker:///x)>iter<EDIT|>\n<|SEND[102]>continue<SEND|>";
     const responses = Array.from({ length: 5 }, () => makeMockResponse(dsl, 10));
     // Generous context: this test isolates the maxTurns ceiling, so the budget must NOT fire first.
     // At 8192 the 3-turn EDIT accumulation + the foisted docs tips into a 413 before turn 3's cap
@@ -299,7 +299,7 @@ test("loop.run respects maxTurns cap when model emits non-terminal statuses repe
     });
 });
 test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ per path", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 10)] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -329,7 +329,7 @@ test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ pe
 
 // {§methods-event-subscribe}: a subscriber failure never propagates into engine control flow.
 test("a throwing seam subscriber never kills the loop — the transport's failure is its own", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 10)] });
     const logged: string[] = [];
     const realErr = console.error;
     console.error = (...a: unknown[]) => { logged.push(a.map(String).join(" ")); };

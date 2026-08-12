@@ -23,11 +23,11 @@ export default class Plurnkdown {
         return diagnostics;
     }
 
-    // A Plurnk op sigil (`<<`) opening a prose line is a bare op; ops must live in a
+    // A Plurnk op sigil (`<|`) opening a prose line is a bare op; ops must live in a
     // ```plurnk fence (validated below) or an inline-code span.
     #checkBareOps(token: Token, line: number, diagnostics: Diagnostic[]): void {
         token.raw.split("\n").forEach((text, index) => {
-            if (!/^\s*<</.test(text)) return;
+            if (!/^\s*<\|/.test(text)) return;
             diagnostics.push({
                 rule: "op-fence",
                 severity: "error",

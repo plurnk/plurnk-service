@@ -4,7 +4,8 @@
  * implementation without making the checker a package API.
  */
 export default class Jsonplurnk {
-    static #OPENER = /"body":\s*<<:::/g;
+    static #OPENER = /"body":\s*<\|BODY>\n/g;
+    static #CLOSE = "<BODY|>";
 
     static strip(block: string): string {
         const opener = Jsonplurnk.#OPENER;
@@ -13,16 +14,11 @@ export default class Jsonplurnk {
         let cursor = 0;
         let m: RegExpExecArray | null;
         while ((m = opener.exec(block)) !== null) {
-            const tagStart = m.index + m[0].length;
-            const eol = block.indexOf("\n", tagStart);
-            if (eol === -1) throw new Error("jsonplurnk: body opener <<:::… has no newline");
-            const tag = block.slice(tagStart, eol);
-            const close = `:::${tag}`;
-            const contentStart = eol + 1;
-            const closeStart = Jsonplurnk.#findClose(block, contentStart, close);
-            if (closeStart === -1) throw new Error(`jsonplurnk: unterminated body <<:::${tag}`);
+            const contentStart = m.index + m[0].length;
+            const closeStart = Jsonplurnk.#findClose(block, contentStart);
+            if (closeStart === -1) throw new Error("jsonplurnk: unterminated body <|BODY>");
             out += block.slice(cursor, m.index) + '"body":' + JSON.stringify(block.slice(contentStart, closeStart));
-            cursor = closeStart + close.length;
+            cursor = closeStart + Jsonplurnk.#CLOSE.length;
             opener.lastIndex = cursor;
         }
         return out + block.slice(cursor);
@@ -32,7 +28,8 @@ export default class Jsonplurnk {
         return JSON.parse(Jsonplurnk.strip(block));
     }
 
-    static #findClose(block: string, from: number, close: string): number {
+    static #findClose(block: string, from: number): number {
+        const close = Jsonplurnk.#CLOSE;
         if (block.startsWith(close, from) && Jsonplurnk.#endsLine(block, from + close.length)) return from;
         let at = from;
         for (;;) {

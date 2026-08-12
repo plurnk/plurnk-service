@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-const send = () => makeMockResponse("<<SEND[200]:ok:SEND", 50);
+const send = () => makeMockResponse("<|SEND[200]>ok<SEND|>", 50);
 
 test("{§methods-workspace-prompts}: workspace prompts are newest-first and limit-capped", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [send(), send()] });

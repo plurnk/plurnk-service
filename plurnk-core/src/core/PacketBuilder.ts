@@ -391,7 +391,7 @@ export default class PacketBuilder {
         // {§send-300-choices} — the one-liner rides ONLY where questions are enabled (allowed +
         // client-requested); the fuller questions.md doc injects through docEntries the same way.
         const optionalOperations = questionsOn
-            ? "```plurnk\n<<SEND[300]:Deploy where?;staging;production:SEND\n```"
+            ? "```plurnk\n<|SEND[300]>Deploy where?;staging;production<SEND|>\n```"
             : "";
         const executors = this.#executors();
         if (executors !== undefined) {

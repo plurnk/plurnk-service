@@ -28,7 +28,7 @@ const setup = async () => {
         hostname: null, port: null,
         pathname: "/x", query: null, fragment: null,
         lineMarker: null,
-        tx: "<<EDIT(worker:///x):body:EDIT", mimetype_tx: "text/vnd.plurnk",
+        tx: "<|EDIT(worker:///x)>body<EDIT|>", mimetype_tx: "text/vnd.plurnk",
         rx: JSON.stringify({ status: 201 }), mimetype_rx: "application/json",
         status_rx: 201, tokens: 0,
         state: "resolved", outcome: null, attrs: "{}",
@@ -142,7 +142,7 @@ test("engine_render_log carries the delta source; self-authored entries stay nul
             op: "EDIT", suffix: "", signal: null,
             scheme: "file", username: null, password: null, hostname: null, port: null,
             pathname: "/config.toml", query: null, fragment: null, lineMarker: null,
-            tx: "<<EDIT(file:///config.toml)::EDIT", mimetype_tx: "text/vnd.plurnk",
+            tx: "<|EDIT(file:///config.toml)|>", mimetype_tx: "text/vnd.plurnk",
             rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
             status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
         });
@@ -162,7 +162,7 @@ test("FOLD matcher selects the tagged set and OPEN filters that set by tag + mat
                 origin: "model", source: null, op: "READ", suffix: "", signal: null,
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: "/doc", query: null, fragment: null, lineMarker: null,
-                tx: "<<READ(worker:///doc)::READ", mimetype_tx: "text/vnd.plurnk",
+                tx: "<|READ(worker:///doc)|>", mimetype_tx: "text/vnd.plurnk",
                 rx: JSON.stringify({ status: 200, content, mimetype: "text/plain", startLine: 1 }), mimetype_rx: "application/json",
                 status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
             });
@@ -316,7 +316,7 @@ test("FOLD[tag] applies + folds; OPEN[tag]/FIND[tag] filter by ALL-tags — name
                 origin: "model", source: null, op: "READ", suffix: "", signal: null,
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: "/doc", query: null, fragment: null, lineMarker: null,
-                tx: "<<READ(worker:///doc)::READ", mimetype_tx: "text/vnd.plurnk",
+                tx: "<|READ(worker:///doc)|>", mimetype_tx: "text/vnd.plurnk",
                 rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
                 status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
             });

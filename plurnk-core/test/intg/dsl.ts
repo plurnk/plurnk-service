@@ -67,10 +67,10 @@ export default class Dsl {
         return `(${path})`;
     }
 
-    // Build a HEREDOC statement string. `signal` is the raw signal payload —
+    // Build one tagged statement. `signal` is the raw signal payload —
     // CSV tags `[a,b,c]` for most ops, a single number for SEND (`[200]`),
     // a single runtime tag for EXEC (`[node]`).
-    static #buildHeredoc({
+    static #buildStatement({
         op, suffix, signal, target, lineMarker, body,
     }: {
         op: string;
@@ -80,7 +80,10 @@ export default class Dsl {
         lineMarker: string;
         body: string;
     }): string {
-        return `<<${op}${suffix}${signal}${target}${lineMarker}:${body}:${op}${suffix}`;
+        const header = `<|${op}${suffix}${signal}${target}${lineMarker}`;
+        return body.length === 0
+            ? `${header}|>`
+            : `${header}>${body}<${op}${suffix}|>`;
     }
 
     static parseSingleStatement(text: string): PlurnkStatement {
@@ -102,7 +105,7 @@ export default class Dsl {
     }
 
     static buildEdit(p: OpEditParams): PlurnkStatement {
-        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+        return Dsl.parseSingleStatement(Dsl.#buildStatement({
             op: "EDIT", suffix: Dsl.#randomSuffix(),
             signal: Dsl.#formatTags(p.tags),
             target: Dsl.#formatPath(p.target),
@@ -112,7 +115,7 @@ export default class Dsl {
     }
 
     static buildRead(p: OpWithMatcher): PlurnkStatement {
-        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+        return Dsl.parseSingleStatement(Dsl.#buildStatement({
             op: "READ", suffix: Dsl.#randomSuffix(),
             signal: Dsl.#formatTags(p.tags),
             target: Dsl.#formatPath(p.target),
@@ -122,7 +125,7 @@ export default class Dsl {
     }
 
     static buildFind(p: { scope: string; matcher?: string; tags?: string[]; lineRange?: LineMarker }): PlurnkStatement {
-        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+        return Dsl.parseSingleStatement(Dsl.#buildStatement({
             op: "FIND", suffix: Dsl.#randomSuffix(),
             signal: Dsl.#formatTags(p.tags),
             target: Dsl.#formatPath(p.scope),
@@ -132,7 +135,7 @@ export default class Dsl {
     }
 
     static buildOpen(p: OpCuration): PlurnkStatement {
-        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+        return Dsl.parseSingleStatement(Dsl.#buildStatement({
             op: "OPEN", suffix: Dsl.#randomSuffix(),
             signal: Dsl.#formatTags(p.tags),
             target: Dsl.#formatPath(p.target),
@@ -142,7 +145,7 @@ export default class Dsl {
     }
 
     static buildFold(p: OpCuration): PlurnkStatement {
-        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+        return Dsl.parseSingleStatement(Dsl.#buildStatement({
             op: "FOLD", suffix: Dsl.#randomSuffix(),
             signal: Dsl.#formatTags(p.tags),
             target: Dsl.#formatPath(p.target),
@@ -153,7 +156,7 @@ export default class Dsl {
 
     static buildCopy(p: OpCopyMoveParams): PlurnkStatement {
         if (p.destination === undefined) throw new Error("op.copy requires destination");
-        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+        return Dsl.parseSingleStatement(Dsl.#buildStatement({
             op: "COPY", suffix: Dsl.#randomSuffix(),
             signal: Dsl.#formatTags(p.tags),
             target: Dsl.#formatPath(p.source),
@@ -163,7 +166,7 @@ export default class Dsl {
     }
 
     static buildMove(p: OpCopyMoveParams): PlurnkStatement {
-        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+        return Dsl.parseSingleStatement(Dsl.#buildStatement({
             op: "MOVE", suffix: Dsl.#randomSuffix(),
             signal: Dsl.#formatTags(p.tags),
             target: Dsl.#formatPath(p.source),
@@ -175,7 +178,7 @@ export default class Dsl {
     }
 
     static buildSend(p: OpSendParams): PlurnkStatement {
-        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+        return Dsl.parseSingleStatement(Dsl.#buildStatement({
             op: "SEND", suffix: Dsl.#randomSuffix(),
             signal: `[${p.status}]`,
             target: p.recipient !== undefined ? Dsl.#formatPath(p.recipient) : "",
@@ -185,7 +188,7 @@ export default class Dsl {
     }
 
     static buildExec(p: OpExecParams): PlurnkStatement {
-        return Dsl.parseSingleStatement(Dsl.#buildHeredoc({
+        return Dsl.parseSingleStatement(Dsl.#buildStatement({
             op: "EXEC", suffix: Dsl.#randomSuffix(),
             signal: p.runtime !== undefined ? `[${p.runtime}]` : "",
             target: p.cwd !== undefined ? Dsl.#formatPath(p.cwd) : "",

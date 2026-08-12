@@ -26,7 +26,7 @@ test("scheme directory: the packet's `schemes` section is a terse directory belo
                 volatile: false,
                 modelVisible: true,
                 glyph: "GLYPH_MUST_STAY_CLIENT_SIDE",
-                example: "<<READ(glyph-test:///example)::READ",
+                example: "<|READ(glyph-test:///example)|>",
             },
         });
         const engine = new Engine({ db, schemes: registry });
@@ -47,7 +47,7 @@ test("scheme directory: the packet's `schemes` section is a terse directory belo
 
         // The `schemes` section is the terse directory: worker's canonical example, no inline doc-link.
         assert.ok(schemes.startsWith("```plurnk"), "the schemes directory is a fenced plurnk catalog, not bullets");
-        assert.match(schemes, /<<EDIT\(worker:\/\/\/notes\.md\)/, "the directory lists `worker` with its canonical example one-liner");
+        assert.match(schemes, /<\|EDIT\(worker:\/\/\/notes\.md\)>/, "the directory lists `worker` with its canonical example one-liner");
         assert.doesNotMatch(schemes, /\(docs:/, "no inline doc-link — docs are discovered through worker://plurnk/docs/**");
         assert.doesNotMatch(schemes, /Channels: |Writable by: /, "the verbose channel/writableBy prose is gone from the hot path");
         assert.match(schemes, /glyph-test:\/\/\/example/, "the scheme's ordinary example remains teachable");

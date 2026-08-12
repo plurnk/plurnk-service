@@ -38,7 +38,7 @@ test("observe: prompts, bodies, hosts, URLs, and secrets never cross the boundar
             contextWindow: 8192,
             responses: [{
                 assistant: {
-                    content: `<<PLAN:curate::PLAN\n<<SEND[200]:task complete.:SEND`,
+                    content: `<|PLAN>curate:<PLAN|>\n<|SEND[200]>task complete.<SEND|>`,
                     reasoning: null,
                 },
             }],

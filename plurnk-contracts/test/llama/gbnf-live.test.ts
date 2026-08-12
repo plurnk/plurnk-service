@@ -10,7 +10,7 @@
  * - A per-request repeat_penalty > 1.0 is required; greedy decoding under hard
  *   constraint masks degenerates into repetition loops without it.
  * - The grammar constrains the raw decode to exactly one Gemma Harmony reasoning
- *   enclosure, then `sep`, mandatory `<<PLAN`, operations, and terminal `<<SEND`.
+ *   enclosure, then `sep`, mandatory `<|PLAN`, operations, and terminal `<|SEND`.
  *   llama-server applies `reasoning_format: "auto"` after that constrained decode,
  *   projecting the enclosure body out of `content` into `reasoning_content`.
  */
@@ -74,7 +74,7 @@ test("llama projection separates reasoning and the model completes a PLAN turn",
     assert.equal(content.includes("<|channel>"), false, `reasoning opener leaked into content: ${JSON.stringify(content)}`);
     assert.equal(content.includes("<channel|>"), false, `reasoning closer leaked into content: ${JSON.stringify(content)}`);
     assert.equal(typeof reasoning, "string");
-    // Feed the projected content directly; parsing begins at the <<PLAN anchor.
+    // Feed the projected content directly; parsing begins at the <|PLAN anchor.
     const result = PlurnkParser.parse(content);
     const statements = result.items.filter((item) => item.kind === "statement");
     const errors = result.items.filter((item) => item.kind === "error");

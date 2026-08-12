@@ -37,7 +37,7 @@ class ProposingTest {
 }
 
 test("{§edit-batch}: one proposal resolution governs every same-resource EDIT row", async () => {
-    const dsl = "<<EDIT(proposing-test://x)<1>:one:EDIT\n<<EDIT(proposing-test://x)<3>:three:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<|EDIT(proposing-test://x)<1>>one<EDIT|>\n<|EDIT(proposing-test://x)<3>>three<EDIT|>\n<|SEND[200]>done<SEND|>";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (db, daemon, addr) => {
@@ -67,7 +67,7 @@ test("{§edit-batch}: one proposal resolution governs every same-resource EDIT r
 });
 
 test("loop.run with flags.auto=true persists to loops.flags", async () => {
-    const dsl = "<<EDIT(worker:///x):body:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<|EDIT(worker:///x)>body<EDIT|>\n<|SEND[200]>done<SEND|>";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -86,7 +86,7 @@ test("loop.run with flags.auto=true persists to loops.flags", async () => {
 });
 
 test("loop.run without flags leaves loops.flags at default ({})", async () => {
-    const dsl = "<<EDIT(worker:///x):body:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<|EDIT(worker:///x)>body<EDIT|>\n<|SEND[200]>done<SEND|>";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -107,7 +107,7 @@ test("loop.run with flags.auto=true: core-owned disposition resolves proposal", 
     // SEND[200]. With loop auto on, the proposal resolves in-process; the
     // loop completes without any client loop.resolve. Assert: final status
     // is 200 and a proposal/resolved log row exists.
-    const dsl = "<<EDIT(proposing-test://x):y:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<|EDIT(proposing-test://x)>y<EDIT|>\n<|SEND[200]>done<SEND|>";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (db, daemon, addr) => {
@@ -140,7 +140,7 @@ test("loop/proposal notification carries client disposition and effective flags"
     // Without auto active: dispatch pauses awaiting resolution. We capture
     // the broadcast, confirm flags is present and auto=false, then send
     // loop.resolve to unblock the dispatch so the loop completes cleanly.
-    const dsl = "<<EDIT(proposing-test://x):y:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<|EDIT(proposing-test://x)>y<EDIT|>\n<|SEND[200]>done<SEND|>";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (_db, daemon, addr) => {
@@ -182,7 +182,7 @@ test("loop/proposal notification carries client disposition and effective flags"
 });
 
 test("loop/proposal notification carries loop-accept disposition when auto is active", async () => {
-    const dsl = "<<EDIT(proposing-test://x):y:EDIT\n<<SEND[200]:done:SEND";
+    const dsl = "<|EDIT(proposing-test://x)>y<EDIT|>\n<|SEND[200]>done<SEND|>";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse(dsl, 50)] });
 
     await withDaemon(mock, async (_db, daemon, addr) => {

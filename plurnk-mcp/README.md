@@ -7,10 +7,10 @@ Each configured MCP server becomes a model-facing executor and resource
 authority:
 
 ```text
-<<READ(github:///):READ
-<<EXEC[github](create_issue):{"title":"Bug"}:EXEC
-<<FIND(github:///resources/**)::FIND
-<<READ(github:///resources/https%3A%2F%2Fexample.test%2Fdocument)::READ
+<|READ(github:///)|>
+<|EXEC[github](create_issue)>{"title":"Bug"}<EXEC|>
+<|FIND(github:///resources/**)|>
+<|READ(github:///resources/https%3A%2F%2Fexample.test%2Fdocument)|>
 ```
 
 The module requires protocol revision `2026-07-28`. It does not negotiate or

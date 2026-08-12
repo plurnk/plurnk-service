@@ -10,7 +10,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import { DEFAULT_MIMETYPES, makeSchemeCtx, readLog } from "./_helpers.ts";
 import { readStmt, urlPath } from "./_dsl.ts";
 
-const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("<<SEND[200]:done:SEND", 40)] });
+const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 40)] });
 
 type LogRow = { op: string; origin: string; scheme: string | null; pathname: string | null; lineMarker: string | null; rx: string | null; status_rx: number };
 

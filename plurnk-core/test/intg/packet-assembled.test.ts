@@ -132,7 +132,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
 
         // THE REGRESSION GUARD: the foisted FIND(worker:///*) renders its RESULT into the
         // log ({§render-rule-find-renders-result}) — the model SEES the catalog rows, not just
-        // its own echoed query. The invisible-catalog bug rendered only `<<FIND(...)::FIND`.
+        // its own echoed query. The invisible-catalog bug rendered only `<|FIND(...)|>`.
         assert.match(log, /worker:\/\/\/note\.md/, "the foisted catalog FIND renders a direct entry into the packet's log");
         assert.match(log, /worker:\/\/\/\.env\.defaults/, "the one-level page includes direct dot entries");
         assert.match(log, /"path":"worker:\/\/\/\.github\/\*\*","items":1,"tokens":\d+/, "a dot directory renders as an actionable recursive summary");
@@ -150,7 +150,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.match(log, /"op":"FIND"/, "the catalog foist appears as a FIND op in the log");
         assert.match(
             log,
-            /<<SEND\[102\]:Next, address the prompt using the survey\.:SEND/,
+            /<\|SEND\[102\]>Next, address the prompt using the survey\.<SEND\|>/,
             "the turn-0 exemplar teaches SEND[102] as an explicit next action",
         );
 
@@ -511,8 +511,8 @@ test("{§schemes-directory}: the assembled packet renders complete fenced scheme
         // Every scheme-directory line is a complete authored operation.
         const schemesSection = packetSection(packet, "schemes");
         assert.ok(schemesSection.startsWith("```plurnk"), "the schemes catalog is a fenced plurnk block, not a bullet list");
-        const schemeLines = schemesSection.split("\n").filter((l) => l.startsWith("<<"));
+        const schemeLines = schemesSection.split("\n").filter((l) => l.startsWith("<|"));
         assert.ok(schemeLines.length > 0, "the schemes directory lists entries");
-        for (const line of schemeLines) assert.match(line, /^<</, `scheme directory line must be a << heredoc: ${line}`);
+        for (const line of schemeLines) assert.match(line, /^<\|/, `scheme directory line must be a complete Plurnk statement: ${line}`);
     } finally { await db.close(); }
 });

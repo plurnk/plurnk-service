@@ -41,7 +41,7 @@ test("soak: N turn boundaries with per-turn membership re-resolution — zero gr
         const TURNS = 6;
         const responses = Array.from({ length: TURNS }, (_, i) => ({
             assistant: {
-                content: `<<PLAN:inspect without mutating:PLAN\n${i % 2 === 0 ? "<<READ(a.md)::READ" : "<<FIND(**)::FIND"}\n<<SEND[102]:continue:SEND`,
+                content: `<|PLAN>inspect without mutating<PLAN|>\n${i % 2 === 0 ? "<|READ(a.md)|>" : "<|FIND(**)|>"}\n<|SEND[102]>continue<SEND|>`,
                 reasoning: null,
             },
         }));

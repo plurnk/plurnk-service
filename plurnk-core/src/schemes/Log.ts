@@ -89,7 +89,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         volatile: false,
         modelVisible: true,
         folderScopes: true,
-        example: "<<READ(log:///1/2/3)::READ",
+        example: "<|READ(log:///1/2/3)|>",
     };
 
     async resolveCoreRepresentation(

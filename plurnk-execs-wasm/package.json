@@ -36,12 +36,12 @@
             {
                 "name": "wat",
                 "glyph": "🧩",
-                "example": "<<EXEC[wat]:(module (func (export \"main\") (result i32) i32.const 42)):EXEC"
+                "example": "<|EXEC[wat]>(module (func (export \"main\") (result i32) i32.const 42))<EXEC|>"
             },
             {
                 "name": "wasm",
                 "glyph": "🧩",
-                "example": "<<EXEC[wasm](module.wasm):main:EXEC"
+                "example": "<|EXEC[wasm](module.wasm)>main<EXEC|>"
             }
         ]
     },

@@ -14,7 +14,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
 
     static #LEXER_MODE_CONTEXT: Record<string, string> = {
         DEFAULT_MODE: "between statements",
-        SLOTS: "in slot region - expected `[signal]`, `(target)`, `<L>`, or `:body:` (any order)",
+        SLOTS: "in statement header - expected `[signal]`, `(target)`, `<scope>`, `>` for a body, or `|>` to self-close",
         SIGNAL_TAGS: "in tag signal - expected tag, `,`, or `]`",
         SIGNAL_INT: "in signal - expected integer for SEND/KILL, then `]`",
         SIGNAL_IDENT: "in signal - expected executor for EXEC, then `]`",
@@ -23,30 +23,31 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     };
 
     static #SLOT_BY_TOKEN: Record<number, string> = {
-        [plurnkParser.OPEN_FIND]: "open tag `<<OPsuffix`",
-        [plurnkParser.OPEN_READ]: "open tag `<<OPsuffix`",
-        [plurnkParser.OPEN_EDIT]: "open tag `<<OPsuffix`",
-        [plurnkParser.OPEN_COPY]: "open tag `<<OPsuffix`",
-        [plurnkParser.OPEN_MOVE]: "open tag `<<OPsuffix`",
-        [plurnkParser.OPEN_OPEN]: "open tag `<<OPsuffix`",
-        [plurnkParser.OPEN_FOLD]: "open tag `<<OPsuffix`",
-        [plurnkParser.OPEN_SEND]: "open tag `<<OPsuffix`",
-        [plurnkParser.OPEN_EXEC]: "open tag `<<OPsuffix`",
-        [plurnkParser.OPEN_KILL]: "open tag `<<OPsuffix`",
-        [plurnkParser.OPEN_PLAN]: "open tag `<<OPsuffix`",
+        [plurnkParser.OPEN_FIND]: "open tag `<|OPsuffix`",
+        [plurnkParser.OPEN_READ]: "open tag `<|OPsuffix`",
+        [plurnkParser.OPEN_EDIT]: "open tag `<|OPsuffix`",
+        [plurnkParser.OPEN_COPY]: "open tag `<|OPsuffix`",
+        [plurnkParser.OPEN_MOVE]: "open tag `<|OPsuffix`",
+        [plurnkParser.OPEN_OPEN]: "open tag `<|OPsuffix`",
+        [plurnkParser.OPEN_FOLD]: "open tag `<|OPsuffix`",
+        [plurnkParser.OPEN_SEND]: "open tag `<|OPsuffix`",
+        [plurnkParser.OPEN_EXEC]: "open tag `<|OPsuffix`",
+        [plurnkParser.OPEN_KILL]: "open tag `<|OPsuffix`",
+        [plurnkParser.OPEN_PLAN]: "open tag `<|OPsuffix`",
         [plurnkParser.LBRACKET]: "`[` (signal slot opener)",
         [plurnkParser.RBRACKET]: "`]` (signal slot closer)",
         [plurnkParser.LPAREN]: "`(` (target slot opener)",
         [plurnkParser.RPAREN]: "`)` (target slot closer)",
         [plurnkParser.L_MARKER]: "`<L>` line marker",
-        [plurnkParser.COLON]: "`:` (body fence)",
+        [plurnkParser.BODY_OPEN]: "`>` (body opener)",
+        [plurnkParser.SELF_CLOSE]: "`|>` (self-close)",
         [plurnkParser.COMMA]: "`,`",
         [plurnkParser.INT]: "integer (SEND/KILL signal)",
         [plurnkParser.IDENT]: "executor (EXEC signal)",
         [plurnkParser.TAG]: "tag",
         [plurnkParser.TARGET_TEXT]: "target content",
         [plurnkParser.BODY_TEXT]: "body content",
-        [plurnkParser.CLOSE_TAG]: "close tag `:OPsuffix`",
+        [plurnkParser.CLOSE_TAG]: "close tag `<OPsuffix|>`",
         [plurnkParser.TEXT]: "text between statements",
     };
 
@@ -57,13 +58,13 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         // EXEC's identifier cannot start with a digit or `-`, making a leading numeric
         // value an unambiguous misplaced timing scope. {§signal-scope-redirect}
         if (modeName === "SIGNAL_IDENT" && /^'[-\d]'$/.test(ch)) {
-            return `unrecognized character ${ch} in signal - timeout/poll ride the \`<scope>\` slot; try \`EXEC<-1,300>\``;
+            return `unrecognized character ${ch} in signal - timeout/poll ride the \`<scope>\` slot; try \`<|EXEC<-1,300>|>\``;
         }
         // Redirect an unambiguous matcher prefix in the slot region into the body. Slash-led
         // regex and XPath are excluded because `/` may instead be a target whose `(...)` wrap
         // was omitted.
         if (modeName === "SLOTS" && /^'[$~@]'$/.test(ch)) {
-            return `unrecognized character ${ch} in slot region - a matcher rides the \`:body:\` slot; put it between the body fences`;
+            return `unrecognized character ${ch} in statement header - a matcher belongs after \`>\` and before the matching close tag`;
         }
         return `unrecognized character ${ch} ${context}`;
     }
@@ -88,7 +89,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         if (!expected) return null;
         const types: number[] = expected.toArray();
         if (types.length === 0) return null;
-        // Every OPEN_<OP> token maps to the same canon name (`open tag <<OPsuffix`), so a
+        // Every OPEN_<OP> token maps to the same canon name (`open tag <|OPsuffix`), so a
         // statement-position expected-set yields that phrase 10+ times. Dedup to one entry -
         // the model needs the distinct options, not the alternation count.
         const names = [...new Set(

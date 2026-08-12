@@ -225,7 +225,7 @@ carries the canonical attribution fact from {§plugin-attribution}.
       {
         "name": "cobol",
         "glyph": "🗄",
-        "example": "<<EXEC[cobol]:DISPLAY 'HI'.:EXEC"
+        "example": "<|EXEC[cobol]>DISPLAY 'HI'.<EXEC|>"
       }
     ]
   }
@@ -264,7 +264,7 @@ at boot; changing package membership or configuration requires a restart.
 | --------------- | -------------------------------------------------------------------------------------------------- |
 | `name`          | Canonical runtime tag and derived output-scheme name, admitted below.                              |
 | `glyph`         | Optional presentation glyph.                                                                       |
-| `example`       | Optional compact, verbatim `plurnk` snippet. Each line is a complete `<<`-delimited operation.     |
+| `example`       | Optional compact, verbatim `plurnk` snippet. Each line is one complete `<|…|>` operation.          |
 | `documentation` | Optional full Markdown reference. `docs/<tag>.md` wins over the inline manifest field.             |
 | `attribution`   | Published per-tag projection of the validated package declaration ({§plugin-attribution}).         |
 | `packageName`   | Package that owns and default-exports the executor implementation.                                 |

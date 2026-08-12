@@ -300,14 +300,12 @@ test("manifest: name http, default channel body, requiresWeb, network-volatile",
     assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header", "html"]);
     // Self-doc for the model's packet listing (deep docs ride worker://plurnk/docs/http.md).
     // The manifest example must be one complete copy-pasteable operation.
-    // it verbatim into the scheme directory, so a `<<`-less / `::OP`-less form
-    // mis-trains small models on op shape. Guard the well-formed `<<OP(…)::OP`
-    // heredoc with a matching opener/closer op — catches the regression class
+    // it verbatim into the scheme directory. Guard the well-formed bodyless
+    // statement with a matching opener/closer shape — catches the regression class
     // without taking a direct grammar dep (siblings pin only @plurnk/plurnk-schemes).
     const example = Http.manifest.example ?? "";
-    const op = example.match(/^<<([A-Z]+)\(.+\)::([A-Z]+)$/);
-    assert.ok(op, `example must be a well-formed <<OP(…)::OP heredoc, got: ${example}`);
-    assert.equal(op[1], op[2], "example opener and closer op must match");
+    const op = example.match(/^<\|([A-Z]+)\(.+\)\|>$/);
+    assert.ok(op, `example must be a well-formed self-closing statement, got: ${example}`);
     assert.equal(op[1], "READ");
 });
 

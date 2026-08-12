@@ -97,11 +97,11 @@ const assertClean = (label, result) => {
     }
 };
 
-assertClean("model turn", PlurnkParser.parse("<<PLAN:smoke:PLAN\\n<<SEND[200]:done:SEND"));
-const result = PlurnkParser.parseStatements("<<EDIT(worker:///foo):body content:EDIT");
+assertClean("model turn", PlurnkParser.parse("<|PLAN>smoke<PLAN|>\\n<|SEND[200]>done<SEND|>"));
+const result = PlurnkParser.parseStatements("<|EDIT(worker:///foo)>body content<EDIT|>");
 assertClean("statement sequence", result);
-assertClean("wrapped log", PlurnkParser.parseLog("<<TURN:<<PLAN:smoke:PLAN\\n<<SEND[200]:done:SEND:TURN"));
-assertClean("client tier", PlurnkParser.parseClient("<<LOOK(known://foo)::LOOK"));
+assertClean("wrapped log", PlurnkParser.parseLog("<|TURN><|PLAN>smoke<PLAN|>\\n<|SEND[200]>done<SEND|><TURN|>"));
+assertClean("client tier", PlurnkParser.parseClient("<|LOOK(known://foo)|>"));
 
 // Parse a simple statement and validate its schema-derived position.
 const item = result.items[0];
@@ -168,7 +168,7 @@ export const parse = (input) => PlurnkParser.parse(input);
     const browserConsumer = await import(`${pathToFileURL(browserBundle).href}?${crypto.randomUUID()}`) as {
         parse(input: string): { items: Array<{ kind: string }> };
     };
-    const browserResult = browserConsumer.parse("<<PLAN:browser bundle initialized:PLAN\n<<SEND[200]:browser-safe:SEND");
+    const browserResult = browserConsumer.parse("<|PLAN>browser bundle initialized<PLAN|>\n<|SEND[200]>browser-safe<SEND|>");
     if (browserResult.items.some(({ kind }) => kind === "error")) {
         throw new Error(`browser bundle returned parse errors: ${JSON.stringify(browserResult.items)}`);
     }

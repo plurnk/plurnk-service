@@ -34,7 +34,7 @@
             {
                 "name": "isogit",
                 "glyph": "git",
-                "example": "<<EXEC[isogit]:status:EXEC"
+                "example": "<|EXEC[isogit]>status<EXEC|>"
             }
         ]
     },

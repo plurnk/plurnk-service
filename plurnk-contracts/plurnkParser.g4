@@ -9,16 +9,16 @@ document
     ;
 
 // A multi-turn LOG (PlurnkParser.parseLog) — the Plurnk Script substrate. Each turn is a full
-// sandwich WRAPPED in `<<TURN…: … :TURN`. A log is valid iff every wrapped turn is valid.
+// sandwich WRAPPED in `<|TURN…> … <TURN|>`. A log is valid iff every wrapped turn is valid.
 // `parse()` stays the bare unwrapped sandwich; parseLog is the wrapped, multi-turn path.
 log
     : turnStatement+ EOF
     ;
 
-// `<<TURN[label]?(target)?<scope>?: <a full turn> :TURN` wraps one turn. This contract
+// `<|TURN[label]?(target)?<scope>?> <a full turn> <TURN|>` wraps one turn. This contract
 // assigns no semantics to its parsed modifiers. The body is `turnContent`.
 turnStatement
-    : OPEN_TURN tagOpModifiers? COLON turnContent CLOSE_TURN
+    : OPEN_TURN tagOpModifiers? BODY_OPEN turnContent CLOSE_TURN
     ;
 
 // One turn, shared by `document` and `log`. PLAN required and FIRST (only free-text preamble
@@ -71,7 +71,7 @@ statement
     ;
 
 // Every op EXCEPT PLAN — `statement` minus `planStatement`. PLAN is the turn anchor, never a
-// mid-op, so excluding it here makes a fresh `<<PLAN` begin the next turn rather than sit
+// mid-op, so excluding it here makes a fresh `<|PLAN` begin the next turn rather than sit
 // mid-batch. Parallel flat rule (same op-statement accessors as `statement`, no planStatement).
 midStatement
     : findStatement
@@ -90,42 +90,49 @@ midStatement
 
 // Scoped tag-CSV ops tolerate signal, target, and scope in any order, at most once.
 // Canonical producers retain signal → target → scope. {§slot-order}
-findStatement : OPEN_FIND tagOpModifiers? COLON? body? CLOSE_TAG ;
-readStatement : OPEN_READ tagOpModifiers? COLON? body? CLOSE_TAG ;
-editStatement : OPEN_EDIT tagOpModifiers? COLON? body? CLOSE_TAG ;
-copyStatement : OPEN_COPY tagOpModifiers? COLON? body? CLOSE_TAG ;
-moveStatement : OPEN_MOVE tagOpModifiers? COLON? body? CLOSE_TAG ;
+findStatement : OPEN_FIND tagOpModifiers? statementEnd ;
+readStatement : OPEN_READ tagOpModifiers? statementEnd ;
+editStatement : OPEN_EDIT tagOpModifiers? statementEnd ;
+copyStatement : OPEN_COPY tagOpModifiers? statementEnd ;
+moveStatement : OPEN_MOVE tagOpModifiers? statementEnd ;
 
 // Log curation is set-based: tags + target + matcher select rows. OPEN/FOLD
 // deliberately have no positional lineMarker slot.
-openStatement : OPEN_OPEN curationModifiers? COLON? body? CLOSE_TAG ;
-foldStatement : OPEN_FOLD curationModifiers? COLON? body? CLOSE_TAG ;
+openStatement : OPEN_OPEN curationModifiers? statementEnd ;
+foldStatement : OPEN_FOLD curationModifiers? statementEnd ;
 
 // SEND splits by signal kind (the lexer emits DISPOSITION for {102,200,202,300,499}): a
 // disposition-coded SEND IS the turn terminal (sendStatement), so turnContent ends on it and
 // a statement after it is a genuine parse error — mid-turn terminations are ILLEGAL, not
 // demoted to a mid comms. A mid-comms SEND (midSend) carries a plain INT code or none. EXEC/KILL
 // keep the permissive int signal (a KILL's target-specific code may coincide with a disposition number).
-sendStatement : OPEN_SEND termModifiers COLON? body? CLOSE_TAG ;
-midSend       : OPEN_SEND midModifiers? COLON? body? CLOSE_TAG ;
-execStatement : OPEN_EXEC execModifiers? COLON? body? CLOSE_TAG ;
+sendStatement : OPEN_SEND termModifiers statementEnd ;
+midSend       : OPEN_SEND midModifiers? statementEnd ;
+execStatement : OPEN_EXEC execModifiers? statementEnd ;
 
 // Delegation verbs - an optional single branch ref in the signal/tag slot, target
 // (the worker://<name>), and required prompt body. No line marker. Target is optional
 // here (forgiving parser); canon and the GBNF rail require it.
-workStatement : OPEN_WORK branchModifiers? COLON body CLOSE_TAG ;
-forkStatement : OPEN_FORK branchModifiers? COLON body CLOSE_TAG ;
-killStatement : OPEN_KILL intOpModifiers? COLON? body? CLOSE_TAG ;
+workStatement : OPEN_WORK branchModifiers? statementEnd ;
+forkStatement : OPEN_FORK branchModifiers? statementEnd ;
+killStatement : OPEN_KILL intOpModifiers? statementEnd ;
 
 // PLAN records intended goals. Canon is slotless; modifiers remain ingest-side
 // tolerance. {§plan-intended-goals}
-planStatement : OPEN_PLAN tagOpModifiers? COLON? body? CLOSE_TAG ;
+planStatement : OPEN_PLAN tagOpModifiers? statementEnd ;
 
 // LOOK / BUFF — client-tier utility ops with tag, target, scope, and matcher
 // slots. LOOK observes client-visible matches; BUFF pulls an editable entry into
 // a buffer (the write-back is a later plain EDIT, not part of BUFF).
-lookStatement : OPEN_LOOK tagOpModifiers? COLON? body? CLOSE_TAG ;
-buffStatement : OPEN_BUFF tagOpModifiers? COLON? body? CLOSE_TAG ;
+lookStatement : OPEN_LOOK tagOpModifiers? statementEnd ;
+buffStatement : OPEN_BUFF tagOpModifiers? statementEnd ;
+
+// Self-closing and bodyful statements share one AST path. Operation owners retain
+// responsibility for rejecting a missing body where their semantics require one.
+statementEnd
+    : SELF_CLOSE
+    | BODY_OPEN body CLOSE_TAG
+    ;
 
 // Modifier slot permutations. Each leaf rule appears at most once in any
 // path through the alternatives, so duplicate slots fail at parse time.

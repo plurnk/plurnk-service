@@ -14,7 +14,7 @@ const minimalLog = async (db: Db, ctx: { workerId: number; loopId: number; turnI
         signal: JSON.stringify(["philosophy"]),
         scheme: "worker", pathname: "/meaning", port: null, query: null,
         lineMarker: null,
-        tx: "<<EDIT[philosophy](worker:///meaning):42:EDIT", mimetype_tx: "text/x-plurnk",
+        tx: "<|EDIT[philosophy](worker:///meaning)>42<EDIT|>", mimetype_tx: "text/x-plurnk",
         rx: "", mimetype_rx: "text/plain", status_rx: 201,
         tokens: 32, attrs: "{}",
         ...overrides,
@@ -253,7 +253,7 @@ test("log_entries: immutability trigger — UPDATE of core fields rejected", asy
             /log_entries core fields are immutable/,
         );
         const tx = (await db.test_log_entries_get_tx_by_id.get<{ tx: string }>({ id }))?.tx;
-        assert.match(tx ?? "", /^<<EDIT/);
+        assert.match(tx ?? "", /^<\|EDIT/);
     } finally { await db.close(); }
 });
 

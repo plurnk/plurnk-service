@@ -23,7 +23,7 @@ test("jsonplurnk corpus: the renderer's 184-entry Log strips to valid JSON (magn
     assert.equal(entries.length, 184, "all 184 rendered entries survive the strip");
 });
 
-test("jsonplurnk corpus: every open body recovers as a string, none left as a raw heredoc", () => {
+test("jsonplurnk corpus: every open body recovers as a string, none left as a raw BODY enclosure", () => {
     const entries = Jsonplurnk.parse(fence) as Array<Record<string, unknown>>;
     const open = entries.filter((e) => e.display === "open");
     assert.equal(open.length, 20, "20 open bodies in packet011");

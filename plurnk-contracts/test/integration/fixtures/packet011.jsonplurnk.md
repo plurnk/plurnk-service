@@ -1,13 +1,13 @@
 ## Plurnk Service Log
 
-Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` is a HEREDOC-style `<<:::tag … :::tag` block.
+Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses the fixed `<|BODY> … <BODY|>` enclosure.
 
 ```jsonplurnk
 [
 {"display":"folded","kind":"model_emission","lines":6,"origin":"plurnk","path":"log:///1/1/1","status":200,"tokens":109},
 {"display":"folded","lines":39,"op":"EDIT","origin":"plurnk","path":"log:///1/1/2/EDIT","status":201,"target":"plurnk://prompt/2/1/1","tokens":1411},
 {"display":"open","lines":12,"op":"READ","origin":"plurnk","path":"log:///1/1/3/READ","status":200,"target":"plurnk://prompt/2/1/1","tokens":545,"body":
-<<:::plurnk://prompt/2/1/1
+<|BODY>
 1:	Improve ABS module loading so `require()` remains deterministic across larger dependency graphs, supports discovery through `ABS_MODULE_PATH`, reports cache state, and handles module-related CLI flags in script mode.
 2:	
 3:	Expected outcomes
@@ -20,7 +20,7 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` is a HEREDOC-s
 10:	
 11:	2. Cache visibility and reset
 12:	- Expose cache stats via `require_cache_info()` with numeric fields: `hits`, `misses`, `size`, and `inflight`.
-:::plurnk://prompt/2/1/1
+<BODY|>
 },
 {"display":"folded","items":326,"itemsTokenTotal":3753876,"op":"FIND","origin":"plurnk","path":"log:///1/1/4/FIND","status":200,"target":"**","tokens":25106},
 {"display":"folded","items":8,"itemsTokenTotal":5235,"op":"FIND","origin":"plurnk","path":"log:///1/1/5/FIND","status":200,"target":"plurnk://docs/**","tokens":516},
@@ -148,8 +148,8 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` is a HEREDOC-s
 {"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/3/100/READ","status":200,"target":"evaluator/functions.go","tokens":874},
 {"display":"folded","error":"Max Commands Exceeded","op":"error","origin":"plurnk","path":"log:///1/3/101/error","worker":"rail","status":429,"tokens":36},
 {"display":"folded","error":"output truncated at the completion cap (65536 tokens) mid-emission — the parse errors below are truncation artifacts; emit fewer ops per turn and continue","op":"error","origin":"model","path":"log:///1/3/102/error","worker":"engine","status":413,"tokens":102},
-{"display":"folded","error":"Plurnk parser error at line 3992:26 - a turn must end with a terminal `<<SEND[code]:…:SEND`","op":"error","origin":"model","path":"log:///1/3/103/error","worker":"grammar","status":400,"tokens":71},
-{"display":"folded","error":"target slot of `<<READ` opened at line 3992 but never closed - add `)` to terminate the target","op":"error","origin":"model","path":"log:///1/3/104/error","worker":"grammar","status":400,"tokens":72},
+{"display":"folded","error":"Plurnk parser error at line 3992:26 - a turn must end with a terminal `<|SEND[code]>…<SEND|>`","op":"error","origin":"model","path":"log:///1/3/103/error","worker":"grammar","status":400,"tokens":71},
+{"display":"folded","error":"target slot of `<|READ` opened at line 3992 but never closed - add `)` to terminate the target","op":"error","origin":"model","path":"log:///1/3/104/error","worker":"grammar","status":400,"tokens":72},
 {"display":"folded","kind":"model_emission","lines":3992,"origin":"model","path":"log:///1/3/105","status":200,"tokens":105681},
 {"display":"folded","error":"Budget Overflow: newest log items automatically FOLDed — a retrieval larger than Tokens Free arrives folded; FOLD older items first, then fetch within the room made","op":"error","origin":"plurnk","path":"log:///1/4/1/error","worker":"rail","status":413,"tokens":105},
 {"display":"folded","lines":1,"op":"PLAN","origin":"model","path":"log:///1/4/2/PLAN","status":200,"tokens":160},
@@ -167,9 +167,9 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` is a HEREDOC-s
 {"display":"folded","lines":1,"op":"SEND","origin":"model","path":"log:///1/5/15/SEND","status":102,"tokens":59},
 {"display":"folded","kind":"model_emission","lines":15,"origin":"model","path":"log:///1/5/16","status":200,"tokens":396},
 {"display":"open","lines":1,"op":"PLAN","origin":"model","path":"log:///1/6/1/PLAN","status":200,"tokens":215,"body":
-<<:::log:///1/6/1/PLAN
+<|BODY>
 1:	Continue implementing ABS module loading improvements. First, FOLD old log items to free budget. Then read remaining source sections: functions.go (require implementation), environment.go (struct and methods), main.go (CLI flags), runner/runner.go, evaluator/evaluator.go. Finally, implement deterministic caching, ABS_MODULE_PATH, bare module resolution, cache stats, and CLI flags.
-:::log:///1/6/1/PLAN
+<BODY|>
 },
 {"display":"folded","lines":59,"op":"READ","origin":"model","path":"log:///1/6/3/READ","status":200,"target":"evaluator/functions.go","tokens":944},
 {"body":"","display":"none","op":"READ","origin":"model","path":"log:///1/6/4/READ","status":416,"target":"object/environment.go","tokens":0},
@@ -177,63 +177,63 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` is a HEREDOC-s
 {"display":"folded","lines":36,"op":"READ","origin":"model","path":"log:///1/6/6/READ","status":200,"target":"runner/runner.go","tokens":581},
 {"display":"folded","lines":1576,"op":"READ","origin":"model","path":"log:///1/6/7/READ","status":200,"target":"evaluator/evaluator.go","tokens":24519},
 {"display":"open","lines":1,"op":"SEND","origin":"model","path":"log:///1/6/8/SEND","status":102,"tokens":58,"body":
-<<:::log:///1/6/8/SEND
+<|BODY>
 1:	Reading remaining source sections for module loading implementation.
-:::log:///1/6/8/SEND
+<BODY|>
 },
 {"display":"folded","kind":"model_emission","lines":15,"origin":"model","path":"log:///1/6/9","status":200,"tokens":396},
 {"display":"open","lines":1,"op":"PLAN","origin":"model","path":"log:///1/7/1/PLAN","status":200,"tokens":124,"body":
-<<:::log:///1/7/1/PLAN
+<|BODY>
 1:	FOLD old log items to free budget, then READ the require function from evaluator/functions.go, then implement deterministic caching, ABS_MODULE_PATH, bare module resolution, cache stats, and CLI flags.
-:::log:///1/7/1/PLAN
+<BODY|>
 },
 {"display":"open","items":1,"itemsTokenTotal":35752,"matcher":"#func.*require#i","op":"FIND","origin":"model","path":"log:///1/7/9/FIND","status":200,"target":"evaluator/functions.go","tokens":113,"body":
-<<:::evaluator/functions.go
+<|BODY>
 [{"path":"evaluator/functions.go","channels":{"evaluator/functions.go":{"mimetype":"text/x-go","tokens":35752,"lines":2556}},"matchSpan":{"lineStart":2244,"lineEnd":2244}}]
-:::evaluator/functions.go
+<BODY|>
 },
 {"display":"open","lines":1,"op":"SEND","origin":"model","path":"log:///1/7/10/SEND","status":102,"tokens":51,"body":
-<<:::log:///1/7/10/SEND
+<|BODY>
 1:	Folding old log items and locating require function.
-:::log:///1/7/10/SEND
+<BODY|>
 },
 {"display":"folded","kind":"model_emission","lines":10,"origin":"model","path":"log:///1/7/11","status":200,"tokens":302},
 {"display":"open","lines":1,"op":"PLAN","origin":"model","path":"log:///1/8/1/PLAN","status":200,"tokens":102,"body":
-<<:::log:///1/8/1/PLAN
+<|BODY>
 1:	Read the require function and environment struct, then implement deterministic caching, ABS_MODULE_PATH, bare module resolution, cache stats, and CLI flags.
-:::log:///1/8/1/PLAN
+<BODY|>
 },
 {"display":"folded","lines":57,"op":"READ","origin":"model","path":"log:///1/8/5/READ","status":200,"target":"evaluator/functions.go","tokens":983},
 {"display":"folded","lines":100,"op":"READ","origin":"model","path":"log:///1/8/6/READ","status":200,"target":"object/environment.go","tokens":1575},
 {"display":"open","lines":1,"op":"SEND","origin":"model","path":"log:///1/8/7/SEND","status":102,"tokens":64,"body":
-<<:::log:///1/8/7/SEND
+<|BODY>
 1:	Reading require function and environment struct for module loading improvements.
-:::log:///1/8/7/SEND
+<BODY|>
 },
 {"display":"folded","kind":"model_emission","lines":7,"origin":"model","path":"log:///1/8/8","status":200,"tokens":253},
 {"display":"open","lines":1,"op":"PLAN","origin":"model","path":"log:///1/9/1/PLAN","status":200,"tokens":202,"body":
-<<:::log:///1/9/1/PLAN
+<|BODY>
 1:	1. FOLD old log items (turns 1-5) to free budget. 2. READ main.go for CLI flag handling and evaluator.go for function registration. 3. Implement deterministic caching, ABS_MODULE_PATH, bare module resolution, cache stats, and CLI flags in evaluator/functions.go and object/environment.go. 4. Add require_cache_info function. 5. Test with existing examples.
-:::log:///1/9/1/PLAN
+<BODY|>
 },
 {"body":"","display":"none","op":"READ","origin":"model","path":"log:///1/9/7/READ","status":416,"target":"main.go","tokens":0},
 {"body":"","display":"none","items":0,"itemsTokenTotal":0,"matcher":"#registerBuiltin|registerFunction|builtins#i","op":"FIND","origin":"model","path":"log:///1/9/8/FIND","status":200,"target":"evaluator/evaluator.go","tokens":0},
 {"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/9/9/READ","status":200,"target":"evaluator/evaluator.go","tokens":710},
 {"display":"open","lines":1,"op":"SEND","origin":"model","path":"log:///1/9/10/SEND","status":102,"tokens":72,"body":
-<<:::log:///1/9/10/SEND
+<|BODY>
 1:	Folding old log items and reading remaining source sections for module loading implementation.
-:::log:///1/9/10/SEND
+<BODY|>
 },
 {"display":"folded","kind":"model_emission","lines":13,"origin":"model","path":"log:///1/9/11","status":200,"tokens":434},
 {"display":"open","lines":1,"op":"PLAN","origin":"model","path":"log:///1/10/1/PLAN","status":200,"tokens":259,"body":
-<<:::log:///1/10/1/PLAN
+<|BODY>
 1:	1. FOLD old log items (turns 1-5) to free budget. 2. READ the top of evaluator/functions.go (lines 1-2243) for requireCache, packageAliases, and other declarations. 3. READ evaluator/evaluator.go GetFns function to see how builtins are registered. 4. READ main.go for CLI flag handling. 5. Implement: deterministic caching (canonical paths), ABS_MODULE_PATH support, bare module resolution, require_cache_info function, and CLI flags. 6. Test with examples/require.abs.
-:::log:///1/10/1/PLAN
+<BODY|>
 },
 {"display":"folded","lines":2242,"op":"READ","origin":"model","path":"log:///1/10/7/READ","status":200,"target":"evaluator/functions.go","tokens":37233},
 {"display":"folded","lines":99,"op":"READ","origin":"model","path":"log:///1/10/8/READ","status":200,"target":"evaluator/evaluator.go","tokens":1483},
 {"display":"open","lines":39,"op":"READ","origin":"model","path":"log:///1/10/9/READ","status":200,"target":"main.go","tokens":435,"body":
-<<:::main.go
+<|BODY>
 1:	package main
 2:	
 3:	import (
@@ -273,21 +273,21 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` is a HEREDOC-s
 37:		// begin the REPL
 38:		repl.BeginRepl(args, Version)
 39:	}
-:::main.go
+<BODY|>
 },
 {"display":"open","lines":1,"op":"SEND","origin":"model","path":"log:///1/10/10/SEND","status":102,"tokens":73,"body":
-<<:::log:///1/10/10/SEND
+<|BODY>
 1:	Folding old log items and reading remaining source sections for module loading implementation.
-:::log:///1/10/10/SEND
+<BODY|>
 },
 {"display":"folded","kind":"model_emission","lines":13,"origin":"model","path":"log:///1/10/11","status":200,"tokens":470},
 {"display":"open","lines":1,"op":"PLAN","origin":"model","path":"log:///1/11/1/PLAN","status":200,"tokens":179,"body":
-<<:::log:///1/11/1/PLAN
+<|BODY>
 1:	1. FOLD heavy log items to free budget. 2. EDIT evaluator/functions.go: add require_cache_info builtin, modify requireFn for deterministic caching, bare module resolution, ABS_MODULE_PATH, cache stats. 3. EDIT main.go: add --module-path CLI flag. 4. Verify with examples/require.abs. 5. SEND[102] to continue.
-:::log:///1/11/1/PLAN
+<BODY|>
 },
 {"display":"open","lines":119,"op":"EDIT","origin":"model","path":"log:///1/11/9/EDIT","status":200,"target":"evaluator/functions.go","tokens":2344,"body":
-<<:::evaluator/functions.go
+<|BODY>
 2251:		}
 2252:	
 2253:		raw := args[0].Inspect()
@@ -407,10 +407,10 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` is a HEREDOC-s
 2367:		}
 2368:	}
 2369:	
-:::evaluator/functions.go
+<BODY|>
 },
 {"display":"open","lines":11,"op":"EDIT","origin":"model","path":"log:///1/11/10/EDIT","status":200,"target":"evaluator/functions.go","tokens":270,"body":
-<<:::evaluator/functions.go
+<|BODY>
 494:				Doc:        "require a file without giving it access to the global environment",
 495:			},
 496:			// require_cache_info() -- returns cache stats
@@ -422,19 +422,19 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` is a HEREDOC-s
 502:			},
 503:			// exec(command) -- execute command with interactive stdio
 504:			"exec": &object.Builtin{
-:::evaluator/functions.go
+<BODY|>
 },
 {"display":"open","lines":5,"op":"EDIT","origin":"model","path":"log:///1/11/11/EDIT","status":200,"target":"evaluator/functions.go","tokens":65,"body":
-<<:::evaluator/functions.go
+<|BODY>
 17:		"strconv"
 18:		"strings"
 19:		"sync/atomic"
 20:		"time"
 21:		"unicode"
-:::evaluator/functions.go
+<BODY|>
 },
 {"display":"open","lines":16,"op":"EDIT","origin":"model","path":"log:///1/11/12/EDIT","status":200,"target":"evaluator/functions.go","tokens":194,"body":
-<<:::evaluator/functions.go
+<|BODY>
 33:	var tok token.Token
 34:	var requireCache map[string]object.Object
 35:	var requireCacheStatsVar struct {
@@ -451,10 +451,10 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` is a HEREDOC-s
 46:	}
 47:	
 48:	/*
-:::evaluator/functions.go
+<BODY|>
 },
 {"display":"open","lines":18,"op":"EDIT","origin":"model","path":"log:///1/11/13/EDIT","status":200,"target":"main.go","tokens":341,"body":
-<<:::main.go
+<|BODY>
 16:	func main() {
 17:		args := os.Args
 18:		// Parse module-related CLI flags before other processing
@@ -473,12 +473,12 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` is a HEREDOC-s
 31:	
 32:		if len(args) == 2 && args[1] == "--version" {
 33:			fmt.Println(Version)
-:::main.go
+<BODY|>
 },
 {"display":"open","lines":1,"op":"SEND","origin":"model","path":"log:///1/11/14/SEND","status":102,"tokens":102,"body":
-<<:::log:///1/11/14/SEND
+<|BODY>
 1:	Implementing module loading improvements: deterministic caching, bare module resolution, ABS_MODULE_PATH, require_cache_info, and --module-path CLI flag.
-:::log:///1/11/14/SEND
+<BODY|>
 },
 {"display":"folded","kind":"model_emission","lines":235,"origin":"model","path":"log:///1/11/15","status":200,"tokens":4236}
 ]

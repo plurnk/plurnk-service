@@ -55,6 +55,7 @@ import type {
     TagOpModifiersContext,
 } from "./generated/plurnkParser.ts";
 import {
+    BodyContext,
     IdentSignalContext,
     LineMarkerContext,
     PlanStatementContext,
@@ -439,15 +440,12 @@ export default class AstBuilder {
         return { line: start?.line ?? 0, column: start?.column ?? 0 };
     }
 
-    static #bodyTextOf(ctx: { body(): { getText(): string } | null }): string | null {
-        const bodyCtx = ctx.body();
-        return bodyCtx ? bodyCtx.getText() : null;
+    static #bodyTextOf(ctx: ParserRuleContext): string | null {
+        return AstBuilder.#findFirst(ctx, BodyContext)?.getText() ?? null;
     }
 
-    static #requiredBodyTextOf(ctx: { body(): { getText(): string } | null }): string {
-        const body = AstBuilder.#bodyTextOf(ctx);
-        if (body === null) throw new Error("ANTLR invariant: required body is absent");
-        return body;
+    static #requiredBodyTextOf(ctx: ParserRuleContext): string {
+        return AstBuilder.#bodyTextOf(ctx) ?? "";
     }
 
     static #splitSuffix(openTagText: string, op: PlurnkOp | ClientOp): string {

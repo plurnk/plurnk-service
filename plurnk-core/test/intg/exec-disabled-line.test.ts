@@ -6,7 +6,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import { packetSection } from "./_helpers.ts";
 
-const answer = () => new Mock({ contextWindow: 16384, responses: [makeMockResponse("<<SEND[200]:the answer is 4:SEND", 10)] });
+const answer = () => new Mock({ contextWindow: 16384, responses: [makeMockResponse("<|SEND[200]>the answer is 4<SEND|>", 10)] });
 
 test("{§tools-loop-affinity}: ask mode states that EXEC is disabled", async () => {
     await withDaemon(answer(), async (db, _daemon, addr) => {
@@ -32,7 +32,7 @@ test("act mode: no disabled line — the runtimes advertise normally", async () 
             // {§packet-operation-fences} Executor examples use the packet's operation fence.
             const packet = JSON.parse(turn!.packet) as { sections?: Array<{ name?: string; header?: string }> };
             const tools = packetSection(packet as Parameters<typeof packetSection>[0], "tools");
-            assert.match(tools, /^```plurnk\n<</, "act mode: executor examples advertise inside a plurnk fence, not bullets");
+            assert.match(tools, /^```plurnk\n<\|/, "act mode: executor examples advertise inside a plurnk fence, not bullets");
             assert.equal(packet.sections?.find((section) => section.name === "tools")?.header, "Registered Executable Tools");
         } finally { ws.close(); }
     });

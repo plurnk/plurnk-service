@@ -28,8 +28,8 @@ const stripComments = (sql: string): string =>
 // ephemeral `:memory:` when no target is given — and writes the result to the
 // `results` channel as application/json, ready for the jsonpath body-matcher.
 //
-//   <<EXEC[sqlite]:SELECT * FROM users:EXEC          → :memory: (ephemeral)
-//   <<EXEC[sqlite](./app.db):SELECT * FROM users:EXEC → ./app.db (persistent)
+//   <|EXEC[sqlite]>SELECT * FROM users<EXEC|>          → :memory: (ephemeral)
+//   <|EXEC[sqlite](./app.db)>SELECT * FROM users<EXEC|> → ./app.db (persistent)
 //
 // Row-returning statements (SELECT, RETURNING, PRAGMA) write an array of row
 // objects; mutations write `{ changes, lastInsertRowid }`. The query/mutation

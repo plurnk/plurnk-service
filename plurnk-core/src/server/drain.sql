@@ -76,7 +76,7 @@ ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
 -- current loop holds, OLDEST first — typically one, but an active loop admits injected
 -- prompts (multiple prompt:///<loop>/<N> entries), all shown in order. Same pattern as
 -- the latest-only sibling (promptLoopPrefix pattern, built JS-side); the section renders
--- each body as a bare heredoc.
+-- each body in its fixed model-facing enclosure.
 SELECT c.content, e.pathname
 FROM entries e
 JOIN entry_channels c ON c.entry_id = e.id

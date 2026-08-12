@@ -41,8 +41,8 @@ pathnames, `%28` and `%29` canonicalize to literal parentheses.
 | Exact `READ(url)<scope?>`         | GET unless a fresh GET copy is usable | Prepare one complete canonical representation, then let core select and project it      |
 | Exact `FIND(url)`                 | GET only when acquisition is required | Use the same preparation, then universal query, matcher, weighting, and pagination      |
 | `FIND(pattern-url)`               | None                                  | Query already-materialized web entries; a path pattern does not discover the remote web |
-| `SEND[200](url):body:`            | POST                                  | Stream and persist the response under the addressed URL                                 |
-| `EDIT(url):body:`                 | PUT                                   | Replace the whole remote resource; a line marker is invalid                             |
+| `<|SEND[200](url)>body<SEND|>`    | POST                                  | Stream and persist the response under the addressed URL                                 |
+| `<|EDIT(url)>body<EDIT|>`         | PUT                                   | Replace the whole remote resource; a line marker is invalid                             |
 | `KILL(url)`                       | DELETE                                | Delete the remote resource and stream its response                                      |
 | `SEND[410](url)`                  | None                                  | Delete the local stored entry                                                           |
 | `SEND[499](url)`                  | Cancellation is engine-routed         | The routed subscription handle aborts the live owner; scheme dispatch is a `200` no-op  |

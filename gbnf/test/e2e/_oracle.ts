@@ -6,7 +6,7 @@
 //   accept     — the whole input is a complete sentence in the grammar
 //   incomplete — a valid prefix, but EOF arrived before a stack could close
 //   reject     — a character at some position cannot extend any stack
-// "incomplete" is not "reject": a truncated statement, or a heredoc whose close tag
+// "incomplete" is not "reject": a truncated statement, or an enclosure whose close tag
 // never arrives, is a legal prefix the grammar would still extend.
 
 import { execFileSync } from "node:child_process";

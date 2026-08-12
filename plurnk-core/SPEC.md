@@ -1194,14 +1194,7 @@ Op implications:
 
 Client-interface target parameters carry fragments inline (`{ target: "sh:///1/1/2#stderr" }`).
 
-**Wire rendering: default channel is path-only.** Heredoc fence omits `#channel` when channel matches `defaultChannel`. Single-channel entries render path-only; multi-channel entries render the default path-only and only non-default carries `#name`.
-
-```
-<<notes.md:...:notes.md             — file scheme (bare)
-<<sh:///1/1/2:...:sh:///1/1/2         — exec output default (stdout)
-<<sh:///1/1/2#stderr:...:sh:///1/1/2#stderr — non-default
-<<log:///1/1/0:...:log:///1/1/0       — atomic log row
-```
+**Wire rendering: default channel is path-only.** A rendered target omits `#channel` when channel matches `defaultChannel`. Single-channel entries render path-only; multi-channel entries render the default path-only and only non-default carries `#name`.
 
 ### §channel-state Channel state — metadata, not gating
 
@@ -1260,7 +1253,7 @@ OPEN/FOLD operate on the **log** (`log:///`) - the model's context-curation surf
 
 ### §jsonplurnk The Log's wire format
 
-The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw HEREDOC (`<<:::TAG ... :::TAG`, TAG = the entry's target/log URI), rendered with universal `N:` line prefixes, never as a JSON-escaped string. The carve-out is localized to `body`, so the strip-parser is trivial: after `"body":`, `<<:::TAG` opens and `:::TAG` at column 0 closes; replacing that block with an escaped string recovers strict JSON through `@plurnk/plurnk-contracts`. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":HEREDOC` with it shown. Nonempty `tags` is the row's complete deduplicated, sorted folksonomy; an untagged row omits it. A bounded projection also carries `"overflow":"Body content truncated. Full body: <log path>"`, naming the row's exact canonical body without prescribing an unbounded retrieval. The block is data only - no prose leads the fence. `tokens` is the ruler-weight of the row's ordinary packet body: the room OPEN adds and FOLD saves. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page has a different weight. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/numbered bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
+The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is raw text enclosed by the fixed `<|BODY>` and `<BODY|>` boundaries, rendered with universal `N:` line prefixes rather than as a JSON-escaped string. The fixed close cannot occur as a boundary in rendered content because every content line begins with its `N:` prefix. The carve-out is localized to `body`, so the strip-parser recognizes `<|BODY>` after `"body":`, finds `<BODY|>` alone at column zero, and replaces the enclosure with an escaped string to recover strict JSON. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":<|BODY>...<BODY|>` with it shown. Nonempty `tags` is the row's complete deduplicated, sorted folksonomy; an untagged row omits it. A bounded projection also carries `"overflow":"Body content truncated. Full body: <log path>"`, naming the row's exact canonical body without prescribing an unbounded retrieval. The block is data only - no prose leads the fence. `tokens` is the ruler-weight of the row's ordinary packet body: the room OPEN adds and FOLD saves. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page has a different weight. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/numbered bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
 
 §jsonplurnk-dynamic-fence The opening fence length is **dynamic**: one backtick longer than the longest backtick run in the rendered entries (floor 3). A body can carry arbitrary content — a READ of a doc whose own text opens a column-0 triple-backtick fence — which a fixed opener would let close the block early; a dynamic opener can never be closed by its own body content (CommonMark closes a fence only on a line of at least its own length), independent of the `N:` numbering that incidentally keeps text bodies off column 0.
 
@@ -1711,12 +1704,12 @@ Model sees lifecycle events in the `log` section per turn.
 
 ### §deep-slices Deep slices on demand
 
-`<<READ(https://feed.example/x#body)<N-M>:…:READ` pulls a slice into a log row when the model wants a specific line-range of an SSE stream.
+`<|READ(https://feed.example/x#body)<N-M>>…<READ|>` pulls a slice into a log row when the model wants a specific line-range of an SSE stream.
 
 ### §stream-control SEND for stream control
 
-- **Cancel:** `<<SEND[499](https://feed.example/x)::SEND` — the service invokes the handle registered by `subscriptions.open()` and aborts the composed subscription signal.
-- **Write:** `<<SEND[200](wss://feed/x):body:SEND` — pipes body into active connection (WS, exec stdin, etc.).
+- **Cancel:** `<|SEND[499](https://feed.example/x)|>` — the service invokes the handle registered by `subscriptions.open()` and aborts the composed subscription signal.
+- **Write:** `<|SEND[200](wss://feed/x)>body<SEND|>` — pipes body into active connection (WS, exec stdin, etc.).
 
 ### §stream-constraints Engine constraints
 
