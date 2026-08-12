@@ -47,6 +47,16 @@ test("client: BUFF carries a matcher body (filter on the way in)", () => {
     assert.equal(s.body.flags, "i");
 });
 
+// {§empty-body-equivalence}
+test("client: self-closing and paired empty bodies normalize identically", () => {
+    for (const op of ["LOOK", "BUFF"] as const) {
+        const selfClosing = clientStatementsOf(`<|${op}(known://x)|>`);
+        const paired = clientStatementsOf(`<|${op}(known://x)><${op}|>`);
+        assert.equal(selfClosing.length, 1, op);
+        assert.deepEqual(paired, selfClosing, op);
+    }
+});
+
 test("client: suffix nesting works on LOOK like any read op", () => {
     const stmts = clientStatementsOf("<|LOOK1(p)>body mentions <LOOK|> inside<LOOK1|>");
     assert.equal(stmts.length, 1);

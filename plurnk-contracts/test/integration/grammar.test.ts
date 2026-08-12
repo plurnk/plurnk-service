@@ -1044,12 +1044,14 @@ test("AST: line marker comma-separated negative-to-negative <-3,-1>", () => {
     assert.deepEqual(item.statement.lineMarker, { marks: [-3, -1] });
 });
 
-test("AST: empty body is null, not empty string", () => {
-    const result = PlurnkParser.parseStatements("<|EDIT(p)|>");
-    const item = result.items[0];
-    assert.equal(item.kind, "statement");
-    if (item.kind !== "statement") return;
-    assert.equal(item.statement.body, null);
+test("AST: an EDIT empty body is null in either spelling", () => {
+    for (const source of ["<|EDIT(p)|>", "<|EDIT(p)><EDIT|>"]) {
+        const result = PlurnkParser.parseStatements(source);
+        const item = result.items[0];
+        assert.equal(item.kind, "statement", source);
+        if (item.kind !== "statement") continue;
+        assert.equal(item.statement.body, null, source);
+    }
 });
 
 test("AST: missing path is null", () => {
@@ -1992,10 +1994,37 @@ test("self-closing operations end at EOF and before the next operation", () => {
     assert.equal(ssCount("<|READ(a)<4,5>|> <|READ(b)<3,9>|>"), 2, "ordinary inter-op space does not merge adjacent READs");
 });
 
-// {§close-tag-match}
-test("the canonical bodyless form is self-closing", () => {
-    assert.equal(ssCount("<|READ(a)|>\n<|READ(b)|>"), 2);
-    assert.equal(ssClean("<|READ(a)><READ|>"), false, "an empty paired enclosure is not a second bodyless form");
+// {§empty-body-equivalence}
+test("self-closing and paired empty bodies build identical protocol statements", () => {
+    const forms = [
+        ["FIND", "(a)"],
+        ["READ", "(a)"],
+        ["EDIT", "(a)<1>"],
+        ["COPY", "(a)"],
+        ["MOVE", "(a)"],
+        ["OPEN", "(log:///1)"],
+        ["FOLD", "(log:///1)"],
+        ["SEND", "[400]"],
+        ["EXEC", ""],
+        ["WORK", "(worker://child)"],
+        ["FORK", "(worker://child)"],
+        ["KILL", "(a)"],
+        ["PLAN", ""],
+    ] as const;
+    const one = (source: string) => {
+        const result = PlurnkParser.parseStatements(source);
+        assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], source);
+        assert.equal(result.unparsedTail, undefined, source);
+        const items = result.items.filter((item) => item.kind === "statement");
+        assert.equal(items.length, 1, source);
+        return items[0]?.statement;
+    };
+
+    for (const [op, slots] of forms) {
+        const selfClosing = `<|${op}${slots}|>`;
+        const paired = `<|${op}${slots}><${op}|>`;
+        assert.deepEqual(one(paired), one(selfClosing), op);
+    }
 });
 
 test("a body starting with the op keyword is not mis-closed after a non-boundary follow", () => {

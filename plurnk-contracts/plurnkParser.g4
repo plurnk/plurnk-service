@@ -127,11 +127,12 @@ planStatement : OPEN_PLAN tagOpModifiers? statementEnd ;
 lookStatement : OPEN_LOOK tagOpModifiers? statementEnd ;
 buffStatement : OPEN_BUFF tagOpModifiers? statementEnd ;
 
-// Self-closing and bodyful statements share one AST path. Operation owners retain
-// responsibility for rejecting a missing body where their semantics require one.
+// Self-closing and paired empty statements share one AST path and therefore one
+// normalized body value. Operation owners retain responsibility for rejecting
+// empty content where their semantics require a nonempty body. {§empty-body-equivalence}
 statementEnd
     : SELF_CLOSE
-    | BODY_OPEN body CLOSE_TAG
+    | BODY_OPEN body? CLOSE_TAG
     ;
 
 // Modifier slot permutations. Each leaf rule appears at most once in any

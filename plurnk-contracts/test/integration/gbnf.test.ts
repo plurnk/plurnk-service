@@ -433,12 +433,35 @@ test("GBNF: OPEN and FOLD admit tagged set selection but no positional scope", (
     }
 });
 
-// {§statement-form}
-test("GBNF: an empty matcher self-closes while close-like prefixes remain body text", () => {
+// {§empty-body-equivalence}
+test("GBNF: self-closing and paired empty bodies have identical admission", () => {
+    const forms = [
+        ["FIND", "(a)", true],
+        ["READ", "(a)", true],
+        ["EDIT", "(a)<1>", true],
+        ["OPEN", "(log:///1)", true],
+        ["FOLD", "(log:///1)", true],
+        ["SEND", "[400]", true],
+        ["EXEC", "", true],
+        ["KILL", "(a)", true],
+        ["COPY", "(a)", false],
+        ["MOVE", "(a)", false],
+        ["WORK", "(worker://child)", false],
+        ["FORK", "(worker://child)", false],
+    ] as const;
+
+    for (const [op, slots, admitted] of forms) {
+        assert.equal(derives("statement", `<|${op}${slots}|>`), admitted, `${op} self-closing`);
+        assert.equal(derives("statement", `<|${op}${slots}><${op}|>`), admitted, `${op} paired empty`);
+    }
+});
+
+// {§body-fence}
+test("GBNF: empty matcher spellings are equivalent while close-like prefixes remain body text", () => {
     for (const op of ["FIND", "OPEN", "FOLD"]) {
         const turn = (statement: string): string => `<|PLAN>p<PLAN|>\n${statement}\n<|SEND[102]>c<SEND|>`;
         assert.equal(derivesTurn(turn(`<|${op}(a)|>`)), true, `${op} self-closes without a matcher`);
-        assert.equal(derivesTurn(turn(`<|${op}(a)><${op}|>`)), false, `${op} does not generate an empty bodyful form`);
+        assert.equal(derivesTurn(turn(`<|${op}(a)><${op}|>`)), true, `${op} admits a paired empty matcher`);
         assert.equal(derivesTurn(turn(`<|${op}(a)><x<${op}|>`)), true, `${op} retains a leading angle bracket`);
         assert.equal(derivesTurn(turn(`<|${op}(a)><READ|><${op}|>`)), op !== "READ", `${op} retains a nonmatching close-shaped prefix`);
         assert.equal(derivesTurn(turn(`<|${op}(a)>:needle<${op}|>`)), true, `${op} retains a colon-prefixed matcher body`);
@@ -545,6 +568,8 @@ test("GBNF: WORK/FORK require a worker target and non-empty prompt", () => {
     assert.equal(derives("op-statement", "<|FORK>do a thing<FORK|>"), false);
     assert.equal(derives("op-statement", "<|WORK(worker://w)|>"), false);
     assert.equal(derives("op-statement", "<|FORK(worker://w)|>"), false);
+    assert.equal(derives("op-statement", "<|WORK(worker://w)><WORK|>"), false);
+    assert.equal(derives("op-statement", "<|FORK(worker://w)><FORK|>"), false);
     assert.equal(derives("op-statement", "<|WORK[feature/x](worker://w)>t<WORK|>"), true);
     assert.equal(derives("op-statement", "<|FORK[fix/issue-642](worker://w)>t<FORK|>"), true);
     assert.equal(derives("op-statement", "<|WORK[a,b](worker://w)>t<WORK|>"), false);
@@ -601,6 +626,7 @@ test("GBNF: PLAN body excludes `<|` and cannot capture following operations", ()
 
 test("GBNF: PLAN body is required non-empty — no blank statement of intent", () => {
     assert.equal(derivesTurn("<|PLAN|>\n<|SEND[200]>done<SEND|>"), false);   // blank plan rejected
+    assert.equal(derivesTurn("<|PLAN><PLAN|>\n<|SEND[200]>done<SEND|>"), false);
     assert.equal(derivesTurn("<|PLAN>go<PLAN|>\n<|SEND[200]>done<SEND|>"), true);
 });
 
@@ -618,6 +644,7 @@ test("GBNF: pending-result semantics remain outside the generation rail", () => 
 test("GBNF: terminal SEND body is required non-empty — a turn must not end empty-handed", () => {
     assert.equal(derivesTurn("<|PLAN>p<PLAN|>\n<|SEND[200]>Paris<SEND|>"), true);
     assert.equal(derivesTurn("<|PLAN>p<PLAN|>\n<|SEND[200]|>"), false);          // empty terminal
+    assert.equal(derivesTurn("<|PLAN>p<PLAN|>\n<|SEND[200]><SEND|>"), false);   // paired empty terminal
     assert.equal(derivesTurn("<|PLAN>p<PLAN|>\n<|SEND[499]|>"), false);          // any terminal code
     assert.equal(derivesTurn("<|PLAN>p<PLAN|>\n<|SEND[200](worker://parent)|>"), false); // targeted, still empty
     // MID sends stay lax — terse/empty comms allowed before the terminal.

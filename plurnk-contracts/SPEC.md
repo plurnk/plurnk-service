@@ -179,11 +179,15 @@ tolerant during ingestion.
 <|OPsuffix[signal]?(path)?<scope>?>body<OPsuffix|>
 ```
 
-§body-fence A statement without a body ends its header with `|>`. A bodyful
-statement ends its header with `>`; everything before the matching
-`<OPsuffix|>` close is preserved verbatim and is opaque to operation keywords,
-slot characters, and nested PLURNK-looking text. Empty bodies use the
-self-closing form.
+§body-fence A paired statement ends its header with `>`; everything before the
+matching `<OPsuffix|>` close is preserved verbatim and is opaque to operation
+keywords, slot characters, and nested PLURNK-looking text. Its body may contain
+zero or more characters. A self-closing statement ends its header with `|>`.
+
+§empty-body-equivalence Self-closing is an optional spelling of a paired empty
+body. Both spellings normalize identically for their operation, and the public
+AST and operation semantics do not retain the delimiter choice. Any boundary
+that requires a nonempty body treats both spellings as empty.
 
 | Element     | Canonical contract                                                 |
 |-------------|--------------------------------------------------------------------|
@@ -193,15 +197,15 @@ self-closing form.
 | `[signal]`  | Optional operation-specific signal                                 |
 | `(path)`    | Optional syntax slot whose operation contract may require a target |
 | `<scope>`   | Optional operation-specific numeric scope                          |
-| `|>`        | Self-close for a statement with no body                            |
-| `>`         | Ends a bodyful statement header                                    |
-| `body`      | Operation-specific, character-perfect content                      |
-| `<OPsuffix|>` | Required body close matching the opener exactly                  |
+| `|>`        | Ends a statement with an empty body                                |
+| `>`         | Ends the header and begins a paired body                           |
+| `body`      | Zero or more characters of operation-specific, character-perfect content |
+| `<OPsuffix|>` | Ends a paired body and must match the opener exactly             |
 
 The following constraints are structural:
 
 - §close-tag-match The close `<OPsuffix|>` must character-match the opening operation and suffix.
-- A statement has exactly one end form: `|>` or `>body<OPsuffix|>`.
+- A statement has exactly one end form: `|>` or `>body<OPsuffix|>`; `body` may be empty.
 - Each admitted signal, target, and scope slot appears at most once.
 - OPEN, FOLD, WORK, FORK, and KILL do not admit a scope slot.
 - A suffix is `[A-Za-z0-9_]*`; generation canon uses digit suffixes when enclosure is needed.
@@ -221,7 +225,7 @@ or safely execute understandable input:
 | PLAN modifiers or suffix                          | Model canon keeps PLAN slotless and unsuffixed                      |
 | KILL annotation body                              | AST preserves it; model teaching self-closes KILL                   |
 | Dash-separated or comma-space scope numbers       | Producers use adjacent comma-separated numbers                      |
-| Self-close where semantics require a body         | AST carries empty content; the operation owner rejects it           |
+| Empty content where semantics require a body      | Either spelling normalizes empty; the operation owner rejects it    |
 
 ## 3. Lexical elements
 
@@ -631,13 +635,15 @@ stateDiagram-v2
 SLOTS admits operation-appropriate signal, target, and scope openers in any
 order; the parser grammar enforces at-most-once multiplicity. Signal submodes
 select tags, integer, or identifier tokens by operation family. TARGET preserves
-balanced inner parentheses and recognized target escapes. BODY emits opaque text until the semantic predicate
-recognizes the exact close from the captured opener.
+balanced inner parentheses and recognized target escapes. BODY emits zero or
+more opaque characters until the semantic predicate recognizes the exact close
+from the captured opener.
 
 TURN is the single exception to opaque-body mode: its body opener returns to DEFAULT
 so a complete inner turn parses structurally, and a suffix stack recognizes its
-matching close. Every operation shares the same self-close token; operation
-owners decide whether empty content is meaningful.
+matching close. Every operation shares the same self-close token, and AstBuilder
+erases the choice between self-closing and paired empty forms before operation
+owners decide whether empty content is meaningful. {§empty-body-equivalence}
 
 DEFAULT recognizes minted operation openers and otherwise emits non-whitespace
 input as TEXT. A `<|word` whose word is not a minted operation remains TEXT.

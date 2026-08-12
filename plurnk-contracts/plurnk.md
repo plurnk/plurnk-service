@@ -16,14 +16,11 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|W
 ### Syntax
 
 ```
-<|OPsuffix[signal]?(path)?<scope>?|>
 <|OPsuffix[signal]?(path)?<scope>?>body<OPsuffix|>
 ```
 
-Use the self-closing form when there is no body.
-Bodyful OPs use asymmetric tags: the opening tag begins `<|`, and the matching closing tag is `<OPsuffix|>`.
+YOU MAY self-close an empty body: `<|READ(example.md)|>`.
 When a body contains an OP, suffix the outer OP: `<|EDIT1(worker:///demo.md)>Quoted: <|READ(source.md)|><EDIT1|>`
-An empty body self-closes: `<|READ(AGENTS.md)|>`
 Body content is character-perfect, exactly matching whitespace.
 PLURNK does not decode body escapes: `\n` is backslash plus `n`.
 Emit a physical newline when literal body content needs one.

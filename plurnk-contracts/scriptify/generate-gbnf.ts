@@ -87,8 +87,8 @@ const bodyRules = (
 // one char before the close. The two non-epsilon transitions of state 0 (`<` -> b1,
 // any-other -> b0) then hand off to the normal automaton, which keeps its epsilon, so the
 // body can still end after that first char. Used where an empty body has no meaning: PLAN,
-// terminal SEND, WORK, and FORK. Whitespace-only bodies still pass; that residual is a
-// post-gen sieve's job, not the grammar's.
+// terminal SEND, COPY, MOVE, WORK, and FORK. Whitespace-only bodies still pass; that
+// residual is a post-gen sieve's job, not the grammar's.
 const bodyRulesNonEmpty = (
     model: GModel,
     name: string,
@@ -205,11 +205,18 @@ export const buildModel = (): GModel => {
             bodyRulesNonEmpty(model, name, close, patternBody, resourceSelectionBody ? "<" : "");
             const body = [
                 lit(">"),
+                ref(`${name}-b0`),
+                ...(resourceSelectionBody ? [opt(ref("line"))] : []),
+                lit(close),
+            ];
+            const bodyNE = [
+                lit(">"),
                 ref(`${name}-b0ne`),
                 ...(resourceSelectionBody ? [opt(ref("line"))] : []),
                 lit(close),
             ];
             const selfClose = [lit("|>")];
+            const pairedEmpty = [lit(">"), lit(close)];
             if (op === "SEND") {
                 // Mid SENDs carry no disposition; terminal SENDs require one disposition
                 // and a non-empty body. Only [202] admits a park scope. Runtime obligation
@@ -218,7 +225,6 @@ export const buildModel = (): GModel => {
                 // Tails are factored behind the shared `<|SEND…` opener trie (no leading
                 // `lit(open)` - the trie matches it). `<|SEND` is a prefix of `<|SEND1`, so
                 // its tails sit at the interior trie node beside the digit branch.
-                const bodyNE = [lit(">"), ref(`${name}-b0ne`), lit(close)];
                 sendMidEntries.push({ literal: open, tails: [
                     [lit("["), ref("status-mid"), lit("]"), ref("target"), ...body],  // targeted, any status
                     [lit("["), ref("status-mid"), lit("]"), ref("target"), ...selfClose],
@@ -249,24 +255,28 @@ export const buildModel = (): GModel => {
                 // Its specialized body also excludes `<|`. {§plan-body-no-openers}
                 forbidLiterals(model, name, [close, "<|"]);
                 bodyRulesNonEmpty(model, name, close);
-                const bodyNE = [lit(">"), ref(`${name}-b0ne`), lit(close)];
                 model.set("plan", [[lit(open), ...bodyNE]]);
             } else if (op === "KILL") {
                 // Target-specific numeric code is wired but untaught — canon shows bare KILL.
-                opEntries.push({ literal: open, tails: [[opt(ref("kill-sig")), ref("target"), ...selfClose]] });
+                const header = [opt(ref("kill-sig")), ref("target")];
+                opEntries.push({ literal: open, tails: [[...header, ...selfClose], [...header, ...pairedEmpty]] });
             } else if (op === "WORK" || op === "FORK") {
                 // Delegation verbs: optional single Git branch ref in the signal/tag slot,
                 // required worker target, then a non-empty prompt. The extra entry rule
                 // reuses the existing body automaton; it adds no second automaton family.
-                const bodyNE = [lit(">"), ref(`${name}-b0ne`), lit(close)];
                 opEntries.push({ literal: open, tails: [[opt(ref("branch")), ref("target"), ...bodyNE]] });
+            } else if (op === "COPY" || op === "MOVE") {
+                // A destination is semantically required, so neither empty spelling is
+                // admitted by the generation rail. {§empty-body-equivalence}
+                const header = [opt(ref("tags")), ref("target"), opt(ref("line"))];
+                opEntries.push({ literal: open, tails: [[...header, ...bodyNE]] });
             } else if (op === "OPEN" || op === "FOLD") {
                 // Log curation selects sets by tags + target + matcher. It has no positional
                 // scope slot; FIND alone paginates selected results.
                 const header = [opt(ref("tags")), ref("target")];
                 opEntries.push({ literal: open, tails: [[...header, ...selfClose], [...header, ...body]] });
             } else {
-                // FIND/READ/EDIT/COPY/MOVE share the canonical tagged-target-scope shape.
+                // FIND/READ/EDIT share the canonical tagged-target-scope shape.
                 const header = [opt(ref("tags")), ref("target"), opt(ref("line"))];
                 opEntries.push({ literal: open, tails: [[...header, ...selfClose], [...header, ...body]] });
             }

@@ -57,6 +57,27 @@ test("parser roundtrip: <|EDIT[france,europe](worker:///countries/france/capital
     } finally { await db.close(); }
 });
 
+// {§empty-body-equivalence} {§text-scope-semantics}
+test("parser roundtrip: both empty-body spellings perform the same EDIT deletion", async () => {
+    const db = await openMigrated();
+    try {
+        const env = await seedEnvelope(db, "ws-roundtrip-empty-edit");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const statements = [
+            parseOne("<|EDIT(worker:///self-closing)>alpha\nbeta\ngamma<EDIT|>"),
+            parseOne("<|EDIT(worker:///paired)>alpha\nbeta\ngamma<EDIT|>"),
+            parseOne("<|EDIT(worker:///self-closing)<2>|>"),
+            parseOne("<|EDIT(worker:///paired)<2>><EDIT|>"),
+        ];
+
+        assert.deepEqual(await dispatch(engine, env, statements), [201, 201, 200, 200]);
+        const selfClosing = await db.test_get_body_by_pathname.get<{ content: string }>({ pathname: "/self-closing" });
+        const paired = await db.test_get_body_by_pathname.get<{ content: string }>({ pathname: "/paired" });
+        assert.equal(selfClosing?.content, "alpha\ngamma");
+        assert.deepEqual(paired, selfClosing);
+    } finally { await db.close(); }
+});
+
 test("parser roundtrip: a suffixed enclosure carries an unsuffixed close-shaped token in its body", async () => {
     const db = await openMigrated();
     try {
