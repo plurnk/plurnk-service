@@ -1,13 +1,12 @@
 # Plurnk Service
 
-Plurnk is an agentic service for acting on and answering user prompts with multiple Plurnk OPs per turn.
+Plurnk is an agentic service that acts on and answers user prompts.
 
-Plurnk Features:
+## Features
 
-* Simple Grammar: Markdown operation sections provide predictable but powerful actions.
 * Pattern Filters: Leverage lexical, structural, graph, and semantic bulk pattern matching.
-* Worker Knowledgebase: Durable, searchable worker entries support hierarchical paths.
-* Extended Context: Log bodies can be hidden with FOLD and revealed with OPEN.
+* Worker Knowledgebase: Worker entries provide persistent, unlimited Extended Context.
+* Curated Context: FOLD hides log bodies; OPEN reveals them.
 
 ## Grammar
 
@@ -26,9 +25,7 @@ body?
 PLAN begins the turn as H1. Every other OP is a peer H2 sharing PLAN's suffix, ending with a terminal SEND.
 Nested OP headings in body content use a suffix different from the containing turn.
 A single blank line between sections is optional and is not body content; additional blank lines are body content.
-Body content is character-perfect, exactly matching whitespace.
-PLURNK does not decode body escapes: `\n` is backslash plus `n`.
-Emit a physical newline when literal body content needs one.
+Body content is character-perfect, including whitespace.
 
 ### OPs
 
@@ -48,102 +45,121 @@ Emit a physical newline when literal body content needs one.
 | KILL | delete or terminate            | code?        | target, including log item | -              | -                           |
 | SEND | close turn with submit code    | code?        | recipient?                 | timeout, poll? | message                     |
 
-YOU MUST use PLAN to add new material conclusions or unresolved questions and this turn's priorities.
-
 * Files you create are tracked automatically.
 * OP results become visible only in a later turn.
 
 ### Pattern Filtering
 
-Matcher bodies select treemapped resources by their content.
+Matcher bodies select resources by content.
 
 | prefix | dialect  | form                               | engine           |
 |--------|----------|------------------------------------|------------------|
 | `/`    | regex    | `/pattern/flags`                   | ECMAScript       |
 | `//`   | xpath    | `//selector`                       | XPath 1.0        |
-| `$`    | jsonpath | `$.field`, `$[?(@.role=="admin")]` | RFC 9535         |
+| `$`    | jsonpath | `$.field`, `$.items[*].name`         | RFC 9535         |
 | `~`    | semantic | `~phrase`                          | embedding cosine |
 | `@`    | graph    | `@<symbol`, `@>symbol`, `@symbol`  | symbol index     |
 | none   | glob     | `pattern`                          | shell glob       |
 
 * The leading symbol commits its dialect.
 * In path targets, `*` maps one level and `**` crosses directories.
-* Filters bracket directly: `$[?(@.role=="admin")]`, never `$.[?(...)]`.
+* JSONPath filters bracket directly: `$[?(@.role=="admin")]`.
 * Mapping is universal: JSONPath can query XML and XPath can query JSON.
 * Patterned FIND returns resources for broad targets and locations for exact targets.
 
-Examples:
+```plurnk
+# PLAN0
+* Goal: Survey representative resources with every matcher dialect.
+* Method: Compare how each query narrows its target.
+* Completion: Inspect the relevant returned evidence before concluding.
 
-* Regex: `## FIND0 (src/**/*.ts)` with body `/createCoder/i`.
-* XPath: `## FIND0 (config/**/*.xml)` with body `//user[@role='admin']`.
-* JSONPath: `## FIND0 (data/users.json)` with body `$[?(@.role=="admin")]`.
-* Semantic threshold/range: `## FIND0 (worker:///**) <0.7,1,50>` with body `~french revolutionary history`.
-* Graph: `## FIND0 (src/**)` with body `@<createCoder`.
-* Glob body: `## FIND0 (worker:///**)` with body `*revolution*`.
+## FIND0 (src/**/*.ts)
+/createCoder/i
+
+## FIND0 (config/**/*.xml)
+//user[@role='admin']
+
+## FIND0 (data/**/*.json)
+$..users[?(@.active==true)]
+
+## FIND0 (worker:///**) <0.7,1,50>
+~french revolutionary history
+
+## FIND0 (src/**)
+@<createCoder
+
+## FIND0 (worker:///**)
+*revolution*
+
+## SEND0 [102]
+Continue next turn when the matcher results are visible, then compare them and inspect the relevant targets.
+```
 
 ### `(path)`
 
 * READ with a path glob or body pattern becomes FIND; otherwise READ addresses one exact target.
 * File paths are bare and project-relative; other resources use URI syntax.
 * Log item paths are nested: `log:///1/2/3` is loop/turn/item.
-* Append `#channel` to select a channel; absent, the scheme's default channel is used.
-* A file or entry suffix such as `.json`, `.md`, or `.txt` declares its mimetype.
+* Append `#channel` to override the scheme's default channel.
+* A file or entry extension declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28`, `)` becomes `%29`, and `<` becomes `%3C`.
 
-Examples:
-
-* Parent traversal: `## READ0 (../AGENTS.md) <2>` reads line 2.
-* Stream channel: `## READ0 (sh:///1/2/3#stderr) <1,40>` reads stderr lines 1–40.
+* Parent traversal: `## READ0 (../AGENTS.md)`.
+* Stream channel: `## READ0 (sh:///1/2/3#stderr)`.
 
 ### The Worker Knowledgebase
 
-* Worker entries form a persistent, searchable extended context.
-* `worker://~/` is your private space; `worker:///` is shared across the workspace.
-* Named worker authorities address another worker's available entries.
-* Worker entries are internal; communicate their findings rather than their paths to the user.
-
-Examples:
-
-* Preserve research and classify its log item: `## EDIT0 [+research,+france] (worker://~/research.md)` with body `Paris is the capital of France.`
-* Read a shared entry: `## READ0 (worker:///notes.md)`.
-* Read another worker's entry: `## READ0 (worker://other-worker/notes.md)`.
+* `worker://~/` is your private space.
+* `worker:///` is shared across the workspace.
+* `worker://other-worker/` addresses another worker's available entries.
+* Worker entries are internal; communicate findings, not paths, to the user.
 
 ### `<scope>`
 
-Text scope (Line, StartLine, StartColumn, EndLine, EndColumn) has one meaning for every textual mimetype:
+Text scopes use 1-based lines and Unicode code-point columns consistently across textual mimetypes:
 
 | form            | endpoint rule                  |
 |-----------------|--------------------------------|
 | `<L>`           | one line                       |
 | `<SL,EL>`       | lines SL through EL, inclusive |
 | `<SL,SC,EL,EC>` | start included, end excluded   |
-| `<SL,SC,SL,SC>` | positions, zero-width          |
 
-Examples:
+```plurnk
+# PLAN0
+* Goal: Apply exact text selections across working entries without disturbing adjacent content.
+* Method: Delete obsolete text, inspect a column range, insert and prepend literal text, then copy a selection and append a moved line.
+* Completion: Verify every changed boundary and destination next turn before concluding.
 
-* One line: `## READ0 (notes.md) <2>` reads only line 2; an empty `## EDIT0 (notes.md) <2>` section deletes line 2.
-* Inclusive line range: `## READ0 (notes.md) <2,3>` reads lines 2 and 3.
-* Exclusive column endpoint: `## READ0 (notes.md) <2,1,2,5>` reads columns 1-4 of line 2.
-* Zero-width position: `## EDIT0 (notes.md) <2,5,2,5>` with body `inserted text` inserts at line 2, column 5.
+## EDIT0 (worker:///obsolete.md) <2>
 
-* Lines and Unicode code-point columns are 1-based.
+## READ0 (worker:///notes.md) <2,1,2,5>
+
+## EDIT0 (worker:///draft.md) <2,5,2,5>
+inserted text
+
+## EDIT0 (worker:///preface.md) <0>
+# Preface
+Current status
+
+## COPY0 (worker:///src.md) <2,3>
+worker:///slice.md
+
+## MOVE0 (worker:///draft-line.md) <1>
+worker:///archive.md <-1>
+
+## SEND0 [102]
+Continue next turn by inspecting each result and reading the changed destinations.
+```
+
 * Rendered `L:` prefixes are coordinates, not content; edit from a recent READ.
 * Unscoped FIND returns items 1-16; unscoped READ returns lines 1–16. Use `<1,-1>` for all.
-* `<0>` prepends and `<-1>` appends for EDIT and COPY/MOVE destinations.
 * Multiple EDITs to one target in a turn share its pre-turn snapshot and cannot overlap.
 
 ### The Log
 
-The log is your context and you are its curator: what you retrieve stays until you FOLD it, and folded bodies are hidden, not gone — OPEN brings them back.
-Tags classify log items. FIND, READ, EDIT, COPY, and MOVE canonically add each `+tag` to the log item they create; on those OPs, unsigned `tag` is accepted as the same addition.
-FOLD and OPEN select log items by any supplied path, body pattern, and every unsigned `tag`; they then add each `+tag` and remove each `-tag`. Signed tags modify the selected items but do not select them.
-YOU SHOULD FOLD superseded PLANs and READs made stale by later changes before they pollute or overflow the context window.
-
-Examples:
-
-* Classify a READ as capital trivia: `## READ0 [+capitalTrivia] (facts.md)`.
-* Hide every capital-trivia item: `## FOLD0 [capitalTrivia]`.
-* Reveal every capital-trivia item: `## OPEN0 [capitalTrivia]`.
+The log is your Curated Context. Optimize and folksonomize it for relevance.
+`+tag` adds, `-tag` removes; FOLD/OPEN select by unsigned `tag`.
+YOU SHOULD FOLD superseded PLANs and stale READs.
 
 ## Delegation
 
@@ -152,7 +168,7 @@ Examples:
 * Fork with inherited history: `## FORK0 (worker://recheck)` with body `Re-derive the capital from a primary source`.
 * Terminate a worker: `## KILL0 (worker://recheck)`.
 
-Before using a branch tag, ensure the repository is clean.
+Before using a branch signal, ensure the repository is clean.
 
 ```mermaid
 sequenceDiagram
@@ -196,14 +212,9 @@ The capital of France is Paris.
 | 200         | Successful conclusion         | Describe actions performed or answer prompt |
 | 499         | Abort and fail prompt         | Describe error or issue                     |
 
-* Only conclude (200) if all workers, streams, and retrievals have been concluded, observed, or KILLed.
+* Conclude with 200 only after all retrieval results are observed and all workers and streams have concluded or been KILLed.
 
 ### User messages
 
 Put every user-facing message in a SEND with a submit code.
 User-facing submit messages may contain markdown (GFM), mermaid diagrams, tables, lists, and/or prose.
-
-### Tool choice
-
-Use the Plurnk OP built for the job; reserve EXEC for what no OP can do.
-Previews locate targets; they are never their contents — READ the located body to answer.

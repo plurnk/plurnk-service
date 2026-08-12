@@ -295,7 +295,7 @@ test("the default wire preserves canonical order and projects the Recap override
     } finally { await db.close(); }
 });
 
-test("the default Recap projects the two framing reminders from the teaching corpus", async () => {
+test("the default Recap projects the meta-owned teaching source", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-recap-${crypto.randomUUID()}`);
@@ -313,10 +313,7 @@ test("the default Recap projects the two framing reminders from the teaching cor
         });
         const recap = packetSection(await getPacket(db, result.turnId), "requirements");
 
-        assert.equal(
-            recap,
-            "YOU MUST always begin each turn with `# PLAN0`.\nYOU MUST always end each turn with `## SEND0 [status code]`; retrieval turns use a non-concluding code.\n",
-        );
+        assert.equal(recap, await readFile(Paths.defaultRequirements, "utf8"));
     } finally { await db.close(); }
 });
 
@@ -496,7 +493,7 @@ test("assembled packet: definition tables compact without changing other whitesp
     } finally { await db.close(); }
 });
 
-test("{§definition-table-projection}: canonical inline heading examples remain exact on the packet wire", async () => {
+test("{§definition-table-projection}: canonical inline operation examples survive packet projection", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-definition-grammar-${crypto.randomUUID()}`);
@@ -508,16 +505,12 @@ test("{§definition-table-projection}: canonical inline heading examples remain 
 
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
         const projected = packetSection(await getPacket(db, result.turnId), "definition");
-        const inlineGrammar = [...definition.matchAll(/`(## (?:READ|EDIT)0[^`\n]*)`/gu)].map((match) => match[0]);
+        const inlineGrammar = [...definition.matchAll(/`(#{1,2} [A-Z]+[A-Za-z0-9_]*(?: [^`\n]*)?)`/gu)].map((match) => match[0]);
 
         assert.ok(inlineGrammar.length > 0, "canonical definition must contain inline grammar examples");
         for (const example of inlineGrammar) {
             assert.ok(projected.includes(example), `packet projection changed canonical inline grammar ${JSON.stringify(example)}`);
         }
-        assert.match(projected, /One line: `## READ0 \(notes\.md\) <2>` reads only line 2; an empty `## EDIT0 \(notes\.md\) <2>` section deletes line 2\./u);
-        assert.match(projected, /Inclusive line range: `## READ0 \(notes\.md\) <2,3>` reads lines 2 and 3\./u);
-        assert.match(projected, /Exclusive column endpoint: `## READ0 \(notes\.md\) <2,1,2,5>` reads columns 1-4 of line 2\./u);
-        assert.match(projected, /Zero-width position: `## EDIT0 \(notes\.md\) <2,5,2,5>` with body `inserted text` inserts at line 2, column 5\./u);
     } finally { await db.close(); }
 });
 
