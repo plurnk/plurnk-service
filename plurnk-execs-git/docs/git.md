@@ -7,17 +7,26 @@ shell interpretation. Native stdout and stderr stream as `#stdout` and
 Examples:
 
 ```plurnk
-<|EXEC[git]>status --short<EXEC|>
-<|EXEC[git]>checkout -b feature/example<EXEC|>
-<|EXEC[git]>add .<EXEC|>
-<|EXEC[git]>commit -m "why"<EXEC|>
-<|EXEC[git]>log --oneline -5<EXEC|>
+## EXEC1 [git]
+status --short
+
+## EXEC1 [git]
+checkout -b feature/example
+
+## EXEC1 [git]
+add .
+
+## EXEC1 [git]
+commit -m "why"
+
+## EXEC1 [git]
+log --oneline -5
 ```
 
 ## Target
 
-`(target)` is the repo directory and maps to `git -C`:
-`<|EXEC[git](./subrepo)>status<EXEC|>`. Without a target, Git runs in the
+`(target)` is the repo directory and maps to `git -C`; for example,
+`## EXEC1 [git] (./subrepo)` with body `status`. Without a target, Git runs in the
 workspace. Repository-local `GIT_*` variables inherited from a launcher cannot
 redirect the command away from that selected repository.
 

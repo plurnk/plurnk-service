@@ -26,8 +26,8 @@ const execFileP = promisify(execFile);
 // cap decides how many actions land. Turn 2 SENDs to terminate (no reliance on
 // maxTurns composition), so the loop ends cleanly either way.
 const twoEdits = () => new Mock({ contextWindow: viableWindow(), responses: [
-    makeMockResponse("<|EDIT(worker:///a.md)>aaa<EDIT|>\n<|EDIT(worker:///b.md)>bbb<EDIT|>\n<|SEND[102]>continue<SEND|>", 50),
-    makeMockResponse("<|SEND[200]>done<SEND|>", 50),
+    makeMockResponse("## EDIT1 (worker:///a.md)\naaa\n\n## EDIT1 (worker:///b.md)\nbbb\n\n## SEND1 [102]\ncontinue", 50),
+    makeMockResponse("## SEND1 [200]\ndone", 50),
 ] });
 const entryId = (db: Db, pathname: string) =>
     db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "worker", pathname });
@@ -69,7 +69,7 @@ test("maxCommands:0 admits PLAN + the terminal SEND, drops every action", async 
         // maxCommands:0 caps actions at zero — both EDITs drop — but PLAN and the terminal
         // SEND always dispatch, so the loop still plans and concludes (0's only coherent meaning).
         const mock = new Mock({ contextWindow: viableWindow(), responses: [
-            makeMockResponse("<|EDIT(worker:///a.md)>aaa<EDIT|>\n<|EDIT(worker:///b.md)>bbb<EDIT|>\n<|SEND[200]>done<SEND|>", 50),
+            makeMockResponse("## EDIT1 (worker:///a.md)\naaa\n\n## EDIT1 (worker:///b.md)\nbbb\n\n## SEND1 [200]\ndone", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -120,7 +120,7 @@ test("workspace settings.git:false denies git membership for the workspace (env 
 });
 
 test("workspace.create rejects malformed ceiling settings — fail hard, no silent accept", async () => {
-    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 50)] });
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("## SEND1 [200]\ndone", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

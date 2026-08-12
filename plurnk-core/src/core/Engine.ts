@@ -117,7 +117,7 @@ const ENGINE_PROBLEMS = Object.freeze({
     idle_turn: {
         status: 409,
         code: "idle-turn",
-        detail: "SEND[102] was emitted without an operation to continue from.",
+        detail: "`## SEND1 [102]` was emitted without an operation to continue from.",
     },
 } as const);
 type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
@@ -333,7 +333,7 @@ export default class Engine {
     // Boot-discovered runtime executors. Daemon builds + sets via
     // setExecutors at start(); undefined until then (and in bare tests).
     #executors: ExecutorRegistry | undefined;
-    // {§send-premature-terminate}/SEND[202]<T> — park deadlines by loopId, written at dispatch (the
+    // {§send-premature-terminate}/scoped SEND signal 202 — park deadlines by loopId, written at dispatch (the
     // marker's seconds; -1 = indefinite), consumed by the daemon's drain park-exit to schedule
     // the deadline wake. In-memory: a daemon restart drops pending deadlines (documented).
     readonly parkDeadlines: Map<number, number> = new Map();
@@ -783,11 +783,11 @@ export default class Engine {
         };
 
         // Cleanup splits by termination kind:
-        // - "graceful" (SEND[202] Accepted): in-flight streaming-scheme spawns
+        // - "graceful" (SEND signal 202 Accepted): in-flight streaming-scheme spawns
         //   are ALLOWED to outlive the loop — they complete naturally, write final
         //   channel state, and wake-on-completion (E.4) opens a fresh loop. 202 is
         //   the only terminal that means "keep my async work."
-        // - "forceful" (SEND[200] done, max_turns, strike, cancel, context-envelope rejection, 4xx/5xx):
+        // - "forceful" (SEND signal 200 done, max_turns, strike, cancel, context-envelope rejection, 4xx/5xx):
         //   fire the loop-level abort so leftover spawns tear down. "Done" reaps.
         const cleanup = (kind: "graceful" | "forceful", reason?: string): void => {
             clearTimeout(wall);
@@ -1058,7 +1058,7 @@ export default class Engine {
         let nextActionIndex = 1;
         const turnOpenPaths: string[] = [];
         // {§model-entry} — the worker's first turn opens with the model's own turn-0, mirrored OPEN: a
-        // worked turn PLAN → the environment FINDs the foist ACTUALLY dispatches → SEND[102]. Built
+        // worked turn PLAN → the environment FINDs the foist ACTUALLY dispatches → SEND signal 102. Built
         // from the real ops below (not a static print — we lean into the genuine echo paradigm) and
         // written at sequence 1, so it reads first as the emission with the foisted results following.
         const turnZeroMoves: string[] = [];
@@ -1238,9 +1238,9 @@ export default class Engine {
                     // (the model's own survey, mirrored OPEN). An explicit file cap rides as
                     // `<1,N>`; ordinary surveys teach the safe markerless default by example.
                     const target = isFile ? pattern : `${scheme}:///${pattern}`;
-                    turnZeroMoves.push(`<|FIND(${target})${cap === null ? "" : `<1,${cap}>`}|>`);
+                    turnZeroMoves.push(`## FIND1 (${target})${cap === null ? "" : ` <1,${cap}>`}`);
                 }
-                // The kernel's self-documenting surface — FIND(worker://plurnk/docs/**), uncapped,
+                // The kernel's self-documenting surface — kernel-doc FIND, uncapped,
                 // always ({§schemes-directory}, published under {§entry-owner}).
                 await Owner.kernelId(this.#db, workspaceId); // the row exists even before docs materialize — the empty survey is orienting, never 404
                 const kernelDocsFind: FindStatement = {
@@ -1250,7 +1250,7 @@ export default class Engine {
                 };
                 await this.dispatch({ statement: kernelDocsFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                 nextActionIndex++;
-                turnZeroMoves.push("<|FIND(worker://plurnk/docs/**)<1,-1>|>");
+                turnZeroMoves.push("## FIND1 (worker://plurnk/docs/**) <1,-1>");
                 // {§worker-scheme} — the building worker's own scratch gets the same markerless
                 // one-level survey in its perspective alone. It always executes: an empty private
                 // space is useful orientation, not grounds to hide the surface.
@@ -1261,14 +1261,14 @@ export default class Engine {
                 };
                 await this.dispatch({ statement: ownFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                 nextActionIndex++;
-                turnZeroMoves.push("<|FIND(worker://~/*)|>");  // {§model-entry} — the own-space survey, into the turn-0 echo
+                turnZeroMoves.push("## FIND1 (worker://~/*)");  // {§model-entry} — the own-space survey, into the turn-0 echo
             }
             // {§model-entry} — mirror the model's turn-0 OPEN at sequence 1: PLAN → the FINDs actually
-            // foisted above (real, their results already in the log) → SEND[102]. Dynamic — it reflects
+            // foisted above (real, their results already in the log) → SEND signal 102. Dynamic — it reflects
             // the true survey, never a frozen print — and OPEN: the worked example the model orients on,
             // so the grammar can stay thin. Subsequent turns mirror the model's real output, folded.
             if (workerFirstLoop) {
-                const emission = ["<|PLAN>Survey context, then address the prompt.<PLAN|>", ...turnZeroMoves, "<|SEND[102]>Next, address the prompt using the survey.<SEND|>"].join("\n");
+                const emission = ["# PLAN1\nSurvey context, then address the prompt.", ...turnZeroMoves, "## SEND1 [102]\nNext, address the prompt using the survey."].join("\n\n");
                 await this.#dispatcher.writeModelEntry({ verbatim: emission, workerId, loopId, turnId, sequence: 1, folded: false, origin: "plurnk" });
             }
         }
@@ -2007,7 +2007,7 @@ export default class Engine {
                 }
                 : {
                     stage: "turn",
-                    recovery: "Perform an operation before continuing with SEND[102].",
+                    recovery: "Perform an operation before continuing with `## SEND1 [102]`.",
                     retryable: false,
                 };
             await this.#problems.record({

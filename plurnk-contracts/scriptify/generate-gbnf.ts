@@ -1,12 +1,6 @@
-// Generates dist/plurnk.gbnf — a llama.cpp grammar (GBNF) for constrained sampling.
-//
-// This is a pragmatic generation filter, not a second parser contract. Keeping sampled
-// output parseable is a goal balanced against rail size and sampling efficiency, not an
-// invariant. Bodies use complement automata over each close literal ("any text not
-// containing <OPsuffix|>") so llama.cpp parse stacks stay deterministic.
-//
-// The rule model is exported for the integration tests (corpus derivability +
-// seeded fuzz against PlurnkParser); the file write only happens when run as a script.
+// Generates dist/plurnk.gbnf — the llama.cpp rail for canonical lane-1 turns.
+// ANTLR remains the accepted-language authority; this deliberately narrower
+// grammar makes useful, parseable local-model output likely and bounded.
 import { mkdir, writeFile } from "node:fs/promises";
 
 export type GItem =
@@ -25,90 +19,32 @@ const star = (item: GItem): GItem => ({ kind: "rep", item, min: 0, max: Infinity
 const plus = (item: GItem): GItem => ({ kind: "rep", item, min: 1, max: Infinity });
 
 const R = (a: string, b: string): [number, number] => [a.codePointAt(0)!, b.codePointAt(0)!];
-const C = (chars: string): Array<[number, number]> => [...new Set(chars)].map((ch) => R(ch, ch));
+const C = (chars: string): Array<[number, number]> => [...new Set(chars)].map((character) => R(character, character));
 const cls = (ranges: Array<[number, number]>, negate = false): GItem => ({ kind: "cls", ranges, negate });
 
-const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "WORK", "FORK", "KILL", "PLAN"] as const;
-// Matcher bodies are single-line on the rail; content bodies may span lines.
-// {§pattern-body-single-line}
-const PATTERN_OPS = new Set<string>(["FIND", "READ", "OPEN", "FOLD"]);
-// The lean rail offers the canonical suffix plus depths 1 and 2. The forgiving parser
-// accepts the general suffix shape; deeper generation can use a custom rail.
-//
-// IRREDUCIBLE form, do not "optimize" to `[1-2]*`: the close tag must MATCH the open
-// suffix (`<|EDITk…>…<EDITk|>`) AND the body automaton must exclude that exact close
-// literal — both context-sensitive, which a CFG (GBNF, no backrefs) cannot express for
-// a general suffix. The only encoding that honors matching + exclusion is a bounded,
-// enumerated set, one production per value.
-const SUFFIXES = ["", "1", "2"] as const;
-
+const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "WORK", "FORK", "KILL"] as const;
 const DIGIT = cls([R("0", "9")]);
-const WS = cls(C(" \t\r\n")); // one separator character; `sep` bounds its repetition
+const WS = cls(C(" \t\r\n"));
 const TAG_CHAR = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.-")]);
 const BRANCH_CHAR = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.-/")]);
-// The lexer's executor IDENT requires a letter/underscore head; canon dictates lowercase.
 const EXEC_HEAD = cls([R("a", "z")]);
 const EXEC_TAIL = cls([R("a", "z"), R("0", "9"), ...C("_-")]);
-
-// Body alphabet excludes control chars (tab/newline/CR allowed) plus the chars
-// tracked by the close-literal automaton state.
 const CONTROL_RANGES: Array<[number, number]> = [[0x00, 0x08], [0x0B, 0x0C], [0x0E, 0x1F], [0x7F, 0x7F]];
-// A matcher with a wrong closer stays bounded to its line; the correct close remains
-// the only exit from the body automaton. {§pattern-body-single-line}
 const LINE_TERMINATORS: Array<[number, number]> = [[0x0A, 0x0A], [0x0D, 0x0D]];
+
 const bodyOther = (excluded: string, singleLine = false): GItem =>
     cls([...CONTROL_RANGES, ...(singleLine ? LINE_TERMINATORS : []), ...C(excluded)], true);
 
-// Complement automaton for one close literal: state k = matched the first k chars
-// of `close`. Reaching len(close) is forbidden, so the literal never occurs inside
-// the body; the statement's trailing close literal is the unique occurrence. Close
-// literals begin with `<` and contain no second `<`, so on a mismatch the only
-// live restart is `<` → state 1.
-const bodyRules = (
+// Complement automaton for a finite set of forbidden literals. State is the
+// longest consumed suffix that is also a proper prefix of a forbidden literal.
+// Completing a literal has no transition. Heading prefixes are forbidden in
+// section bodies so the explicit following heading is the unique boundary.
+const forbidLiterals = (
     model: GModel,
     name: string,
-    close: string,
+    literals: string[],
     singleLine = false,
-    canonicalExclusions = "",
 ): void => {
-    const excludesOpen = canonicalExclusions.includes(close[0]);
-    for (let k = 0; k < close.length; k++) {
-        const expected = close[k];
-        const alts: GRule = [];
-        if (k + 1 < close.length && !(k === 0 && excludesOpen)) alts.push([lit(expected), ref(`${name}-b${k + 1}`)]);
-        if (k > 0 && !excludesOpen) alts.push([lit(close[0]), ref(`${name}-b1`)]);
-        alts.push([bodyOther((k === 0 ? close[0] : close[0] + expected) + canonicalExclusions, singleLine), ref(`${name}-b0`)]);
-        alts.push([]);
-        model.set(`${name}-b${k}`, alts);
-    }
-};
-
-// Non-empty body: `${name}-b0` minus its entry epsilon, so the body MUST consume at least
-// one char before the close. The two non-epsilon transitions of state 0 (`<` -> b1,
-// any-other -> b0) then hand off to the normal automaton, which keeps its epsilon, so the
-// body can still end after that first char. Used where an empty body has no meaning: PLAN,
-// terminal SEND, COPY, MOVE, WORK, and FORK. Whitespace-only bodies still pass; that
-// residual is a post-gen sieve's job, not the grammar's.
-const bodyRulesNonEmpty = (
-    model: GModel,
-    name: string,
-    close: string,
-    singleLine = false,
-    canonicalExclusions = "",
-): void => {
-    const alts: GRule = [];
-    if (close.length > 1 && !canonicalExclusions.includes(close[0])) alts.push([lit(close[0]), ref(`${name}-b1`)]);
-    alts.push([bodyOther(close[0] + canonicalExclusions, singleLine), ref(`${name}-b0`)]);
-    model.set(`${name}-b0ne`, alts);
-};
-
-// Complement automaton for a finite set of forbidden literals. State is the longest
-// consumed suffix that is also a proper prefix of a forbidden literal. Completing any
-// forbidden literal has no transition; all other characters advance to the appropriate
-// suffix state. The channel body uses this to reject both its closer (so the production
-// owns the unique close) and another opener (so nested/restarted reasoning is denied at
-// the second opener rather than after it has already poisoned the stream).
-const forbidLiterals = (model: GModel, name: string, literals: string[]): void => {
     if (literals.length === 0 || literals.some((literal) => literal.length === 0)) {
         throw new Error("forbidLiterals requires non-empty literals");
     }
@@ -123,224 +59,175 @@ const forbidLiterals = (model: GModel, name: string, literals: string[]): void =
     const ruleOf = (state: string): string => `${name}-b${stateIndex.get(state)!}`;
     const significant = [...new Set(literals.flatMap((literal) => [...literal]))];
     const statesByLength = states.toSorted((a, b) => b.length - a.length);
-    const nextState = (candidate: string): string =>
-        statesByLength.find((state) => candidate.endsWith(state))!;
+    const nextState = (candidate: string): string => statesByLength.find((state) => candidate.endsWith(state))!;
 
     for (const state of states) {
         const transitions = new Map<string, string[]>();
-        for (const char of significant) {
-            const candidate = state + char;
+        for (const character of significant) {
+            const candidate = state + character;
             if (literals.some((literal) => candidate.endsWith(literal))) continue;
             const target = nextState(candidate);
-            const chars = transitions.get(target) ?? [];
-            chars.push(char);
-            transitions.set(target, chars);
+            const characters = transitions.get(target) ?? [];
+            characters.push(character);
+            transitions.set(target, characters);
         }
-        const alts: GRule = [...transitions].map(([target, chars]) => [
-            chars.length === 1 ? lit(chars[0]) : cls(C(chars.join(""))),
+        const alternatives: GRule = [...transitions].map(([target, characters]) => [
+            characters.length === 1 ? lit(characters[0]) : cls(C(characters.join(""))),
             ref(ruleOf(target)),
         ]);
-        alts.push([bodyOther(significant.join("")), ref(ruleOf(""))]);
-        alts.push([]);
-        model.set(ruleOf(state), alts);
+        alternatives.push([bodyOther(significant.join(""), singleLine), ref(ruleOf(""))]);
+        alternatives.push([]);
+        model.set(ruleOf(state), alternatives);
     }
+    model.set(`${name}-ne`, model.get(`${name}-b0`)!.filter((sequence) => sequence.length > 0));
 };
 
-// Left-factor a set of opener literals into a shared-prefix trie. The flat form lists one
-// full-literal alternative per op variant (`"<|FIND"`, `"<|FIND1"`, … `"<|KILL9"`), so the
-// instant `<|` is consumed EVERY variant's parse stack is live in parallel — ~141 stacks at
-// the single hottest decision in the grammar, the per-token cost driver in llama.cpp. The
-// trie shares `<|` and the op-name prefix, so after `<|` only the distinct first letters are
-// live (~8) and the count narrows as letters are consumed. Pure left-factoring: each entry's
-// `tails` are the alternatives that follow its literal, re-attached at the leaf; a literal
-// that is a prefix of another (`<|SEND` ⊂ `<|SEND1`) keeps its tails at the interior node
-// alongside the deeper branch. L(trie) = L(flat alternation), proven via the @plurnk/gbnf
-// differential oracle. The per-suffix body automata are untouched — they are 1 stack each,
-// off the hot path, and remain the artifact's bulk (see SUFFIXES).
-const trieRules = (model: GModel, rootName: string, entries: Array<{ literal: string; tails: GSeq[] }>): void => {
-    type Node = { children: Map<string, Node>; tails: GSeq[] };
-    const newNode = (): Node => ({ children: new Map(), tails: [] });
-    const root = newNode();
-    for (const { literal, tails } of entries) {
-        let node = root;
-        for (const ch of literal) {
-            if (!node.children.has(ch)) node.children.set(ch, newNode());
-            node = node.children.get(ch)!;
-        }
-        node.tails.push(...tails);
-    }
-    let counter = 0;
-    const build = (node: Node, name: string): void => {
-        const alts: GRule = [...node.tails];
-        for (const ch of [...node.children.keys()].toSorted()) {
-            const childName = `${rootName}-${counter++}`;
-            build(node.children.get(ch)!, childName);
-            alts.push([lit(ch), ref(childName)]);
-        }
-        model.set(name, alts);
-    };
-    build(root, rootName);
+const optionalBodySection = (
+    model: GModel,
+    name: string,
+    header: GSeq,
+    bodyRule: string,
+): void => {
+    model.set(name, [
+        [...header, lit("\n\n")],
+        [...header, lit("\n"), ref(`${bodyRule}-ne`), lit("\n\n")],
+    ]);
+};
+
+const requiredBodySection = (
+    model: GModel,
+    name: string,
+    header: GSeq,
+    bodyRule = "section-body",
+): void => {
+    model.set(name, [[...header, lit("\n"), ref(`${bodyRule}-ne`), lit("\n\n")]]);
+};
+
+const emptySection = (model: GModel, name: string, header: GSeq): void => {
+    model.set(name, [[...header, lit("\n\n")]]);
 };
 
 export const buildModel = (): GModel => {
     const model: GModel = new Map();
-    const opEntries: Array<{ literal: string; tails: GSeq[] }> = [];
-    const sendMidEntries: Array<{ literal: string; tails: GSeq[] }> = [];
-    const sendFinalEntries: Array<{ literal: string; tails: GSeq[] }> = [];
-    const sendFinalFirstEntries: Array<{ literal: string; tails: GSeq[] }> = [];
+    // Reserve operation-heading stems rather than only their canonical lane-1
+    // spellings. The rail can then force the `1` instead of swallowing a
+    // wrong-lane pseudo-heading as literal body text. ANTLR remains the wider
+    // language for intentional alternate-lane literals.
+    const structuralHeadings = ["# PLAN", ...OPS.map((op) => `## ${op}`)];
+    forbidLiterals(model, "section-body", structuralHeadings);
 
-    for (const op of OPS) {
-        for (const suffix of SUFFIXES) {
-            // PLAN is the bare, unsuffixed intended-goals record. {§plan-intended-goals}
-            if (op === "PLAN" && suffix !== "") continue;
-            const name = op.toLowerCase() + (suffix === "" ? "" : `-${suffix}`);
-            const open = `<|${op}${suffix}`;
-            const close = `<${op}${suffix}|>`;
-            const patternBody = PATTERN_OPS.has(op);
-            const resourceSelectionBody = op === "COPY" || op === "MOVE";
-            // COPY/MOVE canon reserves raw `<` for the optional terminal destination
-            // scope; literal URL angle brackets use the existing `%3C` spelling.
-            // Typed ingestion reserves only the ambiguous terminal shape. {§destination-scope-boundary}
-            bodyRules(model, name, close, patternBody, resourceSelectionBody ? "<" : "");
-            bodyRulesNonEmpty(model, name, close, patternBody, resourceSelectionBody ? "<" : "");
-            const body = [
-                lit(">"),
-                ref(`${name}-b0`),
-                ...(resourceSelectionBody ? [opt(ref("line"))] : []),
-                lit(close),
-            ];
-            const bodyNE = [
-                lit(">"),
-                ref(`${name}-b0ne`),
-                ...(resourceSelectionBody ? [opt(ref("line"))] : []),
-                lit(close),
-            ];
-            const selfClose = [lit("|>")];
-            const pairedEmpty = [lit(">"), lit(close)];
-            if (op === "SEND") {
-                // Mid SENDs carry no disposition; terminal SENDs require one disposition
-                // and a non-empty body. Only [202] admits a park scope. Runtime obligation
-                // truth remains outside the rail. {§send-mid-reservation}
-                // {§terminal-body-nonempty} {§park-202-only} {§wait-obligation-matrix}
-                // Tails are factored behind the shared `<|SEND…` opener trie (no leading
-                // `lit(open)` - the trie matches it). `<|SEND` is a prefix of `<|SEND1`, so
-                // its tails sit at the interior trie node beside the digit branch.
-                sendMidEntries.push({ literal: open, tails: [
-                    [lit("["), ref("status-mid"), lit("]"), ref("target"), ...body],  // targeted, any status
-                    [lit("["), ref("status-mid"), lit("]"), ref("target"), ...selfClose],
-                    [ref("target"), ...body],                                          // targeted, statusless
-                    [ref("target"), ...selfClose],
-                    [lit("["), ref("status-mid"), lit("]"), ...body],                  // pathless, any status
-                    [lit("["), ref("status-mid"), lit("]"), ...selfClose],
-                    [...body],                                                          // pathless, statusless
-                    [...selfClose],
-                ] });
-                sendFinalEntries.push({ literal: open, tails: [
-                    [lit("[102]"), opt(ref("target")), ...bodyNE],
-                    [lit("[202]"), opt(ref("target")), opt(ref("park")), ...bodyNE],
-                    [lit("["), ref("status-final-rest"), lit("]"), opt(ref("target")), ...bodyNE],
-                ] });
-                // tail-0 omits [102]; deeper tails restore the complete disposition set.
-                // {§no-idle-102}
-                sendFinalFirstEntries.push({ literal: open, tails: [
-                    [lit("[202]"), opt(ref("target")), opt(ref("park")), ...bodyNE],
-                    [lit("["), ref("status-final-rest"), lit("]"), opt(ref("target")), ...bodyNE],
-                ] });
-            } else if (op === "EXEC") {
-                // EXEC's optional `<timeout,poll>` rides the shared scope slot (runtime-interpreted).
-                const header = [opt(ref("exec-sig")), opt(ref("target")), opt(ref("line"))];
-                opEntries.push({ literal: open, tails: [[...header, ...selfClose], [...header, ...body]] });
-            } else if (op === "PLAN") {
-                // PLAN is a standalone, non-empty turn anchor outside the mid-op trie.
-                // Its specialized body also excludes `<|`. {§plan-body-no-openers}
-                forbidLiterals(model, name, [close, "<|"]);
-                bodyRulesNonEmpty(model, name, close);
-                model.set("plan", [[lit(open), ...bodyNE]]);
-            } else if (op === "KILL") {
-                // Target-specific numeric code is wired but untaught — canon shows bare KILL.
-                const header = [opt(ref("kill-sig")), ref("target")];
-                opEntries.push({ literal: open, tails: [[...header, ...selfClose], [...header, ...pairedEmpty]] });
-            } else if (op === "WORK" || op === "FORK") {
-                // Delegation verbs: optional single Git branch ref in the signal/tag slot,
-                // required worker target, then a non-empty prompt. The extra entry rule
-                // reuses the existing body automaton; it adds no second automaton family.
-                opEntries.push({ literal: open, tails: [[opt(ref("branch")), ref("target"), ...bodyNE]] });
-            } else if (op === "COPY" || op === "MOVE") {
-                // A destination is semantically required, so neither empty spelling is
-                // admitted by the generation rail. {§empty-body-equivalence}
-                const header = [opt(ref("tags")), ref("target"), opt(ref("line"))];
-                opEntries.push({ literal: open, tails: [[...header, ...bodyNE]] });
-            } else if (op === "OPEN" || op === "FOLD") {
-                // Log curation selects sets by tags + target + matcher. It has no positional
-                // scope slot; FIND alone paginates selected results.
-                const header = [opt(ref("tags")), ref("target")];
-                opEntries.push({ literal: open, tails: [[...header, ...selfClose], [...header, ...body]] });
-            } else {
-                // FIND/READ/EDIT share the canonical tagged-target-scope shape.
-                const header = [opt(ref("tags")), ref("target"), opt(ref("line"))];
-                opEntries.push({ literal: open, tails: [[...header, ...selfClose], [...header, ...body]] });
-            }
-        }
+    // Matcher bodies are single-line on the rail. `:` and `#` are excluded only
+    // in first position: colon retains the existing typo sieve, while hash would
+    // be interpreted as a direct same-lane heading at section start.
+    model.set("pattern-body-ne", [[
+        cls([...CONTROL_RANGES, ...LINE_TERMINATORS, ...C(":#")], true),
+        star(cls([...CONTROL_RANGES, ...LINE_TERMINATORS], true)),
+    ]]);
+
+    const tags = [ref("tags-slot")];
+    const target = [ref("target-slot")];
+    const line = [ref("line-slot")];
+    const taggedTargetScope = (op: string): GSeq => [
+        lit(`## ${op}1`),
+        opt(tags[0]),
+        target[0],
+        opt(line[0]),
+    ];
+
+    requiredBodySection(model, "plan", [lit("# PLAN1")]);
+    optionalBodySection(model, "find", taggedTargetScope("FIND"), "pattern-body");
+    optionalBodySection(model, "read", taggedTargetScope("READ"), "pattern-body");
+    optionalBodySection(model, "edit", taggedTargetScope("EDIT"), "section-body");
+    requiredBodySection(model, "copy", taggedTargetScope("COPY"));
+    requiredBodySection(model, "move", taggedTargetScope("MOVE"));
+    optionalBodySection(model, "open", [lit("## OPEN1"), opt(tags[0]), target[0]], "pattern-body");
+    optionalBodySection(model, "fold", [lit("## FOLD1"), opt(tags[0]), target[0]], "pattern-body");
+    optionalBodySection(model, "exec", [
+        lit("## EXEC1"),
+        opt(ref("exec-slot")),
+        opt(target[0]),
+        opt(line[0]),
+    ], "section-body");
+    requiredBodySection(model, "work", [lit("## WORK1"), opt(ref("branch-slot")), target[0]]);
+    requiredBodySection(model, "fork", [lit("## FORK1"), opt(ref("branch-slot")), target[0]]);
+    emptySection(model, "kill", [lit("## KILL1"), opt(ref("kill-slot")), target[0]]);
+
+    const sendMidHeaders: GSeq[] = [
+        [lit("## SEND1"), ref("status-mid-slot"), opt(ref("target-slot"))],
+        [lit("## SEND1"), opt(ref("target-slot"))],
+    ];
+    model.set("send-mid", sendMidHeaders.flatMap((header): GRule => [
+        [...header, lit("\n\n")],
+        [...header, lit("\n"), ref("section-body-ne"), lit("\n\n")],
+    ]));
+
+    const final = (name: string, signal: string, park: boolean): void => {
+        model.set(name, [[
+            lit(`## SEND1 [${signal}]`),
+            opt(ref("target-slot")),
+            ...(park ? [opt(ref("park-slot"))] : []),
+            lit("\n"),
+            ref("section-body-ne"),
+        ]]);
+    };
+    final("send-102", "102", false);
+    final("send-200", "200", false);
+    final("send-202", "202", true);
+    final("send-300", "300", false);
+    final("send-499", "499", false);
+    model.set("send-final-any", [[ref("send-102")], [ref("send-200")], [ref("send-202")], [ref("send-300")], [ref("send-499")]]);
+    model.set("send-final-first", [[ref("send-200")], [ref("send-202")], [ref("send-300")], [ref("send-499")]]);
+
+    model.set("op-statement", [
+        [ref("find")], [ref("read")], [ref("edit")], [ref("copy")], [ref("move")],
+        [ref("open")], [ref("fold")], [ref("exec")], [ref("work")], [ref("fork")], [ref("kill")],
+    ]);
+
+    const maxMidSteps = 14;
+    for (let index = 0; index < maxMidSteps; index++) {
+        model.set(`tail-${index}`, [
+            [ref("send-mid"), ref(`tail-${index + 1}`)],
+            [ref("op-statement"), ref(`tail-${index + 1}`)],
+            [ref(index === 0 ? "send-final-first" : "send-final-any")],
+        ]);
     }
+    model.set(`tail-${maxMidSteps}`, [[ref("send-final-any")]]);
 
-    // Constrain one raw, unsplit channel + PLURNK sentence. `sep` is bounded so
-    // whitespace cannot consume the response envelope. {§gbnf-turn-shape}
-    // {§gbnf-reasoning-boundary}
     model.set("sep", [Array.from({ length: 7 }, () => opt(WS))]);
-    // The body complement rejects both delimiters. Its epsilon keeps an empty reasoning
-    // body legal while the production still supplies exactly one opener and closer.
     const channelOpen = "<|channel>thought\n";
     const channelClose = "<channel|>";
     forbidLiterals(model, "rz-chan", [channelOpen, channelClose]);
     model.set("channel", [[lit(channelOpen), ref("rz-chan-b0"), lit(channelClose)]]);
-    // The existing tail is a cardinality rail only: at most 14 internal statements,
-    // followed by a terminal SEND. Semantic turn policy remains in core.
-    const K_MID_STEPS = 14;
-    for (let k = 0; k < K_MID_STEPS; k++) {
-        model.set(`tail-${k}`, [
-            [ref("send-mid-any"), ref("sep"), ref(`tail-${k + 1}`)],
-            [ref("op-statement"), ref("sep"), ref(`tail-${k + 1}`)],
-            // Position 0 exits through the no-idle trie (no [102]); every deeper
-            // position has >=1 statement behind it, so the full disposition set returns.
-            [ref(k === 0 ? "send-final-first" : "send-final-any"), ref("sep")],
-        ]);
-    }
-    // Step budget exhausted: terminal SEND is the only continuation.
-    model.set(`tail-${K_MID_STEPS}`, [[ref("send-final-any"), ref("sep")]]);
-    model.set("root-turn", [[ref("channel"), ref("sep"), ref("plan"), ref("sep"), ref("tail-0")]]);
-    trieRules(model, "op-statement", opEntries);
-    trieRules(model, "send-mid-any", sendMidEntries);
-    trieRules(model, "send-final-any", sendFinalEntries);
-    trieRules(model, "send-final-first", sendFinalFirstEntries);
-    // statement / send-statement: single-statement entries used only by the corpus and
-    // fuzz tests; unreachable from root-turn, so pruned from the shipped artifact.
-    model.set("send-statement", [[ref("send-mid-any")], [ref("send-final-any")]]);
-    model.set("statement", [[ref("op-statement")], [ref("send-statement")]]);
-    // status-final-rest completes the terminal set beside inline [102]/[202].
-    // status-mid is the complement of {102,200,202,300,499} over three digits,
-    // encoded as a first-digit trie. {§send-mid-reservation}
-    model.set("status-final-rest", [[lit("200")], [lit("300")], [lit("499")]]);
-    model.set("park", [[lit("<"), ref("park-t"), opt(ref("park-poll")), lit(">")]]);
-    model.set("park-t", [[lit("-1")], [plus(DIGIT)]]);
-    model.set("park-poll", [[lit(","), plus(DIGIT)]]);
+    model.set("root-turn", [[ref("channel"), ref("sep"), ref("plan"), ref("tail-0")]]);
+
+    model.set("statement", [[ref("op-statement")], [ref("send-mid")]]);
+    model.set("send-statement", [[ref("send-mid")], [ref("send-final-any")]]);
+
+    model.set("tags-slot", [[lit(" "), ref("tags")]]);
+    model.set("target-slot", [[lit(" "), ref("target")]]);
+    model.set("line-slot", [[lit(" "), ref("line")]]);
+    model.set("exec-slot", [[lit(" "), ref("exec-sig")]]);
+    model.set("branch-slot", [[lit(" "), ref("branch")]]);
+    model.set("kill-slot", [[lit(" "), ref("kill-sig")]]);
+    model.set("status-mid-slot", [[lit(" ["), ref("status-mid"), lit("]")]]);
+    model.set("park-slot", [[lit(" "), ref("park")]]);
+
     model.set("status-mid", [
-        [cls([R("0", "0"), R("5", "9")]), DIGIT, DIGIT],   // 0xx / 5xx-9xx: no disposition code here
+        [cls([R("0", "0"), R("5", "9")]), DIGIT, DIGIT],
         [lit("1"), ref("status-mid-1")],
         [lit("2"), ref("status-mid-2")],
         [lit("3"), ref("status-mid-3")],
         [lit("4"), ref("status-mid-4")],
     ]);
-    model.set("status-mid-1", [[lit("0"), cls([R("0", "1"), R("3", "9")])], [cls([R("1", "9")]), DIGIT]]); // forbid 102
-    model.set("status-mid-2", [[lit("0"), cls([R("1", "1"), R("3", "9")])], [cls([R("1", "9")]), DIGIT]]); // forbid 200 and 202
-    model.set("status-mid-3", [[lit("0"), cls([R("1", "9")])], [cls([R("1", "9")]), DIGIT]]);              // forbid 300
-    model.set("status-mid-4", [[lit("9"), cls([R("0", "8")])], [cls([R("0", "8")]), DIGIT]]);              // forbid 499
+    model.set("status-mid-1", [[lit("0"), cls([R("0", "1"), R("3", "9")])], [cls([R("1", "9")]), DIGIT]]);
+    model.set("status-mid-2", [[lit("0"), cls([R("1", "1"), R("3", "9")])], [cls([R("1", "9")]), DIGIT]]);
+    model.set("status-mid-3", [[lit("0"), cls([R("1", "9")])], [cls([R("1", "9")]), DIGIT]]);
+    model.set("status-mid-4", [[lit("9"), cls([R("0", "8")])], [cls([R("0", "8")]), DIGIT]]);
+
     model.set("tags", [[lit("["), ref("tag"), star(ref("tag-rest")), lit("]")]]);
     model.set("branch", [[lit("["), plus(BRANCH_CHAR), lit("]")]]);
     model.set("tag", [[plus(TAG_CHAR)]]);
     model.set("tag-rest", [[lit(","), ref("tag")]]);
-    // Target — the canonical generation subset. ANTLR deliberately accepts balanced
-    // raw parentheses and unknown backslash pairs, but the rail emits only the three
-    // lossless target-slot escapes. {§path-parentheses}
     model.set("target", [[lit("("), ref("target-inner"), lit(")")]]);
     model.set("target-inner", [[plus(ref("target-atom"))]]);
     model.set("target-atom", [
@@ -348,12 +235,13 @@ export const buildModel = (): GModel => {
         [ref("target-escape")],
     ]);
     model.set("target-escape", [[lit("\\\\")], [lit("\\(")], [lit("\\)")]]);
-    // N numeric components, comma-separated (the dictated form). `<N>`, `<N,M>`,
-    // `<0.7,10,20>` all derive; dash-separated scope stays parse-side only.
     model.set("line", [[lit("<"), ref("int"), star(ref("line-rest")), lit(">")]]);
-    model.set("line-rest", [[lit(","), opt(lit(" ")), ref("int")]]);
+    model.set("line-rest", [[lit(","), ref("int")]]);
     model.set("int", [[opt(lit("-")), plus(DIGIT), opt(ref("frac"))]]);
     model.set("frac", [[lit("."), plus(DIGIT)]]);
+    model.set("park", [[lit("<"), ref("park-t"), opt(ref("park-poll")), lit(">")]]);
+    model.set("park-t", [[lit("-1")], [plus(DIGIT)]]);
+    model.set("park-poll", [[lit(","), plus(DIGIT)]]);
     model.set("exec-sig", [[lit("["), EXEC_HEAD, star(EXEC_TAIL), lit("]")]]);
     model.set("kill-sig", [[lit("["), DIGIT, opt(DIGIT), lit("]")]]);
     return model;
@@ -363,23 +251,21 @@ const escapeLiteral = (text: string): string => text
     .replace(/\\/g, "\\\\").replace(/"/g, "\\\"")
     .replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
 
-const escapeClassChar = (cp: number): string => {
-    if (cp === 0x0A) return "\\n";
-    if (cp === 0x0D) return "\\r";
-    if (cp === 0x09) return "\\t";
-    if (cp < 0x20 || cp === 0x7F) return `\\x${cp.toString(16).padStart(2, "0").toUpperCase()}`;
-    const ch = String.fromCodePoint(cp);
-    // llama.cpp's GBNF escape table covers \\ \" \[ \] (plus \x \u \t \r \n) — nothing else.
-    if (ch === "\\" || ch === "]" || ch === "[") return `\\${ch}`;
-    return ch;
+const escapeClassChar = (codePoint: number): string => {
+    if (codePoint === 0x0A) return "\\n";
+    if (codePoint === 0x0D) return "\\r";
+    if (codePoint === 0x09) return "\\t";
+    if (codePoint < 0x20 || codePoint === 0x7F) return `\\x${codePoint.toString(16).padStart(2, "0").toUpperCase()}`;
+    const character = String.fromCodePoint(codePoint);
+    if (character === "\\" || character === "]" || character === "[") return `\\${character}`;
+    return character;
 };
 
 const serializeClass = (ranges: Array<[number, number]>, negate: boolean): string => {
-    // `-` is a range operator mid-class; emitting it as the final element keeps it literal.
     const sorted = ranges.toSorted((a, b) => Number(a[0] === a[1] && a[0] === 0x2D) - Number(b[0] === b[1] && b[0] === 0x2D));
-    const parts = sorted.map(([a, b]) => {
-        if (a === b) return a === 0x2D ? "-" : escapeClassChar(a);
-        return `${escapeClassChar(a)}-${escapeClassChar(b)}`;
+    const parts = sorted.map(([start, end]) => {
+        if (start === end) return start === 0x2D ? "-" : escapeClassChar(start);
+        return `${escapeClassChar(start)}-${escapeClassChar(end)}`;
     });
     return `[${negate ? "^" : ""}${parts.join("")}]`;
 };
@@ -396,21 +282,18 @@ const serializeItem = (item: GItem): string => {
     }
 };
 
-// Collect rule names reachable from `rootName` so each artifact carries only the
-// rules its root uses — the commit default ships its 2-state text2 without the
-// ~40-state opener complement, and vice versa.
 const reachableFrom = (model: GModel, rootName: string): Set<string> => {
     const seen = new Set<string>();
     const visit = (name: string): void => {
         if (seen.has(name)) return;
         seen.add(name);
-        const alts = model.get(name);
-        if (!alts) return;
+        const alternatives = model.get(name);
+        if (!alternatives) return;
         const walk = (item: GItem): void => {
             if (item.kind === "ref") visit(item.name);
             else if (item.kind === "rep") walk(item.item);
         };
-        for (const seq of alts) for (const item of seq) walk(item);
+        for (const sequence of alternatives) for (const item of sequence) walk(item);
     };
     visit(rootName);
     return seen;
@@ -422,22 +305,22 @@ export const serializeGbnf = (model: GModel, rootName: string): string => {
         "# @generated by scriptify/generate-gbnf.ts — do not edit; run `npm run build:gbnf`.",
         `root ::= ${rootName}`,
     ];
-    for (const [name, alts] of model) {
+    for (const [name, alternatives] of model) {
         if (!reachable.has(name)) continue;
-        const hasEpsilon = alts.some((seq) => seq.length === 0);
-        const bodies = alts.filter((seq) => seq.length > 0).map((seq) => seq.map(serializeItem).join(" "));
-        if (hasEpsilon) {
-            lines.push(`${name} ::= (${bodies.join(" | ")})?`);
-        } else {
-            lines.push(`${name} ::= ${bodies.join(" | ")}`);
-        }
+        const hasEpsilon = alternatives.some((sequence) => sequence.length === 0);
+        const bodies = alternatives
+            .filter((sequence) => sequence.length > 0)
+            .map((sequence) => sequence.map(serializeItem).join(" "));
+        lines.push(hasEpsilon
+            ? `${name} ::= (${bodies.join(" | ")})?`
+            : `${name} ::= ${bodies.join(" | ")}`);
     }
-    return lines.join("\n") + "\n";
+    return `${lines.join("\n")}\n`;
 };
 
 if (import.meta.main) {
     await mkdir("dist", { recursive: true });
     const model = buildModel();
     await writeFile("dist/plurnk.gbnf", serializeGbnf(model, "root-turn"));
-    process.stderr.write("Generated dist/plurnk.gbnf (raw turn: CHANNEL:PLAN:OPS:SEND)\n");
+    process.stderr.write("Generated dist/plurnk.gbnf (raw turn: CHANNEL + # PLAN1 + ## OP1 sections)\n");
 }

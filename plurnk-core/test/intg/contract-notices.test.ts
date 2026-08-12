@@ -19,7 +19,9 @@ import { OperationFailureError } from "../../src/core/results.ts";
 const contentResponse = (content: string): MockResponse => ({
     assistant: {
         // Turns lead with PLAN; the Engine re-parses the supplied content.
-        content: content.startsWith("<|PLAN") ? content : `<|PLAN>admit the supplied turn<PLAN|>\n${content}`,
+        content: content.startsWith("# PLAN")
+            ? content
+            : `# PLAN1\nadmit the supplied turn\n\n${content}`,
         reasoning: null,
     },
     assistantRaw: null,
@@ -27,14 +29,14 @@ const contentResponse = (content: string): MockResponse => ({
 
 // A complete, admitted draining turn. Its only job is to run so the model's
 // next packet drains the notices buffer on read.
-const drainTurn = contentResponse("<|SEND[200]>drained<SEND|>");
+const drainTurn = contentResponse("## SEND1 [200]\ndrained");
 
 // A provider transport anomaly notice. Grammar verdicts are engine-owned under
 // {§rail-truth-engine-verdict}; the provider notice path remains for observations
 // such as a decode escaping into a discarded channel.
 // `extraDrains` clean turns follow so the buffer can be observed draining.
-const NOTICE_CONTENT = "<|PLAN>reasoning<PLAN|>\n<|SEND[200]>noted<SEND|>";
-const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("<|SEND") + 4)).length; // `N` on line 2, column 4
+const NOTICE_CONTENT = "# PLAN1\nreasoning\n\n## SEND1 [200]\nnoted";
+const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("## SEND1") + 3)).length;
 const noticeProvider = (extraDrains: number) => {
     const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
     const real = provider.generate.bind(provider);
@@ -94,7 +96,7 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
         const notice = packetSection(p2, "notices");
         assert.equal(
             notice,
-            "* grammar_unenforced: decode escaped into a discarded channel @ 2:4",
+            "* grammar_unenforced: decode escaped into a discarded channel @ 4:3",
             "the notice surfaced on the next packet with its bounded message and content-offset",
         );
 
@@ -105,10 +107,10 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
         assert.match(wire, /## Notices/);
         assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");
         assert.doesNotMatch(wire, /error:\/\//, "no error:// snippet fence");
-        assert.match(wire, /^\* grammar_unenforced: decode escaped into a discarded channel @ 2:4$/m);
+        assert.match(wire, /^\* grammar_unenforced: decode escaped into a discarded channel @ 4:3$/m);
 
         // The mirror is ALWAYS folded — even on the NOTICE turn (the auto-OPEN trigger is retired);
-        // the model READs the folded row at line 2 when it cares.
+        // the model READs the folded row at the cited line when it cares.
         const echo = (await db.test_log_entries_by_loop.all<{ op: string | null; origin: string; expanded: number; turn_id: number; attrs: string }>({ loop_id: loopId }))
             .find((r) => r.turn_id === t1.turnId && r.op === null && r.origin === "model" && JSON.parse(r.attrs).kind === "model_emission");
         assert.ok(echo !== undefined && echo.expanded === 0, "the NOTICE turn's model echo stays folded");
@@ -323,12 +325,12 @@ test("engine brackets generate() with turn_awaiting_model → turn_generated not
     } finally { await db.close(); }
 });
 
-test("a parser warning remains an advisory — valid statements complete and no durable failure is minted", async () => {
+test("a parser warning remains advisory while the independently invalid mutation stays durable", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "finish despite a recoverable grammar near-miss");
+        const loopId = await insertLoop(db, workerId, 1, "finish despite a recoverable grammar advisory");
         const broadcasts: Array<{ payload: { loopId: number; notice: Record<string, unknown> } }> = [];
         const engine = new Engine({
             db,
@@ -337,7 +339,7 @@ test("a parser warning remains an advisory — valid statements complete and no 
                 broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } });
             },
         });
-        const emission = "<|PLAN>😀<PLAN|> <|CLOSE(log://x)>x<CLOSE|> <|SEND[200]>done<SEND|>";
+        const emission = "# PLAN1\nedit the file\n\n## EDIT1 [src/example.ts]\nbody\n\n## SEND1 [200]\ndone";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
@@ -347,22 +349,29 @@ test("a parser warning remains an advisory — valid statements complete and no 
 
         const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
-        assert.equal(turn.status, 200, "the valid terminal SEND still determines the turn result");
+        assert.equal(turn.status, 102, "the invalid mutation prevents premature terminal completion");
+        assert.equal(turn.emissionAttempts, 1, "the advisory does not reject and reroll the trustworthy frame");
+        assert.ok(
+            turn.outcomes.some(({ op, status }) => op === "EDIT" && status === 400),
+            "the targetless mutation fails through ordinary operation execution",
+        );
         const advisories = broadcasts.filter(({ payload }) => payload.notice.kind === "parse_advisory");
         assert.equal(advisories.length, 1, "the recoverable parser diagnosis is emitted once");
         assert.equal(advisories[0]!.payload.notice.level, "warn");
-        assert.match(String(advisories[0]!.payload.notice.message), /`<\|CLOSE`.*did you mean `<\|FOLD`/);
-        const warningColumn = Array.from(emission.slice(0, emission.indexOf("<|CLOSE"))).length;
+        assert.match(String(advisories[0]!.payload.notice.message), /has no `\(target\)`/);
         assert.deepEqual(
             advisories[0]!.payload.notice.position,
-            { type: "content-offset", line: 1, column: warningColumn },
+            { type: "content-offset", line: 4, column: 0 },
             "the Notice retains the parser's typed source position",
         );
-        assert.notEqual(emission.indexOf("<|CLOSE"), warningColumn, "the specimen distinguishes code-point and UTF-16 columns");
+        const [failedEdit] = await db.test_log_entries_by_worker_op_full.all<{
+            status_rx: number;
+        }>({ worker_id: workerId, op: "EDIT" });
+        assert.equal(failedEdit?.status_rx, 400, "the operation's own row preserves its durable failure");
         assert.deepEqual(
             await db.test_error_rows_for_worker.all({ worker_id: workerId }),
             [],
-            "an advisory cannot become durable failure truth",
+            "the advisory and operation failure mint no substitute error row",
         );
     } finally { await db.close(); }
 });
@@ -396,14 +405,14 @@ test("a notice broadcasts structured and drains as its terse model-facing projec
         const liveNotice = liveParse[0].payload.notice;
         assert.equal(liveNotice.source, "provider:mock");
         assert.equal(liveNotice.kind, "grammar_unenforced");
-        assert.deepEqual(liveNotice.position, { type: "content-offset", line: 2, column: 4 });
+        assert.deepEqual(liveNotice.position, { type: "content-offset", line: 4, column: 3 });
 
         // Model side: the notice drains once as a bounded projection.
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
         assert.equal(
             packetSection(p2, "notices"),
-            "* grammar_unenforced: decode escaped into a discarded channel @ 2:4",
+            "* grammar_unenforced: decode escaped into a discarded channel @ 4:3",
         );
     } finally { await db.close(); }
 });

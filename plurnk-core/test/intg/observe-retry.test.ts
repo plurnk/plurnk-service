@@ -27,7 +27,7 @@ test("observe: an invalid first emission retries under the turn without failing 
                 },
                 {
                     assistant: {
-                        content: "<|PLAN>curate:<PLAN|>\n<|SEND[200]>recovered.<SEND|>",
+                        content: "# PLAN1\ncurate:\n\n## SEND1 [200]\nrecovered.",
                         reasoning: null,
                     },
                 },

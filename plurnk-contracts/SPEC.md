@@ -56,7 +56,7 @@ flowchart LR
 | Stable current law       | `SPEC.md`                           | Owns invariants and boundaries; forge issues retain history                     |
 | Canonical model teaching | `plurnk.md`                         | Teaches the lean spelling and operational model the model should emit           |
 | Constrained generation   | generated `plurnk.gbnf`             | Increases likely ANTLR compliance without reproducing all parser/runtime checks |
-| Accepted syntax          | `plurnkLexer.g4`, `plurnkParser.g4` | Recognizes document tiers, statement shape, slot shape, and body fencing        |
+| Accepted syntax          | `plurnkLexer.g4`, `plurnkParser.g4` | Recognizes document tiers, heading lanes, slot shape, and section boundaries    |
 | Typed admission          | `AstBuilder`                        | Produces JSON-serializable unions and validates deterministic body/path syntax  |
 | Shared wire data         | `schema/*.json`                     | Defines runtime-neutral data shapes projected into generated TypeScript         |
 | Stateful behavior        | consuming runtime                   | Resolves addresses, permissions, selection arithmetic, effects, and lifecycle   |
@@ -143,14 +143,14 @@ root-turn ::= channel sep plan sep tail-0
 §gbnf-turn-shape `channel` is exactly one Gemma Harmony enclosure at byte zero, beginning
 `<|channel>thought\n` and ending `<channel|>`. Its body may be empty but cannot
 contain another opener or the closer. `sep` is zero through seven whitespace
-characters. No channel is legal after the leading one. `tail-0` is unchanged
-apart from that removal: zero through fourteen internal statements, separated
-only by `sep`, followed by exactly one terminal SEND under the existing terminal
-eligibility rules.
+characters. No channel is legal after the leading one. The PLURNK content begins
+with `# PLAN1`; every following operation is a same-lane `## OP1` section.
+`tail-0` admits zero through fourteen internal operations followed by exactly
+one terminal SEND under the existing terminal-eligibility rules.
 
 ```mermaid
 flowchart LR
-    raw["Raw constrained decode<br/>channel · sep · PLAN · sep · tail-0"]
+    raw["Raw constrained decode<br/>channel · sep · # PLAN1 · H2 operations"]
     split["llama.cpp<br/>reasoning_format: auto"]
     reasoning["reasoning_content<br/>channel body"]
     content["content<br/>PLAN through terminal SEND"]
@@ -167,53 +167,63 @@ revalidated as though it still contained the required channel. Provider and
 core own the projection evidence and rail-verdict boundary; this package owns
 only the raw language and the parser/AstBuilder result.
 
-§plan-body-no-openers On the GBNF rail, PLAN is unsuffixed and its body excludes
-the literal `<|`. A single `<` remains legal. This prevents an omitted `<PLAN|>`
-from consuming following operations as intended-goals text; ANTLR remains
-tolerant during ingestion.
+§rail-heading-boundaries On the GBNF rail, PLAN and every operation use lane `1`.
+Every reserved PLAN or operation heading stem is structural, regardless of the
+suffix a model attempts next, so a non-`1` pseudo-heading cannot be swallowed as
+literal body text. Rail bodies therefore cannot quote reserved headings from any
+lane. This makes both the canonical suffix and section boundary structurally
+available during constrained generation; ANTLR remains the wider language and
+accepts intentional alternate-lane literals during ingestion.
 
 ## §canonical-statement 2. Canonical statement form
 
 ```text
-<|OPsuffix[signal]?(path)?<scope>?|>
-<|OPsuffix[signal]?(path)?<scope>?>body<OPsuffix|>
+# PLANsuffix
+body
+
+## OPsuffix [signal]? (path)? <scope>?
+body?
 ```
 
-§body-fence A paired statement ends its header with `>`; everything before the
-matching `<OPsuffix|>` close is preserved verbatim and is opaque to operation
-keywords, slot characters, and nested PLURNK-looking text. Its body may contain
-zero or more characters. A self-closing statement ends its header with `|>`.
+§section-boundary A statement is one Markdown section. PLAN alone uses a level-one
+heading; every other operation uses a level-two heading. Its body is the
+character-perfect section content before the next structural heading or EOF.
+Canonical adjacent sections have one blank separator line. That final separator
+line is syntax and is not body content; any additional preceding blank lines
+remain body content. The tolerant ingester also admits a structural heading on
+the immediately following line.
 
-§empty-body-equivalence Self-closing is an optional spelling of a paired empty
-body. Both spellings normalize identically for their operation, and the public
-AST and operation semantics do not retain the delimiter choice. Any boundary
-that requires a nonempty body treats both spellings as empty.
+§empty-section An empty section has no body lines between its heading and the
+section separator (or EOF) and normalizes to a null body.
 
-| Element     | Canonical contract                                                 |
-|-------------|--------------------------------------------------------------------|
-| `<|`        | Required statement opener                                          |
-| `OP`        | One protocol operation                                             |
-| `suffix`    | Optional enclosure suffix, joined directly to `OP`                 |
-| `[signal]`  | Optional operation-specific signal                                 |
-| `(path)`    | Optional syntax slot whose operation contract may require a target |
-| `<scope>`   | Optional operation-specific numeric scope                          |
-| `|>`        | Ends a statement with an empty body                                |
-| `>`         | Ends the header and begins a paired body                           |
-| `body`      | Zero or more characters of operation-specific, character-perfect content |
-| `<OPsuffix|>` | Ends a paired body and must match the opener exactly             |
+| Element      | Canonical contract                                                        |
+|--------------|---------------------------------------------------------------------------|
+| `# PLAN`     | Required level-one turn anchor                                             |
+| `## OP`      | Level-two protocol operation                                               |
+| `suffix`     | Heading lane, joined directly to PLAN or OP                                |
+| `[signal]`   | Optional operation-specific signal, preceded by one space                  |
+| `(path)`     | Optional target slot, preceded by one space                                |
+| `<scope>`    | Optional numeric scope, preceded by one space                              |
+| line ending  | Ends the single-line heading                                               |
+| `body`       | Zero or more characters of operation-specific, character-perfect content  |
+| blank line   | Canonical section separator; excluded from the preceding body              |
 
 The following constraints are structural:
 
-- §close-tag-match The close `<OPsuffix|>` must character-match the opening operation and suffix.
-- A statement has exactly one end form: `|>` or `>body<OPsuffix|>`; `body` may be empty.
+- §lane-match PLAN establishes one lane for the turn. A heading is structural
+  only when its suffix character-matches that lane; a different suffix remains
+  ordinary body text.
+- PLAN is the only H1 operation and every non-PLAN operation is H2.
+- A header occupies one physical line.
 - Each admitted signal, target, and scope slot appears at most once.
 - OPEN, FOLD, WORK, FORK, and KILL do not admit a scope slot.
-- A suffix is `[A-Za-z0-9_]*`; generation canon uses digit suffixes when enclosure is needed.
+- An ingested suffix is `[A-Za-z0-9_]*`; canonical teaching and the GBNF use `1`.
 
 §slot-order Canonical producers and the GBNF rail emit signal, then target, then
-scope. The tolerant ANTLR ingester accepts any permutation of the slots admitted
-by that operation, at most once each. Accepted permutation is not a second
-canonical spelling.
+scope, with one ASCII space before every present slot. The tolerant ANTLR
+ingester accepts additional horizontal spacing and any permutation of the slots
+admitted by that operation, at most once each. Accepted permutation is not a
+second canonical spelling.
 
 The ingester also accepts several bounded noncanonical forms so it can explain
 or safely execute understandable input:
@@ -222,22 +232,21 @@ or safely execute understandable input:
 |---------------------------------------------------|---------------------------------------------------------------------|
 | Reordered admitted slots                          | Producers retain signal → target → scope order                      |
 | Missing target on a generally targeted operation | AST carries `null`; the runtime rejects when the target is required |
-| PLAN modifiers or suffix                          | Model canon keeps PLAN slotless and unsuffixed                      |
-| KILL annotation body                              | AST preserves it; model teaching self-closes KILL                   |
+| PLAN modifiers or a non-`1` lane                  | Model canon keeps PLAN slotless and uses lane `1`                   |
+| KILL annotation body                              | AST preserves it; model teaching leaves the KILL section empty      |
 | Dash-separated or comma-space scope numbers       | Producers use adjacent comma-separated numbers                      |
-| Empty content where semantics require a body      | Either spelling normalizes empty; the operation owner rejects it    |
+| Empty content where semantics require a body      | The empty section normalizes null; the operation owner rejects it   |
 
 ## 3. Lexical elements
 
 | Element     | Accepted shape or role                                             |
 |-------------|--------------------------------------------------------------------|
 | `OP`        | `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC WORK FORK KILL PLAN` |
-| `suffix`    | `[A-Za-z0-9_]*`, adjacent to `OP`                                  |
+| `suffix`    | `[A-Za-z0-9_]*`, adjacent to PLAN or OP                            |
 | `[signal]`  | Operation-specific tags, identifier, branch, or integer            |
 | `(path)`    | Local path or scheme URL target; detailed in §5                    |
 | `<scope>`   | One or more signed integers or decimals; detailed in §7            |
-| `body`      | Opaque text between the body opener and matching close             |
-| `<OPsuffix|>` | Exact opening operation and suffix between `<` and `|>`          |
+| `body`      | Opaque section text before the next same-lane heading or EOF        |
 
 ## §op-shapes 4. Per-operation semantics
 
@@ -266,8 +275,9 @@ Directed SEND and KILL delegate any present code to the addressed target's
 operation contract; a live process may interpret a KILL code as a Unix signal,
 but that interpretation does not define KILL generally.
 
-§plan-intended-goals **PLAN records intended goals.** The PLAN body is the model's
-concise statement of intended goals. It is public, durable log content—not provider
+§plan-intended-goals **PLAN records working-state deltas.** Its concise body adds
+new material conclusions or unresolved questions and the current turn's priorities;
+it does not restate settled context. PLAN is public, durable log content—not provider
 reasoning. Dispatch records it and has no other runtime effect.
 
 OPEN and FOLD are log-curation operations owned by the core log surface. FOLD
@@ -321,7 +331,7 @@ Mutation semantics:
 - An empty body deletes the selected text.
 - `<0>` prepends and `<-1>` appends.
 - `<SL,SC,EL,EC>` deletes the exact exclusive-end region and inserts the body at its start.
-- §destination-scope-boundary COPY and MOVE parse the body as a destination `ResourceSelection`: a target plus an optional destination scope. A destination scope is final body content; a scope-shaped suffix followed by residue before the close tag is rejected rather than reinterpreted as target data. Scope-shaped text elsewhere remains target data, and a URL requiring the reserved terminal spelling percent-encodes its angle brackets. Header target, fragment, and scope independently select the source resource, channel, and region.
+- §destination-scope-boundary COPY and MOVE parse the body as a destination `ResourceSelection`: a target plus an optional destination scope. A destination scope is final body content; a scope-shaped suffix followed by residue before the section boundary is rejected rather than reinterpreted as target data. Scope-shaped text elsewhere remains target data, and a URL requiring the reserved terminal spelling percent-encodes its angle brackets. Header target, fragment, and scope independently select the source resource, channel, and region.
 
 ### §operation-observation Per-operation observations
 
@@ -402,7 +412,7 @@ pairs such as `\*` retain both characters for glob interpretation. Encoding
 escapes backslashes before parentheses, so every target string round-trips.
 Pathname producers retain the deliberate `%28`/`%29` alias and `%3C` spelling,
 but must use the lexical layer for identity-bearing query and fragment text
-rather than changing their percent-encoded spelling. Newlines and `<|` are
+rather than changing their percent-encoded spelling. Newlines and raw `<` are
 never target content. Glob metacharacters remain legal path data.
 
 §path-glob `PathSyntax` owns exact-path versus path-pattern classification.
@@ -463,9 +473,9 @@ statements remain recoverable when their boundaries are trustworthy.
 
 - §pattern-body-single-line The GBNF rail permits only single-line matcher
   bodies. A regex that matches a newline uses the two-character `\n` escape.
-  During ingestion, a FIND or READ matcher body that reaches a physical newline
-  without its close tag closes at that boundary with one recoverable lexer
-  diagnostic, so the following statement remains independently parseable.
+  ANTLR preserves the complete section body; the same-lane heading boundary
+  keeps every following statement independently parseable without a matcher-
+  specific implicit close rule.
 - §pattern-body-leading-colon The GBNF rail forbids `:` as the first matcher
   character. Empty matchers and later colons remain valid; a regex such as
   `/^:needle/` expresses a pattern beginning with a literal colon.
@@ -511,45 +521,44 @@ does not enforce either condition.
 
 ## §suffix-discipline 8. Suffix Discipline
 
-The `>body<OPsuffix|>` fencing handles the vast majority of grammatical-enclosure
-concerns: body content is fully opaque to OP keywords and modifier-like
-characters. The suffix is reserved for the residual edge case where
-body content literally contains the close-tag pattern `<OPkeyword|>`.
-That happens in two scenarios:
-
-1. **Nesting plurnk statements inside a body** (recording a plurnk
-   transcript, storing examples, etc.). The inner statement's close
-   `<OP|>` would prematurely terminate the outer's body.
-2. **Body content contains `<OPkeyword|>` as literal text** (e.g., a
-   stored JSON object with a value mentioning plurnk syntax).
+The suffix is a turn-wide heading lane. A heading carrying the active lane
+is structural; an otherwise valid PLURNK heading carrying another lane is body
+text. The lane therefore makes literal or nested PLURNK unambiguous.
 
 Suffix rules:
 
-- `suffix` is `[A-Za-z0-9_]*`, concatenated to `OP` with no separator, on both open and close.
-- Open `<|OPsuffix` and close `<OPsuffix|>` must character-match.
-- A non-empty suffix on the outer statement ensures its close tag
-  (`<OPsuffix|>`) is distinct from any `<OP|>` substring that may appear in
-  body content (whether as nested plurnk or as literal text).
-- The body of a statement cannot contain its own exact close-tag
-  literal; choose a suffix that does not collide.
-- Empty suffix is the default. Most statements need no suffix.
-- Generation-side canon dictates **digit** suffixes (`<|EDIT1>…<EDIT1|>`)
-  so the shipped GBNF (`dist/plurnk.gbnf`) can enumerate close tags —
-  the tag match is not context-free. The parser remains
-  permissive: any matching `[A-Za-z0-9_]*` suffix is valid.
+- `suffix` is `[A-Za-z0-9_]*`, concatenated to PLAN or OP with no separator.
+- The H1 PLAN establishes the lane; every real H2 operation heading in that
+  turn has the exact same suffix.
+- An empty suffix is accepted only by ANTLR ingestion. Canonical teaching and
+  the generated rail use `1` on PLAN and every operation.
+- A body may contain any heading whose suffix differs from the active lane.
+- To carry a nested turn written with lane `1`, choose another suffix for the
+  outer turn and repeat it on every outer heading.
+- The GBNF deliberately emits only lane `1`. It cannot emit body content that
+  contains a same-lane structural heading; unconstrained producers use another
+  outer lane when that representation is required.
 
-Example — a nested operation inside a suffixed outer body:
+Example — a lane-1 turn stored inside a lane-2 EDIT body:
 
 ```
-<|SEND1[400]>
-The following is a quoted plurnk operation, preserved verbatim:
-<|SEND[400](worker://reviewer)>still working<SEND|>
-<SEND1|>
+# PLAN2
+Store the quoted turn.
+
+## EDIT2 (worker:///quoted.plurnk)
+# PLAN1
+Answer from memory.
+
+## SEND1 [200]
+Paris.
+
+## SEND2 [200]
+Stored the quoted turn.
 ```
 
-The inner's `<SEND|>` close is ordinary body text because the outer close
-is `<SEND1|>`. This rule belongs to the body fence and applies to every
-operation, not to EDIT semantics.
+The lane-1 headings are ordinary EDIT body text because the outer turn's
+structural lane is `2`. This rule belongs to section framing and applies to
+every operation, not to EDIT semantics.
 
 ## 9. SEND Codes
 
@@ -591,7 +600,7 @@ structural:
 - §no-idle-102 A **zero-statement turn may not conclude `[102]`** — "continue"
   with nothing submitted is a spin. The GBNF's `tail-0` exits through
   a terminal trie without the `[102]` tail, so the idle turn (`PLAN`
-  straight into `SEND[102]`) is unemittable; one statement restores
+  straight into `## SEND1 [102]`) is unemittable; one statement restores
   the full disposition set. The other four stay legal bare (a zero-op
   `[202]` is the engine's obligation check). ANTLR stays tolerant
   (ingest side). A dispatch-emptied turn — ops emitted but failing
@@ -620,64 +629,59 @@ AST. Generated TypeScript targets the `antlr4ng` runtime.
 stateDiagram-v2
     [*] --> DEFAULT
     DEFAULT --> DEFAULT: whitespace or TEXT
-    DEFAULT --> SLOTS: minted <|OPsuffix
+    DEFAULT --> SLOTS: H1 PLANlane or H2 OPlane
     SLOTS --> SIGNAL: signal opener
     SIGNAL --> SLOTS: signal close
     SLOTS --> TARGET: target opener
     TARGET --> TARGET: balanced literals / target escapes
     TARGET --> SLOTS: target close at depth zero
     SLOTS --> SLOTS: scope token
-    SLOTS --> DEFAULT: self-close |>
-    SLOTS --> BODY: body opener >
-    BODY --> DEFAULT: matching close tag
+    SLOTS --> BODY: heading line end
+    BODY --> DEFAULT: same-lane heading boundary
+    BODY --> [*]: end of input
 ```
 
-SLOTS admits operation-appropriate signal, target, and scope openers in any
-order; the parser grammar enforces at-most-once multiplicity. Signal submodes
-select tags, integer, or identifier tokens by operation family. TARGET preserves
-balanced inner parentheses and recognized target escapes. BODY emits zero or
-more opaque characters until the semantic predicate recognizes the exact close
-from the captured opener.
+The first H1 PLAN establishes the turn lane. DEFAULT recognizes only an H1
+PLAN or H2 minted operation carrying that exact lane. SLOTS admits
+operation-appropriate signal, target, and scope openers in any order; the parser
+grammar enforces at-most-once multiplicity. Signal submodes select tags, integer,
+or identifier tokens by operation family. TARGET preserves balanced inner
+parentheses and recognized target escapes. BODY emits opaque text until a
+same-lane heading boundary or EOF.
 
-TURN is the single exception to opaque-body mode: its body opener returns to DEFAULT
-so a complete inner turn parses structurally, and a suffix stack recognizes its
-matching close. Every operation shares the same self-close token, and AstBuilder
-erases the choice between self-closing and paired empty forms before operation
-owners decide whether empty content is meaningful. {§empty-body-equivalence}
-
-DEFAULT recognizes minted operation openers and otherwise emits non-whitespace
-input as TEXT. A `<|word` whose word is not a minted operation remains TEXT.
-Complete native reasoning enclosures are likewise one TEXT token so an operation
-drafted inside pre-PLAN reasoning cannot become the turn anchor.
+A differently suffixed heading stays BODY text. Multi-turn logs are plain
+sequences of independently lane-anchored PLAN turns. Complete native reasoning
+enclosures before PLAN remain one TEXT token so an operation drafted inside
+provider reasoning cannot become the turn anchor.
 
 RecordingListener captures lexer and parser failures; AstBuilder adds visitor
-failures. PlurnkErrorStrategy recovers at statement boundaries where possible.
-An unfinished signal, target, body, or TURN leaves the lexer outside DEFAULT and
-therefore produces `unparsedTail`; no later input is trustworthy.
+failures. PlurnkErrorStrategy recovers at structural heading boundaries where
+possible. EOF is a valid body boundary. An unfinished signal or target produces
+`unparsedTail`; no later input is trustworthy.
 
 ## §whitespace-contract 11. Whitespace and interstatement text
 
-| Location                | Canonical generation                 | Tolerant ANTLR ingestion                                    |
-|-------------------------|--------------------------------------|-------------------------------------------------------------|
-| Between header slots    | Adjacent                             | Spaces, tabs, and newlines are ignored                      |
-| Between `OP` and suffix | Adjacent                             | Must remain adjacent                                        |
-| Inside signal           | Adjacent values                      | Horizontal whitespace is ignored; newline is invalid        |
-| Inside target           | Path alias plus target escapes        | Balanced literals tolerated; newline and `<|` are invalid   |
-| Inside scope            | Comma-separated numbers              | Dash separator and one post-comma space are also accepted   |
-| Inside body             | Character-perfect                    | Character-perfect                                           |
-| Inside close tag        | `<`, `OPsuffix`, and `|>` are adjacent | Must remain adjacent and match the opener                 |
-| Between turn statements | GBNF `sep`: zero to seven whitespace | Whitespace is hidden; non-whitespace may surface as TEXT    |
+| Location                    | Canonical generation                  | Tolerant ANTLR ingestion                                  |
+|-----------------------------|---------------------------------------|-----------------------------------------------------------|
+| Heading marker              | `# PLAN1` or `## OP1` at column zero  | Exact heading depth and column are structural             |
+| Between OP and suffix       | Adjacent                              | Must remain adjacent                                      |
+| Before each header slot     | One ASCII space                       | One or more horizontal whitespace characters             |
+| Inside signal               | Adjacent values                       | Horizontal whitespace is ignored; newline is invalid      |
+| Inside target               | Path alias plus target escapes         | Balanced literals tolerated; newline is invalid           |
+| Inside scope                | Comma-separated numbers               | Dash separator and one post-comma space are also accepted |
+| Inside body                 | Character-perfect                     | Character-perfect                                         |
+| Between canonical sections  | One empty separator line              | A directly following structural heading is also admitted  |
+| Before the first PLAN       | Nothing                               | Whitespace or TEXT may surface as preamble items           |
 
 PLURNK never escape-decodes body text: `\n` reaches the owning operation as
 backslash plus `n`. A matcher or executor may interpret those characters under
 its own body dialect. Producers that need a physical newline in literal EDIT
 content emit an actual newline.
 
-`parse` and `parseLog` admit TEXT around their PLAN-anchored operations and
-return it as ordered text items without assigning semantics. `parseStatements`
-and `parseClient` admit statements and hidden whitespace only. PLURNK defines no
-comment syntax; a consumer may treat script-tier text as commentary, but that is
-consumer policy rather than language syntax.
+`parse` admits TEXT before its PLAN and returns it as ordered text items without
+assigning semantics. Once a heading begins, all nonstructural text belongs to
+that section body. `parseStatements` and `parseClient` admit H2 statements;
+`parseLog` admits consecutive H1 PLAN turns. PLURNK defines no comment syntax.
 
 ## §public-api 12. Public API
 
@@ -686,11 +690,11 @@ and wire types come from generated schemas; the small hand-maintained parser
 types cover ordered parse items and `PlurnkParseError`, which JSON Schema cannot
 express. Consumers never receive ANTLR parse-tree or token types.
 
-§turn-shape `PlurnkParser.parse` accepts exactly one model turn. PLAN is the
-first operation, a disposition-coded SEND is the terminal operation, and PLAN
-cannot recur mid-turn. Tolerated TEXT may appear before PLAN, between operations,
-and after SEND; it remains an ordered text item. Missing either anchor or placing
-an operation after the terminal SEND is an error.
+§turn-shape `PlurnkParser.parse` accepts exactly one model turn. H1 PLAN is the
+first operation, a disposition-coded H2 SEND is the terminal operation, and PLAN
+cannot recur mid-turn. Tolerated TEXT may appear only before PLAN; after PLAN,
+nonstructural text is section body content. Missing either anchor or placing a
+same-lane operation after the terminal SEND is an error.
 
 §tier-entrypoints Each parser entry point owns one document tier:
 
@@ -698,8 +702,8 @@ an operation after the terminal SEND is an error.
 |--------------------------------|----------------------------------------------------------------|-----------------------|
 | `PlurnkParser.parse`           | One PLAN-anchored model turn with optional TEXT                | `PlurnkStatement`     |
 | `PlurnkParser.parseStatements` | Zero or more protocol statements and hidden whitespace         | `PlurnkStatement`     |
-| `PlurnkParser.parseLog`        | One or more TURN-wrapped model turns                           | `PlurnkStatement`     |
-| `PlurnkParser.parseClient`     | Protocol statements plus read-shaped client LOOK/BUFF commands | `ClientStatement`     |
+| `PlurnkParser.parseLog`        | One or more consecutive same-lane PLAN-anchored turns           | `PlurnkStatement`     |
+| `PlurnkParser.parseClient`     | H2 protocol statements plus read-shaped LOOK/BUFF commands      | `ClientStatement`     |
 
 Every entry point returns ordered `statement`, `error`, and, where admitted,
 `text` items. When present, {§unparsed-tail-boundary} governs the result's item
@@ -908,7 +912,7 @@ class PlurnkParseError extends Error {
 ```
 
 §parser-position Parser source locations are points, not text regions. An AST
-statement's `position` identifies the first `<` of its open tag; a diagnostic
+statement's `position` identifies the first `#` of its heading; a diagnostic
 identifies the offending or recovery point; a text item and `unparsedTail.from`
 identify the first point at which that item or undefined tail begins. A
 statement constructed without retained parsed source uses `UNKNOWN_POSITION`,
@@ -934,48 +938,34 @@ and 3.30.2](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html).
 | Source      | Boundary                                                                               |
 |-------------|----------------------------------------------------------------------------------------|
 | `"lexer"`   | Token-level failure, such as an unrecognized character or malformed `<L>` integer.     |
-| `"parser"`  | Structural failure, such as a missing close tag or wrong token order.                  |
+| `"parser"`  | Structural failure, such as the wrong heading depth or slot order.                     |
 | `"visitor"` | Semantic AST-construction failure, such as an invalid matcher dialect or signal shape. |
 
 `severity` distinguishes a hard error from a non-fatal advisory. The parser is
 the sole and complete owner of syntax-error messaging because it holds the
 parse state, lexer mode, and expected-token set that no consumer has. It
 produces the final diagnostic message, deduplicated expected-token lists,
-turn-shape imperatives (begin with `<|PLAN`, end with a terminal `<|SEND`), and
-these targeted diagnostics:
+turn-shape imperatives (begin with `# PLAN1`, end with a terminal
+`## SEND1 [code]`), and these targeted diagnostics:
 
-- §invented-closer-advisory **Invented closer.** When the forgiving parser
-  swallows a `<|Word…>…<Word|>` enclosure whose keyword is a known op confusion
-  (`<|CLOSE` → did you mean `<|FOLD`), it emits a `warning`-severity near-miss
-  advisory. On a never-closed body, when the swallowed text carries an
-  `<ALLCAPS|>` tag that is not the op's closer, the `unparsedTail` reason names it
-  (`found \`<COMPARISON_TASK|>\`, which is body text - the closer echoes the op's
-  name`) so a cap-cut runaway's recovery turn learns what happened, not just
-  that something did.
 - §signal-scope-redirect **EXEC scope in the signal slot.** When EXEC's
   `[signal]` slot (executor-ident mode) hits a leading `-` or digit —
   mark-shaped `<timeout, poll>` scope content mistyped into the brackets — the
   lexer message becomes `timeout/poll ride the \`<scope>\` slot; try
-  \`<|EXEC<-1,300>|>\`` instead of a raw `unrecognized character`. The redirect is
+  \`## EXEC1 <-1,300>\`` instead of a raw `unrecognized character`. The redirect is
   EXEC-scoped because its signal mode is exclusive; SEND/KILL are untouched.
 - §matcher-body-redirect **Matcher body in the slot region.** When the
-  post-target slot region begins with `$`, `~`, or `@`, the lexer redirects the
-  unambiguous body matcher after the header's `>` instead of returning the generic slot
-  list. Slash-led regex and XPath are excluded because the same character can
-  be a forgotten target wrap.
-- §plan-body-op-advisory **Operation text swallowed by PLAN.** When an
-  unsuffixed PLAN body contains op-shaped text (`<|EXEC`…), an advisory reports
-  that the likely omitted `<PLAN|>` swallowed the turn's ops (`ops belong after
-  the plan closes; did you omit \`<PLAN|>\`?`). A non-empty suffix deliberately
-  invokes {§suffix-discipline} and suppresses this advisory.
+  post-target header region begins with `$`, `~`, or `@`, the lexer redirects
+  the unambiguous matcher to the first body line instead of returning the
+  generic slot list. Slash-led regex and XPath are excluded because `/` can be
+  target data.
 - §misplaced-target-advisory **Mutation target in the signal slot.** When a
   mutating op (EDIT/COPY/MOVE) parses with a null `(target)` and a path-shaped
   `[signal]` element (a `/` or a dotted extension), the message redirects the
-  path into `(…)` (`\`<|EDIT\` has no \`(target)\` - that path sits in the
-  \`[…]\` tag slot; a target goes in \`(…)\`. Try \`<|EDIT(path)>…<EDIT|>\``). This
-  catches the markdown `[label](url)` reading at the parse where the engine
-  otherwise returns only a bare 400. It is gated on a path-shaped signal so a
-  genuine tags-only slip is not mis-steered toward a path it lacks.
+  path into `(…)` (`\`## EDIT1\` has no \`(target)\` - that path sits in the
+  \`[…]\` tag slot; a target goes in \`(…)\`. Try \`## EDIT1 (path)\``). It is
+  gated on a path-shaped signal so a genuine tags-only slip is not mis-steered
+  toward a path it lacks.
 
 §error-shape The diagnostic class determines how much guidance the parser may
 provide:
@@ -985,11 +975,11 @@ provide:
 | Hard fact              | `severity: "error"`   | One concise observed fact and violated constraint in PLURNK vocabulary.                   |
 | Targeted hard redirect | `severity: "error"`   | One canonical correction only when parser state makes the intended structure unambiguous. |
 | Non-fatal advisory     | `severity: "warning"` | One narrowly gated likely mistake and canonical alternative; input remains admitted.      |
-| Boundary loss          | `unparsedTail`        | Where trust ends, what remains open, and the required closer; later input is undefined.   |
+| Boundary loss          | `unparsedTail`        | Where trust ends, which header slot remains open, and why later input is undefined.        |
 
-All messages use PLURNK protocol vocabulary: open tag, close tag, signal,
-target, scope, line marker, body, statement header, or space between
-statements. They never expose ANTLR rule or token names. They refer to a slot or
+All messages use PLURNK protocol vocabulary: heading, lane, signal, target,
+scope, line marker, body, section boundary, or space between slots. They never
+expose ANTLR rule or token names. They refer to a slot or
 feature rather than an implementation rule. Generic tutoring, speculative
 intent, coordinate restatement, and multiple repair strategies are forbidden.
 
@@ -998,7 +988,7 @@ Examples of canonical hard facts:
 - `unrecognized character '<' in target`
 - `unrecognized character ':' in signal`
 - `unrecognized character 'X' in statement header`
-- `expected close tag; got end of input`
+- `a turn must begin with \`# PLAN1\``
 - `expected ')'; got ':'`
 
 Each malformed statement produces at most one hard error. The first recorded
@@ -1033,6 +1023,6 @@ runtime constructs this; the parser provides the fields):
     "column": 12,
     "source": "parser",
     "severity": "error",
-    "message": "expected close tag `:OPsuffix`; got end of input"
+    "message": "target slot of `## READ1` opened at line 1 but never closed - add `)`"
 }
 ```

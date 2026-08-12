@@ -41,7 +41,7 @@ class Notes {
 | `modelVisible` | Boolean. |
 | `folderScopes?` | `true` declares that a trailing slash on FIND is a collection scope. Absent/false means `/` is ordinary resource syntax. |
 | `flags?` | Optional exact `SchemeFlagAffinity`; see {§manifest-flag-affinity}. |
-| `example?` | The scheme's terse **hot-path** one-liner (e.g. `"READ(foo://thing/42)"`) — renders in the live catalogue every turn, so keep it to one canonical usage line. Omit → not advertised. Depth goes in `documentation`. |
+| `example?` | The scheme's terse **hot-path** one-liner (e.g. `"## READ1 (foo://thing/42)"`) — renders in the live catalogue every turn, so keep it to one canonical usage line. Omit → not advertised. Depth goes in `documentation`. |
 | `documentation?` | The **deep doc** (semantics / channels / edge cases). Consumer materializes it as a pull-able `worker://plurnk/docs/<name>.md` entry READ on demand; never hits the hot path. Mirrors `ExecInfo.documentation`. |
 | §manifest-client-display `glyph?` | Non-empty opaque client presentation glyph. It is projected through {§client-display-capabilities}; omission delegates identity fallback to the client. It never enters model teaching. |
 | `foldedByDefault?` | Entries land FOLDED, off the ranked manifest surface (READable via address, not poured into the ranked view). For executor-output streams (`<tag>://`) — containment one level up. Absent/false → ranked/first-class. |

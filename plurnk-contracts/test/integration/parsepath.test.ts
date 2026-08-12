@@ -225,9 +225,13 @@ test("{§path-request-metadata}: malformed request metadata diagnostics never qu
 test("{§path-request-metadata}: a bounded parser diagnostic does not echo malformed metadata", () => {
     const secret = "bounded-header-secret";
     const parsed = PlurnkParser.parse([
-        "<|PLAN|>",
-        `<|READ(https://x.dev/a{Authorization: Bearer ${secret})|>`,
-        "<|SEND[200]|>",
+        "# PLAN1",
+        "inspect",
+        "",
+        `## READ1 (https://x.dev/a{Authorization: Bearer ${secret})`,
+        "",
+        "## SEND1 [200]",
+        "done",
     ].join("\n"));
     const errors = parsed.items.filter((item) => item.kind === "error");
     assert.equal(errors.length, 1);
@@ -247,7 +251,7 @@ test("{§path-request-metadata}: malformed URL diagnostics do not relay native p
 });
 
 test("parsePath: headers flow through a full parse to the statement target", () => {
-    const result = PlurnkParser.parseStatements("<|READ(https://api.dev/me{Authorization: Bearer x}{Accept: q})|>");
+    const result = PlurnkParser.parseStatements("## READ1 (https://api.dev/me{Authorization: Bearer x}{Accept: q})");
     const item = result.items[0];
     if (item?.kind !== "statement") { assert.fail("expected statement"); return; }
     const { statement } = item;
@@ -274,9 +278,12 @@ test("parsePath: ws:// and wss:// decompose as UrlPath (scheme, host, port, quer
 
 test("parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses to url targets", () => {
     const src = [
-        "<|READ(ws://api.example.com/feed)|>",
-        "<|SEND(wss://api.example.com/feed)>hello<SEND|>",
-        "<|KILL(ws://api.example.com/feed)|>",
+        "## READ1 (ws://api.example.com/feed)",
+        "",
+        "## SEND1 (wss://api.example.com/feed)",
+        "hello",
+        "",
+        "## KILL1 (ws://api.example.com/feed)",
     ].join("\n");
     const result = PlurnkParser.parseStatements(src);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);

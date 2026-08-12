@@ -299,13 +299,11 @@ test("manifest: name http, default channel body, requiresWeb, network-volatile",
     assert.equal(Http.manifest.volatile, true);
     assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header", "html"]);
     // Self-doc for the model's packet listing (deep docs ride worker://plurnk/docs/http.md).
-    // The manifest example must be one complete copy-pasteable operation.
-    // it verbatim into the scheme directory. Guard the well-formed bodyless
-    // statement with a matching opener/closer shape — catches the regression class
-    // without taking a direct grammar dep (siblings pin only @plurnk/plurnk-schemes).
+    // Guard the one complete bodyless operation heading without taking a direct
+    // contracts dependency (siblings pin only @plurnk/plurnk-schemes).
     const example = Http.manifest.example ?? "";
-    const op = example.match(/^<\|([A-Z]+)\(.+\)\|>$/);
-    assert.ok(op, `example must be a well-formed self-closing statement, got: ${example}`);
+    const op = example.match(/^## ([A-Z]+)1 \(.+\)$/);
+    assert.ok(op, `example must be one bodyless operation heading, got: ${example}`);
     assert.equal(op[1], "READ");
 });
 

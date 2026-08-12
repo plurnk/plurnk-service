@@ -226,7 +226,7 @@ export interface SubscriptionCaps extends Pick<StreamSubscription, "notifyChunk"
 }
 
 // The force-cancel hook a streaming scheme hands to `open`. The engine's
-// cancel router invokes it to tear down from outside (SEND[499] → here).
+// cancel router invokes it to tear down from outside (SEND signal 499 → here).
 export interface SubscriptionHandle {
     cancel(): void | Promise<void>;
 }

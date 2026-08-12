@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-execs-jq",
     "version": "1.5.0",
-    "description": "jq runtime executor for plurnk-service's exec scheme — shells the system jq binary to filter/transform JSON for EXEC[jq].",
+    "description": "jq runtime executor for plurnk-service's exec scheme — shells the system jq binary to filter or transform JSON.",
     "keywords": [
         "plurnk",
         "exec",
@@ -35,7 +35,7 @@
             {
                 "name": "jq",
                 "glyph": "🧰",
-                "example": "<|EXEC[jq]>[1,2,3] | add<EXEC|>"
+                "example": "## EXEC1 [jq]\n[1,2,3] | add"
             }
         ]
     },

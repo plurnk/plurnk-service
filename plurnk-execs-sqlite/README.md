@@ -15,8 +15,11 @@ A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.co
 The EXEC target slot is the database file; with no target it defaults to an ephemeral in-memory db:
 
 ```plurnk
-<|EXEC[sqlite]>SELECT * FROM users<EXEC|>
-<|EXEC[sqlite](./app.db)>SELECT * FROM users<EXEC|>
+## EXEC1 [sqlite]
+SELECT * FROM users
+
+## EXEC1 [sqlite] (./app.db)
+SELECT * FROM users
 ```
 
 With no target, a fresh `:memory:` database exists for that operation only.
@@ -27,7 +30,8 @@ State does not persist across EXECs. Pass a file path for persistence.
 With no target, `:memory:` is a scratch calculator over ad-hoc tables — build one inline with `VALUES` and aggregate, no schema or file needed:
 
 ```plurnk
-<|EXEC[sqlite]>WITH t(item,qty,price) AS (VALUES ('a',3,2),('b',1,5)) SELECT sum(qty*price) AS total, sum(qty*price)*1.0/sum(qty) AS avg_price FROM t<EXEC|>
+## EXEC1 [sqlite]
+WITH t(item,qty,price) AS (VALUES ('a',3,2),('b',1,5)) SELECT sum(qty*price) AS total, sum(qty*price)*1.0/sum(qty) AS avg_price FROM t
 ```
 
 **Use floats to avoid integer truncation.** SQLite integer division truncates — `11/4` → `2`. Multiply by `1.0` (or `CAST(x AS REAL)`) to force real division: `11*1.0/4` → `2.75`. Any division over integer columns needs this, or the result is silently floored.

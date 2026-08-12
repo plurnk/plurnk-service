@@ -136,7 +136,7 @@ export default class ExecutorRegistry {
 
         // {§operator-config-git-ceiling} PLURNK_SERVICE_GIT_ALLOWED=0 must drop every
         // Git-capability executor entirely: a denied host neither dispatches
-        // EXEC[git]/EXEC[isogit] nor teaches them through the tools sheet.
+        // the Git/isogit EXEC runtimes nor teaches them through the tools sheet.
         const gitDenied = process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1";
         const gitRuntimes = new Set(["git", "isogit"]);
         const infos = [...discovered.values()].filter((info) => !(gitDenied && gitRuntimes.has(info.runtime)));

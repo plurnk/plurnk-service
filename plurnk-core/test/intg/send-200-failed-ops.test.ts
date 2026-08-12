@@ -9,9 +9,9 @@ test("{§send-premature-terminate}: a failed op blocks same-turn 200 until the n
     const mock = new Mock({ contextWindow: 16384, responses: [
         // KILL of a nonexistent entry → 404 (a failure that is NOT a retrieval, isolating this gate
         // from the retrievals leg); the same-turn [200] must be refused.
-        makeMockResponse("<|PLAN>clean up then conclude<PLAN|>\n<|KILL(worker:///no-such-entry)|>\n<|SEND[200]>done<SEND|>", 10),
+        makeMockResponse("# PLAN1\nclean up then conclude\n\n## KILL1 (worker:///no-such-entry)\n\n## SEND1 [200]\ndone", 10),
         // Next turn: the 404 is in-log and weighed; concluding now is legitimate.
-        makeMockResponse("<|PLAN>the KILL 404d — nothing to clean; concluding<PLAN|>\n<|SEND[200]>done<SEND|>", 10),
+        makeMockResponse("# PLAN1\nthe KILL 404d — nothing to clean; concluding\n\n## SEND1 [200]\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -31,7 +31,7 @@ test("{§send-premature-terminate}: a failed op blocks same-turn 200 until the n
 
 test("{§send-premature-terminate}: SEND[499] deliberately abandons a same-turn failure", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("<|PLAN>abort<PLAN|>\n<|KILL(worker:///no-such-entry)|>\n<|SEND[499]>giving up<SEND|>", 10),
+        makeMockResponse("# PLAN1\nabort\n\n## KILL1 (worker:///no-such-entry)\n\n## SEND1 [499]\ngiving up", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

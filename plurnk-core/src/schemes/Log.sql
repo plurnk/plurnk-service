@@ -96,14 +96,14 @@ WHERE l.worker_id = $worker_id
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: log_write_tag
--- {§log-region-tagging} — FOLD is the log's write-op (EDIT can't reach engine-written rows). FOLD[tag]
+-- {§log-region-tagging} — FOLD is the log's write-op (EDIT can't reach engine-written rows). Tagged FOLD
 -- stamps a tag on the folded rows, additively ({§edit-tags-additive}) — re-tagging is a no-op.
 INSERT OR IGNORE INTO log_tags (log_entry_id, tag) VALUES ($log_entry_id, $tag);
 
 -- PREP: log_match_coordinates_tagged
--- {§log-region-tagging} — OPEN[tag]'s resolution: log_match_coordinates PLUS an ALL-tags AND filter
--- ({§find-tag-filter-and-semantics}), so OPEN[tag] recalls only rows carrying EVERY listed tag. A
--- targetless OPEN[tag] rides glob '*' (the whole worker log).
+-- {§log-region-tagging} — tagged OPEN resolution: log_match_coordinates PLUS an ALL-tags AND filter
+-- ({§find-tag-filter-and-semantics}), so OPEN recalls only rows carrying EVERY listed tag. A
+-- targetless tagged OPEN rides glob '*' (the whole worker log).
 SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
@@ -123,7 +123,7 @@ WHERE l.worker_id = $worker_id
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: log_find_candidates_tagged
--- {§log-region-tagging} — FIND[tag](log): log_find_candidates PLUS the same ALL-tags AND filter.
+-- {§log-region-tagging} — tagged log FIND: log_find_candidates PLUS the same ALL-tags AND filter.
 SELECT
     (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate,
     le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash, le.attrs,

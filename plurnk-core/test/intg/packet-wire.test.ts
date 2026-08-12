@@ -732,9 +732,9 @@ test("render guard: every content-emitting op applies the N: convention uniforml
     // The model orients on line numbers, so EVERY op that emits a content body
     // must number textual content regardless of mimetype. Pins the invariant
     // across READ, FIND, EDIT-span,
-    // EXEC-body, the foisted exec-stream delta (incl. its cross-turn startLine), and PLAN/SEND bodies —
-    // which ride into the log as N: content, NEVER re-serialized as a <|OP…>…<OP|> enclosure (the log mirrors
-    // the model's WORK, not its emission syntax). No future content branch can silently diverge.
+    // EXEC-body, the foisted exec-stream delta (incl. its cross-turn startLine), and PLAN/SEND bodies.
+    // Log rows mirror the model's work as numbered content; they do not reserialize operation headings.
+    // No future content branch can silently diverge.
     const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "worker", pathname: "/a" } };
     const execTx = (body: string) => ({ op: "EXEC", suffix: "sh", target: { kind: "url", raw: "sh:///1/1/1", scheme: "sh", pathname: "/1/1/1", fragment: null }, body, signal: null, lineMarker: null });
     const cases: Array<{ label: string; entry: unknown; want: RegExp; anti?: RegExp }> = [
@@ -745,8 +745,8 @@ test("render guard: every content-emitting op applies the N: convention uniforml
         { label: "EDIT span → pre-numbered span preserved verbatim (editedSpan owns the real offsets)", entry: { ...base, op: "EDIT", rx: { status: 200, span: "5:x\n6:y" } }, want: /5:x\n6:y/, anti: /1:5:/ },
         { label: "EXEC body → numbered", entry: { ...base, op: "EXEC", target: { scheme: "sh", pathname: "/1/1/1" }, tx: execTx("ls\npwd") }, want: /1:ls\n2:pwd/ },
         { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "plurnk", target: { scheme: "sh", pathname: "/1/1/1", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:out5\n6:out6/ },
-        { label: "PLAN body → numbered content, never a <|PLAN tag", entry: { ...base, op: "PLAN", tx: { body: "read line 2\nthen answer" } }, want: /1:read line 2\n2:then answer/, anti: /<\|PLAN/ },
-        { label: "SEND body → numbered content, never a <|SEND tag", entry: { ...base, op: "SEND", tx: { body: "here is the answer" } }, want: /1:here is the answer/, anti: /<\|SEND/ },
+        { label: "PLAN body → numbered content, never a PLAN heading", entry: { ...base, op: "PLAN", tx: { body: "read line 2\nthen answer" } }, want: /1:read line 2\n2:then answer/, anti: /^# PLAN/m },
+        { label: "SEND body → numbered content, never a SEND heading", entry: { ...base, op: "SEND", tx: { body: "here is the answer" } }, want: /1:here is the answer/, anti: /^## SEND/m },
     ];
     for (const c of cases) {
         const out = PacketWire.renderLog([c.entry], tok);
@@ -785,7 +785,7 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.doesNotMatch(out, /<\|EDIT\(/);
+    assert.doesNotMatch(out, /## EDIT1 \(/);
 });
 
 test("notice render: message and content-offset share one bounded line, no snippet fence", () => {
@@ -861,9 +861,9 @@ test("a folded model-emission row renders meta-only without inventing an operati
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: true,
         attrs: { kind: "model_emission" },
-        rx: { content: "<|PLAN>Initialize<PLAN|>\n<|SEND[102]>Initialized<SEND|>", mimetype: "text/vnd.plurnk" },
+        rx: { content: "# PLAN1\nInitialize\n\n## SEND1 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /\{"display":"folded","kind":"model_emission","lines":2,"origin":"model","path":"log:\/\/\/1\/1\/1"/, "the actionless row has an undecorated coordinate and explicit kind");
+    assert.match(out, /\{"display":"folded","kind":"model_emission","lines":5,"origin":"model","path":"log:\/\/\/1\/1\/1"/, "the actionless row has an undecorated coordinate and explicit kind");
     assert.doesNotMatch(out, /"op":"model"/, "an emission artifact never masquerades as a grammar operation");
     assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while folded — budget-neutral");
 });
@@ -872,11 +872,11 @@ test("an open model-emission row mirrors the model's own emission back, line-num
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: false,
         attrs: { kind: "model_emission" },
-        rx: { content: "<|PLAN>Initialize<PLAN|>\n<|SEND[102]>Initialized<SEND|>", mimetype: "text/vnd.plurnk" },
+        rx: { content: "# PLAN1\nInitialize\n\n## SEND1 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /"display":"open","kind":"model_emission"/, "open → display:open — lines counts the navigable body");
-    assert.match(out, /1:<\|PLAN>Initialize<PLAN\|>/, "the model sees its own emission — line 1");
-    assert.match(out, /2:<\|SEND\[102\]>Initialized<SEND\|>/, "line 2, referenceable when reasoning through a syntax error");
+    assert.match(out, /1:# PLAN1\n2:Initialize/, "the model sees its own PLAN section");
+    assert.match(out, /4:## SEND1 \[102\]\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
 });
 
 test("the Log renders as a fenced jsonplurnk array that strips to valid JSON — one carve-out, deterministically", () => {

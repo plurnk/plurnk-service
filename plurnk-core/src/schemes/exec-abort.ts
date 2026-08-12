@@ -16,8 +16,8 @@ export default class ExecAbort {
         return { housekeeping: true, graceMs: ExecAbort.graceMs };
     }
 
-    // The model's KILL[code] → exactly that signal, once (the model owns escalation: KILL[15] SIGTERM,
-    // KILL[9] SIGKILL). A bare KILL (null) carries no override — the executor's SIGHUP polite default.
+    // The model's KILL signal maps to exactly that signal once (15 → SIGTERM,
+    // 9 → SIGKILL). A bare KILL carries no override — the executor's SIGHUP polite default.
     static killReason(signal: number | null): { signal: number | null } {
         return { signal };
     }

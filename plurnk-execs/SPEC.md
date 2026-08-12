@@ -16,7 +16,7 @@ flowchart LR
     Manifest["package runtime declarations"] --> Discover["framework discovery"]
     Discover --> Registry["runtime-tag registry"]
     Registry --> Probe["consumer instantiates and probes each tag"]
-    Request["EXEC[tag]"] --> Effect["executor effect fact"]
+    Request["EXEC with runtime tag"] --> Effect["executor effect fact"]
     Effect --> Admission["consumer proposal policy"]
     Admission --> Stream["consumer creates tag-addressed stream"]
     Stream --> Run["executor run with consumer sinks"]
@@ -225,7 +225,7 @@ carries the canonical attribution fact from {§plugin-attribution}.
       {
         "name": "cobol",
         "glyph": "🗄",
-        "example": "<|EXEC[cobol]>DISPLAY 'HI'.<EXEC|>"
+        "example": "## EXEC1 [cobol]\nDISPLAY 'HI'."
       }
     ]
   }

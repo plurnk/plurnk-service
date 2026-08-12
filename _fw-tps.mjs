@@ -11,7 +11,7 @@ const bench = async (label, model) => {
     const t0=Date.now();
     const r = await p.generate({ runId:"t"+i, messages:[{role:"user",content:PROMPT}], grammar, maxTokens:400 });
     const ms=Date.now()-t0; const out=r.assistant.usage.completion+r.assistant.usage.reasoning;
-    const ok = r.assistant.content.trimStart().startsWith("<|PLAN>");
+    const ok = r.assistant.content.trimStart().startsWith("# PLAN1");
     if (ok) tps.push(out/(ms/1000));
     process.stdout.write(`${label} ${ok?"GBNF":"prose"} ${(out/(ms/1000)).toFixed(0)}t/s · `);
   }

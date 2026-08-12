@@ -8,10 +8,10 @@
 //                 generated grammar that constrains the live model. This is the real
 //                 situation the tooling exists for; refresh it from the sibling repo.
 //
-// Shapes are drawn from the live ecosystem: the FIND/READ/SEND enclosure form, the
-// Harmony reasoning channel that the grammar's root requires, terminal
-// SEND status codes, and the complement-automaton bodies that swallow text until a
-// matching close tag (see plurnk-contracts' plurnkLexer.g4 and plurnk.md).
+// Shapes are drawn from the live ecosystem: Markdown operation sections, the
+// Harmony reasoning channel that the grammar's root requires, terminal SEND
+// status codes, and lane-aware section bodies (see plurnk-contracts' lexer and
+// model reference).
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,10 +37,10 @@ export type Case = {
 const CHANNEL = "<|channel>thought\n<channel|>\n";
 const REAL_PACKET =
     CHANNEL +
-    "<|PLAN>Find and verify the answer.<PLAN|>\n" +
-    "<|FIND(known:///**)>~capital of France<FIND|>\n" +
-    "<|READ(plurnk:///manifest.json)>$[?(@.channels.body)]<READ|>\n" +
-    "<|SEND[200]>Paris<SEND|>";
+    "# PLAN1\nFind and verify the answer.\n\n" +
+    "## FIND1 (known:///**)\n~capital of France\n\n" +
+    "## READ1 (plurnk:///manifest.json)\n$[?(@.channels.body)]\n\n" +
+    "## SEND1 [200]\nParis";
 
 export const CORPUS: Case[] = [
     // ---- controlled grammar: the verdict trichotomy, oracle-independent ----
@@ -59,7 +59,7 @@ export const CORPUS: Case[] = [
     { name: "plurnk/representative-turn", grammar: PLURNK_GBNF, input: REAL_PACKET, expect: "accept",
       note: "the current rail must admit its representative full turn" },
     { name: "plurnk/channel-plan-read-send", grammar: PLURNK_GBNF,
-      input: `${CHANNEL}<|PLAN>Read the greeting.<PLAN|>\n<|READ(README.md)>$.greeting<READ|>\n<|SEND[200]>done<SEND|>`, expect: "accept",
+      input: `${CHANNEL}# PLAN1\nRead the greeting.\n\n## READ1 (README.md)\n$.greeting\n\n## SEND1 [200]\ndone`, expect: "accept",
       note: "a well-formed turn: Harmony channel + PLAN + statement + terminal SEND" },
     { name: "plurnk/prose", grammar: PLURNK_GBNF, input: "Sure! The capital of France is Paris.",
       expect: "reject", pos: 0, note: "natural-language prose is not a plurnk turn" },
@@ -67,7 +67,7 @@ export const CORPUS: Case[] = [
       note: "a turn needs at least the Harmony channel" },
     { name: "plurnk/channel-only", grammar: PLURNK_GBNF, input: CHANNEL, expect: "incomplete", pos: CHANNEL.length,
       note: "the channel alone is a prefix; PLAN and a terminal SEND are still expected" },
-    { name: "plurnk/mismatched-close", grammar: PLURNK_GBNF,
-      input: `${CHANNEL}<|PLAN>Search first.<PLAN|>\n<|FIND(known:///**)>~x<READ|>`, expect: "incomplete",
-      note: "the FIND body absorbs '<READ|>' as content; the matching '<FIND|>' never arrives" },
+    { name: "plurnk/alternate-lane-literal", grammar: PLURNK_GBNF,
+      input: `${CHANNEL}# PLAN1\nStore the quoted section.\n\n## EDIT1 (worker:///quoted.md)\nquoted section:\n## READ2 (README.md)\nliteral\n\n## SEND1 [200]\ndone`, expect: "reject",
+      note: "the rail reserves every operation heading stem for lane 1; ANTLR alone admits alternate-lane literals" },
 ];

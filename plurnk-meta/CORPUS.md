@@ -14,7 +14,7 @@ Authored defaults published by `@plurnk/plurnk-meta` and consumed by
 | `docs/questions.md`             | Read only when operator questions are enabled, then materialized as a doc.   |
 
 Core materializes eligible pull docs at `worker://plurnk/docs/<name>.md` and
-exposes them through the turn-0 `FIND(worker://plurnk/docs/**)` catalog. Merely
+exposes them through the turn-0 `## FIND1 (worker://plurnk/docs/**)` catalog. Merely
 placing a file in `docs/` does not register a scheme or make speculative
 teaching current. Every listed source is a required package member; a missing
 or failed read surfaces at the admission boundary rather than silently reducing

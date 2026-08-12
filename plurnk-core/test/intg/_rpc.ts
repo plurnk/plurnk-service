@@ -103,7 +103,7 @@ export const waitForDb = async <T>(
 
 // Model 3 — loop.run ACCEPTS and returns immediately (status 100 + loopId); a loop's real
 // outcome arrives via the loop/terminated event, never loop.worker's return. A parked loop
-// (SEND[202]) awaits an external event, so loop.run cannot block on it without deadlocking
+// (SEND signal 202) awaits an external event, so loop.run cannot block on it without deadlocking
 // the client that must send that event. This runs a loop to its true terminal the honest
 // way: fire loop.run, then await its loop/terminated. Returns the terminal status (+ the
 // loopId and the `accepted` status, for callers that assert the 100).
@@ -158,12 +158,12 @@ export const parseDsl = (text: string): PlurnkStatement[] => {
         .filter((i) => i.kind === "statement")
         .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
     // Fail-hard ONLY when nothing parsed: zero statements alongside an error means the input
-    // didn't parse at all (e.g. a bare statement with no PLAN lead — grammar 0.70 requires
-    // PLAN-first), which silently returned [] and let callers build phantom-empty turns. A
+    // didn't parse at all (e.g. a bare statement with no PLAN heading), which silently
+    // returned [] and let callers build phantom-empty turns. A
     // trailing "incomplete turn" error WITH real statements (a partial turn — PLAN + ops, no
     // terminal SEND) is a legitimate fixture; return the statements.
     if (statements.length === 0 && result.items.some((i) => i.kind === "error")) {
-        throw new Error(`parseDsl: DSL produced no statements — it did not parse (grammar 0.70 requires a PLAN lead): ${JSON.stringify(text)}`);
+        throw new Error(`parseDsl: DSL produced no statements — it did not parse (a model turn requires a PLAN heading): ${JSON.stringify(text)}`);
     }
     return statements;
 };
@@ -171,7 +171,7 @@ export const parseDsl = (text: string): PlurnkStatement[] => {
 export const makeMockResponse = (dsl: string, completion: number = 0): MockResponse => {
     // Every turn leads with PLAN (plurnk.md "Imperatives"). The mock emits what a
     // compliant model emits; PLAN and SEND flow through as ordinary dispatched ops.
-    const turn = dsl.startsWith("<|PLAN") ? dsl : `<|PLAN|>\n${dsl}`;
+    const turn = dsl.startsWith("# PLAN") ? dsl : `# PLAN1\n\n${dsl}`;
     return {
         assistant: {
             content: turn, ops: parseDsl(turn), reasoning: null,

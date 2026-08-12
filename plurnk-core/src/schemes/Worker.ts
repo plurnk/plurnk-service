@@ -43,7 +43,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         volatile: false,
         modelVisible: true,
         folderScopes: true,
-        example: "<|EDIT(worker:///notes.md)>Investigation notes.<EDIT|>",
+        example: "## EDIT1 (worker:///notes.md)\nInvestigation notes.",
     };
 
     // The authority from a worker:// target — "" for the empty (commons) form; null when the
@@ -277,7 +277,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         const entryPath = Worker.#entryPath(statement.target);
 
         // The worker ENTITY (path-absent worker://<name>) is not EDITable — EDIT is entry only
-        // (grammar 0.74.55): WORK(worker://<name>) spawns a worker; FORK(worker://<name>) forks a branch.
+        // WORK on worker://<name> spawns a worker; FORK on that address forks a branch.
         if (entryPath === "") {
             return failure(
                 "worker-entity-not-editable",

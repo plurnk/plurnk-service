@@ -47,11 +47,12 @@ export interface ExecArgs {
     // **per-runtime** ({§executor-sinks}). Each executor maps `(target, command)`
     // onto its own tool's CLI; the framework passes both raw and parses neither:
     //   - a *data* runtime reads `target` as the input and `command` as the
-    //     program — jq `(file):filter`, sqlite `(db):SQL`, wasm `(module):…`;
+    //     program — jq `(file)` + filter body, SQLite `(db)` + SQL body, or
+    //     WebAssembly `(module)` + entry-point body;
     //   - an *executable* runtime runs `target` as the program and `command` as
-    //     its **stdin** — sh `(cmdline):stdin`, python `(script):stdin`.
+    //     its **stdin** — shell `(cmdline)` + stdin body or Python `(script)` + stdin body.
     // Resolved relative to `cwd`; null when the op names none (bare
-    // `EXEC[sh]:…`, inline `EXEC[jq]:…`, `:memory:` sqlite). Kept distinct from
+    // shell EXEC, inline jq EXEC, and `:memory:` SQLite). Kept distinct from
     // `cwd` so a runtime receives BOTH the workspace and the slot.
     target: string | null;
     // Environment for runtimes that spawn a child process. When set, the child

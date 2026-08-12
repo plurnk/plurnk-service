@@ -8,7 +8,7 @@
 //   body    — matcher (glob/regex/jsonpath/xpath/~semantic/@graph). A content matcher
 //             runs against the entry's default-channel CONTENT (Matcher.matchAgainstContent
 //             → the mimetypes plugin) and INCLUDES/EXCLUDES the entry — e.g.
-//             `FIND(log:///**/error):/timeout/i` keeps logs whose content matches.
+//             log FIND over `log:///**/error` with `/timeout/i` keeps matching rows.
 //   signal  — tag filter: candidate entry must have ALL listed tags
 //   <L>     — result pagination: resource or match-location positions N..M
 

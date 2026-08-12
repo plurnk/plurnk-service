@@ -2,45 +2,25 @@ parser grammar plurnkParser;
 
 options { tokenVocab = plurnkLexer; }
 
-// One model turn: optional TEXT, PLAN, interleaved mid-ops/TEXT, terminal SEND,
-// optional TEXT, EOF. TEXT has no language semantics. {§turn-shape}
+// One model turn: optional provider/preamble TEXT, H1 PLAN, zero or more H2
+// operations, and one disposition-coded terminal H2 SEND. {§turn-shape}
 document
     : turnContent EOF
     ;
 
-// A multi-turn LOG (PlurnkParser.parseLog) — the Plurnk Script substrate. Each turn is a full
-// sandwich WRAPPED in `<|TURN…> … <TURN|>`. A log is valid iff every wrapped turn is valid.
-// `parse()` stays the bare unwrapped sandwich; parseLog is the wrapped, multi-turn path.
+// H1 PLAN is already the turn boundary, so a log is a direct sequence of turns.
 log
-    : turnStatement+ EOF
+    : turnContent+ EOF
     ;
 
-// `<|TURN[label]?(target)?<scope>?> <a full turn> <TURN|>` wraps one turn. This contract
-// assigns no semantics to its parsed modifiers. The body is `turnContent`.
-turnStatement
-    : OPEN_TURN tagOpModifiers? BODY_OPEN turnContent CLOSE_TURN
-    ;
-
-// One turn, shared by `document` and `log`. PLAN required and FIRST (only free-text preamble
-// precedes); mid-ops are `midStatement` (every op EXCEPT PLAN — that is what makes PLAN the
-// turn boundary) with prose tolerated; terminal SEND required.
 turnContent
-    : TEXT* planStatement (midStatement | TEXT)* sendStatement TEXT*
+    : TEXT* planStatement midStatement* sendStatement
     ;
 
-// A bare sequence of statements — for teaching-example collections and single ops
-// (PlurnkParser.parseStatements). Strict: statements only (whitespace is hidden), no prose,
-// no turn shape.
 statementSeq
     : statement* EOF
     ;
 
-// The CLIENT tier (PlurnkParser.parseClient) — the topmost subset, one above Script. A bare
-// sequence (like statementSeq) of either a protocol `statement` OR a client-only utility op
-// (LOOK / BUFF). The client ops are admitted HERE ONLY; `document`, `log`, and `statementSeq`
-// never reach `lookStatement`/`buffStatement`, so a client op in protocol/script position is a
-// parse error. LOOK/BUFF are transient client commands, not model turns — hence flat, no turn
-// shape and no PLAN anchor.
 clientStatementSeq
     : clientStatement* EOF
     ;
@@ -51,8 +31,6 @@ clientStatement
     | buffStatement
     ;
 
-// Full op set, incl PLAN — used by statementSeq (single ops / teaching corpora). Flat:
-// directly wraps each op-statement (AstBuilder dispatches on the child type).
 statement
     : findStatement
     | readStatement
@@ -70,9 +48,6 @@ statement
     | planStatement
     ;
 
-// Every op EXCEPT PLAN — `statement` minus `planStatement`. PLAN is the turn anchor, never a
-// mid-op, so excluding it here makes a fresh `<|PLAN` begin the next turn rather than sit
-// mid-batch. Parallel flat rule (same op-statement accessors as `statement`, no planStatement).
 midStatement
     : findStatement
     | readStatement
@@ -88,55 +63,31 @@ midStatement
     | killStatement
     ;
 
-// Scoped tag-CSV ops tolerate signal, target, and scope in any order, at most once.
-// Canonical producers retain signal → target → scope. {§slot-order}
 findStatement : OPEN_FIND tagOpModifiers? statementEnd ;
 readStatement : OPEN_READ tagOpModifiers? statementEnd ;
 editStatement : OPEN_EDIT tagOpModifiers? statementEnd ;
 copyStatement : OPEN_COPY tagOpModifiers? statementEnd ;
 moveStatement : OPEN_MOVE tagOpModifiers? statementEnd ;
-
-// Log curation is set-based: tags + target + matcher select rows. OPEN/FOLD
-// deliberately have no positional lineMarker slot.
 openStatement : OPEN_OPEN curationModifiers? statementEnd ;
 foldStatement : OPEN_FOLD curationModifiers? statementEnd ;
-
-// SEND splits by signal kind (the lexer emits DISPOSITION for {102,200,202,300,499}): a
-// disposition-coded SEND IS the turn terminal (sendStatement), so turnContent ends on it and
-// a statement after it is a genuine parse error — mid-turn terminations are ILLEGAL, not
-// demoted to a mid comms. A mid-comms SEND (midSend) carries a plain INT code or none. EXEC/KILL
-// keep the permissive int signal (a KILL's target-specific code may coincide with a disposition number).
 sendStatement : OPEN_SEND termModifiers statementEnd ;
 midSend       : OPEN_SEND midModifiers? statementEnd ;
 execStatement : OPEN_EXEC execModifiers? statementEnd ;
-
-// Delegation verbs - an optional single branch ref in the signal/tag slot, target
-// (the worker://<name>), and required prompt body. No line marker. Target is optional
-// here (forgiving parser); canon and the GBNF rail require it.
 workStatement : OPEN_WORK branchModifiers? statementEnd ;
 forkStatement : OPEN_FORK branchModifiers? statementEnd ;
 killStatement : OPEN_KILL intOpModifiers? statementEnd ;
-
-// PLAN records intended goals. Canon is slotless; modifiers remain ingest-side
-// tolerance. {§plan-intended-goals}
 planStatement : OPEN_PLAN tagOpModifiers? statementEnd ;
-
-// LOOK / BUFF — client-tier utility ops with tag, target, scope, and matcher
-// slots. LOOK observes client-visible matches; BUFF pulls an editable entry into
-// a buffer (the write-back is a later plain EDIT, not part of BUFF).
 lookStatement : OPEN_LOOK tagOpModifiers? statementEnd ;
 buffStatement : OPEN_BUFF tagOpModifiers? statementEnd ;
 
-// Self-closing and paired empty statements share one AST path and therefore one
-// normalized body value. Operation owners retain responsibility for rejecting
-// empty content where their semantics require a nonempty body. {§empty-body-equivalence}
+// A direct next heading, an ordinary section body, or EOF after a bodyless
+// heading all normalize through the same AST path. {§empty-section}
 statementEnd
-    : SELF_CLOSE
-    | BODY_OPEN body? CLOSE_TAG
+    : SECTION_END
+    | BODY_OPEN body? SECTION_END?
+    |
     ;
 
-// Modifier slot permutations. Each leaf rule appears at most once in any
-// path through the alternatives, so duplicate slots fail at parse time.
 tagOpModifiers
     : tagSignal (target lineMarker? | lineMarker target?)?
     | target (tagSignal lineMarker? | lineMarker tagSignal?)?
@@ -158,34 +109,27 @@ branchModifiers
     | target branchSignal?
     ;
 
-// Terminal SEND: a disposition signal is REQUIRED — a turn ends on a disposition code.
-// The optional lineMarker carries a terminal wait scope. The parser accepts it on any
-// terminal (forgiving); runtime semantics and the GBNF rail admit it only on [202].
-// Mid-comms SENDs take no marker (midModifiers unchanged).
 termModifiers
     : dispSignal target? lineMarker?
     | target dispSignal lineMarker?
     ;
 
-// Mid-comms SEND: a plain integer code (or none), optional target.
 midModifiers
     : midSignal target?
     | target midSignal?
     ;
 
-// EXEC's lineMarker carries an optional `<timeout,poll>` (numbers; runtime-interpreted).
 execModifiers
     : identSignal (target lineMarker? | lineMarker target?)?
     | target (identSignal lineMarker? | lineMarker identSignal?)?
     | lineMarker (identSignal target? | target identSignal?)?
     ;
 
-// Signal productions — permissive where the interpretation is deterministic.
 tagSignal   : LBRACKET (TAG | COMMA)* RBRACKET ;
 branchSignal: LBRACKET TAG RBRACKET ;
-intSignal   : LBRACKET (INT | DISPOSITION)? RBRACKET ;   // KILL: permissive (its target-specific code may be a disposition number)
-midSignal   : LBRACKET INT? RBRACKET ;                   // mid-comms SEND: a plain integer code (or empty), never a DISPOSITION
-dispSignal  : LBRACKET DISPOSITION RBRACKET ;            // terminal SEND: a disposition code
+intSignal   : LBRACKET (INT | DISPOSITION)? RBRACKET ;
+midSignal   : LBRACKET INT? RBRACKET ;
+dispSignal  : LBRACKET DISPOSITION RBRACKET ;
 identSignal : LBRACKET IDENT? RBRACKET ;
 
 target      : LPAREN TARGET_TEXT* RPAREN ;

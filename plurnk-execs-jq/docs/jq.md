@@ -3,9 +3,14 @@
 The system `jq` as a runtime: the **body is the jq program**, the **`(target)` is the data source**.
 
 ```plurnk
-<|EXEC[jq]>[1,2,3] | add<EXEC|>
-<|EXEC[jq](data.json)>.users[].name<EXEC|>
-<|EXEC[jq](search:///1/2/3#results)>.[] | .title<EXEC|>
+## EXEC1 [jq]
+[1,2,3] | add
+
+## EXEC1 [jq] (data.json)
+.users[].name
+
+## EXEC1 [jq] (search:///1/2/3#results)
+.[] | .title
 ```
 
 The first form has no input and uses `-n`. The second filters a file. The third

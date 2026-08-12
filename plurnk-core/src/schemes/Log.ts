@@ -89,7 +89,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         volatile: false,
         modelVisible: true,
         folderScopes: true,
-        example: "<|READ(log:///1/2/3)|>",
+        example: "## READ1 (log:///1/2/3)",
     };
 
     async resolveCoreRepresentation(
@@ -183,7 +183,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     // {§log-uniform-query} — FIND over the worker's log rows, on the SAME source-agnostic primitive
     // every entry scheme runs (Matcher.matchCandidates, {§find-source-agnostic}): candidates are the
     // coordinate-scoped rows resolved by LogBody exactly as READ shows them, so every content
-    // dialect works on log BY CONSTRUCTION and FIND(log)->READ(coordinate) composes like any scheme.
+    // dialect works on log BY CONSTRUCTION and log FIND -> coordinate READ composes like any scheme.
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         return this.#find(statement, this.coreContext(ctx));
     }
@@ -522,8 +522,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return { status: 200, ids: matched.map((row) => row.id) };
     }
 
-    // {§log-region-tagging} — resolve OPEN[tag] to ids: candidates are the target's glob scope (the
-    // whole worker log when targetless — a bare OPEN[tag] recalls the entire tagged working-set),
+    // {§log-region-tagging} — resolve tagged OPEN to ids: candidates are the target's glob scope (the
+    // whole worker log when targetless — a bare tagged OPEN recalls the entire tagged working-set),
     // AND-filtered to rows carrying EVERY listed tag. Zero matches is a no-op success (204), mirroring
     // #resolveIds — recalling a name that tags nothing steers nothing.
     async #resolveByTags(statement: OpenStatement | FoldStatement, tags: string[], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {
@@ -648,8 +648,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             return this.#applyExpanded(matched.ids, expanded, signal, ctx, effects);
         }
 
-        // {§log-region-tagging} — OPEN[tag] is the READ side: recall rows by tag, target optional (a bare
-        // OPEN[tag] recalls the whole tagged working-set). FOLD never resolves by tag — it is the WRITE
+        // {§log-region-tagging} — tagged OPEN is the READ side: recall rows by tag, target optional (a bare
+        // tagged OPEN recalls the whole tagged working-set). FOLD never resolves by tag — it is the WRITE
         // side (it stamps the tag below), always scoped to the target region it folds.
         if (expanded === 1 && signal.length > 0) {
             const rt = await this.#resolveByTags(statement, signal, ctx);

@@ -12,7 +12,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string; pathname: string; scheme: string | null; hostname: string | null; status_rx: number; rx: string };
-const mock = () => new Mock({ contextWindow: 8192, responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 50)] });
+const mock = () => new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND1 [200]\ndone", 50)] });
 
 test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
@@ -142,7 +142,7 @@ test("turn-0 once-per-worker foists fire on the worker's first loop only, not ev
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {
-        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 50), makeMockResponse("<|SEND[200]>done<SEND|>", 50)] });
+        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND1 [200]\ndone", 50), makeMockResponse("## SEND1 [200]\ndone", 50)] });
         await withDaemon(twoLoops, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -188,12 +188,12 @@ test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a sta
                 const content = (JSON.parse(row!.rx) as { content: string }).content;
                 // Dynamic - it carries the FIND the foist ACTUALLY dispatched (worker:///*), rendered to
                 // DSL and framed PLAN → SEND. Not a frozen print: feed-as-turn-0, show-in-turn-1 are one act.
-                assert.match(content, /^<\|PLAN>Survey context, then address the prompt\.<PLAN\|>/, "opens with an orienting goal");
-                assert.match(content, /<\|FIND\(worker:\/\/\/\*\)\|>/, "the markerless shallow survey is rendered back to DSL");
-                assert.doesNotMatch(content, /<\|FIND\(worker:\/\/\/\*\)</, "the ordinary survey does not teach an explicit all-results scope");
+                assert.match(content, /^# PLAN1\nSurvey context, then address the prompt\./, "opens with an orienting goal");
+                assert.match(content, /## FIND1 \(worker:\/\/\/\*\)/, "the markerless shallow survey is rendered back to DSL");
+                assert.doesNotMatch(content, /## FIND1 \(worker:\/\/\/\*\) </, "the ordinary survey does not teach an explicit all-results scope");
                 assert.match(
                     content,
-                    /<\|SEND\[102\]>Next, address the prompt using the survey\.<SEND\|>$/,
+                    /## SEND1 \[102\]\nNext, address the prompt using the survey\.$/,
                     "closes by stating the next action",
                 );
             } finally { ws.close(); }
@@ -230,10 +230,10 @@ test("an empty workspace executes all four orienting FINDs and preserves empty-s
                 }
                 const exemplar = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 const content = (JSON.parse(exemplar!.rx) as { content: string }).content;
-                assert.match(content, /<\|FIND\(\*\)\|>/, "the exemplar includes the markerless project survey");
-                assert.match(content, /<\|FIND\(worker:\/\/\/\*\)\|>/, "the exemplar includes markerless workspace commons");
-                assert.match(content, /<\|FIND\(worker:\/\/~\/\*\)\|>/, "the exemplar includes markerless own space");
-                assert.match(content, /<\|FIND\(worker:\/\/plurnk\/docs\/\*\*\)<1,-1>\|>/, "the exemplar includes complete kernel docs");
+                assert.match(content, /## FIND1 \(\*\)/, "the exemplar includes the markerless project survey");
+                assert.match(content, /## FIND1 \(worker:\/\/\/\*\)/, "the exemplar includes markerless workspace commons");
+                assert.match(content, /## FIND1 \(worker:\/\/~\/\*\)/, "the exemplar includes markerless own space");
+                assert.match(content, /## FIND1 \(worker:\/\/plurnk\/docs\/\*\*\) <1,-1>/, "the exemplar includes complete kernel docs");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }

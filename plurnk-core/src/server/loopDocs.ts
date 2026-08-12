@@ -5,7 +5,7 @@
 //      collision) at worker://plurnk/<alias>.md — Engine.runTurn foists their READs at turn 0
 //      ({§operator-config-workspace-md-docs});
 //   2. plugin scheme/exec reference docs at worker://plurnk/docs/<name>.md — discovered
-//      by the turn-0 FIND(worker://plurnk/docs/**) foist ({§schemes-directory}).
+//      by the turn-0 kernel-doc FIND foist ({§schemes-directory}).
 import type Engine from "../core/Engine.ts";
 import type { Db } from "../core/Db.ts";
 import { UNKNOWN_POSITION, type PlurnkStatement, type EditStatement } from "@plurnk/plurnk-contracts";

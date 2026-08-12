@@ -16,5 +16,5 @@ on stderr.
 
 ## Working directory
 
-Runs in the workspace project root by default. `EXEC[node](./dir):…` sets the
+Runs in the workspace project root by default. `## EXEC1 [node] (./dir)` sets the
 working directory; relative module and filesystem paths resolve against it.

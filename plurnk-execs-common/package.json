@@ -37,7 +37,7 @@
             {
                 "name": "sh",
                 "glyph": "🐚",
-                "example": "<|EXEC>uname -sr<EXEC|>\n<|EXEC[sh](build.sh)|>\n<|EXEC<-1,300>>npm run test<EXEC|>"
+                "example": "## EXEC1\nuname -sr\n\n## EXEC1 [sh] (build.sh)\n\n## EXEC1 <-1,300>\nnpm run test"
             },
             {
                 "name": "bash",
@@ -46,62 +46,62 @@
             {
                 "name": "node",
                 "glyph": "⬢",
-                "example": "<|EXEC[node]>console.log(new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10))<EXEC|>"
+                "example": "## EXEC1 [node]\nconsole.log(new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10))"
             },
             {
                 "name": "python",
                 "glyph": "🐍",
-                "example": "<|EXEC[python]>print(sum(range(101)))<EXEC|>"
+                "example": "## EXEC1 [python]\nprint(sum(range(101)))"
             },
             {
                 "name": "python3",
                 "glyph": "🐍",
-                "example": "<|EXEC[python3]>print(sum(range(101)))<EXEC|>"
+                "example": "## EXEC1 [python3]\nprint(sum(range(101)))"
             },
             {
                 "name": "perl",
                 "glyph": "🐪",
-                "example": "<|EXEC[perl]>print join(',', 1..5)<EXEC|>"
+                "example": "## EXEC1 [perl]\nprint join(',', 1..5)"
             },
             {
                 "name": "ruby",
                 "glyph": "💎",
-                "example": "<|EXEC[ruby]>puts (1..5).sum<EXEC|>"
+                "example": "## EXEC1 [ruby]\nputs (1..5).sum"
             },
             {
                 "name": "php",
                 "glyph": "🐘",
-                "example": "<|EXEC[php]>echo array_sum([1,2,3]);<EXEC|>"
+                "example": "## EXEC1 [php]\necho array_sum([1,2,3]);"
             },
             {
                 "name": "lua",
                 "glyph": "🌙",
-                "example": "<|EXEC[lua]>print(('hi'):upper())<EXEC|>"
+                "example": "## EXEC1 [lua]\nprint(('hi'):upper())"
             },
             {
                 "name": "deno",
                 "glyph": "🦕",
-                "example": "<|EXEC[deno]>console.log(Deno.version.deno)<EXEC|>"
+                "example": "## EXEC1 [deno]\nconsole.log(Deno.version.deno)"
             },
             {
                 "name": "bun",
                 "glyph": "🥟",
-                "example": "<|EXEC[bun]>console.log(Bun.version)<EXEC|>"
+                "example": "## EXEC1 [bun]\nconsole.log(Bun.version)"
             },
             {
                 "name": "tcl",
                 "glyph": "🪶",
-                "example": "<|EXEC[tcl]>puts [expr {2**10}]<EXEC|>"
+                "example": "## EXEC1 [tcl]\nputs [expr {2**10}]"
             },
             {
                 "name": "bc",
                 "glyph": "🧮",
-                "example": "<|EXEC[bc]>scale=4; 22/7<EXEC|>"
+                "example": "## EXEC1 [bc]\nscale=4; 22/7"
             },
             {
                 "name": "awk",
                 "glyph": "🪄",
-                "example": "<|EXEC[awk]>BEGIN { print 6 * 7 }<EXEC|>"
+                "example": "## EXEC1 [awk]\nBEGIN { print 6 * 7 }"
             }
         ]
     },

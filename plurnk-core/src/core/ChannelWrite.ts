@@ -184,7 +184,7 @@ export default class ChannelWrite {
 
     // The durable half of subscription ownership. Its row identifies what is
     // open; the process-local LiveSubscriptions registry owns the exact callable
-    // used by SEND[499] / KILL.
+    // used by SEND signal 499 / KILL.
     // {§subscriptions-subscription-registry-routes-cancellation}
     static async openSubscription(
         db: Db,

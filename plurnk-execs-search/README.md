@@ -1,6 +1,6 @@
 # @plurnk/plurnk-execs-search
 
-Web search runtime executor for [plurnk-service](https://github.com/plurnk/plurnk-service)'s `exec` scheme. Dispatches an `<|EXEC[search]>pie recipes<EXEC|>` op to a [SearXNG](https://docs.searxng.org/) instance and returns a compact digest of results (`title` / `url` / `snippet`).
+Web search runtime executor for [plurnk-service](https://github.com/plurnk/plurnk-service)'s `exec` scheme. Dispatches `## EXEC1 [search]` with a query body to a [SearXNG](https://docs.searxng.org/) instance and returns a compact digest of results (`title` / `url` / `snippet`).
 
 The first non-subprocess `@plurnk/plurnk-execs-*` sibling, built on the [plurnk-execs](https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs) framework.
 
@@ -21,7 +21,7 @@ Each tag maps to a SearXNG search category (`categories=`):
 | `social`       | 💬    | social media |
 | `downloadable` | 📥    | files        |
 
-Engine, language, and time-range selection ride the query string via SearXNG's native `!bang` and `:lang` syntax (e.g. `<|EXEC[search]>!gh node streams<EXEC|>`). External bangs (`!!`) are refused — they redirect rather than return results.
+Engine, language, and time-range selection ride the query string via SearXNG's native `!bang` and `:lang` syntax (for example, body `!gh node streams`). External bangs (`!!`) are refused — they redirect rather than return results.
 
 ## Configuration (environment)
 

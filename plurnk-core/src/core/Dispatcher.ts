@@ -223,7 +223,7 @@ export default class Dispatcher {
     #branchCompletionGate: BranchCompletionGate | undefined;
     #cancelWorker: CancelWorkerNotify | undefined;
     #cancelDescendants: CancelDescendantsNotify | undefined;
-    // {§send-premature-terminate}/SEND[202]<T> — the engine-owned park-deadline registry (loopId → seconds;
+    // {§send-premature-terminate}/SEND signal 202 with scope — the engine-owned park-deadline registry (loopId → seconds;
     // -1 = indefinite). The dispatcher WRITES at park; the daemon's drain park-exit consumes.
     #parkDeadlines: Map<number, number>;
     readonly #searchGate: import("./search-gate.ts").default | undefined;
@@ -678,7 +678,7 @@ export default class Dispatcher {
         }
         onDispatch?.(logEntryId);
         // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}; {§proposal-202-pauses}). When a
-        // side-effecting op returns status 202 (a broadcast SEND[202] park is model
+        // side-effecting op returns status 202 (a broadcast SEND signal 202 park is model
         // speech, not a proposal — #isProposal), the entry is written
         // state='proposed'; dispatch then PAUSES on a per-entry waiter until
         // resolution arrives via Engine.resolveProposal (from a client-interface resume,
@@ -2649,7 +2649,7 @@ export default class Dispatcher {
 
     // Results cross an observation boundary only when they have appeared in a
     // packet. Completion alone is not delivery. Keep the three next-packet
-    // producers in one classifier so SEND[200]'s discard gate and SEND[202]'s
+    // producers in one classifier so SEND signal 200's discard gate and signal 202's
     // empty-join decision cannot disagree about what remains unseen.
     async #pendingObservations(workerId: number, turnId: number): Promise<{
         retrievals: boolean;
@@ -2726,19 +2726,19 @@ export default class Dispatcher {
         }
         const raw = statement.body === null ? "" : statement.body.raw;
 
-        // The park rides SEND[202] only ({§park-202-only}). A scoped SEND[102] is neither
+        // The park rides SEND signal 202 only ({§park-202-only}). A scoped signal 102 is neither
         // a wait nor a meaningful continuation, so reject it instead of preserving the
         // retired dual spelling.
         if (status === 102 && statement.lineMarker !== null) {
             return Dispatcher.#failure(
                 "send-scope-invalid",
                 400,
-                "SEND[102] does not accept a scope.",
+                "`## SEND1 [102]` does not accept a scope.",
                 {},
                 {
                     requestedStatus: 102,
                     scope: statement.lineMarker,
-                    recovery: "Use SEND[202] with a scope to wait, or remove the scope to continue.",
+                    recovery: "Use `## SEND1 [202] <scope>` to wait, or remove the scope to continue.",
                     retryable: false,
                 },
             );
@@ -2755,7 +2755,7 @@ export default class Dispatcher {
             return { status: 102, attrs: { parked: -1, join: true } };
         }
 
-        // {§wait-obligation-matrix} — SEND[202] is the obligation-checked join. A live
+        // {§wait-obligation-matrix} — SEND signal 202 is the obligation-checked join. A live
         // obligation (a spawned child or open stream, J) BLOCKS the loop until it concludes and
         // reawakens it ({§worker-lifecycle-child-wake}); a wait on nothing (∅) is already satisfied and
         // resolves like 200, so <-1>+∅ self-resolves rather than hang the agent; a pending own
@@ -2843,7 +2843,7 @@ export default class Dispatcher {
                         {
                             pending: [...pending],
                             stage: "completion",
-                            recovery: "Review the results, then use only PLAN and SEND[200] to conclude.",
+                            recovery: "Review the results, then use only `# PLAN1` and `## SEND1 [200]` to conclude.",
                             retryable: false,
                         },
                     );
@@ -2886,7 +2886,7 @@ export default class Dispatcher {
                 turn_id: turnId,
             });
             if (seqs === undefined) {
-                throw new Error(`SEND[499]: no coordinate for loop=${loopId} turn=${turnId}`);
+                throw new Error(`SEND signal 499: no coordinate for loop=${loopId} turn=${turnId}`);
             }
             Results.attachInstance(
                 failure,
@@ -3170,9 +3170,9 @@ export default class Dispatcher {
     }
 
     // {§proposal}/{§send} — status 202 is a proposal except for broadcast
-    // SEND[202], which parks the loop. The operation disambiguates the status.
+    // SEND signal 202, which parks the loop. The operation disambiguates the status.
     static #isProposal(statement: PlurnkStatement, result: DispatchResult): boolean {
-        // {§send-300-choices} — SEND[300] is the proposal exception.
+        // {§send-300-choices} — SEND signal 300 is the proposal exception.
         if (result.status !== 202) return false;
         if (statement.op === "SEND" && statement.signal === 300) return true;
         return !(statement.op === "SEND" && statement.target === null);
@@ -3193,7 +3193,7 @@ export default class Dispatcher {
         // A proposal (status 202 from a side-effecting op) is written to the log in
         // state='proposed' until the proposal lifecycle resolves it; attrs holds the
         // scheme-supplied payload (file diff, exec command, etc.) the client renders
-        // for review and the scheme consumes on accept. A broadcast SEND[202] is a
+        // for review and the scheme consumes on accept. A broadcast SEND signal 202 is a
         // parked-terminal, not a proposal (#isProposal) → state='resolved'.
         const isProposed = Dispatcher.#isProposal(statement, result);
         let attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)

@@ -52,8 +52,10 @@ test("manifest declares the native git runtime with valid examples", async () =>
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
     assert.equal(pkg.plurnk.kind, "exec");
     assert.deepEqual(pkg.plurnk.runtimes.map((runtime: { name: string }) => runtime.name), ["git"]);
-    for (const line of pkg.plurnk.runtimes[0].example.split("\n")) {
-        assert.match(line, /^<\|EXEC\[git\]>.+<EXEC\|>$/);
+    const examples = pkg.plurnk.runtimes[0].example.split("\n\n");
+    assert.equal(examples.length, 2);
+    for (const example of examples) {
+        assert.match(example, /^## EXEC1 \[git\]\n.+$/);
     }
 });
 

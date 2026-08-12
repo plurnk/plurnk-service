@@ -340,7 +340,7 @@ for (const packageName of defaultExecPackages) {
     for (const runtime of manifest.plurnk?.runtimes ?? []) {
         ok(
             absentIsogit.owners[runtime.name] === packageName,
-            `EXEC[${runtime.name}] is discovered from the service-owned ${packageName} leaf`,
+            `EXEC runtime ${runtime.name} is discovered from the service-owned ${packageName} leaf`,
         );
     }
 }

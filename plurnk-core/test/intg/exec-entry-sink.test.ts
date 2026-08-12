@@ -21,7 +21,7 @@ const execStmt = (runtime: string, body: string): ExecStatement => ({
 });
 
 const parseOne = (input: string): PlurnkStatement => {
-    const parsed = PlurnkParser.parse(`<|PLAN|>\n${input}`);
+    const parsed = PlurnkParser.parse(`# PLAN1\n${input}`);
     const item = parsed.items.find((x) => x.kind === "statement" && x.statement.op !== "PLAN");
     if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
     return item.statement;
@@ -291,7 +291,7 @@ test("search-prefetched https content is matcher-queryable in place — no origi
         // materialized. Calling Http.read here would hit the network and make a
         // deterministic integration test impossible by construction.
         const queried = await engine.dispatch({
-            statement: parseOne("<|FIND(https://example.org/turkeys)>*large birds*<FIND|>") as FindStatement,
+            statement: parseOne("## FIND1 (https://example.org/turkeys)\n*large birds*") as FindStatement,
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 200);
@@ -334,7 +334,7 @@ test("search-prefetched encoded parentheses resolve through later scoped HTTPS R
         assert.equal(stored?.pathname, "/example.org/people_(current)",
             "ingestion stores one canonical decoded identity");
         const read = await engine.dispatch({
-            statement: parseOne("<|READ(https://example.org/people_%28current%29)<2,2>|>") as ReadStatement,
+            statement: parseOne("## READ1 (https://example.org/people_%28current%29) <2,2>") as ReadStatement,
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(read.status, 200);
@@ -362,7 +362,7 @@ test("an exact HTTPS semantic FIND cannot leak or retarget a match from another 
         await SearchIndex.maintain(ctx);
 
         const queried = await engine.dispatch({
-            statement: parseOne("<|FIND(https://example.org/turkeys)>~birthday cake<FIND|>") as FindStatement,
+            statement: parseOne("## FIND1 (https://example.org/turkeys)\n~birthday cake") as FindStatement,
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 204);
@@ -378,7 +378,7 @@ test("an absolute web URL ending in slash is one fetchable resource, not a folde
     })) as typeof fetch;
     try {
         const result = await engine.dispatch({
-            statement: parseOne("<|READ(https://example.org/)|>") as ReadStatement,
+            statement: parseOne("## READ1 (https://example.org/)") as ReadStatement,
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200, "the finite HTTP representation settled through exact READ");

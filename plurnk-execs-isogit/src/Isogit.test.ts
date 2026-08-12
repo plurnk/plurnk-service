@@ -54,7 +54,7 @@ test("manifest declares only the explicit isogit runtime, disabled by its shippe
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
     assert.equal(pkg.plurnk.kind, "exec");
     assert.deepEqual(pkg.plurnk.runtimes.map((runtime: { name: string }) => runtime.name), ["isogit"]);
-    assert.match(pkg.plurnk.runtimes[0].example, /^<\|EXEC\[isogit\]>.+<EXEC\|>$/);
+    assert.match(pkg.plurnk.runtimes[0].example, /^## EXEC1 \[isogit\]\n.+$/);
     assert.match(await readFile(new URL("../.env.defaults", import.meta.url), "utf8"), /^PLURNK_EXECS_ISOGIT=0$/m);
 });
 
@@ -121,12 +121,12 @@ test("native checkout -b syntax is rejected precisely instead of misread as a re
     assert.match(result.problem?.detail ?? "", /accepts one existing branch or object reference/);
     assert.equal(
         result.problem?.recovery,
-        "Use 'branch <name>' then 'checkout <name>', or use EXEC[git] for native Git syntax.",
+        "Use 'branch <name>' then 'checkout <name>', or use `## EXEC1 [git]` for native Git syntax.",
     );
     assert.deepEqual(states, ["errored"]);
 });
 
-test("unknown operations name the subset and direct native work to EXEC[git]", async () => {
+test("unknown operations name the subset and direct native work to the Git EXEC heading", async () => {
     const dir = await configuredRepo();
     const { result } = await run("push origin main", dir);
     assert.equal(result.status, 400);
@@ -134,7 +134,7 @@ test("unknown operations name the subset and direct native work to EXEC[git]", a
         result.problem?.availableOperations,
         ["init", "status", "add", "commit", "log", "branch", "checkout"],
     );
-    assert.equal(result.problem?.recovery, "Use a supported isogit operation or EXEC[git] for native Git.");
+    assert.equal(result.problem?.recovery, "Use a supported isogit operation or `## EXEC1 [git]` for native Git.");
 });
 
 test("a pre-aborted operation returns 499 without touching the repo", async () => {

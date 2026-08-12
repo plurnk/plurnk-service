@@ -5,7 +5,6 @@ import AstBuilder from "./AstBuilder.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
-import { PLURNK_OPS } from "./types.ts";
 import type { ClientStatement, ParseItem, ParseResult, PlurnkStatement, Position } from "./types.ts";
 
 // Statement-bearing contexts the extraction builds into items. `statement` (statementSeq) and
@@ -20,12 +19,10 @@ const STATEMENT_RULES = new Set<number>([
     plurnkParser.RULE_clientStatement,
 ]);
 
-// Container rules whose children hold the statements - extraction recurses through these.
-// `turnStatement` is the `<|TURN…>…<TURN|>` wrapper (log); `turnContent` is the sandwich inside
-// it (and document's single turn). Recursing both flattens a wrapped log to its ops in order.
+// Container rule whose children hold one turn's statements. parseLog contains
+// multiple turnContent siblings; extraction flattens each in source order.
 const CONTAINER_RULES = new Set<number>([
     plurnkParser.RULE_turnContent,
-    plurnkParser.RULE_turnStatement,
 ]);
 
 export default class PlurnkParser {
@@ -33,11 +30,8 @@ export default class PlurnkParser {
     // interstatement TEXT remains an ordered item without language semantics. {§turn-shape}
     static parse(input: string): ParseResult {
         const result = PlurnkParser.#run(input, (parser) => parser.document());
-        // Value-adds layered on ANTLR's own diagnostics (we own syntax errors end to end):
-        // near-miss op advisories on swallowed prose, then turn-shape imperatives while the
-        // document boundary remains trustworthy. Neither changes what parsed.
-        PlurnkParser.#flagNearMissOps(result.items);
-        PlurnkParser.#flagOpsInPlanBody(result.items);
+        // Value-adds layered on ANTLR's diagnostics while the document boundary
+        // remains trustworthy. Neither changes what parsed.
         PlurnkParser.#flagMisplacedTarget(result.items);
         if (result.unparsedTail === undefined) {
             PlurnkParser.#imperativeTurnShape(result.items);
@@ -48,57 +42,6 @@ export default class PlurnkParser {
 
     // Terminal disposition alphabet. {§waitpid-dispositions} {§wait-obligation-matrix}
     static #DISPOSITIONS = new Set([102, 200, 202, 300, 499]);
-
-    // Curated op-name confusions (semantic + dead-verb), NOT edit-distance - a full
-    // `<|Word…>…<Word|>` enclosure carrying one of these is unambiguously an intended op, so the
-    // false-positive rate is ~0. Bodies are never scanned (only DEFAULT-mode text items), so
-    // the model's legitimate suffixed/embedded code is immune by construction.
-    static #OP_CONFUSABLES: Record<string, string> = {
-        CLOSE: "`<|FOLD`", HIDE: "`<|FOLD`", COLLAPSE: "`<|FOLD`",
-        SHOW: "`<|OPEN`", EXPAND: "`<|OPEN`",
-        DELETE: "`<|KILL`", REMOVE: "`<|KILL`", DROP: "`<|KILL`",
-        GET: "`<|READ`", FETCH: "`<|READ`", CAT: "`<|READ`",
-        WRITE: "`<|EDIT`", CREATE: "`<|EDIT`", UPDATE: "`<|EDIT`", SET: "`<|EDIT`",
-        LIST: "`<|FIND`", SEARCH: "`<|FIND`", GREP: "`<|FIND`", QUERY: "`<|FIND`",
-        RUN: "`<|EXEC`", SHELL: "`<|EXEC`",
-        SPAWN: "`<|WORK(worker://name)` to spawn a worker", DELEGATE: "`<|WORK(worker://name)` to spawn a worker",
-    };
-
-    // Surface near-miss ops that the forgiving parser swallowed as prose: a `<|Word…>…<Word|>`
-    // enclosure whose keyword is a known confusion (`<|CLOSE`, `<|DELETE`, …). Emits a WARNING
-    // (never an error - the input parsed), so a silent swallow becomes a steer toward canon.
-    static #flagNearMissOps(items: ParseItem<any>[]): void {
-        const additions: { at: number; item: ParseItem<any> }[] = [];
-        items.forEach((item, idx) => {
-            if (item.kind !== "text") return;
-            const text = item.text;
-            const opener = /<\|([A-Za-z]+)/g;
-            let m: RegExpExecArray | null;
-            while ((m = opener.exec(text)) !== null) {
-                const suggestion = PlurnkParser.#OP_CONFUSABLES[m[1].toUpperCase()];
-                if (!suggestion) continue;
-                // Op-shape gate: require a matching close `<Word|>` in the same run, so a bare
-                // prose mention without a close is never flagged.
-                if (!new RegExp("<" + m[1] + "\\|>").test(text)) continue;
-                const position = PlurnkParser.#advancePosition(item.position, text.slice(0, m.index));
-                additions.push({
-                    at: idx,
-                    item: {
-                        kind: "error",
-                        error: new PlurnkParseError(
-                            position.line,
-                            position.column,
-                            "parser",
-                            `\`<|${m[1]}\` is not a Plurnk operation, so it was read as text; did you mean ${suggestion}?`,
-                            "warning",
-                        ),
-                    },
-                });
-            }
-        });
-        // Insert each advisory right after its text item (reverse order keeps indices valid).
-        for (const { at, item } of additions.reverse()) items.splice(at + 1, 0, item);
-    }
 
     // Replace ANTLR's generic structure errors with the turn-shape imperative when the
     // PLAN-anchored sandwich is broken. PLAN-first takes precedence: with no PLAN we cannot
@@ -129,8 +72,8 @@ export default class PlurnkParser {
         );
         if (hasSpecificError) return;
         const fix = !hasPlan
-            ? "a turn must begin with `<|PLAN>…<PLAN|>` (the required first operation)"
-            : "a turn must end with a terminal `<|SEND[code]>…<SEND|>`";
+            ? "a turn must begin with `# PLAN1`"
+            : "a turn must end with a terminal `## SEND1 [code]` section";
         items.push({ kind: "error", error: new PlurnkParseError(anchor.line, anchor.column, "parser", fix) });
     }
 
@@ -229,16 +172,7 @@ export default class PlurnkParser {
 
         const tree = parseFn(parser);
         PlurnkParser.#dedupeLexerCascade(errors);
-        // Implicit closes: a FIND/READ body that reached a line boundary without
-        // its closer was closed by the lexer. Surface each as a recoverable error
-        // so the model learns the closer rule from the next packet.
-        for (const close of lexer.getImplicitCloses()) {
-            errors.push(new PlurnkParseError(
-                close.line, close.column, "lexer",
-                `<|${close.op} body was not closed before the end of its line — add \`<${close.op}|>\` to terminate`,
-            ));
-        }
-        const unparsedTail = PlurnkParser.#unparsedTail(lexer, input);
+        const unparsedTail = PlurnkParser.#unparsedTail(lexer);
 
         const items: ParseItem<S>[] = [];
         const consumedErrors = new Set<PlurnkParseError>();
@@ -257,47 +191,18 @@ export default class PlurnkParser {
     // Determine the public trust boundary before visiting recovered contexts. The parser may
     // synthesize tree nodes after an unfinished lexer mode, but those nodes have no public AST
     // meaning and can violate AstBuilder's complete-statement precondition. {§unparsed-tail-boundary}
-    static #unparsedTail(lexer: plurnkLexer, input: string): ParseResult["unparsedTail"] {
-        if (lexer.mode === 0) return undefined;
+    static #unparsedTail(lexer: plurnkLexer): ParseResult["unparsedTail"] {
+        // EOF concludes a section body and may directly conclude a bodyless
+        // heading. Only a partially open modifier destroys the later boundary.
+        const modeName = lexer.modeNames[lexer.mode] ?? "";
+        if (lexer.mode === 0 || modeName === "BODY" || modeName === "SLOTS") return undefined;
         const openTag = lexer.getOpenTag();
         const from = { line: lexer.getOpenTagLine(), column: lexer.getOpenTagColumn() };
-        const modeName = lexer.modeNames[lexer.mode] ?? "";
-        const reason = modeName === "BODY"
-            ? `body of \`<|${openTag}\` opened at line ${from.line} but never closed - add \`<${openTag}|>\` to terminate${PlurnkParser.#inventedCloser(input, lexer.getBodyStart(), openTag)}`
-            : modeName === "SIGNAL_TAGS" || modeName === "SIGNAL_INT" || modeName === "SIGNAL_IDENT"
-                ? `signal slot of \`<|${openTag}\` opened at line ${from.line} but never closed - add \`]\` to terminate the signal`
-                : modeName === "TARGET"
-                    ? `target slot of \`<|${openTag}\` opened at line ${from.line} but never closed - add \`)\` to terminate the target`
-                    : `statement \`<|${openTag}\` opened at line ${from.line} but never reached its end - add \`|>\` to self-close or \`>…<${openTag}|>\` for a body`;
+        const heading = lexer.getOpenHeading() || `## ${openTag}`;
+        const reason = modeName === "SIGNAL_TAGS" || modeName === "SIGNAL_INT" || modeName === "SIGNAL_IDENT"
+            ? `signal slot of \`${heading}\` opened at line ${from.line} but never closed - add \`]\``
+            : `target slot of \`${heading}\` opened at line ${from.line} but never closed - add \`)\``;
         return { from, reason };
-    }
-
-    // Warn when an unsuffixed PLAN body contains op-shaped text; a suffix deliberately
-    // invokes the universal quoting contract. {§plan-body-op-advisory}
-    static #flagOpsInPlanBody(items: ParseItem<any>[]): void {
-        const additions: { at: number; item: ParseItem<any> }[] = [];
-        const opener = new RegExp(`<\\|(${PLURNK_OPS.join("|")})\\b`);
-        items.forEach((item, idx) => {
-            if (item.kind !== "statement" || item.statement.op !== "PLAN") return;
-            if (item.statement.suffix.length > 0) return;
-            const body: string = (item.statement as any).body ?? "";
-            const m = opener.exec(body);
-            if (!m) return;
-            additions.push({
-                at: idx,
-                item: {
-                    kind: "error",
-                    error: new PlurnkParseError(
-                        item.statement.position.line,
-                        item.statement.position.column,
-                        "parser",
-                        `PLAN body contains op-shaped text (\`<|${m[1]}\`) - ops belong after the plan closes; did you omit \`<PLAN|>\`?`,
-                        "warning",
-                    ),
-                },
-            });
-        });
-        for (const { at, item } of additions.reverse()) items.splice(at + 1, 0, item);
     }
 
     // Mutating ops that require a `(target)` and carry a `[tags]` string-array signal. A null target
@@ -324,53 +229,13 @@ export default class PlurnkParser {
                         st.position.line,
                         st.position.column,
                         "parser",
-                        `\`<|${st.op}\` has no \`(target)\` - that path sits in the \`[…]\` tag slot; a target goes in \`(…)\`. Try \`<|${st.op}(${path})>…<${st.op}|>\``,
+                        `\`## ${st.op}${st.suffix}\` has no \`(target)\` - that path sits in the \`[…]\` tag slot; a target goes in \`(…)\`. Try \`## ${st.op}${st.suffix || "1"} (${path})\``,
                         "warning",
                     ),
                 },
             });
         });
         for (const { at, item } of additions.reverse()) items.splice(at + 1, 0, item);
-    }
-
-    // Name an ALLCAPS close lookalike only inside a never-closed body; healthy
-    // bodies are never scanned by this path. {§invented-closer-advisory}
-    static #inventedCloser(input: string, bodyStart: Position, openTag: string): string {
-        const offset = PlurnkParser.#offsetAtPosition(input, bodyStart);
-        const body = input.slice(offset);
-        const m = /<([A-Z][A-Z0-9_]{2,})\|>/.exec(body);
-        if (!m || m[1] === openTag.toUpperCase()) return "";
-        return ` (found \`<${m[1]}|>\`, which is body text - the closer echoes the op's name)`;
-    }
-
-    // JavaScript offsets count UTF-16 code units; parser source points count Unicode code
-    // points and advance only at LF. Keep that translation inside the parser. {§parser-position}
-    static #advancePosition(from: Position, text: string): Position {
-        let { line, column } = from;
-        for (const character of text) {
-            if (character === "\n") {
-                line++;
-                column = 0;
-            } else {
-                column++;
-            }
-        }
-        return { line, column };
-    }
-
-    static #offsetAtPosition(input: string, target: Position): number {
-        if (target.line < 1 || target.column < 0) {
-            throw new RangeError(`cannot resolve degraded parser position ${target.line}:${target.column}`);
-        }
-        let position: Position = { line: 1, column: 0 };
-        let offset = 0;
-        for (const character of input) {
-            if (position.line === target.line && position.column === target.column) return offset;
-            position = PlurnkParser.#advancePosition(position, character);
-            offset += character.length;
-        }
-        if (position.line === target.line && position.column === target.column) return offset;
-        throw new RangeError(`parser position ${target.line}:${target.column} is outside its source`);
     }
 
     // Walk a parse tree, appending statement/error/text items in source order. Statement rules

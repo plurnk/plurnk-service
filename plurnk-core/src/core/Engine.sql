@@ -5,7 +5,7 @@ SELECT status FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_worker_has_live_child
 -- A non-terminal child worker (worker:// spawn/fork set parent_worker_id) — a "live thing the worker holds",
--- like an open stream. A SEND[200] while one exists is a premature-terminate ({§send-premature-terminate}).
+-- like an open stream. A SEND signal 200 while one exists is a premature-terminate ({§send-premature-terminate}).
 -- Live = a child whose LATEST loop is still pending/running/parked (100/102/202) — the SAME definition
 -- engine_child_workers_live uses for the Active Child Workers orientation, so the 409 gate and the section the model
 -- reads NEVER disagree: a refused termination is always backed by a child the model can SEE and KILL

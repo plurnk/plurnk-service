@@ -77,7 +77,7 @@ export default class Ws implements SchemeHandler {
         volatile: true,
         modelVisible: true,
         glyph: "🔌",
-        example: "<|READ(wss://api.example.com/feed)|>",
+        example: "## READ1 (wss://api.example.com/feed)",
         documentation,
         flags: {
             requiresWeb: true,
@@ -405,8 +405,8 @@ export default class Ws implements SchemeHandler {
         if (errors.length > 0) throw new AggregateError(errors, "WebSocket shutdown failed");
     }
 
-    // SEND[200] targets only an open owner whose native transport is still OPEN.
-    // SEND[499] is routed to the owning READ handle; scheme dispatch is a no-op.
+    // SEND signal 200 targets only an open owner whose native transport is still OPEN.
+    // SEND signal 499 is routed to the owning READ handle; scheme dispatch is a no-op.
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Ws.#bad(400, "bad-target", "SEND requires a ws(s):// URL target.", {

@@ -723,7 +723,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS log_entries_worker_ambient_event
     WHERE ambient_event_id IS NOT NULL;
 
 -- {§log-region-tagging} — named log-region curation. FOLD is the log's write-op (EDIT can't
--- reach engine-written rows): FOLD[tag] stamps a tag on a region; OPEN[tag]/FIND[tag] filter
+-- reach engine-written rows): FOLD stamps tags on a region; OPEN/FIND filter by tags
 -- by it. Mirrors entry_tags (apply additive / filter ALL-tags AND); CASCADE with the row on KILL.
 CREATE TABLE IF NOT EXISTS log_tags (
     log_entry_id INTEGER NOT NULL,

@@ -6,20 +6,17 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, seedEnvelope } from "./_helpers.ts";
 
-// grammar 0.70: turns lead with PLAN; prefix it (when absent) and strip it back out.
-const planPrefixed = (input: string): string => input.startsWith("<|PLAN") ? input : `<|PLAN|>\n${input}`;
-
 const parseOne = (input: string): PlurnkStatement => {
-    const result = PlurnkParser.parse(planPrefixed(input));
+    const result = PlurnkParser.parseStatements(input);
     for (const item of result.items) {
-        if (item.kind === "statement" && item.statement.op !== "PLAN") return item.statement;
+        if (item.kind === "statement") return item.statement;
     }
     throw new Error(`no statement parsed from: ${input}`);
 };
 
 const parseAll = (input: string): PlurnkStatement[] => {
-    const result = PlurnkParser.parse(planPrefixed(input));
-    return result.items.filter((i) => i.kind === "statement").map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement).filter((s) => s.op !== "PLAN");
+    const result = PlurnkParser.parseStatements(input);
+    return result.items.filter((i) => i.kind === "statement").map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
 };
 
 const dispatch = async (engine: Engine, ctx: Awaited<ReturnType<typeof seedEnvelope>>, statements: PlurnkStatement[]): Promise<number[]> => {
@@ -34,12 +31,12 @@ const dispatch = async (engine: Engine, ctx: Awaited<ReturnType<typeof seedEnvel
     return statuses;
 };
 
-test("parser roundtrip: <|EDIT[france,europe](worker:///countries/france/capital)>Paris<EDIT|> writes the right entry", async () => {
+test("parser roundtrip: ## EDIT1 [france,europe] (worker:///countries/france/capital)\nParis writes the right entry", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-edit");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const stmt = parseOne("<|EDIT[france,europe](worker:///countries/france/capital)>Paris<EDIT|>") as EditStatement;
+        const stmt = parseOne("## EDIT1 [france,europe] (worker:///countries/france/capital)\nParis") as EditStatement;
         const result = await engine.dispatch({
             statement: stmt,
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
@@ -57,43 +54,20 @@ test("parser roundtrip: <|EDIT[france,europe](worker:///countries/france/capital
     } finally { await db.close(); }
 });
 
-// {§empty-body-equivalence} {§text-scope-semantics}
-test("parser roundtrip: both empty-body spellings perform the same EDIT deletion", async () => {
+// {§empty-section} {§text-scope-semantics}
+test("parser roundtrip: an empty EDIT section performs a scoped deletion", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-empty-edit");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const statements = [
-            parseOne("<|EDIT(worker:///self-closing)>alpha\nbeta\ngamma<EDIT|>"),
-            parseOne("<|EDIT(worker:///paired)>alpha\nbeta\ngamma<EDIT|>"),
-            parseOne("<|EDIT(worker:///self-closing)<2>|>"),
-            parseOne("<|EDIT(worker:///paired)<2>><EDIT|>"),
+            parseOne("## EDIT1 (worker:///scoped-delete)\nalpha\nbeta\ngamma"),
+            parseOne("## EDIT1 (worker:///scoped-delete) <2>"),
         ];
 
-        assert.deepEqual(await dispatch(engine, env, statements), [201, 201, 200, 200]);
-        const selfClosing = await db.test_get_body_by_pathname.get<{ content: string }>({ pathname: "/self-closing" });
-        const paired = await db.test_get_body_by_pathname.get<{ content: string }>({ pathname: "/paired" });
-        assert.equal(selfClosing?.content, "alpha\ngamma");
-        assert.deepEqual(paired, selfClosing);
-    } finally { await db.close(); }
-});
-
-test("parser roundtrip: a suffixed enclosure carries an unsuffixed close-shaped token in its body", async () => {
-    const db = await openMigrated();
-    try {
-        const env = await seedEnvelope(db, "ws-roundtrip-edit1");
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const stmt = parseOne("<|EDIT1(worker:///doc)>a body with an <EDIT|> token inside<EDIT1|>") as EditStatement;
-        assert.equal(stmt.suffix, "1", "the digit suffix is parsed off the delimiter");
-        assert.equal(stmt.body, "a body with an <EDIT|> token inside", "the unsuffixed token is literal body, not this enclosure's delimiter");
-        const result = await engine.dispatch({
-            statement: stmt,
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
-            sequence: 1, origin: "model",
-        });
-        assert.equal(result.status, 201);
-        const body = await db.test_parser_body_first.get<{ content: string }>();
-        assert.equal(body?.content, "a body with an <EDIT|> token inside", "the nonmatching token survives into storage verbatim");
+        assert.deepEqual(await dispatch(engine, env, statements), [201, 200]);
+        const body = await db.test_get_body_by_pathname.get<{ content: string }>({ pathname: "/scoped-delete" });
+        assert.equal(body?.content, "alpha\ngamma");
     } finally { await db.close(); }
 });
 
@@ -102,9 +76,7 @@ test("parser roundtrip: multi-statement text parses + dispatches in order", asyn
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-multi");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const text = `<|EDIT(worker:///a)>first<EDIT|>
-<|EDIT(worker:///b)>second<EDIT|>
-<|EDIT[noted](worker:///c)>third<EDIT|>`;
+        const text = `## EDIT1 (worker:///a)\nfirst\n\n## EDIT1 (worker:///b)\nsecond\n\n## EDIT1 [noted] (worker:///c)\nthird`;
         const statements = parseAll(text);
         assert.equal(statements.length, 3);
         const statuses = await dispatch(engine, env, statements);
@@ -117,20 +89,20 @@ test("parser roundtrip: multi-statement text parses + dispatches in order", asyn
     } finally { await db.close(); }
 });
 
-test("parser roundtrip: <|EDIT…> followed by <|READ…|> reads back what was written", async () => {
+test("parser roundtrip: ## EDIT1…\n followed by ## READ1… reads back what was written", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-readback");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         await engine.dispatch({
-            statement: parseOne("<|EDIT(worker:///france)>The capital is Paris.<EDIT|>") as EditStatement,
+            statement: parseOne("## EDIT1 (worker:///france)\nThe capital is Paris.") as EditStatement,
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
 
         const readResult = await engine.dispatch({
-            statement: parseOne("<|READ(worker:///france)|>") as ReadStatement,
+            statement: parseOne("## READ1 (worker:///france)") as ReadStatement,
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
@@ -145,7 +117,7 @@ test("parser roundtrip: HTTP-shape path still decomposes authority correctly", a
         const env = await seedEnvelope(db, "ws-roundtrip-http");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
-        const stmt = parseOne("<|READ(https://en.wikipedia.org/wiki/Paris)|>") as ReadStatement;
+        const stmt = parseOne("## READ1 (https://en.wikipedia.org/wiki/Paris)") as ReadStatement;
         await engine.dispatch({
             statement: stmt,
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
@@ -164,7 +136,7 @@ test("parser roundtrip: real DSL preserves serialized query + fragment on opaque
         const env = await seedEnvelope(db, "ws-roundtrip-params");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
-        const stmt = parseOne("<|READ(worker:///france?lang=fr#History)|>") as ReadStatement;
+        const stmt = parseOne("## READ1 (worker:///france?lang=fr#History)") as ReadStatement;
         await engine.dispatch({
             statement: stmt,
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
@@ -179,9 +151,9 @@ test("parser roundtrip: real DSL preserves serialized query + fragment on opaque
     } finally { await db.close(); }
 });
 
-// Suffix invariance (SPEC.md {§matcher} — opening/closing tag suffix is disambiguation
-// only). Per plurnk.md: `<|EDITouter(...)>...<EDITouter|>` is the same statement
-// as `<|EDIT(...)>...<EDIT|>` except the suffix string itself. Verifying so
+// Heading-lane invariance (SPEC.md {§lane-match}). Per plurnk.md,
+// `## EDITouter (...)\n...` is the same statement as `## EDIT1 (...)\n...`
+// except the suffix string itself. Verifying so
 // downstream code can rely on it without case analysis on `statement.suffix`.
 
 const stripVolatile = (stmt: PlurnkStatement): object => {
@@ -192,55 +164,49 @@ const stripVolatile = (stmt: PlurnkStatement): object => {
     return rest;
 };
 
-test("parser: opening/closing tag suffix preserves statement AST (EDIT)", () => {
-    const noSuffix = parseOne("<|EDIT[france,europe](worker:///countries/france/capital)>Paris<EDIT|>");
-    const withSuffix = parseOne("<|EDITouter[france,europe](worker:///countries/france/capital)>Paris<EDITouter|>");
-    assert.equal(noSuffix.op, "EDIT");
-    assert.equal(withSuffix.op, "EDIT");
-    assert.equal((withSuffix as { suffix: string }).suffix, "outer");
-    assert.deepEqual(stripVolatile(noSuffix), stripVolatile(withSuffix));
+test("parser: heading lane preserves statement AST (EDIT)", () => {
+    const laneOne = parseOne("## EDIT1 [france,europe] (worker:///countries/france/capital)\nParis");
+    const laneOuter = parseOne("## EDITouter [france,europe] (worker:///countries/france/capital)\nParis");
+    assert.equal(laneOne.op, "EDIT");
+    assert.equal(laneOuter.op, "EDIT");
+    assert.equal((laneOuter as { suffix: string }).suffix, "outer");
+    assert.deepEqual(stripVolatile(laneOne), stripVolatile(laneOuter));
 });
 
-test("parser: opening/closing tag suffix preserves statement AST (FIND with matcher)", () => {
-    const noSuffix = parseOne("<|FIND(worker:///users.json)>$.name<FIND|>");
-    const withSuffix = parseOne("<|FINDa(worker:///users.json)>$.name<FINDa|>");
-    assert.deepEqual(stripVolatile(noSuffix), stripVolatile(withSuffix));
+test("parser: heading lane preserves statement AST (FIND with matcher)", () => {
+    const laneOne = parseOne("## FIND1 (worker:///users.json)\n$.name");
+    const laneA = parseOne("## FINDa (worker:///users.json)\n$.name");
+    assert.deepEqual(stripVolatile(laneOne), stripVolatile(laneA));
 });
 
-test("parser: opening/closing tag suffix preserves statement AST (SEND directed)", () => {
-    const noSuffix = parseOne("<|SEND[200](worker:///result)>Paris<SEND|>");
-    const withSuffix = parseOne("<|SENDouter[200](worker:///result)>Paris<SENDouter|>");
-    assert.deepEqual(stripVolatile(noSuffix), stripVolatile(withSuffix));
+test("parser: heading lane preserves statement AST (SEND directed)", () => {
+    const laneOne = parseOne("## SEND1 [200] (worker:///result)\nParis");
+    const laneOuter = parseOne("## SENDouter [200] (worker:///result)\nParis");
+    assert.deepEqual(stripVolatile(laneOne), stripVolatile(laneOuter));
 });
 
-test("parser: opening/closing tag suffix preserves statement AST (EXEC)", () => {
-    const noSuffix = parseOne("<|EXEC>uname -r<EXEC|>");
-    const withSuffix = parseOne("<|EXECouter>uname -r<EXECouter|>");
-    assert.deepEqual(stripVolatile(noSuffix), stripVolatile(withSuffix));
+test("parser: heading lane preserves statement AST (EXEC)", () => {
+    const laneOne = parseOne("## EXEC1\nuname -r");
+    const laneOuter = parseOne("## EXECouter\nuname -r");
+    assert.deepEqual(stripVolatile(laneOne), stripVolatile(laneOuter));
 });
 
-test("parser: nested same-op uses suffix to disambiguate enclosure boundaries", () => {
-    // The tag-suffix contract is meant to enable nesting: an outer EDIT
-    // body that contains literal text including `<|EDIT(...)>...<EDIT|>` must
-    // not be parsed as a nested statement. The outer EDITouter enclosure carries
-    // through and the inner text stays in the body verbatim.
-    const input = "<|EDITouter(worker:///demo)>quoted: <|EDIT(worker:///inner)>hello<EDIT|>\n<EDITouter|>";
+test("parser: an alternate heading lane remains literal section body", () => {
+    const input = "## EDITouter (worker:///demo)\nquoted section:\n## EDIT1 (worker:///inner)\nhello";
     const stmts = parseAll(input);
-    assert.equal(stmts.length, 1, "exactly one statement parsed (the outer); inner is text inside the body");
+    assert.equal(stmts.length, 1, "only the active-lane heading is structural");
     const outer = stmts[0] as EditStatement & { suffix: string };
     assert.equal(outer.op, "EDIT");
     assert.equal(outer.suffix, "outer");
-    assert.match(outer.body as string, /<\|EDIT\(worker:\/\/\/inner\)>hello<EDIT\|>/);
+    assert.equal(outer.body, "quoted section:\n## EDIT1 (worker:///inner)\nhello");
 });
 
-test("parser: numeric suffix disambiguates nested-op enclosures", () => {
-    // Numeric suffixes obey the same matching contract as alphabetic suffixes:
-    // the outer enclosure closes exactly and the inner operation-shaped text stays literal.
-    const input = "<|EDIT1(worker:///demo)>quoted: <|EDIT(worker:///inner)>hello<EDIT|>\n<EDIT1|>";
+test("parser: a different numeric heading lane remains literal section body", () => {
+    const input = "## EDIT1 (worker:///demo)\nquoted section:\n## EDIT2 (worker:///inner)\nhello";
     const stmts = parseAll(input);
-    assert.equal(stmts.length, 1, "exactly one statement parsed (the outer EDIT1)");
+    assert.equal(stmts.length, 1, "only lane 1 is structural");
     const outer = stmts[0] as EditStatement & { suffix: string };
     assert.equal(outer.op, "EDIT");
     assert.equal(outer.suffix, "1");
-    assert.match(outer.body as string, /<\|EDIT\(worker:\/\/\/inner\)>hello<EDIT\|>/);
+    assert.equal(outer.body, "quoted section:\n## EDIT2 (worker:///inner)\nhello");
 });

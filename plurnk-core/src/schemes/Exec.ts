@@ -138,8 +138,8 @@ export default class Exec extends CoreSchemeAdapterBase {
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,
-        example: "<|EXEC[sqlite]>SELECT 22.0 / 7.0<EXEC|>",
-        documentation: "Runs a command in a runtime — `<|EXEC[runtime](target)>command<EXEC|>` — output streams into the worker's `<runtime>:///<loop>/<turn>/<seq>` entry on the runtime's own channels (a subprocess → stdout/stderr; a computational runtime like sqlite/jq → a JSON `results` channel). A host-effecting command proposes for review before it runs; a read-only/pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes to you automatically — folded while the command runs, opened when it finishes.",
+        example: "## EXEC1 [sqlite]\nSELECT 22.0 / 7.0",
+        documentation: "Runs a command in a runtime — `## EXEC1 [runtime] (target)\ncommand` — output streams into the worker's `<runtime>:///<loop>/<turn>/<seq>` entry on the runtime's own channels (a subprocess → stdout/stderr; a computational runtime like sqlite/jq → a JSON `results` channel). A host-effecting command proposes for review before it runs; a read-only/pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes to you automatically — folded while the command runs, opened when it finishes.",
         flags: {
             excludedInAsk: true,
         },
@@ -272,7 +272,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     }
 
     // EXEC op handler — the actual model-facing entry point per plurnk.md.
-    // `<|EXEC[runtime](target)>command<EXEC|>` →
+    // `## EXEC1 [runtime] (target)\ncommand` →
     //   signal=runtime, target=optional source/program/cwd, body=command.
     //
     // Proposes (status=202) with attrs={runtime, cwd, command, pathname}.
@@ -744,7 +744,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 }
                 await db.engine_insert_log_entry.get({
                     worker_id: narration.workerId, loop_id: narration.loopId, turn_id: narration.turnId, sequence,
-                    // signal carries the tags — the SAME slot a model's EDIT[tags] uses, so the
+                    // signal carries the tags — the SAME slot a model's EDIT tag signal uses, so the
                     // ambient row renders its tags natively everywhere (packet meta line, digest).
                     origin: "plurnk", source: causalSource, op: "EDIT", suffix: "", signal: JSON.stringify(tags),
                     scheme, username: null, password: null, hostname: null, port: null,

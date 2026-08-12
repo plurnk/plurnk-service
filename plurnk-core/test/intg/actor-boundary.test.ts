@@ -100,9 +100,9 @@ test("origin is attribution (provenance), never read to hide a row at render", a
 // Daemon.exec-wake.test.ts. Together they discharge {§actor-boundary-passive-wake}'s two-trigger contract.
 test("an idle worker wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [
-        makeMockResponse("<|SEND[200]>first done<SEND|>", 10),
-        makeMockResponse("<|SEND[200]>woke done<SEND|>", 10),
-        makeMockResponse("<|SEND[200]>extra<SEND|>", 10),
+        makeMockResponse("## SEND1 [200]\nfirst done", 10),
+        makeMockResponse("## SEND1 [200]\nwoke done", 10),
+        makeMockResponse("## SEND1 [200]\nextra", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -141,7 +141,7 @@ test("runtime-owned entry work uses the durable plurnk worker and an ephemeral l
     const prev = process.env.PLURNK_SERVICE_MD_SELFHOST;
     process.env.PLURNK_SERVICE_MD_SELFHOST = docPath;
     try {
-        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 50)] });
+        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND1 [200]\ndone", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {

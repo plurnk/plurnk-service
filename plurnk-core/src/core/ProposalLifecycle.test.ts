@@ -69,7 +69,7 @@ test("pending projection rejects malformed durable review material at its owner"
         },
         {
             row: { ...base, op: "SEND", signal: JSON.stringify(300), scheme: null, pathname: null },
-            error: /Pending SEND\[300\] proposal 7 has no question/,
+            error: /Pending SEND signal 300 proposal 7 has no question/,
         },
     ];
 

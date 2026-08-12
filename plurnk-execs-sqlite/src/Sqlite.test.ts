@@ -49,10 +49,10 @@ test("manifest declares the sqlite runtime tag", async () => {
     // Two self-documenting examples cover a file-target database
     // and a transient :memory: tabular calc showing the `*1.0` float idiom that
     // avoids integer-division truncation.
-    const examples = pkg.plurnk.runtimes[0].example.split("\n");
+    const examples = pkg.plurnk.runtimes[0].example.split("\n\n");
     assert.equal(examples.length, 2);
-    assert.match(examples[0], /^<\|EXEC\[sqlite\]\(\.\/app\.db\)>/);
-    assert.match(examples[1], /^<\|EXEC\[sqlite\]>.*\*1\.0.*<EXEC\|>$/);
+    assert.match(examples[0], /^## EXEC1 \[sqlite\] \(\.\/app\.db\)\n.+$/);
+    assert.match(examples[1], /^## EXEC1 \[sqlite\]\n.*\*1\.0.*$/);
 });
 
 test("declares a results channel (application/json)", () => {

@@ -49,7 +49,7 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
         //     one fingerprint and the detector mislabels exploration
         //     as a loop.
         //   - SEND: the status code (signal) IS the activity. Different
-        //     SEND[X] are different intentions; same SEND[X] with
+        //     Different SEND signals are different intentions; the same signal with
         //     different message bodies is the same termination signal.
         if (stmt.op === "EXEC") {
             const body = typeof stmt.body === "string" ? stmt.body : "";

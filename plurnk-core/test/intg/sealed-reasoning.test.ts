@@ -37,8 +37,8 @@ test("core preserves the normalized item list, AG-UI correlates it, and the pack
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            { assistant: { content: "<|PLAN|>\n<|SEND[102]>one<SEND|>", reasoning: null, reasoningEncrypted: [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }] } },
-            { assistant: { content: "<|PLAN|>\n<|SEND[200]>done<SEND|>", reasoning: null } },
+            { assistant: { content: "# PLAN1\n\n## SEND1 [102]\none", reasoning: null, reasoningEncrypted: [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }] } },
+            { assistant: { content: "# PLAN1\n\n## SEND1 [200]\ndone", reasoning: null } },
         ] as never });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
@@ -79,7 +79,7 @@ test("multiple encrypted-reasoning items remain distinct forensic evidence witho
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const A = `${BLOB}-A`, B = `${BLOB}-B`;
         const provider = new Mock({ contextWindow: 100000, responses: [
-            { assistant: { content: "<|PLAN|>\n<|SEND[200]>done<SEND|>", reasoning: null, reasoningEncrypted: [
+            { assistant: { content: "# PLAN1\n\n## SEND1 [200]\ndone", reasoning: null, reasoningEncrypted: [
                 { id: "rs_a", subtype: "message", encrypted: [{ data: A, format: "openai-responses-v1" }] },
                 { id: "rs_b", subtype: "message", encrypted: [{ data: B, format: "openai-responses-v1" }] },
             ] } },

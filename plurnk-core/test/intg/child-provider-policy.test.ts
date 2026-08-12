@@ -40,16 +40,16 @@ test("{§methods-loop-run-child-provider}: a smaller WORK provider carries throu
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
-            makeMockResponse("<|WORK(worker://child)>delegate once<WORK|>\n<|SEND[202]<-1>>waiting<SEND|>"),
-            makeMockResponse("<|SEND[200]>tree complete<SEND|>"),
+            makeMockResponse("## WORK1 (worker://child)\ndelegate once\n\n## SEND1 [202] <-1>\nwaiting"),
+            makeMockResponse("## SEND1 [200]\ntree complete"),
         ],
     });
     const child = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("<|WORK(worker://grandchild)>delegate again<WORK|>\n<|SEND[202]<-1>>waiting<SEND|>"),
-            makeMockResponse("<|SEND[200]>leaf complete<SEND|>"),
-            makeMockResponse("<|SEND[200]>child complete<SEND|>"),
+            makeMockResponse("## WORK1 (worker://grandchild)\ndelegate again\n\n## SEND1 [202] <-1>\nwaiting"),
+            makeMockResponse("## SEND1 [200]\nleaf complete"),
+            makeMockResponse("## SEND1 [200]\nchild complete"),
         ],
     });
     ProviderInstantiate.registerInstance(parent, parentSpec);
@@ -98,13 +98,13 @@ test("{§methods-loop-run-child-provider}: the configured child alias supplies a
     const parent = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("<|WORK(worker://child)>use configured child<WORK|>\n<|SEND[202]<-1>>waiting<SEND|>"),
-            makeMockResponse("<|SEND[200]>parent complete<SEND|>"),
+            makeMockResponse("## WORK1 (worker://child)\nuse configured child\n\n## SEND1 [202] <-1>\nwaiting"),
+            makeMockResponse("## SEND1 [200]\nparent complete"),
         ],
     });
     const child = new Mock({
         contextWindow: 8192,
-        responses: [makeMockResponse("<|SEND[200]>child complete<SEND|>")],
+        responses: [makeMockResponse("## SEND1 [200]\nchild complete")],
     });
     ProviderInstantiate.registerInstance(parent, parentSpec);
     ProviderInstantiate.registerInstance(child, childSpec);
@@ -139,9 +139,9 @@ test("{§methods-loop-run-child-provider}: explicit inherit overrides configurat
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("<|WORK(worker://child)>do it<WORK|>\n<|SEND[202]<-1>>waiting<SEND|>"),
-            makeMockResponse("<|SEND[200]>child complete<SEND|>"),
-            makeMockResponse("<|SEND[200]>parent complete<SEND|>"),
+            makeMockResponse("## WORK1 (worker://child)\ndo it\n\n## SEND1 [202] <-1>\nwaiting"),
+            makeMockResponse("## SEND1 [200]\nchild complete"),
+            makeMockResponse("## SEND1 [200]\nparent complete"),
         ],
     });
     ProviderInstantiate.registerInstance(mock, spec);
@@ -178,8 +178,8 @@ test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinar
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
-            makeMockResponse("<|FORK(worker://branch)>continue with inherited history<FORK|>\n<|SEND[202]<-1>>waiting<SEND|>"),
-            makeMockResponse("<|SEND[200]>observed child failure<SEND|>"),
+            makeMockResponse("## FORK1 (worker://branch)\ncontinue with inherited history\n\n## SEND1 [202] <-1>\nwaiting"),
+            makeMockResponse("## SEND1 [200]\nobserved child failure"),
         ],
     });
     const child = new Mock({ contextWindow: 4096, responses: [] });

@@ -255,7 +255,7 @@ test("{§proposal-202-pauses}: a broadcast SEND[202] is not a proposal", async (
         // not enter the propose/await path.
         // {§emission-admission}: parse a complete PLAN…SEND frame, then pluck the
         // broadcast SEND[202] (target:null) the model would actually emit.
-        const sendParked = parseDsl("<|PLAN|>\n<|SEND[202]<-1>>awaiting your reply<SEND|>").find((s) => s.op === "SEND");
+        const sendParked = parseDsl("# PLAN1\n\n## SEND1 [202] <-1>\nawaiting your reply").find((s) => s.op === "SEND");
         assert.ok(sendParked, "fixture: the broadcast park parsed as a statement");
         const parkDeferred = deferred<number>();
         const parkResult = await ctx.engine.dispatch({

@@ -210,7 +210,7 @@ export default class PacketWire {
 
     // Number each line of body as `<N>:<line>` — a bare `N:` prefix, NO separator whitespace
     // ({§render-rule-line-navigable-prefix}): the leading digit prevents column-zero fence collisions and gives
-    // the model line refs for free (`READ<42-46>`), while the absence of any separator means a
+    // the model line refs for free (`## READ1 (...) <42-46>`), while the absence of any separator means a
     // reproduced line has nothing between `N:` and the content to copy — the hard-tab separator used
     // to leak into edit bodies and corrupt indentation. The content's OWN leading whitespace is
     // content, preserved verbatim.
@@ -504,7 +504,7 @@ export default class PacketWire {
                 }));
             }
 
-            // The canonical full body is shared with READ(log://), FIND(log://),
+            // The canonical full body is shared with log READ, log FIND,
             // and search derivation. READ/FIND already own selection bounds and
             // render complete; every other body uses this one preview projection.
             const fullBody = LogBody.resolve({

@@ -1,7 +1,7 @@
 # @plurnk/plurnk-execs-git
 
 Native Git for [Plurnk Service](https://github.com/plurnk/plurnk-service)'s
-EXEC scheme. `EXEC[git]` invokes the installed `git` binary with ordinary Git
+EXEC scheme. `## EXEC1 [git]` invokes the installed `git` binary with ordinary Git
 arguments. Arguments are tokenized into argv and executed directly, never
 interpreted by a shell.
 
@@ -25,11 +25,20 @@ runtime with `PLURNK_EXECS_GIT=0`.
 ## Usage
 
 ```plurnk
-<|EXEC[git]>status --short<EXEC|>
-<|EXEC[git]>checkout -b feature/example<EXEC|>
-<|EXEC[git]>add .<EXEC|>
-<|EXEC[git]>commit -m "save work"<EXEC|>
-<|EXEC[git](./subrepo)>log --oneline -5<EXEC|>
+## EXEC1 [git]
+status --short
+
+## EXEC1 [git]
+checkout -b feature/example
+
+## EXEC1 [git]
+add .
+
+## EXEC1 [git]
+commit -m "save work"
+
+## EXEC1 [git] (./subrepo)
+log --oneline -5
 ```
 
 The repo's normal Git configuration determines author identity and other native

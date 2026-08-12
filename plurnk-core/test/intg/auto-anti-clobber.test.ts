@@ -31,9 +31,9 @@ test("auto rejects an EDIT to a file that diverged on disk this turn — no sile
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env: hermeticGitEnv() });
 
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("<|SEND[200]>ok<SEND|>", 50),                                                  // loop 1: materialize doc.md=V1, terminate
-            makeMockResponse("<|EDIT(file:///doc.md)<1,-1>>V3 model clobber<EDIT|>\n<|SEND[200]>done<SEND|>", 50),  // loop 2 turn 1: stale EDIT is rejected
-            makeMockResponse("<|SEND[200]>stale edit rejected<SEND|>", 50),                                // loop 2 turn 2: model sees the rejection, then concludes
+            makeMockResponse("## SEND1 [200]\nok", 50),                                                  // loop 1: materialize doc.md=V1, terminate
+            makeMockResponse("## EDIT1 (file:///doc.md) <1,-1>\nV3 model clobber\n\n## SEND1 [200]\ndone", 50),  // loop 2 turn 1: stale EDIT is rejected
+            makeMockResponse("## SEND1 [200]\nstale edit rejected", 50),                                // loop 2 turn 2: model sees the rejection, then concludes
         ] });
         await withDaemon(mock, async (_db, _daemon, addr) => {
             const ws = await connect(addr);

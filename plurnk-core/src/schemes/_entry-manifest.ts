@@ -1,5 +1,5 @@
 // The entry catalog ({§packet-catalog}) — the complete, unranked directory for
-// one addressed owner. FIND(**) serves it recursively; FIND(*) projects it as
+// one addressed owner. Recursive FIND serves it recursively; shallow FIND projects it as
 // a one-level map in _entry-find. An omitted owner selects the shared commons.
 // Each item carries its address, optional stream lifecycle and tags, and addressable
 // channels. Search indexing is owned separately by SearchIndex.

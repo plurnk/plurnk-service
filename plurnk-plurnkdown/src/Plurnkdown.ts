@@ -1,9 +1,11 @@
 import { Lexer, type Token, type Tokens } from "marked";
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PLURNK_OPS, PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { Diagnostic } from "./types.ts";
 
 const RUNON_LIMIT = 180; // a long run-on regardless of structure
 const WELD_LIMIT = 120;  // a semicolon welding clauses in a non-trivial sentence
+const PROTOCOL_OPS = new Set<string>(PLURNK_OPS);
+const CLIENT_OPS = new Set(["LOOK", "BUFF"]);
 
 // Structural blocks are not prose. Bare paragraph operations require fences;
 // contracts owns fenced statement parsing. {§packet-operation-fences} {§packet-atomic-prose}
@@ -12,22 +14,29 @@ export default class Plurnkdown {
         const diagnostics: Diagnostic[] = [];
         let line = 1;
         for (const token of Lexer.lex(source)) {
-            if (token.type === "paragraph") {
-                this.#checkBareOps(token, line, diagnostics);
-                this.#checkRunOns(token, line, diagnostics);
-            } else if (token.type === "code" && (token as Tokens.Code).lang === "plurnk") {
+            if (token.type === "code" && (token as Tokens.Code).lang === "plurnk") {
                 this.#checkFencedOps((token as Tokens.Code).text, line, diagnostics);
+            } else {
+                this.#checkBareOps(token, line, diagnostics);
+                if (token.type === "paragraph") this.#checkRunOns(token, line, diagnostics);
             }
             line += this.#newlines(token.raw);
         }
         return diagnostics;
     }
 
-    // A Plurnk op sigil (`<|`) opening a prose line is a bare op; ops must live in a
-    // ```plurnk fence (validated below) or an inline-code span.
+    // A structural Plurnk heading outside a fence is a bare op. Markdown tokenizes
+    // it as a heading, not prose, so inspect every non-fence block. {§op-shapes}
     #checkBareOps(token: Token, line: number, diagnostics: Diagnostic[]): void {
         token.raw.split("\n").forEach((text, index) => {
-            if (!/^\s*<\|/.test(text)) return;
+            const match = /^(#{1,2}) ([A-Z]+)[A-Za-z0-9_]*(?=$|[ \t])/.exec(text);
+            if (match === null) return;
+            const [, marks, op] = match;
+            const isProtocolHeading = op === "PLAN"
+                ? marks === "#"
+                : marks === "##" && PROTOCOL_OPS.has(op);
+            const isClientHeading = marks === "##" && CLIENT_OPS.has(op);
+            if (!isProtocolHeading && !isClientHeading) return;
             diagnostics.push({
                 rule: "op-fence",
                 severity: "error",

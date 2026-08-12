@@ -78,7 +78,7 @@ test("{§operator-config-workspace-execs} one effective set filters packet teach
         const stored = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
         assert.ok(stored !== undefined);
         const tools = packetSection(JSON.parse(stored.packet) as unknown, "tools");
-        assert.doesNotMatch(tools, /<\|EXEC\[node\]/, "node disabled by workspace policy → no capability example");
-        assert.match(tools, /<\|EXEC>/, "an enabled shell example remains advertised");
+        assert.doesNotMatch(tools, /## EXEC1 \[node\]/, "node disabled by workspace policy → no capability example");
+        assert.match(tools, /## EXEC1(?:\n| )/, "an enabled shell example remains advertised");
     } finally { await db.close(); }
 });

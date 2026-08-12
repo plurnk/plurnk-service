@@ -52,7 +52,7 @@ test("ambient (origin plurnk) rows ride plurnk.ambient; the model mirror row emi
     const ambient = tr.logEntry(entry({ op: "EDIT", origin: "plurnk", pathname: "/prompt/1/1" }));
     assert.deepEqual(ambient.map((e) => e.type), ["CUSTOM", "CUSTOM"]);
     assert.equal((ambient[1] as { name: string }).name, "plurnk.ambient");
-    const mirror = tr.logEntry(entry({ op: null, coordinate: "1/1/3", attrs: { kind: "model_emission" }, tx: "<|PLAN>x<PLAN|>" }));
+    const mirror = tr.logEntry(entry({ op: null, coordinate: "1/1/3", attrs: { kind: "model_emission" }, tx: "# PLAN1\nx" }));
     assert.deepEqual(mirror.map((e) => e.type), ["CUSTOM"], "the mirror rides plurnk.row only — forensic, never speech");
 });
 

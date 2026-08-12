@@ -235,7 +235,7 @@ export default class Http implements SchemeHandler {
         volatile: true,        // remote content can change between fetches
         modelVisible: true,
         glyph: "🌐",
-        example: "<|READ(https://example.com/page)|>",
+        example: "## READ1 (https://example.com/page)",
         documentation,
         flags: {
             requiresWeb: true, // excluded under the loop's noWeb flag
@@ -523,7 +523,7 @@ export default class Http implements SchemeHandler {
         return this.editBatch([statement], ctx);
     }
 
-    // KILL -> DELETE the resource. Distinct from SEND[410] (which drops the local
+    // KILL -> DELETE the resource. Distinct from SEND signal 410 (which drops the local
     // cached entry): KILL is an HTTP DELETE request to the remote.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
@@ -606,7 +606,7 @@ export default class Http implements SchemeHandler {
             );
         }
 
-        // Local AbortController for force-cancel from outside (SEND[499]).
+        // Local AbortController for force-cancel from outside (SEND signal 499).
         const local = new AbortController();
         const handle: SubscriptionHandle = { cancel: () => local.abort() };
 

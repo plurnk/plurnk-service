@@ -5,15 +5,15 @@ stateful scheme, not an HTTP content type: READ claims a workspace address and
 owns its socket until terminal settlement, while concurrent SEND and KILL
 operations address that owner.
 
-| Operation                             | Effect                                                                                     |
-| ------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `READ(wss://host/path)`               | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames    |
-| A second `READ` of the same address   | Return `409` until the existing owner's terminal cleanup releases the claim                |
-| `SEND[200](wss://host/path):message:` | Send only through an open socket; claimed, connecting, or settling owners return `409`     |
-| `SEND[499](wss://host/path)`          | Cancel the owning READ through its routed subscription handle                              |
-| `KILL(wss://host/path)`               | Close or cancel the claimed owner; an address with no owner is `404`                       |
+| Operation                                      | Effect                                                                                  |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `## READ1 (wss://host/path)`                   | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames |
+| A second READ of the same address              | Return `409` until the existing owner's terminal cleanup releases the claim             |
+| `## SEND1 [200] (wss://host/path)` with body   | Send only through an open socket; non-open owners return `409`                          |
+| `## SEND1 [499] (wss://host/path)`             | Cancel the owning READ through its routed subscription handle                           |
+| `## KILL1 (wss://host/path)`                   | Close or cancel the claimed owner; an address with no owner is `404`                    |
 
-| Owner state  | Meaning                                              | `SEND[200]`                                      |
+| Owner state  | Meaning                                              | SEND with signal `200`                           |
 | ------------ | ---------------------------------------------------- | ------------------------------------------------ |
 | `claimed`    | Address reserved while entry/subscription setup runs | `409`; no second ownership path is created       |
 | `connecting` | Native socket exists but has not emitted `open`      | `409`; wait for the active stream event          |

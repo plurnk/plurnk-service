@@ -131,7 +131,7 @@ test("SEND[102] rejects a wait scope instead of preserving the retired dual spel
         const row = await db.test_send_rows_for_worker.all<{ status_rx: number; rx: string }>({ worker_id: workerId });
         const rejected = row.find((r) => r.status_rx === 400);
         assert.ok(rejected, "the SEND records the contract failure");
-        assert.match(rejected.rx, /SEND\[202\].*wait/, "the failure points to the one wait spelling");
+        assert.match(rejected.rx, /## SEND1 \[202\].*wait/, "the failure points to the one wait spelling");
     } finally { await db.close(); }
 });
 
@@ -270,7 +270,7 @@ test("a retrieval-only refusal states the observation boundary, not a live-work 
             problem?.detail,
             "Last turn both performed retrieval operations and attempted to terminate. Retrieval operations force an additional turn so their results can be reviewed.",
         );
-        assert.equal(problem?.recovery, "Review the results, then use only PLAN and SEND[200] to conclude.");
+        assert.equal(problem?.recovery, "Review the results, then use only `# PLAN1` and `## SEND1 [200]` to conclude.");
         assert.equal(problem?.retryable, false);
         assert.doesNotMatch(refused!.rx, /KILL/, "no remedy menu for a leverless kind");
     } finally { await db.close(); }

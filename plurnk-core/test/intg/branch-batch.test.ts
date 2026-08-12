@@ -246,10 +246,10 @@ test("tagged sibling workers execute through the complete daemon topology", asyn
         const mock = new Mock({
             contextWindow: 32768,
             responses: [
-                makeMockResponse("<|WORK[feature/one](worker://one)>first child<WORK|>\n<|FORK[feature/two](worker://two)>second child with inherited context<FORK|>\n<|SEND[202]<-1>>waiting on both<SEND|>"),
-                makeMockResponse("<|SEND[200]>first done<SEND|>"),
-                makeMockResponse("<|SEND[200]>second done<SEND|>"),
-                makeMockResponse("<|SEND[200]>both branches returned<SEND|>"),
+                makeMockResponse("## WORK1 [feature/one] (worker://one)\nfirst child\n\n## FORK1 [feature/two] (worker://two)\nsecond child with inherited context\n\n## SEND1 [202] <-1>\nwaiting on both"),
+                makeMockResponse("## SEND1 [200]\nfirst done"),
+                makeMockResponse("## SEND1 [200]\nsecond done"),
+                makeMockResponse("## SEND1 [200]\nboth branches returned"),
             ],
         });
         await withDaemon(mock, async (db, _daemon, addr) => {

@@ -1,6 +1,6 @@
 // Shared CRUD primitives for entry-bearing schemes.
 // Per SPEC {§crud} — uniform read/write/delete that the engine drives for
-// cross-scheme orchestration of COPY/MOVE/SEND[410].
+// cross-scheme orchestration of COPY/MOVE/SEND signal 410.
 
 import { contentHash } from "../core/content-hash.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";

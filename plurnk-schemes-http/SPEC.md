@@ -36,21 +36,21 @@ pathnames, `%28` and `%29` canonicalize to literal parentheses.
 
 ## §op-surface §2 HTTP operation surface
 
-| Operation                         | Remote action                         | Contract                                                                                |
-| --------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------- |
-| Exact `READ(url)<scope?>`         | GET unless a fresh GET copy is usable | Prepare one complete canonical representation, then let core select and project it      |
-| Exact `FIND(url)`                 | GET only when acquisition is required | Use the same preparation, then universal query, matcher, weighting, and pagination      |
-| `FIND(pattern-url)`               | None                                  | Query already-materialized web entries; a path pattern does not discover the remote web |
-| `<|SEND[200](url)>body<SEND|>`    | POST                                  | Stream and persist the response under the addressed URL                                 |
-| `<|EDIT(url)>body<EDIT|>`         | PUT                                   | Replace the whole remote resource; a line marker is invalid                             |
-| `KILL(url)`                       | DELETE                                | Delete the remote resource and stream its response                                      |
-| `SEND[410](url)`                  | None                                  | Delete the local stored entry                                                           |
-| `SEND[499](url)`                  | Cancellation is engine-routed         | The routed subscription handle aborts the live owner; scheme dispatch is a `200` no-op  |
+| Operation                                  | Remote action                         | Contract                                                                                |
+| ------------------------------------------ | ------------------------------------- | --------------------------------------------------------------------------------------- |
+| Exact `## READ1 (url) <scope?>`            | GET unless a fresh GET copy is usable | Prepare one complete canonical representation, then let core select and project it      |
+| Exact `## FIND1 (url)`                     | GET only when acquisition is required | Use the same preparation, then universal query, matcher, weighting, and pagination      |
+| `## FIND1 (pattern-url)`                   | None                                  | Query already-materialized web entries; a path pattern does not discover the remote web |
+| `## SEND1 [200] (url)` with body           | POST                                  | Stream and persist the response under the addressed URL                                 |
+| `## EDIT1 (url)` with body                 | PUT                                   | Replace the whole remote resource; a line marker is invalid                             |
+| `## KILL1 (url)`                           | DELETE                                | Delete the remote resource and stream its response                                      |
+| `## SEND1 [410] (url)`                     | None                                  | Delete the local stored entry                                                           |
+| `## SEND1 [499] (url)`                     | Cancellation is engine-routed         | The routed subscription handle aborts the live owner; scheme dispatch is a `200` no-op  |
 
 Finite GET uses scope-blind representation preparation; POST, PUT, DELETE,
 and genuinely live GET responses retain the subscription path. Request
 headers are ordered target metadata: one trailing `{Key: value}` block per
-header. The loop `SEND[code]` is never the remote HTTP status; remote status and
+header. A loop SEND signal is never the remote HTTP status; remote status and
 headers are persisted in `header`.
 Exact-versus-pattern FIND preparation uses the shared
 `PathSyntax.hasGlob` classifier {§path-glob}; HTTP owns no reduced
@@ -219,8 +219,8 @@ acquisition `header` remain independent of an unavailable origin source.
 | Finite empty text response                                    | `204`                                                    |
 | Finite binary response has no readable projection             | `415` (`binary-response-unsupported`)                    |
 | Binary projection input exceeds the configured byte bound     | `413` (`projection-input-limit`)                         |
-| `SEND[410]`                                                   | Exact entry-delete result                                |
-| Routed `SEND[499]` dispatch                                   | `200`                                                    |
+| SEND signal `410`                                             | Exact entry-delete result                                |
+| Routed SEND signal `499` dispatch                             | `200`                                                    |
 | Client-cancelled finite acquisition                           | `499` (`cancelled`)                                      |
 | SSE after acquisition                                         | `102` initial; terminal selected-channel result          |
 | SSE cancellation after acquisition                            | `102` initial; terminal `499`                            |
@@ -403,7 +403,7 @@ body, TTL, and validators together.
 POST, PUT, and DELETE responses retain their method marker but cannot satisfy a
 later GET or exact-FIND acquisition. An unmarked authored entry and an eligible
 stored GET remain visible to universal FIND as durable evidence; exact HTTP
-preparation applies the policy above. `SEND[410]` deletes the stored entry.
+preparation applies the policy above. SEND signal `410` deletes the stored entry.
 
 ### §sse Server-sent events
 
@@ -456,18 +456,18 @@ stateDiagram-v2
     Claimed --> Idle: setup or construction failure
     Connecting --> Open: native open; messages active; READ 102
     Connecting --> Settling: pre-open close/error, KILL, cancel, activation failure, or shutdown
-    Open --> Open: ordered inbound frame or SEND[200]
+    Open --> Open: ordered inbound frame or SEND 200
     Open --> Settling: closing state, close/error, KILL, cancel, binary frame, persistence failure, or shutdown
     Settling --> Idle: await retained work, close subscription, release claim
 ```
 
 | Operation or event                | Contract                                                                                                         |
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `READ(ws(s)://…)`                 | Claim, seed/subscribe, construct `CONNECTING`, then return `102` after native `open` plus durable activation     |
+| `## READ1 (ws(s)://…)`            | Claim, seed/subscribe, construct `CONNECTING`, then return `102` after native `open` plus durable activation     |
 | Concurrent duplicate READ         | `409` in `claimed`, `connecting`, `open`, or `settling`; cleanup releases the only claim                         |
-| `SEND[200](ws(s)://…)`            | Send only for owner `open` plus native `readyState=OPEN`; absent or non-open owner is `409`; send throw is `502` |
-| `SEND[499](ws(s)://…)`            | Engine-routed cancellation closes the owning READ; scheme dispatch returns `200`                                 |
-| `KILL(ws(s)://…)`                 | Close/cancel the claimed owner; no owner is `404`; an attempted close throw is `502`                             |
+| `## SEND1 [200] (ws(s)://…)`      | Send only for owner `open` plus native `readyState=OPEN`; absent or non-open owner is `409`; send throw is `502` |
+| `## SEND1 [499] (ws(s)://…)`      | Engine-routed cancellation closes the owning READ; scheme dispatch returns `200`                                 |
+| `## KILL1 (ws(s)://…)`            | Close/cancel the claimed owner; no owner is `404`; an attempted close throw is `502`                             |
 | Inbound frame after native `open` | Join the owner's persistence chain; the next write begins only after the preceding write succeeds               |
 | Binary frame after native `open`  | Retain the text prefix, prune the binary and later frames, settle `415 binary-frame-unsupported`, close with private-use code `4003` |
 | First inbound persistence failure | Retain the successful prefix, prune queued and later frames, and settle with `500 message-persistence-failed`    |

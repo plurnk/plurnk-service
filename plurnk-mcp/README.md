@@ -6,11 +6,15 @@ module for [Plurnk](https://github.com/plurnk/plurnk-service).
 Each configured MCP server becomes a model-facing executor and resource
 authority:
 
-```text
-<|READ(github:///)|>
-<|EXEC[github](create_issue)>{"title":"Bug"}<EXEC|>
-<|FIND(github:///resources/**)|>
-<|READ(github:///resources/https%3A%2F%2Fexample.test%2Fdocument)|>
+```plurnk
+## READ1 (github:///)
+
+## EXEC1 [github] (create_issue)
+{"title":"Bug"}
+
+## FIND1 (github:///resources/**)
+
+## READ1 (github:///resources/https%3A%2F%2Fexample.test%2Fdocument)
 ```
 
 The module requires protocol revision `2026-07-28`. It does not negotiate or
@@ -47,11 +51,11 @@ Portable timeout defaults and complete examples live in
 
 ## Current surface
 
-- `READ(server:///)` returns the live tools, resources, resource templates, and
+- `## READ1 (server:///)` returns the live tools, resources, resource templates, and
   prompts catalog.
-- `EXEC[server](tool)` calls a tool with one JSON object in the body.
+- `## EXEC1 [server] (tool)` calls a tool with one JSON object in the body.
 - `server:///resources` exposes the resource catalog through ordinary Plurnk
-  `FIND` and `READ`.
+  `FIND` and `READ` sections.
 - `server:///resources/<encoded-uri>` reads a concrete MCP resource and stores
   it as an ordinary entry, after which normal projection and slicing apply.
 - A tool's `readOnlyHint` selects Plurnk's read effect. Unknown or mutating

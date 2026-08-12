@@ -53,8 +53,8 @@ test("{§send-300-choices}: SEND[300] stops the world and the accepted body beco
         const packet = JSON.parse(stored?.packet ?? "{}") as { sections?: Array<{ name?: string; header?: string; content?: string }> };
         const optional = packet.sections?.find((section) => section.name === "optional-operations");
         assert.equal(optional?.header, "Enabled Optional Operations");
-        assert.match(optional?.content ?? "", /<\|SEND\[300\]/, "the enabled question example is separate from executable selectors");
-        assert.doesNotMatch(packet.sections?.find((section) => section.name === "tools")?.content ?? "", /<\|SEND\[300\]/);
+        assert.match(optional?.content ?? "", /## SEND1 \[300\]/, "the enabled question example is separate from executable selectors");
+        assert.doesNotMatch(packet.sections?.find((section) => section.name === "tools")?.content ?? "", /## SEND1 \[300\]/);
     } finally { await db.close(); }
 }); });
 
@@ -92,8 +92,8 @@ test("e2e: the ask stops the world via loop/proposal; loop.resolve's body IS the
     // answer lands in the ask's own rx, and the next turn concludes with it.
     const { withDaemon, connect, rpcCall, makeMockResponse, subscribeNotifications, waitFor, flush } = await import("./_rpc.ts");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("<|PLAN>ask the operator<PLAN|>\n<|SEND[300]>Which environment?;production;staging<SEND|>", 10),
-        makeMockResponse("<|PLAN>conclude with the chosen environment<PLAN|>\n<|SEND[200]>Deploying to staging as instructed.<SEND|>", 10),
+        makeMockResponse("# PLAN1\nask the operator\n\n## SEND1 [300]\nWhich environment?;production;staging", 10),
+        makeMockResponse("# PLAN1\nconclude with the chosen environment\n\n## SEND1 [200]\nDeploying to staging as instructed.", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -214,8 +214,8 @@ test("a reconnecting client DISCOVERS the stopped world — the pending question
     // (the reconnect) lists the pending proposal cold — no notification needed — and answers.
     const { withDaemon, connect, rpcCall, makeMockResponse, subscribeNotifications, waitFor, flush } = await import("./_rpc.ts");
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("<|PLAN>ask<PLAN|>\n<|SEND[300]>Which environment?;production;staging<SEND|>", 10),
-        makeMockResponse("<|PLAN>conclude<PLAN|>\n<|SEND[200]>Deploying to staging.<SEND|>", 10),
+        makeMockResponse("# PLAN1\nask\n\n## SEND1 [300]\nWhich environment?;production;staging", 10),
+        makeMockResponse("# PLAN1\nconclude\n\n## SEND1 [200]\nDeploying to staging.", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

@@ -1,2 +1,2 @@
-YOU MUST always begin each turn with a PLAN.
-YOU MUST always end each turn with SEND[status code]; retrieval turns use a non-concluding code.
+YOU MUST always begin each turn with `# PLAN1`.
+YOU MUST always end each turn with `## SEND1 [status code]`; retrieval turns use a non-concluding code.

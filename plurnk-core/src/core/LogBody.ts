@@ -27,7 +27,7 @@ const EMPTY_BODY: ResolvedLogBody = Object.freeze({
 });
 
 // The durable log row has one canonical body regardless of how it is consumed.
-// Packet rendering projects this body, while READ(log://), FIND(log://), and
+// Packet rendering projects this body, while log READ, log FIND, and
 // search derivation consume it complete. Storage envelopes and tx/rx placement
 // are persistence details and must not change what the row means.
 export default class LogBody {

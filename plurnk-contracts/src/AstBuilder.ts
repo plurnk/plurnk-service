@@ -448,8 +448,9 @@ export default class AstBuilder {
         return AstBuilder.#bodyTextOf(ctx) ?? "";
     }
 
-    static #splitSuffix(openTagText: string, op: PlurnkOp | ClientOp): string {
-        return openTagText.slice(2 + op.length);
+    static #splitSuffix(headingText: string, op: PlurnkOp | ClientOp): string {
+        const marker = op === "PLAN" ? "# " : "## ";
+        return headingText.slice(marker.length + op.length);
     }
 
     static #isDigit(c: string | undefined): boolean {
@@ -503,7 +504,7 @@ export default class AstBuilder {
                 pos.line,
                 pos.column,
                 "visitor",
-                "COPY/MOVE destination scope must immediately precede the operation close; remove the extra `:` after the scope",
+                "COPY/MOVE destination scope must end the destination selection; remove the extra `:` after the scope",
             );
         }
         const pathText = markerText === null ? raw : raw.slice(0, -markerText.length);

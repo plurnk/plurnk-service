@@ -9,7 +9,7 @@ import type { ExecInfo, ExecRegistry } from "./types.ts";
 const info = (runtime: string): ExecInfo => ({
     runtime,
     glyph: "•",
-    example: `<|EXEC[${runtime}]>…<EXEC|>`,
+    example: `## EXEC1 [${runtime}]\n…`,
     documentation: "",
     packageName: `@plurnk/plurnk-execs-${runtime}`,
 });

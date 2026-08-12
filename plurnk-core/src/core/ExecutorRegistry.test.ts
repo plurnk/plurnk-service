@@ -36,7 +36,7 @@ class FakeExecutor {
 // One package, two tags with divergent probe results. {§executor-probe}
 const oneTwoTagPackage = async () => ({
     registry: new Map([
-        ["alpha", { runtime: "alpha", glyph: "α", example: "<|EXEC[alpha]>do a thing<EXEC|>", packageName: "fake-pkg" }],
+        ["alpha", { runtime: "alpha", glyph: "α", example: "## EXEC1 [alpha]\ndo a thing", packageName: "fake-pkg" }],
         ["beta", { runtime: "beta", glyph: "β", packageName: "fake-pkg" }],
     ]),
 });
@@ -74,7 +74,7 @@ test("{§executor-probe} ExecutorRegistry preserves per-tag availability within 
     assert.deepEqual(registry.availableRuntimes(), ["alpha"], "only the present tag is offered to the model");
     // {§tools-capability-sheet}: the self-documenting example flows through;
     // absent → "" (not undefined).
-    assert.equal(registry.entry("alpha")?.example, "<|EXEC[alpha]>do a thing<EXEC|>", "the declared example is carried to the tools sheet");
+    assert.equal(registry.entry("alpha")?.example, "## EXEC1 [alpha]\ndo a thing", "the declared example is carried to the tools sheet");
     assert.equal(registry.entry("beta")?.example, "", "a tag with no example defaults to empty");
 });
 

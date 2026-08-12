@@ -375,7 +375,7 @@ export default class ProposalLifecycle {
         }
         if (signal !== 300) return false;
         if (typeof attrs.question !== "string") {
-            throw new Error(`Pending SEND[300] proposal ${row.logEntryId} has no question.`);
+            throw new Error(`Pending SEND signal 300 proposal ${row.logEntryId} has no question.`);
         }
         return true;
     }

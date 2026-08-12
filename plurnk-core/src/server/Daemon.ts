@@ -1688,12 +1688,12 @@ export default class Daemon {
                         },
                     );
                     if (result.result.status === 202) {
-                        // The loop slept via SEND[202] — suspended, not terminated. Leave it at 202
+                        // The loop slept via SEND signal 202 — suspended, not terminated. Leave it at 202
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
                         // (#handleWakeWorker) re-queues it; and if it holds a polled stream, a poll timer
                         // wakes it every P to inspect ({§exec-poll}). {§worker-lifecycle-wake-liveness}.
                         void this.#schedulePollWake(workspaceId, workerId, systemPrompt).catch((err: unknown) => console.error("poll-wake scheduling failed:", err instanceof Error ? err.message : String(err)));
-                        // {§send-premature-terminate}/SEND[202]<T> — the park deadline:
+                        // {§send-premature-terminate}/scoped SEND signal 202 — the park deadline:
                         // dispatcher recorded the marker's seconds; a bounded park is woken at T
                         // regardless of arrivals, so a park always has a next turn. -1 (indefinite:
                         // the butler, a [300] ask) schedules nothing — irc/inject/conclusions wake it.
@@ -2103,7 +2103,7 @@ export default class Daemon {
      * prompt or replacement loop is created.
      *
      * Skipped on result.status=499 (aborted): the model already knows about
-     * its own SEND[499], and a forcefully-cancelled loop's spawn-abort must
+     * its own SEND signal 499, and a forcefully-cancelled loop's spawn-abort must
      * not resurrect the worker.
      */
     async #handleWakeWorker(payload: WakeWorkerPayload): Promise<void> {
@@ -2138,7 +2138,7 @@ export default class Daemon {
         try {
             const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
 
-            // A slept (202) loop means the worker parked via SEND[202] → resume it in place: re-queue
+            // A slept (202) loop means the worker parked via SEND signal 202 → resume it in place: re-queue
             // it (202→100) so the drain re-claims and CONTINUES it (seq>1 → no re-foist). Checked
             // FIRST: the slept status is the worker's true disposition regardless of a draining
             // sibling mid-teardown (the #ensureDrain lock serializes the re-claim). No fresh loop,
@@ -2174,7 +2174,7 @@ export default class Daemon {
                 return;
             }
 
-            // No slept loop, no active drain — nothing to resume (e.g. a SEND[200]-done worker whose
+            // No slept loop, no active drain — nothing to resume (e.g. a SEND-200-done worker whose
             // streams were swept). Surface the conclusion without opening a loop.
             this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
                 ...conclusion, wakeAction: "no-loop",

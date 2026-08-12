@@ -133,7 +133,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
 
         // THE REGRESSION GUARD: the foisted FIND(worker:///*) renders its RESULT into the
         // log ({§render-rule-find-renders-result}) — the model SEES the catalog rows, not just
-        // its own echoed query. The invisible-catalog bug rendered only `<|FIND(...)|>`.
+        // its own echoed query. The invisible-catalog bug rendered only `## FIND1 (...)`.
         assert.match(log, /worker:\/\/\/note\.md/, "the foisted catalog FIND renders a direct entry into the packet's log");
         assert.match(log, /worker:\/\/\/\.env\.defaults/, "the one-level page includes direct dot entries");
         assert.match(log, /"path":"worker:\/\/\/\.github\/\*\*","items":1,"tokens":\d+/, "a dot directory renders as an actionable recursive summary");
@@ -151,7 +151,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.match(log, /"op":"FIND"/, "the catalog foist appears as a FIND op in the log");
         assert.match(
             log,
-            /<\|SEND\[102\]>Next, address the prompt using the survey\.<SEND\|>/,
+            /12:## SEND1 \[102\]\n13:Next, address the prompt using the survey\./,
             "the turn-0 exemplar teaches SEND[102] as an explicit next action",
         );
 
@@ -315,7 +315,7 @@ test("the default Recap projects the two framing reminders from the teaching cor
 
         assert.equal(
             recap,
-            "YOU MUST always begin each turn with a PLAN.\nYOU MUST always end each turn with SEND[status code]; retrieval turns use a non-concluding code.\n",
+            "YOU MUST always begin each turn with `# PLAN1`.\nYOU MUST always end each turn with `## SEND1 [status code]`; retrieval turns use a non-concluding code.\n",
         );
     } finally { await db.close(); }
 });
@@ -496,7 +496,7 @@ test("assembled packet: definition tables compact without changing other whitesp
     } finally { await db.close(); }
 });
 
-test("{§definition-table-projection}: canonical inline grammar remains exact on the packet wire", async () => {
+test("{§definition-table-projection}: canonical inline heading examples remain exact on the packet wire", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-definition-grammar-${crypto.randomUUID()}`);
@@ -508,17 +508,16 @@ test("{§definition-table-projection}: canonical inline grammar remains exact on
 
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
         const projected = packetSection(await getPacket(db, result.turnId), "definition");
-        const inlineGrammar = [...definition.matchAll(/`([^`\n]*(?:<\||\|>)[^`\n]*)`/gu)].map((match) => match[0]);
+        const inlineGrammar = [...definition.matchAll(/`(## (?:READ|EDIT)1[^`\n]*)`/gu)].map((match) => match[0]);
 
         assert.ok(inlineGrammar.length > 0, "canonical definition must contain inline grammar examples");
         for (const example of inlineGrammar) {
             assert.ok(projected.includes(example), `packet projection changed canonical inline grammar ${JSON.stringify(example)}`);
         }
-        assert.match(projected, /One line: `<\|READ\(notes\.md\)<2>\|>` reads only line 2; `<\|EDIT\(notes\.md\)<2>\|>` deletes line 2\./u);
-        assert.match(projected, /Inclusive line range: `<\|READ\(notes\.md\)<2,3>\|>` reads lines 2 and 3\./u);
-        assert.match(projected, /Exclusive column endpoint: `<\|READ\(notes\.md\)<2,1,2,5>\|>` reads columns 1-4 of line 2\./u);
-        assert.match(projected, /Zero-width position: `<\|EDIT\(notes\.md\)<2,5,2,5>>inserted text<EDIT\|>` inserts at line 2, column 5\./u);
-        assert.doesNotMatch(projected, /< \| (?:READ|EDIT)/u, "table projection must not split an operation's literal pipe characters into cells");
+        assert.match(projected, /One line: `## READ1 \(notes\.md\) <2>` reads only line 2; an empty `## EDIT1 \(notes\.md\) <2>` section deletes line 2\./u);
+        assert.match(projected, /Inclusive line range: `## READ1 \(notes\.md\) <2,3>` reads lines 2 and 3\./u);
+        assert.match(projected, /Exclusive column endpoint: `## READ1 \(notes\.md\) <2,1,2,5>` reads columns 1-4 of line 2\./u);
+        assert.match(projected, /Zero-width position: `## EDIT1 \(notes\.md\) <2,5,2,5>` with body `inserted text` inserts at line 2, column 5\./u);
     } finally { await db.close(); }
 });
 
@@ -538,8 +537,8 @@ test("{§schemes-directory}: the assembled packet renders complete fenced scheme
         // Every scheme-directory line is a complete authored operation.
         const schemesSection = packetSection(packet, "schemes");
         assert.ok(schemesSection.startsWith("```plurnk"), "the schemes catalog is a fenced plurnk block, not a bullet list");
-        const schemeLines = schemesSection.split("\n").filter((l) => l.startsWith("<|"));
+        const schemeLines = schemesSection.split("\n").filter((line) => line.startsWith("## "));
         assert.ok(schemeLines.length > 0, "the schemes directory lists entries");
-        for (const line of schemeLines) assert.match(line, /^<\|/, `scheme directory line must be a complete Plurnk statement: ${line}`);
+        for (const line of schemeLines) assert.match(line, /^## (?:FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|SEND|EXEC|WORK|FORK|KILL)1(?:$| )/, `scheme directory heading must be canonical: ${line}`);
     } finally { await db.close(); }
 });
