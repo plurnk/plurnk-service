@@ -87,7 +87,7 @@ test("a fork copies the parent's log (rows + their fold-state)", async () => {
     } finally { db.close(); }
 });
 
-test("a fork carries a log row's region tags along with its fold-state", async () => {
+test("a fork carries a log row's classifications along with its fold-state", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -96,14 +96,14 @@ test("a fork carries a log row's region tags along with its fold-state", async (
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1);
         await engine.dispatch({ statement: editStmt(urlPath("worker", "/a.md"), "first"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        // Tag the parent's row (the write FOLD[tag] performs), directly — to isolate the fork-copy.
+        // Classify the parent's row directly to isolate the fork-copy behavior.
         const ids = await db.test_log_entries_by_worker.all<{ id: number }>({ worker_id: workerId });
         await db.log_write_tag.run({ log_entry_id: ids[0].id, tag: "projectB" });
 
         const branchWorkerId = await Fork.fork(db, workerId);
 
         const branchTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: branchWorkerId });
-        assert.deepEqual(branchTags.map((r) => r.tag), ["projectB"], "the branch inherited the parent's region tag — a named working-set survives the fork");
+        assert.deepEqual(branchTags.map((r) => r.tag), ["projectB"], "the branch inherited the parent's log classification");
     } finally { db.close(); }
 });
 

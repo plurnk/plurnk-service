@@ -174,24 +174,14 @@ test("Worker.find: exact glob matcher returns flat match locations", async () =>
     } finally { db.close(); }
 });
 
-test("Worker.read: tag filter — entry has all requested tags → 200", async () => {
+test("Worker.read: signal classifies the eventual receipt and does not filter the resource", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
-        await k.edit(editStatement({ target: urlPath("worker", "/tagged"), tags: ["france", "geography"], body: "Paris" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const result = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/tagged"), tags: ["france"] }), makeSchemeCtx({ db, workspaceId, workerId }));
+        await k.edit(editStatement({ target: urlPath("worker", "/u"), body: "Paris" }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const result = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/u"), tags: ["+germany"] }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(result.status, 200);
         assert.equal(result.content, "Paris");
-    } finally { db.close(); }
-});
-
-test("Worker.read: tag filter — entry missing requested tag → 404", async () => {
-    const { db, workspaceId, workerId } = await setupContext();
-    try {
-        const k = new Worker();
-        await k.edit(editStatement({ target: urlPath("worker", "/u"), tags: ["france"], body: "Paris" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const result = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/u"), tags: ["germany"] }), makeSchemeCtx({ db, workspaceId, workerId }));
-        assert.equal(result.status, 404);
     } finally { db.close(); }
 });
 
@@ -209,7 +199,7 @@ test("Worker.find: matcher evaluates the full resource before projecting locatio
     } finally { db.close(); }
 });
 
-test("Worker.read: empty tag signal ([]) is treated as no filter — read proceeds", async () => {
+test("Worker.read: empty signal reads normally", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();

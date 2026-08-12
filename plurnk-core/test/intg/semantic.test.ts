@@ -190,11 +190,9 @@ test("[#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", 
         const pathname = "/repo/dist/index.json";
         await EntryCrud.writeEntry(pathname, {
             channels: { body: { content: identical, mimetype: "application/json" } },
-            tags: [],
         }, ctx, "file");
         await EntryCrud.writeEntry(pathname, {
             channels: { body: { content: identical, mimetype: "application/json" } },
-            tags: [],
         }, ctx, "https");
         await new Worker().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
         await SearchIndex.maintain(ctx);

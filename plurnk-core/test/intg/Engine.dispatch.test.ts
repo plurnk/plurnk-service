@@ -2,6 +2,7 @@ import test from "node:test";
 import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
 import assert from "node:assert/strict";
+import { InvalidTagSignalError } from "@plurnk/plurnk-contracts";
 import type { EditStatement, ReadStatement, KillStatement, PlanStatement, OpenStatement, FoldStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -22,9 +23,9 @@ const editStmt = (opts: { target: ParsedPath; tags?: string[] | null; body?: str
     position: { line: 1, column: 1 },
 });
 
-const readStmt = (opts: { target: ParsedPath }): ReadStatement => ({
+const readStmt = (opts: { target: ParsedPath; tags?: string[] | null }): ReadStatement => ({
     op: "READ", suffix: "",
-    signal: null,
+    signal: opts.tags ?? null,
     target: opts.target,
     lineMarker: null,
     body: null,
@@ -54,7 +55,7 @@ const openStmt = (opts: { target: ParsedPath | null; tags?: string[] }): OpenSta
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-const foldStmt = (opts: { target: ParsedPath; tags?: string[] }): FoldStatement => ({
+const foldStmt = (opts: { target: ParsedPath | null; tags?: string[] }): FoldStatement => ({
     op: "FOLD", suffix: "", signal: opts.tags ?? null, target: opts.target,
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
@@ -192,18 +193,53 @@ const setup = async () => {
     return { db, engine, env };
 };
 
-test("Engine.dispatch: targetless OPEN[tag] routes to the log owner", async () => {
+test("Engine.dispatch: operation tags classify their own durable log item, including failures", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        const edited = await engine.dispatch({
+            statement: editStmt({
+                target: urlPath("worker", "/classified"),
+                body: "classified body",
+                tags: ["+work", "+shared"],
+            }),
+            ...env, sequence: 1, origin: "model",
+        });
+        assert.equal(edited.status, 201);
+
+        const failed = await engine.dispatch({
+            statement: readStmt({
+                target: urlPath("worker", "/missing"),
+                tags: ["failure", "shared"],
+            }),
+            ...env, sequence: 2, origin: "model",
+        });
+        assert.equal(failed.status, 404);
+
+        const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({
+            worker_id: env.workerId,
+        });
+        assert.deepEqual(tags, [
+            { coordinate: "1/1/1", tag: "shared" },
+            { coordinate: "1/1/1", tag: "work" },
+            { coordinate: "1/1/2", tag: "failure" },
+            { coordinate: "1/1/2", tag: "shared" },
+        ]);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: targetless FOLD[tag] and OPEN[tag] symmetrically filter log items", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: planStmt({ body: "retain this working set" }),
+            statement: editStmt({ target: urlPath("worker", "/classified"), body: "body", tags: ["+working-set"] }),
             ...env, sequence: 1, origin: "model",
         });
         const folded = await engine.dispatch({
-            statement: foldStmt({ target: urlPath("log", "/1/1/1"), tags: ["working-set"] }),
+            statement: foldStmt({ target: null, tags: ["working-set"] }),
             ...env, sequence: 2, origin: "model",
         });
         assert.equal(folded.status, 200);
+        assert.equal((folded as { matched?: number }).matched, 1);
         const before = await db.test_get_log_expanded.get<{ expanded: number }>({
             worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1,
         });
@@ -219,6 +255,76 @@ test("Engine.dispatch: targetless OPEN[tag] routes to the log owner", async () =
             worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1,
         });
         assert.equal(after?.expanded, 1);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: FOLD/OPEN atomically change visibility and exact tag classifications", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        await engine.dispatch({
+            statement: editStmt({
+                target: urlPath("worker", "/one"),
+                body: "one",
+                tags: ["+research", "+stale"],
+            }),
+            ...env, sequence: 1, origin: "model",
+        });
+        await engine.dispatch({
+            statement: editStmt({
+                target: urlPath("worker", "/two"),
+                body: "two",
+                tags: ["+research"],
+            }),
+            ...env, sequence: 2, origin: "model",
+        });
+
+        const folded = await engine.dispatch({
+            statement: foldStmt({ target: null, tags: ["research", "+archive", "-stale"] }),
+            ...env, sequence: 3, origin: "model",
+        });
+        assert.equal(folded.status, 200);
+        assert.equal((folded as { matched?: number }).matched, 2);
+        assert.deepEqual(
+            await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: env.workerId }),
+            [
+                { coordinate: "1/1/1", tag: "archive" },
+                { coordinate: "1/1/1", tag: "research" },
+                { coordinate: "1/1/2", tag: "archive" },
+                { coordinate: "1/1/2", tag: "research" },
+            ],
+        );
+        const foldEffects = (await db.test_log_curation_effects_by_worker.all<{
+            operation_sequence: number;
+            target_sequence: number;
+            expanded_before: 0 | 1;
+            tags_added: string;
+            tags_removed: string;
+        }>({ worker_id: env.workerId })).filter(({ operation_sequence }) => operation_sequence === 3);
+        assert.deepEqual(foldEffects.map((effect) => ({
+            target: effect.target_sequence,
+            expandedBefore: effect.expanded_before,
+            added: JSON.parse(effect.tags_added),
+            removed: JSON.parse(effect.tags_removed),
+        })), [
+            { target: 1, expandedBefore: 1, added: ["archive"], removed: ["stale"] },
+            { target: 2, expandedBefore: 1, added: ["archive"], removed: [] },
+        ]);
+
+        const opened = await engine.dispatch({
+            statement: openStmt({ target: null, tags: ["archive", "-archive"] }),
+            ...env, sequence: 4, origin: "model",
+        });
+        assert.equal(opened.status, 200);
+        assert.equal((opened as { matched?: number }).matched, 2);
+        assert.deepEqual(
+            await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: env.workerId }),
+            [
+                { coordinate: "1/1/1", tag: "research" },
+                { coordinate: "1/1/2", tag: "research" },
+            ],
+        );
+        const rows = await db.test_log_entries_by_turn.all<{ sequence: number; attrs: string }>({ turn_id: env.turnId });
+        assert.ok(rows.every(({ attrs }) => !("__plurnk_curation" in JSON.parse(attrs))), "the bound curation plan is never durable");
     } finally { await db.close(); }
 });
 
@@ -253,7 +359,7 @@ test("Engine.dispatch: EDIT against worker:/// routes to Worker.edit, returns 20
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ target: urlPath("worker", "/france/capital"), body: "Paris", tags: ["france"] }),
+            statement: editStmt({ target: urlPath("worker", "/france/capital"), body: "Paris", tags: ["+france"] }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -379,12 +485,43 @@ test("Engine.dispatch: signal serialized to JSON in log", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: editStmt({ target: urlPath("worker", "/tagged"), tags: ["france", "europe"], body: "Paris" }),
+            statement: editStmt({ target: urlPath("worker", "/tagged"), tags: ["+france", "+europe"], body: "Paris" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         const log = await db.test_first_log_entry_for_turn.get<{ signal: string }>({ turn_id: env.turnId });
-        assert.deepEqual(JSON.parse(log?.signal ?? "null"), ["france", "europe"]);
+        assert.deepEqual(JSON.parse(log?.signal ?? "null"), ["+france", "+europe"]);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: an invalid classifying signal fails before EDIT mutates a resource", async () => {
+    const { db, engine, env } = await setup();
+    try {
+        await assert.rejects(
+            engine.dispatch({
+                statement: editStmt({ target: urlPath("worker", "/invalid-tag"), tags: ["-research"], body: "must not land" }),
+                workspaceId: env.workspaceId,
+                workerId: env.workerId,
+                loopId: env.loopId,
+                turnId: env.turnId,
+                sequence: 1,
+                origin: "model",
+            }),
+            InvalidTagSignalError,
+        );
+        const count = await db.test_count_log_entries_by_turn.get<{ n: number }>({ turn_id: env.turnId });
+        assert.equal(count?.n, 0);
+
+        const read = await engine.dispatch({
+            statement: readStmt({ target: urlPath("worker", "/invalid-tag") }),
+            workspaceId: env.workspaceId,
+            workerId: env.workerId,
+            loopId: env.loopId,
+            turnId: env.turnId,
+            sequence: 1,
+            origin: "model",
+        });
+        assert.equal(read.status, 404);
     } finally { await db.close(); }
 });
 

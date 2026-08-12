@@ -1,5 +1,7 @@
 import {
+    InvalidTagSignalError,
     PathSyntax,
+    TagSignal,
     type FindStatement,
     type FoldStatement,
     type OpenStatement,
@@ -24,15 +26,18 @@ import { resolveSearchCandidates } from "./_search-candidate.ts";
 import { pathFolderSummaries, pathScope, pathScopeMatches } from "./_path-scope.ts";
 
 type OpenFoldResult = SchemeResultBase & { matched?: number };
+type LogCatalogMatch = CatalogMatch & { tags?: string[] };
 
-export interface LogCurationEffect {
-    readonly targetLogEntryId: number;
-    readonly expandedBefore: 0 | 1;
+export interface LogCurationPlan {
+    readonly targetLogEntryIds: readonly number[];
+    readonly expanded: 0 | 1;
+    readonly add: readonly string[];
+    readonly remove: readonly string[];
 }
 
 export interface LogCurationOutcome {
     readonly result: OpenFoldResult;
-    readonly effects: ReadonlyArray<LogCurationEffect>;
+    readonly plan: LogCurationPlan | null;
 }
 
 // log:///<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
@@ -149,7 +154,6 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             rx: string;
             mimetype_rx: string;
             attrs: string;
-            tags: string;
         }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
 
         if (row === undefined) return failure("entry-not-found", 404, `No log entry exists at log:///${pathname}.`);
@@ -162,10 +166,6 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             mimetypeTx: row.mimetype_tx,
             mimetypeRx: row.mimetype_rx,
         });
-        const tags = JSON.parse(row.tags) as unknown;
-        if (!Array.isArray(tags) || !tags.every((tag) => typeof tag === "string")) {
-            throw new TypeError(`Log row ${pathname} contains invalid tag storage.`);
-        }
         return {
             representation: {
                 channels: {
@@ -175,7 +175,6 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                         state: "static",
                     },
                 },
-                tags,
             },
         };
     }
@@ -192,6 +191,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         statement: FindStatement,
         core: PlurnkSchemeContext,
         allowTargetless = false,
+        filterTags: readonly string[] = [],
     ): Promise<FindResult> {
         const { db, workerId, mimetypes } = core;
         const empty = (
@@ -258,9 +258,6 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 );
             }
         }
-        // {§log-region-tagging} — a tag signal AND-filters the candidates ({§find-tag-filter-and-semantics}):
-        // a row survives only if it carries EVERY listed tag. No signal → the plain coordinate scope.
-        const tags = Array.isArray(statement.signal) ? statement.signal : [];
         type Candidate = {
             coordinate: string;
             op: string | null;
@@ -273,8 +270,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             attrs: string;
             tags: string;
         };
-        const candidateRows = tags.length > 0
-            ? await db.log_find_candidates_tagged.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix, tags: JSON.stringify(tags) })
+        const candidateRows = filterTags.length > 0
+            ? await db.log_curation_find_candidates_tagged.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix, tags: JSON.stringify(filterTags) })
             : await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix });
         let rows: Candidate[];
         try { rows = candidateRows.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
@@ -453,7 +450,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 mimetypeTx: row.mimetype_tx,
                 mimetypeRx: row.mimetype_rx,
             });
-            const item: CatalogMatch = {
+            const item: LogCatalogMatch = {
                 path,
                 channels: { [path]: { mimetype: proj.mimetype, tokens: row.tokens, lines: proj.content.length === 0 ? 0 : proj.content.split("\n").length } },
             };
@@ -478,25 +475,28 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     }
 
     async open(statement: OpenStatement, ctx: CoreSchemeCallContext): Promise<OpenFoldResult> {
-        return this.#setExpanded(statement, this.coreContext(ctx), 1);
+        const core = this.coreContext(ctx);
+        const outcome = await this.#planCuration(statement, core, 1);
+        if (outcome.plan !== null) await this.#applyDirect(outcome.plan, core);
+        return outcome.result;
     }
 
     // FOLD toggles the expanded bit only — an active subscription stays alive. {§subscriptions-fold-keeps-subscription}
     async fold(statement: FoldStatement, ctx: CoreSchemeCallContext): Promise<OpenFoldResult> {
-        return this.#setExpanded(statement, this.coreContext(ctx), 0);
+        const core = this.coreContext(ctx);
+        const outcome = await this.#planCuration(statement, core, 0);
+        if (outcome.plan !== null) await this.#applyDirect(outcome.plan, core);
+        return outcome.result;
     }
 
     // Core dispatch retains the exact landed effect beside the suppressed
     // OPEN/FOLD event. Direct scheme callers receive the ordinary result above.
     async curate(statement: OpenStatement | FoldStatement, ctx: CoreSchemeCallContext): Promise<LogCurationOutcome> {
-        const effects: LogCurationEffect[] = [];
-        const result = await this.#setExpanded(
+        return this.#planCuration(
             statement,
             this.coreContext(ctx),
             statement.op === "OPEN" ? 1 : 0,
-            effects,
         );
-        return { result, effects };
     }
 
     // Resolve a log:/// target — a concrete coordinate or path-glob — to the matched row ids.
@@ -522,8 +522,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return { status: 200, ids: matched.map((row) => row.id) };
     }
 
-    // {§log-region-tagging} — resolve tagged OPEN to ids: candidates are the target's glob scope (the
-    // whole worker log when targetless — a bare tagged OPEN recalls the entire tagged working-set),
+    // {§log-item-tags} — resolve tagged OPEN/FOLD to ids: candidates are the target's glob scope (the
+    // whole worker log when targetless),
     // AND-filtered to rows carrying EVERY listed tag. Zero matches is a no-op success (204), mirroring
     // #resolveIds — recalling a name that tags nothing steers nothing.
     async #resolveByTags(statement: OpenStatement | FoldStatement, tags: string[], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {
@@ -545,22 +545,23 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     }
 
     // A matcher-bearing curation op reuses FIND's complete source-agnostic selector with
-    // explicit all-results pagination. OPEN's tags filter candidates; FOLD's tags are withheld until
-    // after selection because they apply to the rows being folded.
+    // explicit all-results pagination. Curation tags are an independent selector;
+    // an authored FIND signal classifies its result row and never enters candidate selection.
     async #resolveByMatcher(
         statement: OpenStatement | FoldStatement,
-        filterTags: boolean,
+        filterTags: readonly string[],
         ctx: PlurnkSchemeContext,
     ): Promise<{ status: number; ids: number[]; problem?: ProblemDetails }> {
         const selected = await this.#find(
             {
                 ...statement,
                 op: "FIND",
-                signal: filterTags ? statement.signal : null,
+                signal: null,
                 lineMarker: { marks: [1, -1] },
             },
             ctx,
-            filterTags && Array.isArray(statement.signal) && statement.signal.length > 0 && statement.target === null,
+            true,
+            filterTags,
         );
         if (selected.status !== 200) return { status: selected.status, ids: [], problem: selected.problem };
 
@@ -594,122 +595,138 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return ids.length === 0 ? { status: 204, ids: [] } : { status: 200, ids };
     }
 
-    async #applyExpanded(
-        ids: number[],
-        expanded: 0 | 1,
-        tags: string[],
-        ctx: PlurnkSchemeContext,
-        effects?: LogCurationEffect[],
-    ): Promise<OpenFoldResult> {
-        for (const id of ids) {
-            if (effects === undefined) {
-                await ctx.db.log_set_expanded_by_id.run({ id, expanded });
-                continue;
-            }
-            const changed = await ctx.db.log_set_expanded_by_id.get<{ id: number }>({ id, expanded });
-            if (changed !== undefined) {
-                effects.push({ targetLogEntryId: id, expandedBefore: expanded === 1 ? 0 : 1 });
-                continue;
-            }
-            const current = await ctx.db.log_expanded_by_id.get<{ expanded: 0 | 1 }>({ id });
-            if (current === undefined) throw new Error(`Log curation target ${id} disappeared after selection.`);
-            if (current.expanded !== expanded) {
-                throw new Error(`Log curation target ${id} did not reach visibility ${expanded}.`);
-            }
-            effects.push({ targetLogEntryId: id, expandedBefore: current.expanded });
+    async #applyDirect(plan: LogCurationPlan, ctx: PlurnkSchemeContext): Promise<void> {
+        for (const id of plan.targetLogEntryIds) {
+            await ctx.db.log_set_expanded_by_id.run({ id, expanded: plan.expanded });
+            for (const tag of plan.remove) await ctx.db.log_remove_tag.run({ log_entry_id: id, tag });
+            for (const tag of plan.add) await ctx.db.log_write_tag.run({ log_entry_id: id, tag });
         }
-        if (expanded === 0) {
-            for (const id of ids) for (const tag of tags) await ctx.db.log_write_tag.run({ log_entry_id: id, tag });
-        }
-        return { status: 200, matched: ids.length };
     }
 
-    async #setExpanded(
+    async #planCuration(
         statement: OpenStatement | FoldStatement,
         ctx: PlurnkSchemeContext,
         expanded: 0 | 1,
-        effects?: LogCurationEffect[],
-    ): Promise<OpenFoldResult> {
-        const signal = Array.isArray(statement.signal) ? statement.signal : [];
+    ): Promise<LogCurationOutcome> {
+        let tags: ReturnType<typeof TagSignal.curation>;
+        try {
+            tags = TagSignal.curation(statement.signal);
+        } catch (cause) {
+            if (!(cause instanceof InvalidTagSignalError)) throw cause;
+            return {
+                result: Results.failure(
+                    "scheme:log",
+                    "tag-signal-invalid",
+                    400,
+                    cause.message,
+                    {},
+                    { retryable: false },
+                ) as OpenFoldResult,
+                plan: null,
+            };
+        }
+        const planned = (ids: number[]): LogCurationOutcome => ({
+            result: { status: 200, matched: ids.length },
+            plan: {
+                targetLogEntryIds: ids,
+                expanded,
+                add: tags.add,
+                remove: tags.remove,
+            },
+        });
         if (statement.body !== null) {
-            const matched = await this.#resolveByMatcher(statement, expanded === 1, ctx);
-            if (matched.status === 204) return { status: 204, matched: 0 };
+            const matched = await this.#resolveByMatcher(statement, tags.filter, ctx);
+            if (matched.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
             if (matched.status !== 200) {
                 if (matched.problem !== undefined) {
-                    return Results.assert({ status: matched.status, problem: matched.problem }) as OpenFoldResult;
+                    return {
+                        result: Results.assert({ status: matched.status, problem: matched.problem }) as OpenFoldResult,
+                        plan: null,
+                    };
                 }
-                return Results.failure(
-                    "scheme:log",
-                    matched.status === 404 ? "entry-not-found" : "curation-failed",
-                    matched.status,
-                    "No log entry matches the requested selection.",
-                ) as OpenFoldResult;
+                return {
+                    result: Results.failure(
+                        "scheme:log",
+                        matched.status === 404 ? "entry-not-found" : "curation-failed",
+                        matched.status,
+                        "No log entry matches the requested selection.",
+                    ) as OpenFoldResult,
+                    plan: null,
+                };
             }
-            return this.#applyExpanded(matched.ids, expanded, signal, ctx, effects);
+            return planned(matched.ids);
         }
 
-        // {§log-region-tagging} — tagged OPEN is the READ side: recall rows by tag, target optional (a bare
-        // tagged OPEN recalls the whole tagged working-set). FOLD never resolves by tag — it is the WRITE
-        // side (it stamps the tag below), always scoped to the target region it folds.
-        if (expanded === 1 && signal.length > 0) {
-            const rt = await this.#resolveByTags(statement, signal, ctx);
-            if (rt.status === 204) return { status: 204, matched: 0 };
-            if (rt.status !== 200) {
-                return Results.failure(
+        // {§log-item-tags} — unsigned terms are the symmetric ALL-tags selector;
+        // signed terms are changes applied only after the exact set is resolved.
+        if (tags.filter.length > 0) {
+            const selected = await this.#resolveByTags(statement, [...tags.filter], ctx);
+            if (selected.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
+            if (selected.status !== 200) {
+                return {
+                    result: Results.failure(
+                        "scheme:log",
+                        "curation-failed",
+                        selected.status,
+                        selected.error ?? "No log entry matches the requested selection.",
+                        {},
+                        {
+                            target: statement.target?.raw ?? null,
+                            ...(selected.status === 400
+                                ? {
+                                    recovery: "Use a log coordinate, prefix, or glob.",
+                                    retryable: false,
+                                }
+                                : {}),
+                        },
+                    ) as OpenFoldResult,
+                    plan: null,
+                };
+            }
+            return planned(selected.ids);
+        }
+
+        if (statement.target === null) {
+            return {
+                result: Results.failure(
                     "scheme:log",
-                    "open-failed",
-                    rt.status,
-                    rt.error ?? "No log entry matches the requested selection.",
+                    "target-required",
+                    400,
+                    `${expanded === 1 ? "OPEN" : "FOLD"} requires a path, body pattern, or unsigned tag; signed tags do not select log items.`,
                     {},
                     {
-                        target: statement.target?.raw ?? null,
-                        ...(rt.status === 400
+                        recovery: "Provide a log coordinate, prefix, glob, body pattern, or unsigned tag.",
+                        retryable: false,
+                    },
+                ) as OpenFoldResult,
+                plan: null,
+            };
+        }
+        const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
+        const selected = await this.#resolveIds(pathname, ctx);
+        if (selected.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
+        if (selected.status !== 200) {
+            return {
+                result: Results.failure(
+                    "scheme:log",
+                    selected.status === 404 ? "entry-not-found" : "curation-failed",
+                    selected.status,
+                    selected.error ?? `No log entry matches '${pathname}'.`,
+                    {},
+                    {
+                        target: pathname,
+                        ...(selected.status === 400
                             ? {
                                 recovery: "Use a log coordinate, prefix, or glob.",
                                 retryable: false,
                             }
                             : {}),
                     },
-                ) as OpenFoldResult;
-            }
-            return this.#applyExpanded(rt.ids, 1, signal, ctx, effects);
+                ) as OpenFoldResult,
+                plan: null,
+            };
         }
-
-        if (statement.target === null) {
-            return Results.failure(
-                "scheme:log",
-                "target-required",
-                400,
-                `${expanded === 1 ? "OPEN" : "FOLD"} requires a log target.`,
-                {},
-                {
-                    recovery: "Provide a log coordinate, prefix, or glob.",
-                    retryable: false,
-                },
-            ) as OpenFoldResult;
-        }
-        const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
-        const r = await this.#resolveIds(pathname, ctx);
-        if (r.status === 204) return { status: 204, matched: 0 };
-        if (r.status !== 200) {
-            return Results.failure(
-                "scheme:log",
-                r.status === 404 ? "entry-not-found" : "curation-failed",
-                r.status,
-                r.error ?? `No log entry matches '${pathname}'.`,
-                {},
-                {
-                    target: pathname,
-                    ...(r.status === 400
-                        ? {
-                            recovery: "Use a log coordinate, prefix, or glob.",
-                            retryable: false,
-                        }
-                        : {}),
-                },
-            ) as OpenFoldResult;
-        }
-        return this.#applyExpanded(r.ids, expanded, signal, ctx, effects);
+        return planned(selected.ids);
     }
 
     // KILL shares OPEN/FOLD's address resolution, deletes instead of flipping visibility,

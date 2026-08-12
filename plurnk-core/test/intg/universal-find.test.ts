@@ -43,7 +43,6 @@ class PreparedDataScheme implements SchemeHandler {
                     mimetype: "text/markdown",
                 },
             },
-            tags: [],
         });
     }
 

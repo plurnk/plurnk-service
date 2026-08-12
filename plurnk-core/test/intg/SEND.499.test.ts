@@ -105,7 +105,6 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
                 }
                 await ctx.entries.write(request.pathname, {
                     channels: { data: { content: "", mimetype: "text/plain", state: "active" } },
-                    tags: [],
                 });
                 let subscription: StreamSubscription | undefined;
                 subscription = await ctx.subscriptions.open(request.pathname, {

@@ -88,7 +88,6 @@ class OwnerBoundPreparationScheme implements SchemeHandler {
                 channels: {
                     body: { content: "prepared for resolved worker", mimetype: "text/plain" },
                 },
-                tags: [],
             });
             assert.equal(written.status, 201);
         }
@@ -97,7 +96,7 @@ class OwnerBoundPreparationScheme implements SchemeHandler {
 }
 
 // A deliberately non-network protocol specimen. It knows aliases, acquisition,
-// channel topology, tags, and producer evidence; it knows nothing about READ,
+// channel topology, private attributes, and producer evidence; it knows nothing about READ,
 // FIND, text scope, matching, or pagination.
 class ArchiveScheme implements SchemeHandler {
     static manifest: SchemeManifest = {
@@ -135,7 +134,7 @@ class ArchiveScheme implements SchemeHandler {
                         mimetype: "application/json",
                     },
                 },
-                tags: ["imported"],
+                attributes: { kind: "imported" },
             });
             assert.ok(written.status === 200 || written.status === 201);
         } else {
@@ -179,7 +178,6 @@ class IndependentChannelScheme implements SchemeHandler {
                     producerResult: htmlFailure,
                 },
             },
-            tags: [],
         });
         assert.ok(written.status === 200 || written.status === 201);
         return { status: 200 };

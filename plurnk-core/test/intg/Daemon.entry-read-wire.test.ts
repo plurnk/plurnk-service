@@ -64,7 +64,6 @@ test("entry.read resolves one owner-aware client entry and returns the exact sha
                 statement: Dsl.buildEdit({
                     target: "private-notes:///same",
                     content,
-                    tags: [workerId === parent.workerId ? "parent" : "child"],
                 }),
             });
             assert.equal(written.status, 201);
@@ -88,7 +87,6 @@ test("entry.read resolves one owner-aware client entry and returns the exact sha
                     state: "static",
                 },
             },
-            tags: ["parent"],
         });
 
         const childRead = body(await daemon.readEntry({

@@ -246,20 +246,12 @@ export default class EntryOps {
             newContent = statement.body ?? "";
         }
 
-        // 304 no-op (SPEC {§edit}): an existing entry whose write would change nothing —
-        // identical content and no new tag. Mirrors OPEN/FOLD's idempotence; hands the
+        // 304 no-op (SPEC {§edit}): an existing entry whose write would change nothing.
+        // Mirrors OPEN/FOLD's idempotence; hands the
         // model a "you already did this" signal instead of a phantom 200 it can't
         // distinguish from a real update.
         if (existing !== undefined && newContent === originalContent) {
-            const signalTags = statements.flatMap(({ signal }) => Array.isArray(signal) ? signal : []);
-            let addsTag = false;
-            if (signalTags.length > 0) {
-                const have = new Set(
-                    (await db.crud_read_tags.all<{ tag: string }>({ entry_id: existing.id })).map((r) => r.tag),
-                );
-                addsTag = signalTags.some((t) => !have.has(t));
-            }
-            if (!addsTag) return {
+            return {
                 status: 304,
                 entryId: existing.id,
                 channel: targetChannel,
@@ -284,14 +276,6 @@ export default class EntryOps {
         // Search derivation is not a write concern. SearchIndex attaches the
         // updated readable projection before the next model execution.
 
-        // Tags apply additively — each signal tag is written, never replacing existing ones. {§edit-tags-additive}
-        for (const candidate of statements) {
-            if (!Array.isArray(candidate.signal)) continue;
-            for (const tag of candidate.signal) {
-                await db.crud_write_tag.run({ entry_id: entryId, tag });
-            }
-        }
-
         const receiptEdits = existing === undefined
             ? [{ marker: { marks: [1, -1] as [number, number] }, body: newContent }]
             : statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }));
@@ -305,7 +289,7 @@ export default class EntryOps {
     }
 
     // Owner-aware entry delete — the KILL counterpart of editWorkspaceEntry. Resolves
-    // the exact owner-held row, then deletes by id (channels/tags CASCADE). 404 when absent.
+    // the exact owner-held row, then deletes it (including channels by CASCADE). 404 when absent.
     static async deleteWorkspaceEntry(statement: { target: EditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<SchemeResultBase> {
         if (statement.target === null) {
             return Results.failure(

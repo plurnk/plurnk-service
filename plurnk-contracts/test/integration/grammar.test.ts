@@ -58,7 +58,7 @@ test("protocol operations parse as Markdown sections", () => {
         ["PLAN", "", "inspect, act, report"],
         ["FIND", " (known:///**) <1,20>", "Paris*"],
         ["READ", " (README.md)", undefined],
-        ["EDIT", " [draft] (notes.md) <2>", "replacement"],
+        ["EDIT", " [+draft] (notes.md) <2>", "replacement"],
         ["COPY", " (notes.md)", "archive.md<0>"],
         ["MOVE", " (notes.md)", "archive.md"],
         ["OPEN", " [memory] (log:///**)", "~topic"],
@@ -197,7 +197,7 @@ test("an unfinished modifier establishes an unparsed-tail trust boundary", () =>
 
 test("clean section EOF is a body boundary, while open slots are not", () => {
     assert.equal(PlurnkParser.parseStatements(section("EDIT", " (p)", "body")).unparsedTail, undefined);
-    assert.ok(PlurnkParser.parseStatements("## EDIT0 [tag").unparsedTail);
+    assert.ok(PlurnkParser.parseStatements("## EDIT0 [+tag").unparsedTail);
     assert.ok(PlurnkParser.parseStatements("## EDIT0 (path").unparsedTail);
 });
 
@@ -252,8 +252,8 @@ test("AST extracts suffix, target, raw body, and position", () => {
 });
 
 test("operation signals project to their owned AST types", () => {
-    const edit = oneStatement(section("EDIT", " [france,geography] (p)", "body"));
-    assert.deepEqual(edit.signal, ["france", "geography"]);
+    const edit = oneStatement(section("EDIT", " [+france,+geography] (p)", "body"));
+    assert.deepEqual(edit.signal, ["+france", "+geography"]);
 
     const send = oneStatement(section("SEND", " [200]", "Paris"));
     assert.equal(send.signal, 200);
@@ -269,8 +269,40 @@ test("empty and permissive signal spellings retain their typed meanings", () => 
     assert.deepEqual(oneStatement(section("EDIT", " [] (p)", "body")).signal, []);
     assert.equal(oneStatement(section("SEND", " []", "message")).signal, null);
     assert.equal(oneStatement(section("EXEC", " [] (./)", "command")).signal, null);
-    assert.deepEqual(oneStatement(section("FIND", " [,a,,b,] (p)", "m")).signal, ["a", "b"]);
-    assert.deepEqual(oneStatement(section("FIND", " [a b c] (p)", "m")).signal, ["a", "b", "c"]);
+    assert.deepEqual(oneStatement(section("FIND", " [,+a,,+b,] (p)", "m")).signal, ["+a", "+b"]);
+    assert.deepEqual(oneStatement(section("FIND", " [+a +b +c] (p)", "m")).signal, ["+a", "+b", "+c"]);
+});
+
+test("log tag terms distinguish initial additions from curation filters and changes", () => {
+    assert.deepEqual(
+        oneStatement(section("READ", " [+research,+france] (facts.md)")).signal,
+        ["+research", "+france"],
+    );
+    assert.deepEqual(
+        oneStatement(section("READ", " [research,france] (facts.md)")).signal,
+        ["research", "france"],
+    );
+    assert.deepEqual(
+        oneStatement(section("FOLD", " [research,+archive,-stale] (log:///**)")).signal,
+        ["research", "+archive", "-stale"],
+    );
+});
+
+test("classifying operations accept implicit additions but reject removals", () => {
+    for (const op of ["FIND", "READ", "EDIT", "COPY", "MOVE"] as const) {
+        const body = op === "EDIT" ? "body" : op === "COPY" || op === "MOVE" ? "destination" : undefined;
+        assert.deepEqual(oneStatement(section(op, " [research] (source)", body)).signal, ["research"], op);
+        assert.match(firstError(section(op, " [-research] (source)", body)).message, /cannot remove tags/i, op);
+    }
+});
+
+test("signed curation terms modify a real selection and cannot conflict", () => {
+    assert.match(firstError(section("FOLD", " [+archive]")).message, /signed tags.*do not select/i);
+    assert.match(firstError(section("OPEN", " [-archive]")).message, /signed tags.*do not select/i);
+    assert.match(
+        firstError(section("FOLD", " [research,+archive,-archive]")).message,
+        /cannot both add and remove.*archive/i,
+    );
 });
 
 test("invalid operation-specific signals fail in the lexer", () => {
@@ -288,17 +320,17 @@ test("invalid operation-specific signals fail in the lexer", () => {
 // {§slot-order}
 test("slot permutations produce equivalent AST values", () => {
     const variants = [
-        "## FIND0 [t] (p) <2>\nm",
-        "## FIND0 [t] <2> (p)\nm",
-        "## FIND0 (p) [t] <2>\nm",
-        "## FIND0 (p) <2> [t]\nm",
-        "## FIND0 <2> [t] (p)\nm",
-        "## FIND0 <2> (p) [t]\nm",
+        "## FIND0 [+t] (p) <2>\nm",
+        "## FIND0 [+t] <2> (p)\nm",
+        "## FIND0 (p) [+t] <2>\nm",
+        "## FIND0 (p) <2> [+t]\nm",
+        "## FIND0 <2> [+t] (p)\nm",
+        "## FIND0 <2> (p) [+t]\nm",
     ];
     for (const input of variants) {
         const statement = oneStatement(input);
         assert.equal(statement.op, "FIND");
-        assert.deepEqual(statement.signal, ["t"]);
+        assert.deepEqual(statement.signal, ["+t"]);
         assert.equal(statement.target?.raw, "p");
         assert.deepEqual(statement.lineMarker, { marks: [2] });
     }
@@ -310,11 +342,11 @@ test("slot permutations produce equivalent AST values", () => {
 
 test("duplicate slots and missing inter-slot spaces are rejected", () => {
     for (const input of [
-        "## FIND0 [a] [b] (p)\nm",
+        "## FIND0 [+a] [+b] (p)\nm",
         "## FIND0 (p1) (p2)\nm",
         "## FIND0 <1> <2> (p)\nm",
-        "## FIND0[a] (p)\nm",
-        "## FIND0 [a](p)\nm",
+        "## FIND0[+a] (p)\nm",
+        "## FIND0 [+a](p)\nm",
         "## FIND0 (p)<2>\nm",
     ]) {
         assert.ok(errorsOf(input).length >= 1, input);
@@ -325,7 +357,7 @@ test("duplicate slots and missing inter-slot spaces are rejected", () => {
 test("a path misplaced in a mutating tag slot gets one narrow correction", () => {
     const turn = sections(
         section("PLAN", "", "edit"),
-        section("EDIT", " [src/functions.ts] <2>", "replacement"),
+        section("EDIT", " [+src/functions.ts] <2>", "replacement"),
         section("SEND", " [200]", "done"),
     );
     const result = PlurnkParser.parse(turn);
@@ -338,9 +370,9 @@ test("a path misplaced in a mutating tag slot gets one narrow correction", () =>
 
 test("correct targets, ordinary tags, and read operations do not trigger the mutation advisory", () => {
     for (const middle of [
-        section("EDIT", " [module] (src/functions.ts)", "replacement"),
-        section("EDIT", " [module]", "new entry"),
-        section("FIND", " [src/functions.ts]", "needle"),
+        section("EDIT", " [+module] (src/functions.ts)", "replacement"),
+        section("EDIT", " [+module]", "new entry"),
+        section("FIND", " [+src/functions.ts]", "needle"),
     ]) {
         const result = PlurnkParser.parse(sections(
             section("PLAN", "", "work"),
@@ -390,7 +422,7 @@ test("OPEN and FOLD reject positional scope", () => {
 test("unscoped EDIT remains syntax-valid for runtime create-or-refuse semantics", () => {
     for (const input of [
         section("EDIT", " (notes.md)", "whole body"),
-        section("EDIT", " [plan] (worker:///plan.md)", "draft"),
+        section("EDIT", " [+plan] (worker:///plan.md)", "draft"),
         section("EDIT", " (empty.md)"),
     ]) {
         assert.equal(oneStatement(input).lineMarker, null);
@@ -537,7 +569,7 @@ test("semantic matcher accepts arbitrary text and a result-position scope", () =
 test("READ aggregate forms normalize to schema-valid FIND", () => {
     const cases = [
         { input: section("READ", " (worker:///page.md) <2,4>"), op: "READ", dialect: null, marks: [2, 4], signal: null },
-        { input: section("READ", " [review] (worker:///page.md) <3,5>", "/header/i"), op: "FIND", dialect: "regex", marks: [3, 5], signal: ["review"] },
+        { input: section("READ", " [+review] (worker:///page.md) <3,5>", "/header/i"), op: "FIND", dialect: "regex", marks: [3, 5], signal: ["+review"] },
         { input: section("READ", " (src/**/*.ts) <2>"), op: "FIND", dialect: null, marks: [2], signal: null },
         { input: section("READ", " (worker:///src/**/*.ts) <4,8>"), op: "FIND", dialect: null, marks: [4, 8], signal: null },
         { input: section("READ", " (worker:///src/**/*.ts)", "TODO"), op: "FIND", dialect: "glob", marks: null, signal: null },
@@ -607,7 +639,7 @@ test("header diagnostics use PLURNK vocabulary and point to the malformed slot",
     const target = PlurnkParser.parseStatements("## EDIT0 (path").unparsedTail;
     assert.match(target?.reason ?? "", /target slot of `## EDIT0`.*add `\)`/);
 
-    const signal = PlurnkParser.parseStatements("## EDIT0 [tag").unparsedTail;
+    const signal = PlurnkParser.parseStatements("## EDIT0 [+tag").unparsedTail;
     assert.match(signal?.reason ?? "", /signal slot of `## EDIT0`.*add `]`/);
 });
 
@@ -615,7 +647,7 @@ test("diagnostics do not leak ANTLR implementation vocabulary", () => {
     const forbidden = /token recognition|mismatched|extraneous|expecting|no viable|RPAREN|LBRACKET|RBRACKET|LPAREN|BODY_TEXT|<EOF>|ATN/;
     for (const input of [
         "## EDIT0 (path",
-        "## EDIT0 [tag",
+        "## EDIT0 [+tag",
         "## EDIT0 (p) stray",
         "## SEND0 [bad]\nmessage",
     ]) {

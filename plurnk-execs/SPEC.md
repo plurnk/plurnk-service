@@ -202,8 +202,9 @@ belong to core's {§stream-owner-scoped} and {§exec-stream} contracts.
 
 `entry(path, content, { tags, mimetype? })` is a consumer-implemented sink, not
 executor access to storage. The consumer materializes or updates an entry,
-unions tags, announces it through its ordinary ambience, and resolves the
-canonical model-facing address. `content === null` requests consumer-sourced
+uses the tags to classify its ordinary journal announcement, and resolves the
+canonical model-facing address. Tags never become resource metadata.
+`content === null` requests consumer-sourced
 acquisition. Rejection means only that this materialization failed; it does not
 invalidate the executor's upstream result. When the sink is absent, the
 executor preserves its result without inventing a materialization verdict.
@@ -264,7 +265,7 @@ at boot; changing package membership or configuration requires a restart.
 | --------------- | -------------------------------------------------------------------------------------------------- |
 | `name`          | Canonical runtime tag and derived output-scheme name, admitted below.                              |
 | `glyph`         | Optional presentation glyph.                                                                       |
-| `example`       | Optional compact, verbatim `plurnk` snippet. Each line is one complete `<|…|>` operation.          |
+| `example`       | Optional compact, verbatim `plurnk` snippet containing complete operation sections.                |
 | `documentation` | Optional full Markdown reference. `docs/<tag>.md` wins over the inline manifest field.             |
 | `attribution`   | Published per-tag projection of the validated package declaration ({§plugin-attribution}).         |
 | `packageName`   | Package that owns and default-exports the executor implementation.                                 |

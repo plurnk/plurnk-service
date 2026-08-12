@@ -30,7 +30,7 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         engine.dispatch({ statement, ...env, sequence, origin: "client" });
 
     try {
-        const [editQuestion] = parse("## EDIT0 [geography,question] (worker:///france/capital)\nwhat is the capital of france?");
+        const [editQuestion] = parse("## EDIT0 [+geography,+question] (worker:///france/capital)\nwhat is the capital of france?");
         const r1 = await dispatch(editQuestion, 1);
         assert.equal(r1.status, 201);
         const questionEntryId = r1.entryId as number;
@@ -41,21 +41,19 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
 
         // {§edit-marker-required-on-existing} — the entry already exists (created above), so
         // the re-edit needs a marker; <1,-1> states the deliberate full rewrite.
-        const [editQuestionAgain] = parse("## EDIT0 [geography] (worker:///france/capital) <1,-1>\nrephrased question");
+        const [editQuestionAgain] = parse("## EDIT0 [+geography] (worker:///france/capital) <1,-1>\nrephrased question");
         const r2 = await dispatch(editQuestionAgain, 2);
         assert.equal(r2.status, 200);
         assert.equal(r2.entryId, questionEntryId);
         const body2 = (await db.test_get_channel.get<{ content: string }>({ entry_id: questionEntryId, name: "body" }))?.content;
         assert.equal(body2, "rephrased question");
 
-        const [copyOp] = parse("## COPY0 [answer,france] (worker:///france/capital)\nskill:///france/capital");
+        const [copyOp] = parse("## COPY0 [+answer,+france] (worker:///france/capital)\nskill:///france/capital");
         const r3 = await dispatch(copyOp, 3);
         assert.equal(r3.status, 201);
 
         const skillEntry = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "skill", pathname: "/france/capital" });
         const skillEntryId = skillEntry!.id;
-        const skillTags = (await db.test_list_entry_tags.all<{ tag: string }>({ entry_id: skillEntryId })).map((t) => t.tag);
-        assert.deepEqual(skillTags, ["answer", "france"]);
 
         // The COPY above already created this entry, so the edit needs a marker too.
         const [editSkill] = parse("## EDIT0 (skill:///france/capital) <1,-1>\nParis");
@@ -64,10 +62,16 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         const skillBody = (await db.test_get_channel.get<{ content: string }>({ entry_id: skillEntryId, name: "body" }))?.content;
         assert.equal(skillBody, "Paris");
 
-        const [findByTag] = parse("## FIND0 [answer] (skill:///)");
-        const r6 = await dispatch(findByTag, 5);
+        const [classifiedFind] = parse("## FIND0 [+answer] (skill:///)");
+        const r6 = await dispatch(classifiedFind, 5);
         assert.equal(r6.status, 200);
         assert.deepEqual([...new Set((r6.results as { path: string }[]).map((f) => f.path))], ["skill:///france/capital"]);
+        const logTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: env.workerId });
+        assert.deepEqual(logTags.filter(({ coordinate }) => coordinate === "1/1/3" || coordinate === "1/1/5"), [
+            { coordinate: "1/1/3", tag: "answer" },
+            { coordinate: "1/1/3", tag: "france" },
+            { coordinate: "1/1/5", tag: "answer" },
+        ]);
 
         // glob body matches CONTENT (the entry's body is "Paris"), not the pathname.
         const [findByGlob] = parse("## FIND0 (skill:///)\nParis*");

@@ -399,7 +399,6 @@ export default class Http implements SchemeHandler {
             };
             const written = await ctx.entries.write(pathname, {
                 channels,
-                tags: cached.tags,
             });
             if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
             return { status: 200 };
@@ -439,7 +438,6 @@ export default class Http implements SchemeHandler {
         }
         const written = await ctx.entries.write(pathname, {
             channels: WebFetcher.materializedChannels(materialized, { url, method: "GET" }),
-            tags: [],
         });
         if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
         return { status: 200 };
@@ -748,7 +746,7 @@ export default class Http implements SchemeHandler {
                 state: "active" as const,
             }]),
         );
-        return { channels, tags: [] };
+        return { channels };
     }
 
     // {§revalidation} The body and header must have settled successfully. An

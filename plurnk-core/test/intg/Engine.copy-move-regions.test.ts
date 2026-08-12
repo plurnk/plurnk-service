@@ -91,30 +91,28 @@ const setup = async () => {
             sequence: sequence += 1,
             origin: "client",
         });
-    return { db, seed, read, dispatch };
+    return { db, env, seed, read, dispatch };
 };
 
-test("COPY transfers only the selected channel and unions only explicit destination tags", async () => {
-    const { db, seed, read, dispatch } = await setup();
+test("COPY transfers only the selected channel and classifies its log receipt", async () => {
+    const { db, env, seed, read, dispatch } = await setup();
     try {
         await seed("/source", {
             channels: {
                 body: { content: "source body", mimetype: "text/markdown" },
                 notes: { content: "selected notes", mimetype: "text/markdown" },
             },
-            tags: ["source-only"],
         });
         await seed("/destination", {
             channels: {
                 body: { content: "destination body", mimetype: "text/markdown" },
             },
-            tags: ["preserved"],
         });
 
         const result = await dispatch(copyStmt(
             urlPath("multi", "/source", "notes"),
             urlPath("multi", "/destination", "aux"),
-            ["explicit"],
+            ["+explicit"],
         ));
         assert.equal(result.status, 200);
         assert.deepEqual(effectsOf(result), [{
@@ -128,7 +126,10 @@ test("COPY transfers only the selected channel and unions only explicit destinat
         const destination = await read("/destination");
         assert.equal(destination.entry?.channels.body?.content, "destination body");
         assert.equal(destination.entry?.channels.aux?.content, "selected notes");
-        assert.deepEqual(destination.entry?.tags.toSorted(), ["explicit", "preserved"]);
+        assert.deepEqual(
+            await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: env.workerId }),
+            [{ coordinate: "1/1/1", tag: "explicit" }],
+        );
     } finally {
         await db.close();
     }
@@ -141,13 +142,11 @@ test("COPY composes source selection and destination insertion with Unicode code
             channels: {
                 body: { content: "A😀B\n", mimetype: "text/markdown" },
             },
-            tags: [],
         });
         await seed("/destination", {
             channels: {
                 body: { content: "xy\n", mimetype: "text/markdown" },
             },
-            tags: [],
         });
 
         const result = await dispatch(copyStmt(
@@ -177,11 +176,9 @@ test("COPY propagates tolerated source and destination scope normalizations in a
     try {
         await seed("/source", {
             channels: { body: { content: "abc\n", mimetype: "text/markdown" } },
-            tags: [],
         });
         await seed("/destination", {
             channels: { body: { content: "XY\n", mimetype: "text/markdown" } },
-            tags: [],
         });
 
         const result = await dispatch(copyStmt(
@@ -211,13 +208,11 @@ test("MOVE composes exact source and destination regions across resources", asyn
             channels: {
                 body: { content: "abc", mimetype: "text/markdown" },
             },
-            tags: [],
         });
         await seed("/destination", {
             channels: {
                 body: { content: "XY", mimetype: "text/markdown" },
             },
-            tags: [],
         });
 
         const result = await dispatch(moveStmt(
@@ -252,11 +247,9 @@ test("MOVE propagates tolerated source and destination scope normalizations", as
     try {
         await seed("/source", {
             channels: { body: { content: "abc\n", mimetype: "text/markdown" } },
-            tags: [],
         });
         await seed("/destination", {
             channels: { body: { content: "XY\n", mimetype: "text/markdown" } },
-            tags: [],
         });
 
         const result = await dispatch(moveStmt(
@@ -286,7 +279,6 @@ test("same-channel MOVE applies destination insertion and source deletion to one
             channels: {
                 body: { content: "abcdef", mimetype: "text/markdown" },
             },
-            tags: [],
         });
 
         const result = await dispatch(moveStmt(
@@ -322,7 +314,6 @@ test("same-channel MOVE rejects overlapping source and destination regions witho
             channels: {
                 body: { content: "abcdef", mimetype: "text/markdown" },
             },
-            tags: [],
         });
 
         const result = await dispatch(moveStmt(
@@ -347,7 +338,6 @@ test("whole-channel MOVE removes only the selected source channel", async () => 
                 body: { content: "preserved", mimetype: "text/markdown" },
                 notes: { content: "moved", mimetype: "text/markdown" },
             },
-            tags: ["source-tag"],
         });
 
         const result = await dispatch(moveStmt(
@@ -362,7 +352,6 @@ test("whole-channel MOVE removes only the selected source channel", async () => 
         const source = await read("/source");
         assert.equal(source.entry?.channels.body?.content, "preserved");
         assert.equal(source.entry?.channels.notes, undefined);
-        assert.deepEqual(source.entry?.tags, ["source-tag"]);
         assert.equal((await read("/destination")).entry?.channels.aux?.content, "moved");
     } finally {
         await db.close();
@@ -377,7 +366,6 @@ test("{§move-canonical-whole-source}: <1,-1> removes only the selected source c
                 body: { content: "preserved", mimetype: "text/markdown" },
                 notes: { content: "moved", mimetype: "text/markdown" },
             },
-            tags: ["source-tag"],
         });
 
         const result = await dispatch(moveStmt(
@@ -394,7 +382,6 @@ test("{§move-canonical-whole-source}: <1,-1> removes only the selected source c
         const source = await read("/source");
         assert.equal(source.entry?.channels.body?.content, "preserved");
         assert.equal(source.entry?.channels.notes, undefined);
-        assert.deepEqual(source.entry?.tags, ["source-tag"]);
         assert.equal((await read("/destination")).entry?.channels.aux?.content, "moved");
     } finally {
         await db.close();
@@ -408,7 +395,6 @@ test("whole-channel MOVE removes the source entry when its final channel leaves"
             channels: {
                 notes: { content: "only", mimetype: "text/markdown" },
             },
-            tags: [],
         });
 
         const result = await dispatch(moveStmt(
@@ -433,7 +419,6 @@ test("a destination region requires existing content and leaves the source untou
             channels: {
                 body: { content: "source", mimetype: "text/markdown" },
             },
-            tags: [],
         });
 
         const result = await dispatch(moveStmt(
@@ -457,13 +442,11 @@ test("a divergent whole-channel destination conflicts and leaves the MOVE source
             channels: {
                 body: { content: "source", mimetype: "text/markdown" },
             },
-            tags: [],
         });
         await seed("/destination", {
             channels: {
                 body: { content: "different", mimetype: "text/markdown" },
             },
-            tags: [],
         });
 
         const result = await dispatch(moveStmt(
@@ -485,7 +468,6 @@ test("COPY and MOVE reject a binary marker without fabricating a byte-transfer c
             channels: {
                 blob: { content: "", mimetype: "application/octet-stream" },
             },
-            tags: [],
         });
 
         const copied = await dispatch(copyStmt(

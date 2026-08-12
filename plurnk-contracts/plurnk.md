@@ -6,7 +6,7 @@ Plurnk Features:
 
 * Simple Grammar: Markdown operation sections provide predictable but powerful actions.
 * Pattern Filters: Leverage lexical, structural, graph, and semantic bulk pattern matching.
-* Worker Knowledgebase: Durable, searchable worker entries support hierarchical paths and folksonomic tags.
+* Worker Knowledgebase: Durable, searchable worker entries support hierarchical paths.
 * Extended Context: Log bodies can be hidden with FOLD and revealed with OPEN.
 
 ## Grammar
@@ -16,15 +16,15 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|W
 ### Syntax
 
 ```plurnk
-# PLAN0
+# PLANsuffix
 new findings, unresolved questions, current priorities
 
-## OP0 [signal]? (path)? <scope>?
+## OPsuffix [signal]? (path)? <scope>?
 body?
 ```
 
-Every turn begins with `# PLAN0`.
-Every other OP is a peer `## OP0` section.
+PLAN begins the turn as H1. Every other OP is a peer H2 sharing PLAN's suffix, ending with a terminal SEND.
+Nested OP headings in body content use a suffix different from the containing turn.
 A single blank line between sections is optional and is not body content; additional blank lines are body content.
 Body content is character-perfect, exactly matching whitespace.
 PLURNK does not decode body escapes: `\n` is backslash plus `n`.
@@ -35,13 +35,13 @@ Emit a physical newline when literal body content needs one.
 | OP   | purpose                        | `[signal]`   | `(path)`                   | `<scope>`      | `body`                      |
 |------|--------------------------------|--------------|----------------------------|----------------|-----------------------------|
 | PLAN | add working-state deltas        | -            | -                          | -              | new findings, questions, priorities |
-| FIND | list matching targets          | filter tags? | target or glob             | result range?  | pattern?                    |
-| READ | retrieve target content        | filter tags? | target                     | text region?   | -                           |
-| EDIT | create or edit scoped content  | apply tags?  | file or entry              | text region?   | literal text                |
-| COPY | copy from a target             | apply tags?  | source target              | source region? | destination <region>?       |
-| MOVE | move from a target             | apply tags?  | source target              | source region? | destination <region>?       |
-| FOLD | hide matching log bodies       | apply tags?  | log item(s)                | -              | pattern?                    |
-| OPEN | reveal matching log bodies     | filter tags? | log item(s)                | -              | pattern?                    |
+| FIND | list matching targets          | add log tags?    | target or glob             | result range?  | pattern?                    |
+| READ | retrieve target content        | add log tags?    | target                     | text region?   | -                           |
+| EDIT | create or edit scoped content  | add log tags?    | file or entry              | text region?   | literal text                |
+| COPY | copy from a target             | add log tags?    | source target              | source region? | destination <region>?       |
+| MOVE | move from a target             | add log tags?    | source target              | source region? | destination <region>?       |
+| FOLD | hide matching log bodies       | filter/change log tags? | log item(s)                | -              | pattern?                    |
+| OPEN | reveal matching log bodies     | filter/change log tags? | log item(s)                | -              | pattern?                    |
 | EXEC | execute a registered tool      | executor?    | local path?                | timeout, poll? | input?                      |
 | WORK | spawn a child worker           | branch?      | `worker://name`            | -              | prompt                      |
 | FORK | fork current worker            | branch?      | `worker://name`            | -              | prompt                      |
@@ -104,7 +104,7 @@ Examples:
 
 Examples:
 
-* Preserve tagged research: `## EDIT0 [research,france] (worker://~/research.md)` with body `Paris is the capital of France.`
+* Preserve research and classify its log item: `## EDIT0 [+research,+france] (worker://~/research.md)` with body `Paris is the capital of France.`
 * Read a shared entry: `## READ0 (worker:///notes.md)`.
 * Read another worker's entry: `## READ0 (worker://other-worker/notes.md)`.
 
@@ -135,12 +135,15 @@ Examples:
 ### The Log
 
 The log is your context and you are its curator: what you retrieve stays until you FOLD it, and folded bodies are hidden, not gone — OPEN brings them back.
+Tags classify log items. FIND, READ, EDIT, COPY, and MOVE canonically add each `+tag` to the log item they create; on those OPs, unsigned `tag` is accepted as the same addition.
+FOLD and OPEN select log items by any supplied path, body pattern, and every unsigned `tag`; they then add each `+tag` and remove each `-tag`. Signed tags modify the selected items but do not select them.
 YOU SHOULD FOLD superseded PLANs and READs made stale by later changes before they pollute or overflow the context window.
 
 Examples:
 
-* File this body under the capitalTrivia tag (saves tokens): `## FOLD0 [capitalTrivia] (log:///42/7/5)`.
-* Recall bodies filed under the capitalTrivia tag (spends tokens): `## OPEN0 [capitalTrivia] (log:///**)`.
+* Classify a READ as capital trivia: `## READ0 [+capitalTrivia] (facts.md)`.
+* Hide every capital-trivia item: `## FOLD0 [capitalTrivia]`.
+* Reveal every capital-trivia item: `## OPEN0 [capitalTrivia]`.
 
 ## Delegation
 

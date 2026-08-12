@@ -74,7 +74,6 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
                 }
                 await ctx.entries.write(request.pathname, {
                     channels: { data: { content: "partial", mimetype: "text/plain", state: "active" } },
-                    tags: [],
                 });
                 let subscription: StreamSubscription | undefined;
                 subscription = await ctx.subscriptions.open(request.pathname, {
@@ -160,7 +159,6 @@ test("a public streaming READ returns its 102 row before detached subscription w
                 if (request.target.kind !== "url") throw new Error("detached fixture requires a URL");
                 await ctx.entries.write(request.pathname, {
                     channels: { data: { content: "", mimetype: "text/plain", state: "active" } },
-                    tags: [],
                 });
                 subscription = await ctx.subscriptions.open(request.pathname, { cancel() {} });
                 return { status: 102 };

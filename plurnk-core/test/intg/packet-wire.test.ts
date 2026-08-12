@@ -179,7 +179,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
     );
     assert.match(
         out,
-        /<\|BODY>\n1:before\n2:copied content\n<BODY\|>/,
+        /"body":"\n1:before\n2:copied content\n"\}/,
         "the regional effect exposes its bounded resulting context",
     );
 
@@ -355,7 +355,7 @@ test("log entry: network target preserves port, ordered query, and channel fragm
     assert.match(out, /"target":"https:\/\/example\.org:8443\/a%28b%29\?b=2&a=1&a=3#preview"/);
 });
 
-test("log render: READ@200 with text/markdown rx body → line-numbered BODY enclosure", () => {
+test("log render: READ@200 with text/markdown rx body → line-numbered raw multiline string", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -370,7 +370,7 @@ test("log render: READ@200 with text/markdown rx body → line-numbered BODY enc
     };
     const out = PacketWire.renderLog(system.log, tok);
     // Line-navigable mimetype → `N:` prefix per line.
-    assert.match(out, /<\|BODY>\n1:hello\n2:world\n<BODY\|>/);
+    assert.match(out, /"body":"\n1:hello\n2:world\n"\}/);
 });
 
 test("log render: a scoped READ preserves its complete source TextRegion", () => {
@@ -466,7 +466,7 @@ test("log render: a matcher FIND exposes surgical coordinates", () => {
     assert.doesNotMatch(out, /"matchLocationCount":/);
     assert.doesNotMatch(out, /"items":|"lines":/);
     assert.match(out, /"unit":"matchLocation"/);
-    assert.match(out, /<\|BODY>\n1:\[\{"region":\{"startLine":143/);
+    assert.match(out, /"body":"\n1:\[\{"region":\{"startLine":143/);
 });
 
 test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metadata owner", async () => {
@@ -607,7 +607,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
     if (tokenizer === null) throw new Error("The bundled Gemma tokenizer is required for the metadata budget contract.");
     assert.equal(tokenizer.tokenizerId, "5f7eee611703c5ce");
     const metadataTokens = await tokenizer.countTokens(metadata.map((row) => JSON.stringify(row)).join("\n"));
-    assert.equal(metadataTokens, 596, "canonical retrieval metadata has one reviewed Gemma-token weight");
+    assert.equal(metadataTokens, 595, "canonical retrieval metadata has one reviewed Gemma-token weight");
 
     assert.throws(
         () => PacketWire.renderLog([{
@@ -636,10 +636,10 @@ test("log render: READ@200 with application/json is line-addressable", () => {
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /<\|BODY>\n1:\[\n2: {2}\{"line":1,"matched":"hello"\}\n3:\]\n<BODY\|>/);
+    assert.match(out, /"body":"\n1:\[\n2: {2}\{"line":1,"matched":"hello"\}\n3:\]\n"\}/);
 });
 
-// EDIT log renders expose bounded resulting context in the fixed BODY enclosure.
+// EDIT log renders expose bounded resulting context in the raw multiline body.
 // No udiff in the model's
 // packet (that format belongs in client communication, where humans want
 // colored before/after rendering).
@@ -655,9 +655,9 @@ test("log render: EDIT@200 with rx.span → wraps the pre-numbered span verbatim
     }], tok);
     // The model sees the edited area as it looks NOW at its TRUE line numbers — editedSpan already
     // line-numbered it, so the renderer wraps verbatim. Re-numbering here would double it (1:3:…)
-    // and lose the real position. (A span-less EDIT — a scheme that returns no span — stands on its meta
-    // line alone; the log NEVER re-serializes the op's emission tag, per the no-tags-in-the-log paradigm.)
-    assert.match(out, /<\|BODY>\n3:- \[x\] ship the fix\n<BODY\|>/, "EDIT wraps the pre-numbered span verbatim under the fixed enclosure");
+    // and lose the real position. A span-less EDIT — a scheme that returns no span — stands on its
+    // metadata line alone; its classifications remain metadata, not body content.
+    assert.match(out, /"body":"\n3:- \[x\] ship the fix\n"\}/, "EDIT preserves the pre-numbered span verbatim in the raw multiline string");
     assert.doesNotMatch(out, /1:3:/, "must NOT re-number an already-numbered span");
 });
 
@@ -854,7 +854,7 @@ test("log render: READ@200 with text/html is line-addressable", () => {
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /<\|BODY>\n1:<h1>Hi<\/h1>\n<BODY\|>/);
+    assert.match(out, /"body":"\n1:<h1>Hi<\/h1>\n"\}/);
 });
 
 test("a folded model-emission row renders meta-only without inventing an operation", () => {
@@ -883,18 +883,18 @@ test("the Log renders as a fenced jsonplurnk array that strips to valid JSON —
     const out = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "worker", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } }, // none: empty FIND, no body
         { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: true, target: { scheme: null, pathname: "/a.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } }, // folded: body hidden
-        { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: false, target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // open: BODY enclosure
+        { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: false, target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // open: raw multiline string
     ], tok);
     assert.match(out, /^`{3,}jsonplurnk\n/, "the fence leads — the Log carries data only, no prose note");
     const m = /(`{3,})jsonplurnk\n([\s\S]*?)\n\1/.exec(out);
     assert.ok(m, "a fenced jsonplurnk block");
     // Strip the ONE deviation with a content-agnostic, boundary-anchored transform → strict JSON.
-    const strict = m![2].replace(/"body":\n<\|BODY>\n[\s\S]*?\n<BODY\|>\n\}/g, '"body":""}');
+    const strict = m![2].replace(/"body":"\n(?:\d+:[^\n]*\n)+"(?=\})/g, '"body":""');
     const arr = JSON.parse(strict) as Array<{ display: string; body?: string }>;
     assert.deepEqual(arr.map((e) => e.display), ["none", "folded", "open"], "the three display states render explicitly — no glyph legend");
     assert.equal(arr[0].body, "", "display:none carries an explicit empty JSON body");
     assert.ok(!("body" in arr[1]), "display:folded withholds its body");
-    assert.equal(arr[2].body, "", "the open row's BODY enclosure — the one deviation — strips to a string, recovering valid JSON");
+    assert.equal(arr[2].body, "", "the open row's raw multiline value — the one deviation — strips to a string, recovering valid JSON");
 });
 
 test("the opening fence outgrows any backtick run a body carries — a code sample can't close the block", () => {
@@ -942,7 +942,7 @@ test("every READ/FIND body bypasses the ordinary preview", () => {
     assert.doesNotMatch(readOut, /"overflow"/, "no preview cut on READ");
 
     const findOut = PacketWire.renderLog([
-        { coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, target: { scheme: null, pathname: "" }, rx: { content: long, mimetype: "text/plain", startLine: null } },
+        { coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, target: { scheme: null, pathname: "" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
     ], tok);
     assert.match(findOut, /line 30 of a runaway/, "a long FIND renders its full result — retrieval is exempt");
     assert.doesNotMatch(findOut, /"overflow"/, "no preview cut on FIND");

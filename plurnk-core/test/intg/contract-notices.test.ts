@@ -166,7 +166,7 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
 
-        assert.match(packetSection(packet, "log"), /<\|BODY>\n2:beta\n3:gamma\n<BODY\|>/);
+        assert.match(packetSection(packet, "log"), /"body":"\n2:beta\n3:gamma\n"\}/);
         assert.equal(
             packetSection(packet, "notices"),
             "* scope_normalized: Scope <2,1,3> was normalized to <2,1,3,6>.",
@@ -339,7 +339,7 @@ test("a parser warning remains advisory while the independently invalid mutation
                 broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } });
             },
         });
-        const emission = "# PLAN0\nedit the file\n\n## EDIT0 [src/example.ts]\nbody\n\n## SEND0 [200]\ndone";
+        const emission = "# PLAN0\nedit the file\n\n## EDIT0 [+src/example.ts]\nbody\n\n## SEND0 [200]\ndone";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [

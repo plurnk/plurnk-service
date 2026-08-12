@@ -57,7 +57,7 @@ test("entry.read returns the contracts-owned client projection", async () => {
             assert.equal(result.entry.channels.body.content, "Paris");
             assert.equal(result.entry.channels.body.contentOffset, 0);
             assert.equal(result.entry.channels.body.mimetype, "text/markdown");
-            assert.deepEqual(result.entry.tags.toSorted(), ["europe", "france"]);
+            assert.equal("tags" in result.entry, false, "resource reads do not expose log classifications");
         } finally { ws.close(); }
     });
 });

@@ -184,6 +184,8 @@ interface LogCurationEffectRow {
     operation_log_entry_id: number;
     target_log_entry_id: number;
     expanded_before: 0 | 1;
+    tags_added: string;
+    tags_removed: string;
 }
 interface WorkerRollupRow {
     worker_id: number; loops: number; turns: number;
@@ -729,7 +731,11 @@ export default class Digest {
                     : { stream: Digest.#renderStream(le) }),
                 ...(le.status_rx >= 400 ? { problem: Digest.#rowProblem(le) } : {}),
             })),
-            log_curation_effects: m.curationEffects,
+            log_curation_effects: m.curationEffects.map(({ tags_added, tags_removed, ...effect }) => ({
+                ...effect,
+                tags_added: Digest.#parseJson(tags_added, []),
+                tags_removed: Digest.#parseJson(tags_removed, []),
+            })),
         }, null, 2);
     }
 
@@ -1038,7 +1044,8 @@ export default class Digest {
         const semanticStateAvailable = has("entries") && has("entry_channels") && hasColumn("entries", "deep_hash");
         if (has("log_curation_effects")) {
             curationEffects = probe.prepare(`
-                SELECT operation_log_entry_id, target_log_entry_id, expanded_before
+                SELECT operation_log_entry_id, target_log_entry_id, expanded_before,
+                       tags_added, tags_removed
                 FROM log_curation_effects
                 ORDER BY operation_log_entry_id, target_log_entry_id
             `).all() as unknown as LogCurationEffectRow[];

@@ -42,7 +42,7 @@ const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<vo
     const canonical = join(row?.project_root ?? "", pathname);
     const mimetype = MimetypeBinary.normalizeAutoTextMimetype(await ctx.mimetypes.detect({ path: canonical }));
     const content = await readFile(canonical, "utf8");
-    await EntryCrud.writeEntry(`${pathname}`, { channels: { body: { content, mimetype } }, tags: [] }, ctx, "file");
+    await EntryCrud.writeEntry(`${pathname}`, { channels: { body: { content, mimetype } } }, ctx, "file");
 };
 
 const withWorkspaceRoot = async (fn: (root: string, ctx: PlurnkSchemeContext, db: Db) => Promise<void>): Promise<void> => {

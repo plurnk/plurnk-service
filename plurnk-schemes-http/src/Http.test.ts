@@ -19,7 +19,6 @@ import {
     type SubscriptionHandle,
     type EntryCaps,
     type ChannelCaps,
-    type TagCaps,
     type NotifyCaps,
     type ProjectionCaps,
     type SubscriptionCaps,
@@ -137,7 +136,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
                     channel,
                     { ...value, state: value.state ?? "static" },
                 ])),
-                tags: entry.tags,
+                ...(entry.attributes === undefined ? {} : { attributes: entry.attributes }),
             };
             return { status: 201, created: true, entryId: 1 };
         },
@@ -152,11 +151,6 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
         async append() { return { status: 200 }; },
         async replace() { return { status: 200 }; },
         async setState() { return { status: 200 }; },
-    };
-    const tags: TagCaps = {
-        async add() { return { status: 200 }; },
-        async remove() { return { status: 200 }; },
-        async list() { return { status: 200, tags: [] }; },
     };
     const notify: NotifyCaps = { streamEvent() {} };
     const projection = overrides.projection ?? projectionCaps();
@@ -186,7 +180,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
     };
     const ctx: SchemeCtx = {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: overrides.signal,
-        entries, channels, tags, notify, projection, subscriptions,
+        entries, channels, notify, projection, subscriptions,
     };
     return {
         ctx,
@@ -664,7 +658,6 @@ test("finite GET materializes complete channels without opening a subscription",
     assert.deepEqual(wrote!.entry.channels.body, { content: "x", mimetype: "text/plain" });
     assert.match(wrote!.entry.channels.header?.content ?? "", /^HTTP 200 OK/m);
     assert.equal(wrote!.entry.channels.html?.state, "errored");
-    assert.deepEqual(wrote!.entry.tags, []);
 });
 
 test("SEND[200]: also materializes the entry before subscribing (shares #fetchStream)", async () => {
@@ -1767,7 +1760,6 @@ const priorEntry = (
         header: { content: header, mimetype: "text/plain", state },
         ...(html === undefined ? {} : { html: { content: html, mimetype: "text/html", state } }),
     },
-    tags: [],
 });
 
 const stampedHeader = (

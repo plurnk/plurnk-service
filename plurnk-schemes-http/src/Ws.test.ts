@@ -17,7 +17,6 @@ import {
     type EntryCaps,
     type EntryStorageWriteResult,
     type ChannelCaps,
-    type TagCaps,
     type NotifyCaps,
     type ProjectionCaps,
     type SubscriptionCaps,
@@ -126,11 +125,6 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
             return overrides.setState?.(pathname, channel, state) ?? { status: 200 };
         },
     };
-    const tags: TagCaps = {
-        async add() { return { status: 200 }; },
-        async remove() { return { status: 200 }; },
-        async list() { return { status: 200, tags: [] }; },
-    };
     const notify: NotifyCaps = {
         streamEvent(pathname, channel, state, contentLength) {
             streamEvents.push({ pathname, channel, state, contentLength });
@@ -183,7 +177,7 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
     };
     const ctx: SchemeCtx = {
         workspaceId: overrides.workspaceId ?? 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
-        entries, channels, tags, notify, projection, subscriptions,
+        entries, channels, notify, projection, subscriptions,
     };
     return {
         ctx,

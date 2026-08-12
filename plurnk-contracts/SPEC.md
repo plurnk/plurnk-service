@@ -256,13 +256,13 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | OP   | `[signal]`                    | `(path)`                                     | `<scope>`                       | `body`                         |
 |------|-------------------------------|----------------------------------------------|---------------------------------|--------------------------------|
 | PLAN | none                          | none                                         | none                            | required intended goals        |
-| FIND | optional filter tags          | required target or glob                      | optional result range           | optional matcher               |
-| READ | optional filter tags          | required target                              | optional text region            | empty                          |
-| EDIT | optional apply tags           | required file or entry                       | required for an existing target | literal text                   |
-| COPY | optional apply tags           | required source                              | optional source region          | required destination selection |
-| MOVE | optional apply tags           | required source                              | optional source region          | required destination selection |
-| FOLD | optional apply tags           | required log selection                       | none                            | optional matcher               |
-| OPEN | optional filter tags          | optional log selection when tags are present | none                            | optional matcher               |
+| FIND | optional add log tags         | required target or glob                      | optional result range           | optional matcher               |
+| READ | optional add log tags         | required target                              | optional text region            | empty                          |
+| EDIT | optional add log tags         | required file or entry                       | required for an existing target | literal text                   |
+| COPY | optional add log tags         | required source                              | optional source region          | required destination selection |
+| MOVE | optional add log tags         | required source                              | optional source region          | required destination selection |
+| FOLD | optional filter/change tags   | optional log selection                       | none                            | optional matcher               |
+| OPEN | optional filter/change tags   | optional log selection                       | none                            | optional matcher               |
 | EXEC | optional executor             | optional local working path                  | optional timeout, poll          | optional executor input        |
 | WORK | optional Git branch           | required fresh `worker://name`               | none                            | required prompt                |
 | FORK | optional Git branch           | required context-inheriting `worker://name`  | none                            | required prompt                |
@@ -280,11 +280,14 @@ new material conclusions or unresolved questions and the current turn's prioriti
 it does not restate settled context. PLAN is public, durable log content—not provider
 reasoning. Dispatch records it and has no other runtime effect.
 
-OPEN and FOLD are log-curation operations owned by the core log surface. FOLD
-selects a set, hides its bodies, and applies any signal tags. OPEN filters by its
-signal tags and may omit the target to recall that tagged working set across the
-worker log. FOLD requires a target or matcher; OPEN requires a target, matcher,
-or filter tags. Neither operation exposes a positional scope.
+§log-tag-signal FIND, READ, EDIT, COPY, and MOVE canonically express additions
+as `+tag`. Because those operations have no tag-selection semantics, ANTLR also
+tolerates unsigned `tag` as an equivalent addition; `-tag` is invalid. Core
+strips any `+`; the signal neither filters nor modifies resources. OPEN and
+FOLD treat every unsigned `tag` as an ALL-tags selector, then add each `+tag`
+and remove each `-tag` from the selected log items. Signed terms never select,
+so either a target, matcher, or unsigned tag is required. Adding and removing
+the same tag conflicts. Neither curation operation exposes a positional scope.
 
 The `<scope>` slot is optional where admitted and its domain is OP-specific. FIND
 scopes ordered results. EXEC and SEND scope timing. READ, EDIT, COPY, and
@@ -807,7 +810,6 @@ scope, or other persistence columns.
 | `entryId`           | Positive durable entry identifier                                                            |
 | `target`            | Client selector for the resolved entry, with any channel fragment removed                    |
 | `channels`          | Every channel for a full read, or exactly the selected channel for a sliced read             |
-| `tags`              | Unique non-empty entry tags                                                                  |
 
 | Channel field   | Contract                                                                                                      |
 |-----------------|---------------------------------------------------------------------------------------------------------------|
@@ -964,7 +966,7 @@ turn-shape imperatives (begin with `# PLAN0`, end with a terminal
   `[signal]` element (a `/` or a dotted extension), the message redirects the
   path into `(…)` (`\`## EDIT0\` has no \`(target)\` - that path sits in the
   \`[…]\` tag slot; a target goes in \`(…)\`. Try \`## EDIT0 (path)\``). It is
-  gated on a path-shaped signal so a genuine tags-only slip is not mis-steered
+  gated on a path-shaped signal so a genuine additive-tag signal is not mis-steered
   toward a path it lacks.
 
 §error-shape The diagnostic class determines how much guidance the parser may

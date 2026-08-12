@@ -25,8 +25,6 @@ export default class WorldState {
 
         const orphanChannels = await db.ws_orphan_channels.get<{ n: number }>({});
         if ((orphanChannels?.n ?? 0) > 0) violations.push({ invariant: "orphan-freedom", detail: `${orphanChannels?.n} entry_channels rows without a parent entry` });
-        const orphanTags = await db.ws_orphan_tags.get<{ n: number }>({});
-        if ((orphanTags?.n ?? 0) > 0) violations.push({ invariant: "orphan-freedom", detail: `${orphanTags?.n} entry_tags rows without a parent entry` });
 
         const alien = await db.ws_alien_origin.all<{ workspace_id: number; pathname: string; membership_origin: string }>({});
         for (const a of alien) {

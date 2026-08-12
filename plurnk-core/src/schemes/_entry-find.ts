@@ -9,7 +9,7 @@
 //             runs against the entry's default-channel CONTENT (Matcher.matchAgainstContent
 //             → the mimetypes plugin) and INCLUDES/EXCLUDES the entry — e.g.
 //             log FIND over `log:///**/error` with `/timeout/i` keeps matching rows.
-//   signal  — tag filter: candidate entry must have ALL listed tags
+//   signal  — classifies the durable FIND log item; never filters resources
 //   <L>     — result pagination: resource or match-location positions N..M
 
 import { DEFAULT_RETRIEVAL_LIMIT, renderJsonResult, type FindStatement, type RangeExtent } from "@plurnk/plurnk-contracts";
@@ -205,7 +205,7 @@ export default class EntryFind {
 
     // Resolve a FIND to its matched workspace resources — entry-level, unique, in result
     // order (rank for ~semantic, candidate order otherwise). Candidate selection (scope +
-    // tags) runs in SQL (find_workspace_entry_candidates); a content matcher then runs against
+    // scope) runs in SQL (find_workspace_entry_candidates); a content matcher then runs against
     // each candidate's default-channel CONTENT (Matcher.matchAgainstContent → the mimetypes
     // plugin) and INCLUDES/EXCLUDES the entry - 200 keeps it, 204/203 drop it, and a
     // 4xx matcher failure ends the whole operation. Path-scoping stays in the (target). Match
@@ -263,9 +263,6 @@ export default class EntryFind {
         // path matcher owns the shell-glob truth below: unlike SQLite GLOB, `*`
         // cannot cross `/`, while `**` can. A declared folder scope remains a
         // recursive prefix independent of glob syntax. {§find-scope-prefix-filter}
-        const tags = Array.isArray(statement.signal) ? statement.signal : []; // tag filter, AND semantics — {§find-tag-filter-and-semantics}
-        const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
-
         const { db, workspaceId } = ctx;
         // Candidates are workspace-bounded — a FIND never reaches across workspaces ({§find-scoped-isolation})
         // — and owner-keyed ({§entry-owner}): an owner-carved face passes its resolved owner; every
@@ -278,7 +275,6 @@ export default class EntryFind {
             scheme,
             ...(semantic ? {} : { channel: manifest.defaultChannel }),
             scope_prefix: scope?.candidatePrefix ?? null,
-            tags: tagsParam,
         });
         const candidatePathnames = statement.body === null && scope?.kind === "glob" && scope.shallowPrefix !== null
             ? candidates.map((candidate) => candidate.pathname)
@@ -374,7 +370,7 @@ export default class EntryFind {
         } else if (statement.body.dialect === "graph") {
             // {§relation-indexed-dialects} Body is `@<sym` / `@>sym` / `@sym`. EntryGraph resolves
             // the relation across (workspace, scheme), each as a (file, span); intersect with the
-            // in-scope candidates (target glob + tags) for the final set.
+            // in-scope candidates from the target glob for the final set.
             const scopedCandidates = resolveSearchCandidates(
                 candidates.map(({ pathname, deep_hash }) => ({ key: pathname, deepHash: deep_hash })),
             );
@@ -483,7 +479,7 @@ export default class EntryFind {
 
     // FIND result = the scheme's catalog rows, filtered to the matched entries and kept in
     // match order. A catalog row is exactly what the manifest catalogs (path + per-channel
-    // {mimetype, tokens, lines}, tags, stream lifecycle) — FIND is the filtered, navigable slice of
+    // {mimetype, tokens, lines}, stream lifecycle) — FIND is the filtered, navigable slice of
     // that catalog, rendered as a JSON array (application/json). {§find-result-projection}
     static async findWorkspaceEntries(
         statement: FindStatement,

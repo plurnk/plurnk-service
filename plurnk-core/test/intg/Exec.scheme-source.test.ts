@@ -72,7 +72,6 @@ const materializeSource = async (
         channels: {
             [channel]: { content, mimetype: "text/plain" },
         },
-        tags: [],
     });
     assert.ok(written.status === 200 || written.status === 201);
     return { status: 200 } as const;

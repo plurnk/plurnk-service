@@ -1,8 +1,8 @@
 // The entry catalog ({§packet-catalog}) — the complete, unranked directory for
 // one addressed owner. Recursive FIND serves it recursively; shallow FIND projects it as
 // a one-level map in _entry-find. An omitted owner selects the shared commons.
-// Each item carries its address, optional stream lifecycle and tags, and addressable
-// channels. Search indexing is owned separately by SearchIndex.
+// Each item carries its address, optional stream lifecycle, and addressable channels.
+// Search indexing is owned separately by SearchIndex.
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
@@ -30,7 +30,6 @@ export type StreamLifecycle =
 export type CatalogEntry = {
     path: string;
     stream?: StreamLifecycle;
-    tags?: string[];
     channels: Record<string, { mimetype: string; tokens: number; lines: number }>;
 };
 
@@ -50,24 +49,12 @@ export default class EntryManifest {
             owner_id: resolvedOwnerId,
         });
         const rows = schemeFilter === undefined ? all : all.filter((row) => row.scheme === schemeFilter);
-        const tagsById = new Map<number, string[]>();
-        const tagRows = await db.engine_list_owner_entry_tags.all<{ entry_id: number; tag: string }>({
-            workspace_id: workspaceId,
-            owner_id: resolvedOwnerId,
-        });
-        for (const { entry_id, tag } of tagRows) {
-            const tags = tagsById.get(entry_id);
-            if (tags === undefined) tagsById.set(entry_id, [tag]);
-            else tags.push(tag);
-        }
         const byEntry = new Map<string, CatalogEntry>();
         for (const row of rows) {
             const path = EntryManifest.toPath(row.scheme, row.pathname);
             let entry = byEntry.get(path);
             if (entry === undefined) {
                 entry = { path, channels: {} };
-                const tags = tagsById.get(row.entry_id);
-                if (tags !== undefined && tags.length > 0) entry.tags = tags;
                 byEntry.set(path, entry);
             }
             if (row.subscription_id !== null && entry.stream === undefined) {

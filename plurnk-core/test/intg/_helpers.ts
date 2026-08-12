@@ -200,28 +200,41 @@ export const packetSection = (packet: unknown, name: string): string =>
 
 // Parse the rendered log section's fenced jsonplurnk array back into structured records — lets
 // tests assert on the model's actual log VIEW with field precision (coordinate via `path`, the
-// model-facing `target` URI, op, status, origin, display). Strips the ONE deviation (a `body` value
-// is a raw `<|BODY> … <BODY|>` enclosure) to recover strict JSON — the same
-// content-agnostic, boundary-anchored transform the plurnkdown linter applies ({§jsonplurnk}).
+// model-facing `target` URI, op, status, origin, display). Strips the ONE deviation (a raw
+// multiline `body` string whose physical lines all carry `N:`) to recover strict JSON ({§jsonplurnk}).
 export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
     const fence = /(`{3,})jsonplurnk\n([\s\S]*?)\n\1(?:\n|$)/.exec(packetSection(packet, "log"));
     if (fence === null) return [];
     const block = fence[2];
-    const opener = /"body":\s*<\|BODY>\n/g;
+    const opener = /"body":"\n/g;
     let strict = "";
     let cursor = 0;
     let match: RegExpExecArray | null;
     while ((match = opener.exec(block)) !== null) {
         const contentStart = match.index + match[0].length;
-        const closeMatch = /(?:^|\n)<BODY\|>(?=\n|$)/g;
-        closeMatch.lastIndex = contentStart;
-        const close = closeMatch.exec(block);
-        if (close === null) throw new Error("jsonplurnk test helper found an unterminated <|BODY> enclosure");
-        const closeStart = close.index + (close[0].startsWith("\n") ? 1 : 0);
+        let closeStart = -1;
+        let at = contentStart;
+        let lines = 0;
+        while (at < block.length) {
+            if (block.startsWith('"}', at)) {
+                if (lines === 0) throw new Error("jsonplurnk test helper found an empty raw multiline body");
+                closeStart = at;
+                break;
+            }
+            const newline = block.indexOf("\n", at);
+            const end = newline === -1 ? block.length : newline;
+            if (!/^[1-9]\d*:/.test(block.slice(at, end).replace(/\r$/, ""))) {
+                throw new Error("jsonplurnk test helper found an unnumbered raw body line");
+            }
+            lines++;
+            if (newline === -1) break;
+            at = newline + 1;
+        }
+        if (closeStart === -1) throw new Error("jsonplurnk test helper found an unterminated raw multiline body");
         strict += block.slice(cursor, match.index)
             + '"body":'
             + JSON.stringify(block.slice(contentStart, closeStart));
-        cursor = closeStart + "<BODY|>".length;
+        cursor = closeStart + 1;
         opener.lastIndex = cursor;
     }
     return JSON.parse(strict + block.slice(cursor)) as Array<Record<string, unknown>>;

@@ -36,7 +36,7 @@ test("DbNotifyCaps: streamEvent emits for the resolved entry; absent entry / no 
         const entries = new DbEntryCaps(ctx, "worker", schemeManifest("worker"));
         const notify = new DbNotifyCaps(ctx, "worker");
 
-        await entries.write("/stream.md", { channels: { body: { content: "data", mimetype: "text/markdown" } }, tags: [] });
+        await entries.write("/stream.md", { channels: { body: { content: "data", mimetype: "text/markdown" } } });
 
         // positive — wait (wall-clock) until the best-effort async emit lands
         notify.streamEvent("/stream.md", "body", "active", 42);
@@ -78,7 +78,6 @@ test("{§notifications-stream-event-failure-isolation} lookup and notifier failu
         const entries = new DbEntryCaps(notifyCtx, "worker", schemeManifest("worker"));
         await entries.write("/stream.md", {
             channels: { body: { content: "data", mimetype: "text/markdown" } },
-            tags: [],
         });
 
         new DbNotifyCaps(notifyCtx, "worker").streamEvent("/stream.md", "body", "active", 4);

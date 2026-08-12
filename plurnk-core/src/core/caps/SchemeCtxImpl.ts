@@ -2,12 +2,11 @@
 // daemon collaborators stay constructor-injected into core-owned adapters.
 
 import type {
-    SchemeCtx, EntryCaps, ChannelCaps, TagCaps, NotifyCaps, ProjectionCaps, SubscriptionCaps, SchemeManifest, WriterTier,
+    SchemeCtx, EntryCaps, ChannelCaps, NotifyCaps, ProjectionCaps, SubscriptionCaps, SchemeManifest, WriterTier,
 } from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import DbEntryCaps from "./DbEntryCaps.ts";
 import DbChannelCaps from "./DbChannelCaps.ts";
-import DbTagCaps from "./DbTagCaps.ts";
 import DbNotifyCaps from "./DbNotifyCaps.ts";
 import DbSubscriptionCaps from "./DbSubscriptionCaps.ts";
 import DbProjectionCaps from "./DbProjectionCaps.ts";
@@ -27,7 +26,6 @@ export default class SchemeCtxImpl implements SchemeCtx {
     readonly signal: AbortSignal | undefined;
     readonly entries: EntryCaps;
     readonly channels: ChannelCaps;
-    readonly tags: TagCaps;
     readonly notify: NotifyCaps;
     readonly projection: ProjectionCaps;
     readonly subscriptions: SubscriptionCaps;
@@ -46,7 +44,6 @@ export default class SchemeCtxImpl implements SchemeCtx {
         this.signal = ctx.signal;
         this.entries = new DbEntryCaps(ctx, scheme, manifest, options.ownerId);
         this.channels = new DbChannelCaps(ctx, scheme, options.ownerId);
-        this.tags = new DbTagCaps(ctx, scheme, options.ownerId);
         this.notify = new DbNotifyCaps(ctx, scheme, options.ownerId);
         this.projection = new DbProjectionCaps(ctx);
         this.subscriptions = new DbSubscriptionCaps(

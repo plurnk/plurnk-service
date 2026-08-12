@@ -606,7 +606,6 @@ export default class File extends CoreSchemeAdapterBase {
             // `file` identity; bare-path rendering is a projection of that row.
             const { entryId } = await EntryCrud.writeEntry(relPath, {
                 channels: { body: { content: patched, mimetype } },
-                tags: [],
             }, core, "file");
             // {§fs-write-surface} — stamp the grantor the blind-write closure PROVED at propose
             // time; provenance never waits for the reconcile to guess what was already known.

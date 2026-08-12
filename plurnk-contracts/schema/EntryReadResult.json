@@ -32,7 +32,7 @@
         "entry": {
             "title": "ClientEntry",
             "type": "object",
-            "required": ["entryId", "target", "channels", "tags"],
+            "required": ["entryId", "target", "channels"],
             "additionalProperties": false,
             "properties": {
                 "entryId": {
@@ -48,14 +48,6 @@
                     "type": "object",
                     "propertyNames": { "minLength": 1 },
                     "additionalProperties": { "$ref": "#/$defs/channel" }
-                },
-                "tags": {
-                    "type": "array",
-                    "uniqueItems": true,
-                    "items": {
-                        "type": "string",
-                        "minLength": 1
-                    }
                 }
             }
         },

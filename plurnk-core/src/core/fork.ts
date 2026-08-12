@@ -108,13 +108,15 @@ export default class Fork {
             const ne = await db.fork_insert_log_entry.get<{ id: number }>({ ...row, worker_id: branchWorkerId, loop_id: loopMap.get(e.loop_id), turn_id: turnMap.get(e.turn_id) });
             if (ne === undefined) throw new Error("fork: log entry copy returned no row");
             logMap.set(oldLogId, ne.id);
-            // {§log-region-tagging} — carry the row's region tags onto the copy (no-op when untagged).
+            // {§log-item-tags} — carry the row's classifications onto the copy (no-op when untagged).
             await db.fork_copy_log_tags.run({ old_log_id: oldLogId, new_log_id: ne.id });
         }
         const curationEffects = await db.fork_get_log_curation_effects.all<{
             operation_log_entry_id: number;
             target_log_entry_id: number;
             expanded_before: 0 | 1;
+            tags_added: string;
+            tags_removed: string;
         }>({ worker_id: parentWorkerId });
         for (const effect of curationEffects) {
             const operationLogEntryId = logMap.get(effect.operation_log_entry_id);
@@ -126,6 +128,8 @@ export default class Fork {
                 operation_log_entry_id: operationLogEntryId,
                 target_log_entry_id: targetLogEntryId,
                 expanded_before: effect.expanded_before,
+                tags_added: effect.tags_added,
+                tags_removed: effect.tags_removed,
             });
         }
 
@@ -141,7 +145,6 @@ export default class Fork {
             );
             if (ne === undefined) throw new Error("fork: private entry copy returned no row");
             await db.fork_copy_entry_channels.run({ old_entry_id: s.id, new_entry_id: ne.id });
-            await db.fork_copy_entry_tags.run({ old_entry_id: s.id, new_entry_id: ne.id });
         }
 
         return branchWorkerId;

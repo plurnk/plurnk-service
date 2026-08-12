@@ -8,7 +8,7 @@ test("{§op-mode-phases}: FIND observes an entry created by EDIT in the same tur
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: write, then read-back in the same turn; SEND[102] (a same-turn SEND[200] would
         // — correctly — trip the weigh-before-conclude 409; that gate is not under test here).
-        makeMockResponse("# PLAN0\nwrite then find\n\n## EDIT0 [abs] (worker:///abs/module-loader-spec.md)\nthe spec body\n\n## FIND0 (worker:///**)\n\n## SEND0 [102]\nwrote and listed", 10),
+        makeMockResponse("# PLAN0\nwrite then find\n\n## EDIT0 [+abs] (worker:///abs/module-loader-spec.md)\nthe spec body\n\n## FIND0 (worker:///**)\n\n## SEND0 [102]\nwrote and listed", 10),
         makeMockResponse("## SEND0 [200]\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {

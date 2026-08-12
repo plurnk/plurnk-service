@@ -1,7 +1,7 @@
 -- FIND / multi-entry OPEN / FOLD candidate selection for entry-bearing
 -- schemes (SPEC {§find}; plurnk.md FIND row).
 --
--- Scope (target) + tag filters ONLY. The body matcher does NOT belong here:
+-- Scope (target) only. The body matcher does NOT belong here:
 -- per plurnk.md "Pattern Filtering" it runs against entry CONTENT, which
 -- needs the mimetypes plugin (xpath/jsonpath/regex/glob over structured
 -- content) — so the body match runs in JS (Matcher.matchAgainstContent) over
@@ -13,7 +13,6 @@
 -- $scope_prefix: the literal pathname prefix before any glob syntax, or NULL
 -- for no prefix. TypeScript applies the authoritative shell-glob match; this
 -- query supplies only a safe candidate superset.
--- $tags: JSON string of tag list (e.g., '["a","b"]'); '[]' or NULL for no tag filter
 SELECT e.id AS entry_id, e.pathname, e.deep_hash, ec.content, ec.mimetype
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
@@ -21,19 +20,10 @@ WHERE e.workspace_id = $workspace_id
   AND e.owner_id = $owner_id
   AND e.scheme = $scheme
   AND ($scope_prefix IS NULL OR substr(e.pathname, 1, length($scope_prefix)) = $scope_prefix)
-  AND (
-    json_array_length(COALESCE($tags, '[]')) = 0
-    OR e.id IN (
-        SELECT entry_id FROM entry_tags
-        WHERE tag IN (SELECT value FROM json_each(COALESCE($tags, '[]')))
-        GROUP BY entry_id
-        HAVING COUNT(DISTINCT tag) = json_array_length(COALESCE($tags, '[]'))
-    )
-  )
 ORDER BY e.pathname;
 
 -- PREP: find_workspace_entry_candidate_ids
--- Relation matchers need the same target/tag candidate set without loading every
+-- Relation matchers need the same target candidate set without loading every
 -- candidate body across the SQL boundary. The ranker joins these identities to
 -- derivations and performs exhaustive ranking within the selected set.
 SELECT e.id AS entry_id, e.pathname, e.deep_hash
@@ -42,15 +32,6 @@ WHERE e.workspace_id = $workspace_id
   AND e.owner_id = $owner_id
   AND e.scheme = $scheme
   AND ($scope_prefix IS NULL OR substr(e.pathname, 1, length($scope_prefix)) = $scope_prefix)
-  AND (
-    json_array_length(COALESCE($tags, '[]')) = 0
-    OR e.id IN (
-        SELECT entry_id FROM entry_tags
-        WHERE tag IN (SELECT value FROM json_each(COALESCE($tags, '[]')))
-        GROUP BY entry_id
-        HAVING COUNT(DISTINCT tag) = json_array_length(COALESCE($tags, '[]'))
-    )
-  )
 ORDER BY e.pathname;
 
 -- PREP: find_workspace_derivation_candidates

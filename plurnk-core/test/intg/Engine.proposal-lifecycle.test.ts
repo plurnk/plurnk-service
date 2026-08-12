@@ -7,7 +7,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { InvalidLoopFlagsError, type EditStatement } from "@plurnk/plurnk-contracts";
+import { InvalidLoopFlagsError, type EditStatement, type SendStatement } from "@plurnk/plurnk-contracts";
+import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import type { ProposalResolution } from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -48,13 +49,30 @@ class ProposingTest {
     }
 }
 
-const editStmt = (pathname: string, body: string): EditStatement => ({
-    op: "EDIT", suffix: "", signal: null,
+const editStmt = (pathname: string, body: string, tags: string[] | null = null): EditStatement => ({
+    op: "EDIT", suffix: "", signal: tags,
     target: { kind: "url", raw: `proposing-test://${pathname}`, scheme: "proposing-test",
         username: null, password: null, hostname: null, port: null,
         pathname, query: null, fragment: null },
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
+
+const okSend = (): MockResponse => ({
+    assistant: {
+        content: "",
+        ops: [{
+            op: "SEND", suffix: "", signal: 200, target: null,
+            lineMarker: null, body: { raw: "ok", json: null },
+            position: { line: 1, column: 1 },
+        } as SendStatement],
+        reasoning: null,
+    },
+});
+
+const MESSAGES = [
+    { role: "system" as const, content: "You are an agent." },
+    { role: "user" as const, content: "go" },
+];
 
 const setupEngine = async (db: Db, proposing: ProposingTest = new ProposingTest()): Promise<{
     engine: Engine; workspaceId: number; workerId: number; loopId: number; turnId: number;
@@ -105,6 +123,61 @@ test("proposal: 202 scheme result pauses; accept resolves to 200", async () => {
         assert.equal(row?.state, "resolved");
         assert.equal(row?.status_rx, 200);
         assert.equal(row?.outcome, null);
+    } finally { await db.close(); }
+});
+
+test("proposal: an accepted tagged EDIT carries its classifications through the ambient log", async () => {
+    const db = await openMigrated();
+    try {
+        const ctx = await setupEngine(db);
+        const observerId = await insertWorker(db, ctx.workspaceId, null, "observer");
+        const observerLoopId = await insertLoop(db, observerId, 1, "observe");
+        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
+
+        await ctx.engine.runTurn({
+            provider,
+            workspaceId: ctx.workspaceId,
+            workerId: observerId,
+            loopId: observerLoopId,
+            messages: MESSAGES,
+            turnNumber: 1,
+        });
+
+        const idDeferred = deferred<number>();
+        const dispatch = ctx.engine.dispatch({
+            statement: editStmt("/x", "y", ["+research", "+working-set"]),
+            workspaceId: ctx.workspaceId,
+            workerId: ctx.workerId,
+            loopId: ctx.loopId,
+            turnId: ctx.turnId,
+            sequence: 1,
+            origin: "model",
+            onDispatch: (id) => idDeferred.resolve(id),
+        });
+        ctx.engine.resolveProposal(await idDeferred.promise, { decision: "accept" });
+        assert.equal((await dispatch).status, 200);
+
+        await ctx.engine.runTurn({
+            provider,
+            workspaceId: ctx.workspaceId,
+            workerId: observerId,
+            loopId: observerLoopId,
+            messages: MESSAGES,
+            turnNumber: 2,
+        });
+        const rows = await db.engine_render_log.all<{
+            origin: string;
+            op: string;
+            scheme: string | null;
+            pathname: string | null;
+            tags: string;
+        }>({ worker_id: observerId });
+        const delta = rows.find((row) => row.origin === "plurnk"
+            && row.op === "EDIT"
+            && row.scheme === "proposing-test"
+            && row.pathname === "/x");
+        assert.ok(delta, "the accepted shared EDIT reaches the observer's durable log");
+        assert.deepEqual(JSON.parse(delta.tags), ["research", "working-set"]);
     } finally { await db.close(); }
 });
 

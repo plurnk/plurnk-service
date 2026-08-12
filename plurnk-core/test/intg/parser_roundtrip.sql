@@ -4,9 +4,6 @@ SELECT owner_id, scheme, pathname FROM entries LIMIT 1;
 -- PREP: test_parser_body_first
 SELECT content FROM entry_channels WHERE name = 'body' LIMIT 1;
 
--- PREP: test_parser_tags
-SELECT tag FROM entry_tags ORDER BY tag;
-
 -- PREP: test_parser_pathnames
 SELECT pathname FROM entries ORDER BY pathname;
 

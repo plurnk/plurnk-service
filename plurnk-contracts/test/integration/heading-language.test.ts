@@ -13,7 +13,7 @@ test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exac
         "# PLAN0",
         "Update the note, then read it.",
         "",
-        "## EDIT0 [draft] (worker:///note.md) <1,-1>",
+        "## EDIT0 [+draft] (worker:///note.md) <1,-1>",
         "alpha",
         "beta",
         "",

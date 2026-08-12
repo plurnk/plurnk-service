@@ -5,6 +5,7 @@ import AstBuilder from "./AstBuilder.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
+import TagSignal from "./TagSignal.ts";
 import type { ClientStatement, ParseItem, ParseResult, PlurnkStatement, Position } from "./types.ts";
 
 // Statement-bearing contexts the extraction builds into items. `statement` (statementSeq) and
@@ -210,7 +211,7 @@ export default class PlurnkParser {
     static #MUTATING_OPS = new Set(["EDIT", "COPY", "MOVE"]);
 
     // A null mutation target plus a path-shaped tag is the narrow advisory gate; an
-    // ordinary tags-only omission is not redirected. {§misplaced-target-advisory}
+    // ordinary additive-tag use is not redirected. {§misplaced-target-advisory}
     static #flagMisplacedTarget(items: ParseItem<any>[]): void {
         const pathShaped = (s: string) => s.includes("/") || /[^/]\.[a-zA-Z][a-zA-Z0-9]*$/.test(s);
         const additions: { at: number; item: ParseItem<any> }[] = [];
@@ -219,7 +220,7 @@ export default class PlurnkParser {
             const st: any = item.statement;
             if (!PlurnkParser.#MUTATING_OPS.has(st.op) || st.target !== null) return;
             if (!Array.isArray(st.signal)) return;
-            const path = st.signal.find(pathShaped);
+            const path = TagSignal.applied(st.signal).add.find(pathShaped);
             if (!path) return;
             additions.push({
                 at: idx,

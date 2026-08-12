@@ -3,13 +3,7 @@
 
 -- PREP: log_read_by_coordinate
 SELECT le.op, le.scheme, le.pathname, le.status_rx,
-       le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.attrs,
-       COALESCE((
-           SELECT json_group_array(ordered.tag)
-           FROM (
-               SELECT tag FROM log_tags WHERE log_entry_id = le.id ORDER BY tag
-           ) ordered
-       ), '[]') AS tags
+       le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.attrs
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
@@ -46,26 +40,6 @@ UPDATE log_entries SET expanded = $expanded
 WHERE id = $id AND expanded != $expanded
 RETURNING id;
 
--- PREP: log_expanded_by_id
--- A conditional update returns no row for a no-op. Confirm the target still
--- exists and retain its exact pre-event state for the durable effect record.
-SELECT expanded FROM log_entries WHERE id = $id;
-
--- PREP: log_record_curation_effects
--- {§fold-open-meta-operations} — the successful operation row remains the
--- event; this relation makes its exact selected set and prior visibility
--- durable without projecting internal row identities to the model.
-INSERT INTO log_curation_effects (
-    operation_log_entry_id,
-    target_log_entry_id,
-    expanded_before
-)
-SELECT
-    $operation_log_entry_id,
-    json_extract(value, '$.targetLogEntryId'),
-    json_extract(value, '$.expandedBefore')
-FROM json_each($effects);
-
 -- PREP: log_delete_by_id
 -- {§model-entry-log-curation} — permanent row deletion; the derived errors pointer for an
 -- `op='error'` row vanishes with it.
@@ -96,14 +70,16 @@ WHERE l.worker_id = $worker_id
 ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: log_write_tag
--- {§log-region-tagging} — FOLD is the log's write-op (EDIT can't reach engine-written rows). Tagged FOLD
--- stamps a tag on the folded rows, additively ({§edit-tags-additive}) — re-tagging is a no-op.
+-- {§log-item-tags} — classification at the durable log-write seam;
+-- engine policy may use the same idempotent primitive for its own classifications.
 INSERT OR IGNORE INTO log_tags (log_entry_id, tag) VALUES ($log_entry_id, $tag);
 
+-- PREP: log_remove_tag
+DELETE FROM log_tags WHERE log_entry_id = $log_entry_id AND tag = $tag;
+
 -- PREP: log_match_coordinates_tagged
--- {§log-region-tagging} — tagged OPEN resolution: log_match_coordinates PLUS an ALL-tags AND filter
--- ({§find-tag-filter-and-semantics}), so OPEN recalls only rows carrying EVERY listed tag. A
--- targetless tagged OPEN rides glob '*' (the whole worker log).
+-- {§log-item-tags} — OPEN/FOLD resolution with an ALL-tags AND filter. A
+-- targetless tagged operation uses the whole worker log.
 SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
@@ -122,8 +98,9 @@ WHERE l.worker_id = $worker_id
   )
 ORDER BY l.sequence, t.sequence, le.sequence;
 
--- PREP: log_find_candidates_tagged
--- {§log-region-tagging} — tagged log FIND: log_find_candidates PLUS the same ALL-tags AND filter.
+-- PREP: log_curation_find_candidates_tagged
+-- {§log-item-tags} — private matcher-bearing OPEN/FOLD candidates after the
+-- same ALL-tags filter; an authored FIND signal never routes here.
 SELECT
     (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate,
     le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash, le.attrs,

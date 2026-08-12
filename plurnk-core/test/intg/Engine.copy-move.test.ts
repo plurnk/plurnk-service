@@ -22,10 +22,10 @@ const dispatch = async (engine: Engine, env: { workspaceId: number; workerId: nu
     });
 };
 
-test("Engine.copy copies the default channel without carrying source tags", async () => {
+test("Engine.copy copies the default channel", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/france/capital"), "Paris", ["france"]), makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Worker().edit(editStmt(urlPath("worker", "/france/capital"), "Paris"), makeSchemeCtx({ db, workspaceId, workerId }));
 
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/france/capital"), urlPath("worker", "/europe/france")));
         assert.equal(r.status, 201);
@@ -34,8 +34,6 @@ test("Engine.copy copies the default channel without carrying source tags", asyn
         assert.equal(dst?.scheme, "worker");
         const channel = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/europe/france", name: "body" });
         assert.equal(channel?.content, "Paris");
-        const tags = await db.test_tags_by_pathname.all<{ tag: string }>({ pathname: "/europe/france" });
-        assert.deepEqual(tags.map((t) => t.tag), []);
     } finally { await db.close(); }
 });
 
@@ -104,29 +102,19 @@ test("Engine.copy to a destination already holding identical content returns 304
     } finally { await db.close(); }
 });
 
-test("Engine.copy applies explicit destination tags", async () => {
+test("Engine.copy classifies its durable receipt with its signal", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/src"), "x", ["original", "tags"]), makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Worker().edit(editStmt(urlPath("worker", "/src"), "x"), makeSchemeCtx({ db, workspaceId, workerId }));
 
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"), ["new", "tags"]));
+        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"), ["+new", "+tags"]));
         assert.equal(r.status, 201);
 
-        const tags = await db.test_tags_by_pathname.all<{ tag: string }>({ pathname: "/dst" });
-        assert.deepEqual(tags.map((t) => t.tag), ["new", "tags"]);
-    } finally { await db.close(); }
-});
-
-test("Engine.copy without signal leaves source tags behind", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
-    try {
-        await new Worker().edit(editStmt(urlPath("worker", "/src"), "x", ["a", "b"]), makeSchemeCtx({ db, workspaceId, workerId }));
-
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"), null));
-        assert.equal(r.status, 201);
-
-        const tags = await db.test_tags_by_pathname.all<{ tag: string }>({ pathname: "/dst" });
-        assert.deepEqual(tags.map((t) => t.tag), []);
+        const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: workerId });
+        assert.deepEqual(tags, [
+            { coordinate: "1/1/1", tag: "new" },
+            { coordinate: "1/1/1", tag: "tags" },
+        ]);
     } finally { await db.close(); }
 });
 

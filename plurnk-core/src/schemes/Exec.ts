@@ -1,4 +1,4 @@
-import { parsePath } from "@plurnk/plurnk-contracts";
+import { parsePath, TagSignal } from "@plurnk/plurnk-contracts";
 import type { ExecStatement, FindStatement, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
 import { Policy, type ChannelState } from "@plurnk/plurnk-execs";
 import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";
@@ -532,7 +532,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 state: decl.defaultState ?? "active",
             };
         }
-        const seed: EntryData = { channels: seedChannels, tags: [] };
+        const seed: EntryData = { channels: seedChannels };
         // {§exec} — the stream entry's scheme IS the runtime tag (sh/node), so it addresses by
         // tag authority (sh:///l/t/s). The engine registers each runtime tag → this handler.
         const { entryId } = await EntryCrud.writeEntry(pathname, seed, core, runtime, core.workerId);
@@ -703,8 +703,8 @@ export default class Exec extends CoreSchemeAdapterBase {
                         ?? `entry(): '${path.slice(0, 80)}' produced no readable body`,
                     );
                 }
-                const prior = await EntryCrud.readEntry(pathname, ctx, scheme);
-                const tags = [...new Set([...(prior.entry?.tags ?? []), ...opts.tags])];
+                const tags = TagSignal.applied(opts.tags.map((tag) => `+${tag}`)).add;
+                const tagSignal = tags.map((tag) => `+${tag}`);
                 // {§exec-entry-sink}/{§html-materialization} The shared
                 // materializer owns the decisive projection and its provenance.
                 const channels: EntryData["channels"] = WebFetcher.materializedChannels(
@@ -717,7 +717,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 const source = web.html?.content ?? decisive;
                 const causalSource = await resolveCallerSource();
                 const written = Results.assert(
-                    await EntryCrud.writeEntry(pathname, { channels, tags }, ctx, scheme),
+                    await EntryCrud.writeEntry(pathname, { channels }, ctx, scheme),
                 );
                 if (narration === null) {
                     const worker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk" })
@@ -742,18 +742,17 @@ export default class Exec extends CoreSchemeAdapterBase {
                         `log:///${narration.loopSeq}/${narration.turnSeq}/${sequence}/EDIT`,
                     );
                 }
-                await db.engine_insert_log_entry.get({
+                const logRow = await db.engine_insert_log_entry.get<{ id: number }>({
                     worker_id: narration.workerId, loop_id: narration.loopId, turn_id: narration.turnId, sequence,
-                    // signal carries the tags — the SAME slot a model's EDIT tag signal uses, so the
+                    // signal carries additive tag terms through the same slot a model's EDIT uses, so the
                     // ambient row renders its tags natively everywhere (packet meta line, digest).
-                    origin: "plurnk", source: causalSource, op: "EDIT", suffix: "", signal: JSON.stringify(tags),
+                    origin: "plurnk", source: causalSource, op: "EDIT", suffix: "", signal: JSON.stringify(tagSignal),
                     scheme, username: null, password: null, hostname: null, port: null,
                     pathname, query: null, fragment: null, lineMarker: null,
                     tx: JSON.stringify({ op: "EDIT", body: source }), mimetype_tx: "application/json",
                     rx: JSON.stringify(written.problem === undefined
                         ? {
                             ...written,
-                            tags,
                             span: decisive.split("\n").map((l, n) => `${n + 1}:${l}`).join("\n"),
                         }
                         : written),
@@ -761,8 +760,9 @@ export default class Exec extends CoreSchemeAdapterBase {
                     status_rx: written.status, tokens: ctx.tokenize?.(decisive) ?? 0, state: "resolved", outcome: null,
                     // Durable provenance for clients/forensics. This is machine
                     // ambience, not a human/model action waterfall item.
-                    attrs: JSON.stringify({ tags, kind: "entry_materialized" }),
+                    attrs: JSON.stringify({ kind: "entry_materialized" }),
                 });
+                if (logRow === undefined) throw new Error("entry(): log insert returned no row");
                 if (written.problem !== undefined) throw new OperationFailureError(written);
                 return renderAddress(scheme, pathname);
             };

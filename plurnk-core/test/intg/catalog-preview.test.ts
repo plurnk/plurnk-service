@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-type LogRow = { op: string; pathname: string; scheme: string | null; hostname: string | null; status_rx: number; rx: string };
+type LogRow = { op: string; pathname: string; scheme: string | null; hostname: string | null; sequence: number; signal: string | null; status_rx: number; rx: string };
 const mock = () => new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
 
 test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
@@ -189,8 +189,8 @@ test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a sta
                 // Dynamic - it carries the FIND the foist ACTUALLY dispatched (worker:///*), rendered to
                 // DSL and framed PLAN → SEND. Not a frozen print: feed-as-turn-0, show-in-turn-1 are one act.
                 assert.match(content, /^# PLAN0\nSurvey context, then address the prompt\./, "opens with an orienting goal");
-                assert.match(content, /## FIND0 \(worker:\/\/\/\*\)/, "the markerless shallow survey is rendered back to DSL");
-                assert.doesNotMatch(content, /## FIND0 \(worker:\/\/\/\*\) </, "the ordinary survey does not teach an explicit all-results scope");
+                assert.match(content, /## FIND0 \[\+init\] \(worker:\/\/\/\*\)/, "the classified markerless shallow survey is rendered back to DSL");
+                assert.doesNotMatch(content, /## FIND0 \[\+init\] \(worker:\/\/\/\*\) </, "the ordinary survey does not teach an explicit all-results scope");
                 assert.match(
                     content,
                     /## SEND0 \[102\]\nNext, address the prompt using the survey\.$/,
@@ -215,6 +215,15 @@ test("an empty workspace executes all four orienting FINDs and preserves empty-s
                 const { loopId, modelWorkerId } = resp as { loopId: number; modelWorkerId: number };
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const finds = rows.filter((r) => r.op === "FIND");
+                assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
+                    { scheme: null, hostname: null, pathname: "*" },
+                    { scheme: "worker", hostname: null, pathname: "/*" },
+                    { scheme: "worker", hostname: "~", pathname: "/*" },
+                    { scheme: "worker", hostname: "plurnk", pathname: "/docs/**" },
+                ], "the four surveys execute in their taught order");
+                assert.deepEqual(finds.map(({ signal }) => JSON.parse(signal ?? "null")), [
+                    ["+init"], ["+init"], ["+init"], ["+init", "+docs"],
+                ]);
                 const orientations = [
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true],
                     ["workspace commons", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/*"), true],
@@ -230,10 +239,29 @@ test("an empty workspace executes all four orienting FINDs and preserves empty-s
                 }
                 const exemplar = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 const content = (JSON.parse(exemplar!.rx) as { content: string }).content;
-                assert.match(content, /## FIND0 \(\*\)/, "the exemplar includes the markerless project survey");
-                assert.match(content, /## FIND0 \(worker:\/\/\/\*\)/, "the exemplar includes markerless workspace commons");
-                assert.match(content, /## FIND0 \(worker:\/\/~\/\*\)/, "the exemplar includes markerless own space");
-                assert.match(content, /## FIND0 \(worker:\/\/plurnk\/docs\/\*\*\) <1,-1>/, "the exemplar includes complete kernel docs");
+                assert.equal(content, `# PLAN0
+Survey context, then address the prompt.
+
+## FIND0 [+init] (*)
+
+## FIND0 [+init] (worker:///*)
+
+## FIND0 [+init] (worker://~/*)
+
+## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>
+
+## SEND0 [102]
+Next, address the prompt using the survey.`);
+                const logTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: modelWorkerId });
+                const tagsBySequence = new Map<number, string[]>();
+                for (const { sequence } of finds) tagsBySequence.set(sequence, []);
+                for (const { coordinate, tag } of logTags) {
+                    const sequence = Number(coordinate.split("/")[2]);
+                    tagsBySequence.get(sequence)?.push(tag);
+                }
+                assert.deepEqual(finds.map(({ sequence }) => tagsBySequence.get(sequence)), [
+                    ["init"], ["init"], ["init"], ["docs", "init"],
+                ], "each FIND classifies its own durable log item; docs retains the shared init set");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }

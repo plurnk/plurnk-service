@@ -87,9 +87,10 @@ export default class DbEntryCaps implements EntryCaps {
     }
 
     async write(pathname: string, entry: EntryData, owner?: EntryOwner): Promise<EntryStorageWriteResult> {
-        // schemes' EntryData carries `tags` as ReadonlyArray; EntryCrud writes a
-        // mutable array — copy at the boundary.
-        return EntryCrud.writeEntry(pathname, { channels: entry.channels, tags: [...entry.tags] }, this.#ctx, this.#scheme, this.#ownerId(owner));
+        return EntryCrud.writeEntry(pathname, {
+            channels: entry.channels,
+            ...(entry.attributes === undefined ? {} : { attributes: entry.attributes }),
+        }, this.#ctx, this.#scheme, this.#ownerId(owner));
     }
 
     async delete(pathname: string, owner?: EntryOwner, channel?: string): Promise<SchemeResult> {

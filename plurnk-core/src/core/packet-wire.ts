@@ -235,7 +235,7 @@ export default class PacketWire {
         const rendered = startLine !== null
             ? PacketWire.#numberLines(content, startLine)
             : content;
-        return PacketWire.#wrapBody(rendered);
+        return PacketWire.#quoteBody(rendered);
     }
 
     // Tolerant JSON parser for log entries' persisted rx/tx strings. The engine
@@ -279,18 +279,19 @@ export default class PacketWire {
         };
     }
 
-    // Wrap a body in the fixed `<|BODY>` enclosure, never the target: every body
-    // line is `N:`-prefixed, so a bare close line can never occur
-    // inside a body, and a fixed fence gives the model nothing address-shaped to
-    // mimic back as op syntax — identity lives in the adjacent meta JSON. Leading
-    // `\n` always (separates the opening fence from the first body character).
-    // Trailing `\n` only when the body doesn't already end with one — otherwise you
-    // get a doubled newline that renders as a blank line before the closing fence,
-    // which reads as "the content has a trailing blank line" when actually it
-    // doesn't. The body's own whitespace decides the shape.
-    static #wrapBody(body: string): string {
-        const sep = body.endsWith("\n") ? "" : "\n";
-        return `<|BODY>\n${body}${sep}<BODY|>`;
+    // {§jsonplurnk} One deliberately raw multiline JSON string. The physical
+    // newline after the opening quote and every universal positive `N:` prefix
+    // make the closing `"}` at column zero unambiguous without an invented
+    // delimiter for source text to imitate. Already-numbered producer output is
+    // checked here too: malformed bodies fail at the one projection boundary.
+    static #quoteBody(body: string): string {
+        const endsWithLineBreak = /(?:\r\n|\r|\n)$/.test(body);
+        const lines = body.split(/\r\n|\r|\n/);
+        const contentLines = endsWithLineBreak ? lines.slice(0, -1) : lines;
+        if (contentLines.length === 0 || contentLines.some((line) => !/^[1-9]\d*:/.test(line))) {
+            throw new TypeError("A raw jsonplurnk body requires a positive `N:` prefix on every physical line.");
+        }
+        return `"\n${body}${endsWithLineBreak ? "" : "\n"}"`;
     }
 
     // Render one Log entry → a single bullet line carrying the meta JSON.
@@ -545,13 +546,13 @@ export default class PacketWire {
 
             // {§jsonplurnk} — `display` describes the three body states: `none` carries an explicit
             // empty JSON string, `folded` withholds an existing body, and `open` appends that body as
-            // the format's one non-JSON value (a raw BODY enclosure). The explicit empty body keeps
+            // the format's one raw multiline string. The explicit empty body keeps
             // every state self-describing; OPEN/FOLD remain friendly no-ops on `none`.
             const display = body.length === 0 ? "none" : e.folded === true ? "folded" : "open";
             meta.display = display;
             if (display === "none") meta.body = "";
             const obj = PacketWire.#canonicalJson(meta);
-            return display === "open" ? obj.replace(/\}$/, `,"body":\n${body}\n}`) : obj;
+            return display === "open" ? obj.replace(/\}$/, `,"body":${body}}`) : obj;
         }).join(",\n");
     }
 

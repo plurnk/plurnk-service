@@ -61,7 +61,6 @@ export class SqlRiteSync {
 	engine_grinder_fold_newest_turn(params?: Record<string, unknown>): SqlRiteResult;
 	crud_find_workspace_entry: SqlRiteSyncPreparedStatements;
 	crud_read_channels: SqlRiteSyncPreparedStatements;
-	crud_read_tags: SqlRiteSyncPreparedStatements;
 	crud_insert_workspace_entry: SqlRiteSyncPreparedStatements;
 	crud_insert_workspace_entry_with_attributes: SqlRiteSyncPreparedStatements;
 	crud_set_entry_attributes: SqlRiteSyncPreparedStatements;
@@ -71,10 +70,7 @@ export class SqlRiteSync {
 	crud_mark_member_absent: SqlRiteSyncPreparedStatements;
 	crud_delete_channels: SqlRiteSyncPreparedStatements;
 	crud_delete_channel: SqlRiteSyncPreparedStatements;
-	crud_delete_tags: SqlRiteSyncPreparedStatements;
 	crud_write_channel: SqlRiteSyncPreparedStatements;
-	crud_write_tag: SqlRiteSyncPreparedStatements;
-	crud_delete_tag: SqlRiteSyncPreparedStatements;
 	crud_delete_entry: SqlRiteSyncPreparedStatements;
 	crud_list_reconcilable_members: SqlRiteSyncPreparedStatements;
 	crud_insert_workspace_constraint: SqlRiteSyncPreparedStatements;
@@ -173,7 +169,6 @@ export class SqlRiteSync {
 	workspace_get_settings: SqlRiteSyncPreparedStatements;
 	engine_target_diverged_this_turn: SqlRiteSyncPreparedStatements;
 	engine_list_owner_entries: SqlRiteSyncPreparedStatements;
-	engine_list_owner_entry_tags: SqlRiteSyncPreparedStatements;
 	engine_next_turn_sequence: SqlRiteSyncPreparedStatements;
 	engine_loop_usage: SqlRiteSyncPreparedStatements;
 	engine_loop_provider_requests: SqlRiteSyncPreparedStatements;
@@ -192,11 +187,11 @@ export class SqlRiteSync {
 	engine_initialize_ambient_cursor: SqlRiteSyncPreparedStatements;
 	engine_pull_ambient_events: SqlRiteSyncPreparedStatements;
 	engine_insert_ambient_delta: SqlRiteSyncPreparedStatements;
+	engine_ambient_delta_id: SqlRiteSyncPreparedStatements;
 	engine_advance_ambient_cursor: SqlRiteSyncPreparedStatements;
 	engine_worker_stream_channels: SqlRiteSyncPreparedStatements;
 	engine_stream_cursor: SqlRiteSyncPreparedStatements;
 	engine_insert_stream_delta: SqlRiteSyncPreparedStatements;
-	engine_entry_tags: SqlRiteSyncPreparedStatements;
 	engine_child_workers_live: SqlRiteSyncPreparedStatements;
 	engine_child_streams_open: SqlRiteSyncPreparedStatements;
 	engine_render_errors: SqlRiteSyncPreparedStatements;
@@ -240,7 +235,6 @@ export class SqlRiteSync {
 	fork_get_private_entries: SqlRiteSyncPreparedStatements;
 	fork_insert_private_entry: SqlRiteSyncPreparedStatements;
 	fork_copy_entry_channels: SqlRiteSyncPreparedStatements;
-	fork_copy_entry_tags: SqlRiteSyncPreparedStatements;
 	journal_turn_next_sequence: SqlRiteSyncPreparedStatements;
 	journal_turn_insert: SqlRiteSyncPreparedStatements;
 	recovery_fail_active_loops: SqlRiteSyncPreparedStatements;
@@ -257,13 +251,12 @@ export class SqlRiteSync {
 	log_id_by_coordinate: SqlRiteSyncPreparedStatements;
 	log_match_coordinates: SqlRiteSyncPreparedStatements;
 	log_set_expanded_by_id: SqlRiteSyncPreparedStatements;
-	log_expanded_by_id: SqlRiteSyncPreparedStatements;
-	log_record_curation_effects: SqlRiteSyncPreparedStatements;
 	log_delete_by_id: SqlRiteSyncPreparedStatements;
 	log_find_candidates: SqlRiteSyncPreparedStatements;
 	log_write_tag: SqlRiteSyncPreparedStatements;
+	log_remove_tag: SqlRiteSyncPreparedStatements;
 	log_match_coordinates_tagged: SqlRiteSyncPreparedStatements;
-	log_find_candidates_tagged: SqlRiteSyncPreparedStatements;
+	log_curation_find_candidates_tagged: SqlRiteSyncPreparedStatements;
 	log_derivation_rows: SqlRiteSyncPreparedStatements;
 	log_set_deep_hash: SqlRiteSyncPreparedStatements;
 	log_entry_by_id: SqlRiteSyncPreparedStatements;
@@ -312,7 +305,6 @@ export class SqlRiteSync {
 	test_count_entries_by_workspace_scheme: SqlRiteSyncPreparedStatements;
 	test_get_entry_by_path: SqlRiteSyncPreparedStatements;
 	test_get_channel: SqlRiteSyncPreparedStatements;
-	test_list_entry_tags: SqlRiteSyncPreparedStatements;
 	test_get_subscription: SqlRiteSyncPreparedStatements;
 	test_get_subscription_by_entry: SqlRiteSyncPreparedStatements;
 	test_count_active_subscriptions: SqlRiteSyncPreparedStatements;
@@ -320,7 +312,6 @@ export class SqlRiteSync {
 	test_exec_close_status_by_workspace: SqlRiteSyncPreparedStatements;
 	test_seed_entry_workspace: SqlRiteSyncPreparedStatements;
 	test_seed_channel: SqlRiteSyncPreparedStatements;
-	test_seed_entry_tag: SqlRiteSyncPreparedStatements;
 	test_get_packet: SqlRiteSyncPreparedStatements;
 	test_get_turn_status: SqlRiteSyncPreparedStatements;
 	test_list_turns_in_loop: SqlRiteSyncPreparedStatements;
@@ -347,11 +338,9 @@ export class SqlRiteSync {
 	test_count_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
 	test_latest_subscription_for_worker: SqlRiteSyncPreparedStatements;
 	test_get_entry_id_by_pathname: SqlRiteSyncPreparedStatements;
-	test_count_entry_tags: SqlRiteSyncPreparedStatements;
 	test_get_entry_by_pathname_scheme: SqlRiteSyncPreparedStatements;
 	test_get_channel_by_pathname: SqlRiteSyncPreparedStatements;
 	test_get_channel_by_pathname_scheme: SqlRiteSyncPreparedStatements;
-	test_tags_by_pathname: SqlRiteSyncPreparedStatements;
 	test_list_entry_schemes: SqlRiteSyncPreparedStatements;
 	test_invalid_subscription_only_closed_at: SqlRiteSyncPreparedStatements;
 	test_invalid_subscription_only_close_status: SqlRiteSyncPreparedStatements;
@@ -439,10 +428,6 @@ export class SqlRiteSync {
 	test_entry_channels_insert_with_producer_result: SqlRiteSyncPreparedStatements;
 	test_entry_channels_get_first: SqlRiteSyncPreparedStatements;
 	test_entry_channels_count_all: SqlRiteSyncPreparedStatements;
-	test_entry_tags_insert: SqlRiteSyncPreparedStatements;
-	test_entry_tags_count_all: SqlRiteSyncPreparedStatements;
-	test_entry_tags_by_tag: SqlRiteSyncPreparedStatements;
-	test_entry_tags_index: SqlRiteSyncPreparedStatements;
 	test_entry_channels_insert_missing_name: SqlRiteSyncPreparedStatements;
 	test_entry_channels_insert_missing_content: SqlRiteSyncPreparedStatements;
 	test_entry_channels_insert_missing_mimetype: SqlRiteSyncPreparedStatements;
@@ -471,7 +456,6 @@ export class SqlRiteSync {
 	test_loops_get_prompt: SqlRiteSyncPreparedStatements;
 	test_parser_entries_first: SqlRiteSyncPreparedStatements;
 	test_parser_body_first: SqlRiteSyncPreparedStatements;
-	test_parser_tags: SqlRiteSyncPreparedStatements;
 	test_parser_pathnames: SqlRiteSyncPreparedStatements;
 	test_parser_log_indices: SqlRiteSyncPreparedStatements;
 	test_parser_log_first: SqlRiteSyncPreparedStatements;
@@ -517,7 +501,6 @@ export class SqlRiteSync {
 	ws_dup_identities: SqlRiteSyncPreparedStatements;
 	ws_file_keys: SqlRiteSyncPreparedStatements;
 	ws_orphan_channels: SqlRiteSyncPreparedStatements;
-	ws_orphan_tags: SqlRiteSyncPreparedStatements;
 	ws_alien_origin: SqlRiteSyncPreparedStatements;
 	ws_sig_on_nonfile: SqlRiteSyncPreparedStatements;
 	ws_entry_count: SqlRiteSyncPreparedStatements;
@@ -538,7 +521,6 @@ export default class SqlRite {
 	engine_grinder_fold_newest_turn(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	crud_find_workspace_entry: SqlRitePreparedStatements;
 	crud_read_channels: SqlRitePreparedStatements;
-	crud_read_tags: SqlRitePreparedStatements;
 	crud_insert_workspace_entry: SqlRitePreparedStatements;
 	crud_insert_workspace_entry_with_attributes: SqlRitePreparedStatements;
 	crud_set_entry_attributes: SqlRitePreparedStatements;
@@ -548,10 +530,7 @@ export default class SqlRite {
 	crud_mark_member_absent: SqlRitePreparedStatements;
 	crud_delete_channels: SqlRitePreparedStatements;
 	crud_delete_channel: SqlRitePreparedStatements;
-	crud_delete_tags: SqlRitePreparedStatements;
 	crud_write_channel: SqlRitePreparedStatements;
-	crud_write_tag: SqlRitePreparedStatements;
-	crud_delete_tag: SqlRitePreparedStatements;
 	crud_delete_entry: SqlRitePreparedStatements;
 	crud_list_reconcilable_members: SqlRitePreparedStatements;
 	crud_insert_workspace_constraint: SqlRitePreparedStatements;
@@ -650,7 +629,6 @@ export default class SqlRite {
 	workspace_get_settings: SqlRitePreparedStatements;
 	engine_target_diverged_this_turn: SqlRitePreparedStatements;
 	engine_list_owner_entries: SqlRitePreparedStatements;
-	engine_list_owner_entry_tags: SqlRitePreparedStatements;
 	engine_next_turn_sequence: SqlRitePreparedStatements;
 	engine_loop_usage: SqlRitePreparedStatements;
 	engine_loop_provider_requests: SqlRitePreparedStatements;
@@ -669,11 +647,11 @@ export default class SqlRite {
 	engine_initialize_ambient_cursor: SqlRitePreparedStatements;
 	engine_pull_ambient_events: SqlRitePreparedStatements;
 	engine_insert_ambient_delta: SqlRitePreparedStatements;
+	engine_ambient_delta_id: SqlRitePreparedStatements;
 	engine_advance_ambient_cursor: SqlRitePreparedStatements;
 	engine_worker_stream_channels: SqlRitePreparedStatements;
 	engine_stream_cursor: SqlRitePreparedStatements;
 	engine_insert_stream_delta: SqlRitePreparedStatements;
-	engine_entry_tags: SqlRitePreparedStatements;
 	engine_child_workers_live: SqlRitePreparedStatements;
 	engine_child_streams_open: SqlRitePreparedStatements;
 	engine_render_errors: SqlRitePreparedStatements;
@@ -717,7 +695,6 @@ export default class SqlRite {
 	fork_get_private_entries: SqlRitePreparedStatements;
 	fork_insert_private_entry: SqlRitePreparedStatements;
 	fork_copy_entry_channels: SqlRitePreparedStatements;
-	fork_copy_entry_tags: SqlRitePreparedStatements;
 	journal_turn_next_sequence: SqlRitePreparedStatements;
 	journal_turn_insert: SqlRitePreparedStatements;
 	recovery_fail_active_loops: SqlRitePreparedStatements;
@@ -734,13 +711,12 @@ export default class SqlRite {
 	log_id_by_coordinate: SqlRitePreparedStatements;
 	log_match_coordinates: SqlRitePreparedStatements;
 	log_set_expanded_by_id: SqlRitePreparedStatements;
-	log_expanded_by_id: SqlRitePreparedStatements;
-	log_record_curation_effects: SqlRitePreparedStatements;
 	log_delete_by_id: SqlRitePreparedStatements;
 	log_find_candidates: SqlRitePreparedStatements;
 	log_write_tag: SqlRitePreparedStatements;
+	log_remove_tag: SqlRitePreparedStatements;
 	log_match_coordinates_tagged: SqlRitePreparedStatements;
-	log_find_candidates_tagged: SqlRitePreparedStatements;
+	log_curation_find_candidates_tagged: SqlRitePreparedStatements;
 	log_derivation_rows: SqlRitePreparedStatements;
 	log_set_deep_hash: SqlRitePreparedStatements;
 	log_entry_by_id: SqlRitePreparedStatements;
@@ -789,7 +765,6 @@ export default class SqlRite {
 	test_count_entries_by_workspace_scheme: SqlRitePreparedStatements;
 	test_get_entry_by_path: SqlRitePreparedStatements;
 	test_get_channel: SqlRitePreparedStatements;
-	test_list_entry_tags: SqlRitePreparedStatements;
 	test_get_subscription: SqlRitePreparedStatements;
 	test_get_subscription_by_entry: SqlRitePreparedStatements;
 	test_count_active_subscriptions: SqlRitePreparedStatements;
@@ -797,7 +772,6 @@ export default class SqlRite {
 	test_exec_close_status_by_workspace: SqlRitePreparedStatements;
 	test_seed_entry_workspace: SqlRitePreparedStatements;
 	test_seed_channel: SqlRitePreparedStatements;
-	test_seed_entry_tag: SqlRitePreparedStatements;
 	test_get_packet: SqlRitePreparedStatements;
 	test_get_turn_status: SqlRitePreparedStatements;
 	test_list_turns_in_loop: SqlRitePreparedStatements;
@@ -824,11 +798,9 @@ export default class SqlRite {
 	test_count_subscriptions_for_worker: SqlRitePreparedStatements;
 	test_latest_subscription_for_worker: SqlRitePreparedStatements;
 	test_get_entry_id_by_pathname: SqlRitePreparedStatements;
-	test_count_entry_tags: SqlRitePreparedStatements;
 	test_get_entry_by_pathname_scheme: SqlRitePreparedStatements;
 	test_get_channel_by_pathname: SqlRitePreparedStatements;
 	test_get_channel_by_pathname_scheme: SqlRitePreparedStatements;
-	test_tags_by_pathname: SqlRitePreparedStatements;
 	test_list_entry_schemes: SqlRitePreparedStatements;
 	test_invalid_subscription_only_closed_at: SqlRitePreparedStatements;
 	test_invalid_subscription_only_close_status: SqlRitePreparedStatements;
@@ -916,10 +888,6 @@ export default class SqlRite {
 	test_entry_channels_insert_with_producer_result: SqlRitePreparedStatements;
 	test_entry_channels_get_first: SqlRitePreparedStatements;
 	test_entry_channels_count_all: SqlRitePreparedStatements;
-	test_entry_tags_insert: SqlRitePreparedStatements;
-	test_entry_tags_count_all: SqlRitePreparedStatements;
-	test_entry_tags_by_tag: SqlRitePreparedStatements;
-	test_entry_tags_index: SqlRitePreparedStatements;
 	test_entry_channels_insert_missing_name: SqlRitePreparedStatements;
 	test_entry_channels_insert_missing_content: SqlRitePreparedStatements;
 	test_entry_channels_insert_missing_mimetype: SqlRitePreparedStatements;
@@ -948,7 +916,6 @@ export default class SqlRite {
 	test_loops_get_prompt: SqlRitePreparedStatements;
 	test_parser_entries_first: SqlRitePreparedStatements;
 	test_parser_body_first: SqlRitePreparedStatements;
-	test_parser_tags: SqlRitePreparedStatements;
 	test_parser_pathnames: SqlRitePreparedStatements;
 	test_parser_log_indices: SqlRitePreparedStatements;
 	test_parser_log_first: SqlRitePreparedStatements;
@@ -994,7 +961,6 @@ export default class SqlRite {
 	ws_dup_identities: SqlRitePreparedStatements;
 	ws_file_keys: SqlRitePreparedStatements;
 	ws_orphan_channels: SqlRitePreparedStatements;
-	ws_orphan_tags: SqlRitePreparedStatements;
 	ws_alien_origin: SqlRitePreparedStatements;
 	ws_sig_on_nonfile: SqlRitePreparedStatements;
 	ws_entry_count: SqlRitePreparedStatements;

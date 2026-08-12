@@ -25,6 +25,30 @@
                 { "type": "null" }
             ]
         },
+        "AppliedTagSignal": {
+            "oneOf": [
+                {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "pattern": "^\\+?[^+\\-\\[\\],\\s\\u0000-\\u001F\\u007F-\\u009F][^\\[\\],\\s\\u0000-\\u001F\\u007F-\\u009F]*$"
+                    }
+                },
+                { "type": "null" }
+            ]
+        },
+        "CurationTagSignal": {
+            "oneOf": [
+                {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "pattern": "^[+-]?[^+\\-\\[\\],\\s\\u0000-\\u001F\\u007F-\\u009F][^\\[\\],\\s\\u0000-\\u001F\\u007F-\\u009F]*$"
+                    }
+                },
+                { "type": "null" }
+            ]
+        },
         "PathOrNull": {
             "oneOf": [
                 { "$ref": "https://schemas.plurnk.dev/v0/ParsedPath.json" },
@@ -65,7 +89,7 @@
             "properties": {
                 "op": { "const": "FIND" },
                 "suffix": { "type": "string" },
-                "signal": { "$ref": "#/$defs/TagSignal" },
+                "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
                 "body": { "$ref": "#/$defs/MatcherBodyOrNull" },
@@ -79,7 +103,7 @@
             "properties": {
                 "op": { "const": "READ" },
                 "suffix": { "type": "string" },
-                "signal": { "$ref": "#/$defs/TagSignal" },
+                "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
                 "body": { "type": "null" },
@@ -93,7 +117,7 @@
             "properties": {
                 "op": { "const": "OPEN" },
                 "suffix": { "type": "string" },
-                "signal": { "$ref": "#/$defs/TagSignal" },
+                "signal": { "$ref": "#/$defs/CurationTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "type": "null" },
                 "body": { "$ref": "#/$defs/MatcherBodyOrNull" },
@@ -107,7 +131,7 @@
             "properties": {
                 "op": { "const": "FOLD" },
                 "suffix": { "type": "string" },
-                "signal": { "$ref": "#/$defs/TagSignal" },
+                "signal": { "$ref": "#/$defs/CurationTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "type": "null" },
                 "body": { "$ref": "#/$defs/MatcherBodyOrNull" },
@@ -121,7 +145,7 @@
             "properties": {
                 "op": { "const": "EDIT" },
                 "suffix": { "type": "string" },
-                "signal": { "$ref": "#/$defs/TagSignal" },
+                "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
                 "body": { "type": ["string", "null"] },
@@ -135,7 +159,7 @@
             "properties": {
                 "op": { "const": "COPY" },
                 "suffix": { "type": "string" },
-                "signal": { "$ref": "#/$defs/TagSignal" },
+                "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
                 "body": { "$ref": "#/$defs/ResourceSelectionOrNull" },
@@ -149,7 +173,7 @@
             "properties": {
                 "op": { "const": "MOVE" },
                 "suffix": { "type": "string" },
-                "signal": { "$ref": "#/$defs/TagSignal" },
+                "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
                 "body": { "$ref": "#/$defs/ResourceSelectionOrNull" },

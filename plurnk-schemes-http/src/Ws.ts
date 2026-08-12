@@ -565,7 +565,7 @@ export default class Ws implements SchemeHandler {
         const channels = Object.fromEntries(
             Object.entries(Ws.manifest.channels).map(([name, mimetype]) => [name, { content: "", mimetype }]),
         );
-        return { channels, tags: [] };
+        return { channels };
     }
 
     static #passthrough(result: import("@plurnk/plurnk-schemes").SchemeResult): PassthroughResult {

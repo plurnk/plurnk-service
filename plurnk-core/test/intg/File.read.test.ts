@@ -60,7 +60,7 @@ const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<vo
     const content = await readFile(canonical, "utf8");
     // Entry key is namespace-absolute (`/notes.md`), mirroring production's
     // git-membership pass — the disk path (canonical) stays workspace-relative.
-    await EntryCrud.writeEntry(`${pathname}`, { channels: { body: { content, mimetype } }, tags: [] }, ctx, "file");
+    await EntryCrud.writeEntry(`${pathname}`, { channels: { body: { content, mimetype } } }, ctx, "file");
 };
 
 // Set up a workspace whose project_root points at a fresh temp directory,
@@ -252,7 +252,7 @@ test("File.find: a binary member does not poison a body search across readable m
         await addMember(ctx, "readme.md");
         await EntryCrud.writeEntry(
             "blob.bin",
-            { channels: { body: { content: "", mimetype: "application/octet-stream" } }, tags: [] },
+            { channels: { body: { content: "", mimetype: "application/octet-stream" } } },
             ctx,
             "file",
         );
@@ -326,14 +326,13 @@ test("File.find: a zero-match selector returns 204", async () => {
     });
 });
 
-test("File.read: non-empty tag filter on file:/// returns 404 (no tag concept)", async () => {
+test("File.read: signal does not filter the file resource", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "x");
         await addMember(ctx, "f.txt");
-        // Entry exists, but file entries carry no tags → a tag-filtered read 404s
-        // via the shared EntryOps tag gate.
-        const r = await readFileScheme(readStmt(urlPath("file", "/f.txt"), { tags: ["any"] }), ctx);
-        assert.equal(r.status, 404);
+        const r = await readFileScheme(readStmt(urlPath("file", "/f.txt"), { tags: ["+any"] }), ctx);
+        assert.equal(r.status, 200);
+        assert.equal(r.content, "x");
     });
 });
 

@@ -11,10 +11,10 @@ const minimalLog = async (db: Db, ctx: { workerId: number; loopId: number; turnI
         worker_id: ctx.workerId, loop_id: ctx.loopId, turn_id: ctx.turnId,
         sequence: 1, origin: "model", op: "EDIT", suffix: "",
         source: null,
-        signal: JSON.stringify(["philosophy"]),
+        signal: JSON.stringify(["+philosophy"]),
         scheme: "worker", pathname: "/meaning", port: null, query: null,
         lineMarker: null,
-        tx: "## EDIT0 [philosophy] (worker:///meaning)\n42", mimetype_tx: "text/x-plurnk",
+        tx: "## EDIT0 [+philosophy] (worker:///meaning)\n42", mimetype_tx: "text/x-plurnk",
         rx: "", mimetype_rx: "text/plain", status_rx: 201,
         tokens: 32, attrs: "{}",
         ...overrides,
@@ -47,13 +47,15 @@ test("fetchLogEntry preserves causal source and structured attributes", async ()
         const id = await minimalLog(db, ctx, {
             origin: "plurnk",
             source: "worker://researcher",
-            attrs: JSON.stringify({ kind: "entry_materialized", tags: ["research"] }),
+            attrs: JSON.stringify({ kind: "entry_materialized" }),
             tx: JSON.stringify("in"),
             rx: JSON.stringify("out"),
         });
+        await db.log_write_tag.run({ log_entry_id: id, tag: "research" });
         const wire = await LogEntry.fetchLogEntry(db, id);
         assert.equal(wire.source, "worker://researcher");
-        assert.deepEqual(wire.attrs, { kind: "entry_materialized", tags: ["research"] });
+        assert.deepEqual(wire.attrs, { kind: "entry_materialized" });
+        assert.deepEqual(wire.tags, ["philosophy", "research"]);
     } finally { await db.close(); }
 });
 
@@ -176,7 +178,7 @@ test("log_entries: serialized query preserves absence, empty, order, and duplica
     try {
         const ctx = await seedEnvelope(db, "ws-log-json");
         await minimalLog(db, ctx, { sequence: 1, query: null, signal: null, lineMarker: null });
-        await minimalLog(db, ctx, { sequence: 2, query: "", signal: '["a","b"]', lineMarker: '{"first":1,"last":10}' });
+        await minimalLog(db, ctx, { sequence: 2, query: "", signal: '["+a","+b"]', lineMarker: '{"first":1,"last":10}' });
         await minimalLog(db, ctx, { sequence: 3, query: "b=2&a=1&a=3" });
         await assert.rejects(() => minimalLog(db, ctx, { sequence: 4, signal: "{bad" }), /CHECK constraint failed/);
         await assert.rejects(() => minimalLog(db, ctx, { sequence: 5, lineMarker: "broken" }), /CHECK constraint failed/);
@@ -187,12 +189,111 @@ test("log_entries: signal polymorphism", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-sigpoly");
-        await minimalLog(db, ctx, { sequence: 1, op: "EDIT",  signal: JSON.stringify(["philosophy"]) });
+        await minimalLog(db, ctx, { sequence: 1, op: "EDIT",  signal: JSON.stringify(["+philosophy"]) });
         await minimalLog(db, ctx, { sequence: 2, op: "SEND",  signal: JSON.stringify(200) });
         await minimalLog(db, ctx, { sequence: 3, op: "EXEC",  signal: JSON.stringify("node") });
         await minimalLog(db, ctx, { sequence: 4, op: "READ",  signal: null });
         const rows = await db.test_log_entries_signals_by_turn.all<{ op: string; signal: string | null }>({ turn_id: ctx.turnId });
-        assert.deepEqual(rows.map((r) => r.signal), ['["philosophy"]', '200', '"node"', null]);
+        assert.deepEqual(rows.map((r) => r.signal), ['["+philosophy"]', '200', '"node"', null]);
+    } finally { await db.close(); }
+});
+
+test("log_entries: implicit and explicit additions share one stored tag identity", async () => {
+    const db = await openMigrated();
+    try {
+        const ctx = await seedEnvelope(db, "ws-log-tag-boundary");
+        await assert.rejects(
+            () => minimalLog(db, ctx, { sequence: 1, signal: JSON.stringify(["-research"]) }),
+            /classifying log operation signal accepts only tag or \+tag additions/,
+        );
+        const id = await minimalLog(db, ctx, {
+            sequence: 1,
+            signal: JSON.stringify(["research/topic", "+research/topic", "+reviewed"]),
+        });
+        for (const invalid of [
+            "+signed",
+            "-signed",
+            "two words",
+            "line\nbreak",
+            "nonbreaking\u00a0space",
+            "line\u2028separator",
+            "byte-order\ufeffmark",
+            "comma,tag",
+            "bracket[tag]",
+        ]) {
+            await assert.rejects(
+                () => db.log_write_tag.run({ log_entry_id: id, tag: invalid }),
+                /log tag name is invalid/,
+                invalid,
+            );
+        }
+        assert.deepEqual(
+            (await db.test_log_tags_by_worker.all<{ tag: string }>({ worker_id: ctx.workerId })).map(({ tag }) => tag),
+            ["research/topic", "reviewed"],
+        );
+    } finally { await db.close(); }
+});
+
+test("log_entries: a malformed bound curation plan rolls back its row and every target change", async () => {
+    const db = await openMigrated();
+    try {
+        const ctx = await seedEnvelope(db, "ws-log-curation-atomicity");
+        const targetId = await minimalLog(db, ctx, { sequence: 1, signal: JSON.stringify(["+research"]) });
+        for (const plan of [
+            { ids: [targetId], expanded: 0, add: ["archive", "archive"], remove: [] },
+            { ids: [targetId], expanded: 0, add: [], remove: ["nonbreaking\u00a0space"] },
+        ]) {
+            await assert.rejects(
+                () => minimalLog(db, ctx, {
+                    sequence: 2,
+                    op: "FOLD",
+                    signal: JSON.stringify(["research", "+archive"]),
+                    attrs: JSON.stringify({ __plurnk_curation: plan }),
+                }),
+                /invalid private log curation payload/,
+            );
+        }
+        assert.equal(
+            (await db.test_get_log_expanded.get<{ expanded: number }>({
+                worker_id: ctx.workerId,
+                loop_seq: 1,
+                turn_seq: 1,
+                sequence: 1,
+            }))?.expanded,
+            1,
+        );
+        assert.deepEqual(
+            await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: ctx.workerId }),
+            [{ coordinate: "1/1/1", tag: "research" }],
+        );
+        assert.equal(
+            (await db.test_count_log_entries_by_turn.get<{ n: number }>({ turn_id: ctx.turnId }))?.n,
+            1,
+            "the failed outer INSERT leaves no curation event row",
+        );
+    } finally { await db.close(); }
+});
+
+test("log_entries: curation effect deltas accept only canonical stored tag identities", async () => {
+    const db = await openMigrated();
+    try {
+        const ctx = await seedEnvelope(db, "ws-log-curation-effect-boundary");
+        const targetId = await minimalLog(db, ctx, { sequence: 1 });
+        const operationId = await minimalLog(db, ctx, { sequence: 2, op: "OPEN", signal: null });
+        await assert.rejects(
+            () => db.fork_insert_log_curation_effect.run({
+                operation_log_entry_id: operationId,
+                target_log_entry_id: targetId,
+                expanded_before: 1,
+                tags_added: "[]",
+                tags_removed: JSON.stringify(["nonbreaking\u00a0space"]),
+            }),
+            /invalid log curation effect/,
+        );
+        assert.deepEqual(
+            await db.test_log_curation_effects_by_worker.all({ worker_id: ctx.workerId }),
+            [],
+        );
     } finally { await db.close(); }
 });
 
@@ -246,8 +347,8 @@ test("log_entries: immutability trigger — UPDATE of core fields rejected", asy
         const ctx = await seedEnvelope(db, "ws-log-immut");
         const id = await minimalLog(db, ctx);
         // Lifecycle columns (state/outcome/status_rx/rx) are updateable for
-        // the proposal lifecycle, but the original action's identity stays
-        // pinned forever.
+        // the proposal lifecycle, and the curation trigger may remove its
+        // private attrs payload; the original action stays pinned forever.
         await assert.rejects(
             () => db.test_log_entries_update_tx.run({ tx: "tampered", id }),
             /log_entries core fields are immutable/,

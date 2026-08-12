@@ -80,9 +80,109 @@ const workerPath = (authority: string, pathname: string): UrlPath => ({
     username: null, password: null, hostname: authority, port: null,
     pathname, query: null, fragment: null,
 });
-const editStmt = (target: UrlPath, body: string): EditStatement => ({
-    op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
+const editStmt = (target: UrlPath, body: string, tags: string[] | null = null): EditStatement => ({
+    op: "EDIT", suffix: "", signal: tags, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
+});
+
+test("observer-local log classifications cannot rewrite an ambient occurrence", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `ambient-tags-${crypto.randomUUID()}`);
+        const sourceId = await insertWorker(db, workspaceId, null, "source");
+        const sourceLoopId = await insertLoop(db, sourceId, 1, "publish");
+        const sourceTurnId = await insertTurn(db, sourceLoopId, 1);
+        const firstObserverId = await insertWorker(db, workspaceId, null, "first-observer");
+        const firstObserverLoopId = await insertLoop(db, firstObserverId, 1, "observe");
+        const secondObserverId = await insertWorker(db, workspaceId, null, "second-observer");
+        const secondObserverLoopId = await insertLoop(db, secondObserverId, 1, "observe");
+        const engine = makeEngine(db);
+        const provider = new Mock({
+            contextWindow: 4096,
+            responses: [okSend(), okSend(), okSend(), okSend()],
+        });
+
+        await engine.runTurn({ provider, workspaceId, workerId: firstObserverId, loopId: firstObserverLoopId, messages: MESSAGES, turnNumber: 1 });
+        await engine.runTurn({ provider, workspaceId, workerId: secondObserverId, loopId: secondObserverLoopId, messages: MESSAGES, turnNumber: 1 });
+        assert.equal((await engine.dispatch({
+            statement: editStmt(urlPath("worker", "/classified.md"), "shared", ["+research"]),
+            workspaceId,
+            workerId: sourceId,
+            loopId: sourceLoopId,
+            turnId: sourceTurnId,
+            sequence: 1,
+            origin: "model",
+        })).status, 201);
+
+        await engine.runTurn({ provider, workspaceId, workerId: firstObserverId, loopId: firstObserverLoopId, messages: MESSAGES, turnNumber: 2 });
+        const firstRows = await db.engine_render_log.all<{
+            id: number;
+            origin: string;
+            op: string;
+            pathname: string | null;
+        }>({ worker_id: firstObserverId });
+        const firstDelta = firstRows.find((row) => row.origin === "plurnk"
+            && row.op === "EDIT"
+            && row.pathname === "/classified.md");
+        assert.ok(firstDelta, "the first observer materialized the source occurrence");
+        await db.log_write_tag.run({ log_entry_id: firstDelta.id, tag: "overflow" });
+
+        await engine.runTurn({ provider, workspaceId, workerId: secondObserverId, loopId: secondObserverLoopId, messages: MESSAGES, turnNumber: 2 });
+        const secondRows = await db.engine_render_log.all<{
+            origin: string;
+            op: string;
+            pathname: string | null;
+            tags: string;
+        }>({ worker_id: secondObserverId });
+        const secondDelta = secondRows.find((row) => row.origin === "plurnk"
+            && row.op === "EDIT"
+            && row.pathname === "/classified.md");
+        assert.ok(secondDelta, "the second observer materialized the same source occurrence");
+        assert.deepEqual(JSON.parse(secondDelta.tags), ["research"], "observer policy remains local to its own log");
+    } finally { await db.close(); }
+});
+
+test("an observer cannot capture an EDIT occurrence between its row and classifications", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `ambient-tag-atomicity-${crypto.randomUUID()}`);
+        const sourceId = await insertWorker(db, workspaceId, null, "source");
+        const sourceLoopId = await insertLoop(db, sourceId, 1, "publish");
+        const sourceTurnId = await insertTurn(db, sourceLoopId, 1);
+        const observerId = await insertWorker(db, workspaceId, null, "observer");
+        const observerLoopId = await insertLoop(db, observerId, 1, "observe");
+        const observerEngine = makeEngine(db);
+        const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
+
+        await observerEngine.runTurn({ provider, workspaceId, workerId: observerId, loopId: observerLoopId, messages: MESSAGES, turnNumber: 1 });
+        let capturedTags: unknown;
+        const sourceDb = afterFirstStatement(db, "engine_insert_log_entry", "get", async () => {
+            await observerEngine.runTurn({ provider, workspaceId, workerId: observerId, loopId: observerLoopId, messages: MESSAGES, turnNumber: 2 });
+            const rows = await db.engine_render_log.all<{
+                origin: string;
+                op: string;
+                pathname: string | null;
+                tags: string;
+            }>({ worker_id: observerId });
+            const delta = rows.find((row) => row.origin === "plurnk"
+                && row.op === "EDIT"
+                && row.pathname === "/classified.md");
+            assert.ok(delta, "the interleaved observer captured the source occurrence");
+            capturedTags = JSON.parse(delta.tags);
+        });
+        const sourceEngine = makeEngine(sourceDb);
+
+        assert.equal((await sourceEngine.dispatch({
+            statement: editStmt(urlPath("worker", "/classified.md"), "shared", ["+research"]),
+            workspaceId,
+            workerId: sourceId,
+            loopId: sourceLoopId,
+            turnId: sourceTurnId,
+            sequence: 1,
+            origin: "model",
+        })).status, 201);
+        assert.deepEqual(capturedTags, ["research"], "the durable occurrence commits with its initial classification");
+    } finally { await db.close(); }
 });
 
 test("worker-entry deltas follow shared visibility without leaking private scratch", async () => {
@@ -467,22 +567,24 @@ test("an environment delta preserves typed source attributes for model-facing pr
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
-        await db.engine_insert_log_entry.get({
+        const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: plurnk, loop_id: plurnkLoop, turn_id: plurnkTurn, sequence: 1,
-            origin: "plurnk", source: "worker://observer", op: "EDIT", suffix: "", signal: null,
+            origin: "plurnk", source: "worker://observer", op: "EDIT", suffix: "", signal: JSON.stringify(["+query"]),
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/page", query: null, fragment: null, lineMarker: null,
             tx: JSON.stringify({ op: "EDIT", body: "page" }), mimetype_tx: "application/json",
             rx: JSON.stringify({ status: 201, span: "1:page" }), mimetype_rx: "application/json",
             status_rx: 201, tokens: 1, state: "resolved", outcome: null,
-            attrs: JSON.stringify({ kind: "entry_materialized", tags: ["query"] }),
+            attrs: JSON.stringify({ kind: "entry_materialized" }),
         });
+        assert.ok(inserted !== undefined);
 
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; attrs: string }>({ worker_id: observer });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; attrs: string; tags: string }>({ worker_id: observer });
         const delta = rows.find((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname === "/page");
         assert.equal(delta?.source, "worker://observer");
-        assert.deepEqual(JSON.parse(delta?.attrs ?? "{}"), { kind: "entry_materialized", tags: ["query"] });
+        assert.deepEqual(JSON.parse(delta?.attrs ?? "{}"), { kind: "entry_materialized" });
+        assert.deepEqual(JSON.parse(delta?.tags ?? "[]"), ["query"]);
     } finally {
         await db.close();
     }

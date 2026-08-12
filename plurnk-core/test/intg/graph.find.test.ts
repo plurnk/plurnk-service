@@ -3,8 +3,8 @@
 //   @>sym  referents — entries DEFINING what sym references
 //   @sym   neighborhood — def ∪ referrers ∪ referents
 // Symbol rows derive from mimetype symbols/references during persistent-index
-// maintenance. Source resolution is workspace-wide; the authored target and
-// tags constrain the returned resources.
+// maintenance. Source resolution is workspace-wide; the authored target
+// constrains the returned resources.
 
 import test from "node:test";
 import assert from "node:assert/strict";

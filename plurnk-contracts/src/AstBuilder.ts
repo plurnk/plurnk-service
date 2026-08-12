@@ -67,6 +67,7 @@ import {
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
 import PathSyntax from "./PathSyntax.ts";
+import TagSignal, { InvalidTagSignalError } from "./TagSignal.ts";
 
 // The xpath package's .d.ts omits its `parse` function; augment here.
 declare module "xpath" {
@@ -119,6 +120,7 @@ export default class AstBuilder {
     static #buildFind(ctx: FindStatementContext): FindStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        AstBuilder.#assertAppliedTags(slots.signal, position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "FIND",
@@ -171,6 +173,7 @@ export default class AstBuilder {
     static #buildRead(ctx: ReadStatementContext): FindStatement | ReadStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        AstBuilder.#assertAppliedTags(slots.signal, position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         const targetPath = slots.target?.kind === "url"
             ? slots.target.pathname
@@ -198,6 +201,15 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractCurationSlots(ctx.curationModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
+        const tags = AstBuilder.#curationTags(slots.signal, position);
+        if (slots.target === null && raw === null && tags.filter.length === 0 && (tags.add.length > 0 || tags.remove.length > 0)) {
+            throw new PlurnkParseError(
+                position.line,
+                position.column,
+                "visitor",
+                "signed tags modify selected log items but do not select them - add a path, body pattern, or unsigned tag",
+            );
+        }
         return {
             op: "OPEN",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_OPEN().getText(), "OPEN"),
@@ -211,6 +223,15 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractCurationSlots(ctx.curationModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
+        const tags = AstBuilder.#curationTags(slots.signal, position);
+        if (slots.target === null && raw === null && tags.filter.length === 0 && (tags.add.length > 0 || tags.remove.length > 0)) {
+            throw new PlurnkParseError(
+                position.line,
+                position.column,
+                "visitor",
+                "signed tags modify selected log items but do not select them - add a path, body pattern, or unsigned tag",
+            );
+        }
         return {
             op: "FOLD",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_FOLD().getText(), "FOLD"),
@@ -223,6 +244,7 @@ export default class AstBuilder {
     static #buildEdit(ctx: EditStatementContext): EditStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        AstBuilder.#assertAppliedTags(slots.signal, position);
         return {
             op: "EDIT",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_EDIT().getText(), "EDIT"),
@@ -235,6 +257,7 @@ export default class AstBuilder {
     static #buildCopy(ctx: CopyStatementContext): CopyStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        AstBuilder.#assertAppliedTags(slots.signal, position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "COPY",
@@ -248,6 +271,7 @@ export default class AstBuilder {
     static #buildMove(ctx: MoveStatementContext): MoveStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        AstBuilder.#assertAppliedTags(slots.signal, position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "MOVE",
@@ -421,6 +445,24 @@ export default class AstBuilder {
         if (ctx === null) return null;
         const tags = ctx.TAG();
         return Array.isArray(tags) ? tags.map((t) => t.getText()) : [];
+    }
+
+    static #assertAppliedTags(signal: readonly string[] | null, position: Position): void {
+        try {
+            TagSignal.applied(signal);
+        } catch (cause) {
+            if (!(cause instanceof InvalidTagSignalError)) throw cause;
+            throw new PlurnkParseError(position.line, position.column, "visitor", cause.message);
+        }
+    }
+
+    static #curationTags(signal: readonly string[] | null, position: Position): ReturnType<typeof TagSignal.curation> {
+        try {
+            return TagSignal.curation(signal);
+        } catch (cause) {
+            if (!(cause instanceof InvalidTagSignalError)) throw cause;
+            throw new PlurnkParseError(position.line, position.column, "visitor", cause.message);
+        }
     }
 
     static #targetFromCtx(ctx: TargetContext | null, pos: Position): ParsedPath | null {

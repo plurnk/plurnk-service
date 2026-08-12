@@ -17,9 +17,10 @@ const entry = (over: Partial<LogEntryNotification["entry"]>): LogEntryNotificati
 test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: JSON.stringify({ body: "orient" }) })); // consume the turn boundary
-    const events = tr.logEntry(entry({ op: "READ", scheme: "known", pathname: "/notes.md", tx: JSON.stringify({ body: null }), rx: JSON.stringify({ status: 200, content: "hi" }), status_rx: 200 }));
+    const events = tr.logEntry(entry({ op: "READ", scheme: "known", pathname: "/notes.md", tx: JSON.stringify({ body: null }), rx: JSON.stringify({ status: 200, content: "hi" }), status_rx: 200, tags: ["research"] }));
     assert.deepEqual(events.map((e) => e.type), ["CUSTOM", "TOOL_CALL_START", "TOOL_CALL_ARGS", "TOOL_CALL_END", "TOOL_CALL_RESULT"]);
     assert.equal((events[0] as { name: string }).name, "plurnk.row", "the full-fidelity row channel leads every projection ({§agui-row-channel})");
+    assert.deepEqual((events[0] as { value: { tags: string[] } }).value.tags, ["research"], "durable log classifications survive the full-fidelity row channel");
     const start = events[1] as { toolCallId: string; toolCallName: string };
     assert.equal(start.toolCallId, "1/1/3/READ", "the coordinate IS the toolCallId");
     assert.equal(start.toolCallName, "READ");

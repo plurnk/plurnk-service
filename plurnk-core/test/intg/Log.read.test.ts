@@ -199,24 +199,14 @@ test("Log.find: an exact matcher returns flat locations and complete path/locati
     } finally { db.close(); }
 });
 
-test("Log.read: exact READ applies the same all-tags filter to log-row tags", async () => {
+test("Log.read: a READ signal does not filter the addressed log resource", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/z", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), signal: ["france"] };
-        assert.equal((await readLog(stmt, makeSchemeCtx({ db, workerId }))).status, 404);
-
-        const row = await db.log_id_by_coordinate.get<{ id: number }>({
-            worker_id: workerId,
-            loop_seq: 1,
-            turn_seq: 1,
-            sequence: 1,
-        });
-        assert.ok(row);
-        await db.log_write_tag.run({ log_entry_id: row.id, tag: "france" });
-        const tagged = await readLog(stmt, makeSchemeCtx({ db, workerId }));
-        assert.equal(tagged.status, 200);
-        assert.equal(tagged.content, "1:v");
+        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), signal: ["+france"] };
+        const result = await readLog(stmt, makeSchemeCtx({ db, workerId }));
+        assert.equal(result.status, 200);
+        assert.equal(result.content, "1:v");
     } finally { db.close(); }
 });
 

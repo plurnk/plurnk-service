@@ -65,7 +65,7 @@ test("e2e: single-turn EDIT + SEND — entry created, log rows populated, status
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-single");
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([editStmt("/france/capital", "Paris", ["france"]), sendStmt(200, "answered")])],
+            responses: [response([editStmt("/france/capital", "Paris", ["+france"]), sendStmt(200, "answered")])],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await dispatchTurn(engine, provider, db, env);

@@ -230,7 +230,6 @@ export default class Worker extends CoreSchemeAdapterBase {
                     producerResult,
                 },
             },
-            tags: [],
         });
         return Results.isErrorStatus(written.status) ? written : { status: 200 };
     }

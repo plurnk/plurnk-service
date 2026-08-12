@@ -25,7 +25,8 @@ const cls = (ranges: Array<[number, number]>, negate = false): GItem => ({ kind:
 const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "WORK", "FORK", "KILL"] as const;
 const DIGIT = cls([R("0", "9")]);
 const WS = cls(C(" \t\r\n"));
-const TAG_CHAR = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.-")]);
+const TAG_HEAD = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.")]);
+const TAG_TAIL = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.+-")]);
 const BRANCH_CHAR = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.-/")]);
 const EXEC_HEAD = cls([R("a", "z")]);
 const EXEC_TAIL = cls([R("a", "z"), R("0", "9"), ...C("_-")]);
@@ -124,15 +125,20 @@ export const buildModel = (): GModel => {
         star(cls([...CONTROL_RANGES, ...LINE_TERMINATORS], true)),
     ]]);
 
-    const tags = [ref("tags-slot")];
+    const addTags = [ref("add-tags-slot")];
     const target = [ref("target-slot")];
     const line = [ref("line-slot")];
     const taggedTargetScope = (op: string): GSeq => [
         lit(`## ${op}0`),
-        opt(tags[0]),
+        opt(addTags[0]),
         target[0],
         opt(line[0]),
     ];
+    model.set("log-selection", [
+        [ref("filter-tags-slot"), opt(target[0])],
+        [ref("change-tags-slot"), target[0]],
+        [target[0]],
+    ]);
 
     requiredBodySection(model, "plan", [lit("# PLAN0")]);
     optionalBodySection(model, "find", taggedTargetScope("FIND"), "pattern-body");
@@ -140,8 +146,8 @@ export const buildModel = (): GModel => {
     optionalBodySection(model, "edit", taggedTargetScope("EDIT"), "section-body");
     requiredBodySection(model, "copy", taggedTargetScope("COPY"));
     requiredBodySection(model, "move", taggedTargetScope("MOVE"));
-    optionalBodySection(model, "open", [lit("## OPEN0"), opt(tags[0]), target[0]], "pattern-body");
-    optionalBodySection(model, "fold", [lit("## FOLD0"), opt(tags[0]), target[0]], "pattern-body");
+    optionalBodySection(model, "open", [lit("## OPEN0"), ref("log-selection")], "pattern-body");
+    optionalBodySection(model, "fold", [lit("## FOLD0"), ref("log-selection")], "pattern-body");
     optionalBodySection(model, "exec", [
         lit("## EXEC0"),
         opt(ref("exec-slot")),
@@ -203,7 +209,9 @@ export const buildModel = (): GModel => {
     model.set("statement", [[ref("op-statement")], [ref("send-mid")]]);
     model.set("send-statement", [[ref("send-mid")], [ref("send-final-any")]]);
 
-    model.set("tags-slot", [[lit(" "), ref("tags")]]);
+    model.set("add-tags-slot", [[lit(" "), ref("add-tags")]]);
+    model.set("filter-tags-slot", [[lit(" "), ref("filter-tags")]]);
+    model.set("change-tags-slot", [[lit(" "), ref("change-tags")]]);
     model.set("target-slot", [[lit(" "), ref("target")]]);
     model.set("line-slot", [[lit(" "), ref("line")]]);
     model.set("exec-slot", [[lit(" "), ref("exec-sig")]]);
@@ -224,10 +232,18 @@ export const buildModel = (): GModel => {
     model.set("status-mid-3", [[lit("0"), cls([R("1", "9")])], [cls([R("1", "9")]), DIGIT]]);
     model.set("status-mid-4", [[lit("9"), cls([R("0", "8")])], [cls([R("0", "8")]), DIGIT]]);
 
-    model.set("tags", [[lit("["), ref("tag"), star(ref("tag-rest")), lit("]")]]);
+    model.set("add-tags", [[lit("["), ref("add-tag"), star(ref("add-tag-rest")), lit("]")]]);
+    model.set("filter-tags", [[lit("["), ref("tag"), star(ref("curation-term-rest")), lit("]")]]);
+    model.set("change-tags", [[lit("["), ref("signed-tag"), star(ref("signed-tag-rest")), lit("]")]]);
     model.set("branch", [[lit("["), plus(BRANCH_CHAR), lit("]")]]);
-    model.set("tag", [[plus(TAG_CHAR)]]);
-    model.set("tag-rest", [[lit(","), ref("tag")]]);
+    model.set("tag", [[TAG_HEAD, star(TAG_TAIL)]]);
+    model.set("add-tag", [[lit("+"), ref("tag")]]);
+    model.set("remove-tag", [[lit("-"), ref("tag")]]);
+    model.set("signed-tag", [[ref("add-tag")], [ref("remove-tag")]]);
+    model.set("curation-term", [[ref("tag")], [ref("signed-tag")]]);
+    model.set("add-tag-rest", [[lit(","), ref("add-tag")]]);
+    model.set("signed-tag-rest", [[lit(","), ref("signed-tag")]]);
+    model.set("curation-term-rest", [[lit(","), ref("curation-term")]]);
     model.set("target", [[lit("("), ref("target-inner"), lit(")")]]);
     model.set("target-inner", [[plus(ref("target-atom"))]]);
     model.set("target-atom", [

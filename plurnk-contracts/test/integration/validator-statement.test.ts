@@ -17,7 +17,7 @@ const validateRoundTrip = (input: string) => {
 // -------------------------------------------------------------------------
 
 test("PlurnkStatement: FIND with tag CSV, path, line marker, matcher", () => {
-    const r = validateRoundTrip("## FIND0 [a,b] (known://docs) <1-20>\n*.xml");
+    const r = validateRoundTrip("## FIND0 [+a,+b] (known://docs) <1-20>\n*.xml");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -55,12 +55,12 @@ test("PlurnkStatement: OPEN and FOLD have no positional line marker", () => {
 });
 
 test("PlurnkStatement: EDIT with raw markdown body", () => {
-    const r = validateRoundTrip("## EDIT0 [philosophy] (known://meaning)\nThe meaning of life is 42");
+    const r = validateRoundTrip("## EDIT0 [+philosophy] (known://meaning)\nThe meaning of life is 42");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: COPY with destination resource selection", () => {
-    const r = validateRoundTrip("## COPY0 [archive] (known://draft)\nknown://archive/draft");
+    const r = validateRoundTrip("## COPY0 [+archive] (known://draft)\nknown://archive/draft");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -201,6 +201,21 @@ test("PlurnkStatement: FIND rejects numeric signal", () => {
     assert.equal(valid, false);
 });
 
+test("PlurnkStatement: classifying and curation tag terms retain distinct wire shapes", () => {
+    for (const op of ["FIND", "READ", "EDIT", "COPY", "MOVE"] as const) {
+        assert.equal(Validator.validatePlurnkStatement({ ...baseFields(op), signal: ["+research"] }).valid, true, op);
+        assert.equal(Validator.validatePlurnkStatement({ ...baseFields(op), signal: ["research"] }).valid, true, op);
+        assert.equal(Validator.validatePlurnkStatement({ ...baseFields(op), signal: ["-research"] }).valid, false, op);
+    }
+    for (const op of ["FOLD", "OPEN"] as const) {
+        assert.equal(
+            Validator.validatePlurnkStatement({ ...baseFields(op), signal: ["research", "+archive", "-stale"] }).valid,
+            true,
+            op,
+        );
+    }
+});
+
 test("PlurnkStatement: FIND accepts lineMarker", () => {
     const stmt = { ...baseFields("FIND"), lineMarker: { marks: [1, 10] } };
     const { valid, errors } = Validator.validatePlurnkStatement(stmt);
@@ -278,11 +293,11 @@ test("PlurnkStatement: rejects extra property", () => {
 // -------------------------------------------------------------------------
 
 test("PlurnkStatement: round-trip survives slot-order permutation (path-first)", () => {
-    const r = validateRoundTrip("## FIND0 (known://docs) [a,b] <1>\n*.xml");
+    const r = validateRoundTrip("## FIND0 (known://docs) [+a,+b] <1>\n*.xml");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("PlurnkStatement: round-trip survives slot-order permutation (L-first)", () => {
-    const r = validateRoundTrip("## FIND0 <1-5> [a] (known://docs)\n*.xml");
+    const r = validateRoundTrip("## FIND0 <1-5> [+a] (known://docs)\n*.xml");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });

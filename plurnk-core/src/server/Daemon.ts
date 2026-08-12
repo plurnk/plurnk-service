@@ -1104,14 +1104,12 @@ export default class Daemon {
                     state: c.state,
                 };
             }
-            const tagRows = await this.#db.crud_read_tags.all<{ tag: string }>({ entry_id: row.id });
             return entryReadResult({
                 status: 200,
                 entry: {
                     entryId: row.id,
                     target: location.target,
                     channels,
-                    tags: tagRows.map((tag) => tag.tag),
                 },
             });
         } finally {

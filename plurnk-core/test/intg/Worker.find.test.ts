@@ -12,8 +12,8 @@ const url = (pathname: string): UrlPath => ({
     pathname: `/${pathname}`, query: null, fragment: null,
 });
 
-const editStmt = (target: UrlPath, body: string, tags: string[] | null = null): EditStatement => ({
-    op: "EDIT", suffix: "", signal: tags, target, lineMarker: null, body,
+const editStmt = (target: UrlPath, body: string): EditStatement => ({
+    op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
@@ -32,10 +32,10 @@ const setup = async () => {
     return { db, workspaceId, workerId };
 };
 
-const seedEntries = async (db: import("../../src/core/Db.ts").Db, workspaceId: number, workerId: number, entries: Array<[string, string, string[]?]>) => {
+const seedEntries = async (db: import("../../src/core/Db.ts").Db, workspaceId: number, workerId: number, entries: Array<[string, string]>) => {
     const k = new Worker();
-    for (const [pathname, body, tags] of entries) {
-        await k.edit(editStmt(url(pathname), body, tags ?? null), makeSchemeCtx({ db, workspaceId, workerId }));
+    for (const [pathname, body] of entries) {
+        await k.edit(editStmt(url(pathname), body), makeSchemeCtx({ db, workspaceId, workerId }));
     }
 };
 
@@ -199,34 +199,32 @@ test("a broad content match emits one item per resource with location counts", a
     } finally { db.close(); }
 });
 
-test("Worker.find with tag filter — AND semantics", async () => {
+test("Worker.find signal does not filter resource candidates", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [
-            ["a", "x", ["urgent", "europe"]],
-            ["b", "y", ["urgent"]],
-            ["c", "z", ["europe"]],
-            ["d", "w", ["urgent", "europe", "answer"]],
+            ["a", "x"],
+            ["b", "y"],
+            ["c", "z"],
+            ["d", "w"],
         ]);
-        // Both tags must be present
-        const r = await new Worker().find(findStmt(url(""), null, ["urgent", "europe"]), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
+        const r = await new Worker().find(findStmt(url(""), null, ["+urgent", "+europe"]), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a", "worker:///d"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a", "worker:///b", "worker:///c", "worker:///d"]);
     } finally { db.close(); }
 });
 
-test("Worker.find combining glob (content) + tag filter", async () => {
+test("Worker.find signal leaves matcher selection unchanged", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [
-            ["s1", "plan alpha", ["urgent"]],
-            ["s2", "plan beta", ["later"]],
-            ["s3", "other thing", ["urgent"]],
+            ["s1", "plan alpha"],
+            ["s2", "plan beta"],
+            ["s3", "other thing"],
         ]);
-        // glob matches content "plan*"; tag narrows to urgent → only s1 satisfies both.
-        const r = await new Worker().find(findStmt(url(""), glob("plan*"), ["urgent"]), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
+        const r = await new Worker().find(findStmt(url(""), glob("plan*"), ["+urgent"]), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///s1"]);
+        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///s1", "worker:///s2"]);
     } finally { db.close(); }
 });
 

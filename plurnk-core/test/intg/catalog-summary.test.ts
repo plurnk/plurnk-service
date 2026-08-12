@@ -31,15 +31,12 @@ test("[catalog] engine_scheme_catalog_summary tallies distinct entries per schem
         await new Skill().edit(editStmt(url("skill", "q"), "a recipe"), makeHandlerCtx(ctx, Skill.manifest));
         await EntryCrud.writeEntry("README.md", {
             channels: { body: { content: "root", mimetype: "text/markdown" } },
-            tags: [],
         }, ctx, "file");
         await EntryCrud.writeEntry("src/a.ts", {
             channels: { body: { content: "a", mimetype: "text/typescript" } },
-            tags: [],
         }, ctx, "file");
         await EntryCrud.writeEntry("src/deep/b.ts", {
             channels: { body: { content: "b", mimetype: "text/typescript" } },
-            tags: [],
         }, ctx, "file");
 
         const rows = await db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });

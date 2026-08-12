@@ -516,7 +516,7 @@ export default class GitMembership {
         });
         const result = await EntryCrud.writeEntry(
             pathname,
-            { channels: { body: { content, mimetype } }, tags: [], attributes: {} },
+            { channels: { body: { content, mimetype } }, attributes: {} },
             ctx,
             "file",
         );
@@ -585,7 +585,6 @@ export default class GitMembership {
             pathname,
             {
                 channels: { body: { content, mimetype: outputMimetype } },
-                tags: [],
                 attributes: { sourceProjection: metadata },
             },
             ctx,

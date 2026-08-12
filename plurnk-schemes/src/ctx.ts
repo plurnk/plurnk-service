@@ -22,7 +22,9 @@ export interface EntryData {
         state?: ChannelState;
         producerResult?: ChannelProducerResult;
     }>;
-    readonly tags: ReadonlyArray<string>;
+    // Scheme-private durable metadata. It is never projected as resource
+    // content, catalog fields, or client entry data.
+    readonly attributes?: Readonly<Record<string, unknown>>;
 }
 
 // Entry read shape. Lifecycle is part of the stored channel representation,
@@ -34,7 +36,7 @@ export interface StoredEntryData {
         state: ChannelState;
         producerResult?: ChannelProducerResult;
     }>;
-    readonly tags: ReadonlyArray<string>;
+    readonly attributes?: Readonly<Record<string, unknown>>;
 }
 
 export type EntryOwner = "commons" | "worker";
@@ -66,7 +68,6 @@ export interface EntryReadResult extends SchemeResult {
 export interface EntryCatalogItem {
     readonly path: string;
     readonly seconds?: number;
-    readonly tags?: ReadonlyArray<string>;
     readonly channels: Readonly<Record<string, { mimetype: string; tokens: number; lines: number }>>;
     readonly matchLocationCount?: number;
 }
@@ -133,19 +134,6 @@ export interface ChannelCaps {
 // log-side concern with no entry-visibility for a scheme to set ({§capability-ctx}).
 // If a sibling ever needs to influence what the model
 // retains, that's a log capability, not an entry one — designed if/when forced.
-
-// ── tags ─────────────────────────────────────────────────────────────────
-// Entry-tag add/remove/list. `add`/`remove` are additive/subtractive sets
-// (service SPEC: tags apply additively). Wraps `entry_tags`.
-export interface TagListResult extends SchemeResult {
-    readonly tags: ReadonlyArray<string>;
-}
-
-export interface TagCaps {
-    add(pathname: string, tags: ReadonlyArray<string>): Promise<SchemeResult>;
-    remove(pathname: string, tags: ReadonlyArray<string>): Promise<SchemeResult>;
-    list(pathname: string): Promise<TagListResult>;
-}
 
 // ── notify ───────────────────────────────────────────────────────────────
 // Out-of-band, between-turn signal to clients — today's `streamEventNotify`
@@ -247,7 +235,6 @@ export interface SchemeCtx {
 
     readonly entries: EntryCaps;
     readonly channels: ChannelCaps;
-    readonly tags: TagCaps;
     readonly notify: NotifyCaps;
     readonly projection: ProjectionCaps;
     readonly subscriptions: SubscriptionCaps;

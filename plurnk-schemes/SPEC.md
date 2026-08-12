@@ -184,8 +184,9 @@ hook.
 
 The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handler operations; schemes use `ctx.entries`. Proposal application is the optional `applyResolution` handler hook described in §3.bis.
 
-OPEN and FOLD are not handler methods. They curate visibility and tags on the
-core-owned log; an entry scheme has no visibility state and receives 501.
+OPEN and FOLD are not handler methods. They curate visibility by filtering tags
+on the core-owned log; an entry scheme has no visibility or tag state and
+receives 501.
 
 §scheme-edit-batch-receipt **Regional mutation receipts.** COPY and MOVE are not
 handler methods. The engine composes their source and
@@ -389,7 +390,7 @@ durable `instance`, because only it knows the committed log coordinate. A
 malformed handler result is a plugin contract violation and fails hard; the
 consumer does not invent a fallback error or reinterpret arbitrary fields.
 The same discrimination applies to every `SchemeCtx` capability result:
-entries, channels, and tags never return a bare failure status.
+entries and channels never return a bare failure status.
 
 ### Matcher dispatch - `Matcher` {§matcher-dispatch}
 
@@ -413,20 +414,22 @@ database schemas, prepared-statement names, and private service modules.
 **Interfaces only**: this repo exports the contract and the consumer injects
 its implementation.
 
-`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`) plus **six live capability namespaces** replacing raw `db`:
+`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`) plus **five live capability namespaces** replacing raw `db`:
 
 - `entries` — direct storage over the scheme's own namespace
   (`read`/`write`/`delete`) plus `operations`, the standard PLURNK
   `READ`/`EDIT`/`FIND`/`SEND` implementation for entry-bearing schemes.
   A write may omit channel state to select the `static` default; a successful
   storage read always returns each channel's persisted lifecycle state.
+  Optional `attributes` are scheme-private durable metadata. They are scoped to
+  that entry, replaced only when explicitly written, and never projected into
+  model content, catalogs, or client entry data.
   Standard operations are bound to the handler's manifest. Their optional
   owner is semantic: `"commons"` (default) or the current `"worker"`; database
   owner IDs are not part of the plugin contract. A handler may implement its
   own op method instead. In particular, a handler with `find()` owns FIND; one
   without it receives the standard stored-entry behavior.
 - `channels` — content writes + state (`append`/`replace`/`setState`).
-- `tags` — entry tags (`add`/`remove`/`list`).
 - `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the worker wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a worker, always via close.)
 - `projection` — the text and bounded-byte projection capability in {§scheme-projection}. Acquisition schemes own source representations; they do not instantiate or second-guess the reader family. `null` means no readable projection.
 - §scheme-subscriptions `subscriptions` — one streaming lifecycle:

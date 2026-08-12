@@ -27,7 +27,7 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import Fork from "./fork.ts";
 import WorkerCap from "./worker-cap.ts";
-import { PathSyntax } from "@plurnk/plurnk-contracts";
+import { PathSyntax, TagSignal } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import LoopFlagsReader from "./LoopFlagsReader.ts";
@@ -71,11 +71,23 @@ import {
 } from "@plurnk/plurnk-schemes";
 import type { ProviderEncryptedReasoningItem } from "@plurnk/plurnk-providers";
 import DurableStatement from "./DurableStatement.ts";
-import type { LogCurationEffect, LogCurationOutcome } from "../schemes/Log.ts";
+import type { LogCurationOutcome, LogCurationPlan } from "../schemes/Log.ts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
 const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC", "KILL", "FORK", "WORK"]);
+
+const assertClassifyingSignal = (statement: PlurnkStatement): void => {
+    if (
+        statement.op === "FIND"
+        || statement.op === "READ"
+        || statement.op === "EDIT"
+        || statement.op === "COPY"
+        || statement.op === "MOVE"
+    ) {
+        TagSignal.applied(statement.signal);
+    }
+};
 
 export type DispatchContext = {
     statement: PlurnkStatement;
@@ -324,7 +336,12 @@ export default class Dispatcher {
             status: result.status,
             entry: result.entry === null
                 ? null
-                : { channels: { ...result.entry.channels }, tags: [...result.entry.tags] },
+                : {
+                    channels: { ...result.entry.channels },
+                    ...(result.entry.attributes === undefined
+                        ? {}
+                        : { attributes: { ...result.entry.attributes } }),
+                },
         }) as ReadEntryResult;
     }
 
@@ -429,6 +446,7 @@ export default class Dispatcher {
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin });
         const groups = new Map<string, EditStatement[]>();
         for (const statement of statements) {
+            assertClassifyingSignal(statement); // {§log-tag-signal}
             const target = this.#extractTarget(statement.target);
             await this.#canonColumns(target, workspaceId);
             const key = JSON.stringify([
@@ -544,6 +562,7 @@ export default class Dispatcher {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
+        assertClassifyingSignal(context.statement); // {§log-tag-signal}
         const result = await this.#dispatchOne(context);
         if (context.statement.op === "EDIT") {
             const prepared = this.#preparedEdits.get(context.statement);
@@ -570,7 +589,7 @@ export default class Dispatcher {
         } = context;
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin });
         let result: DispatchResult;
-        let curationEffects: ReadonlyArray<LogCurationEffect> = [];
+        let curationPlan: LogCurationPlan | null = null;
         let denial = this.#checkWritable(statement, origin);
         if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
         if (denial !== null) {
@@ -617,7 +636,7 @@ export default class Dispatcher {
                 } else if (statement.op === "OPEN" || statement.op === "FOLD") {
                     const curation = await this.#runLogCuration(statement, schemeCtx);
                     result = curation.result;
-                    curationEffects = curation.effects;
+                    curationPlan = curation.plan;
                 } else if (statement.op === "FORK" || statement.op === "WORK") {
                     result = await this.#handleWorkerControl(statement, schemeCtx);
                 } else if (statement.op === "COPY") {
@@ -661,13 +680,17 @@ export default class Dispatcher {
         // A running-worker READ arms this turn's blocking collect.
         // {§join-blocking-collect}
         if (typeof (result as { awaitWorker?: unknown }).awaitWorker === "string") this.#joinTargets.add(loopId);
-        const logEntryId = await this.#writeLog({ statement, result, workspaceId, workerId, loopId, turnId, sequence, origin });
-        if (curationEffects.length > 0) {
-            await this.#db.log_record_curation_effects.run({
-                operation_log_entry_id: logEntryId,
-                effects: JSON.stringify(curationEffects),
-            });
-        }
+        const logEntryId = await this.#writeLog({
+            statement,
+            result,
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence,
+            origin,
+            curationPlan,
+        });
         // {§search-gate} — register successful searches AFTER #writeLog stamps the runtime
         // entry's coordinate onto result.attrs.pathname (the gate's dedup serves from it).
         if (statement.op === "EXEC" && result.status < 400) {
@@ -1981,7 +2004,6 @@ export default class Dispatcher {
         edits: ReadonlyArray<{
             readonly marker: LineMarker;
             readonly body: string;
-            readonly tags: string[] | null;
             readonly position: EditStatement["position"];
         }>,
         ctx: PlurnkSchemeContext,
@@ -2000,10 +2022,10 @@ export default class Dispatcher {
                 },
             );
         }
-        const statements: EditStatement[] = edits.map(({ marker, body, tags, position }) => ({
+        const statements: EditStatement[] = edits.map(({ marker, body, position }) => ({
             op: "EDIT",
             suffix: "",
-            signal: tags,
+            signal: null,
             target: selection.target,
             lineMarker: marker,
             body,
@@ -2087,7 +2109,6 @@ export default class Dispatcher {
             );
         }
 
-        const tags = Array.isArray(statement.signal) ? statement.signal : [];
         const destinationEffect = this.#pendingEffect(
             destination,
             destinationChannel === undefined ? "create" : "update",
@@ -2123,7 +2144,6 @@ export default class Dispatcher {
                 [{
                     marker: destination.lineMarker,
                     body: source.content,
-                    tags,
                     position: statement.position,
                 }],
                 ctx,
@@ -2146,10 +2166,7 @@ export default class Dispatcher {
                 },
             );
         }
-        const priorTags = existing?.tags ?? [];
-        const mergedTags = [...new Set([...priorTags, ...tags])];
-        const addsTags = mergedTags.length !== priorTags.length;
-        if (destinationChannel !== undefined && !addsTags) return { status: 304 };
+        if (destinationChannel !== undefined) return { status: 304 };
 
         const channels = {
             ...(existing?.channels ?? {}),
@@ -2161,7 +2178,7 @@ export default class Dispatcher {
         const written = await this.#writeEntry(
             destination.scheme,
             destination.pathname,
-            { channels, tags: mergedTags },
+            { channels },
             ctx,
         );
         const exactWritten = Results.assert(written);
@@ -2171,7 +2188,7 @@ export default class Dispatcher {
             : Dispatcher.#withEditMaterialization(
                 exactWritten,
                 editReceipt(
-                    destinationChannel?.content ?? "",
+                    "",
                     source.content,
                     [{
                         marker: { marks: [1, -1] },
@@ -2272,7 +2289,6 @@ export default class Dispatcher {
             [{
                 marker: source.lineMarker,
                 body: "",
-                tags: null,
                 position: statement.position,
             }],
             ctx,
@@ -2311,13 +2327,11 @@ export default class Dispatcher {
                 {
                     marker: destination.lineMarker,
                     body: source.content,
-                    tags: Array.isArray(statement.signal) ? statement.signal : [],
                     position: statement.position,
                 },
                 {
                     marker: source.lineMarker,
                     body: "",
-                    tags: null,
                     position: statement.position,
                 },
             ],
@@ -3156,7 +3170,7 @@ export default class Dispatcher {
                         retryable: false,
                     },
                 ),
-                effects: [],
+                plan: null,
             };
         }
         const handler = this.#schemes.get("log") as LogCurationHandler | undefined;
@@ -3166,7 +3180,7 @@ export default class Dispatcher {
         }
         const schemeCtx = new SchemeCtxImpl(ctx, "log", manifest, this.#liveSubscriptions);
         const outcome = await handler.curate(statement, schemeCtx);
-        return { result: Results.assert(outcome.result), effects: outcome.effects };
+        return { result: Results.assert(outcome.result), plan: outcome.plan };
     }
 
     // {§proposal}/{§send} — status 202 is a proposal except for broadcast
@@ -3179,10 +3193,11 @@ export default class Dispatcher {
     }
 
     async #writeLog({
-        statement, result, workspaceId, workerId, loopId, turnId, sequence, origin,
+        statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan,
     }: {
         statement: PlurnkStatement; result: DispatchResult;
         workspaceId: number; workerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
+        curationPlan: LogCurationPlan | null;
     }): Promise<number> {
         const durableStatement = DurableStatement.project(statement);
         const target = this.#extractTarget(durableStatement.target);
@@ -3199,6 +3214,17 @@ export default class Dispatcher {
         let attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
             ? { ...(result.attrs as Record<string, unknown>) }
             : {};
+        if (curationPlan !== null) {
+            if (Object.hasOwn(attrsObj, "__plurnk_curation")) {
+                throw new Error("Dispatcher.#writeLog: result attrs collide with private log curation state");
+            }
+            attrsObj.__plurnk_curation = {
+                ids: curationPlan.targetLogEntryIds,
+                expanded: curationPlan.expanded,
+                add: curationPlan.add,
+                remove: curationPlan.remove,
+            };
+        }
         const seqs = statement.op === "EXEC" || result.problem !== undefined
             ? await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
                 loop_id: loopId,

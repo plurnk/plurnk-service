@@ -85,14 +85,6 @@ LEFT JOIN subscriptions s ON s.id = (
 WHERE e.workspace_id = $workspace_id AND e.owner_id = $owner_id
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 
--- PREP: engine_list_owner_entry_tags
--- {§entry-owner} — (entry, tag) for one principal's entries (the owner-scoped catalog's tags field).
-SELECT et.entry_id, et.tag
-FROM entry_tags et
-JOIN entries e ON e.id = et.entry_id
-WHERE e.workspace_id = $workspace_id AND e.owner_id = $owner_id
-ORDER BY et.entry_id, et.tag;
-
 -- PREP: engine_next_turn_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
@@ -321,7 +313,7 @@ WITH observation AS (
 SELECT o.cursor, o.boundary,
        ae.id AS event_id, ae.producer_worker_id, producer.name AS producer_worker_name,
        ae.kind, ae.source,
-       ae.op, ae.scheme, ae.hostname, ae.pathname, ae.rx, ae.attrs,
+       ae.op, ae.scheme, ae.hostname, ae.pathname, ae.rx, ae.attrs, ae.tags,
        ae.status_rx, ae.terminated_by
 FROM observation o
 LEFT JOIN ambient_events ae
@@ -347,6 +339,11 @@ INSERT INTO log_entries (
 )
 ON CONFLICT(worker_id, ambient_event_id) WHERE ambient_event_id IS NOT NULL DO NOTHING
 RETURNING id;
+
+-- PREP: engine_ambient_delta_id
+-- Crash replay may find the observation row already inserted but its copied
+-- classifications incomplete. Resolve that row so idempotent tag writes can finish.
+SELECT id FROM log_entries WHERE worker_id = $worker_id AND ambient_event_id = $event_id;
 
 -- PREP: engine_advance_ambient_cursor
 -- Advance only from the snapshot that was actually materialized. A concurrent
@@ -395,9 +392,6 @@ INSERT INTO log_entries (
     $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', NULL,
     'READ', $scheme, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $attrs, $expanded
 );
-
--- PREP: engine_entry_tags
-SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
 -- PREP: engine_child_workers_live
 -- The worker's LIVE child workers — latest loop non-terminal (100 pending / 102 processing / 202 parked).

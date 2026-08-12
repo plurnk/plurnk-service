@@ -1,4 +1,4 @@
-// Conformance: the ChannelCaps and TagCaps namespaces in plurnk-schemes
+// Conformance: the ChannelCaps namespace in plurnk-schemes
 // {§capability-ctx}, driven against real SQLite through the public capability
 // surface. Entries are seeded through that same surface.
 
@@ -6,7 +6,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbChannelCaps from "../../src/core/caps/DbChannelCaps.ts";
-import DbTagCaps from "../../src/core/caps/DbTagCaps.ts";
 import { openMigrated, insertWorkspace, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
 
 test("DbChannelCaps: append grows, replace swaps + re-tokenizes, setState transitions; absent → 404", async () => {
@@ -17,7 +16,7 @@ test("DbChannelCaps: append grows, replace swaps + re-tokenizes, setState transi
         const entries = new DbEntryCaps(ctx, "notes", schemeManifest("notes"));
         const channels = new DbChannelCaps(ctx, "notes");
 
-        const w = await entries.write("/doc.md", { channels: { body: { content: "abc", mimetype: "text/markdown" } }, tags: [] });
+        const w = await entries.write("/doc.md", { channels: { body: { content: "abc", mimetype: "text/markdown" } } });
         const entryId = w.entryId as number;
 
         // append → content grows
@@ -43,36 +42,5 @@ test("DbChannelCaps: append grows, replace swaps + re-tokenizes, setState transi
         assert.equal(missingReplace.problem?.type, "https://problems.plurnk.dev/scheme/notes/channel-not-found");
         const missingState = await channels.setState("/doc.md", "nope", "closed");
         assert.equal(missingState.problem?.type, "https://problems.plurnk.dev/scheme/notes/channel-not-found");
-    } finally { await db.close(); }
-});
-
-test("DbTagCaps: add dedupes (INSERT OR IGNORE), list is sorted, remove drops named; absent → 404", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `caps-tags-${crypto.randomUUID()}`);
-        const ctx = makeSchemeCtx({ db, workspaceId });
-        const entries = new DbEntryCaps(ctx, "notes", schemeManifest("notes"));
-        const tags = new DbTagCaps(ctx, "notes");
-
-        await entries.write("/x.md", { channels: { body: { content: "_", mimetype: "text/markdown" } }, tags: ["keep"] });
-
-        // add — incl. a duplicate of the seeded "keep" → INSERT OR IGNORE dedupes
-        assert.equal((await tags.add("/x.md", ["alpha", "beta", "keep"])).status, 200);
-        const listed = await tags.list("/x.md");
-        assert.equal(listed.status, 200);
-        assert.deepEqual([...listed.tags], ["alpha", "beta", "keep"]); // ORDER BY tag
-
-        // remove a single tag
-        assert.equal((await tags.remove("/x.md", ["beta"])).status, 200);
-        assert.deepEqual([...(await tags.list("/x.md")).tags], ["alpha", "keep"]);
-
-        // absent entry → 404
-        const missingAdd = await tags.add("/missing.md", ["z"]);
-        assert.equal(missingAdd.problem?.type, "https://problems.plurnk.dev/scheme/notes/entry-not-found");
-        const missingList = await tags.list("/missing.md");
-        assert.equal(missingList.problem?.type, "https://problems.plurnk.dev/scheme/notes/entry-not-found");
-        assert.deepEqual(missingList.tags, []);
-        const missingRemove = await tags.remove("/missing.md", ["z"]);
-        assert.equal(missingRemove.problem?.type, "https://problems.plurnk.dev/scheme/notes/entry-not-found");
     } finally { await db.close(); }
 });

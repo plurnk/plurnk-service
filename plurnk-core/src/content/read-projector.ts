@@ -10,8 +10,8 @@ import MimetypeBinary from "./mimetype-binary.ts";
 import ReadResolve from "./read-resolve.ts";
 
 // {§universal-read-composition} Core's one exact-resource projection over a complete canonical
-// representation. Storage adapters supply channels and tags; this layer owns
-// channel selection, tag filtering, binary admission, text coordinates, and
+// representation. Storage adapters supply channels; this layer owns channel
+// selection, binary admission, text coordinates, and
 // composition of the selected producer's durable result.
 export default class ReadProjector {
     static async project(opts: {
@@ -84,18 +84,6 @@ export default class ReadProjector {
                     : `The #${channel} channel is binary and cannot be rendered.`,
                 { mimetype: selectedRepresentation.mimetype },
             );
-        }
-
-        if (Array.isArray(statement.signal) && statement.signal.length > 0) {
-            const tags = new Set(representation.tags);
-            const missing = statement.signal.find((tag) => !tags.has(tag));
-            if (missing !== undefined) {
-                return failure(
-                    "tag-not-found",
-                    404,
-                    `The resource does not carry the required '${missing}' tag.`,
-                );
-            }
         }
 
         const resolved = await ReadResolve.resolve({

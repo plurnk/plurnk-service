@@ -1096,7 +1096,6 @@ export default class Engine {
                 const promptPath = promptTarget(promptLoopSeq, seq);
                 const entry: EntryData = {
                     channels: { body: { content: promptRow.prompt, mimetype: "text/markdown" } },
-                    tags: [],
                     attributes: { openPaths },
                 };
                 await EntryCrud.writeEntry(promptPath.pathname, entry, systemCtx, "prompt", workerId);
@@ -1180,88 +1179,59 @@ export default class Engine {
         await this.#queueWorkspaceWarm(systemCtx, true, false);
 
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
-        // FIND surveys foisted into the worker's first model turn so it opens with its catalog.
-        // Folder-capable surfaces reveal one level with `*`; each deeper directory is an
-        // actionable `dir/**` aggregate. The curated kernel docs remain recursive, so the
-        // opening packet demonstrates both navigation forms. Empty results are orientation.
+        // Four FIND surveys foisted into the worker's first model turn establish the project,
+        // commons, private, and documentation surfaces in that order. Their `init`
+        // classification lets the model curate this opening survey as one log set.
         if (seq === 1) {
             // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
             const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
             const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
             if (filesItems !== null && workerFirstLoop) { // {§actor-boundary-catalog-preview} — once per worker
-                // engine_scheme_catalog_summary is the workspace-bounded scheme source: ordered,
-                // one row per stored entry scheme. log:// is absent —
-                // it lives in log_entries, not the catalog (present-mode, the # Log section).
                 const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
-                // Entry-bearing plugin schemes foist alongside the four structural surveys below.
-                const foistSchemes = catalogSchemes
-                    .filter((catalog) => catalog.scheme !== "prompt" && catalog.scheme !== "worker")
-                    .map(({ scheme, shallow_items }) => ({ scheme, shallow_items }));
-                // Commons + project files always foist. An empty result establishes that the
-                // surface exists and currently contains nothing.
-                foistSchemes.push({
-                    scheme: "worker",
-                    shallow_items: catalogSchemes.find((c) => c.scheme === "worker")?.shallow_items ?? 0,
-                });
-                if (!foistSchemes.some((c) => c.scheme === "file")) foistSchemes.push({ scheme: "file", shallow_items: 0 }); // Empty project surface still receives its orienting FIND.
-                for (const { scheme, shallow_items: shallowItems } of foistSchemes) {
-                    const isFile = scheme === "file";
-                    const pattern = this.#schemes.manifestFor(scheme)?.folderScopes === true ? "*" : "**";
-                    // Only the file map takes PLURNK_SERVICE_FILES_ITEMS as an explicit first-N
-                    // cap. Every other ordinary survey uses FIND's markerless first page.
-                    const cap = isFile && filesItems > 0 && shallowItems > 0 ? Math.min(filesItems, shallowItems) : null;
-                    const catalogMarker = cap === null ? null : { marks: [1, cap] as [number, number] };
-                    // The file survey foists as the BARE relative glob — the path shape plurnk.md
-                    // teaches (`*`, `src/**`, `**/notes.md`; bare = project-relative) — so the turn-0
-                    // exemplar and the log rows the model reads never train a leading-slash or
-                    // file:/// habit the rest of the teaching contradicts.
-                    const catalogFind: FindStatement = {
-                        op: "FIND", suffix: "", signal: null,
-                        target: isFile ? { kind: "local", raw: pattern } : {
-                            kind: "url",
-                            raw: `${scheme}:///${pattern}`,
-                            scheme,
-                            username: null, password: null, hostname: null, port: null,
-                            pathname: `/${pattern}`,
-                            query: null, fragment: null,
+                const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
+                const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
+                await Owner.kernelId(this.#db, workspaceId);
+                const surveys: Array<{ statement: FindStatement; exemplar: string }> = [
+                    {
+                        statement: {
+                            op: "FIND", suffix: "", signal: ["+init"],
+                            target: { kind: "local", raw: "*" },
+                            body: null,
+                            lineMarker: fileCap === null ? null : { marks: [1, fileCap] },
+                            position: UNKNOWN_POSITION,
                         },
-                        body: null,
-                        lineMarker: catalogMarker,
-                        position: UNKNOWN_POSITION,
-                    };
-                    await this.dispatch({
-                        statement: catalogFind, workspaceId, workerId, loopId, turnId,
-                        sequence: nextActionIndex, origin: "plurnk", onDispatch,
-                    });
+                        exemplar: `## FIND0 [+init] (*)${fileCap === null ? "" : ` <1,${fileCap}>`}`,
+                    },
+                    {
+                        statement: {
+                            op: "FIND", suffix: "", signal: ["+init"],
+                            target: { kind: "url", raw: "worker:///*", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
+                            body: null, lineMarker: null, position: UNKNOWN_POSITION,
+                        },
+                        exemplar: "## FIND0 [+init] (worker:///*)",
+                    },
+                    {
+                        statement: {
+                            op: "FIND", suffix: "", signal: ["+init"],
+                            target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", query: null, fragment: null },
+                            body: null, lineMarker: null, position: UNKNOWN_POSITION,
+                        },
+                        exemplar: "## FIND0 [+init] (worker://~/*)",
+                    },
+                    {
+                        statement: {
+                            op: "FIND", suffix: "", signal: ["+init", "+docs"],
+                            target: { kind: "url", raw: "worker://plurnk/docs/**", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/docs/**", query: null, fragment: null },
+                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                        },
+                        exemplar: "## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>",
+                    },
+                ];
+                for (const { statement, exemplar } of surveys) {
+                    await this.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                     nextActionIndex++;
-                    // {§model-entry} — the same FIND, rendered back to DSL for the turn-0 echo
-                    // (the model's own survey, mirrored OPEN). An explicit file cap rides as
-                    // `<1,N>`; ordinary surveys teach the safe markerless default by example.
-                    const target = isFile ? pattern : `${scheme}:///${pattern}`;
-                    turnZeroMoves.push(`## FIND0 (${target})${cap === null ? "" : ` <1,${cap}>`}`);
+                    turnZeroMoves.push(exemplar);
                 }
-                // The kernel's self-documenting surface — kernel-doc FIND, uncapped,
-                // always ({§schemes-directory}, published under {§entry-owner}).
-                await Owner.kernelId(this.#db, workspaceId); // the row exists even before docs materialize — the empty survey is orienting, never 404
-                const kernelDocsFind: FindStatement = {
-                    op: "FIND", suffix: "", signal: null,
-                    target: { kind: "url", raw: "worker://plurnk/docs/**", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/docs/**", query: null, fragment: null },
-                    body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-                };
-                await this.dispatch({ statement: kernelDocsFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
-                nextActionIndex++;
-                turnZeroMoves.push("## FIND0 (worker://plurnk/docs/**) <1,-1>");
-                // {§worker-scheme} — the building worker's own scratch gets the same markerless
-                // one-level survey in its perspective alone. It always executes: an empty private
-                // space is useful orientation, not grounds to hide the surface.
-                const ownFind: FindStatement = {
-                    op: "FIND", suffix: "", signal: null,
-                    target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", query: null, fragment: null },
-                    body: null, lineMarker: null, position: UNKNOWN_POSITION,
-                };
-                await this.dispatch({ statement: ownFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
-                nextActionIndex++;
-                turnZeroMoves.push("## FIND0 (worker://~/*)");  // {§model-entry} — the own-space survey, into the turn-0 echo
             }
             // {§model-entry} — mirror the model's turn-0 OPEN at sequence 1: PLAN → the FINDs actually
             // foisted above (real, their results already in the log) → SEND signal 102. Dynamic — it reflects
@@ -2190,6 +2160,7 @@ export default class Engine {
             pathname: string | null;
             rx: string | null;
             attrs: string | null;
+            tags: string | null;
             status_rx: number | null;
             terminated_by: string | null;
         }>({ workspace_id: workspaceId, worker_id: workerId });
@@ -2208,6 +2179,14 @@ export default class Engine {
                 throw new Error(`ambient loop-termination event ${r.event_id} status ${r.status_rx} does not match its terminal result status ${terminal.status}`);
             }
             let attrs = r.attrs ?? "{}";
+            const parsedTags = JSON.parse(r.tags ?? "[]") as unknown;
+            if (!Array.isArray(parsedTags) || !parsedTags.every((tag) => typeof tag === "string" && tag.length > 0)) {
+                throw new TypeError(`ambient event ${r.event_id} tags must be an array of nonempty strings`);
+            }
+            const tags = [...new Set(parsedTags)].toSorted();
+            if (tags.length !== parsedTags.length || tags.some((tag, index) => tag !== parsedTags[index])) {
+                throw new TypeError(`ambient event ${r.event_id} tags must be unique and sorted`);
+            }
             if (terminal !== null) {
                 const inherited = JSON.parse(attrs) as unknown;
                 if (inherited === null || typeof inherited !== "object" || Array.isArray(inherited)) {
@@ -2235,6 +2214,14 @@ export default class Engine {
                 expanded: terminal !== null && terminal.status >= 200 && terminal.status < 300 ? 1 : 0,
                 attrs,
             });
+            const materialized = inserted ?? await this.#db.engine_ambient_delta_id.get<{ id: number }>({
+                worker_id: workerId,
+                event_id: r.event_id,
+            });
+            if (materialized === undefined) throw new Error(`ambient event ${r.event_id} has no observer log row after materialization`);
+            for (const tag of tags) {
+                await this.#db.log_write_tag.run({ log_entry_id: materialized.id, tag });
+            }
             if (inserted !== undefined) written++;
         }
         await this.#db.engine_advance_ambient_cursor.get({
@@ -2596,7 +2583,6 @@ export default class Engine {
         };
         const entry: EntryData = {
             channels: { body: { content: prompt, mimetype: "text/markdown" } },
-            tags: [],
             attributes: { openPaths },
         };
         await EntryCrud.writeEntry(pathname, entry, ctx, "prompt", workerId);

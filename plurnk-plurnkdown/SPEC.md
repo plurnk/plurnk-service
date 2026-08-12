@@ -84,8 +84,8 @@ Plurnkdown preserves the semantic evidence supplied by section owners.
 
 ## §packet-operation-fences PLURNK operation fences
 
-Model-facing operation examples use fenced blocks with the `plurnk` info string. A paragraph line
-beginning with `<|` is an `op-fence` error. Each `plurnk` fence is parsed statement-by-statement by
+Model-facing operation examples use fenced blocks with the `plurnk` info string. A structural
+PLURNK operation heading outside such a fence is an `op-fence` error. Each `plurnk` fence is parsed statement-by-statement by
 `@plurnk/plurnk-contracts`; bounded diagnostics and {§unparsed-tail-boundary} surface as
 `op-syntax` diagnostics under {§parse-diagnostics}.
 
@@ -95,7 +95,9 @@ languages are opaque to the PLURNK syntax check.
 ## §packet-jsonplurnk-exception Log fence
 
 The Log is a dynamically fenced `jsonplurnk` array owned by {§jsonplurnk}. It is valid GFM but
-deliberately not labeled `json`: an open nonempty `body` uses a raw `<|BODY> … <BODY|>` enclosure rather than a JSON string.
+deliberately not labeled `json`: an open nonempty `body` uses one raw multiline quoted string rather than a JSON-escaped string.
+Every physical body line begins with its universal `N:` prefix, and the closing quote immediately
+precedes the object close at column zero.
 The fence is one backtick longer than the longest run in the rendered entries, with a minimum
 length of three {§jsonplurnk-dynamic-fence}. `@plurnk/plurnk-contracts` owns the deterministic
 transform that recovers strict JSON.
@@ -116,7 +118,7 @@ document-size limit.
 
 | Rule        | Severity         | Trigger                                                                    |
 | ----------- | ---------------- | -------------------------------------------------------------------------- |
-| `op-fence`  | error            | A paragraph line starts with a bare `<|` operation opener.                 |
+| `op-fence`  | error            | A PLURNK operation heading occurs outside a `plurnk` fence.                |
 | `op-syntax` | error or warning | A `plurnk` fence contains a parser diagnostic, advisory, or unparsed tail. |
 | `run-on`    | warning          | Paragraph prose crosses an atomic-prose threshold.                         |
 

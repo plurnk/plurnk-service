@@ -324,7 +324,6 @@ target: string
 channels: {
 [k: string]: ClientEntryChannel
 }
-tags: string[]
 }
 
 export interface ClientEntryChannel {
@@ -460,6 +459,10 @@ total: number
 requested: RequestedRange
 returned?: ReturnedRange
 }
+
+export type AppliedTagSignal = (string[] | null)
+
+export type CurationTagSignal = (string[] | null)
 
 export type ResourceSelectionOrNull = (ResourceSelection | null)
 

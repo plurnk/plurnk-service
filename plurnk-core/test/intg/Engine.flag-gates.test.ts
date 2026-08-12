@@ -55,7 +55,6 @@ class AffinitySource {
         this.preparations += 1;
         await ctx.entries.write(request.pathname, {
             channels: { body: { content: "source", mimetype: "text/plain" } },
-            tags: [],
         });
         return { status: 200 };
     }

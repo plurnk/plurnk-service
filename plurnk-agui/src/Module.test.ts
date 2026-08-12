@@ -47,7 +47,6 @@ const mockSeam = () => {
                 entryId: 1,
                 target: "worker:///x",
                 channels: {},
-                tags: [],
             },
         }),
         forkWorker: async () => ({ workerId: 11, workerName: "fork-1", parentWorkerId: 10 }),
@@ -191,7 +190,6 @@ test("entry.read defaults to the thread worker, honors an explicit owner, and pr
                 state: "static" as const,
             },
         },
-        tags: ["research"],
     };
     seam.readEntry = async (args) => {
         calls.push(args);

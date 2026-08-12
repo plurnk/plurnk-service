@@ -760,10 +760,10 @@ test("Engine.runTurn: the log section parses an application/json rx body", async
         const edit = log.find((e) => e.origin === "model" && e.op === "EDIT");
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
-        // The EDIT's result span renders line-numbered inside the fixed BODY enclosure —
+        // The EDIT's result span renders line-numbered inside the raw multiline body —
         // observable proof #buildLog parsed the JSON rx: a string rx couldn't yield
         // rx.span, so the render would fall back to the authored statement instead.
-        assert.match(packetSection(packet, "log"), /<\|BODY>\n1:v\n<BODY\|>/);
+        assert.match(packetSection(packet, "log"), /"body":"\n1:v\n"\}/);
     } finally { await db.close(); }
 });
 

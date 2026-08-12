@@ -277,7 +277,10 @@ test("GBNF matcher bodies are one line while content bodies may be multiline", (
 
 test("GBNF OPEN and FOLD admit tag and target selection but no scope", () => {
     for (const op of ["OPEN", "FOLD"]) {
-        assert.equal(derivesTurn(turn("p", [mid(op, " [memory] (log:///**)", "needle")], 102, "done")), true, op);
+        assert.equal(derivesTurn(turn("p", [mid(op, " [memory]")], 102, "done")), true, `${op} targetless tag filter`);
+        assert.equal(derivesTurn(turn("p", [mid(op, " [memory,+archive,-stale] (log:///**)", "needle")], 102, "done")), true, op);
+        assert.equal(derivesTurn(turn("p", [mid(op, " [+archive] (log:///**)")], 102, "done")), true, `${op} target-selected mutation`);
+        assert.equal(derivesTurn(turn("p", [mid(op, " [+archive]")], 102, "done")), false, `${op} mutation does not select`);
         assert.equal(derivesTurn(turn("p", [mid(op, " [memory] (log:///**) <1,2>")], 102, "done")), false, op);
     }
 });
@@ -382,20 +385,29 @@ test("GBNF targets require canonical escaping for delimiters and parentheses", (
 
 // {§slot-order}
 test("GBNF emits spaced canonical slot order while ANTLR accepts spaced permutations", () => {
-    const canonical = "## FIND0 [tag] (source) <1,5>\nneedle\n\n";
-    const reordered = "## FIND0 (source) [tag] <1,5>\nneedle\n\n";
-    const compact = "## FIND0 [tag](source)<1,5>\nneedle\n\n";
+    const canonical = "## FIND0 [+tag] (source) <1,5>\nneedle\n\n";
+    const implicit = "## FIND0 [tag] (source) <1,5>\nneedle\n\n";
+    const reordered = "## FIND0 (source) [+tag] <1,5>\nneedle\n\n";
+    const compact = "## FIND0 [+tag](source)<1,5>\nneedle\n\n";
     assert.equal(derives("statement", canonical), true);
+    assert.equal(derives("statement", implicit), false);
     assert.equal(derives("statement", reordered), false);
     assert.equal(derives("statement", compact), false);
     assert.equal(PlurnkParser.parseStatements(reordered).items.some((item) => item.kind === "error"), false);
+    assert.equal(PlurnkParser.parseStatements(implicit).items.some((item) => item.kind === "error"), false);
     assert.equal(PlurnkParser.parseStatements(compact).items.some((item) => item.kind === "error"), true);
+});
+
+test("GBNF preserves signs as operators only at the start of a tag term", () => {
+    assert.equal(derives("statement", "## FIND0 [+a+b-c] (source)\n\n"), true);
+    assert.equal(derives("statement", "## FIND0 [+-tag] (source)\n\n"), false);
+    assert.equal(derives("statement", "## FOLD0 [a+b-c,-stale+old] (log:///**)\n\n"), true);
 });
 
 test("representative rail turns round-trip through ANTLR", () => {
     for (const content of [
         turn("read", [mid("READ", " (worker:///x)")], 102, "reading"),
-        turn("edit", [mid("EDIT", " [draft] (notes.md) <2>", "replacement")], 200, "done"),
+        turn("edit", [mid("EDIT", " [+draft] (notes.md) <2>", "replacement")], 200, "done"),
         turn("delegate", [mid("WORK", " (worker://child)", "do it")], 202, "waiting"),
     ]) {
         assert.equal(derivesTurn(content, "reasoning"), true, content);

@@ -95,8 +95,6 @@ export type {
     SchemeCtx,
     SubscriptionCaps,
     SubscriptionHandle,
-    TagCaps,
-    TagListResult,
 } from "./ctx.ts";
 
 // ── Behavior contract + the scheme-facing grammar types ──────────────────────

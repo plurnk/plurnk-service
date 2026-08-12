@@ -56,14 +56,15 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         await insert(66, "plurnk", "EDIT", "/page", { kind: "entry_materialized" }, "repeat.test", "https", "q=1", 9443, "body");
         await insert(67, "plurnk", "EDIT", "/", { kind: "entry_materialized" }, "empty.test", "https", null);
         await insert(68, "plurnk", "EDIT", "/", { kind: "entry_materialized" }, "empty.test", "https", "");
-        openId = await insert(69, "model", "OPEN", "/**/READ", {}, null, "log");
-        await db.log_record_curation_effects.run({
-            operation_log_entry_id: openId,
-            effects: JSON.stringify(readIds.map((targetLogEntryId, index) => ({
-                targetLogEntryId,
-                expandedBefore: index === 0 ? 0 : 1,
-            }))),
-        });
+        await db.log_set_expanded_by_id.run({ id: readIds[0], expanded: 0 });
+        openId = await insert(69, "model", "OPEN", "/**/READ", {
+            __plurnk_curation: {
+                ids: readIds,
+                expanded: 1,
+                add: [],
+                remove: [],
+            },
+        }, null, "log");
     } finally {
         await db.close();
     }
@@ -81,6 +82,8 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
                 operation_log_entry_id: number;
                 target_log_entry_id: number;
                 expanded_before: number;
+                tags_added: string[];
+                tags_removed: string[];
             }>;
         };
         assert.match(markdown, /\[model\] READ\[200\] https:\/\/example\.test\/whale ×50 \(seq 1–50\)/);
@@ -101,6 +104,8 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             operation_log_entry_id: openId,
             target_log_entry_id: readIds[0],
             expanded_before: 0,
+            tags_added: [],
+            tags_removed: [],
         }, "the digest preserves the target that OPEN actually introduced into context");
         assert.equal(json.log_curation_effects[1]?.expanded_before, 1, "the same event distinguishes an already-open no-op target");
         assert.deepEqual(
