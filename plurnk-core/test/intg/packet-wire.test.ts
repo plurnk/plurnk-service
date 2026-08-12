@@ -373,6 +373,24 @@ test("log render: READ@200 with text/markdown rx body → line-numbered raw mult
     assert.match(out, /"body":"\n1:hello\n2:world\n"\}/);
 });
 
+test("{§jsonplurnk}: a READ beginning with a blank source line numbers every physical line", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/3",
+        origin: "model",
+        op: "READ",
+        status: 200,
+        target: { scheme: "https", hostname: "example.test", pathname: "/article" },
+        rx: {
+            status: 200,
+            content: "\nLead paragraph.\n\nFollowing paragraph.",
+            mimetype: "text/markdown",
+            startLine: 300,
+        },
+    }], tok);
+
+    assert.match(out, /"body":"\n300:\n301:Lead paragraph\.\n302:\n303:Following paragraph\.\n"\}/);
+});
+
 test("log render: a scoped READ preserves its complete source TextRegion", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/3",

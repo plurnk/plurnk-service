@@ -218,10 +218,10 @@ export default class PacketWire {
     // job now (baked into the preview string).
     static #numberLines(body: string, start = 1): string {
         let line = start;
-        return body.replace(
-            /(^|\r\n|\r|\n)(?=[\s\S])/g,
+        return `${line++}:${body.replace(
+            /(\r\n|\r|\n)(?=[\s\S])/g,
             (separator) => `${separator}${line++}:`,
-        );
+        )}`;
     }
 
     // The single content-body renderer EVERY output-emitting op routes through, so the line-number
