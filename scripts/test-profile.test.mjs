@@ -70,6 +70,10 @@ test("live/demo operator bootstrap carries Tavily and Brave from the authoritati
 test("live and demo load the shared profile and retain their exact policy owner", async () => {
     const pkg = JSON.parse(readFileSync(resolve(root, "plurnk-core", "package.json"), "utf8"));
     const live = await liveInvocation();
+    assert.equal(pkg.scripts["build:rail"], "npm run build:gbnf -w @plurnk/plurnk-contracts");
+    for (const name of ["pretest:live", "pretest:live:specimen", "pretest:demo", "pretest:demo:zeropin"]) {
+        assert.equal(pkg.scripts[name], "npm run build:rail", `${name} regenerates the model rail before use`);
+    }
     assert.ok(live.args.includes("--env-file-if-exists=.env.test"));
     assert.equal(live.env.PLURNK_SERVICE_POLICY, "../plurnk-meta/PLURNK_PERSONALITY.md");
     assert.equal(pkg.scripts["test:live:zeropin"], "PLURNK_ZERO_PIN=1 npm run test:live");

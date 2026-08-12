@@ -2,23 +2,20 @@
 // the harness asserts every registered validator agrees both with the labeled corpus
 // expectation and with every other validator.
 //
-// Today the registry holds only the compiled C oracle, so the cross-check reduces to
-// "the oracle matches the corpus." The moment the native TS GBNF engine is registered
-// here, the SAME corpus becomes a true TS-vs-oracle differential with no new test code.
-// That is the whole point of the oracle's existence (AGENTS.md §9, §10).
+// The registry holds the compiled C oracle and the native TS GBNF engine, so every
+// case is both independently labeled and checked across implementations.
 
-import { readFileSync } from "node:fs";
 import { runOracle, type Verdict } from "./_oracle.ts";
 import { validateGbnf } from "../../src/index.ts";
 
 export type Validator = {
     name: string;
-    validate: (grammarPath: string, input: string) => Verdict;
+    validate: (grammar: string, input: string) => Verdict;
 };
 
 export const VALIDATORS: Validator[] = [
     { name: "oracle", validate: runOracle },
-    { name: "ts", validate: (grammarPath, input) => validateGbnf(readFileSync(grammarPath, "utf8"), input) },
+    { name: "ts", validate: validateGbnf },
 ];
 
 export const sameVerdict = (a: Verdict, b: Verdict): boolean => {

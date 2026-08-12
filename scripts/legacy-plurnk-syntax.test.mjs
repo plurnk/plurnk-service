@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildModel, serializeGbnf } from "../plurnk-contracts/scriptify/generate-gbnf.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const IGNORED_DIRECTORIES = new Set([
@@ -47,16 +48,21 @@ const filesUnder = async (directory) => {
 
 test("retired PLURNK delimiters never reappear", async () => {
     const violations = [];
-    const files = [
-        ...await filesUnder(ROOT),
-        join(ROOT, "plurnk-contracts", "dist", "plurnk.gbnf"),
+    const sources = [
+        ...await Promise.all((await filesUnder(ROOT)).map(async (file) => ({
+            name: relative(ROOT, file),
+            content: await readFile(file, "utf8"),
+        }))),
+        {
+            name: "generated:plurnk.gbnf",
+            content: serializeGbnf(buildModel(), "root-turn"),
+        },
     ];
-    for (const file of files) {
-        const content = await readFile(file, "utf8");
+    for (const { name, content } of sources) {
         for (const pattern of RETIRED_FORMS) {
             for (const match of content.matchAll(pattern)) {
                 const line = content.slice(0, match.index).split("\n").length;
-                violations.push(`${relative(ROOT, file)}:${line}: ${match[0]}`);
+                violations.push(`${name}:${line}: ${match[0]}`);
             }
         }
     }

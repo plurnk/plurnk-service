@@ -1,27 +1,28 @@
 // The differential corpus: (grammar, input, expectation) cases, each justified by a
 // real-world truth rather than by what the oracle happens to say (so it is a genuine
-// test, not a tautology). Two grammar fixtures:
+// test, not a tautology). Two grammar sources:
 //
 //   echo.gbnf   — a tiny hand-written grammar that pins the verdict trichotomy with
 //                 oracle-independent certainty.
-//   plurnk.gbnf — a verbatim snapshot of plurnk-contracts/dist/plurnk.gbnf, the actual
-//                 generated grammar that constrains the live model. This is the real
-//                 situation the tooling exists for; refresh it from the sibling repo.
+//   plurnk.gbnf — freshly serialized from plurnk-contracts' owning generator. This is
+//                 the real situation the tooling exists for without a copied snapshot.
 //
 // Shapes are drawn from the live ecosystem: Markdown operation sections, the
 // Harmony reasoning channel that the grammar's root requires, terminal SEND
 // status codes, and lane-aware section bodies (see plurnk-contracts' lexer and
 // model reference).
 
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildModel, serializeGbnf } from "../../../plurnk-contracts/scriptify/generate-gbnf.ts";
 import type { Verdict } from "./_oracle.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string): string => join(here, "fixtures", name);
 
-export const ECHO_GBNF = fixture("echo.gbnf");
-export const PLURNK_GBNF = fixture("plurnk.gbnf");
+export const ECHO_GBNF = readFileSync(fixture("echo.gbnf"), "utf8");
+export const PLURNK_GBNF = serializeGbnf(buildModel(), "root-turn");
 
 export type Case = {
     name: string;

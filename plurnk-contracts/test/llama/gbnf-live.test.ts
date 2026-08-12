@@ -23,10 +23,11 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { PlurnkParser } from "../../src/index.ts";
+import { buildModel, serializeGbnf } from "../../scriptify/generate-gbnf.ts";
 
 const BASE_URL = process.env.PLURNK_LLAMA_URL ?? "http://127.0.0.1:11435";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const grammar = readFileSync(join(repoRoot, "dist", "plurnk.gbnf"), "utf8");
+const grammar = serializeGbnf(buildModel(), "root-turn");
 const system = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
 const reasoningAllowance = 64;
 
@@ -62,7 +63,7 @@ const complete = async (userPrompt: string, maxTokens: number): Promise<Completi
     };
 };
 
-test("llama.cpp accepts the shipped plurnk.gbnf (size/format check)", async () => {
+test("llama.cpp accepts the generated plurnk.gbnf (size/format check)", async () => {
     const { content } = await complete("Say anything.", 1);
     assert.equal(typeof content, "string");
 });

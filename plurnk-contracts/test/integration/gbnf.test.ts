@@ -5,9 +5,6 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 import { PlurnkParser } from "../../src/index.ts";
 import {
     buildModel,
@@ -175,13 +172,6 @@ const mid = (op: string, slots = "", body?: string): string =>
 const terminal = (code: number, body: string, slots = ""): string => `## SEND0 [${code}]${slots}\n${body}`;
 const turn = (planBody: string, operations: string[], code = 200, sendBody = "done", sendSlots = ""): string =>
     `${plan(planBody)}${operations.join("")}${terminal(code, sendBody, sendSlots)}`;
-
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-
-test("GBNF artifact is byte-identical to the generator model", () => {
-    const committed = readFileSync(join(repoRoot, "dist", "plurnk.gbnf"), "utf8");
-    assert.equal(committed, serializeGbnf(model, "root-turn"));
-});
 
 // {§gbnf-turn-shape}
 test("GBNF root requires PLAN first and one terminal SEND last", () => {

@@ -132,6 +132,9 @@ parser or semantic validator. Parse compatibility is a design goal balanced
 against rail size and sampling efficiency, not a language-subset guarantee. A
 rail-legal operation can therefore produce a parser or AstBuilder error; consumers
 apply their ordinary admission and bounded-operation recovery contract.
+The complete package build emits the rail; it is not source-controlled. Source and
+differential tests serialize the owning generator directly, while installation
+coverage verifies the packed export.
 
 
 The shipped raw turn has one shape with optional document framing:
