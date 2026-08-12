@@ -201,13 +201,30 @@ export const packetSection = (packet: unknown, name: string): string =>
 // Parse the rendered log section's fenced jsonplurnk array back into structured records — lets
 // tests assert on the model's actual log VIEW with field precision (coordinate via `path`, the
 // model-facing `target` URI, op, status, origin, display). Strips the ONE deviation (a `body` value
-// is a raw <<BODY … BODY heredoc) to recover strict JSON — the same content-agnostic,
-// fence-anchored transform the plurnkdown linter applies ({§jsonplurnk}).
+// is a raw `<|BODY> … <BODY|>` enclosure) to recover strict JSON — the same
+// content-agnostic, boundary-anchored transform the plurnkdown linter applies ({§jsonplurnk}).
 export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
     const fence = /(`{3,})jsonplurnk\n([\s\S]*?)\n\1(?:\n|$)/.exec(packetSection(packet, "log"));
     if (fence === null) return [];
-    const strict = fence[2].replace(/"body":\n<<BODY\n[\s\S]*?\nBODY\n\}/g, '"body":""}');
-    return JSON.parse(strict) as Array<Record<string, unknown>>;
+    const block = fence[2];
+    const opener = /"body":\s*<\|BODY>\n/g;
+    let strict = "";
+    let cursor = 0;
+    let match: RegExpExecArray | null;
+    while ((match = opener.exec(block)) !== null) {
+        const contentStart = match.index + match[0].length;
+        const closeMatch = /(?:^|\n)<BODY\|>(?=\n|$)/g;
+        closeMatch.lastIndex = contentStart;
+        const close = closeMatch.exec(block);
+        if (close === null) throw new Error("jsonplurnk test helper found an unterminated <|BODY> enclosure");
+        const closeStart = close.index + (close[0].startsWith("\n") ? 1 : 0);
+        strict += block.slice(cursor, match.index)
+            + '"body":'
+            + JSON.stringify(block.slice(contentStart, closeStart));
+        cursor = closeStart + "<BODY|>".length;
+        opener.lastIndex = cursor;
+    }
+    return JSON.parse(strict + block.slice(cursor)) as Array<Record<string, unknown>>;
 };
 
 // Fixture root-assignment (headless-is-forever: production sets projectRoot ONLY at

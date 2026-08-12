@@ -130,7 +130,7 @@ test("Engine.runLoop: idle turn (102, no work op) steers and strikes — spins o
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 5 }, () => contentResponse(
-                "<<PLAN:continue without work:PLAN\n<<SEND[102]:idling:SEND",
+                "<|PLAN>continue without work<PLAN|>\n<|SEND[102]>idling<SEND|>",
             )),
         });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });

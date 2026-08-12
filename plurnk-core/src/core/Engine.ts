@@ -1238,7 +1238,7 @@ export default class Engine {
                     // (the model's own survey, mirrored OPEN). An explicit file cap rides as
                     // `<1,N>`; ordinary surveys teach the safe markerless default by example.
                     const target = isFile ? pattern : `${scheme}:///${pattern}`;
-                    turnZeroMoves.push(`<<FIND(${target})${cap === null ? "" : `<1,${cap}>`}::FIND`);
+                    turnZeroMoves.push(`<|FIND(${target})${cap === null ? "" : `<1,${cap}>`}|>`);
                 }
                 // The kernel's self-documenting surface — FIND(worker://plurnk/docs/**), uncapped,
                 // always ({§schemes-directory}, published under {§entry-owner}).
@@ -1250,7 +1250,7 @@ export default class Engine {
                 };
                 await this.dispatch({ statement: kernelDocsFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                 nextActionIndex++;
-                turnZeroMoves.push("<<FIND(worker://plurnk/docs/**)<1,-1>::FIND");
+                turnZeroMoves.push("<|FIND(worker://plurnk/docs/**)<1,-1>|>");
                 // {§worker-scheme} — the building worker's own scratch gets the same markerless
                 // one-level survey in its perspective alone. It always executes: an empty private
                 // space is useful orientation, not grounds to hide the surface.
@@ -1261,14 +1261,14 @@ export default class Engine {
                 };
                 await this.dispatch({ statement: ownFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                 nextActionIndex++;
-                turnZeroMoves.push("<<FIND(worker://~/*)::FIND");  // {§model-entry} — the own-space survey, into the turn-0 echo
+                turnZeroMoves.push("<|FIND(worker://~/*)|>");  // {§model-entry} — the own-space survey, into the turn-0 echo
             }
             // {§model-entry} — mirror the model's turn-0 OPEN at sequence 1: PLAN → the FINDs actually
             // foisted above (real, their results already in the log) → SEND[102]. Dynamic — it reflects
             // the true survey, never a frozen print — and OPEN: the worked example the model orients on,
             // so the grammar can stay thin. Subsequent turns mirror the model's real output, folded.
             if (workerFirstLoop) {
-                const emission = ["<<PLAN:Survey context, then address the prompt.:PLAN", ...turnZeroMoves, "<<SEND[102]:Next, address the prompt using the survey.:SEND"].join("\n");
+                const emission = ["<|PLAN>Survey context, then address the prompt.<PLAN|>", ...turnZeroMoves, "<|SEND[102]>Next, address the prompt using the survey.<SEND|>"].join("\n");
                 await this.#dispatcher.writeModelEntry({ verbatim: emission, workerId, loopId, turnId, sequence: 1, folded: false, origin: "plurnk" });
             }
         }

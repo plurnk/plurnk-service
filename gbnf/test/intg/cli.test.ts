@@ -25,19 +25,19 @@ const run = (args: string[], input = ""): Run => {
 };
 
 test("prints the verdict as pretty JSON on stdout", () => {
-    const { stdout } = run([ECHO], "<<ECHO:hi:ECHO");
+    const { stdout } = run([ECHO], "<|ECHO>hi<ECHO|>");
     assert.deepEqual(JSON.parse(stdout), { status: "accept" });
     assert.match(stdout, /\n {2}"status"/); // 2-space indent
 });
 
 test("exit 0 on accept, 1 on reject/incomplete", () => {
-    assert.equal(run([ECHO], "<<ECHO:hi:ECHO").code, 0);
+    assert.equal(run([ECHO], "<|ECHO>hi<ECHO|>").code, 0);
     assert.equal(run([ECHO], "oops").code, 1);
-    assert.equal(run([ECHO], "<<ECHO:hi").code, 1); // incomplete
+    assert.equal(run([ECHO], "<|ECHO>hi").code, 1); // incomplete
 });
 
 test("reads input from stdin when no input-file is given", () => {
-    const { code, stdout } = run([ECHO], "<<ECHO::ECHO");
+    const { code, stdout } = run([ECHO], "<|ECHO><ECHO|>");
     assert.equal(code, 0);
     assert.equal(JSON.parse(stdout).status, "accept");
 });

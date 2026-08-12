@@ -4,7 +4,7 @@ Plurnk is an agentic service for acting on and answering user prompts with multi
 
 Plurnk Features:
 
-* Simple Grammar: HEREDOC-inspired polymorphic syntax achieves predictable but powerful operations.
+* Simple Grammar: tagged polymorphic operations provide predictable but powerful actions.
 * Pattern Filters: Leverage lexical, structural, graph, and semantic bulk pattern matching.
 * Worker Knowledgebase: Durable, searchable worker entries support hierarchical paths and folksonomic tags.
 * Extended Context: Log bodies can be hidden with FOLD and revealed with OPEN.
@@ -16,16 +16,17 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|W
 ### Syntax
 
 ```
-<<OPsuffix[signal]?(path)?<scope>?:body?:OPsuffix
+<|OPsuffix[signal]?(path)?<scope>?|>
+<|OPsuffix[signal]?(path)?<scope>?>body<OPsuffix|>
 ```
 
-The closer echoes the operation name and optional suffix.
-When a body contains an OP, suffix the outer OP: `<<EDIT1(worker:///demo.md):Quoted: <<READ(source.md)::READ:EDIT1`
-An empty body retains both delimiters: `<<READ(AGENTS.md)::READ`
+Use the self-closing form when there is no body.
+Bodyful OPs use asymmetric tags: the opening tag begins `<|`, and the matching closing tag is `<OPsuffix|>`.
+When a body contains an OP, suffix the outer OP: `<|EDIT1(worker:///demo.md)>Quoted: <|READ(source.md)|><EDIT1|>`
+An empty body self-closes: `<|READ(AGENTS.md)|>`
 Body content is character-perfect, exactly matching whitespace.
 PLURNK does not decode body escapes: `\n` is backslash plus `n`.
 Emit a physical newline when literal body content needs one.
-A turn concatenates complete OPs; reference examples are alternatives unless shown together in a `plurnk` block.
 
 ### OPs
 
@@ -71,16 +72,16 @@ Matcher bodies select treemapped resources by their content.
 
 Examples:
 
-* Regex: `<<FIND(src/**/*.ts):/createCoder/i:FIND`
-* XPath: `<<FIND(config/**/*.xml)://user[@role='admin']:FIND`
-* JSONPath: `<<FIND(data/users.json):$[?(@.role=="admin")]:FIND`
-* Semantic threshold/range: `<<FIND(worker:///**)<0.7,1,50>:~french revolutionary history:FIND`
-* Graph: `<<FIND(src/**):@<createCoder:FIND`
-* Glob body: `<<FIND(worker:///**):*revolution*:FIND`
+* Regex: `<|FIND(src/**/*.ts)>/createCoder/i<FIND|>`
+* XPath: `<|FIND(config/**/*.xml)>//user[@role='admin']<FIND|>`
+* JSONPath: `<|FIND(data/users.json)>$[?(@.role=="admin")]<FIND|>`
+* Semantic threshold/range: `<|FIND(worker:///**)<0.7,1,50>>~french revolutionary history<FIND|>`
+* Graph: `<|FIND(src/**)>@<createCoder<FIND|>`
+* Glob body: `<|FIND(worker:///**)>*revolution*<FIND|>`
 
 ### `(path)`
 
-* READ with a path glob or `:body:` pattern becomes FIND; otherwise READ addresses one exact target.
+* READ with a path glob or body pattern becomes FIND; otherwise READ addresses one exact target.
 * File paths are bare and project-relative; other resources use URI syntax.
 * Log item paths are nested: `log:///1/2/3` is loop/turn/item.
 * Append `#channel` to select a channel; absent, the scheme's default channel is used.
@@ -89,8 +90,8 @@ Examples:
 
 Examples:
 
-* Parent traversal: `<<READ(../AGENTS.md)<2>::READ`
-* Stream channel: `<<READ(sh:///1/2/3#stderr)<1,40>::READ`
+* Parent traversal: `<|READ(../AGENTS.md)<2>|>`
+* Stream channel: `<|READ(sh:///1/2/3#stderr)<1,40>|>`
 
 ### The Worker Knowledgebase
 
@@ -101,9 +102,9 @@ Examples:
 
 Examples:
 
-* Preserve tagged research: `<<EDIT[research,france](worker://~/research.md):Paris is the capital of France.:EDIT`
-* Read a shared entry: `<<READ(worker:///notes.md)::READ`
-* Read another worker's entry: `<<READ(worker://other-worker/notes.md)::READ`
+* Preserve tagged research: `<|EDIT[research,france](worker://~/research.md)>Paris is the capital of France.<EDIT|>`
+* Read a shared entry: `<|READ(worker:///notes.md)|>`
+* Read another worker's entry: `<|READ(worker://other-worker/notes.md)|>`
 
 ### `<scope>`
 
@@ -111,10 +112,10 @@ Text scope (Line, StartLine, StartColumn, EndLine, EndColumn) has one meaning fo
 
 | form            | endpoint rule                  | example                                                       |
 |-----------------|--------------------------------|---------------------------------------------------------------|
-| `<L>`           | one line                       | `<<EDIT(notes.md)<2>::EDIT` deletes line 2                    |
-| `<SL,EL>`       | lines SL through EL, inclusive | `<<READ(notes.md)<2,3>::READ` reads lines 2 and 3             |
-| `<SL,SC,EL,EC>` | start included, end excluded   | `<<READ(notes.md)<2,1,2,5>::READ` reads columns 1-4 of line 2 |
-| `<SL,SC,SL,SC>` | positions, zero-width          | `<<EDIT(notes.md)<2,5,2,5>:inserted text:EDIT` insertion      |
+| `<L>`           | one line                       | `<|EDIT(notes.md)<2>|>` deletes line 2                    |
+| `<SL,EL>`       | lines SL through EL, inclusive | `<|READ(notes.md)<2,3>|>` reads lines 2 and 3             |
+| `<SL,SC,EL,EC>` | start included, end excluded   | `<|READ(notes.md)<2,1,2,5>|>` reads columns 1-4 of line 2 |
+| `<SL,SC,SL,SC>` | positions, zero-width          | `<|EDIT(notes.md)<2,5,2,5>>inserted text<EDIT|>` insertion      |
 
 * Lines and Unicode code-point columns are 1-based.
 * Rendered `L:` prefixes are coordinates, not content; edit from a recent READ.
@@ -129,15 +130,15 @@ YOU SHOULD FOLD superseded PLANs and READs made stale by later changes before th
 
 Examples:
 
-* File this body under the capitalTrivia tag (saves tokens): `<<FOLD[capitalTrivia](log:///42/7/5)::FOLD`
-* Recall bodies filed under the capitalTrivia tag (spends tokens): `<<OPEN[capitalTrivia](log:///**)::OPEN`
+* File this body under the capitalTrivia tag (saves tokens): `<|FOLD[capitalTrivia](log:///42/7/5)|>`
+* Recall bodies filed under the capitalTrivia tag (spends tokens): `<|OPEN[capitalTrivia](log:///**)|>`
 
 ## Delegation
 
-* Work on a Git branch: `<<WORK[feature/recheck](worker://recheck):Implement the alternative:WORK`
-* Send a worker another message: `<<SEND(worker://recheck):Also, what is the capital of Germany?:SEND`
-* Fork with inherited history: `<<FORK(worker://recheck):Re-derive the capital from a primary source:FORK`
-* Terminate a worker: `<<KILL(worker://recheck)::KILL`
+* Work on a Git branch: `<|WORK[feature/recheck](worker://recheck)>Implement the alternative<WORK|>`
+* Send a worker another message: `<|SEND(worker://recheck)>Also, what is the capital of Germany?<SEND|>`
+* Fork with inherited history: `<|FORK(worker://recheck)>Re-derive the capital from a primary source<FORK|>`
+* Terminate a worker: `<|KILL(worker://recheck)|>`
 
 Before using a branch tag, ensure the repository is clean.
 
@@ -154,14 +155,14 @@ sequenceDiagram
 ```
 
 ```plurnk
-<<PLAN:Delegate the capital question, then wait.:PLAN
-<<WORK(worker://capital-checker):Find the capital of France from a primary source:WORK
-<<SEND[202]:Awaiting capital-checker.:SEND
+<|PLAN>Delegate the capital question, then wait.<PLAN|>
+<|WORK(worker://capital-checker)>Find the capital of France from a primary source<WORK|>
+<|SEND[202]>Awaiting capital-checker.<SEND|>
 ```
 
 ```plurnk
-<<PLAN:Deliver the collected answer.:PLAN
-<<SEND[200]:The capital of France is Paris.:SEND
+<|PLAN>Deliver the collected answer.<PLAN|>
+<|SEND[200]>The capital of France is Paris.<SEND|>
 ```
 
 ## Imperatives

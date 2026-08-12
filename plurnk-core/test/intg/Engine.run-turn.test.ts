@@ -43,7 +43,7 @@ const planStmt = (body: string): PlanStatement => ({
 const contentResp = (content: string, completion: number = 0): MockResponse => ({
     assistant: {
         // grammar 0.70: turns lead with PLAN (the Engine re-parses this content).
-        content: content.startsWith("<<PLAN") ? content : `<<PLAN::PLAN\n${content}`,
+        content: content.startsWith("<|PLAN") ? content : `<|PLAN|>\n${content}`,
         reasoning: null,
     },
     usage: { inputTokens: 0, outputTokens: completion, totalTokens: completion },
@@ -184,7 +184,7 @@ test("Engine.runTurn: packet stores system + user content from messages when the
         // the definition; the empty-prompt fallback is the assertion's real subject.
         const definition = packetSection(packet, "definition");
         assert.ok(definition.startsWith("system prompt body"), "system message body leads the definition section");
-        assert.match(packetSection(packet, "schemes"), /<<EDIT\(worker:\/\/\/notes\.md\)/, "the scheme directory is its own section now, not appended to the definition");
+        assert.match(packetSection(packet, "schemes"), /<\|EDIT\(worker:\/\/\/notes\.md\)>/, "the scheme directory is its own section now, not appended to the definition");
         assert.equal(packetSection(packet, "prompt"), "first user msg\n\nsecond user msg");
         assert.ok(packet.assistant !== null);
     } finally { await db.close(); }
@@ -379,8 +379,8 @@ test("Engine.runLoop: three consecutive hard failures abandon at 500 with strike
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 5 }, (_, i) => contentResp([
-                `<<EDIT(sealed:///x-${i}):v:EDIT`,
-                "<<SEND[102]:going:SEND",
+                `<|EDIT(sealed:///x-${i})>v<EDIT|>`,
+                "<|SEND[102]>going<SEND|>",
             ].join("\n"))),
         });
         const result = await engine.runLoop({
@@ -505,8 +505,8 @@ test("Engine.runLoop: 3 identical period-1 turns trip cycle → strikes accumula
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 8 }, () => contentResp([
-                "<<EDIT(worker:///fixed)<1,-1>:v:EDIT",
-                "<<SEND[102]:go:SEND",
+                "<|EDIT(worker:///fixed)<1,-1>>v<EDIT|>",
+                "<|SEND[102]>go<SEND|>",
             ].join("\n"))),
         });
         const result = await engine.runLoop({
@@ -760,10 +760,10 @@ test("Engine.runTurn: the log section parses an application/json rx body", async
         const edit = log.find((e) => e.origin === "model" && e.op === "EDIT");
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
-        // The EDIT's result span renders (line-numbered) under its target fence —
+        // The EDIT's result span renders line-numbered inside the fixed BODY enclosure —
         // observable proof #buildLog parsed the JSON rx: a string rx couldn't yield
-        // rx.span, so the render would fall back to the statement heredoc instead.
-        assert.match(packetSection(packet, "log"), /<<BODY\n1:v\nBODY/);
+        // rx.span, so the render would fall back to the authored statement instead.
+        assert.match(packetSection(packet, "log"), /<\|BODY>\n1:v\n<BODY\|>/);
     } finally { await db.close(); }
 });
 
@@ -844,7 +844,7 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
         // non-executable, while the SEND[200] after it still parses and dispatches.
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [contentResp("Just thinking out loud here.\n<<SEND[200]:done:SEND", 10)],
+            responses: [contentResp("Just thinking out loud here.\n<|SEND[200]>done<SEND|>", 10)],
         });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,

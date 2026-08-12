@@ -3,7 +3,7 @@
 // This is a pragmatic generation filter, not a second parser contract. Keeping sampled
 // output parseable is a goal balanced against rail size and sampling efficiency, not an
 // invariant. Bodies use complement automata over each close literal ("any text not
-// containing :OPsuffix") so llama.cpp parse stacks stay deterministic.
+// containing <OPsuffix|>") so llama.cpp parse stacks stay deterministic.
 //
 // The rule model is exported for the integration tests (corpus derivability +
 // seeded fuzz against PlurnkParser); the file write only happens when run as a script.
@@ -25,7 +25,7 @@ const star = (item: GItem): GItem => ({ kind: "rep", item, min: 0, max: Infinity
 const plus = (item: GItem): GItem => ({ kind: "rep", item, min: 1, max: Infinity });
 
 const R = (a: string, b: string): [number, number] => [a.codePointAt(0)!, b.codePointAt(0)!];
-const C = (chars: string): Array<[number, number]> => [...chars].map((ch) => R(ch, ch));
+const C = (chars: string): Array<[number, number]> => [...new Set(chars)].map((ch) => R(ch, ch));
 const cls = (ranges: Array<[number, number]>, negate = false): GItem => ({ kind: "cls", ranges, negate });
 
 const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "WORK", "FORK", "KILL", "PLAN"] as const;
@@ -36,7 +36,7 @@ const PATTERN_OPS = new Set<string>(["FIND", "READ", "OPEN", "FOLD"]);
 // accepts the general suffix shape; deeper generation can use a custom rail.
 //
 // IRREDUCIBLE form, do not "optimize" to `[1-2]*`: the close tag must MATCH the open
-// suffix (`<<EDITk … :EDITk`) AND the body automaton must exclude that exact close
+// suffix (`<|EDITk…>…<EDITk|>`) AND the body automaton must exclude that exact close
 // literal — both context-sensitive, which a CFG (GBNF, no backrefs) cannot express for
 // a general suffix. The only encoding that honors matching + exclusion is a bounded,
 // enumerated set, one production per value.
@@ -62,8 +62,8 @@ const bodyOther = (excluded: string, singleLine = false): GItem =>
 // Complement automaton for one close literal: state k = matched the first k chars
 // of `close`. Reaching len(close) is forbidden, so the literal never occurs inside
 // the body; the statement's trailing close literal is the unique occurrence. Close
-// literals are ":" + word — no internal ":" and no borders, so on a mismatch the
-// only live restart is ":" → state 1.
+// literals begin with `<` and contain no second `<`, so on a mismatch the only
+// live restart is `<` → state 1.
 const bodyRules = (
     model: GModel,
     name: string,
@@ -71,72 +71,35 @@ const bodyRules = (
     singleLine = false,
     canonicalExclusions = "",
 ): void => {
+    const excludesOpen = canonicalExclusions.includes(close[0]);
     for (let k = 0; k < close.length; k++) {
         const expected = close[k];
         const alts: GRule = [];
-        if (k + 1 < close.length) alts.push([lit(expected), ref(`${name}-b${k + 1}`)]);
-        if (k > 0) alts.push([lit(":"), ref(`${name}-b1`)]);
-        alts.push([bodyOther((k === 0 ? ":" : `:${expected}`) + canonicalExclusions, singleLine), ref(`${name}-b0`)]);
+        if (k + 1 < close.length && !(k === 0 && excludesOpen)) alts.push([lit(expected), ref(`${name}-b${k + 1}`)]);
+        if (k > 0 && !excludesOpen) alts.push([lit(close[0]), ref(`${name}-b1`)]);
+        alts.push([bodyOther((k === 0 ? close[0] : close[0] + expected) + canonicalExclusions, singleLine), ref(`${name}-b0`)]);
         alts.push([]);
         model.set(`${name}-b${k}`, alts);
     }
 };
 
-// Pattern bodies may be empty or begin with any ordinary single-line character except
-// `:`. This removes the high-probability `:::OP` typo from the local-model rail: after the
-// body delimiter, a leading `:` creates the same spelling as an accidental extra delimiter.
-// ANTLR remains permissive, and a literal leading colon is still expressible unambiguously
-// as a regex. Once one matcher character is consumed, the ordinary body automaton applies
-// and colons remain legal everywhere else.
-const patternBodyStartRule = (model: GModel, name: string): string => {
-    const rule = `${name}-pattern-start`;
-    model.set(rule, [
-        [bodyOther(":", true), ref(`${name}-b0`)],
-        [],
-    ]);
-    return rule;
-};
-
 // Non-empty body: `${name}-b0` minus its entry epsilon, so the body MUST consume at least
-// one char before the close. The two non-epsilon transitions of state 0 (`:` -> b1,
+// one char before the close. The two non-epsilon transitions of state 0 (`<` -> b1,
 // any-other -> b0) then hand off to the normal automaton, which keeps its epsilon, so the
 // body can still end after that first char. Used where an empty body has no meaning: PLAN,
 // terminal SEND, WORK, and FORK. Whitespace-only bodies still pass; that residual is a
 // post-gen sieve's job, not the grammar's.
-const bodyRulesNonEmpty = (model: GModel, name: string, close: string): void => {
+const bodyRulesNonEmpty = (
+    model: GModel,
+    name: string,
+    close: string,
+    singleLine = false,
+    canonicalExclusions = "",
+): void => {
     const alts: GRule = [];
-    if (close.length > 1) alts.push([lit(close[0]), ref(`${name}-b1`)]);
-    alts.push([bodyOther(":"), ref(`${name}-b0`)]);
+    if (close.length > 1 && !canonicalExclusions.includes(close[0])) alts.push([lit(close[0]), ref(`${name}-b1`)]);
+    alts.push([bodyOther(close[0] + canonicalExclusions, singleLine), ref(`${name}-b0`)]);
     model.set(`${name}-b0ne`, alts);
-};
-
-// PLAN has no suffix, so its complement forbids both `:PLAN` and the operation
-// opener `<<`. A missing closer therefore cannot absorb later operations. A single
-// `<` remains legal. {§plan-body-no-openers}
-const planBodyRules = (model: GModel, name: string, close: string): void => {
-    // Closer-prefix states (k = chars of `close` matched), each `<`-aware.
-    for (let k = 0; k < close.length; k++) {
-        const expected = close[k];
-        const alts: GRule = [];
-        if (k + 1 < close.length) alts.push([lit(expected), ref(`${name}-b${k + 1}`)]);
-        if (k > 0) alts.push([lit(":"), ref(`${name}-b1`)]);
-        alts.push([lit("<"), ref(`${name}-lt`)]);
-        alts.push([bodyOther((k === 0 ? ":" : `:${expected}`) + "<"), ref(`${name}-b0`)]);
-        alts.push([]);
-        model.set(`${name}-b${k}`, alts);
-    }
-    // One `<` consumed: a second `<` has no transition — `<<` is unsampleable in-body.
-    model.set(`${name}-lt`, [
-        [lit(":"), ref(`${name}-b1`)],
-        [bodyOther(":<"), ref(`${name}-b0`)],
-        [],
-    ]);
-    // Non-empty entry (no blank statement of intent), same doors minus the entry epsilon.
-    model.set(`${name}-b0ne`, [
-        [lit(close[0]), ref(`${name}-b1`)],
-        [lit("<"), ref(`${name}-lt`)],
-        [bodyOther(":<"), ref(`${name}-b0`)],
-    ]);
 };
 
 // Complement automaton for a finite set of forbidden literals. State is the longest
@@ -184,13 +147,13 @@ const forbidLiterals = (model: GModel, name: string, literals: string[]): void =
 };
 
 // Left-factor a set of opener literals into a shared-prefix trie. The flat form lists one
-// full-literal alternative per op variant (`"<<FIND"`, `"<<FIND1"`, … `"<<KILL9"`), so the
-// instant `<<` is consumed EVERY variant's parse stack is live in parallel — ~141 stacks at
+// full-literal alternative per op variant (`"<|FIND"`, `"<|FIND1"`, … `"<|KILL9"`), so the
+// instant `<|` is consumed EVERY variant's parse stack is live in parallel — ~141 stacks at
 // the single hottest decision in the grammar, the per-token cost driver in llama.cpp. The
-// trie shares `<<` and the op-name prefix, so after `<<` only the distinct first letters are
+// trie shares `<|` and the op-name prefix, so after `<|` only the distinct first letters are
 // live (~8) and the count narrows as letters are consumed. Pure left-factoring: each entry's
 // `tails` are the alternatives that follow its literal, re-attached at the leaf; a literal
-// that is a prefix of another (`<<SEND` ⊂ `<<SEND1`) keeps its tails at the interior node
+// that is a prefix of another (`<|SEND` ⊂ `<|SEND1`) keeps its tails at the interior node
 // alongside the deeper branch. L(trie) = L(flat alternation), proven via the @plurnk/gbnf
 // differential oracle. The per-suffix body automata are untouched — they are 1 stack each,
 // off the hot path, and remain the artifact's bulk (see SUFFIXES).
@@ -231,36 +194,40 @@ export const buildModel = (): GModel => {
             // PLAN is the bare, unsuffixed intended-goals record. {§plan-intended-goals}
             if (op === "PLAN" && suffix !== "") continue;
             const name = op.toLowerCase() + (suffix === "" ? "" : `-${suffix}`);
-            const open = `<<${op}${suffix}`;
-            const close = `:${op}${suffix}`;
+            const open = `<|${op}${suffix}`;
+            const close = `<${op}${suffix}|>`;
             const patternBody = PATTERN_OPS.has(op);
             const resourceSelectionBody = op === "COPY" || op === "MOVE";
             // COPY/MOVE canon reserves raw `<` for the optional terminal destination
             // scope; literal URL angle brackets use the existing `%3C` spelling.
             // Typed ingestion reserves only the ambiguous terminal shape. {§destination-scope-boundary}
             bodyRules(model, name, close, patternBody, resourceSelectionBody ? "<" : "");
-            const bodyStart = patternBody ? patternBodyStartRule(model, name) : `${name}-b0`;
+            bodyRulesNonEmpty(model, name, close, patternBody, resourceSelectionBody ? "<" : "");
             const body = [
-                lit(":"),
-                ref(bodyStart),
+                lit(">"),
+                ref(`${name}-b0ne`),
                 ...(resourceSelectionBody ? [opt(ref("line"))] : []),
                 lit(close),
             ];
+            const selfClose = [lit("|>")];
             if (op === "SEND") {
                 // Mid SENDs carry no disposition; terminal SENDs require one disposition
                 // and a non-empty body. Only [202] admits a park scope. Runtime obligation
                 // truth remains outside the rail. {§send-mid-reservation}
                 // {§terminal-body-nonempty} {§park-202-only} {§wait-obligation-matrix}
-                // Tails are factored behind the shared `<<SEND…` opener trie (no leading
-                // `lit(open)` - the trie matches it). `<<SEND` is a prefix of `<<SEND1`, so
+                // Tails are factored behind the shared `<|SEND…` opener trie (no leading
+                // `lit(open)` - the trie matches it). `<|SEND` is a prefix of `<|SEND1`, so
                 // its tails sit at the interior trie node beside the digit branch.
-                bodyRulesNonEmpty(model, name, close);
-                const bodyNE = [lit(":"), ref(`${name}-b0ne`), lit(close)];
+                const bodyNE = [lit(">"), ref(`${name}-b0ne`), lit(close)];
                 sendMidEntries.push({ literal: open, tails: [
                     [lit("["), ref("status-mid"), lit("]"), ref("target"), ...body],  // targeted, any status
+                    [lit("["), ref("status-mid"), lit("]"), ref("target"), ...selfClose],
                     [ref("target"), ...body],                                          // targeted, statusless
+                    [ref("target"), ...selfClose],
                     [lit("["), ref("status-mid"), lit("]"), ...body],                  // pathless, any status
+                    [lit("["), ref("status-mid"), lit("]"), ...selfClose],
                     [...body],                                                          // pathless, statusless
+                    [...selfClose],
                 ] });
                 sendFinalEntries.push({ literal: open, tails: [
                     [lit("[102]"), opt(ref("target")), ...bodyNE],
@@ -275,30 +242,33 @@ export const buildModel = (): GModel => {
                 ] });
             } else if (op === "EXEC") {
                 // EXEC's optional `<timeout,poll>` rides the shared scope slot (runtime-interpreted).
-                opEntries.push({ literal: open, tails: [[opt(ref("exec-sig")), opt(ref("target")), opt(ref("line")), ...body]] });
+                const header = [opt(ref("exec-sig")), opt(ref("target")), opt(ref("line"))];
+                opEntries.push({ literal: open, tails: [[...header, ...selfClose], [...header, ...body]] });
             } else if (op === "PLAN") {
                 // PLAN is a standalone, non-empty turn anchor outside the mid-op trie.
-                // Its specialized body also excludes `<<`. {§plan-body-no-openers}
-                planBodyRules(model, name, close);
-                const bodyNE = [lit(":"), ref(`${name}-b0ne`), lit(close)];
+                // Its specialized body also excludes `<|`. {§plan-body-no-openers}
+                forbidLiterals(model, name, [close, "<|"]);
+                bodyRulesNonEmpty(model, name, close);
+                const bodyNE = [lit(">"), ref(`${name}-b0ne`), lit(close)];
                 model.set("plan", [[lit(open), ...bodyNE]]);
             } else if (op === "KILL") {
                 // Target-specific numeric code is wired but untaught — canon shows bare KILL.
-                opEntries.push({ literal: open, tails: [[opt(ref("kill-sig")), ref("target"), ...body]] });
+                opEntries.push({ literal: open, tails: [[opt(ref("kill-sig")), ref("target"), ...selfClose]] });
             } else if (op === "WORK" || op === "FORK") {
                 // Delegation verbs: optional single Git branch ref in the signal/tag slot,
                 // required worker target, then a non-empty prompt. The extra entry rule
                 // reuses the existing body automaton; it adds no second automaton family.
-                bodyRulesNonEmpty(model, name, close);
-                const bodyNE = [lit(":"), ref(`${name}-b0ne`), lit(close)];
+                const bodyNE = [lit(">"), ref(`${name}-b0ne`), lit(close)];
                 opEntries.push({ literal: open, tails: [[opt(ref("branch")), ref("target"), ...bodyNE]] });
             } else if (op === "OPEN" || op === "FOLD") {
                 // Log curation selects sets by tags + target + matcher. It has no positional
                 // scope slot; FIND alone paginates selected results.
-                opEntries.push({ literal: open, tails: [[opt(ref("tags")), ref("target"), ...body]] });
+                const header = [opt(ref("tags")), ref("target")];
+                opEntries.push({ literal: open, tails: [[...header, ...selfClose], [...header, ...body]] });
             } else {
                 // FIND/READ/EDIT/COPY/MOVE share the canonical tagged-target-scope shape.
-                opEntries.push({ literal: open, tails: [[opt(ref("tags")), ref("target"), opt(ref("line")), ...body]] });
+                const header = [opt(ref("tags")), ref("target"), opt(ref("line"))];
+                opEntries.push({ literal: open, tails: [[...header, ...selfClose], [...header, ...body]] });
             }
         }
     }

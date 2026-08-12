@@ -25,11 +25,11 @@ runtime with `PLURNK_EXECS_GIT=0`.
 ## Usage
 
 ```plurnk
-<<EXEC[git]:status --short:EXEC
-<<EXEC[git]:checkout -b feature/example:EXEC
-<<EXEC[git]:add .:EXEC
-<<EXEC[git]:commit -m "save work":EXEC
-<<EXEC[git](./subrepo):log --oneline -5:EXEC
+<|EXEC[git]>status --short<EXEC|>
+<|EXEC[git]>checkout -b feature/example<EXEC|>
+<|EXEC[git]>add .<EXEC|>
+<|EXEC[git]>commit -m "save work"<EXEC|>
+<|EXEC[git](./subrepo)>log --oneline -5<EXEC|>
 ```
 
 The repo's normal Git configuration determines author identity and other native

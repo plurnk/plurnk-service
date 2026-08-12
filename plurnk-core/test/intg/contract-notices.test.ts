@@ -19,7 +19,7 @@ import { OperationFailureError } from "../../src/core/results.ts";
 const contentResponse = (content: string): MockResponse => ({
     assistant: {
         // Turns lead with PLAN; the Engine re-parses the supplied content.
-        content: content.startsWith("<<PLAN") ? content : `<<PLAN::PLAN\n${content}`,
+        content: content.startsWith("<|PLAN") ? content : `<|PLAN>admit the supplied turn<PLAN|>\n${content}`,
         reasoning: null,
     },
     assistantRaw: null,
@@ -27,14 +27,14 @@ const contentResponse = (content: string): MockResponse => ({
 
 // A complete, admitted draining turn. Its only job is to run so the model's
 // next packet drains the notices buffer on read.
-const drainTurn = contentResponse("<<SEND[200]:drained:SEND");
+const drainTurn = contentResponse("<|SEND[200]>drained<SEND|>");
 
 // A provider transport anomaly notice. Grammar verdicts are engine-owned under
 // {§rail-truth-engine-verdict}; the provider notice path remains for observations
 // such as a decode escaping into a discarded channel.
 // `extraDrains` clean turns follow so the buffer can be observed draining.
-const NOTICE_CONTENT = "<<PLAN:reasoning:PLAN\n<<SEND[200]:noted:SEND"; // 'N' of SEND on line 2 = code point 26
-const NOTICE_POS = 26; // → content-offset line 2, column 4
+const NOTICE_CONTENT = "<|PLAN>reasoning<PLAN|>\n<|SEND[200]>noted<SEND|>";
+const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("<|SEND") + 4)).length; // `N` on line 2, column 4
 const noticeProvider = (extraDrains: number) => {
     const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
     const real = provider.generate.bind(provider);
@@ -164,7 +164,7 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
 
-        assert.match(packetSection(packet, "log"), /<<BODY\n2:beta\n3:gamma\nBODY/);
+        assert.match(packetSection(packet, "log"), /<\|BODY>\n2:beta\n3:gamma\n<BODY\|>/);
         assert.equal(
             packetSection(packet, "notices"),
             "* scope_normalized: Scope <2,1,3> was normalized to <2,1,3,6>.",
@@ -337,7 +337,7 @@ test("a parser warning remains an advisory — valid statements complete and no 
                 broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } });
             },
         });
-        const emission = "<<PLAN:😀:PLAN <<CLOSE(log://x)::CLOSE <<SEND[200]:done:SEND";
+        const emission = "<|PLAN>😀<PLAN|> <|CLOSE(log://x)>x<CLOSE|> <|SEND[200]>done<SEND|>";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
@@ -351,13 +351,14 @@ test("a parser warning remains an advisory — valid statements complete and no 
         const advisories = broadcasts.filter(({ payload }) => payload.notice.kind === "parse_advisory");
         assert.equal(advisories.length, 1, "the recoverable parser diagnosis is emitted once");
         assert.equal(advisories[0]!.payload.notice.level, "warn");
-        assert.match(String(advisories[0]!.payload.notice.message), /`<<CLOSE`.*did you mean `<<FOLD`/);
+        assert.match(String(advisories[0]!.payload.notice.message), /`<\|CLOSE`.*did you mean `<\|FOLD`/);
+        const warningColumn = Array.from(emission.slice(0, emission.indexOf("<|CLOSE"))).length;
         assert.deepEqual(
             advisories[0]!.payload.notice.position,
-            { type: "content-offset", line: 1, column: 14 },
+            { type: "content-offset", line: 1, column: warningColumn },
             "the Notice retains the parser's typed source position",
         );
-        assert.equal(emission.indexOf("<<CLOSE"), 15, "the specimen distinguishes code-point and UTF-16 columns");
+        assert.notEqual(emission.indexOf("<|CLOSE"), warningColumn, "the specimen distinguishes code-point and UTF-16 columns");
         assert.deepEqual(
             await db.test_error_rows_for_worker.all({ worker_id: workerId }),
             [],

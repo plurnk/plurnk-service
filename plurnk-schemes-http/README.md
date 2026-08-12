@@ -13,8 +13,8 @@ authored against the DB-free
 | Unscoped `READ(http(s)://…)`      | Fetch or reuse/revalidate a GET representation, then stream the selected response channel |
 | Scoped `READ(http(s)://…)<scope>` | Apply the standard entry READ to an already-materialized response without refetching      |
 | `FIND(http(s)://…):matcher`       | Materialize an exact URL when required, then use the universal entry query and matcher    |
-| `SEND[200](http(s)://…):body:`    | POST the body and stream the response                                                     |
-| `EDIT(http(s)://…):body:`         | PUT a whole-resource replacement; line-scoped HTTP edits are invalid                      |
+| `<|SEND[200](http(s)://…)>body<SEND|>` | POST the body and stream the response                                                |
+| `<|EDIT(http(s)://…)>body<EDIT|>`      | PUT a whole-resource replacement; line-scoped HTTP edits are invalid                 |
 | `KILL(http(s)://…)`               | DELETE the remote resource and stream the response                                        |
 | `SEND[499](http(s)://…)`          | Cancel the routed in-flight subscription                                                  |
 | `SEND[410](http(s)://…)`          | Delete the local stored response entry                                                    |

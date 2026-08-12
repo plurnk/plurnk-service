@@ -20,8 +20,8 @@ writes your own private entry.
 a fresh task. FORK only to carry *your own* context down an alternate path.
 
 **Loop: spawn once → park → collect on wake.** Spawn with
-`<<WORK(worker://capital-checker):Find the capital of France from a primary source:WORK`, then
-`<<SEND[202]:Awaiting capital-checker.:SEND` parks you. You wake when the worker concludes: its
+`<|WORK(worker://capital-checker)>Find the capital of France from a primary source<WORK|>`, then
+`<|SEND[202]>Awaiting capital-checker.<SEND|>` parks you. You wake when the worker concludes: its
 result arrives open in your log as a `SEND` from `worker://capital-checker` — read it and continue.
 Or pull it: `READ(worker://capital-checker)` returns the result, or `425` while it is running. Spawn
 each worker exactly once. Fan-out uses distinct names, followed by one park. Each conclusion wakes

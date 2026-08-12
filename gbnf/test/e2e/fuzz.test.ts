@@ -17,17 +17,17 @@ const rng = (seed: number) => () => {
 };
 
 // plurnk-flavoured fragments — assembling these provokes deep traversal of the real
-// grammar (heredoc openers, targets, matchers, signals, nesting suffixes, close tags),
+// grammar (statement openers, targets, matchers, signals, nesting suffixes, close tags),
 // landing on a rich mix of accept / incomplete / reject verdicts.
 const FRAGMENTS = [
-    "<think>", "</think>", "\n", "\n\n", " ", "\t",
-    "<<FIND", "<<READ", "<<EDIT", "<<SEND", "<<EXEC", "<<COPY", "<<MOVE", "<<OPEN", "<<FOLD", "<<KILL",
-    "<<EDIT1", "<<FIND2",
+    "<|channel>thought\n", "<channel|>", "\n", "\n\n", " ", "\t",
+    "<|PLAN", "<|FIND", "<|READ", "<|EDIT", "<|SEND", "<|EXEC", "<|COPY", "<|MOVE", "<|OPEN", "<|FOLD", "<|KILL",
+    "<|EDIT1", "<|FIND2", ">", "|>",
     "(known:///**)", "(plurnk:///manifest.json)", "(README.md)", "(run://x)", "(#re#i)", "()",
     "[200]", "[philosophy,france]", "[]",
     "<1,2>", "<0.7>", "<-1>", "<2.5>",
-    ":", "::", "~capital of France", "$.greeting", "$[?(@.x)]", "//h2/text()", "@<sym", "revolution", "Paris",
-    ":FIND", ":READ", ":EDIT", ":SEND", ":EXEC", ":EDIT1", ":FIND2", "%28", "%29",
+    ":", "~capital of France", "$.greeting", "$[?(@.x)]", "//h2/text()", "@<sym", "revolution", "Paris",
+    "<PLAN|>", "<FIND|>", "<READ|>", "<EDIT|>", "<SEND|>", "<EXEC|>", "<EDIT1|>", "<FIND2|>", "%28", "%29",
 ];
 
 const PRINTABLE = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 <>[](){}:;~$#@/.,-_|*+?!\"'\n\t";
@@ -37,7 +37,7 @@ const pick = <T>(r: () => number, xs: T[]): T => xs[Math.floor(r() * xs.length)]
 
 const genStructured = (r: () => number): string => {
     const n = 1 + Math.floor(r() * 12);
-    let s = r() < 0.7 ? "<think>\n</think>\n\n" : "";
+    let s = r() < 0.7 ? "<|channel>thought\n<channel|>\n" : "";
     for (let i = 0; i < n; i++) s += pick(r, FRAGMENTS);
     if (r() < 0.3) s = s.slice(0, Math.floor(r() * (s.length + 1))); // truncate to a prefix
     return s;
@@ -51,10 +51,10 @@ const genNoise = (r: () => number): string => {
 };
 
 const genMultibyte = (r: () => number): string => {
-    let s = "<think>\n</think>\n\n<<SEND[200]:";
+    let s = "<|channel>thought\n<channel|>\n<|PLAN>answer<PLAN|>\n<|SEND[200]>";
     const n = Math.floor(r() * 6);
     for (let i = 0; i < n; i++) s += r() < 0.5 ? pick(r, MULTIBYTE) : PRINTABLE[Math.floor(r() * PRINTABLE.length)];
-    return s + (r() < 0.5 ? ":SEND" : "");
+    return s + (r() < 0.5 ? "<SEND|>" : "");
 };
 
 const fuzzCase = (grammar: string, input: string): string | null => {

@@ -132,7 +132,7 @@ test("runTurn stores the effective prompt budget, not the raw context window", a
 
 test("providers.list advertises the effective prompt budget", async () => {
     const { rpcCall, connect, withDaemon, makeMockResponse } = await import("./_rpc.ts");
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<<SEND[200]:done:SEND", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

@@ -34,8 +34,8 @@ runs `sh -c "<target>"` (the shell tokenizes it), while another interpreter
 runs `<interpreter> <target>` as a script file ({§executor-subprocess-routing}).
 
 ```plurnk
-<<EXEC[sh](./deploy.sh --prod):yes\nyes\nno:EXEC
-<<EXEC[python](transform.py):3\n1\n4\n1\n5:EXEC
+<|EXEC[sh](./deploy.sh --prod)>yes\nyes\nno<EXEC|>
+<|EXEC[python](transform.py)>3\n1\n4\n1\n5<EXEC|>
 ```
 
 The first operation answers a shell script's prompts through stdin. The second

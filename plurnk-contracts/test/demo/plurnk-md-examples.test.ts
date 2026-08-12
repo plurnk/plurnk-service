@@ -10,7 +10,7 @@ import { PlurnkParser } from "../../src/index.ts";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const plurnkMd = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
 const PLURNK_FENCE = /^```plurnk\n([\s\S]*?)^```/gm;
-const OPENER = /^<<(?:PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|WORK|FORK|KILL|SEND)/;
+const OPENER = /^<\|(?:PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|WORK|FORK|KILL|SEND)/;
 const fences = [...plurnkMd.matchAll(PLURNK_FENCE)].map((match) => match[1].trim());
 const withoutFences = plurnkMd.replace(PLURNK_FENCE, "");
 const inline = [...withoutFences.matchAll(/`([^`\n]+)`/g)]
@@ -50,14 +50,16 @@ test("every ```plurnk fenced turn in plurnk.md parses clean", () => {
 });
 
 test("{§turn-shape}{§plan-intended-goals} model reference teaches PLAN and SEND roles", () => {
-    assert.ok(plurnkMd.includes("A turn concatenates complete OPs;"));
+    assert.ok(fences.every((turn) => turn.startsWith("<|PLAN>")), "every taught turn begins with PLAN");
+    assert.ok(fences.every((turn) => /\n<\|SEND\[(?:102|200|202|300|499)\]>[\s\S]+<SEND\|>$/.test(turn)),
+        "every taught turn ends with a terminal SEND");
     assert.match(plurnkMd, /^\| PLAN \| add working-state deltas .* new findings, questions, priorities \|$/m);
     assert.ok(plurnkMd.includes("YOU MUST use PLAN to add new material conclusions or unresolved questions and this turn's priorities."));
     assert.match(plurnkMd, /^\| SEND \| close turn with submit code /m);
 });
 
 test("{§text-scope-semantics}{§whitespace-contract} model reference teaches whole-line deletion", () => {
-    assert.ok(plurnkMd.includes("`<<EDIT(notes.md)<2>::EDIT` deletes line 2"));
+    assert.ok(plurnkMd.includes("`<|EDIT(notes.md)<2>|>` deletes line 2"));
     assert.ok(plurnkMd.includes("PLURNK does not decode body escapes: `\\n` is backslash plus `n`."));
 });
 

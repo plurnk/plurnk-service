@@ -37,9 +37,9 @@ Supported operations are `init`, `status`, `add`, `commit -m`, `log -n`,
 repo directory.
 
 ```plurnk
-<<EXEC[isogit]:status:EXEC
-<<EXEC[isogit]:branch feature/example:EXEC
-<<EXEC[isogit]:checkout feature/example:EXEC
+<|EXEC[isogit]>status<EXEC|>
+<|EXEC[isogit]>branch feature/example<EXEC|>
+<|EXEC[isogit]>checkout feature/example<EXEC|>
 ```
 
 Use `EXEC[git]` when native Git semantics are required.

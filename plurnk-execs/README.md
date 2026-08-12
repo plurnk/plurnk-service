@@ -36,7 +36,7 @@ runtime declarations, and a default-exported `BaseExecutor` subclass.
       {
         "name": "cobol",
         "glyph": "🗄",
-        "example": "<<EXEC[cobol]:DISPLAY 'HI'.:EXEC"
+        "example": "<|EXEC[cobol]>DISPLAY 'HI'.<EXEC|>"
       }
     ]
   }
@@ -47,7 +47,7 @@ One package may claim several tags; the consumer instantiates and probes each
 tag independently. A name uses lowercase URI-scheme syntax
 `[a-z][a-z0-9+.-]*`; `only` is reserved by runtime policy. `example` is a
 compact verbatim `plurnk` snippet, and every line in it must be a complete
-`<<`-delimited operation. A `docs/<tag>.md` file supplies the full reference
+`<|…|>` operation. A `docs/<tag>.md` file supplies the full reference
 material. See {§executor-runtime-declaration}.
 
 ### Implement the executor

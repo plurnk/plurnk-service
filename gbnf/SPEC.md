@@ -24,7 +24,7 @@ how the pushdown grammar stacks behave when fed the input's Unicode code points:
   surviving stack; `char` is that code point and `pos` is its index.
 - §verdict-incomplete Returns `{ status: "incomplete", pos }` when the input is a valid *prefix* but the stacks
   cannot close at end-of-input; `pos` equals the input's code-point length. A truncated
-  statement, or a heredoc whose close tag never arrives, is incomplete, not rejected.
+  statement, or an enclosure whose close tag never arrives, is incomplete, not rejected.
 - §position-codepoint All positions are **code-point indices**, not byte offsets; multibyte input is counted one
   code point at a time.
 - §diagnose-expected A `reject` verdict carries an `expected` set: for each live parse stack at the failure

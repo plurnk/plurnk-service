@@ -215,7 +215,7 @@ export default class PacketWire {
     // to leak into edit bodies and corrupt indentation. The content's OWN leading whitespace is
     // content, preserved verbatim.
     // Used for READ@200 content; index-preview numbering is the framework's
-    // job now (baked into the preview string — see renderHeredoc).
+    // job now (baked into the preview string).
     static #numberLines(body: string, start = 1): string {
         let line = start;
         return body.replace(
@@ -228,14 +228,14 @@ export default class PacketWire {
     // convention the model orients on can't drift. Every textual body receives
     // the `N:` prefix from `startLine`; matchers consume canonical content before
     // this presentation projection. Empty content produces no body.
-    static #renderContentBody(fence: string, content: string, startLine: number | null = 1): string {
+    static #renderContentBody(content: string, startLine: number | null = 1): string {
         if (content.length === 0) return "";
         // `startLine === null` means the producer already supplied numbered
         // content; re-numbering would duplicate its coordinates.
         const rendered = startLine !== null
             ? PacketWire.#numberLines(content, startLine)
             : content;
-        return PacketWire.#wrapHeredocBody(fence, rendered);
+        return PacketWire.#wrapBody(rendered);
     }
 
     // Tolerant JSON parser for log entries' persisted rx/tx strings. The engine
@@ -279,8 +279,8 @@ export default class PacketWire {
         };
     }
 
-    // Wrap a body in heredoc fences. The fence is FIXED (`<<BODY`/`BODY`), never the
-    // target: every body line is `N:`-prefixed, so a bare fence line can never occur
+    // Wrap a body in the fixed `<|BODY>` enclosure, never the target: every body
+    // line is `N:`-prefixed, so a bare close line can never occur
     // inside a body, and a fixed fence gives the model nothing address-shaped to
     // mimic back as op syntax — identity lives in the adjacent meta JSON. Leading
     // `\n` always (separates the opening fence from the first body character).
@@ -288,9 +288,9 @@ export default class PacketWire {
     // get a doubled newline that renders as a blank line before the closing fence,
     // which reads as "the content has a trailing blank line" when actually it
     // doesn't. The body's own whitespace decides the shape.
-    static #wrapHeredocBody(fence: string, body: string): string {
+    static #wrapBody(body: string): string {
         const sep = body.endsWith("\n") ? "" : "\n";
-        return `<<BODY\n${body}${sep}BODY`;
+        return `<|BODY>\n${body}${sep}<BODY|>`;
     }
 
     // Render one Log entry → a single bullet line carrying the meta JSON.
@@ -520,9 +520,6 @@ export default class PacketWire {
             const projection = previewExempt
                 ? { text: fullBody.content, cut: false }
                 : PacketWire.#preview(fullBody.content);
-            const resourceBody = op === "READ" || op === "FIND" || op === "EDIT"
-                || op === "prompt";
-            const bodyFence = resourceBody ? (target ?? path) : path;
             if (projection.cut && path === null) {
                 throw new Error("a previewed log body requires an addressable log path");
             }
@@ -531,11 +528,7 @@ export default class PacketWire {
             }
             const body = emptyFind || projection.text.length === 0
                 ? ""
-                : PacketWire.#renderContentBody(
-                    bodyFence ?? `log:///${coordinate}`,
-                    projection.text,
-                    fullBody.startLine,
-                );
+                : PacketWire.#renderContentBody(projection.text, fullBody.startLine);
 
             // tokens on EVERY row (0 when there's genuinely no body) so the model can always weigh
             // it; for a folded row this is the room an OPEN would add.
@@ -552,7 +545,7 @@ export default class PacketWire {
 
             // {§jsonplurnk} — `display` describes the three body states: `none` carries an explicit
             // empty JSON string, `folded` withholds an existing body, and `open` appends that body as
-            // the format's one non-JSON value (a raw, tagged heredoc). The explicit empty body keeps
+            // the format's one non-JSON value (a raw BODY enclosure). The explicit empty body keeps
             // every state self-describing; OPEN/FOLD remain friendly no-ops on `none`.
             const display = body.length === 0 ? "none" : e.folded === true ? "folded" : "open";
             meta.display = display;

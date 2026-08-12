@@ -43,7 +43,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         volatile: false,
         modelVisible: true,
         folderScopes: true,
-        example: "<<EDIT(worker:///notes.md):Investigation notes.:EDIT",
+        example: "<|EDIT(worker:///notes.md)>Investigation notes.<EDIT|>",
     };
 
     // The authority from a worker:// target — "" for the empty (commons) form; null when the

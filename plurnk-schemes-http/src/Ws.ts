@@ -77,7 +77,7 @@ export default class Ws implements SchemeHandler {
         volatile: true,
         modelVisible: true,
         glyph: "🔌",
-        example: "<<READ(wss://api.example.com/feed)::READ",
+        example: "<|READ(wss://api.example.com/feed)|>",
         documentation,
         flags: {
             requiresWeb: true,

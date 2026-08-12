@@ -28,19 +28,19 @@ test("line number tracks the offending prose block", () => {
 });
 
 test("a bare Plurnk op inside a prose block is flagged for fencing", () => {
-    const source = "Here is an example.\n<<PLAN:do the thing:PLAN\nThat op should be fenced.";
+    const source = "Here is an example.\n<|PLAN>do the thing<PLAN|>\nThat op should be fenced.";
     const opFence = linter.lint(source).filter(d => d.rule === "op-fence");
     assert.equal(opFence.length, 1);
     assert.equal(opFence[0].line, 2);
 });
 
 test("an op inside a plurnk fence is exempt from op-fence", () => {
-    const source = "```plurnk\n<<PLAN:do the thing:PLAN\n```";
+    const source = "```plurnk\n<|PLAN>do the thing<PLAN|>\n```";
     assert.deepEqual(linter.lint(source).filter(d => d.rule === "op-fence"), []);
 });
 
 test("a malformed op inside a plurnk fence is flagged by op-syntax", () => {
-    const source = "```plurnk\n<<READ(file.md)<N>::READ\n```"; // <N> — letters aren't valid scope
+    const source = "```plurnk\n<|READ(file.md)<N>|>\n```"; // <N> — letters aren't valid scope
     const diagnostics = linter.lint(source).filter(d => d.rule === "op-syntax");
     assert.equal(diagnostics.length >= 1, true, JSON.stringify(diagnostics));
     assert.equal(diagnostics[0].line, 2); // the op line inside the fence
@@ -48,24 +48,24 @@ test("a malformed op inside a plurnk fence is flagged by op-syntax", () => {
 
 // {§packet-operation-fences} {§unparsed-tail-boundary}
 test("#135: an unterminated op fence surfaces the one parser-owned tail diagnostic", () => {
-    const source = "```plurnk\n<<EDIT(worker:///note.md):unterminated\n```";
+    const source = "```plurnk\n<|EDIT(worker:///note.md)>unterminated\n```";
     const diagnostics = linter.lint(source).filter(d => d.rule === "op-syntax");
     assert.deepEqual(diagnostics, [{
         rule: "op-syntax",
         severity: "error",
-        message: "body of `<<EDIT` opened at line 1 but never closed - add `:EDIT` to terminate",
+        message: "body of `<|EDIT` opened at line 1 but never closed - add `<EDIT|>` to terminate",
         line: 2,
         column: 0,
     }]);
 });
 
 test("valid ops inside a plurnk fence pass op-syntax", () => {
-    const source = "```plurnk\n<<PLAN:go:PLAN\n<<READ(file.md)<5>::READ\n```";
+    const source = "```plurnk\n<|PLAN>go<PLAN|>\n<|READ(file.md)<5>|>\n```";
     assert.deepEqual(linter.lint(source).filter(d => d.rule === "op-syntax"), []);
 });
 
 test("a plain (non-plurnk) fence is never op-validated", () => {
-    const source = "```\n<<OPsuffix[signal]?(path)?:body?:OPsuffix\n```";
+    const source = "```\n<|READ(file.md)<N>|>\n```";
     assert.deepEqual(linter.lint(source).filter(d => d.rule === "op-syntax"), []);
 });
 

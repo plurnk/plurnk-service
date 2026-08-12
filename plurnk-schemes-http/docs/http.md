@@ -10,8 +10,8 @@ are never presented by default.
 | --------------------------------- | ------------- | -------------------------------------------------------------------------- |
 | `READ(http(s)://…)<scope?>`       | GET if needed | Acquire/reuse the complete response, then return the selected scoped text  |
 | `FIND(http(s)://…):matcher`       | GET if needed | Prepare an exact URL, then return flat match locations                     |
-| `SEND[200](http(s)://…):body:`    | POST          | Submit the body and stream the response                                    |
-| `EDIT(http(s)://…):body:`         | PUT           | Replace the whole remote resource; do not use a line scope                 |
+| `<|SEND[200](http(s)://…)>body<SEND|>` | POST          | Submit the body and stream the response                               |
+| `<|EDIT(http(s)://…)>body<EDIT|>`      | PUT           | Replace the whole remote resource; do not use a line scope            |
 | `KILL(http(s)://…)`               | DELETE        | Delete the remote resource and stream the response                         |
 
 A path-pattern FIND searches only web entries already materialized in the
@@ -92,8 +92,8 @@ Request headers ride inside the target as ordered trailing `{Key: value}`
 blocks, one header per block:
 
 ```plurnk
-<<READ(https://api.example.com/v1/me{Authorization: Bearer TOKEN}{Accept: application/json})::READ
-<<EDIT(https://api.example.com/v1/thing/42{Authorization: Bearer TOKEN}{Content-Type: application/json}):{"done":true}:EDIT
+<|READ(https://api.example.com/v1/me{Authorization: Bearer TOKEN}{Accept: application/json})|>
+<|EDIT(https://api.example.com/v1/thing/42{Authorization: Bearer TOKEN}{Content-Type: application/json})>{"done":true}<EDIT|>
 ```
 
 Percent-encode `)`, `<`, and `}` inside a header value.

@@ -29,7 +29,7 @@ test("the active alias's GBNF setting wins over the bare fallback", async () => 
     // The daemon test's active alias (whatever the local .env selects) decides via its suffixed
     // knob. Bare is the fallback: GBNF is optional local constrained sampling, so
     // it is unset by default and a local alias opts in with its suffix.
-    const dsl = "<<SEND[200]:ok:SEND";
+    const dsl = "<|SEND[200]>ok<SEND|>";
     // Alias-agnostic: resolve the Mock bootstrap's active alias and set ITS GBNF suffix — never a
     // hardcoded name, so this remains valid if the fixture alias changes. The Mock carries no side-table
     // alias, so #grammarConstraint resolves the knob via resolveActiveAlias.
