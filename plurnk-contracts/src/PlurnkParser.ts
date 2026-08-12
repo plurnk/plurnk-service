@@ -20,10 +20,12 @@ const STATEMENT_RULES = new Set<number>([
     plurnkParser.RULE_clientStatement,
 ]);
 
-// Container rule whose children hold one turn's statements. parseLog contains
-// multiple turnContent siblings; extraction flattens each in source order.
+// Container rules whose children hold one turn's statements. `turnContent`
+// carries tolerated preamble text; `turn` is also the direct child of a fenced
+// document. parseLog contains multiple turnContent siblings, flattened in order.
 const CONTAINER_RULES = new Set<number>([
     plurnkParser.RULE_turnContent,
+    plurnkParser.RULE_turn,
 ]);
 
 export default class PlurnkParser {

@@ -16,6 +16,7 @@ private slotReady: boolean = false;
 private targetDepth: number = 0;
 private bodyAtStart: boolean = false;
 private terminalSend: boolean = false;
+private documentFence: boolean = false;
 
 private static readonly PROTOCOL_OPS = [
     "FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD",
@@ -66,6 +67,7 @@ private headingAt(offset: number): { level: 1 | 2; op: string; suffix: string } 
     const next = this.inputStream.LA(cursor);
     const headerContinues = next <= 0
         || next === 0x20 || next === 0x09
+        || next === 0x5B || next === 0x28 || next === 0x3C
         || next === 0x0A || next === 0x0D;
     if (!headerContinues) return null;
     const startsNextTurn = level === 1 && op === "PLAN" && this.terminalSend;
@@ -88,7 +90,7 @@ private open(level: 1 | 2, op: string): void {
     this.openHeading = this.text;
     this.openHeadingLine = (this as any).currentTokenStartLine;
     this.openHeadingColumn = (this as any).currentTokenColumn;
-    this.slotReady = false;
+    this.slotReady = true;
     this.bodyAtStart = false;
     this.terminalSend = false;
 }
@@ -127,6 +129,14 @@ private headingAfterEmptySpacedLine(): boolean {
 private beginBody(): void { this.bodyAtStart = true; }
 private retainBody(): void { this.bodyAtStart = false; }
 
+private openDocumentFence(): void { this.documentFence = true; }
+private closeDocumentFence(): void { this.documentFence = false; }
+private inDocumentFence(): boolean { return this.documentFence; }
+private fenceAfterDirectEol(): boolean {
+    const after = this.offsetAfterEol(1);
+    return after !== null && this.matchesLiteral(after, "```");
+}
+
 public getOpenTag(): string { return this.openOp + (this.activeSuffix ?? ""); }
 public getOpenTagLine(): number { return this.openHeadingLine; }
 public getOpenTagColumn(): number { return this.openHeadingColumn; }
@@ -160,6 +170,9 @@ OPEN_KILL : { this.matchesHeading(2, "KILL") }? '## KILL' SUFFIX? { this.open(2,
 OPEN_LOOK : { this.matchesHeading(2, "LOOK") }? '## LOOK' SUFFIX? { this.open(2, "LOOK"); } -> mode(SLOTS) ;
 OPEN_BUFF : { this.matchesHeading(2, "BUFF") }? '## BUFF' SUFFIX? { this.open(2, "BUFF"); } -> mode(SLOTS) ;
 
+FENCE_OPEN : { this.column === 0 && !this.inDocumentFence() }? '```plurnk' EOL { this.openDocumentFence(); } ;
+FENCE_CLOSE : { this.column === 0 && this.inDocumentFence() }? '```' EOL? { this.closeDocumentFence(); } ;
+
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
 THINK_BLOCK   : '<think>' .*? '</think>' -> type(TEXT) ;
 CHANNEL_BLOCK : '<|channel>' .*? '<channel|>' -> type(TEXT) ;
@@ -167,11 +180,11 @@ TEXT : ~[ \t\r\n]+ ;
 
 mode SLOTS;
 SLOTS_WS : [ \t]+ { this.slotReady = true; } -> skip ;
-SLOTS_LB_TAGS  : { this.slotReady && !this.isSendOp() && !this.isExecOp() && !this.isKillOp() }? '[' { this.slotReady = false; } -> type(LBRACKET), mode(SIGNAL_TAGS) ;
-SLOTS_LB_INT   : { this.slotReady && (this.isSendOp() || this.isKillOp()) }? '[' { this.slotReady = false; } -> type(LBRACKET), mode(SIGNAL_INT) ;
-SLOTS_LB_IDENT : { this.slotReady && this.isExecOp() }? '[' { this.slotReady = false; } -> type(LBRACKET), mode(SIGNAL_IDENT) ;
-SLOTS_LPAREN   : { this.slotReady }? '(' { this.targetDepth = 0; this.slotReady = false; } -> type(LPAREN), mode(TARGET) ;
-SLOTS_L        : { this.slotReady }? L_PATTERN { this.slotReady = false; } -> type(L_MARKER) ;
+SLOTS_LB_TAGS  : { this.slotReady && !this.isSendOp() && !this.isExecOp() && !this.isKillOp() }? '[' -> type(LBRACKET), mode(SIGNAL_TAGS) ;
+SLOTS_LB_INT   : { this.slotReady && (this.isSendOp() || this.isKillOp()) }? '[' -> type(LBRACKET), mode(SIGNAL_INT) ;
+SLOTS_LB_IDENT : { this.slotReady && this.isExecOp() }? '[' -> type(LBRACKET), mode(SIGNAL_IDENT) ;
+SLOTS_LPAREN   : { this.slotReady }? '(' { this.targetDepth = 0; } -> type(LPAREN), mode(TARGET) ;
+SLOTS_L        : { this.slotReady }? L_PATTERN -> type(L_MARKER) ;
 SLOTS_DIRECT_END : { this.headingAfterDirectEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_BODY_OPEN : EOL { this.beginBody(); } -> type(BODY_OPEN), mode(BODY) ;
 
@@ -179,18 +192,18 @@ mode SIGNAL_TAGS;
 ST_WS    : [ \t]+ -> skip ;
 ST_COMMA : ',' -> type(COMMA) ;
 ST_TAG   : ~[\],\r\n \t]+ -> type(TAG) ;
-ST_END   : ']' { this.slotReady = false; } -> type(RBRACKET), mode(SLOTS) ;
+ST_END   : ']' { this.slotReady = true; } -> type(RBRACKET), mode(SLOTS) ;
 
 mode SIGNAL_INT;
 SI_WS   : [ \t]+ -> skip ;
 SI_DISP : ('102' | '200' | '202' | '300' | '499') { this.markDisposition(); } -> type(DISPOSITION) ;
 SI_INT  : '-'? [0-9]+ -> type(INT) ;
-SI_END  : ']' { this.slotReady = false; } -> type(RBRACKET), mode(SLOTS) ;
+SI_END  : ']' { this.slotReady = true; } -> type(RBRACKET), mode(SLOTS) ;
 
 mode SIGNAL_IDENT;
 SD_WS    : [ \t]+ -> skip ;
 SD_IDENT : [a-zA-Z_] [a-zA-Z0-9_.\-+]* -> type(IDENT) ;
-SD_END   : ']' { this.slotReady = false; } -> type(RBRACKET), mode(SLOTS) ;
+SD_END   : ']' { this.slotReady = true; } -> type(RBRACKET), mode(SLOTS) ;
 
 mode TARGET;
 TARGET_ESCAPE : '\\' ('\\' | '(' | ')') -> type(TARGET_TEXT) ;
@@ -198,9 +211,11 @@ TARGET_INNER : ~[\\()<\r\n]+ -> type(TARGET_TEXT) ;
 TARGET_BACKSLASH : '\\' -> type(TARGET_TEXT) ;
 TARGET_NEST_OPEN : '(' { this.targetDepth++; } -> type(TARGET_TEXT) ;
 TARGET_NEST_END  : { this.targetDepth > 0 }? ')' { this.targetDepth--; } -> type(TARGET_TEXT) ;
-TARGET_END   : ')' { this.slotReady = false; } -> type(RPAREN), mode(SLOTS) ;
+TARGET_END   : ')' { this.slotReady = true; } -> type(RPAREN), mode(SLOTS) ;
 
 mode BODY;
+B_FENCE_CLOSE : { this.column === 0 && this.inDocumentFence() }? '```' EOL? { this.closeDocumentFence(); } -> type(FENCE_CLOSE), mode(DEFAULT_MODE) ;
+B_FENCE_END : { this.inDocumentFence() && this.fenceAfterDirectEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_SECTION_END : { this.headingAfterBlankLine() }? EOL [ \t]* EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_DIRECT_END : { this.headingAfterDirectEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_EMPTY_SPACED_END : { this.headingAfterEmptySpacedLine() }? [ \t]+ EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;

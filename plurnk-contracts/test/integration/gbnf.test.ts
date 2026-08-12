@@ -192,6 +192,13 @@ test("GBNF root requires PLAN first and one terminal SEND last", () => {
     assert.equal(derivesTurn(`${plan("p")}stray prose\n${terminal(200, "done")}`), false);
 });
 
+test("GBNF optionally frames the complete PLURNK document in a paired fence", () => {
+    const content = turn("decompose", [mid("READ", " (worker:///x)")], 102, "reading");
+    assert.equal(derivesTurn(content), true);
+    assert.equal(derivesTurn(`\`\`\`plurnk\n${content}\n\`\`\``), true);
+    assert.equal(derivesTurn(`\`\`\`plurnk\n${content}`), false);
+});
+
 // {§no-idle-102}
 test("GBNF excludes zero-operation 102 and restores it after one internal operation", () => {
     assert.equal(derivesTurn(turn("think", [], 102, "working")), false);
@@ -395,7 +402,7 @@ test("GBNF emits spaced canonical slot order while ANTLR accepts spaced permutat
     assert.equal(derives("statement", compact), false);
     assert.equal(PlurnkParser.parseStatements(reordered).items.some((item) => item.kind === "error"), false);
     assert.equal(PlurnkParser.parseStatements(implicit).items.some((item) => item.kind === "error"), false);
-    assert.equal(PlurnkParser.parseStatements(compact).items.some((item) => item.kind === "error"), true);
+    assert.equal(PlurnkParser.parseStatements(compact).items.some((item) => item.kind === "error"), false);
 });
 
 test("GBNF preserves signs as operators only at the start of a tag term", () => {
@@ -433,7 +440,7 @@ test("100 seeded turn derivations preserve the PLAN-through-terminal-SEND frame"
         assert.equal(derives("root-turn", generated), true, `seed ${seed}`);
         assert.ok(generated.startsWith(CHANNEL_OPEN), `seed ${seed}`);
         assert.ok(generated.includes("# PLAN0\n"), `seed ${seed}`);
-        const projected = generated.slice(generated.indexOf("# PLAN0"));
+        const projected = generated.slice(generated.indexOf(CHANNEL_CLOSE) + CHANNEL_CLOSE.length).trimStart();
         const result = PlurnkParser.parse(projected);
         assert.equal(result.unparsedTail, undefined, `seed ${seed}`);
         const statements = result.items.filter((item) => item.kind === "statement");

@@ -215,6 +215,39 @@ test("turn-shape diagnostics name the heading contract", () => {
     }
 });
 
+test("a paired outer plurnk fence is document framing, not turn content", () => {
+    const result = PlurnkParser.parse([
+        "```plurnk",
+        section("PLAN", "", "inspect"),
+        "",
+        section("READ", " (notes.md)"),
+        "",
+        section("SEND", " [200]", "done"),
+        "```",
+        "",
+    ].join("\n"));
+
+    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+    assert.equal(result.unparsedTail, undefined);
+    assert.deepEqual(result.items.filter((item) => item.kind === "text"), []);
+    const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(statements.map(({ op }) => op), ["PLAN", "READ", "SEND"]);
+    assert.deepEqual(statements[0]?.position, { line: 2, column: 0 });
+    const last = statements.at(-1);
+    assert.equal(last?.op, "SEND");
+    if (last?.op === "SEND") assert.equal(last.body?.raw, "done");
+});
+
+test("an opening plurnk fence commits the document to a closing fence", () => {
+    const result = PlurnkParser.parse([
+        "```plurnk",
+        section("PLAN", "", "inspect"),
+        "",
+        section("SEND", " [200]", "done"),
+    ].join("\n"));
+    assert.ok(result.items.some((item) => item.kind === "error") || result.unparsedTail !== undefined);
+});
+
 test("a disposition SEND terminates the turn", () => {
     const result = PlurnkParser.parse(sections(
         section("PLAN", "", "inspect"),
@@ -340,14 +373,29 @@ test("slot permutations produce equivalent AST values", () => {
     assert.equal(reversedSend.target?.kind, "url");
 });
 
-test("duplicate slots and missing inter-slot spaces are rejected", () => {
+test("modifier delimiters make horizontal spacing optional", () => {
+    for (const input of [
+        "## FIND0[+t](p)<2>\nm",
+        "## FIND0\t[+t]\t(p)\t<2>\nm",
+        "## FIND0  [+t](p) \t<2>\nm",
+        "## FIND0<2>(p)[+t]\nm",
+    ]) {
+        const statement = oneStatement(input);
+        assert.deepEqual(statement.signal, ["+t"], input);
+        assert.equal(statement.target?.raw, "p", input);
+        assert.deepEqual(statement.lineMarker, { marks: [2] }, input);
+    }
+
+    const send = oneStatement("## SEND0[200](worker://child)\ndone");
+    assert.equal(send.signal, 200);
+    assert.equal(send.target?.raw, "worker://child");
+});
+
+test("duplicate slots are rejected", () => {
     for (const input of [
         "## FIND0 [+a] [+b] (p)\nm",
         "## FIND0 (p1) (p2)\nm",
         "## FIND0 <1> <2> (p)\nm",
-        "## FIND0[+a] (p)\nm",
-        "## FIND0 [+a](p)\nm",
-        "## FIND0 (p)<2>\nm",
     ]) {
         assert.ok(errorsOf(input).length >= 1, input);
     }

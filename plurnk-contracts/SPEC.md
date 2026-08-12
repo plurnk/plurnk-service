@@ -134,26 +134,30 @@ rail-legal operation can therefore produce a parser or AstBuilder error; consume
 apply their ordinary admission and bounded-operation recovery contract.
 
 
-The shipped raw turn has one shape:
+The shipped raw turn has one shape with optional document framing:
 
 ```ebnf
-root-turn ::= channel sep plan sep tail-0
+root-turn  ::= channel sep framed-turn
+framed-turn ::= turn | fence-open turn fence-close
+turn       ::= plan sep tail-0
 ```
 
 §gbnf-turn-shape `channel` is exactly one Gemma Harmony enclosure at byte zero, beginning
 `<|channel>thought\n` and ending `<channel|>`. Its body may be empty but cannot
 contain another opener or the closer. `sep` is zero through seven whitespace
-characters. No channel is legal after the leading one. The PLURNK content begins
-with `# PLAN0`; every following operation is a same-lane `## OP0` section.
+characters. No channel is legal after the leading one. The projected PLURNK
+content is either bare or enclosed once in a paired `plurnk` Markdown fence; the
+turn itself begins with `# PLAN0`, and every following operation is a same-lane
+`## OP0` section.
 `tail-0` admits zero through fourteen internal operations followed by exactly
 one terminal SEND under the existing terminal-eligibility rules.
 
 ```mermaid
 flowchart LR
-    raw["Raw constrained decode<br/>channel · sep · # PLAN0 · H2 operations"]
+    raw["Raw constrained decode<br/>channel · sep · optional fence · PLAN0 turn"]
     split["llama.cpp<br/>reasoning_format: auto"]
     reasoning["reasoning_content<br/>channel body"]
-    content["content<br/>PLAN through terminal SEND"]
+    content["content<br/>bare or fenced PLAN through terminal SEND"]
     parser["ANTLR + AstBuilder<br/>admission and diagnostics"]
     raw --> split
     split --> reasoning
@@ -220,10 +224,11 @@ The following constraints are structural:
 - An ingested suffix is `[A-Za-z0-9_]*`; canonical teaching and the GBNF use `0`.
 
 §slot-order Canonical producers and the GBNF rail emit signal, then target, then
-scope, with one ASCII space before every present slot. The tolerant ANTLR
-ingester accepts additional horizontal spacing and any permutation of the slots
-admitted by that operation, at most once each. Accepted permutation is not a
-second canonical spelling.
+scope, with one ASCII space before every present slot. Slot delimiters make
+their boundaries unambiguous, so the tolerant ANTLR ingester accepts zero or
+more horizontal whitespace characters before each slot and any permutation of
+the slots admitted by that operation, at most once each. Accepted spacing and
+permutation are not second canonical spellings.
 
 The ingester also accepts several bounded noncanonical forms so it can explain
 or safely execute understandable input:
@@ -668,7 +673,7 @@ possible. EOF is a valid body boundary. An unfinished signal or target produces
 |-----------------------------|---------------------------------------|-----------------------------------------------------------|
 | Heading marker              | `# PLAN0` or `## OP0` at column zero  | Exact heading depth and column are structural             |
 | Between OP and suffix       | Adjacent                              | Must remain adjacent                                      |
-| Before each header slot     | One ASCII space                       | One or more horizontal whitespace characters             |
+| Before each header slot     | One ASCII space                       | Zero or more horizontal whitespace characters             |
 | Inside signal               | Adjacent values                       | Horizontal whitespace is ignored; newline is invalid      |
 | Inside target               | Path alias plus target escapes         | Balanced literals tolerated; newline is invalid           |
 | Inside scope                | Comma-separated numbers               | Dash separator and one post-comma space are also accepted |
@@ -699,11 +704,18 @@ cannot recur mid-turn. Tolerated TEXT may appear only before PLAN; after PLAN,
 nonstructural text is section body content. Missing either anchor or placing a
 same-lane operation after the terminal SEND is an error.
 
+§document-fence `PlurnkParser.parse` additionally admits one paired outer
+Markdown code fence whose opening line is exactly ```` ```plurnk ```` and whose
+closing line is ```` ``` ````. The fence encloses the complete PLAN-through-SEND
+turn and projects neither text nor body content into the AST. Its opener commits
+the document to its closer. This is document framing, not another statement
+grammar, and no other parser tier admits it.
+
 §tier-entrypoints Each parser entry point owns one document tier:
 
 | Entry point                    | Accepted document                                              | Result statement type |
 |--------------------------------|----------------------------------------------------------------|-----------------------|
-| `PlurnkParser.parse`           | One PLAN-anchored model turn with optional TEXT                | `PlurnkStatement`     |
+| `PlurnkParser.parse`           | One PLAN turn: bare with optional TEXT, or paired `plurnk` fence | `PlurnkStatement`     |
 | `PlurnkParser.parseStatements` | Zero or more protocol statements and hidden whitespace         | `PlurnkStatement`     |
 | `PlurnkParser.parseLog`        | One or more consecutive same-lane PLAN-anchored turns           | `PlurnkStatement`     |
 | `PlurnkParser.parseClient`     | H2 protocol statements plus read-shaped LOOK/BUFF commands      | `ClientStatement`     |

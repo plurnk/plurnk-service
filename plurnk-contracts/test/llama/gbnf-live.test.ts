@@ -13,6 +13,8 @@
  *   enclosure, then `sep`, mandatory `# PLAN0`, H2 operations, and terminal SEND.
  *   llama-server applies `reasoning_format: "auto"` after that constrained decode,
  *   projecting the enclosure body out of `content` into `reasoning_content`.
+ * - Projected content may be bare or wrapped once in a paired `plurnk` fence;
+ *   both are one parser document tier.
  */
 
 import test from "node:test";

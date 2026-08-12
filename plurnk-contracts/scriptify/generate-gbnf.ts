@@ -204,7 +204,12 @@ export const buildModel = (): GModel => {
     const channelClose = "<channel|>";
     forbidLiterals(model, "rz-chan", [channelOpen, channelClose]);
     model.set("channel", [[lit(channelOpen), ref("rz-chan-b0"), lit(channelClose)]]);
-    model.set("root-turn", [[ref("channel"), ref("sep"), ref("plan"), ref("tail-0")]]);
+    model.set("turn", [[ref("plan"), ref("tail-0")]]);
+    model.set("framed-turn", [
+        [ref("turn")],
+        [lit("```plurnk\n"), ref("turn"), lit("\n```")],
+    ]);
+    model.set("root-turn", [[ref("channel"), ref("sep"), ref("framed-turn")]]);
 
     model.set("statement", [[ref("op-statement")], [ref("send-mid")]]);
     model.set("send-statement", [[ref("send-mid")], [ref("send-final-any")]]);
@@ -338,5 +343,5 @@ if (import.meta.main) {
     await mkdir("dist", { recursive: true });
     const model = buildModel();
     await writeFile("dist/plurnk.gbnf", serializeGbnf(model, "root-turn"));
-    process.stderr.write("Generated dist/plurnk.gbnf (raw turn: CHANNEL + # PLAN0 + ## OP0 sections)\n");
+    process.stderr.write("Generated dist/plurnk.gbnf (raw turn: CHANNEL + optional plurnk fence + # PLAN0 + ## OP0 sections)\n");
 }
