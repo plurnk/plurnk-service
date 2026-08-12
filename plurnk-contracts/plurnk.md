@@ -110,12 +110,19 @@ Examples:
 
 Text scope (Line, StartLine, StartColumn, EndLine, EndColumn) has one meaning for every textual mimetype:
 
-| form            | endpoint rule                  | example                                                       |
-|-----------------|--------------------------------|---------------------------------------------------------------|
-| `<L>`           | one line                       | `<|EDIT(notes.md)<2>|>` deletes line 2                    |
-| `<SL,EL>`       | lines SL through EL, inclusive | `<|READ(notes.md)<2,3>|>` reads lines 2 and 3             |
-| `<SL,SC,EL,EC>` | start included, end excluded   | `<|READ(notes.md)<2,1,2,5>|>` reads columns 1-4 of line 2 |
-| `<SL,SC,SL,SC>` | positions, zero-width          | `<|EDIT(notes.md)<2,5,2,5>>inserted text<EDIT|>` insertion      |
+| form            | endpoint rule                  |
+|-----------------|--------------------------------|
+| `<L>`           | one line                       |
+| `<SL,EL>`       | lines SL through EL, inclusive |
+| `<SL,SC,EL,EC>` | start included, end excluded   |
+| `<SL,SC,SL,SC>` | positions, zero-width          |
+
+Examples:
+
+* One line: `<|READ(notes.md)<2>|>` reads only line 2; `<|EDIT(notes.md)<2>|>` deletes line 2.
+* Inclusive line range: `<|READ(notes.md)<2,3>|>` reads lines 2 and 3.
+* Exclusive column endpoint: `<|READ(notes.md)<2,1,2,5>|>` reads columns 1-4 of line 2.
+* Zero-width position: `<|EDIT(notes.md)<2,5,2,5>>inserted text<EDIT|>` inserts at line 2, column 5.
 
 * Lines and Unicode code-point columns are 1-based.
 * Rendered `L:` prefixes are coordinates, not content; edit from a recent READ.

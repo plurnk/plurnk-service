@@ -7,10 +7,11 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Engine from "../../src/core/Engine.ts";
+import Paths from "../../src/Paths.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { rulerCount } from "../../src/core/token-ruler.ts";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -492,6 +493,32 @@ test("assembled packet: definition tables compact without changing other whitesp
 
         assert.equal(packetSection(packet, "definition"), expected, "the stored model-facing definition is the compact projection");
         assert.equal(packet.sections.find((section) => section.name === "definition")?.tokens, rulerCount(expected), "definition render-weight measures the compact projection");
+    } finally { await db.close(); }
+});
+
+test("{§definition-table-projection}: canonical inline grammar remains exact on the packet wire", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `pkt-definition-grammar-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
+        const definition = await readFile(Paths.instructionsSystem, "utf8");
+
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
+        const projected = packetSection(await getPacket(db, result.turnId), "definition");
+        const inlineGrammar = [...definition.matchAll(/`([^`\n]*(?:<\||\|>)[^`\n]*)`/gu)].map((match) => match[0]);
+
+        assert.ok(inlineGrammar.length > 0, "canonical definition must contain inline grammar examples");
+        for (const example of inlineGrammar) {
+            assert.ok(projected.includes(example), `packet projection changed canonical inline grammar ${JSON.stringify(example)}`);
+        }
+        assert.match(projected, /One line: `<\|READ\(notes\.md\)<2>\|>` reads only line 2; `<\|EDIT\(notes\.md\)<2>\|>` deletes line 2\./u);
+        assert.match(projected, /Inclusive line range: `<\|READ\(notes\.md\)<2,3>\|>` reads lines 2 and 3\./u);
+        assert.match(projected, /Exclusive column endpoint: `<\|READ\(notes\.md\)<2,1,2,5>\|>` reads columns 1-4 of line 2\./u);
+        assert.match(projected, /Zero-width position: `<\|EDIT\(notes\.md\)<2,5,2,5>>inserted text<EDIT\|>` inserts at line 2, column 5\./u);
+        assert.doesNotMatch(projected, /< \| (?:READ|EDIT)/u, "table projection must not split an operation's literal pipe characters into cells");
     } finally { await db.close(); }
 });
 
