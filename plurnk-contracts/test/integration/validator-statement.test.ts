@@ -59,6 +59,11 @@ test("PlurnkStatement: EDIT with raw markdown body", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
+test("PlurnkStatement: EDIT with an anchored line scope", () => {
+    const r = validateRoundTrip("## EDIT0 (known://meaning) <@aZ09b>\nThe meaning of life is 42");
+    assert.equal(r!.valid, true, JSON.stringify(r!.errors));
+});
+
 test("PlurnkStatement: COPY with destination resource selection", () => {
     const r = validateRoundTrip("## COPY0 [+archive] (known://draft)\nknown://archive/draft");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));

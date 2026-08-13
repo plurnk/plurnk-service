@@ -500,8 +500,9 @@ statements remain recoverable when their boundaries are trustworthy.
 ## §scope-slot 7. Scope markers
 
 The model-facing slot is `<scope>`; the AST field remains the historical
-`lineMarker: { marks: number[] }`. The parser preserves ordered numeric
-components, while the operation owner assigns their roles.
+`lineMarker`. Most operations preserve ordered numeric components in
+`LineMarker`; EDIT uses `EditLineMarker` so its line positions may also carry
+rendered anchors. The operation owner assigns every component's role.
 
 The operation column names the canonical AST operation after
 {§read-find-normalization}.
@@ -510,7 +511,7 @@ The operation column names the canonical AST operation after
 |-----------------------|----------------------------------------------|--------------------------------------------------------------|
 | FIND                  | optional threshold, then 0–2 positions       | Inclusive resource or exact-target location positions ({§find-result-unit}; defaults to `<1,16>`) |
 | READ                  | 0/1/2/4 coordinates                          | Text projection from the exact selected file, entry, or log item           |
-| EDIT                  | text coordinates                             | Text replacement, deletion, prepend, or append               |
+| EDIT                  | text coordinates; line positions may be anchors | Text replacement, deletion, prepend, or append            |
 | COPY/MOVE source      | text coordinates                             | Region copied or moved from the selected source              |
 | COPY/MOVE destination | text coordinates after destination           | Region replaced or insertion point at the destination        |
 | EXEC                  | `timeout[,poll]`                             | Spawn lifetime bound and poll cadence in seconds             |
@@ -523,11 +524,19 @@ admit `0` as prepend and `-1` as append. A leading decimal on semantic FIND
 is a similarity threshold; any remaining integers select result positions. READ
 does not admit decimal scope components.
 
+§edit-line-anchor-syntax EDIT alone admits a case-sensitive line anchor spelled
+`@` followed by exactly five Base62 characters (`0-9A-Za-z`) wherever a text
+coordinate denotes a line. Columns, prepend `0`, and append `-1` remain numeric.
+The AST preserves the token in `EditLineMarker`; core owns its resolution under
+{§edit-line-anchors} before a scheme receives the statement. Numeric EDIT scopes
+remain canonical and fully supported.
+
 §scope-marker-forms Canonical producers separate components with commas and no
 spaces. ANTLR tolerates a dash separator and one space after a comma. Each
 component greedily consumes an optional leading minus sign, digits, and an
 optional decimal fraction, so the ingester preserves even noncanonical numeric
-shapes for runtime validation.
+shapes for runtime validation. An anchor-bearing EDIT scope uses commas; ANTLR
+tolerates one space after each comma.
 
 Apart from the unadvertised three-coordinate text-scope tolerance in
 {§text-scope-semantics}, the runtime rejects invalid arity, out-of-range or

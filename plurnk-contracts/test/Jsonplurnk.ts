@@ -5,6 +5,7 @@
  */
 export default class Jsonplurnk {
     static #OPENER = /"body":"\n/g;
+    static #COORDINATE = /^(?:[1-9]\d*:|@[0-9A-Za-z]{5}:[1-9]\d*:)/;
 
     static strip(block: string): string {
         const opener = Jsonplurnk.#OPENER;
@@ -28,21 +29,21 @@ export default class Jsonplurnk {
 
     static #findClose(block: string, from: number): number {
         let at = from;
-        let numberedLines = 0;
+        let coordinateLines = 0;
         while (at < block.length) {
             if (block.startsWith('"}', at)) {
-                if (numberedLines === 0) {
-                    throw new Error("jsonplurnk: raw multiline body must contain a numbered line");
+                if (coordinateLines === 0) {
+                    throw new Error("jsonplurnk: raw multiline body must contain a coordinate line");
                 }
                 return at;
             }
             const newline = block.indexOf("\n", at);
             const end = newline === -1 ? block.length : newline;
             const line = block.slice(at, end).replace(/\r$/, "");
-            if (!/^[1-9]\d*:/.test(line)) {
-                throw new Error("jsonplurnk: body line is missing its `N:` prefix");
+            if (!Jsonplurnk.#COORDINATE.test(line)) {
+                throw new Error("jsonplurnk: body line is missing its coordinate prefix");
             }
-            numberedLines++;
+            coordinateLines++;
             if (newline === -1) break;
             at = newline + 1;
         }

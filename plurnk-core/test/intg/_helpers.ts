@@ -18,6 +18,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { ReadStatement } from "@plurnk/plurnk-contracts";
 import { Results, type EntryReadResult } from "@plurnk/plurnk-schemes";
+import { contentHash } from "../../src/core/content-hash.ts";
 
 // Auto-discovering Mimetypes for scheme-test contexts. Default-constructed
 // Mimetypes walks node_modules for installed `@plurnk/plurnk-mimetypes-*` siblings
@@ -61,6 +62,24 @@ export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): Plu
 
 export const makeHandlerCtx = (ctx: PlurnkSchemeContext, manifest: SchemeManifest): SchemeCtxImpl =>
     new SchemeCtxImpl(ctx, manifest.name, manifest, new LiveSubscriptions());
+
+export const seedStaticChannel = async (
+    db: Db,
+    entryId: number | undefined,
+    channel: { readonly name: string; readonly content: string; readonly mimetype: string; readonly tokens?: number },
+): Promise<void> => {
+    if (entryId === undefined) throw new Error("A static channel fixture requires an entry id.");
+    await db.crud_write_channel.run({
+        entry_id: entryId,
+        name: channel.name,
+        content: channel.content,
+        mimetype: channel.mimetype,
+        tokens: channel.tokens ?? 0,
+        content_hash: contentHash(channel.content),
+        state: "static",
+        producer_result: null,
+    });
+};
 
 // Exercise a scheme READ through the real universal dispatch composition while
 // retaining the surrounding test's database and principal coordinates.
@@ -201,7 +220,7 @@ export const packetSection = (packet: unknown, name: string): string =>
 // Parse the rendered log section's fenced jsonplurnk array back into structured records — lets
 // tests assert on the model's actual log VIEW with field precision (`path` owns coordinate + OP,
 // alongside the model-facing target URI, status, origin, and display). Strips the ONE deviation (a raw
-// multiline `body` string whose physical lines all carry `N:`) to recover strict JSON ({§jsonplurnk}).
+// multiline `body` string whose physical lines all carry numeric or anchored coordinates) to recover strict JSON ({§jsonplurnk}).
 export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
     const fence = /(`{3,})jsonplurnk\n([\s\S]*?)\n\1(?:\n|$)/.exec(packetSection(packet, "log"));
     if (fence === null) return [];
@@ -223,8 +242,8 @@ export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
             }
             const newline = block.indexOf("\n", at);
             const end = newline === -1 ? block.length : newline;
-            if (!/^[1-9]\d*:/.test(block.slice(at, end).replace(/\r$/, ""))) {
-                throw new Error("jsonplurnk test helper found an unnumbered raw body line");
+            if (!/^(?:[1-9]\d*:|@[0-9A-Za-z]{5}:[1-9]\d*:)/.test(block.slice(at, end).replace(/\r$/, ""))) {
+                throw new Error("jsonplurnk test helper found a raw body line without coordinates");
             }
             lines++;
             if (newline === -1) break;

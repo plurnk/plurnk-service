@@ -1222,7 +1222,7 @@ Per-op semantics. AST shapes come from `@plurnk/plurnk-contracts`'s `PlurnkState
 
 ### §edit EDIT
 
-AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker? }`.
+AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker?: EditLineMarker }`.
 
 - Resolves target channel from fragment ({§channel-selection}); unknown channel → 400; undeclared in manifest → engine crash ({§channel-mimetype}).
 - §edit-null-clears Writes the body; `body: null` clears it.
@@ -1230,6 +1230,42 @@ AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker
   `{ status: 200, entryId }` for a content update.
 - §edit-noop-304 A write that changes nothing — identical content — returns `{ status: 304, entryId }`, mirroring OPEN/FOLD's idempotence ({§open-fold}). The operation's log classification remains independent ({§log-item-tags}).
 - §edit-marker-required-on-existing **A markerless EDIT is CREATE-ONLY — there is no easy-clobber path on an existing entry.** A `<L>` marker scopes an EDIT to a range; without one, the body becomes the entry's WHOLE content — legitimate and required for a fresh entry (nothing exists to scope into), but on an EXISTING entry a missing marker is refused **400**, never a silent full replace. A deliberate full rewrite states that intent explicitly: `<1,-1>` resolves through the ordinary marker math to the same whole-content replacement, so the capability is available but cannot be selected by omission.
+- §edit-line-anchors A scheme declaring `textEditScopes: true` with model write
+  authority admits the contracts-owned {§edit-line-anchor-syntax} as a
+  current-line precondition.
+  For canonical model-facing resource identity `R`, one-based line ordinal `L`,
+  and ordered content array `W` containing that line and up to four complete
+  lines on either side (all excluding separators), core hashes the JSON tuple
+  `["plurnk-line-anchor-v1",R,L,W]` with SHA-256, interprets the digest as a
+  big-endian integer modulo `62^5`, and encodes five fixed-width characters with
+  alphabet `0-9A-Za-z`. The universal READ projector derives anchors from the
+  complete canonical selected channel before applying the authored text slice;
+  its durable result retains that canonical derivation identity and the anchors
+  aligned with returned lines, while packet rendering serializes only
+  `@xxxxx:L:C`. An anchored EDIT reads the
+  current complete target through that same projector without creating another
+  log row. Exactly one current match lowers to an ordinary numeric coordinate
+  before scheme dispatch and rides a core-private endpoint precondition to the
+  mutation owner; otherwise-valid zero/multiple matches and later precondition
+  misses share {§edit-collision}. Malformed positions and schemes without
+  textual EDIT scopes return 400 without invoking the scheme; an upstream
+  current-read failure preserves its status. No revision sidecar or fuzzy
+  relocation exists. A range authenticates both endpoint neighborhoods, so
+  every line of a range up to ten lines is covered; a longer range retains an
+  unauthenticated interior gap.
+- §edit-collision Every standard entry EDIT lands by compare-and-swap against
+  the exact channel content used to calculate it, including numeric-only EDITs.
+  A concurrent creator that wins the resource identity or channel, an anchor
+  that no longer identifies exactly one line, a selected endpoint neighborhood
+  that changes before mutation, or a representation that changes in the final
+  check/write gap returns the same neutral **409 `edit-collision`** and preserves
+  the winner's content. Its public detail says only that EDIT collided with
+  another change and directs the model to READ and retry; it does not assign
+  fault or reveal which detection layer won. Concurrent correct workers are an
+  ordinary cause. Core resolves anchors, scheme handlers receive only numeric
+  coordinates, the shared entry mutation owner rechecks selected endpoint
+  neighborhoods against its exact snapshot, and atomic identity/channel claims
+  and storage predicates close the remaining races.
 
 A `file:///` member EDIT diverges from this immediate-write contract: it diffs against the entry snapshot (the body channel, never a fresh disk read) and **proposes** (202) a disk write that lands via a compare-and-swap on accept. See {§membership-edit-write-cas} and the proposal lifecycle {§proposal}. The marker-required rule above applies identically here — an existing file is never markerlessly replaced.
 
@@ -1273,7 +1309,7 @@ OPEN/FOLD operate on the **log** (`log:///`) - the model's context-curation surf
 
 ### §jsonplurnk The Log's wire format
 
-The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw multiline string. Its opening JSON quote is followed by a physical newline, every content line begins with its universal `N:` prefix, and its closing quote appears at column zero immediately before the object close. Source quotes, braces, fences, and headings cannot collide with that boundary because source text never occupies column zero after numbering. The carve-out is localized to `body`, so the strip-parser recognizes `"body":"` followed by a newline, consumes one or more numbered lines, and replaces the raw multiline value with an escaped JSON string to recover strict JSON. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":"\nN:...\n"` with it shown. `path` is the complete model-facing log identity: when a projected operation exists it ends in `/OP`, and no separate `op` field duplicates it. Nonempty `tags` is the row's complete deduplicated, sorted folksonomy; an untagged row omits it. A bounded projection also carries `"overflow":"Body content truncated. Full body: <log path>"`, naming the row's exact canonical body without prescribing an unbounded retrieval. The block is data only - no prose leads the fence. `tokens` is the ruler-weight of the row's ordinary packet body: the room OPEN adds and FOLD saves. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page has a different weight. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/numbered bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
+The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw multiline string. Its opening JSON quote is followed by a physical newline, every content line begins with a numeric `N:` or anchored `@hash:N:` coordinate prefix, and its closing quote appears at column zero immediately before the object close. Source quotes, braces, fences, and headings cannot collide with that boundary because source text never occupies column zero after projection. The carve-out is localized to `body`, so the strip-parser recognizes `"body":"` followed by a newline, consumes one or more coordinate-prefixed lines, and replaces the raw multiline value with an escaped JSON string to recover strict JSON. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":"\n<coordinate>...\n"` with it shown. `path` is the complete model-facing log identity: when a projected operation exists it ends in `/OP`, and no separate `op` field duplicates it. Nonempty `tags` is the row's complete deduplicated, sorted folksonomy; an untagged row omits it. A bounded projection also carries `"overflow":"Body content truncated. Full body: <log path>"`, naming the row's exact canonical body without prescribing an unbounded retrieval. The block is data only - no prose leads the fence. `tokens` is the ruler-weight of the row's ordinary packet body: the room OPEN adds and FOLD saves. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page has a different weight. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/coordinate-prefixed bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
 
 §jsonplurnk-dynamic-fence The opening fence length is **dynamic**: one backtick longer than the longest backtick run in the rendered entries (floor 3). A body can carry arbitrary content — a READ of a doc whose own text opens a column-0 triple-backtick fence before packet numbering — which a fixed opener would let close the block early; a dynamic opener can never be closed by its own body content (CommonMark closes a fence only on a line of at least its own length).
 
@@ -1662,7 +1698,7 @@ stream cannot fall through an internal `exec`-only query. {§stream-control}
 
 | decision                        | state | `status_rx` | default outcome | effect |
 |---------------------------------|---|---|---|---|
-| §proposal-accept-applies accept | `resolved` | 200 | — | runs the scheme's **`applyResolution`** — the real side effect (disk write, exec spawn). A failing apply (≥400) downgrades to reject, carrying the apply's own outcome — e.g. a member EDIT's `write_conflict` from its write-back compare-and-swap ({§membership-edit-write-cas}) — or `apply_failed` when it names none. |
+| §proposal-accept-applies accept | `resolved` | 200 | — | runs the scheme's **`applyResolution`** — the real side effect (disk write, exec spawn). A failing apply (≥400) downgrades to reject, carrying the apply's own outcome — e.g. a member EDIT's `edit_collision` from its write-back compare-and-swap ({§membership-edit-write-cas}) — or `apply_failed` when it names none. |
 | §proposal-reject-fails reject   | `failed` | 400 | `rejected` | none — the action did not occur. |
 | §proposal-cancel-aborts cancel  | `cancelled` | 499 | `loop_aborted` | none — the loop is abandoning. |
 
@@ -2476,7 +2512,7 @@ Lossless chunk admission requires either the embedder's own counter or an exact 
 
 §membership-emi-divergence-signal **EMI divergence signal.** The detector that gates the work *is* the one that fires this — one mechanism, not a second full read. When the change-detect finds a member moved out-of-band, the delta detector ({§env-delta}) surfaces it as a system `EDIT` log row naming the file, `source="file"` — the model sees what changed without diffing the manifest against memory. The model's own edits are write-through (the entry equals disk after a File write), so the scan never mis-attributes them as external divergence.
 
-§membership-edit-write-cas **The write-back is a compare-and-swap — never a clobber, never a clever merge.** EDIT is *naive against the editable text snapshot*: it diffs the model's change onto the entry's body channel — the exact Unicode the model READ — and the proposal carries the `synced_sig` that snapshot was taken at. Binary sources are refused before this path ({§membership-source-projection}). At accept, `applyResolution` re-stats disk and lands the proposed content only if that signature still matches. If disk moved out-of-band in the propose→accept window — a sibling worker, the user's editor, a build step — the write is **refused** with a `write_conflict` and **nothing is written**. The engine neither blind-writes over the ambient change (a *clobber*) nor silently re-diffs the model's edit against a state it never saw (getting *clever*) — both would bury a stale-view contract violation under a fallback. The conflict surfaces instead: a ≥400 apply downgrades to a reject ({§proposal}), so the model sees the EDIT **did not occur** (400; the `write_conflict` outcome is forensics-only), the next reconcile narrates the real disk content as a `source=file` divergence ({§membership-emi-divergence-signal}), and the model re-reads and re-proposes against the fresh snapshot.
+§membership-edit-write-cas **The write-back is a compare-and-swap — never a clobber, never a clever merge.** EDIT is *naive against the editable text snapshot*: it diffs the model's change onto the entry's body channel — the exact Unicode the model READ — and the proposal carries the `synced_sig` that snapshot was taken at. Binary sources are refused before this path ({§membership-source-projection}). At accept, `applyResolution` re-stats disk and lands the proposed content only if that signature still matches. If disk moved out-of-band in the propose→accept window — a sibling worker, the user's editor, a build step — the write is **refused** with the same neutral `edit-collision` as {§edit-collision}, and **nothing is written**. The engine neither blind-writes over the ambient change (a *clobber*) nor silently re-diffs the model's edit against a state it never saw (getting *clever*) — both would bury a stale-view contract violation under a fallback. The collision surfaces instead: a ≥400 apply downgrades to a reject ({§proposal}), so the model sees that EDIT **did not occur** (400; the `edit_collision` outcome is forensics-only), the next reconcile narrates the real disk content as a `source=file` divergence ({§membership-emi-divergence-signal}), and the model re-reads and re-proposes against the fresh snapshot.
 
 The version travels *with the proposal*, never re-read from the entry at accept: a sibling worker in the same workspace may reconcile while this proposal sits paused, advancing the entry's `synced_sig` to the drifted disk — comparing against the *current* entry sig would wave that clobber through, so the comparison is always against the sig the proposal was computed at. A proposal that assumed an **absent** path (a create) conflicts only if a file has since appeared; a member with **no recorded snapshot** (an un-materialized entry, null `synced_sig`) has no baseline to guard and writes through — the two are told apart by the proposal's `existed` flag, not by a null sig alone. On a clean landing the entry refreshes to the written content and `synced_sig` is **restamped** to it, so the next reconcile recognizes the model's own write (not an external divergence) and a second same-turn edit bases on the landed bytes, not a stale sig. This is the write-side twin of the read-side change-gate ({§membership-change-gated-sync}): one `synced_sig`, gating both the re-read and the write.
 
@@ -3072,7 +3108,7 @@ coordinates, inverted regions, out-of-range coordinates, and other arities are
 416.
 
 Every successful scoped READ carries its complete resolved `region` in the
-operation result and packet metadata. The body remains line-numbered from
+operation result and packet metadata. The body remains coordinate-prefixed from
 `startLine`; the region preserves columns that line numbering cannot express.
 
 Every same-resource mutation resolves its replacement offsets against one
@@ -3103,15 +3139,17 @@ projection, and binary handling. Text scope meaning does not vary by mimetype.
 
 ### §render-rule Render rule
 
-§render-rule-line-navigable-prefix Every textual content body with a source `startLine` renders with an `N:`
-prefix on each physical line, independent of mimetype. JSON, XML, and HTML are
-therefore just as line-addressable as markdown and source code. The prefix is a
-packet presentation aid, never part of canonical content; matchers and
-mutations consume canonical bytes before rendering. A producer may set
-`startLine: null` only when its content is already source-numbered, such as an
-effect receipt.
+§render-rule-line-navigable-prefix Every textual content body with a source
+`startLine` renders with a coordinate prefix on each physical line, independent
+of mimetype. A successful exact READ whose active scheme declares
+`textEditScopes: true` and model write authority supplies `@hash:N:` under
+{§edit-line-anchors}; every other body renders `N:`. JSON, XML, and HTML are therefore just as
+line-addressable as markdown and source code. The prefix is a packet
+presentation aid, never part of canonical content; matchers and mutations
+consume canonical bytes before rendering. A producer may set `startLine: null`
+only when its content is already source-numbered, such as an effect receipt.
 
-§render-rule-find-renders-result A log row's canonical full body is resolved once by `LogBody`: READ/FIND, model-emission, prompt, and extension result content comes from `rx.content`; EDIT uses its structured receipt or an environment-delta span; COPY/MOVE concatenate the textual receipt contexts in their ordered `effects`; EXEC and the composed PLAN/SEND/WORK/FORK family use their statement body. Whole-channel COPY/MOVE effects are bodyless rather than fabricating a text projection. Packet rendering applies {§body-projection} and universal line numbering. READ/FIND over `log:///` and search consume the complete canonical body instead. Status and content are orthogonal: a failed terminal stream READ retains its Problem Details and failure status while rendering captured diagnostic output; failure never erases evidence.
+§render-rule-find-renders-result A log row's canonical full body is resolved once by `LogBody`: READ/FIND, model-emission, prompt, and extension result content comes from `rx.content`; EDIT uses its structured receipt or an environment-delta span; COPY/MOVE concatenate the textual receipt contexts in their ordered `effects`; EXEC and the composed PLAN/SEND/WORK/FORK family use their statement body. Whole-channel COPY/MOVE effects are bodyless rather than fabricating a text projection. Packet rendering applies {§body-projection} and the coordinate projection in {§render-rule-line-navigable-prefix}. READ/FIND over `log:///` and search consume the complete canonical body instead. Status and content are orthogonal: a failed terminal stream READ retains its Problem Details and failure status while rendering captured diagnostic output; failure never erases evidence.
 
 An `EDIT` log row renders its bounded effect receipt (`rx.receipt`) as row
 metadata and join context, not its input statement. Proposal-gated file EDITs
@@ -3122,7 +3160,8 @@ any scoped textual receipt contexts under their `log:///` address, never under
 one operand's resource address. All generated bodies remain under
 {§body-projection}. {§edit-result-render}
 
-The `N:` prefix is presentation/reference per plurnk.md ("not part of the source"); stripped before any matcher operation on the log entry.
+Numeric and anchored coordinate prefixes are presentation/reference per
+plurnk.md ("not part of the source"); matchers operate on canonical content.
 
 ### §markdown-primitive Mimetype primitive: text/markdown
 
@@ -3144,7 +3183,7 @@ Carried from the contract walk; durable.
 - §copy-l-source-range **COPY/MOVE source scope** selects only the addressed source channel and
   first resolves and, when required, prepares the same canonical
   owner-addressed representation as exact READ/FIND. It transfers canonical
-  text without the packet's `N:` prefix. A MOVE removes
+  text without the packet's coordinate prefix. A MOVE removes
   that same selected region; an unscoped MOVE removes only the selected
   channel, deleting the entry only when no channels remain. A binary marker
   is not transferable; a readable binary projection is already a textual
@@ -3158,7 +3197,8 @@ Carried from the contract walk; durable.
   Any scoped textual transfer materializes create/update receipts; whole-channel
   changes do not. Operand selections remain independently visible per
   {§copy-move-observation}.
-- **READ rx** prefixes every textual line with `N:` per {§render-rule}.
+- **READ rx** prefixes every textual line under {§render-rule}; eligible
+  editable resources carry `@hash:N:`, and all others carry `N:`.
 - **FIND body matcher** applies to entry content (all dialects), per-candidate via the in-tree `Matcher.matchAgainstContent` ({§matcher-dispatch}; status 200 = content hit → entry selected). The target scope selects candidates; the path-glob is the (target). FIND's signal classifies its own log item ({§log-item-tags}).
 - **OPEN/FOLD** operate on the **log** (`log:///`), not entries ({§open-fold}) — FOLD collapses a log row to its path, OPEN restores its body. Aimed at an entry scheme they return 501.
 - **SEND signal `410`** deletes as a side-effect (not the model idiom; {§move}): with `#fragment`, that channel only; without, the whole entry. **SEND signal `499`** resolves the durable open-subscription row and invokes that subscription's exact callable owner through the process-local live registry ({§subscriptions}).

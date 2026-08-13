@@ -188,9 +188,19 @@ op: "EDIT"
 suffix: string
 signal: (string[] | null)
 target: (ParsedPath | null)
-lineMarker: (LineMarker | null)
+lineMarker: (EditLineMarker | null)
 body: (string | null)
 position: Position
+}
+/**
+ * The ordered components parsed from an EDIT <scope>. A line coordinate may be either numeric or a rendered five-character Base62 line anchor; columns remain numeric. The runtime resolves anchors against the addressed current text before invoking its scheme owner.
+ */
+
+export interface EditLineMarker {
+/**
+ * @minItems 1
+ */
+marks: [(number | string), ...((number | string))[]]
 }
 
 export interface CopyStatement {
@@ -463,6 +473,8 @@ returned?: ReturnedRange
 export type AppliedTagSignal = (string[] | null)
 
 export type CurationTagSignal = (string[] | null)
+
+export type EditLineMarkerOrNull = (EditLineMarker | null)
 
 export type ResourceSelectionOrNull = (ResourceSelection | null)
 

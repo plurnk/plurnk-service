@@ -22,6 +22,38 @@ import { copyStmt, editStmt, readStmt, findStmt, regex, sendStmt, urlPath } from
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; header: string | null; content: string; tokens: number }> }> =>
     JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
 
+test("assembled packet: editable READ lines carry copyable anchors without changing their visible ordinals", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `pkt-line-anchor-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "inspect notes");
+        const schemes = new SchemeRegistry();
+        const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+        const target = urlPath("worker", "/anchored.md");
+        const provider = new Mock({
+            contextWindow: 100000,
+            responses: [
+                { assistant: { content: "", reasoning: null, ops: [
+                    editStmt(target, "alpha\nbeta"),
+                    readStmt(target, { marks: [1, -1] }),
+                    sendStmt(102),
+                ] } },
+                { assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } },
+            ],
+        });
+
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const read = logEntries(await getPacket(db, second.turnId)).find((entry) =>
+            entry.target === "worker:///anchored.md"
+            && typeof entry.path === "string"
+            && entry.path.endsWith("/READ"));
+        assert.equal(read?.target, "worker:///anchored.md");
+        assert.match(String(read?.body), /^@[0-9A-Za-z]{5}:1:alpha\n@[0-9A-Za-z]{5}:2:beta\n$/);
+    } finally { await db.close(); }
+});
+
 test("packet assembly surfaces contract-invalid persisted loop flags at the same owner (#169)", async () => {
     const db = await openMigrated();
     try {

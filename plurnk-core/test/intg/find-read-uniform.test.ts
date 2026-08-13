@@ -7,7 +7,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
-import type { FindStatement, ReadStatement, EditStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { FindStatement, ReadStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -44,7 +45,7 @@ const setup = async () => {
 // delimiter collisions: parse a minimal statement, then replace its typed AST body.
 const seedRaw = async (ctx: ReturnType<typeof makeSchemeCtx>, name: string, content: string): Promise<void> => {
     const k = new Worker();
-    const stmt = parseOp<EditStatement>(`## EDIT0 (worker:///${name})\nx`, "EDIT");
+    const stmt = parseOp<ResolvedEditStatement>(`## EDIT0 (worker:///${name})\nx`, "EDIT");
     await k.edit({ ...stmt, body: content }, ctx);
 };
 

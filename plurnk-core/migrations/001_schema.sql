@@ -567,6 +567,12 @@ BEGIN
     UPDATE entries SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.entry_id;
 END;
 
+CREATE TRIGGER IF NOT EXISTS entries_touch_on_channel_update
+AFTER UPDATE ON entry_channels
+BEGIN
+    UPDATE entries SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.entry_id;
+END;
+
 -- symbol_defs
 -- @graph NODES ({§relation-indexed-dialects}). Code symbol definitions, populated
 -- once per content-addressed derivation from mimetypes'

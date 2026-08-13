@@ -14,7 +14,8 @@ import { promisify } from "node:util";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PlurnkStatement, SendStatement, ReadStatement, EditStatement, LineMarker, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement, SendStatement, ReadStatement, LineMarker, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -49,7 +50,7 @@ const readStmt = (target: ParsedPath | null): ReadStatement => ({
 });
 
 const fullReplace: LineMarker = { marks: [1, -1] };
-const editStmt = (target: ParsedPath | null, body: string, marker: LineMarker | null = null): EditStatement => ({
+const editStmt = (target: ParsedPath | null, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({
     op: "EDIT", suffix: "", signal: null, target,
     lineMarker: marker, body, position: { line: 1, column: 1 },
 });
@@ -201,7 +202,7 @@ test("a host-absolute spelling names its literal jail path — READ 404s, EDIT p
 
 type WriteAttrs = { path: string; canonical: string; patched: string; baseSig: string | null };
 
-test("an out-of-band disk change between propose and accept is a write conflict, never a clobber", async () => {
+test("an out-of-band disk change between propose and accept is an edit collision, never a clobber", async () => {
     await withGitWorkspace(async (root, ctx, _db, trackedPath) => {
         await GitMembership.indexGitMembership(ctx); // snapshot: body channel + synced_sig, both from disk
         const file = new File();
@@ -218,8 +219,9 @@ test("an out-of-band disk change between propose and accept is a write conflict,
         // Accept. body omitted, so a successful write would land attrs.patched (the full proposed
         // content) — which is exactly what must NOT happen now that disk has drifted from baseSig.
         const applied = await file.applyResolution({ attrs: proposal.attrs as WriteAttrs }, ctx);
-        assert.equal(applied.status, 409, "a drifted disk is a write conflict, not a silent clobber");
-        assert.match(applied.outcome ?? "", /write_conflict/, "the conflict surfaces to the model as a write_conflict outcome");
+        assert.equal(applied.status, 409, "a drifted disk is an edit collision, not a silent clobber");
+        assert.equal(applied.problem?.type, "https://problems.plurnk.dev/engine/edit/edit-collision");
+        assert.equal(applied.outcome, "edit_collision", "the proposal lifecycle retains the neutral collision outcome");
 
         // The ambient change SURVIVES untouched — nothing got clever, nothing clobbered.
         assert.equal(await readFile(join(root, trackedPath), "utf8"), ambient, "the ambient out-of-band change is preserved, not overwritten by the stale proposal");

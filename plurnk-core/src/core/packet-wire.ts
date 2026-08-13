@@ -15,6 +15,7 @@ import LogEntryProjection from "./LogEntryProjection.ts";
 import {
     assertEditReceipt,
     assertResourceEffects,
+    LineAnchors,
     type EditReceipt,
 } from "../content/index.ts";
 
@@ -91,6 +92,7 @@ interface LogEntryView {
     source?: unknown;
     attrs?: unknown;
     tags?: unknown;
+    lineAnchors?: readonly string[];
 }
 interface FailurePointer { status?: unknown; coordinate?: unknown }
 interface NoticeView {
@@ -209,7 +211,7 @@ export default class PacketWire {
         ];
     }
 
-    // Number each line of body as `<N>:<line>` — a bare `N:` prefix, NO separator whitespace
+    // Number a non-READ body line as `<N>:<line>` — a bare `N:` prefix, NO separator whitespace
     // ({§render-rule-line-navigable-prefix}): the leading digit prevents column-zero fence collisions and gives
     // the model line refs for free (`## READ0 (...) <42-46>`), while the absence of any separator means a
     // reproduced line has nothing between `N:` and the content to copy — the hard-tab separator used
@@ -225,16 +227,22 @@ export default class PacketWire {
         )}`;
     }
 
-    // The single content-body renderer EVERY output-emitting op routes through, so the line-number
-    // convention the model orients on can't drift. Every textual body receives
-    // the `N:` prefix from `startLine`; matchers consume canonical content before
-    // this presentation projection. Empty content produces no body.
-    static #renderContentBody(content: string, startLine: number | null = 1): string {
+    // The single content-body renderer EVERY output-emitting op routes through.
+    // Exact READ content receives `@hash:N:`; other textual bodies receive `N:`.
+    // Matchers consume canonical content before this presentation projection.
+    // Empty content produces no body.
+    static #renderContentBody(
+        content: string,
+        startLine: number | null = 1,
+        lineAnchors: readonly string[] | null = null,
+    ): string {
         if (content.length === 0) return "";
         // `startLine === null` means the producer already supplied numbered
         // content; re-numbering would duplicate its coordinates.
         const rendered = startLine !== null
-            ? PacketWire.#numberLines(content, startLine)
+            ? lineAnchors === null
+                ? PacketWire.#numberLines(content, startLine)
+                : LineAnchors.render(content, startLine, lineAnchors)
             : content;
         return PacketWire.#quoteBody(rendered);
     }
@@ -281,7 +289,7 @@ export default class PacketWire {
     }
 
     // {§jsonplurnk} One deliberately raw multiline JSON string. The physical
-    // newline after the opening quote and every universal positive `N:` prefix
+    // newline after the opening quote and every positive numeric or anchored coordinate prefix
     // make the closing `"}` at column zero unambiguous without an invented
     // delimiter for source text to imitate. Already-numbered producer output is
     // checked here too: malformed bodies fail at the one projection boundary.
@@ -289,8 +297,9 @@ export default class PacketWire {
         const endsWithLineBreak = /(?:\r\n|\r|\n)$/.test(body);
         const lines = body.split(/\r\n|\r|\n/);
         const contentLines = endsWithLineBreak ? lines.slice(0, -1) : lines;
-        if (contentLines.length === 0 || contentLines.some((line) => !/^[1-9]\d*:/.test(line))) {
-            throw new TypeError("A raw jsonplurnk body requires a positive `N:` prefix on every physical line.");
+        if (contentLines.length === 0 || contentLines.some((line) =>
+            !/^[1-9]\d*:/.test(line) && !LineAnchors.isAnchoredLine(line))) {
+            throw new TypeError("A raw jsonplurnk body requires a positive coordinate prefix on every physical line.");
         }
         return `"\n${body}${endsWithLineBreak ? "" : "\n"}"`;
     }
@@ -528,9 +537,10 @@ export default class PacketWire {
             if (projection.cut) {
                 meta.overflow = `Body content truncated. Full body: ${path}`;
             }
+            const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;
             const body = emptyFind || projection.text.length === 0
                 ? ""
-                : PacketWire.#renderContentBody(projection.text, fullBody.startLine);
+                : PacketWire.#renderContentBody(projection.text, fullBody.startLine, lineAnchors);
 
             // tokens on EVERY row (0 when there's genuinely no body) so the model can always weigh
             // it; for a folded row this is the room an OPEN would add.

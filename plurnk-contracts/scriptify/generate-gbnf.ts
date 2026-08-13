@@ -24,6 +24,7 @@ const cls = (ranges: Array<[number, number]>, negate = false): GItem => ({ kind:
 
 const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "WORK", "FORK", "KILL"] as const;
 const DIGIT = cls([R("0", "9")]);
+const BASE62 = cls([R("0", "9"), R("A", "Z"), R("a", "z")]);
 const WS = cls(C(" \t\r\n"));
 const TAG_HEAD = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.")]);
 const TAG_TAIL = cls([R("A", "Z"), R("a", "z"), R("0", "9"), ...C("_.+-")]);
@@ -128,11 +129,11 @@ export const buildModel = (): GModel => {
     const addTags = [ref("add-tags-slot")];
     const target = [ref("target-slot")];
     const line = [ref("line-slot")];
-    const taggedTargetScope = (op: string): GSeq => [
+    const taggedTargetScope = (op: string, lineRule = "line-slot"): GSeq => [
         lit(`## ${op}0`),
         opt(addTags[0]),
         target[0],
-        opt(line[0]),
+        opt(ref(lineRule)),
     ];
     // Shape curation terms and canonical log addresses; the parser owns whether the
     // complete signal/target/matcher combination selects any log items.
@@ -145,7 +146,7 @@ export const buildModel = (): GModel => {
     requiredBodySection(model, "plan", [lit("# PLAN0")]);
     optionalBodySection(model, "find", taggedTargetScope("FIND"), "pattern-body");
     optionalBodySection(model, "read", taggedTargetScope("READ"), "pattern-body");
-    optionalBodySection(model, "edit", taggedTargetScope("EDIT"), "section-body");
+    optionalBodySection(model, "edit", taggedTargetScope("EDIT", "edit-line-slot"), "section-body");
     requiredBodySection(model, "copy", taggedTargetScope("COPY"));
     requiredBodySection(model, "move", taggedTargetScope("MOVE"));
     optionalBodySection(model, "open", [lit("## OPEN0"), ref("log-selection")], "pattern-body");
@@ -221,6 +222,7 @@ export const buildModel = (): GModel => {
     model.set("log-target-slot", [[lit(" (log:"), plus(ref("target-atom")), lit(")")]]);
     model.set("target-slot", [[lit(" "), ref("target")]]);
     model.set("line-slot", [[lit(" "), ref("line")]]);
+    model.set("edit-line-slot", [[lit(" "), ref("edit-line")]]);
     model.set("exec-slot", [[lit(" "), ref("exec-sig")]]);
     model.set("branch-slot", [[lit(" "), ref("branch")]]);
     model.set("kill-slot", [[lit(" "), ref("kill-sig")]]);
@@ -258,6 +260,10 @@ export const buildModel = (): GModel => {
     model.set("target-escape", [[lit("\\\\")], [lit("\\(")], [lit("\\)")]]);
     model.set("line", [[lit("<"), ref("int"), star(ref("line-rest")), lit(">")]]);
     model.set("line-rest", [[lit(","), ref("int")]]);
+    model.set("edit-line", [[lit("<"), ref("edit-coordinate"), star(ref("edit-line-rest")), lit(">")]]);
+    model.set("edit-line-rest", [[lit(","), ref("edit-coordinate")]]);
+    model.set("edit-coordinate", [[ref("int")], [ref("line-anchor")]]);
+    model.set("line-anchor", [[lit("@"), BASE62, BASE62, BASE62, BASE62, BASE62]]);
     model.set("int", [[opt(lit("-")), plus(DIGIT), opt(ref("frac"))]]);
     model.set("frac", [[lit("."), plus(DIGIT)]]);
     model.set("park", [[lit("<"), ref("park-t"), opt(ref("park-poll")), lit(">")]]);

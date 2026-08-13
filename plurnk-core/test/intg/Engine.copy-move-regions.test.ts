@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
-    EditStatement,
+    ResolvedEditStatement,
     SchemeCtx,
     SchemeHandler,
     SchemeManifest,
@@ -58,7 +58,7 @@ class MultiChannelScheme implements SchemeHandler {
     };
 
     async editBatch(
-        statements: readonly EditStatement[],
+        statements: readonly ResolvedEditStatement[],
         ctx: SchemeCtx,
     ) {
         return ctx.entries.operations.editBatch(statements);

@@ -578,29 +578,45 @@ export default class PacketBuilder {
             tx: string; mimetype_tx: string; expanded: number; source: string | null; attrs: string | null;
             tags: string;
         }>({ worker_id: workerId });
-        return rows.map((r) => ({
-            coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
-            origin: r.origin,
-            op: r.op,
-            suffix: r.suffix,
-            signal: r.signal === null ? null : JSON.parse(r.signal),
-            target: {
-                scheme: r.scheme,
-                username: r.username, password: r.password,
-                hostname: r.hostname, port: r.port,
-                pathname: r.pathname,
-                query: r.query,
-                fragment: r.fragment,
-            },
-            status: r.status_rx,
-            rx: r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx,
-            mimetype_rx: r.mimetype_rx,
-            tx: r.mimetype_tx === "application/json" ? JSON.parse(r.tx) : r.tx,
-            mimetype_tx: r.mimetype_tx,
-            folded: r.expanded === 0 && r.id !== transientOpenLogEntryId,
-            source: r.source,
-            attrs: r.attrs === null ? null : JSON.parse(r.attrs),
-            tags: JSON.parse(r.tags),
-        }));
+        return rows.map((r) => {
+            const tx = r.mimetype_tx === "application/json" ? JSON.parse(r.tx) as unknown : r.tx;
+            const rx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) as unknown : r.rx;
+            const rawLineAnchors = LogEntryProjection.op(r) === "READ"
+                && r.status_rx === 200
+                && rx !== null
+                && typeof rx === "object"
+                && Object.hasOwn(rx, "lineAnchors")
+                ? (rx as { lineAnchors: unknown }).lineAnchors
+                : undefined;
+            if (rawLineAnchors !== undefined && !Array.isArray(rawLineAnchors)) {
+                throw new TypeError("A READ result's lineAnchors field must be an array.");
+            }
+            const lineAnchors = rawLineAnchors as readonly string[] | undefined;
+            return {
+                coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
+                origin: r.origin,
+                op: r.op,
+                suffix: r.suffix,
+                signal: r.signal === null ? null : JSON.parse(r.signal),
+                target: {
+                    scheme: r.scheme,
+                    username: r.username, password: r.password,
+                    hostname: r.hostname, port: r.port,
+                    pathname: r.pathname,
+                    query: r.query,
+                    fragment: r.fragment,
+                },
+                status: r.status_rx,
+                rx,
+                mimetype_rx: r.mimetype_rx,
+                tx,
+                mimetype_tx: r.mimetype_tx,
+                folded: r.expanded === 0 && r.id !== transientOpenLogEntryId,
+                source: r.source,
+                attrs: r.attrs === null ? null : JSON.parse(r.attrs),
+                tags: JSON.parse(r.tags),
+                ...(lineAnchors === undefined ? {} : { lineAnchors }),
+            };
+        });
     }
 }

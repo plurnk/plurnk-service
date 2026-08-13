@@ -790,6 +790,49 @@ test("an oversized auto-opened terminal stream READ renders its complete observa
     assert.doesNotMatch(rendered, /"overflow"/, "READ owns its selected result bound");
 });
 
+test("READ bodies render copyable Base62 line anchors while other numbered bodies remain numeric", () => {
+    const read = PacketWire.renderLog([{
+        coordinate: "1/2/1",
+        origin: "model",
+        op: "READ",
+        status: 200,
+        target: { scheme: "worker", pathname: "/notes.md" },
+        rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta", startLine: 7 },
+        folded: false,
+        lineAnchors: ["@aZ09b", "@Q1w2E"],
+    }], tok);
+    assert.match(read, /@aZ09b:7:alpha/);
+    assert.match(read, /@Q1w2E:8:beta/);
+
+    const find = PacketWire.renderLog([{
+        coordinate: "1/2/2",
+        origin: "model",
+        op: "FIND",
+        status: 200,
+        target: { scheme: "worker", pathname: "/notes.md" },
+        rx: { status: 200, mimetype: "application/json", content: '["one"]', startLine: 1 },
+        folded: false,
+    }], tok);
+    assert.match(find, /\n1:\["one"\]\n/);
+    assert.doesNotMatch(find, /@[0-9A-Za-z]{5}:1:/);
+});
+
+test("READ rendering fails hard when persisted anchors do not align with the projected snapshot", () => {
+    assert.throws(
+        () => PacketWire.renderLog([{
+            coordinate: "1/2/1",
+            origin: "model",
+            op: "READ",
+            status: 200,
+            target: { scheme: "worker", pathname: "/notes.md" },
+            rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta", startLine: 7 },
+            folded: false,
+            lineAnchors: ["@aZ09b"],
+        }], tok),
+        /line anchors must align one-for-one/,
+    );
+});
+
 test("log render: EDIT@200 with no tx → meta line only (defensive — tx is always written in practice)", () => {
     const system = {
         system_definition: "SD",

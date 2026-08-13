@@ -2,10 +2,11 @@
 // dispatches an op uses one of these.
 
 import type {
-    EditStatement, ReadStatement, SendStatement, OpenStatement, FoldStatement,
+    ReadStatement, SendStatement, OpenStatement, FoldStatement,
     FindStatement, CopyStatement, MoveStatement, ExecStatement,
     LocalPath, UrlPath, ParsedPath, MatcherBody, LineMarker,
 } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 
 export const urlPath = (scheme: string, pathname: string, fragment: string | null = null): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}${fragment !== null ? `#${fragment}` : ""}`,
@@ -20,7 +21,7 @@ export const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
 // the ordinary marker math to a full replace.
 export const fullReplace: LineMarker = { marks: [1, -1] };
 
-export const editStmt = (target: ParsedPath | null, body: string | null = null, tags: string[] | null = null, marker: LineMarker | null = null): EditStatement => ({
+export const editStmt = (target: ParsedPath | null, body: string | null = null, tags: string[] | null = null, marker: LineMarker | null = null): ResolvedEditStatement => ({
     op: "EDIT", suffix: "", signal: tags, target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });

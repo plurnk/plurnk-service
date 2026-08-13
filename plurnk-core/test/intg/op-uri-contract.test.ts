@@ -15,7 +15,8 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
-import type { FindStatement, ReadStatement, EditStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { FindStatement, ReadStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
@@ -102,7 +103,7 @@ test("contract: EDIT(bare path) resolves the canonical-stored member and propose
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
         // {§edit-marker-required-on-existing} — notes.md already exists; <1,-1> states the rewrite.
-        const stmt = parseOp<EditStatement>("## EDIT0 (notes.md) <1,-1>\nthe codename is dragon", "EDIT");
+        const stmt = parseOp<ResolvedEditStatement>("## EDIT0 (notes.md) <1,-1>\nthe codename is dragon", "EDIT");
         const result = await new File().edit(stmt, ctx);
         assert.equal(result.status, 202, `EDIT canonicalizes the bare path → proposal; got ${result.status} ${result.problem?.detail ?? ""}`);
     });

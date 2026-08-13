@@ -449,6 +449,29 @@ test("scope spellings normalize to ordered numeric marks", () => {
     }
 });
 
+test("EDIT alone admits rendered Base62 line anchors in line-coordinate positions", () => {
+    const single = oneStatement(section("EDIT", " (p) <@aZ09b>", "body"));
+    assert.equal(single.op, "EDIT");
+    assert.deepEqual(single.lineMarker, { marks: ["@aZ09b"] });
+
+    const range = oneStatement(section("EDIT", " (p) <@aZ09b,@0Aa9Z>", "body"));
+    assert.deepEqual(range.lineMarker, { marks: ["@aZ09b", "@0Aa9Z"] });
+
+    const region = oneStatement(section("EDIT", " (p) <@aZ09b,5,@0Aa9Z,12>", "body"));
+    assert.deepEqual(region.lineMarker, { marks: ["@aZ09b", 5, "@0Aa9Z", 12] });
+
+    for (const input of [
+        section("READ", " (p) <@aZ09b>"),
+        section("FIND", " (p) <@aZ09b>"),
+        section("EXEC", " [node] <@aZ09b> (./)", "run"),
+        section("EDIT", " (p) <@aZ09>", "body"),
+        section("EDIT", " (p) <@aZ09bQ>", "body"),
+        section("EDIT", " (p) <@aZ-9b>", "body"),
+    ]) {
+        assert.ok(errorsOf(input).length > 0, input);
+    }
+});
+
 test("SEND terminal scope is retained while mid SEND rejects it; EXEC admits timeout and poll", () => {
     const terminal = oneStatement(section("SEND", " [102] <30>", "polling"));
     assert.deepEqual(terminal.lineMarker, { marks: [30] });

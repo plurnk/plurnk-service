@@ -25,6 +25,7 @@ class Notes {
         writableBy: ["model", "client"],
         volatile: false,
         modelVisible: true,
+        textEditScopes: true,
         flags: { /* optional SchemeFlagAffinity */ },
     };
 }
@@ -40,6 +41,7 @@ class Notes {
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
 | `folderScopes?` | `true` declares that a trailing slash on FIND is a collection scope. Absent/false means `/` is ordinary resource syntax. |
+| `textEditScopes?` | `true` declares the shared textual EDIT coordinate and collision contract. For model-writable schemes, core's universal READ projector owns line-anchor derivation and resolution; handlers receive only numeric coordinates and route standard entry mutation through `ctx.entries.operations.editBatch`. Absent/false or no model write authority rejects model-facing anchored EDIT before handler invocation. |
 | `flags?` | Optional exact `SchemeFlagAffinity`; see {§manifest-flag-affinity}. |
 | `example?` | The scheme's concise **hot-path** operation example set (e.g. `"## READ0 (foo://thing/42)"`) — renders in the live resource catalogue every turn. One or more complete operations may be separated by blank lines; keep semantics in `documentation`. Omit → not advertised. |
 | `documentation?` | The **deep doc** (semantics / channels / edge cases). Consumer materializes it as a pull-able `worker://plurnk/docs/<name>.md` entry READ on demand; never hits the hot path. Mirrors `ExecInfo.documentation`. |
@@ -82,7 +84,7 @@ narrower request. `editBatch` returns the typed `EditBatchResult`
 specialization:
 
 ```ts
-import type { EditBatchResult, SchemeHandler } from "@plurnk/plurnk-schemes";
+import type { EditBatchResult, ResolvedEditStatement, SchemeHandler } from "@plurnk/plurnk-schemes";
 
 export interface SchemeHandler {
     ready?(): Promise<void>;
@@ -94,7 +96,7 @@ export interface SchemeHandler {
     ): Promise<RepresentationPreparationResult>;
     prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    editBatch?(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
+    editBatch?(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     exec?(statement: ExecStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     work?(statement: WorkStatement, ctx: SchemeCtx): Promise<SchemeResult>;
@@ -104,6 +106,21 @@ export interface SchemeHandler {
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;
 }
 ```
+
+§resolved-edit-statement `ResolvedEditStatement` is the scheme-facing EDIT
+shape: its `lineMarker` is `LineMarker | null` and therefore contains numbers
+only. Core resolves the model-facing {§edit-line-anchor-syntax} before invoking
+`SchemeHandler.editBatch` or `EntryOperationCaps.editBatch`; an unresolved
+anchor crossing that boundary is an internal contract violation. The barrel's
+compatibility export named `EditStatement` aliases this resolved shape, so
+existing plugins do not inherit the model parser's anchor representation.
+The anchor precondition remains core-private. A public handler declaring
+`textEditScopes: true` MUST route its standard textual mutation through
+`ctx.entries.operations.editBatch`, which rechecks that precondition at the
+snapshot owner and lands with the consumer's compare-and-swap. Applying the
+numeric coordinates independently would discard the declared collision
+contract. Core-owned special resources enforce the equivalent invariant inside
+their mutation adapter.
 
 §read-preparation `prepareRepresentation?` is the optional, operation-neutral
 acquisition seam for one exact resource. Core first resolves its canonical
@@ -256,7 +273,7 @@ effects shown to consumers; plugins do not invent a second effect envelope.
 - Manifest/flags: `SchemeManifest`, `SchemeFlagAffinity`, and `WriterTier`; contracts-owned `LoopFlags` and `DEFAULT_LOOP_FLAGS` are re-exported for compatibility.
 - Mutation receipts: `EditBatchResult`, `EditBatchReceipt`, `EditReceipt`, `EditEffectReceipt`, and `EditReceiptUnit`.
 - §scheme-packet-transform **Packet-section transformation.** A scheme may implement `transformSections(sections: PacketSectionDraft[]) → PacketSectionDraft[] | Promise<…>` to add, remove, or reorder sections before core measures the packet. The exact draft shape is `{ name; slot: "system"|"user"; header: string|null; content }`; no token measurement exists at this boundary. Core invokes implementations in registration order and applies `PacketSections.assertDrafts` to the initial list and every returned list. Names are non-empty and unique within the packet.
-- Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `EditStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`).
+- Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`). EDIT uses `ResolvedEditStatement`, also exported under the compatibility name `EditStatement`, under {§resolved-edit-statement}.
 - Target syntax: contracts-owned `PathSyntax` is re-exported for the shared exact-versus-path-glob classifier {§path-glob}.
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
 - §executor-scheme-output Executor-scheme ("an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring). Executor output is a canonical entry and therefore inherits core's exact READ projection under {§read-preparation}; no executor-specific READ helper exists. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only EXEC-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).

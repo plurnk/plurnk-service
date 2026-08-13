@@ -2,7 +2,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-contracts";
+import type { FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import type { CatalogResource, FindResult } from "../../src/schemes/_entry-find.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";
@@ -13,7 +14,7 @@ const url = (pathname: string): UrlPath => ({
     pathname: `/${pathname}`, query: null, fragment: null,
 });
 
-const editStmt = (target: UrlPath, body: string): EditStatement => ({
+const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });

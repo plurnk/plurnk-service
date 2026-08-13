@@ -152,9 +152,8 @@ worker:///archive.md <-1>
 Continue next turn by inspecting each result and reading the changed destinations.
 ```
 
-* Rendered `L:` prefixes are coordinates, not content; edit from a recent READ.
+* Rendered `@hash:L:` prefixes are coordinates, not content; in EDIT scopes, YOU MAY use `@hash` instead of `L`.
 * Unscoped FIND returns items 1-16; unscoped READ returns lines 1–16. Use `<1,-1>` for all.
-* Multiple EDITs to one target in a turn share its pre-turn snapshot and cannot overlap.
 
 ### The Log
 

@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ReadStatement, EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ReadStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import File from "../../src/schemes/File.ts";
 import Namespace from "../../src/core/namespace.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
@@ -21,7 +22,7 @@ const readStmt = (pathname: string): ReadStatement => ({ op: "READ", suffix: "",
 const readFileScheme = (statement: ReadStatement, ctx: ReturnType<typeof makeSchemeCtx>) =>
     lookThroughScheme("file", null, statement, ctx);
 const fullReplace: LineMarker = { marks: [1, -1] };
-const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): EditStatement => ({ op: "EDIT", suffix: "", signal: null, target: fileUrl(pathname), lineMarker: marker, body, position: { line: 1, column: 1 } } as unknown as EditStatement);
+const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ op: "EDIT", suffix: "", signal: null, target: fileUrl(pathname), lineMarker: marker, body, position: { line: 1, column: 1 } });
 
 const setup = async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-canon-"));

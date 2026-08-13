@@ -18,7 +18,7 @@ import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, seedStaticChannel } from "./_helpers.ts";
 
 // {§edit-marker-required-on-existing}: a marker is required on an existing
 // file; `fullReplace` (marks:[1,-1]) states a deliberate whole-content rewrite
@@ -92,7 +92,7 @@ test("file.edit: writes file on accept via applyResolution", async () => {
         // exactly as the production reconcile (#materializeMember) does. EDIT now bases its diff on
         // the body-channel snapshot (so the diff shows -hello), and the write-CAS has a sig to guard.
         const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${target}` });
-        await ctx.db.ops_upsert_channel.run({ entry_id: seeded?.id, name: "body", content: "hello\n", mimetype: "text/plain", tokens: 0 });
+        await seedStaticChannel(ctx.db, seeded?.id, { name: "body", content: "hello\n", mimetype: "text/plain" });
         const seededStat = await stat(join(root, target));
         await ctx.db.crud_set_synced_sig.run({ entry_id: seeded?.id, synced_sig: `${seededStat.mtimeMs}:${seededStat.size}` });
 
@@ -161,12 +161,10 @@ test("file.edit: an unchanged file is a 304 no-op and never becomes a proposal",
             scheme: "file",
             pathname: target,
         });
-        await ctx.db.ops_upsert_channel.run({
-            entry_id: seeded?.id,
+        await seedStaticChannel(ctx.db, seeded?.id, {
             name: "body",
             content: original,
             mimetype: "text/plain",
-            tokens: 0,
         });
         const seededStat = await stat(join(root, target));
         await ctx.db.crud_set_synced_sig.run({
@@ -320,7 +318,7 @@ test("{§edit-marker-required-on-existing}: markerless EDIT refuses an existing 
         const original = "line one\nline two\nline three\n";
         await writeFile(join(root, target), original, "utf8");
         const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: target });
-        await ctx.db.ops_upsert_channel.run({ entry_id: seeded?.id, name: "body", content: original, mimetype: "text/plain", tokens: 0 });
+        await seedStaticChannel(ctx.db, seeded?.id, { name: "body", content: original, mimetype: "text/plain" });
 
         // The run126 shape: a marker meant for the target landed inside the body text
         // instead (a model syntax slip), so the dispatched statement carries no marker at all.
@@ -356,7 +354,7 @@ test("bare target: EDIT(relative/path) routes to file scheme (no scheme prefix)"
         // materialize the body channel too — the marker math below reads `original`.
         await writeFile(join(root, target), "original\n", "utf8");
         const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: target });
-        await ctx.db.ops_upsert_channel.run({ entry_id: seeded?.id, name: "body", content: "original\n", mimetype: "text/plain", tokens: 0 });
+        await seedStaticChannel(ctx.db, seeded?.id, { name: "body", content: "original\n", mimetype: "text/plain" });
 
         // No file:/// prefix — the form the sysprompt teaches. The file exists, so the
         // marker is required ({§edit-marker-required-on-existing}).

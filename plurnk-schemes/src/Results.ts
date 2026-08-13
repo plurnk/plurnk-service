@@ -34,6 +34,8 @@ export interface ChannelProducerResult extends SchemeResultBase {
     readonly mimetype?: never;
     readonly channel?: never;
     readonly startLine?: never;
+    readonly lineAnchorIdentity?: never;
+    readonly lineAnchors?: never;
     readonly region?: never;
     readonly matches?: never;
     readonly range?: never;
@@ -190,7 +192,7 @@ export default class Results {
                 "representation preparation cannot carry transient channel outcomes",
             );
         }
-        const projectionFields = ["content", "mimetype", "channel", "startLine", "region", "matches", "range"];
+        const projectionFields = ["content", "mimetype", "channel", "startLine", "lineAnchorIdentity", "lineAnchors", "region", "matches", "range"];
         const owned = projectionFields.find((field) => Object.hasOwn(exact, field));
         if (owned !== undefined) {
             throw new InvalidOperationResultError(
@@ -207,7 +209,7 @@ export default class Results {
                 `channel producer result cannot use nonterminal status ${exact.status}`,
             );
         }
-        const projectionFields = ["content", "mimetype", "channel", "startLine", "region", "matches", "range"];
+        const projectionFields = ["content", "mimetype", "channel", "startLine", "lineAnchorIdentity", "lineAnchors", "region", "matches", "range"];
         const owned = projectionFields.find((field) => Object.hasOwn(exact, field));
         if (owned !== undefined) {
             throw new InvalidOperationResultError(

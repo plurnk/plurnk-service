@@ -32,6 +32,9 @@ export interface SchemeManifest {
     // Explicit globs and matcher bodies remain queries everywhere. Absent/false
     // means `/` is ordinary resource syntax and dispatches directly.
     readonly folderScopes?: boolean;
+    // True only when EDIT accepts the shared textual <scope> contract. Core
+    // then lowers rendered line anchors to numeric coordinates before dispatch.
+    readonly textEditScopes?: boolean;
     // Entries land FOLDED, off the ranked manifest surface (READable by address,
     // not poured into the ranked view). Absent/false → first-class ranked.
     // Full contract + containment rationale: SPEC {§manifest} (foldedByDefault).

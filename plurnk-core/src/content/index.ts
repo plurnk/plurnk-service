@@ -7,6 +7,14 @@ export { default as MimetypeBinary } from "./mimetype-binary.ts";
 
 export { default as LineMarkerOps } from "./line-marker.ts";
 export type { EditResult as LineEditResult, SliceResult } from "./line-marker.ts";
+export { default as LineAnchors } from "./line-anchors.ts";
+export { default as EditCollision } from "./edit-collision.ts";
+export type {
+    LineAnchorCheck,
+    LineAnchorFailure,
+    LineAnchorPrecondition,
+    LineAnchorResolution,
+} from "./line-anchors.ts";
 
 export { default as PathMimetype } from "./path-mimetype.ts";
 

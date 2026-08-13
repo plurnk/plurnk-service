@@ -8,6 +8,7 @@ import type {
     ClientOp,
     ClientStatement,
     CopyStatement,
+    EditLineMarker,
     EditStatement,
     ExecStatement,
     FindStatement,
@@ -77,6 +78,7 @@ declare module "xpath" {
 type Ctor<T> = new (...args: any[]) => T;
 
 type TagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: LineMarker | null };
+type EditTagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: EditLineMarker | null };
 type CurationSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: null };
 type IntSlots = { signal: number | null; target: ParsedPath | null };
 type ExecSlots = { signal: string | null; target: ParsedPath | null; lineMarker: LineMarker | null };
@@ -243,7 +245,7 @@ export default class AstBuilder {
 
     static #buildEdit(ctx: EditStatementContext): EditStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        const slots = AstBuilder.#extractEditTagSlots(ctx.tagOpModifiers(), position);
         AstBuilder.#assertAppliedTags(slots.signal, position);
         return {
             op: "EDIT",
@@ -380,6 +382,14 @@ export default class AstBuilder {
         };
     }
 
+    static #extractEditTagSlots(modCtx: TagOpModifiersContext | null, pos: Position): EditTagSlots {
+        return {
+            signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
+            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
+            lineMarker: AstBuilder.#editLineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
+        };
+    }
+
     static #extractCurationSlots(modCtx: CurationModifiersContext | null, pos: Position): CurationSlots {
         return {
             signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
@@ -475,6 +485,15 @@ export default class AstBuilder {
         if (ctx === null) return null;
         const text = ctx.L_MARKER()?.getText() ?? "";
         return AstBuilder.#parseLineMarker(text);
+    }
+
+    static #editLineMarkerFromCtx(ctx: LineMarkerContext | null): EditLineMarker | null {
+        if (ctx === null) return null;
+        const text = ctx.L_MARKER()?.getText() ?? "";
+        if (!text.includes("@")) return AstBuilder.#parseLineMarker(text);
+        const marks = text.slice(1, -1).split(/, ?/).map((component) =>
+            component.startsWith("@") ? component : Number.parseFloat(component));
+        return { marks: marks as [number | string, ...(number | string)[]] };
     }
 
     static #positionOf(ctx: { start: { line: number; column: number } | null }): Position {

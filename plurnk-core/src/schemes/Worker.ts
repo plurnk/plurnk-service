@@ -8,9 +8,10 @@ import EntrySend from "./_entry-send.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import type { FindResult, MatchItem } from "./_entry-find.ts";
 import Owner from "../core/Owner.ts";
-import type { EditStatement, SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import type { SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type {
     ChannelProducerResult,
+    ResolvedEditStatement,
     RepresentationPreparationRequest,
     RepresentationPreparationResult,
     SchemeCtx,
@@ -21,6 +22,7 @@ import Results, { type SchemeResultBase } from "../core/results.ts";
 import BranchReceipt from "../core/BranchReceipt.ts";
 import TerminalResult from "../core/TerminalResult.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
+import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 
 // {§worker-scheme} — worker:// is the knowledgebase plus inter-worker control (irc=SEND; WORK/FORK are
 // Dispatcher.#handleWorkerControl). The authority names the OWNER ({§worker-authority-carving}):
@@ -43,6 +45,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         volatile: false,
         modelVisible: true,
         folderScopes: true,
+        textEditScopes: true,
         example: "## EDIT0 (worker:///notes.md)\nInvestigation notes.",
     };
 
@@ -234,7 +237,8 @@ export default class Worker extends CoreSchemeAdapterBase {
         return Results.isErrorStatus(written.status) ? written : { status: 200 };
     }
 
-    async editBatch(statements: readonly EditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
+    async editBatch(statements: readonly ResolvedEditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
+        const precondition = SchemeCtxImpl.editPreconditionOf(ctx);
         const failure = (
             code: string,
             status: number,
@@ -324,10 +328,16 @@ export default class Worker extends CoreSchemeAdapterBase {
                 },
             );
         }
-        return EntryOps.editWorkspaceEntryBatch(statements.map((candidate) => Worker.#stripAuthority(candidate)), core, Worker.manifest, resolved.ownerId);
+        return EntryOps.editWorkspaceEntryBatch(
+            statements.map((candidate) => Worker.#stripAuthority(candidate)),
+            core,
+            Worker.manifest,
+            resolved.ownerId,
+            precondition,
+        );
     }
 
-    async edit(statement: EditStatement, ctx: CoreSchemeCallContext): Promise<EditResult> {
+    async edit(statement: ResolvedEditStatement, ctx: CoreSchemeCallContext): Promise<EditResult> {
         return this.editBatch([statement], ctx);
     }
 

@@ -5,7 +5,8 @@
 import test from "node:test";
 import Owner from "../../src/core/Owner.ts";
 import assert from "node:assert/strict";
-import type { EditStatement, FindStatement, LineMarker, MatcherBody, UrlPath } from "@plurnk/plurnk-contracts";
+import type { FindStatement, LineMarker, MatcherBody, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import type { Db } from "../../src/core/Db.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
@@ -24,7 +25,7 @@ const url = (pathname: string): UrlPath => ({
     pathname: `/${pathname}`, query: null, fragment: null,
 });
 const fullReplace: LineMarker = { marks: [1, -1] };
-const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({
+const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });

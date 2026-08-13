@@ -3,10 +3,12 @@ import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
 import assert from "node:assert/strict";
 import { InvalidTagSignalError } from "@plurnk/plurnk-contracts";
-import type { EditStatement, ReadStatement, KillStatement, PlanStatement, OpenStatement, FoldStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
+import type { EditLineMarker, EditStatement, ReadStatement, KillStatement, PlanStatement, OpenStatement, FoldStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import LineAnchors from "../../src/content/line-anchors.ts";
 import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import type { ResolvedEditStatement, SchemeCtx } from "@plurnk/plurnk-schemes";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -14,20 +16,20 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     pathname, query: null, fragment: null,
 });
 
-const editStmt = (opts: { target: ParsedPath; tags?: string[] | null; body?: string | null }): EditStatement => ({
+const editStmt = (opts: { target: ParsedPath; tags?: string[] | null; body?: string | null; marker?: EditLineMarker | null }): EditStatement => ({
     op: "EDIT", suffix: "",
     signal: opts.tags ?? null,
     target: opts.target,
-    lineMarker: null,
+    lineMarker: opts.marker ?? null,
     body: opts.body ?? null,
     position: { line: 1, column: 1 },
 });
 
-const readStmt = (opts: { target: ParsedPath; tags?: string[] | null }): ReadStatement => ({
+const readStmt = (opts: { target: ParsedPath; tags?: string[] | null; marker?: ReadStatement["lineMarker"] }): ReadStatement => ({
     op: "READ", suffix: "",
     signal: opts.tags ?? null,
     target: opts.target,
-    lineMarker: null,
+    lineMarker: opts.marker ?? null,
     body: null,
     position: { line: 1, column: 1 },
 });
@@ -368,6 +370,231 @@ test("Engine.dispatch: EDIT against worker:/// routes to Worker.edit, returns 20
         assert.ok(entryId >= 1);
         const entry = await db.test_get_entry_by_id.get<{ pathname: string }>({ id: entryId });
         assert.equal(entry?.pathname, "/france/capital");
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: a current READ line anchor lowers to a numeric EDIT precondition", async () => {
+    const { db, engine, env } = await setup();
+    const target = urlPath("worker", "/anchored.md");
+    const identity = "worker:///anchored.md";
+    try {
+        assert.equal((await engine.dispatch({
+            statement: editStmt({ target, body: "alpha\nbeta\ngamma" }),
+            ...env, sequence: 1, origin: "model",
+        })).status, 201);
+
+        const original = "alpha\nbeta\ngamma";
+        const beta = LineAnchors.token(identity, 2, original);
+        const gamma = LineAnchors.token(identity, 3, original);
+        const edited = await engine.dispatch({
+            statement: editStmt({ target, marker: { marks: [beta] }, body: "BETA" }),
+            ...env, sequence: 2, origin: "model",
+        });
+        assert.equal(edited.status, 200);
+
+        const read = await engine.dispatch({
+            statement: readStmt({ target }),
+            ...env, sequence: 3, origin: "model",
+        });
+        assert.equal(read.status, 200);
+        assert.equal((read as { content?: string }).content, "alpha\nBETA\ngamma");
+
+        const stale = await engine.dispatch({
+            statement: editStmt({ target, marker: { marks: [gamma] }, body: "GAMMA" }),
+            ...env, sequence: 4, origin: "model",
+        });
+        assert.equal(stale.status, 409);
+        assert.equal(stale.problem?.type, "https://problems.plurnk.dev/engine/edit/edit-collision");
+        assert.equal(stale.problem?.detail, `EDIT collided with another change at ${identity}.`);
+        assert.equal(stale.problem?.anchor, undefined);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: a scoped READ anchor includes nearby lines outside the returned slice", async () => {
+    const { db, engine, env } = await setup();
+    const target = urlPath("worker", "/contextual-anchor.md");
+    const content = Array.from({ length: 10 }, (_, index) => `line-${index + 1}`).join("\n");
+    try {
+        assert.equal((await engine.dispatch({
+            statement: editStmt({ target, body: content }),
+            ...env, sequence: 1, origin: "model",
+        })).status, 201);
+
+        const read = await engine.dispatch({
+            statement: readStmt({ target, marker: { marks: [5] } }),
+            ...env, sequence: 2, origin: "model",
+        });
+        assert.equal(read.status, 200);
+        assert.equal((read as { content?: string }).content, "line-5");
+        const anchor = (read as { lineAnchors?: readonly string[] }).lineAnchors?.[0];
+        assert.match(anchor ?? "", /^@[0-9A-Za-z]{5}$/);
+
+        assert.equal((await engine.dispatch({
+            statement: editStmt({ target, marker: { marks: [9] }, body: "changed-nearby" }),
+            ...env, sequence: 3, origin: "model",
+        })).status, 200);
+
+        const stale = await engine.dispatch({
+            statement: editStmt({ target, marker: { marks: [anchor!] }, body: "changed-target" }),
+            ...env, sequence: 4, origin: "model",
+        });
+        assert.equal(stale.status, 409);
+        assert.equal(stale.problem?.type, "https://problems.plurnk.dev/engine/edit/edit-collision");
+        assert.equal(stale.problem?.detail, "EDIT collided with another change at worker:///contextual-anchor.md.");
+        assert.equal(stale.problem?.anchor, undefined);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: a mutation between anchor resolution and landing is an edit collision", async () => {
+    const db = await openMigrated();
+    const env = await seedEnvelope(db, `anchor-race-${crypto.randomUUID()}`);
+    const target = urlPath("racy", "/unit.md");
+    const identity = "racy:///unit.md";
+    let intervene = false;
+    const schemes = new SchemeRegistry();
+    schemes.register("racy", {
+        manifest: {
+            name: "racy",
+            channels: { body: "text/markdown" },
+            defaultChannel: "body",
+            category: "data",
+            writableBy: ["model"],
+            volatile: false,
+            modelVisible: true,
+            textEditScopes: true,
+        },
+        async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx) {
+            if (intervene) {
+                const changed = await ctx.entries.write("/unit.md", {
+                    channels: {
+                        body: {
+                            content: "alpha\nother worker\ngamma",
+                            mimetype: "text/markdown",
+                        },
+                    },
+                });
+                assert.equal(changed.status, 200);
+            }
+            return ctx.entries.operations.editBatch(statements);
+        },
+    });
+    const engine = new Engine({ db, schemes });
+    try {
+        const original = "alpha\nbeta\ngamma";
+        assert.equal((await engine.dispatch({
+            statement: editStmt({ target, body: original }),
+            ...env, sequence: 1, origin: "model",
+        })).status, 201);
+        const read = await engine.dispatch({
+            statement: readStmt({ target }),
+            ...env, sequence: 2, origin: "model",
+        });
+        const anchor = (read as { lineAnchors?: readonly string[] }).lineAnchors?.[1];
+        assert.equal(anchor, LineAnchors.token(identity, 2, original));
+
+        intervene = true;
+        const collided = await engine.dispatch({
+            statement: editStmt({ target, marker: { marks: [anchor!] }, body: "authored edit" }),
+            ...env, sequence: 3, origin: "model",
+        });
+        assert.equal(collided.status, 409);
+        assert.equal(collided.problem?.type, "https://problems.plurnk.dev/engine/edit/edit-collision");
+        assert.equal(collided.problem?.detail, `EDIT collided with another change at ${identity}.`);
+        assert.equal(collided.problem?.anchor, undefined);
+
+        const stored = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+            pathname: "/unit.md",
+            scheme: "racy",
+            name: "body",
+        });
+        assert.equal(stored?.content, "alpha\nother worker\ngamma");
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: an anchored EDIT retains the READ owner's canonical resource identity", async () => {
+    const db = await openMigrated();
+    const env = await seedEnvelope(db, `anchor-alias-${crypto.randomUUID()}`);
+    const alias = urlPath("aliased", "/alias.md");
+    const canonical = urlPath("aliased", "/canonical.md");
+    const schemes = new SchemeRegistry();
+    schemes.register("aliased", {
+        manifest: {
+            name: "aliased",
+            channels: { body: "text/markdown" },
+            defaultChannel: "body",
+            category: "data",
+            writableBy: ["model"],
+            volatile: false,
+            modelVisible: true,
+            textEditScopes: true,
+        },
+        async resolveEntryAddress() {
+            return { pathname: "/canonical.md", owner: "commons" as const };
+        },
+        async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx) {
+            return ctx.entries.operations.editBatch(statements.map((statement) => ({
+                ...statement,
+                target: canonical,
+            })));
+        },
+    });
+    const engine = new Engine({ db, schemes });
+    try {
+        assert.equal((await engine.dispatch({
+            statement: editStmt({ target: alias, body: "alpha\nbeta\ngamma" }),
+            ...env, sequence: 1, origin: "model",
+        })).status, 201);
+        const read = await engine.dispatch({
+            statement: readStmt({ target: alias }),
+            ...env, sequence: 2, origin: "model",
+        });
+        const anchor = (read as { lineAnchors?: readonly string[] }).lineAnchors?.[1];
+        assert.equal((read as { lineAnchorIdentity?: string }).lineAnchorIdentity, "aliased:///canonical.md");
+        assert.equal(anchor, LineAnchors.token("aliased:///canonical.md", 2, "alpha\nbeta\ngamma"));
+
+        const edited = await engine.dispatch({
+            statement: editStmt({ target: alias, marker: { marks: [anchor!] }, body: "BETA" }),
+            ...env, sequence: 3, origin: "model",
+        });
+        assert.equal(edited.status, 200);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: a scheme without textual EDIT scopes rejects an anchor before invocation", async () => {
+    const db = await openMigrated();
+    const env = await seedEnvelope(db, `anchor-boundary-${crypto.randomUUID()}`);
+    let invoked = false;
+    const schemes = new SchemeRegistry();
+    schemes.register("whole", {
+        manifest: {
+            name: "whole",
+            channels: { body: "text/markdown" },
+            defaultChannel: "body",
+            category: "data",
+            writableBy: ["model"],
+            volatile: false,
+            modelVisible: true,
+        },
+        async editBatch() {
+            invoked = true;
+            return { status: 200 };
+        },
+    });
+    const engine = new Engine({ db, schemes });
+    try {
+        const result = await engine.dispatch({
+            statement: editStmt({
+                target: urlPath("whole", "/unit"),
+                marker: { marks: ["@aZ09b"] },
+                body: "replacement",
+            }),
+            ...env,
+            sequence: 1,
+            origin: "model",
+        });
+        assert.equal(result.status, 400);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/line-anchor-unsupported");
+        assert.equal(invoked, false);
     } finally { await db.close(); }
 });
 

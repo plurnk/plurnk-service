@@ -166,7 +166,10 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
 
-        assert.match(packetSection(packet, "log"), /"body":"\n2:beta\n3:gamma\n"\}/);
+        assert.match(
+            packetSection(packet, "log"),
+            /"body":"\n@[0-9A-Za-z]{5}:2:beta\n@[0-9A-Za-z]{5}:3:gamma\n"\}/,
+        );
         assert.equal(
             packetSection(packet, "notices"),
             "* scope_normalized: Scope <2,1,3> was normalized to <2,1,3,6>.",

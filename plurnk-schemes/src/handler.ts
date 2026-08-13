@@ -21,7 +21,6 @@
 // they are client operations the engine never dispatches to a scheme.
 import type {
     FindStatement,
-    EditStatement,
     SendStatement,
     ExecStatement,
     WorkStatement,
@@ -35,6 +34,7 @@ import type { EntryAddress, ProposalApplyRequest, ProposalApplyResult, SchemeCtx
 import type { EditBatchResult } from "./edit-receipt.ts";
 import type { RepresentationPreparationResult, SchemeResult } from "./Results.ts";
 import type { SchemeManifest } from "./types.ts";
+import type { ResolvedEditStatement } from "./edit-statement.ts";
 
 export interface RepresentationPreparationRequest {
     readonly target: ParsedPath;
@@ -78,7 +78,7 @@ export interface SchemeHandler extends PluginAttributionSource {
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    editBatch?(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
+    editBatch?(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     exec?(statement: ExecStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     work?(statement: WorkStatement, ctx: SchemeCtx): Promise<SchemeResult>;

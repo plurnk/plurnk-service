@@ -94,7 +94,9 @@ export class SqlRiteSync {
 	graph_resolve_def_candidates: SqlRiteSyncPreparedStatements;
 	graph_refs_from_source: SqlRiteSyncPreparedStatements;
 	graph_set_deep_hash: SqlRiteSyncPreparedStatements;
-	ops_upsert_channel: SqlRiteSyncPreparedStatements;
+	ops_insert_workspace_entry_if_absent: SqlRiteSyncPreparedStatements;
+	ops_insert_channel_if_absent: SqlRiteSyncPreparedStatements;
+	ops_update_channel_if_content: SqlRiteSyncPreparedStatements;
 	ops_read_channel: SqlRiteSyncPreparedStatements;
 	fts_delete: SqlRiteSyncPreparedStatements;
 	fts_insert: SqlRiteSyncPreparedStatements;
@@ -554,7 +556,9 @@ export default class SqlRite {
 	graph_resolve_def_candidates: SqlRitePreparedStatements;
 	graph_refs_from_source: SqlRitePreparedStatements;
 	graph_set_deep_hash: SqlRitePreparedStatements;
-	ops_upsert_channel: SqlRitePreparedStatements;
+	ops_insert_workspace_entry_if_absent: SqlRitePreparedStatements;
+	ops_insert_channel_if_absent: SqlRitePreparedStatements;
+	ops_update_channel_if_content: SqlRitePreparedStatements;
 	ops_read_channel: SqlRitePreparedStatements;
 	fts_delete: SqlRitePreparedStatements;
 	fts_insert: SqlRitePreparedStatements;

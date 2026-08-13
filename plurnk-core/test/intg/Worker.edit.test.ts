@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, LineMarker, LocalPath, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { LineMarker, LocalPath, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
-import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx, seedStaticChannel } from "./_helpers.ts";
 import { urlPath, fullReplace } from "./_dsl.ts";
 
 const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
@@ -11,7 +12,7 @@ const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
 const editStatement = (opts: {
     target?: ParsedPath | null; tags?: string[] | null; body?: string | null;
     lineMarker?: LineMarker | null; suffix?: string;
-}): EditStatement => ({
+}): ResolvedEditStatement => ({
     op: "EDIT",
     suffix: opts.suffix ?? "",
     signal: opts.tags ?? null,
@@ -65,6 +66,45 @@ test("Worker.edit: new entry — inserts entries row and body channel", async ()
     } finally { await db.close(); }
 });
 
+test("Worker.edit: a concurrent creator wins cleanly and the losing EDIT reports a collision", async () => {
+    const { db, workspaceId, workerId } = await setupContext();
+    try {
+        const claim = new Proxy(db.ops_insert_workspace_entry_if_absent, {
+            get(statement, property) {
+                if (property !== "get") return Reflect.get(statement, property, statement) as unknown;
+                return async <R = Record<string, unknown>>(params?: Record<string, unknown>): Promise<R | undefined> => {
+                    const winner = await db.ops_insert_workspace_entry_if_absent.get<{ id: number }>(params);
+                    await seedStaticChannel(db, winner?.id, {
+                        name: "body",
+                        content: "other worker",
+                        mimetype: "text/markdown",
+                    });
+                    return db.ops_insert_workspace_entry_if_absent.get<R>(params);
+                };
+            },
+        });
+        const collisionDb = new Proxy(db, {
+            get(subject, property) {
+                if (property === "ops_insert_workspace_entry_if_absent") return claim;
+                return Reflect.get(subject, property, subject) as unknown;
+            },
+        });
+        const result = await new Worker().edit(
+            editStatement({ target: urlPath("worker", "/create-race.md"), body: "authored edit" }),
+            makeSchemeCtx({ db: collisionDb, workspaceId, workerId }),
+        );
+        assert.equal(result.status, 409);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/edit/edit-collision");
+        assert.equal(result.problem?.detail, "EDIT collided with another change at worker:///create-race.md.");
+        const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+            pathname: "/create-race.md",
+            scheme: "worker",
+            name: "body",
+        });
+        assert.equal(channel?.content, "other worker");
+    } finally { await db.close(); }
+});
+
 test("Worker.edit: second EDIT against same path — same entry id, body replaced, status 200", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
@@ -76,6 +116,53 @@ test("Worker.edit: second EDIT against same path — same entry id, body replace
         assert.equal(second.entryId, first.entryId, "entry id is stable across edits");
         const channel = await db.test_get_channel.get<{ content: string }>({ entry_id: first.entryId, name: "body" });
         assert.equal(channel?.content, "updated");
+    } finally { await db.close(); }
+});
+
+test("Worker.edit: a representation change at atomic landing returns edit-collision without clobbering it", async () => {
+    const { db, workspaceId, workerId } = await setupContext();
+    try {
+        const worker = new Worker();
+        const target = urlPath("worker", "/cas.md");
+        const created = await worker.edit(
+            editStatement({ target, body: "original" }),
+            makeSchemeCtx({ db, workspaceId, workerId }),
+        );
+        assert.equal(created.status, 201);
+        assert.notEqual(created.entryId, null);
+
+        const update = new Proxy(db.ops_update_channel_if_content, {
+            get(statement, property) {
+                if (property !== "get") return Reflect.get(statement, property, statement) as unknown;
+                return async <R = Record<string, unknown>>(params?: Record<string, unknown>): Promise<R | undefined> => {
+                    await db.crud_delete_channels.run({ entry_id: created.entryId });
+                    await seedStaticChannel(db, created.entryId ?? undefined, {
+                        name: "body",
+                        content: "other worker",
+                        mimetype: "text/markdown",
+                    });
+                    return db.ops_update_channel_if_content.get<R>(params);
+                };
+            },
+        });
+        const collisionDb = new Proxy(db, {
+            get(subject, property) {
+                if (property === "ops_update_channel_if_content") return update;
+                return Reflect.get(subject, property, subject) as unknown;
+            },
+        });
+        const result = await worker.edit(
+            editStatement({ target, body: "authored edit", lineMarker: fullReplace }),
+            makeSchemeCtx({ db: collisionDb, workspaceId, workerId }),
+        );
+        assert.equal(result.status, 409);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/edit/edit-collision");
+        assert.equal(result.problem?.detail, "EDIT collided with another change at worker:///cas.md.");
+        const channel = await db.test_get_channel.get<{ content: string }>({
+            entry_id: created.entryId,
+            name: "body",
+        });
+        assert.equal(channel?.content, "other worker");
     } finally { await db.close(); }
 });
 

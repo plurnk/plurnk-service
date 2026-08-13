@@ -77,7 +77,7 @@ Plurnkdown preserves the semantic evidence supplied by section owners.
 
 | Invariant      | Required projection                                                                                                                           |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Addressability | Paths, URI fragments, log coordinates, scopes, and numbered body lines remain usable without translation.                                     |
+| Addressability | Paths, URI fragments, log coordinates, scopes, and coordinate-prefixed body lines remain usable without translation.                          |
 | Weighability   | The Budget line and log-row `tokens` / `itemsTokenTotal` values remain attached to the artifacts they measure.                                |
 | Honesty        | Statuses, Problems, body visibility, overflow notices, and bodyless rows render as produced; presentation never upgrades or suppresses truth. |
 | Structure      | Typed operation examples and Log data remain typed fences rather than prose paraphrases.                                                      |
@@ -96,8 +96,9 @@ languages are opaque to the PLURNK syntax check.
 
 The Log is a dynamically fenced `jsonplurnk` array owned by {§jsonplurnk}. It is valid GFM but
 deliberately not labeled `json`: an open nonempty `body` uses one raw multiline quoted string rather than a JSON-escaped string.
-Every physical body line begins with its universal `N:` prefix, and the closing quote immediately
-precedes the object close at column zero.
+Every physical body line begins with either a numeric `N:` or anchored
+`@hash:N:` coordinate prefix, and the closing quote immediately precedes the
+object close at column zero.
 The fence is one backtick longer than the longest run in the rendered entries, with a minimum
 length of three {§jsonplurnk-dynamic-fence}. `@plurnk/plurnk-contracts` owns the deterministic
 transform that recovers strict JSON.

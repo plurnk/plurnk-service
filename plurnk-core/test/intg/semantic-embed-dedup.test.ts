@@ -4,7 +4,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
-import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import EntrySemantic from "../../src/schemes/_entry-semantic.ts";
@@ -18,7 +19,7 @@ const url = (pathname: string): UrlPath => ({
     pathname: `/${pathname}`, query: null, fragment: null,
 });
 
-const edit = (pathname: string, body: string): EditStatement => ({
+const edit = (pathname: string, body: string): ResolvedEditStatement => ({
     op: "EDIT", suffix: "", signal: null, target: url(pathname), lineMarker: null, body,
     position: { line: 1, column: 1 },
 });

@@ -5,8 +5,9 @@
 // consumer injects their implementation.
 
 import type { WriterTier } from "./types.ts";
-import type { EditStatement, FindStatement, RangeExtent, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
+import type { FindStatement, RangeExtent, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "./edit-statement.ts";
 import type { ChannelProducerResult, MatchEvidence, SchemeResult } from "./Results.ts";
 import type { EditBatchReceipt, EditBatchResult } from "./edit-receipt.ts";
 // Channel streaming-lifecycle state. Metadata, not an engine gate
@@ -103,7 +104,7 @@ export interface EntryFindResult extends SchemeResult {
 }
 
 export interface EntryOperationCaps {
-    editBatch(statements: readonly EditStatement[], owner?: EntryOwner): Promise<EntryEditResult>;
+    editBatch(statements: readonly ResolvedEditStatement[], owner?: EntryOwner): Promise<EntryEditResult>;
     read(statement: ReadStatement, owner?: EntryOwner): Promise<EntryReadResult>;
     find(statement: FindStatement, owner?: EntryOwner): Promise<EntryFindResult>;
     send(statement: SendStatement, owner?: EntryOwner): Promise<SchemeResult>;

@@ -36,13 +36,17 @@ import {
     assertEditBatchReceipt,
     assertEditReceipt,
     assertResourceEffects,
+    EditCollision,
     editReceipt,
+    LineAnchors,
     LineMarkerOps,
     MimetypeBinary,
     PathMimetype,
     ReadProjector,
     projectEditReceipt,
     type EditBatchReceipt,
+    type LineAnchorCheck,
+    type LineAnchorPrecondition,
     type ResourceEffect,
     type ResourceEffectAction,
 } from "../content/index.ts";
@@ -66,7 +70,10 @@ import {
     type EntryAddress,
     InvalidOperationResultError,
     NetworkAddress,
+    type ResolvedEditStatement,
     type ScopeNormalization,
+    type SchemeCtx,
+    type SchemeHandler,
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import type { ProviderEncryptedReasoningItem } from "@plurnk/plurnk-providers";
@@ -120,7 +127,6 @@ interface PreparedRepresentation {
     readonly result: DispatchResult | null;
 }
 
-import type { SchemeCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
 type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
 type LogCurationHandler = {
     curate(statement: OpenStatement | FoldStatement, ctx: SchemeCtx): Promise<LogCurationOutcome>;
@@ -441,10 +447,149 @@ export default class Dispatcher {
         if (key !== null) target.pathname = key;
     }
 
+    async #resolveEditAnchors(
+        statements: readonly EditStatement[],
+        identity: string | null,
+        schemeName: string,
+        manifest: SchemeManifest,
+        ctx: PlurnkSchemeContext,
+    ): Promise<{
+        readonly statements: readonly ResolvedEditStatement[];
+        readonly precondition: LineAnchorPrecondition | null;
+    } | { readonly result: DispatchResult }> {
+        const anchored = statements.filter(({ lineMarker }) => LineAnchors.hasAnchor(lineMarker));
+        if (anchored.length === 0) {
+            return { statements: statements as readonly ResolvedEditStatement[], precondition: null };
+        }
+        if (manifest.textEditScopes !== true || !manifest.writableBy.includes("model")) {
+            return {
+                result: Dispatcher.#failure(
+                    "line-anchor-unsupported",
+                    400,
+                    `Scheme '${schemeName}' does not support textual EDIT scopes.`,
+                    {},
+                    {
+                        scheme: schemeName,
+                        operation: "EDIT",
+                        recovery: "Remove the scope and submit the scheme's complete editable unit.",
+                        retryable: false,
+                    },
+                ),
+            };
+        }
+        if (identity === null) {
+            return {
+                result: Dispatcher.#failure(
+                    "edit-target-required",
+                    400,
+                    "A line-anchored EDIT requires a target resource.",
+                    {},
+                    { recovery: "Provide the target that rendered the line anchor.", retryable: false },
+                ),
+            };
+        }
+
+        const first = statements[0];
+        if (first === undefined) return { statements: [], precondition: null };
+        const current = await this.#run(schemeName, {
+            op: "READ",
+            suffix: first.suffix,
+            signal: null,
+            target: first.target,
+            lineMarker: { marks: [1, -1] },
+            body: null,
+            position: first.position,
+        }, ctx);
+        if (current.status === 204 || current.status === 404) {
+            return { result: EditCollision.result(identity) };
+        }
+        if (current.status >= 300) {
+            return {
+                result: Dispatcher.#failure(
+                    "line-anchor-validation-failed",
+                    current.status,
+                    `EDIT could not validate its line anchor at ${identity}: ${current.problem?.detail ?? `READ returned ${current.status}`}`,
+                    {},
+                    {
+                        target: identity,
+                        upstreamStatus: current.status,
+                        stage: "mutation-precondition",
+                        retryable: false,
+                    },
+                ),
+            };
+        }
+        if (current.status !== 200) {
+            return { result: EditCollision.result(identity) };
+        }
+        const content = (current as { content?: unknown }).content;
+        if (typeof content !== "string") {
+            throw new InvalidOperationResultError(
+                `Scheme '${schemeName}' returned READ ${current.status} without textual content while validating an EDIT anchor.`,
+            );
+        }
+        const lineAnchors = (current as { lineAnchors?: unknown }).lineAnchors;
+        const lineAnchorIdentity = (current as { lineAnchorIdentity?: unknown }).lineAnchorIdentity;
+        try {
+            LineAnchors.assertProjection(content, lineAnchors);
+            if (typeof lineAnchorIdentity !== "string" || lineAnchorIdentity.length === 0) {
+                throw new TypeError("READ line anchors require their canonical derivation identity.");
+            }
+        } catch (cause) {
+            throw new InvalidOperationResultError(
+                `Scheme '${schemeName}' returned READ 200 without its core-owned line-anchor projection.`,
+                { cause },
+            );
+        }
+
+        const resolved: ResolvedEditStatement[] = [];
+        const checks: LineAnchorCheck[] = [];
+        for (const statement of statements) {
+            if (statement.lineMarker === null || !LineAnchors.hasAnchor(statement.lineMarker)) {
+                resolved.push(statement as ResolvedEditStatement);
+                continue;
+            }
+            const resolution = LineAnchors.resolve(lineAnchors, statement.lineMarker);
+            if (!resolution.ok) {
+                const { anchor, kind } = resolution.failure;
+                const invalid = kind === "invalid";
+                if (!invalid) return { result: EditCollision.result(lineAnchorIdentity) };
+                return {
+                    result: Dispatcher.#failure(
+                        "line-anchor-invalid",
+                        400,
+                        `${anchor} is not valid in that EDIT line-coordinate position.`,
+                        {},
+                        {
+                            anchor,
+                            target: identity,
+                            recovery: "Use anchors only where the EDIT scope denotes a line.",
+                            retryable: false,
+                        },
+                    ),
+                };
+            }
+            for (const [index, anchor] of statement.lineMarker.marks.entries()) {
+                if (typeof anchor !== "string") continue;
+                const line = resolution.marker.marks[index];
+                if (typeof line !== "number") {
+                    throw new InvalidOperationResultError("An EDIT line anchor did not lower to a numeric line.");
+                }
+                checks.push({ anchor, line });
+            }
+            resolved.push({ ...statement, lineMarker: resolution.marker });
+        }
+        const uniqueChecks = [...new Map(checks.map((check) => [`${check.anchor}:${check.line}`, check])).values()];
+        return {
+            statements: resolved,
+            precondition: { identity: lineAnchorIdentity, checks: uniqueChecks },
+        };
+    }
+
     async prepareEditBatches(statements: readonly EditStatement[], context: Omit<DispatchContext, "statement" | "sequence">): Promise<void> {
         const { workspaceId, workerId, loopId, turnId, origin } = context;
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin });
-        const groups = new Map<string, EditStatement[]>();
+        const groups = new Map<string, { readonly identity: string | null; readonly statements: EditStatement[] }>();
         for (const statement of statements) {
             assertClassifyingSignal(statement); // {§log-tag-signal}
             const target = this.#extractTarget(statement.target);
@@ -457,10 +602,14 @@ export default class Dispatcher {
                 target.fragment,
             ]);
             const group = groups.get(key);
-            if (group === undefined) groups.set(key, [statement]);
-            else group.push(statement);
+            if (group === undefined) groups.set(key, {
+                identity: renderTarget(target),
+                statements: [statement],
+            });
+            else group.statements.push(statement);
         }
-        for (const group of groups.values()) {
+        for (const preparedGroup of groups.values()) {
+            const group = preparedGroup.statements;
             const first = group[0];
             const schemeName = schemeNameOf(first.target);
             let initial: DispatchResult;
@@ -499,17 +648,31 @@ export default class Dispatcher {
                     );
                 } else {
                     try {
-                        const addressedScheme = first.target?.kind === "url" ? first.target.scheme : schemeName;
-                        const publishedChannel = first.target?.kind === "url"
-                            ? first.target.fragment ?? manifest.defaultChannel
-                            : manifest.defaultChannel;
-                        initial = Results.assert(await method.call(handler, group, new SchemeCtxImpl(
-                            schemeCtx,
-                            addressedScheme ?? schemeName,
+                        const resolved = await this.#resolveEditAnchors(
+                            group,
+                            preparedGroup.identity,
+                            schemeName,
                             manifest,
-                            this.#liveSubscriptions,
-                            { publishedChannel },
-                        )));
+                            schemeCtx,
+                        );
+                        if ("result" in resolved) {
+                            initial = resolved.result;
+                        } else {
+                            const addressedScheme = first.target?.kind === "url" ? first.target.scheme : schemeName;
+                            const publishedChannel = first.target?.kind === "url"
+                                ? first.target.fragment ?? manifest.defaultChannel
+                                : manifest.defaultChannel;
+                            initial = Results.assert(await method.call(handler, resolved.statements, new SchemeCtxImpl(
+                                schemeCtx,
+                                addressedScheme ?? schemeName,
+                                manifest,
+                                this.#liveSubscriptions,
+                                {
+                                    publishedChannel,
+                                    editPrecondition: resolved.precondition,
+                                },
+                            )));
+                        }
                     } catch (err) {
                         if (err instanceof InvalidOperationResultError) throw err;
                         console.error(`Scheme '${schemeName}' EDIT batch threw outside its operation result contract:`, err);
@@ -2044,7 +2207,7 @@ export default class Dispatcher {
                 },
             );
         }
-        const statements: EditStatement[] = edits.map(({ marker, body, position }) => ({
+        const statements: ResolvedEditStatement[] = edits.map(({ marker, body, position }) => ({
             op: "EDIT",
             suffix: "",
             signal: null,
@@ -3051,6 +3214,7 @@ export default class Dispatcher {
                 statement,
                 manifest,
                 target,
+                identity: target,
                 representation: resolved.representation,
                 mimetypes: ctx.mimetypes,
             }));
@@ -3228,7 +3392,7 @@ export default class Dispatcher {
         const target = this.#extractTarget(durableStatement.target);
         await this.#canonColumns(target, workspaceId); // {§fs-answer-in-canon}
         const lineMarkerJson = "lineMarker" in durableStatement && durableStatement.lineMarker !== null
-            ? JSON.stringify(durableStatement.lineMarker as LineMarker)
+            ? JSON.stringify(durableStatement.lineMarker)
             : null;
         // A proposal (status 202 from a side-effecting op) is written to the log in
         // state='proposed' until the proposal lifecycle resolves it; attrs holds the

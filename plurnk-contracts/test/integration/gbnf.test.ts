@@ -308,6 +308,21 @@ test("GBNF matcher bodies are one line while content bodies may be multiline", (
     assert.equal(derivesTurn(turn("p", [], 200, "multi\nline")), true);
 });
 
+test("GBNF permits Base62 line anchors only on EDIT", () => {
+    assert.equal(
+        derivesTurn(turn("p", [mid("EDIT", " (worker:///x) <@aZ09b>", "replacement")], 102, "done")),
+        true,
+    );
+    assert.equal(
+        derivesTurn(turn("p", [mid("EDIT", " (worker:///x) <@aZ09b,@0Aa9Z>", "replacement")], 102, "done")),
+        true,
+    );
+    assert.equal(
+        derivesTurn(turn("p", [mid("READ", " (worker:///x) <@aZ09b>")], 102, "done")),
+        false,
+    );
+});
+
 // {§gbnf-curation-shaping}
 test("GBNF OPEN and FOLD shape curation syntax while the parser owns selection validity", () => {
     for (const op of ["OPEN", "FOLD"]) {

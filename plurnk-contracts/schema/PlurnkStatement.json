@@ -61,6 +61,12 @@
                 { "type": "null" }
             ]
         },
+        "EditLineMarkerOrNull": {
+            "oneOf": [
+                { "$ref": "https://schemas.plurnk.dev/v0/EditLineMarker.json" },
+                { "type": "null" }
+            ]
+        },
         "MatcherBodyOrNull": {
             "oneOf": [
                 { "$ref": "https://schemas.plurnk.dev/v0/MatcherBody.json" },
@@ -147,7 +153,7 @@
                 "suffix": { "type": "string" },
                 "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
+                "lineMarker": { "$ref": "#/$defs/EditLineMarkerOrNull" },
                 "body": { "type": ["string", "null"] },
                 "position": { "$ref": "#/$defs/PositionRef" }
             }

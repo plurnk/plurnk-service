@@ -5,7 +5,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, FindStatement, LineMarker, MatcherBody, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { FindStatement, LineMarker, MatcherBody, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
@@ -22,7 +23,7 @@ const url = (pathname: string): UrlPath => ({
     pathname: `/${pathname}`, query: null, fragment: null,
 });
 
-const editStmt = (target: UrlPath, body: string): EditStatement => ({
+const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });

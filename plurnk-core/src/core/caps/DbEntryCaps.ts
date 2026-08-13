@@ -2,7 +2,6 @@
 // standard PLURNK entry operations share the same proven core primitives.
 
 import type {
-    EditStatement,
     EntryCaps,
     EntryData,
     EntryEditResult,
@@ -14,6 +13,7 @@ import type {
     EntryStorageWriteResult,
     FindStatement,
     ReadStatement,
+    ResolvedEditStatement,
     SchemeManifest,
     SchemeResult,
     SendStatement,
@@ -24,15 +24,23 @@ import EntryCrud from "../../schemes/_entry-crud.ts";
 import EntryFind from "../../schemes/_entry-find.ts";
 import EntryOps from "../../schemes/_entry-ops.ts";
 import EntrySend from "../../schemes/_entry-send.ts";
+import type { LineAnchorPrecondition } from "../../content/index.ts";
 
 export default class DbEntryCaps implements EntryCaps {
     readonly #ctx: PlurnkSchemeContext;
     readonly #scheme: string;
     readonly #manifest: SchemeManifest;
     readonly #defaultOwnerId: number | undefined;
+    readonly #editPrecondition: LineAnchorPrecondition | null;
     readonly operations: EntryOperationCaps;
 
-    constructor(ctx: PlurnkSchemeContext, scheme: string, manifest: SchemeManifest, defaultOwnerId?: number) {
+    constructor(
+        ctx: PlurnkSchemeContext,
+        scheme: string,
+        manifest: SchemeManifest,
+        defaultOwnerId?: number,
+        editPrecondition: LineAnchorPrecondition | null = null,
+    ) {
         this.#ctx = ctx;
         this.#scheme = scheme;
         // One handler may own multiple addressed protocols (http/https, ws/wss).
@@ -41,6 +49,7 @@ export default class DbEntryCaps implements EntryCaps {
         // from manifest.name, so give them the same addressed face.
         this.#manifest = manifest.name === scheme ? manifest : { ...manifest, name: scheme };
         this.#defaultOwnerId = defaultOwnerId;
+        this.#editPrecondition = editPrecondition;
         this.operations = {
             editBatch: (statements, owner) => this.#editBatch(statements, owner),
             read: (statement, owner) => this.#read(statement, owner),
@@ -62,8 +71,14 @@ export default class DbEntryCaps implements EntryCaps {
         return Results.assert(result);
     }
 
-    async #editBatch(statements: readonly EditStatement[], owner?: EntryOwner): Promise<EntryEditResult> {
-        return this.#result("edit", await EntryOps.editWorkspaceEntryBatch(statements, this.#ctx, this.#manifest, this.#ownerId(owner))) as EntryEditResult;
+    async #editBatch(statements: readonly ResolvedEditStatement[], owner?: EntryOwner): Promise<EntryEditResult> {
+        return this.#result("edit", await EntryOps.editWorkspaceEntryBatch(
+            statements,
+            this.#ctx,
+            this.#manifest,
+            this.#ownerId(owner),
+            this.#editPrecondition,
+        )) as EntryEditResult;
     }
 
     async #read(statement: ReadStatement, owner?: EntryOwner): Promise<EntryReadResult> {

@@ -11,7 +11,7 @@ import type {
     SchemeHandler,
     RepresentationPreparationRequest,
     RepresentationPreparationResult,
-    EditStatement,
+    ResolvedEditStatement,
     SendStatement,
     KillStatement,
     EntryData,
@@ -416,7 +416,7 @@ export default class Ws implements SchemeHandler {
 
     // EDIT and SEND signal 200 target only an open owner whose native transport
     // is still OPEN. Both operations converge on one outbound-frame path.
-    async editBatch(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<PassthroughResult> {
+    async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statements.length !== 1) {
             return Ws.#bad(
                 409,

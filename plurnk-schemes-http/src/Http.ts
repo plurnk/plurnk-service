@@ -13,7 +13,7 @@ import type {
     RepresentationPreparationRequest,
     RepresentationPreparationResult,
     SendStatement,
-    EditStatement,
+    ResolvedEditStatement,
     KillStatement,
     UrlPath,
     EntryData,
@@ -486,7 +486,7 @@ export default class Http implements SchemeHandler {
 
     // EDIT -> PUT the body (full-resource replace). `<L>` has no meaning against a
     // remote resource - reject rather than silently ignore the model's intent.
-    async editBatch(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<PassthroughResult> {
+    async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statements.length !== 1) {
             return Http.#bad(
                 409,
@@ -525,7 +525,7 @@ export default class Http implements SchemeHandler {
         return this.#request(statement.target, ctx, "PUT", statement.body ?? "");
     }
 
-    async edit(statement: EditStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+    async edit(statement: ResolvedEditStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         return this.editBatch([statement], ctx);
     }
 

@@ -28,7 +28,7 @@ import {
     type StoredEntryData,
     type ReadStatement,
     type SendStatement,
-    type EditStatement,
+    type ResolvedEditStatement,
     type KillStatement,
     type FindStatement,
     type UrlPath,
@@ -210,7 +210,7 @@ const sendStmt = (signal: number, target: UrlPath | null, body?: string): SendSt
     body: body === undefined ? null : { raw: body, json: null },
     position: { line: 0, column: 0 },
 });
-const editStmt = (target: UrlPath | null, body: string | null, lineMarker: EditStatement["lineMarker"] = null): EditStatement => ({
+const editStmt = (target: UrlPath | null, body: string | null, lineMarker: ResolvedEditStatement["lineMarker"] = null): ResolvedEditStatement => ({
     op: "EDIT", suffix: "EDIT", signal: null, target, lineMarker, body,
     position: { line: 0, column: 0 },
 });
@@ -1660,7 +1660,7 @@ test("EDIT → PUT with the body (method mapping)", async () => {
 
 test("EDIT: a <L> line marker is rejected — http PUT replaces the whole resource", async () => {
     const { ctx } = makeCtx();
-    const r = await new Http().edit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), "x", { marks: [1] } as NonNullable<EditStatement["lineMarker"]>), ctx);
+    const r = await new Http().edit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), "x", { marks: [1] }), ctx);
     assert.equal(r.status, 400);
     assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/line-edit-unsupported");
     assert.equal(r.problem?.recovery, "Remove the line range and submit the complete replacement body.");

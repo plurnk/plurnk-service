@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
@@ -11,7 +12,7 @@ const url = (pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, query: null, fragment: null,
 });
-const taggedEdit = (target: UrlPath, body: string, tags: string[]): EditStatement => ({
+const taggedEdit = (target: UrlPath, body: string, tags: string[]): ResolvedEditStatement => ({
     op: "EDIT", suffix: "", signal: tags, target, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

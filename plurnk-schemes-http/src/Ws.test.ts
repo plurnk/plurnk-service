@@ -12,7 +12,7 @@ import {
     type SchemeCtx,
     type UrlPath,
     type ReadStatement,
-    type EditStatement,
+    type ResolvedEditStatement,
     type SendStatement,
     type KillStatement,
     type EntryCaps,
@@ -201,8 +201,8 @@ const readStmt = (target: UrlPath): ReadStatement => ({ op: "READ", suffix: "REA
 const editStmt = (
     target: UrlPath,
     body: string | null,
-    lineMarker: EditStatement["lineMarker"] = null,
-): EditStatement => ({ op: "EDIT", suffix: "EDIT", signal: null, target, lineMarker, body, position: { line: 0, column: 0 } });
+    lineMarker: ResolvedEditStatement["lineMarker"] = null,
+): ResolvedEditStatement => ({ op: "EDIT", suffix: "EDIT", signal: null, target, lineMarker, body, position: { line: 0, column: 0 } });
 const prepareRepresentation = (ws: Ws, statement: ReadStatement, ctx: SchemeCtx) => {
     const target = statement.target;
     if (target === null || target.kind !== "url") throw new TypeError("WebSocket READ requires a URL target");
@@ -748,7 +748,7 @@ test("EDIT: ranges and multi-edit pseudo-atomicity are rejected", async () => {
     const { ctx } = makeCtx();
     const target = wss(PUB, "/feed");
     const ranged = await ws.editBatch([
-        editStmt(target, "partial", { marks: [1] } as NonNullable<EditStatement["lineMarker"]>),
+        editStmt(target, "partial", { marks: [1] }),
     ], ctx);
     assert.equal(ranged.status, 400);
     assert.equal(ranged.problem?.type, "https://problems.plurnk.dev/scheme/wss/line-edit-unsupported");
