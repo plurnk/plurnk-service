@@ -16,7 +16,7 @@
 //
 // READ resolves via read-resolve; FIND runs its body matcher through
 // _entry-find (#matchPathnames -> matchAgainstContent) against the candidate's
-// CONTENT, returning the matched entries' catalog rows.
+// CONTENT, returning the matched entries' catalog channel groups.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -25,6 +25,7 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
+import { resourcePaths } from "./_find.ts";
 
 // One plurnk.md example (FIND ~query RAG) asserts REAL vector ranking — re-enable the embedder the
 // Mock bootstrap turns off; --test-isolation scopes this to this file.
@@ -131,7 +132,7 @@ test("[plurnk.md-ex-FIND-regex-on-content] FIND regex body selects entries by CO
         ]);
         const r = await new Worker().find(findStmt(url(""), regex("timeout")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///alpha"]);
+        assert.deepEqual([...new Set(resourcePaths(r))], ["worker:///alpha"]);
     } finally { db.close(); }
 });
 
@@ -145,7 +146,7 @@ test("[plurnk.md-ex-FIND-glob-on-content] FIND glob body selects entries by CONT
         ]);
         const r = await new Worker().find(findStmt(url(""), glob("Paris*")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///france/capital"]);
+        assert.deepEqual([...new Set(resourcePaths(r))], ["worker:///france/capital"]);
     } finally { db.close(); }
 });
 
@@ -164,7 +165,7 @@ test("[plurnk.md-ex-FIND-jsonpath-on-json] FIND jsonpath selects JSON entries by
         ]);
         const r = await new Worker().find(findStmt(url(""), { dialect: "jsonpath", raw: "$.admin" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///alice.json"]);
+        assert.deepEqual([...new Set(resourcePaths(r))], ["worker:///alice.json"]);
     } finally { db.close(); }
 });
 
@@ -178,7 +179,7 @@ test("[plurnk.md-ex-FIND-xpath-on-xml] FIND xpath selects XML entries by content
         ]);
         const r = await new Worker().find(findStmt(url(""), { dialect: "xpath", raw: "//user" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a.xml"]);
+        assert.deepEqual([...new Set(resourcePaths(r))], ["worker:///a.xml"]);
     } finally { db.close(); }
 });
 
@@ -197,7 +198,7 @@ test("[plurnk.md-ex-FIND-xpath-on-json] FIND xpath selects JSON entries by struc
         ]);
         const r = await new Worker().find(findStmt(url(""), { dialect: "xpath", raw: "//role" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a.json"]);
+        assert.deepEqual([...new Set(resourcePaths(r))], ["worker:///a.json"]);
     } finally { db.close(); }
 });
 
@@ -211,7 +212,7 @@ test("[plurnk.md-ex-FIND-jsonpath-on-xml] FIND jsonpath selects XML entries by s
         ]);
         const r = await new Worker().find(findStmt(url(""), { dialect: "jsonpath", raw: "$..role" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a.xml"]);
+        assert.deepEqual([...new Set(resourcePaths(r))], ["worker:///a.xml"]);
     } finally { db.close(); }
 });
 
@@ -232,6 +233,6 @@ test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity
         await SearchIndex.maintain(ctx);  // store real embeddings via the plugin
         const r = await new Worker().find(findStmt(url(""), { dialect: "semantic", raw: "french revolutionary history" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0, mimetypes }));
         assert.equal(r.status, 200);
-        assert.equal(r.results[0]?.path, "worker:///a", "markerless semantic FIND ranks the closest document first");
+        assert.equal(resourcePaths(r)[0], "worker:///a", "markerless semantic FIND ranks the closest document first");
     } finally { db.close(); }
 });

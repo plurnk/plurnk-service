@@ -34,6 +34,7 @@ import { InvalidOperationResultError, NetworkAddress } from "@plurnk/plurnk-sche
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import JournalTurn from "../core/JournalTurn.ts";
+import LogEntryProjection from "../core/LogEntryProjection.ts";
 import { setTimeout as delay } from "node:timers/promises";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
@@ -736,10 +737,15 @@ export default class Exec extends CoreSchemeAdapterBase {
                     };
                 }
                 const sequence = narration.seq++;
+                const narrationAttrs = { kind: "entry_materialized" } as const;
                 if (written.problem !== undefined) {
+                    const coordinate = LogEntryProjection.coordinate(
+                        `${narration.loopSeq}/${narration.turnSeq}/${sequence}`,
+                        { origin: "plurnk", op: "EDIT", attrs: narrationAttrs },
+                    );
                     Results.attachInstance(
                         written,
-                        `log:///${narration.loopSeq}/${narration.turnSeq}/${sequence}/EDIT`,
+                        `log:///${coordinate}`,
                     );
                 }
                 const logRow = await db.engine_insert_log_entry.get<{ id: number }>({
@@ -760,7 +766,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     status_rx: written.status, tokens: ctx.tokenize?.(decisive) ?? 0, state: "resolved", outcome: null,
                     // Durable provenance for clients/forensics. This is machine
                     // ambience, not a human/model action waterfall item.
-                    attrs: JSON.stringify({ kind: "entry_materialized" }),
+                    attrs: JSON.stringify(narrationAttrs),
                 });
                 if (logRow === undefined) throw new Error("entry(): log insert returned no row");
                 if (written.problem !== undefined) throw new OperationFailureError(written);

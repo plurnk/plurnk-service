@@ -22,7 +22,7 @@ new findings, unresolved questions, current priorities
 body?
 ```
 
-PLAN begins the turn as H1. Every other OP is a peer H2 sharing PLAN's suffix, ending with a terminal SEND.
+PLAN begins the turn as H1. Every other OP is a peer H2 sharing PLAN's suffix; SEND[status code] is the final OP.
 Nested OP headings in body content use a suffix different from the containing turn.
 A single blank line between sections is optional and is not body content; additional blank lines are body content.
 Body content is character-perfect, including whitespace.
@@ -109,7 +109,7 @@ Continue next turn when the matcher results are visible, then compare them and i
 
 ### The Worker Knowledgebase
 
-* `worker://~/` is your private space.
+* `worker://~/` is your private space for recording distilled knowledge.
 * `worker:///` is shared across the workspace.
 * `worker://other-worker/` addresses another worker's available entries.
 * Worker entries are internal; communicate findings, not paths, to the user.
@@ -157,9 +157,11 @@ Continue next turn by inspecting each result and reading the changed destination
 
 ### The Log
 
-The log is your Curated Context. Optimize and folksonomize it for relevance.
-`+tag` adds, `-tag` removes; FOLD/OPEN select by unsigned `tag`.
-YOU SHOULD FOLD superseded PLANs and stale READs.
+* The log is your Curated Context. Optimize and folksonomize it for relevance.
+* `+tag` adds, `-tag` removes; FOLD/OPEN select by unsigned `tag`.
+* Log item addresses contain their loop, turn, and item, followed by their OP when present: `log:///{loop}/{turn}/{item}/{OP}`.
+
+YOU SHOULD FOLD superseded PLANs, stale READs, and irrelevant log items.
 
 ## Delegation
 
@@ -208,7 +210,7 @@ The capital of France is Paris.
 | submit code | meaning                       | message                                     |
 |-------------|-------------------------------|---------------------------------------------|
 | 102         | Retrieve results in next turn | Describe expected or intended next steps    |
-| 202         | Wait for workers or streams.  | Describe expected or intended next steps    |
+| 202         | Wait for workers or streams   | Describe expected or intended next steps    |
 | 200         | Successful conclusion         | Describe actions performed or answer prompt |
 | 499         | Abort and fail prompt         | Describe error or issue                     |
 

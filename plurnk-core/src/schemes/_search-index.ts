@@ -10,6 +10,7 @@ import { availableParallelism } from "node:os";
 import EntryGraph from "./_entry-graph.ts";
 import EntrySemantic, { type SemanticPlan } from "./_entry-semantic.ts";
 import LogBody from "../core/LogBody.ts";
+import LogEntryProjection from "../core/LogEntryProjection.ts";
 import matchSearchExclusion from "./_search-exclusion.ts";
 
 type EntryRow = {
@@ -166,6 +167,7 @@ export default class SearchIndex {
         const logRows = await db.log_derivation_rows.all<{
             id: number;
             coordinate: string;
+            origin: string;
             op: string | null;
             tx: string;
             mimetype_tx: string;
@@ -259,7 +261,7 @@ export default class SearchIndex {
                 r: {
                     id: row.id,
                     attachment: "log",
-                    pathname: row.coordinate,
+                    pathname: LogEntryProjection.coordinate(row.coordinate, row),
                     content: projection.content,
                     mimetype: projection.mimetype,
                 },

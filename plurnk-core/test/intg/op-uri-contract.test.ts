@@ -22,6 +22,7 @@ import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { MimetypeBinary } from "../../src/content/index.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, lookThroughScheme } from "./_helpers.ts";
+import { resourceGroups, resourcePaths } from "./_find.ts";
 
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
     lookThroughScheme("file", null, statement, ctx);
@@ -77,7 +78,7 @@ test("contract: FIND(bare path) resolves the canonical-stored member", async () 
         const stmt = parseOp<FindStatement>("## FIND0 (notes.md)", "FIND");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200, "FIND succeeds");
-        assert.ok(result.results.some((r) => r.path === "notes.md"), `FIND must find the member (catalog renders it bare: notes.md); got: ${JSON.stringify(result.results.map((r) => r.path))}`);
+        assert.ok(resourcePaths(result).includes("notes.md"), `FIND must find the member (catalog renders it bare: notes.md); got: ${JSON.stringify(resourcePaths(result))}`);
     });
 });
 
@@ -116,7 +117,7 @@ test("contract: FIND(/leading-slash) resolves the member — isolates the missin
         await addMember(ctx, "notes.md");
         const stmt = parseOp<FindStatement>("## FIND0 (/notes.md)", "FIND");
         const result = await new File().find(stmt, ctx);
-        assert.ok(result.results.some((r) => r.path === "notes.md"), `the leading-slash form finds it; got: ${JSON.stringify(result.results.map((r) => r.path))}`);
+        assert.ok(resourcePaths(result).includes("notes.md"), `the leading-slash form finds it; got: ${JSON.stringify(resourcePaths(result))}`);
     });
 });
 
@@ -131,7 +132,7 @@ test("contract: a hash-shaped target addresses that literal path, never a pathna
         const result = await new File().find(stmt, ctx);
 
         assert.equal(result.status, 200);
-        assert.deepEqual(result.results.map((item) => item.path), ["#draft.*#i"]);
+        assert.deepEqual(resourcePaths(result), ["#draft.*#i"]);
     });
 });
 
@@ -183,7 +184,7 @@ test("contract: FIND(file:///**) and bare FIND(**) both list every tracked membe
             const r = await new File().find(parseOp<FindStatement>(dsl, "FIND"), ctx);
             assert.equal(r.status, 200, `${dsl} → 200`);
             assert.equal(r.results.length, 2, `${dsl} lists both tracked members`);
-            const paths = r.results.map((x) => x.path).join(" ");
+            const paths = resourcePaths(r).join(" ");
             assert.match(paths, /a\.md/, `${dsl} includes a.md`);
             assert.match(paths, /b\.md/, `${dsl} includes docs/b.md`);
         }
@@ -202,13 +203,13 @@ test("contract: bare FIND(*) is a shallow project map; FIND(**) is recursive", a
         for (const path of [".env.defaults", ".github/settings.yml", "README.md", "src/index.ts", "src/nested/deep.ts"]) await addMember(ctx, path);
 
         const shallow = await new File().find(parseOp<FindStatement>("## FIND0 (*)", "FIND"), ctx);
-        assert.deepEqual(shallow.results.map((item) => item.path), [".env.defaults", ".github/**", "README.md", "src/**"]);
-        const scope = shallow.results.find((item) => item.path === "src/**");
+        assert.deepEqual(resourcePaths(shallow), [".env.defaults", ".github/**", "README.md", "src/**"]);
+        const scope = resourceGroups(shallow).find(([item]) => item.path === "src/**")?.[0];
         assert.ok(scope !== undefined && "items" in scope);
         assert.equal(scope.items, 2);
 
         const recursive = await new File().find(parseOp<FindStatement>("## FIND0 (**)", "FIND"), ctx);
-        assert.deepEqual(recursive.results.map((item) => item.path), [".env.defaults", ".github/settings.yml", "README.md", "src/index.ts", "src/nested/deep.ts"]);
+        assert.deepEqual(resourcePaths(recursive), [".env.defaults", ".github/settings.yml", "README.md", "src/index.ts", "src/nested/deep.ts"]);
     });
 });
 
@@ -219,6 +220,6 @@ test("contract: the explicit file-scheme root is a recursive collection scope", 
         await addMember(ctx, "src/a.ts");
 
         const rootScope = await new File().find(parseOp<FindStatement>("## FIND0 (file:///)", "FIND"), ctx);
-        assert.deepEqual(rootScope.results.map((item) => item.path), ["src/a.ts"]);
+        assert.deepEqual(resourcePaths(rootScope), ["src/a.ts"]);
     });
 });

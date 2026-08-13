@@ -1,11 +1,16 @@
 // The entry catalog ({§packet-catalog}) — the complete, unranked directory for
 // one addressed owner. Recursive FIND serves it recursively; shallow FIND projects it as
 // a one-level map in _entry-find. An omitted owner selects the shared commons.
-// Each item carries its address, optional stream lifecycle, and addressable channels.
+// Each item is a non-empty, default-first array of addressable channels.
 // Search indexing is owned separately by SearchIndex.
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
+import type {
+    EntryCatalogChannel,
+    EntryCatalogDefaultChannel,
+    EntryStreamLifecycle,
+} from "@plurnk/plurnk-schemes";
 import { renderAddress } from "../core/plurnk-uri.ts";
 import Owner from "../core/Owner.ts";
 
@@ -23,14 +28,17 @@ type ManifestRow = {
     deep_hash: string | null;
 };
 
-export type StreamLifecycle =
-    | { state: "active"; seconds: number }
-    | { state: "closed" | "killed" | "failed"; status: number };
+export type StreamLifecycle = EntryStreamLifecycle;
+export type CatalogChannel = EntryCatalogChannel;
+export type CatalogDefaultChannel = EntryCatalogDefaultChannel;
 
-export type CatalogEntry = {
+export type CatalogEntry = [CatalogDefaultChannel, ...CatalogChannel[]];
+
+type CatalogEntryState = {
     path: string;
+    defaultChannel: string;
     stream?: StreamLifecycle;
-    channels: Record<string, { mimetype: string; tokens: number; lines: number }>;
+    channels: CatalogChannel[];
 };
 
 export default class EntryManifest {
@@ -49,12 +57,16 @@ export default class EntryManifest {
             owner_id: resolvedOwnerId,
         });
         const rows = schemeFilter === undefined ? all : all.filter((row) => row.scheme === schemeFilter);
-        const byEntry = new Map<string, CatalogEntry>();
+        const byEntry = new Map<string, CatalogEntryState>();
         for (const row of rows) {
             const path = EntryManifest.toPath(row.scheme, row.pathname);
             let entry = byEntry.get(path);
             if (entry === undefined) {
-                entry = { path, channels: {} };
+                entry = {
+                    path,
+                    defaultChannel: ctx.defaultChannelFor?.(row.scheme) ?? "body",
+                    channels: [],
+                };
                 byEntry.set(path, entry);
             }
             if (row.subscription_id !== null && entry.stream === undefined) {
@@ -76,16 +88,28 @@ export default class EntryManifest {
             } catch {
                 totalLines = row.content.length === 0 ? 0 : row.content.split("\n").length;
             }
-            const defaultChannel = ctx.defaultChannelFor?.(row.scheme) ?? "body";
-            const channelKey = row.channel === defaultChannel
+            const channelPath = row.channel === entry.defaultChannel
                 ? entry.path
                 : `${entry.path}#${PathSyntax.escapeTarget(row.channel)}`;
-            entry.channels[channelKey] = {
+            entry.channels.push({
+                path: channelPath,
                 mimetype: row.mimetype,
                 tokens: tokenize(row.content),
                 lines: totalLines,
-            };
+            });
         }
-        return [...byEntry.values()];
+        return [...byEntry.values()].map(({ path, defaultChannel, stream, channels }) => {
+            const defaultIndex = channels.findIndex((channel) => channel.path === path);
+            if (defaultIndex === -1) {
+                throw new Error(`catalog entry ${JSON.stringify(path)} has no ${JSON.stringify(defaultChannel)} default channel`);
+            }
+            const defaultItem = channels[defaultIndex]!;
+            const primary: CatalogDefaultChannel = stream === undefined ? defaultItem : { ...defaultItem, stream };
+            return [
+                primary,
+                ...channels.slice(0, defaultIndex),
+                ...channels.slice(defaultIndex + 1),
+            ];
+        });
     }
 }

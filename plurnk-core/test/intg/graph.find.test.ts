@@ -12,6 +12,7 @@ import type { EditStatement, FindStatement, LineMarker, MatcherBody, UrlPath } f
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES, mimetypesFixture } from "./_helpers.ts";
+import { resourceGroups, resourcePaths } from "./_find.ts";
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -81,8 +82,8 @@ test("@<foo finds entries that reference foo, not the definer", async () => {
     try {
         const r = await find(db, workspaceId, workerId, "@<foo");
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///b.ts"]);
-        assert.equal(r.results[0]?.matchLocationCount, 2, "the broad row counts the import and call locations");
+        assert.deepEqual([...new Set(resourcePaths(r))], ["worker:///b.ts"]);
+        assert.equal(resourceGroups(r)[0]?.[0].matchLocationCount, 2, "the broad row counts the import and call locations");
         assert.equal(r.matchLocationCount, 2);
     } finally { db.close(); }
 });
@@ -92,7 +93,7 @@ test("@>foo finds entries defining what foo references", async () => {
     try {
         const r = await find(db, workspaceId, workerId, "@>foo");
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///c.ts"]);
+        assert.deepEqual([...new Set(resourcePaths(r))], ["worker:///c.ts"]);
     } finally { db.close(); }
 });
 
@@ -101,7 +102,7 @@ test("@foo is the union of definitions, referrers, and referents", async () => {
     try {
         const r = await find(db, workspaceId, workerId, "@foo");
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a.ts", "worker:///b.ts", "worker:///c.ts"]);
+        assert.deepEqual([...new Set(resourcePaths(r))], ["worker:///a.ts", "worker:///b.ts", "worker:///c.ts"]);
     } finally { db.close(); }
 });
 
@@ -135,7 +136,7 @@ test("editing foo's referrer away drops it from @<foo after index maintenance", 
         await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId }));
         const r = await find(db, workspaceId, workerId, "@<foo");
         assert.equal(r.status, 204);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], []);
+        assert.deepEqual([...new Set(resourcePaths(r))], []);
     } finally { db.close(); }
 });
 

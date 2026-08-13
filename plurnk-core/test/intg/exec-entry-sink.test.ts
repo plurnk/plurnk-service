@@ -200,9 +200,9 @@ test("entry() materializes an https resource and classifies each plurnk narratio
         }];
         const countTokens = (t: string): number => Math.ceil(t.length / 4);
         const foldedLine = PacketWire.renderLog(view(true), countTokens);
-        assert.match(foldedLine, /"op":"READ"/, "machine acquisition presents the resulting readable resource, not an authored EDIT");
+        assert.match(foldedLine, /"path":"log:\/\/\/[^\"]+\/READ"/, "machine acquisition presents the resulting readable resource, not an authored EDIT");
         assert.match(foldedLine, /"path":"log:\/\/\/1\/1\/2\/READ"/, "the model-facing log handle agrees with the projected operation");
-        assert.doesNotMatch(foldedLine, /"op":"EDIT"/, "the internal storage operation does not leak into model reasoning");
+        assert.doesNotMatch(foldedLine, /\/EDIT"/, "the internal storage operation does not leak into model reasoning");
         assert.match(foldedLine, /"display":"folded"/, "a sink resource row is folded by default — display:folded, OPENable");
         assert.match(foldedLine, /"tokens":\d*[1-9]/, "the folded meta line carries a real OPEN cost, not 0");
         assert.match(foldedLine, /"lines":1/, "the meta line carries the line count for slice planning");
@@ -274,7 +274,7 @@ test("entry() preserves an exact failed write Problem on its durable narration r
         );
         assert.equal(result.problem.detail, "The fetched resource has no model-facing content.");
         assert.equal(result.problem.target, "https://example.org/rejected");
-        assert.match(result.problem.instance ?? "", /^log:\/\/\/\d+\/\d+\/\d+\/EDIT$/);
+        assert.match(result.problem.instance ?? "", /^log:\/\/\/\d+\/\d+\/\d+\/READ$/);
     } finally {
         await quiesceExecs(schemes);
         await schemes.close();

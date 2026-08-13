@@ -418,18 +418,19 @@ test("exact FIND shares representation preparation but retains universal query s
         assert.equal(result.status, 203);
         assert.equal(result.producer, "archive-specimen");
         assert.equal(result.matchingPathCount, 1);
-        const [item] = result.results as Array<{
+        const [channels] = result.results as Array<Array<{
             path: string;
-            channels: Record<string, { mimetype: string; tokens: number; lines: number }>;
-        }>;
-        assert.equal(item?.path, "archive:///objects/document.txt");
-        assert.deepEqual(Object.keys(item?.channels ?? {}), [
+            mimetype: string;
+            tokens: number;
+            lines: number;
+        }>>;
+        assert.deepEqual(channels?.map(({ path }) => path), [
             "archive:///objects/document.txt",
             "archive:///objects/document.txt#provenance",
         ]);
-        assert.equal(item?.channels[item.path]?.mimetype, "text/markdown");
-        assert.equal(item?.channels[item.path]?.lines, 20);
-        assert.ok((item?.channels[item.path]?.tokens ?? 0) > 0);
+        assert.equal(channels?.[0]?.mimetype, "text/markdown");
+        assert.equal(channels?.[0]?.lines, 20);
+        assert.ok((channels?.[0]?.tokens ?? 0) > 0);
     } finally {
         await db.close();
     }

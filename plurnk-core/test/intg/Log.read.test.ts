@@ -7,6 +7,7 @@ import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { matchLocations } from "./_find.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -49,6 +50,21 @@ test("Log.read: EDIT op log entry returns its canonical effect receipt", async (
         assert.equal(result.status, 200);
         assert.equal(result.mimetype, "text/plain");
         assert.equal(result.content, "1:Paris", "storage envelope fields do not replace the model-facing edit result");
+    } finally { db.close(); }
+});
+
+test("Log.read: an exact /OP suffix must agree with the addressed row", async () => {
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        await engine.dispatch({
+            statement: editStmt("/france", "Paris"),
+            workspaceId, workerId, loopId, turnId,
+            sequence: 1, origin: "model",
+        });
+        const correct = await readLog(readStmt(urlPath("log", "/1/1/1/EDIT")), makeSchemeCtx({ db, workerId }));
+        const wrong = await readLog(readStmt(urlPath("log", "/1/1/1/READ")), makeSchemeCtx({ db, workerId }));
+        assert.equal(correct.status, 200);
+        assert.equal(wrong.status, 404);
     } finally { db.close(); }
 });
 
@@ -187,7 +203,7 @@ test("Log.find: an exact matcher returns flat locations and complete path/locati
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
         assert.equal(r.results.length, 1);
-        assert.deepEqual(r.results[0]?.region, {
+        assert.deepEqual(matchLocations(r)[0]?.region, {
             startLine: 1,
             startColumn: 2,
             endLine: 1,

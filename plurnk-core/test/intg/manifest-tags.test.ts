@@ -24,13 +24,13 @@ test("the manifest catalog does not project operation signals as resource metada
         await new Worker().edit(taggedEdit(url("plan.md"), "the plan", ["+wip", "+draft"]), ctx);
         await new Worker().edit(taggedEdit(url("done.md"), "shipped", []), ctx);
 
-        const catalog = await EntryManifest.catalogRowsFor(ctx) as Array<Record<string, unknown> & { path: string }>;
-        const plan = catalog.find((e) => e.path.endsWith("plan.md"));
+        const catalog = await EntryManifest.catalogRowsFor(ctx);
+        const plan = catalog.find(([channel]) => channel.path.endsWith("plan.md"));
         assert.ok(plan !== undefined);
-        assert.equal("tags" in plan, false, "log classification does not become resource metadata");
-        const done = catalog.find((e) => e.path.endsWith("done.md"));
+        assert.equal("tags" in plan[0], false, "log classification does not become resource metadata");
+        const done = catalog.find(([channel]) => channel.path.endsWith("done.md"));
         assert.ok(done !== undefined);
-        assert.equal("tags" in done, false);
+        assert.equal("tags" in done[0], false);
     } finally { await db.close(); }
 });
 
@@ -45,8 +45,8 @@ test("manifest catalog: a file member stores scheme=file and renders slash-free 
         await EntryCrud.writeEntry("notes.md", { channels: { body: { content: "hi", mimetype: "text/markdown" } } }, ctx, "file");
         const stored = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string }>({ pathname: "notes.md", scheme: "file" });
         assert.equal(stored?.scheme, "file", "the durable entry identity is non-null and explicit");
-        const catalog = await EntryManifest.catalogRowsFor(ctx) as Array<{ path: string }>;
-        const note = catalog.find((e) => e.path.endsWith("notes.md"));
-        assert.equal(note?.path, "notes.md", "the /notes.md member renders as bare notes.md — what the model writes back");
+        const catalog = await EntryManifest.catalogRowsFor(ctx);
+        const note = catalog.find(([channel]) => channel.path.endsWith("notes.md"));
+        assert.equal(note?.[0].path, "notes.md", "the /notes.md member renders as bare notes.md — what the model writes back");
     } finally { await db.close(); }
 });

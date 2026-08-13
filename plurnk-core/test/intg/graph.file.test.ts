@@ -10,6 +10,7 @@ import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
+import { resourcePaths } from "./_find.ts";
 
 const fileUrl = (pathname: string): UrlPath => ({
     kind: "url", raw: `file:///${pathname}`, scheme: "file",
@@ -49,17 +50,17 @@ test("@graph resolves over file:/// entries", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 });
-        // FIND returns catalog rows; a stored file row renders its path BARE
+        // FIND returns channel groups; a stored file resource renders its default path BARE
         // (slash-free, namespace-relative) — the same form the manifest catalogs and the
         // model types back, not the addressed file:/// form.
         const referrers = await new File().find(findStmt(fileUrl(""), graph("@<foo")), ctx);
         assert.equal(referrers.status, 200);
-        assert.deepEqual([...new Set(referrers.results.map((f) => f.path))], ["src/b.ts"]);
+        assert.deepEqual([...new Set(resourcePaths(referrers))], ["src/b.ts"]);
 
         const referents = await new File().find(findStmt(fileUrl(""), graph("@>foo")), ctx);
-        assert.deepEqual([...new Set(referents.results.map((f) => f.path))], ["src/c.ts"]);
+        assert.deepEqual([...new Set(resourcePaths(referents))], ["src/c.ts"]);
 
         const neighborhood = await new File().find(findStmt(fileUrl(""), graph("@foo")), ctx);
-        assert.deepEqual([...new Set(neighborhood.results.map((f) => f.path))], ["src/a.ts", "src/b.ts", "src/c.ts"]);
+        assert.deepEqual([...new Set(resourcePaths(neighborhood))], ["src/a.ts", "src/b.ts", "src/c.ts"]);
     } finally { db.close(); }
 });

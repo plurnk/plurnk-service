@@ -10,7 +10,7 @@ import Log from "../../src/schemes/Log.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, openStmt, foldStmt, findStmt } from "./_dsl.ts";
 
-const setup = async () => {
+const setup = async (attrs = "{}") => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
@@ -31,7 +31,7 @@ const setup = async () => {
         tx: "## EDIT0 (worker:///x)\nbody", mimetype_tx: "text/vnd.plurnk",
         rx: JSON.stringify({ status: 201 }), mimetype_rx: "application/json",
         status_rx: 201, tokens: 0,
-        state: "resolved", outcome: null, attrs: "{}",
+        state: "resolved", outcome: null, attrs,
     });
     return { db, workspaceId, workerId, loopId, turnId };
 };
@@ -62,7 +62,7 @@ test("FOLD(log:///1/1/1) flips expanded to 0", async () => {
     } finally { await db.close(); }
 });
 
-test("FOLD accepts the /op wire suffix (self-documenting URI)", async () => {
+test("FOLD accepts the canonical /OP suffix", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const r = await new Log().fold(
@@ -72,6 +72,50 @@ test("FOLD accepts the /op wire suffix (self-documenting URI)", async () => {
         assert.equal(r.status, 200);
         assert.equal(await getExpanded(db, workerId), 0);
     } finally { await db.close(); }
+});
+
+test("FOLD rejects a supplied /OP suffix that disagrees with the addressed row", async () => {
+    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        const r = await new Log().fold(
+            foldStmt(urlPath("log", "/1/1/1/READ")),
+            makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }),
+        );
+        assert.equal(r.status, 404);
+        assert.equal(await getExpanded(db, workerId), 1, "a discordant address cannot curate the row");
+    } finally { await db.close(); }
+});
+
+test("a tag filter does not turn a discordant exact /OP suffix into a successful no-op", async () => {
+    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        const result = await new Log().fold(
+            { ...foldStmt(urlPath("log", "/1/1/1/READ")), signal: ["memory"] },
+            makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }),
+        );
+        assert.equal(result.status, 404);
+        assert.equal(await getExpanded(db, workerId), 1, "a discordant exact address cannot curate the row");
+    } finally { await db.close(); }
+});
+
+test("a typed entry-materialization row resolves by its projected /READ suffix, not its durable EDIT event", async () => {
+    const accepted = await setup('{"kind":"entry_materialized"}');
+    try {
+        const result = await new Log().fold(
+            foldStmt(urlPath("log", "/1/1/1/READ")),
+            makeSchemeCtx({ ...accepted, writer: "model" }),
+        );
+        assert.equal(result.status, 200);
+    } finally { await accepted.db.close(); }
+
+    const rejected = await setup('{"kind":"entry_materialized"}');
+    try {
+        const result = await new Log().fold(
+            foldStmt(urlPath("log", "/1/1/1/EDIT")),
+            makeSchemeCtx({ ...rejected, writer: "model" }),
+        );
+        assert.equal(result.status, 404);
+    } finally { await rejected.db.close(); }
 });
 
 test("OPEN(log:///1/1/1) flips expanded back to 1", async () => {
@@ -345,9 +389,9 @@ test("FOLD[tag] and OPEN[tag] symmetrically filter ALL-tag classifications", asy
         const found = await log.find(findStmt(urlPath("log", "/"), null, ["+projectB"]), mk());
         assert.equal(found.status, 200);
         assert.equal(found.results.length, 3);
-        const foundItem = found.results.find(({ path }) => path?.includes("/1/1/2/") === true);
-        assert.ok(foundItem !== undefined && "tags" in foundItem);
-        assert.deepEqual(foundItem.tags, ["hot", "projectB"], "the catalog exposes the row's complete classification");
+        const foundItem = found.results.find((item) => Array.isArray(item) && item[0].path.includes("/1/1/2/"));
+        assert.ok(foundItem !== undefined && Array.isArray(foundItem) && "tags" in foundItem[0]);
+        assert.deepEqual(foundItem[0].tags, ["hot", "projectB"], "the catalog exposes the row's complete classification");
 
         // RECALL: a TARGETLESS OPEN[projectB] reopens the whole named working-set.
         const open = await log.open({ ...openStmt(null), signal: ["projectB"] }, mk());
@@ -417,7 +461,7 @@ test("FOLD/OPEN curate engine-minted error rows through the same operation coord
             mimetype_rx: "application/json", status_rx: 429, tokens: 50, state: "failed", outcome: "max_commands_exceeded", attrs: "{}",
         });
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" });
-        // The model's EXACT gesture — fold the error row by its self-documenting coordinate.
+        // The model's exact gesture — fold the error row by its canonical operation address.
         const fold = await new Log().fold(foldStmt(urlPath("log", "/1/1/2/error")), ctx);
         assert.equal(fold.status, 200, "an error row folds by coordinate — the model can reclaim budget by curating its OWN error rows");
         const folded = await db.test_get_log_expanded.get<{ expanded: number }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2 });

@@ -132,7 +132,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const log = packetSection(packet, "log");
 
         // THE REGRESSION GUARD: the foisted FIND(worker:///*) renders its RESULT into the
-        // log ({§render-rule-find-renders-result}) — the model SEES the catalog rows, not just
+        // log ({§render-rule-find-renders-result}) — the model SEES the catalog groups, not just
         // its own echoed query. The invisible-catalog bug rendered only `## FIND0 (...)`.
         assert.match(log, /worker:\/\/\/note\.md/, "the foisted catalog FIND renders a direct entry into the packet's log");
         assert.match(log, /worker:\/\/\/\.env\.defaults/, "the one-level page includes direct dot entries");
@@ -144,11 +144,11 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
             const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             assert.match(
                 log,
-                new RegExp(`\\n\\d+:\\[?\\{"path":"${escaped}`),
+                new RegExp(`\\n\\d+:\\[{1,2}\\{"path":"${escaped}`),
                 `${target} begins its own universally numbered FIND row`,
             );
         }
-        assert.match(log, /"op":"FIND"/, "the catalog foist appears as a FIND op in the log");
+        assert.match(log, /"path":"log:\/\/\/[^\"]+\/FIND"/, "the catalog foist appears as a FIND op in the log address");
         assert.match(
             log,
             /13:## SEND0 \[102\]\n14:Next, address the prompt\./,
@@ -240,7 +240,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
         ]);
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
-        const copies = logEntries(packet).filter(({ op }) => op === "COPY");
+        const copies = logEntries(packet).filter(({ path }) => String(path).endsWith("/COPY"));
 
         assert.equal(copies.length, 2);
         assert.equal(copies[0]?.source, "worker:///src.md<2,3>");

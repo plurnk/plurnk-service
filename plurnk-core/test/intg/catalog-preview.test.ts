@@ -178,9 +178,9 @@ test("the turn-0 initialization mirrors the REAL foisted survey — dynamic, not
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const commons = rows.find((candidate) => candidate.op === "FIND" && candidate.scheme === "worker" && candidate.hostname === null && candidate.pathname === "/*");
                 assert.ok(commons !== undefined);
-                const map = JSON.parse((JSON.parse(commons.rx) as { content: string }).content) as Array<{ path: string; items?: number; tokens?: number }>;
-                assert.deepEqual(map.map((item) => item.path), ["worker:///a.md", "worker:///nested/**"]);
-                assert.equal(map[1]?.items, 1, "the automatic shallow map retains the nested subtree as a complete aggregate");
+                const map = JSON.parse((JSON.parse(commons.rx) as { content: string }).content) as Array<Array<{ path: string; items?: number; tokens?: number }>>;
+                assert.deepEqual(map.map(([item]) => item.path), ["worker:///a.md", "worker:///nested/**"]);
+                assert.equal(map[1]?.[0]?.items, 1, "the automatic shallow map retains the nested subtree as a complete aggregate");
                 // The worker's first turn opens with the actionless initialization at 1/1/1, born OPEN.
                 const row = await db.log_read_by_coordinate.get<{ op: string | null; rx: string; attrs: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 assert.equal(row?.op, null, "the turn-0 initialization does not fabricate an operation");

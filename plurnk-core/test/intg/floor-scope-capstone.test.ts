@@ -65,7 +65,7 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         const [classifiedFind] = parse("## FIND0 [+answer] (skill:///)");
         const r6 = await dispatch(classifiedFind, 5);
         assert.equal(r6.status, 200);
-        assert.deepEqual([...new Set((r6.results as { path: string }[]).map((f) => f.path))], ["skill:///france/capital"]);
+        assert.deepEqual((r6.results as Array<[{ path: string }]>).map(([resource]) => resource.path), ["skill:///france/capital"]);
         const logTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: env.workerId });
         assert.deepEqual(logTags.filter(({ coordinate }) => coordinate === "1/1/3" || coordinate === "1/1/5"), [
             { coordinate: "1/1/3", tag: "answer" },
@@ -77,7 +77,7 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         const [findByGlob] = parse("## FIND0 (skill:///)\nParis*");
         const r7 = await dispatch(findByGlob, 6);
         assert.equal(r7.status, 200);
-        assert.deepEqual([...new Set((r7.results as { path: string }[]).map((f) => f.path))], ["skill:///france/capital"]);
+        assert.deepEqual((r7.results as Array<[{ path: string }]>).map(([resource]) => resource.path), ["skill:///france/capital"]);
 
         const [moveOp] = parse("## MOVE0 (worker:///france/capital)\nworker:///archive/france/capital");
         const r10 = await dispatch(moveOp, 9);

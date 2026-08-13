@@ -65,12 +65,23 @@ export interface EntryReadResult extends SchemeResult {
     readonly awaitWorker?: string;
 }
 
-export interface EntryCatalogItem {
+export type EntryStreamLifecycle =
+    | { readonly state: "active"; readonly seconds: number }
+    | { readonly state: "closed" | "killed" | "failed"; readonly status: number };
+
+export interface EntryCatalogChannel {
     readonly path: string;
-    readonly seconds?: number;
-    readonly channels: Readonly<Record<string, { mimetype: string; tokens: number; lines: number }>>;
+    readonly mimetype: string;
+    readonly tokens: number;
+    readonly lines: number;
+}
+
+export interface EntryCatalogDefaultChannel extends EntryCatalogChannel {
+    readonly stream?: EntryStreamLifecycle;
     readonly matchLocationCount?: number;
 }
+
+export type EntryCatalogItem = readonly [EntryCatalogDefaultChannel, ...EntryCatalogChannel[]];
 
 export interface EntryCatalogScope {
     readonly path: string;
@@ -78,10 +89,12 @@ export interface EntryCatalogScope {
     readonly tokens: number;
 }
 
+export type EntryCatalogScopeGroup = readonly [EntryCatalogScope];
+
 export interface EntryFindResult extends SchemeResult {
     readonly content: string | null;
     readonly mimetype: string | null;
-    readonly results: ReadonlyArray<EntryCatalogItem | EntryCatalogScope | MatchEvidence>;
+    readonly results: ReadonlyArray<EntryCatalogItem | EntryCatalogScopeGroup | MatchEvidence>;
     readonly itemsTokenTotal: number;
     readonly returnedItemsTokenTotal: number;
     readonly matchingPathCount: number;

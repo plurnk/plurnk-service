@@ -6,7 +6,7 @@ import EntryFind from "./_entry-find.ts";
 import EntryCrud from "./_entry-crud.ts";
 import EntrySend from "./_entry-send.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
-import type { FindResult } from "./_entry-find.ts";
+import type { FindResult, MatchItem } from "./_entry-find.ts";
 import Owner from "../core/Owner.ts";
 import type { EditStatement, SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type {
@@ -415,7 +415,9 @@ export default class Worker extends CoreSchemeAdapterBase {
         // is the address it typed (worker://~/x, worker://beta/x).
         if (authority === "") return found;
         const reface = (p: string): string => p.replace(/^worker:\/\/\//, `worker://${authority}/`);
-        const results = found.results.map((r) => typeof r.path === "string" ? { ...r, path: reface(r.path) } : r);
+        const results: MatchItem[] = found.results.map((result) => Array.isArray(result)
+            ? result.map((item) => ({ ...item, path: reface(item.path) })) as typeof result
+            : result);
         const content = found.content === null ? null : found.content.replaceAll("worker:///", `worker://${authority}/`);
         return { ...found, results, content };
     }

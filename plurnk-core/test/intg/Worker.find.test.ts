@@ -4,6 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-contracts";
 import Worker from "../../src/schemes/Worker.ts";
+import type { CatalogResource, FindResult } from "../../src/schemes/_entry-find.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (pathname: string): UrlPath => ({
@@ -24,6 +25,9 @@ const findStmt = (target: UrlPath, body: MatcherBody | null = null, signal: stri
 
 const glob = (raw: string): MatcherBody => ({ dialect: "glob", raw });
 const regex = (raw: string): MatcherBody => ({ dialect: "regex", raw: `/${raw}/`, pattern: raw, flags: "" });
+const resources = (result: FindResult): CatalogResource[] =>
+    result.results.filter((item): item is CatalogResource => Array.isArray(item));
+const paths = (result: FindResult): string[] => resources(result).map(([item]) => item.path);
 
 const setup = async () => {
     const db = await openMigrated();
@@ -39,7 +43,7 @@ const seedEntries = async (db: import("../../src/core/Db.ts").Db, workspaceId: n
     }
 };
 
-test("Worker.find returns the scheme's catalog rows (JSON), filtered to matches", async () => {
+test("Worker.find returns the scheme's catalog groups (JSON), filtered to matches", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedEntries(db, workspaceId, workerId, [
@@ -47,24 +51,24 @@ test("Worker.find returns the scheme's catalog rows (JSON), filtered to matches"
         ]);
         const r = await new Worker().find(findStmt(url("")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        // FIND is the filtered catalog: a JSON array of catalog rows (path + per-channel
-        // {mimetype, tokens, lines}), not one row per finding.
+        // FIND is the filtered catalog: one default-first channel array per resource.
         assert.equal(r.mimetype, "application/json");
-        assert.deepEqual(r.results.map((row) => row.path), ["worker:///a", "worker:///b", "worker:///c"]);
-        assert.deepEqual(JSON.parse(r.content!), r.results, "content is the JSON serialization of the catalog rows");
+        assert.deepEqual(paths(r), ["worker:///a", "worker:///b", "worker:///c"]);
+        assert.deepEqual(JSON.parse(r.content!), r.results, "content is the JSON serialization of the catalog groups");
         const renderedRows = r.content!.split("\n");
         assert.equal(renderedRows.length, r.results.length, "each FIND result ordinal owns one physical JSON line");
-        assert.match(renderedRows[0], /^\[\{"path":"worker:\/\/\/a"/);
-        assert.match(renderedRows[1], /^\{"path":"worker:\/\/\/b"/);
-        assert.match(renderedRows[2], /^\{"path":"worker:\/\/\/c".*\}\]$/);
-        const [first] = r.results;
-        assert.ok(first !== undefined && first.channels !== undefined);
-        assert.equal(first.path, "worker:///a");
-        assert.deepEqual(Object.keys(first.channels), ["worker:///a"], "the default channel keys by the bare entry path");
-        assert.equal(typeof first.channels["worker:///a"].mimetype, "string");
-        assert.equal(first.channels["worker:///a"].lines, 1, "\"alpha\" is one line");
-        assert.equal(typeof first.channels["worker:///a"].tokens, "number");
-        assert.ok(!("extent" in (first as object)), "a catalog row carries no legacy extent");
+        assert.match(renderedRows[0], /^\[\[\{"path":"worker:\/\/\/a"/);
+        assert.match(renderedRows[1], /^\[\{"path":"worker:\/\/\/b"/);
+        assert.match(renderedRows[2], /^\[\{"path":"worker:\/\/\/c".*\}\]\]$/);
+        const [first] = resources(r);
+        assert.ok(first !== undefined);
+        assert.equal(first.length, 1, "a single-channel resource is a one-element group");
+        assert.equal(first[0].path, "worker:///a");
+        assert.ok("mimetype" in first[0], "an entry group contains channels, not a scope summary");
+        assert.equal(typeof first[0].mimetype, "string");
+        assert.equal(first[0].lines, 1, "\"alpha\" is one line");
+        assert.equal(typeof first[0].tokens, "number");
+        assert.ok(!("extent" in first[0]), "a catalog channel carries no legacy extent");
     } finally { db.close(); }
 });
 
@@ -76,7 +80,7 @@ test("Worker.find with scope prefix filters to that subtree", async () => {
         ]);
         const r = await new Worker().find(findStmt(url("plan/")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///plan/step1", "worker:///plan/step2"]);
+        assert.deepEqual([...new Set(paths(r))], ["worker:///plan/step1", "worker:///plan/step2"]);
     } finally { db.close(); }
 });
 
@@ -97,31 +101,31 @@ test("a single-star path glob lists one level with actionable recursive folder s
 
         const root = await worker.find(findStmt(url("*")), ctx);
         assert.equal(root.status, 200);
-        assert.deepEqual(root.results.map((item) => item.path), [
+        assert.deepEqual(paths(root), [
             "worker:///.env.defaults",
             "worker:///.github/**",
             "worker:///docs/**",
             "worker:///README.md",
             "worker:///src/**",
         ]);
-        const src = root.results.find((item) => item.path === "worker:///src/**");
-        assert.ok(src !== undefined && "items" in src, "the directory is a scope summary, not a fake entry");
-        assert.equal(src.items, 3, "the summary counts every descendant recursively, including dot entries");
-        assert.ok((src.tokens ?? 0) > 0, "the summary reports the recursive subtree's READ weight");
+        const src = resources(root).find(([item]) => item.path === "worker:///src/**");
+        assert.ok(src !== undefined && "items" in src[0], "the directory is a one-element scope group, not a fake entry");
+        assert.equal(src[0].items, 3, "the summary counts every descendant recursively, including dot entries");
+        assert.ok(src[0].tokens > 0, "the summary reports the recursive subtree's READ weight");
         assert.equal(root.matchingPathCount, 2, "folder summaries never become matching resource paths");
 
         const drilled = await worker.find(findStmt(url("src/*")), ctx);
-        assert.deepEqual(drilled.results.map((item) => item.path), [
+        assert.deepEqual(paths(drilled), [
             "worker:///src/.hidden.ts",
             "worker:///src/index.ts",
             "worker:///src/lib/**",
         ]);
 
         const dotDrill = await worker.find(findStmt(url(".github/**")), ctx);
-        assert.deepEqual(dotDrill.results.map((item) => item.path), ["worker:///.github/workflows/ci.yml"]);
+        assert.deepEqual(paths(dotDrill), ["worker:///.github/workflows/ci.yml"]);
 
         const recursive = await worker.find(findStmt(url("**")), ctx);
-        assert.deepEqual(recursive.results.map((item) => item.path), [
+        assert.deepEqual(paths(recursive), [
             "worker:///.env.defaults",
             "worker:///.github/workflows/ci.yml",
             "worker:///README.md",
@@ -146,19 +150,19 @@ test("path globs use shell segment semantics and support native brace patterns",
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 });
 
         const oneLevel = await worker.find(findStmt(url("src/*.ts")), ctx);
-        assert.deepEqual(oneLevel.results.map((item) => item.path), ["worker:///src/direct.ts"], "`*` never crosses `/`");
+        assert.deepEqual(paths(oneLevel), ["worker:///src/direct.ts"], "`*` never crosses `/`");
 
         const question = await worker.find(findStmt(url("src/nested/deep.?s")), ctx);
-        assert.deepEqual(question.results.map((item) => item.path), ["worker:///src/nested/deep.ts"], "`?` matches one non-separator character");
+        assert.deepEqual(paths(question), ["worker:///src/nested/deep.ts"], "`?` matches one non-separator character");
 
         const recursive = await worker.find(findStmt(url("src/**/*.ts")), ctx);
-        assert.deepEqual(recursive.results.map((item) => item.path), [
+        assert.deepEqual(paths(recursive), [
             "worker:///src/direct.ts",
             "worker:///src/nested/deep.ts",
         ], "`**` crosses directories");
 
         const braces = await worker.find(findStmt(url("**/*.{go,ts}")), ctx);
-        assert.deepEqual(braces.results.map((item) => item.path), [
+        assert.deepEqual(paths(braces), [
             "worker:///root.ts",
             "worker:///src/direct.ts",
             "worker:///src/nested/deep.go",
@@ -176,7 +180,7 @@ test("Worker.find with glob matcher filters by CONTENT", async () => {
         ]);
         const r = await new Worker().find(findStmt(url(""), glob("france*")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))].toSorted(), ["worker:///a", "worker:///b"]);
+        assert.deepEqual([...new Set(paths(r))].toSorted(), ["worker:///a", "worker:///b"]);
     } finally { db.close(); }
 });
 
@@ -191,7 +195,7 @@ test("a broad content match emits one item per resource with location counts", a
         ]);
         const r = await new Worker().find(findStmt(url(""), glob("france*")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        const byPath = new Map(r.results.map((row) => [row.path, row] as const));
+        const byPath = new Map(resources(r).map(([row]) => [row.path, row] as const));
         assert.equal(byPath.get("worker:///a")?.matchLocationCount, 1);
         assert.equal(byPath.get("worker:///b")?.matchLocationCount, 1);
         assert.equal(r.matchLocationCount, 2);
@@ -210,7 +214,7 @@ test("Worker.find signal does not filter resource candidates", async () => {
         ]);
         const r = await new Worker().find(findStmt(url(""), null, ["+urgent", "+europe"]), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a", "worker:///b", "worker:///c", "worker:///d"]);
+        assert.deepEqual([...new Set(paths(r))], ["worker:///a", "worker:///b", "worker:///c", "worker:///d"]);
     } finally { db.close(); }
 });
 
@@ -224,7 +228,7 @@ test("Worker.find signal leaves matcher selection unchanged", async () => {
         ]);
         const r = await new Worker().find(findStmt(url(""), glob("plan*"), ["+urgent"]), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///s1", "worker:///s2"]);
+        assert.deepEqual([...new Set(paths(r))], ["worker:///s1", "worker:///s2"]);
     } finally { db.close(); }
 });
 
@@ -234,7 +238,7 @@ test("Worker.find with regex matcher filters by CONTENT", async () => {
         await seedEntries(db, workspaceId, workerId, [["a", "alpha"], ["b", "beta"], ["c", "aardvark"]]);
         const r = await new Worker().find(findStmt(url(""), regex("^a")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))].toSorted(), ["worker:///a", "worker:///c"]);
+        assert.deepEqual([...new Set(paths(r))].toSorted(), ["worker:///a", "worker:///c"]);
     } finally { db.close(); }
 });
 
@@ -270,7 +274,7 @@ test("Worker.find regex honors flags — case-insensitive (i) on content", async
         const ci: MatcherBody = { dialect: "regex", raw: "/^al/i", pattern: "^al", flags: "i" };
         const r = await new Worker().find(findStmt(url(""), ci), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))].toSorted(), ["worker:///a", "worker:///b"]);
+        assert.deepEqual([...new Set(paths(r))].toSorted(), ["worker:///a", "worker:///b"]);
     } finally { db.close(); }
 });
 
@@ -282,7 +286,7 @@ test("Worker.find regex accepts `g` flag on content (no throw)", async () => {
         const g: MatcherBody = { dialect: "regex", raw: "/foo/g", pattern: "foo", flags: "g" };
         const r = await new Worker().find(findStmt(url(""), g), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))].toSorted(), ["worker:///a", "worker:///b"]);
+        assert.deepEqual([...new Set(paths(r))].toSorted(), ["worker:///a", "worker:///b"]);
     } finally { db.close(); }
 });
 
@@ -294,7 +298,7 @@ test("Worker.find regex `y` (sticky) anchors at content start", async () => {
         const y: MatcherBody = { dialect: "regex", raw: "/foo/y", pattern: "foo", flags: "y" };
         const r = await new Worker().find(findStmt(url(""), y), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///a"]);
+        assert.deepEqual([...new Set(paths(r))], ["worker:///a"]);
     } finally { db.close(); }
 });
 
@@ -306,7 +310,7 @@ test("Worker.find xpath matcher with no structural match → 204", async () => {
         await seedEntries(db, workspaceId, workerId, [["a", "plain text"]]);
         const r = await new Worker().find(findStmt(url(""), { dialect: "xpath", raw: "//x" }), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 204);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], []);
+        assert.deepEqual([...new Set(paths(r))], []);
     } finally { db.close(); }
 });
 
@@ -317,7 +321,7 @@ test("Worker.find with <L> paginates results", async () => {
         const stmt: ReturnType<typeof findStmt> = { ...findStmt(url(""), null), lineMarker: { marks: [2, 3] } };
         const r = await new Worker().find(stmt, makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///b", "worker:///c"]);
+        assert.deepEqual([...new Set(paths(r))], ["worker:///b", "worker:///c"]);
         const one = await new Worker().find(
             { ...findStmt(url(""), null), lineMarker: { marks: [2] } },
             makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }),
@@ -413,7 +417,7 @@ test("Worker.find is scoped to the workspace (doesn't leak across workspaces)", 
 
         const r = await k.find(findStmt(url("")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///here"], "only entries from this workspace");
+        assert.deepEqual([...new Set(paths(r))], ["worker:///here"], "only entries from this workspace");
     } finally { db.close(); }
 });
 
@@ -428,6 +432,6 @@ test("commons FIND is scoped to the scheme (doesn't leak across schemes)", async
 
         const r = await new Worker().find(findStmt(url("")), makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 }));
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(r.results.map((f) => f.path))], ["worker:///here-commons"], "the commons FIND never leaks another scheme's entries");
+        assert.deepEqual([...new Set(paths(r))], ["worker:///here-commons"], "the commons FIND never leaks another scheme's entries");
     } finally { db.close(); }
 });

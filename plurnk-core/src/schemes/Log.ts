@@ -20,13 +20,28 @@ import type {
 } from "../core/CoreSchemeServices.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
 import LogBody from "../core/LogBody.ts";
+import LogEntryProjection from "../core/LogEntryProjection.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import EntryGraph from "./_entry-graph.ts";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
 import { pathFolderSummaries, pathScope, pathScopeMatches } from "./_path-scope.ts";
+import type { CatalogChannel, CatalogDefaultChannel } from "./_entry-manifest.ts";
 
 type OpenFoldResult = SchemeResultBase & { matched?: number };
-type LogCatalogMatch = CatalogMatch & { tags?: string[] };
+type LogCatalogMatch = [CatalogDefaultChannel & { tags?: string[] }, ...CatalogChannel[]];
+type LogCoordinate = {
+    loopSeq: number;
+    turnSeq: number;
+    sequence: number;
+    op: string | null;
+};
+type CoordinateRow = {
+    id: number;
+    coordinate: string;
+    origin: string;
+    op: string | null;
+    attrs: string;
+};
 
 export interface LogCurationPlan {
     readonly targetLogEntryIds: readonly number[];
@@ -41,8 +56,8 @@ export interface LogCurationOutcome {
 }
 
 // log:///<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
-// is wire-rendering self-documentation derived from the row's `op` field;
-// parsing accepts it (or omits it) and identifies the row by coordinate. The op
+// is canonical model-facing identity derived from the row's projected `op`;
+// parsing accepts it (or omits it), but a supplied suffix must agree. The op
 // suffix is case-INSENSITIVE: model ops render UPPERCASE (READ/EDIT/FIND) while
 // engine-minted selectors such as `error` are lowercase. An actionless model
 // emission has no suffix at all.
@@ -63,24 +78,32 @@ const coordinateGlob = (pathname: string): string | null => {
     return null;
 };
 
-const parseCoordinate = (pathname: string): { loopSeq: number; turnSeq: number; sequence: number } | null => {
+const parseCoordinate = (pathname: string): LogCoordinate | null => {
     const match = COORDINATE.exec(pathname);
     if (match === null) return null;
     return {
         loopSeq: Number(match[1]),
         turnSeq: Number(match[2]),
         sequence: Number(match[3]),
+        op: match[4] ?? null,
     };
 };
 
-const canonicalCoordinate = (coordinate: string): string => coordinate.replace(/\/[A-Za-z]+$/, "");
-
 // A rendered log path appends `/OP` to the canonical loop/turn/item coordinate
-// as self-documentation. Selection honors both views: ordinary path globs map
+// as identity. Selection honors both views: ordinary path globs map
 // the three-level resource tree, while an explicit OP segment can still filter
 // rows (`log:///**/READ`).
 const coordinateScopeMatches = (scope: ReturnType<typeof pathScope>, coordinate: string): boolean =>
-    pathScopeMatches(scope, coordinate) || pathScopeMatches(scope, canonicalCoordinate(coordinate));
+    pathScopeMatches(scope, coordinate) || pathScopeMatches(scope, LogEntryProjection.base(coordinate));
+
+const projectedCoordinateRows = <T extends Omit<CoordinateRow, "id"> & { id?: number }>(rows: readonly T[]): T[] => rows.map((row) => ({
+    ...row,
+    coordinate: LogEntryProjection.coordinate(row.coordinate, row),
+}));
+
+const coordinateCandidatePrefix = (prefix: string | null): string | null => prefix === null
+    ? null
+    : LogEntryProjection.base(prefix);
 
 export default class Log extends CoreSchemeAdapterBase implements CoreRepresentationProvider {
     static manifest: SchemeManifest = {
@@ -145,6 +168,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         }
 
         const row = await db.log_read_by_coordinate.get<{
+            origin: string;
             op: string | null;
             scheme: string | null;
             pathname: string | null;
@@ -157,6 +181,9 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
 
         if (row === undefined) return failure("entry-not-found", 404, `No log entry exists at log:///${pathname}.`);
+        if (!LogEntryProjection.accepts(coord.op, row)) {
+            return failure("entry-not-found", 404, `No log entry exists at log:///${pathname}.`);
+        }
 
         const { content: underlyingContent, mimetype: underlyingMimetype } = LogBody.resolve({
             op: row.op,
@@ -244,13 +271,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         if (scope.kind === "exact") {
             const coordinate = parseCoordinate(scope.pathname);
             if (coordinate === null) throw new Error(`Exact log scope has a malformed coordinate ${JSON.stringify(scope.pathname)}`);
-            const exact = await db.log_id_by_coordinate.get<{ id: number }>({
-                worker_id: workerId,
-                loop_seq: coordinate.loopSeq,
-                turn_seq: coordinate.turnSeq,
-                sequence: coordinate.sequence,
-            });
-            if (exact === undefined) {
+            if (await this.#resolveExactId(coordinate, core) === null) {
                 return empty(
                     404,
                     `No log entry exists at ${statement.target?.raw ?? `log:///${scope.pathname}`}.`,
@@ -260,6 +281,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         }
         type Candidate = {
             coordinate: string;
+            origin: string;
             op: string | null;
             tx: string;
             mimetype_tx: string;
@@ -270,9 +292,10 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             attrs: string;
             tags: string;
         };
-        const candidateRows = filterTags.length > 0
-            ? await db.log_curation_find_candidates_tagged.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix, tags: JSON.stringify(filterTags) })
-            : await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix });
+        const storedCandidateRows = filterTags.length > 0
+            ? await db.log_curation_find_candidates_tagged.all<Candidate>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix), tags: JSON.stringify(filterTags) })
+            : await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix) });
+        const candidateRows = projectedCoordinateRows(storedCandidateRows);
         let rows: Candidate[];
         try { rows = candidateRows.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
         catch {
@@ -286,7 +309,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 },
             );
         }
-        const candidateByCanonicalCoord = new Map(candidateRows.map((row) => [canonicalCoordinate(row.coordinate), row] as const));
+        const candidateByCanonicalCoord = new Map(candidateRows.map((row) => [LogEntryProjection.base(row.coordinate), row] as const));
         const byCoord = new Map(rows.map((r) => [r.coordinate, r] as const));
         const projected = rows.map((r) => ({
             key: r.coordinate,
@@ -369,7 +392,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     retryable: false,
                 },
             );
-            const universeRows = await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: null });
+            const universeRows = projectedCoordinateRows(await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: null }));
             const universe = resolveSearchCandidates(
                 universeRows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
             );
@@ -435,7 +458,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             matches = r.matches.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
         }
         const folderSummaries = statement.body === null
-            ? pathFolderSummaries(scope, candidateRows.map((row) => canonicalCoordinate(row.coordinate)))
+            ? pathFolderSummaries(scope, candidateRows.map((row) => LogEntryProjection.base(row.coordinate)))
             : [];
         const resources: FindProjectionResource[] = [];
         for (const m of matches) {
@@ -450,15 +473,18 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 mimetypeTx: row.mimetype_tx,
                 mimetypeRx: row.mimetype_rx,
             });
-            const item: LogCatalogMatch = {
+            const channel: LogCatalogMatch[0] = {
                 path,
-                channels: { [path]: { mimetype: proj.mimetype, tokens: row.tokens, lines: proj.content.length === 0 ? 0 : proj.content.split("\n").length } },
+                mimetype: proj.mimetype,
+                tokens: row.tokens,
+                lines: proj.content.length === 0 ? 0 : proj.content.split("\n").length,
             };
             const storedTags = JSON.parse(row.tags) as unknown;
             if (!Array.isArray(storedTags) || !storedTags.every((tag) => typeof tag === "string" && tag.length > 0)) {
                 throw new TypeError(`Log row ${m.pathname} contains invalid tag storage.`);
             }
-            if (storedTags.length > 0) item.tags = storedTags;
+            if (storedTags.length > 0) channel.tags = storedTags;
+            const item: LogCatalogMatch = [channel];
             resources.push({ item, match: m });
         }
         const scopes: CatalogScope[] = [];
@@ -501,19 +527,31 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
 
     // Resolve a log:/// target — a concrete coordinate or path-glob — to the matched row ids.
     // OPEN/FOLD/KILL share this one path selection; log curation has no positional pagination.
+    async #resolveExactId(coordinate: LogCoordinate, ctx: PlurnkSchemeContext): Promise<number | null> {
+        const row = await ctx.db.log_id_by_coordinate.get<Pick<CoordinateRow, "id" | "origin" | "op" | "attrs">>({
+            worker_id: ctx.workerId,
+            loop_seq: coordinate.loopSeq,
+            turn_seq: coordinate.turnSeq,
+            sequence: coordinate.sequence,
+        });
+        return row !== undefined && LogEntryProjection.accepts(coordinate.op, row) ? row.id : null;
+    }
+
     async #resolveIds(pathname: string, ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {
         const { db, workerId } = ctx;
         const coord = parseCoordinate(pathname);
         if (coord !== null) {
-            const row = await db.log_id_by_coordinate.get<{ id: number }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
-            return row === undefined ? { status: 404, ids: [] } : { status: 200, ids: [row.id] };
+            const id = await this.#resolveExactId(coord, ctx);
+            return id === null
+                ? { status: 404, ids: [] }
+                : { status: 200, ids: [id] };
         }
         // {§log-coordinate-hierarchy} — one resolution for every consumer (curation here, find below).
         const glob = coordinateGlob(pathname);
         if (glob === null) return { status: 400, ids: [], error: `The log target '${pathname}' is malformed.` };
         const scope = pathScope(glob, false);
-        const candidates = await db.log_match_coordinates.all<{ id: number; coordinate: string }>({ worker_id: workerId, scope_prefix: scope.candidatePrefix });
-        let matched: Array<{ id: number; coordinate: string }>;
+        const candidates = projectedCoordinateRows(await db.log_match_coordinates.all<CoordinateRow>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix) }));
+        let matched: CoordinateRow[];
         try { matched = candidates.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
         catch { return { status: 400, ids: [], error: `The log glob '${glob}' is malformed.` }; }
         // {§log-curation-folder-idiom} — a well-formed empty selection is a
@@ -531,13 +569,17 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const pathname = statement.target === null ? "" : (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const glob = coordinateGlob(pathname);
         if (glob === null) return { status: 400, ids: [], error: `The log target '${pathname}' is malformed.` };
+        const coordinate = parseCoordinate(pathname);
+        if (coordinate !== null && await this.#resolveExactId(coordinate, ctx) === null) {
+            return { status: 404, ids: [] };
+        }
         const scope = pathScope(glob, false);
-        const candidates = await db.log_match_coordinates_tagged.all<{ id: number; coordinate: string }>({
+        const candidates = projectedCoordinateRows(await db.log_match_coordinates_tagged.all<CoordinateRow>({
             worker_id: workerId,
-            scope_prefix: scope.candidatePrefix,
+            scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix),
             tags: JSON.stringify(tags),
-        });
-        let matched: Array<{ id: number; coordinate: string }>;
+        }));
+        let matched: CoordinateRow[];
         try { matched = candidates.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
         catch { return { status: 400, ids: [], error: `The log glob '${glob}' is malformed.` }; }
         if (matched.length === 0) return { status: 204, ids: [] };
@@ -565,7 +607,9 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         );
         if (selected.status !== 200) return { status: selected.status, ids: [], problem: selected.problem };
 
-        let selectedPaths = selected.results.flatMap((item) => typeof item.path === "string" ? [item.path] : []);
+        let selectedPaths = selected.results.flatMap((item) => Array.isArray(item) && typeof item[0]?.path === "string"
+            ? [item[0].path]
+            : []);
         if (selectedPaths.length === 0) {
             if (statement.target === null) {
                 throw new Error("A successful broad log matcher selection returned no resource paths");
@@ -583,14 +627,9 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         for (const pathname of selectedPaths) {
             const coordinate = parseCoordinate(pathname.replace(/^log:\/\/\//, "").replace(/^\//, ""));
             if (coordinate === null) throw new Error(`Log matcher selected malformed coordinate '${pathname}'`);
-            const row = await ctx.db.log_id_by_coordinate.get<{ id: number }>({
-                worker_id: ctx.workerId,
-                loop_seq: coordinate.loopSeq,
-                turn_seq: coordinate.turnSeq,
-                sequence: coordinate.sequence,
-            });
-            if (row === undefined) return { status: 404, ids: [] };
-            ids.push(row.id);
+            const id = await this.#resolveExactId(coordinate, ctx);
+            if (id === null) return { status: 404, ids: [] };
+            ids.push(id);
         }
         return ids.length === 0 ? { status: 204, ids: [] } : { status: 200, ids };
     }

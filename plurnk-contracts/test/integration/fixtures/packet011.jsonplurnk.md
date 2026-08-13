@@ -5,8 +5,8 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 ```jsonplurnk
 [
 {"display":"folded","kind":"model_emission","lines":6,"origin":"plurnk","path":"log:///1/1/1","status":200,"tokens":109},
-{"display":"folded","lines":39,"op":"EDIT","origin":"plurnk","path":"log:///1/1/2/EDIT","status":201,"target":"plurnk://prompt/2/1/1","tokens":1411},
-{"display":"open","lines":12,"op":"READ","origin":"plurnk","path":"log:///1/1/3/READ","status":200,"target":"plurnk://prompt/2/1/1","tokens":545,"body":"
+{"display":"folded","lines":39,"origin":"plurnk","path":"log:///1/1/2/EDIT","status":201,"target":"plurnk://prompt/2/1/1","tokens":1411},
+{"display":"open","lines":12,"origin":"plurnk","path":"log:///1/1/3/READ","status":200,"target":"plurnk://prompt/2/1/1","tokens":545,"body":"
 1:	Improve ABS module loading so `require()` remains deterministic across larger dependency graphs, supports discovery through `ABS_MODULE_PATH`, reports cache state, and handles module-related CLI flags in script mode.
 2:	
 3:	Expected outcomes
@@ -20,197 +20,197 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 11:	2. Cache visibility and reset
 12:	- Expose cache stats via `require_cache_info()` with numeric fields: `hits`, `misses`, `size`, and `inflight`.
 "},
-{"display":"folded","items":326,"itemsTokenTotal":3753876,"op":"FIND","origin":"plurnk","path":"log:///1/1/4/FIND","status":200,"target":"**","tokens":25106},
-{"display":"folded","items":8,"itemsTokenTotal":5235,"op":"FIND","origin":"plurnk","path":"log:///1/1/5/FIND","status":200,"target":"plurnk://docs/**","tokens":516},
-{"body":"","display":"none","items":0,"itemsTokenTotal":0,"op":"FIND","origin":"plurnk","path":"log:///1/1/6/FIND","status":200,"target":"known:///**","tokens":0},
-{"body":"","display":"none","items":0,"itemsTokenTotal":0,"op":"FIND","origin":"plurnk","path":"log:///1/1/7/FIND","status":200,"target":"unknown:///**","tokens":0},
-{"display":"folded","lines":1,"op":"PLAN","origin":"model","path":"log:///1/1/8/PLAN","status":200,"tokens":86},
-{"display":"folded","items":3,"itemsTokenTotal":35752,"matcher":"#func.*require|require_cache_info|module|resolve#i","op":"FIND","origin":"model","path":"log:///1/1/9/FIND","status":200,"target":"evaluator/functions.go","tokens":282},
-{"display":"folded","items":2,"itemsTokenTotal":20318,"matcher":"#module|require|resolve#i","op":"FIND","origin":"model","path":"log:///1/1/10/FIND","status":200,"target":"evaluator/evaluator.go","tokens":196},
-{"body":"","display":"none","items":0,"itemsTokenTotal":0,"matcher":"#flag|module|path#i","op":"FIND","origin":"model","path":"log:///1/1/11/FIND","status":200,"target":"main.go","tokens":0},
-{"body":"","display":"none","items":0,"itemsTokenTotal":0,"matcher":"#flag|module|path#i","op":"FIND","origin":"model","path":"log:///1/1/12/FIND","status":200,"target":"runner/runner.go","tokens":0},
-{"body":"","display":"none","items":0,"itemsTokenTotal":0,"matcher":"#cache|module#i","op":"FIND","origin":"model","path":"log:///1/1/13/FIND","status":200,"target":"object/environment.go","tokens":0},
-{"display":"folded","lines":1,"op":"SEND","origin":"model","path":"log:///1/1/14/SEND","status":102,"tokens":47},
+{"display":"folded","items":326,"itemsTokenTotal":3753876,"origin":"plurnk","path":"log:///1/1/4/FIND","status":200,"target":"**","tokens":25106},
+{"display":"folded","items":8,"itemsTokenTotal":5235,"origin":"plurnk","path":"log:///1/1/5/FIND","status":200,"target":"plurnk://docs/**","tokens":516},
+{"body":"","display":"none","items":0,"itemsTokenTotal":0,"origin":"plurnk","path":"log:///1/1/6/FIND","status":200,"target":"known:///**","tokens":0},
+{"body":"","display":"none","items":0,"itemsTokenTotal":0,"origin":"plurnk","path":"log:///1/1/7/FIND","status":200,"target":"unknown:///**","tokens":0},
+{"display":"folded","lines":1,"origin":"model","path":"log:///1/1/8/PLAN","status":200,"tokens":86},
+{"display":"folded","items":3,"itemsTokenTotal":35752,"matcher":"#func.*require|require_cache_info|module|resolve#i","origin":"model","path":"log:///1/1/9/FIND","status":200,"target":"evaluator/functions.go","tokens":282},
+{"display":"folded","items":2,"itemsTokenTotal":20318,"matcher":"#module|require|resolve#i","origin":"model","path":"log:///1/1/10/FIND","status":200,"target":"evaluator/evaluator.go","tokens":196},
+{"body":"","display":"none","items":0,"itemsTokenTotal":0,"matcher":"#flag|module|path#i","origin":"model","path":"log:///1/1/11/FIND","status":200,"target":"main.go","tokens":0},
+{"body":"","display":"none","items":0,"itemsTokenTotal":0,"matcher":"#flag|module|path#i","origin":"model","path":"log:///1/1/12/FIND","status":200,"target":"runner/runner.go","tokens":0},
+{"body":"","display":"none","items":0,"itemsTokenTotal":0,"matcher":"#cache|module#i","origin":"model","path":"log:///1/1/13/FIND","status":200,"target":"object/environment.go","tokens":0},
+{"display":"folded","lines":1,"origin":"model","path":"log:///1/1/14/SEND","status":102,"tokens":47},
 {"display":"folded","kind":"model_emission","lines":7,"origin":"model","path":"log:///1/1/15","status":200,"tokens":280},
-{"display":"folded","lines":1,"op":"PLAN","origin":"model","path":"log:///1/2/1/PLAN","status":200,"tokens":67},
-{"display":"folded","lines":1,"op":"READ","origin":"model","path":"log:///1/2/2/READ","status":200,"target":"evaluator/functions.go","tokens":49},
-{"display":"folded","lines":30,"op":"READ","origin":"model","path":"log:///1/2/3/READ","status":200,"target":"evaluator/functions.go","tokens":546},
-{"display":"folded","lines":1,"op":"READ","origin":"model","path":"log:///1/2/4/READ","status":200,"target":"evaluator/evaluator.go","tokens":78},
-{"display":"folded","lines":1,"op":"READ","origin":"model","path":"log:///1/2/5/READ","status":200,"target":"evaluator/evaluator.go","tokens":56},
-{"display":"folded","lines":7,"op":"READ","origin":"model","path":"log:///1/2/6/READ","status":200,"target":"examples/require.abs","tokens":151},
-{"display":"folded","lines":5,"op":"READ","origin":"model","path":"log:///1/2/7/READ","status":200,"target":"stdlib/runtime/index.abs","tokens":83},
-{"display":"folded","lines":39,"op":"READ","origin":"model","path":"log:///1/2/8/READ","status":200,"target":"main.go","tokens":435},
-{"display":"folded","lines":36,"op":"READ","origin":"model","path":"log:///1/2/9/READ","status":200,"target":"runner/runner.go","tokens":581},
-{"display":"folded","lines":129,"op":"READ","origin":"model","path":"log:///1/2/10/READ","status":200,"target":"object/environment.go","tokens":1941},
-{"display":"folded","lines":1,"op":"SEND","origin":"model","path":"log:///1/2/11/SEND","status":102,"tokens":47},
+{"display":"folded","lines":1,"origin":"model","path":"log:///1/2/1/PLAN","status":200,"tokens":67},
+{"display":"folded","lines":1,"origin":"model","path":"log:///1/2/2/READ","status":200,"target":"evaluator/functions.go","tokens":49},
+{"display":"folded","lines":30,"origin":"model","path":"log:///1/2/3/READ","status":200,"target":"evaluator/functions.go","tokens":546},
+{"display":"folded","lines":1,"origin":"model","path":"log:///1/2/4/READ","status":200,"target":"evaluator/evaluator.go","tokens":78},
+{"display":"folded","lines":1,"origin":"model","path":"log:///1/2/5/READ","status":200,"target":"evaluator/evaluator.go","tokens":56},
+{"display":"folded","lines":7,"origin":"model","path":"log:///1/2/6/READ","status":200,"target":"examples/require.abs","tokens":151},
+{"display":"folded","lines":5,"origin":"model","path":"log:///1/2/7/READ","status":200,"target":"stdlib/runtime/index.abs","tokens":83},
+{"display":"folded","lines":39,"origin":"model","path":"log:///1/2/8/READ","status":200,"target":"main.go","tokens":435},
+{"display":"folded","lines":36,"origin":"model","path":"log:///1/2/9/READ","status":200,"target":"runner/runner.go","tokens":581},
+{"display":"folded","lines":129,"origin":"model","path":"log:///1/2/10/READ","status":200,"target":"object/environment.go","tokens":1941},
+{"display":"folded","lines":1,"origin":"model","path":"log:///1/2/11/SEND","status":102,"tokens":47},
 {"display":"folded","kind":"model_emission","lines":11,"origin":"model","path":"log:///1/2/12","status":200,"tokens":294},
-{"display":"folded","lines":1,"op":"PLAN","origin":"model","path":"log:///1/3/1/PLAN","status":200,"tokens":99},
-{"display":"folded","lines":37,"op":"READ","origin":"model","path":"log:///1/3/2/READ","status":200,"target":"evaluator/functions.go","tokens":637},
-{"display":"folded","lines":40,"op":"READ","origin":"model","path":"log:///1/3/3/READ","status":200,"target":"evaluator/functions.go","tokens":724},
-{"display":"folded","lines":41,"op":"READ","origin":"model","path":"log:///1/3/4/READ","status":200,"target":"evaluator/functions.go","tokens":878},
-{"display":"folded","lines":41,"op":"READ","origin":"model","path":"log:///1/3/5/READ","status":200,"target":"evaluator/functions.go","tokens":919},
-{"display":"folded","lines":41,"op":"READ","origin":"model","path":"log:///1/3/6/READ","status":200,"target":"evaluator/functions.go","tokens":789},
-{"display":"folded","lines":41,"op":"READ","origin":"model","path":"log:///1/3/7/READ","status":200,"target":"evaluator/functions.go","tokens":754},
-{"display":"folded","lines":41,"op":"READ","origin":"model","path":"log:///1/3/8/READ","status":200,"target":"evaluator/functions.go","tokens":615},
-{"display":"folded","lines":37,"op":"READ","origin":"model","path":"log:///1/3/9/READ","status":200,"target":"evaluator/functions.go","tokens":673},
-{"display":"folded","lines":46,"op":"READ","origin":"model","path":"log:///1/3/10/READ","status":200,"target":"evaluator/functions.go","tokens":554},
-{"display":"folded","lines":55,"op":"READ","origin":"model","path":"log:///1/3/11/READ","status":200,"target":"evaluator/functions.go","tokens":898},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/12/READ","status":200,"target":"evaluator/functions.go","tokens":869},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/13/READ","status":200,"target":"evaluator/functions.go","tokens":931},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/14/READ","status":200,"target":"evaluator/functions.go","tokens":881},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/15/READ","status":200,"target":"evaluator/functions.go","tokens":937},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/16/READ","status":200,"target":"evaluator/functions.go","tokens":908},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/17/READ","status":200,"target":"evaluator/functions.go","tokens":854},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/18/READ","status":200,"target":"evaluator/functions.go","tokens":885},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/19/READ","status":200,"target":"evaluator/functions.go","tokens":993},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/20/READ","status":200,"target":"evaluator/functions.go","tokens":1034},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/21/READ","status":200,"target":"evaluator/functions.go","tokens":793},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/22/READ","status":200,"target":"evaluator/functions.go","tokens":890},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/23/READ","status":200,"target":"evaluator/functions.go","tokens":823},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/24/READ","status":200,"target":"evaluator/functions.go","tokens":786},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/25/READ","status":200,"target":"evaluator/functions.go","tokens":1103},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/26/READ","status":200,"target":"evaluator/functions.go","tokens":792},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/27/READ","status":200,"target":"evaluator/functions.go","tokens":863},
-{"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/3/28/READ","status":200,"target":"evaluator/functions.go","tokens":1015},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/29/READ","status":200,"target":"evaluator/functions.go","tokens":858},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/30/READ","status":200,"target":"evaluator/functions.go","tokens":856},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/31/READ","status":200,"target":"evaluator/functions.go","tokens":898},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/32/READ","status":200,"target":"evaluator/functions.go","tokens":743},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/33/READ","status":200,"target":"evaluator/functions.go","tokens":839},
-{"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/3/34/READ","status":200,"target":"evaluator/functions.go","tokens":792},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/35/READ","status":200,"target":"evaluator/functions.go","tokens":826},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/36/READ","status":200,"target":"evaluator/functions.go","tokens":855},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/37/READ","status":200,"target":"evaluator/functions.go","tokens":782},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/38/READ","status":200,"target":"evaluator/functions.go","tokens":919},
-{"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/3/39/READ","status":200,"target":"evaluator/functions.go","tokens":863},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/40/READ","status":200,"target":"evaluator/functions.go","tokens":955},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/41/READ","status":200,"target":"evaluator/functions.go","tokens":1006},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/42/READ","status":200,"target":"evaluator/functions.go","tokens":777},
-{"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/3/43/READ","status":200,"target":"evaluator/functions.go","tokens":674},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/44/READ","status":200,"target":"evaluator/functions.go","tokens":828},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/45/READ","status":200,"target":"evaluator/functions.go","tokens":1109},
-{"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/3/46/READ","status":200,"target":"evaluator/functions.go","tokens":956},
-{"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/3/47/READ","status":200,"target":"evaluator/functions.go","tokens":874},
-{"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/3/48/READ","status":200,"target":"evaluator/functions.go","tokens":920},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/49/READ","status":200,"target":"evaluator/functions.go","tokens":655},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/50/READ","status":200,"target":"evaluator/functions.go","tokens":844},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/51/READ","status":200,"target":"evaluator/functions.go","tokens":1030},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/52/READ","status":200,"target":"evaluator/functions.go","tokens":867},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/53/READ","status":200,"target":"evaluator/functions.go","tokens":887},
-{"display":"folded","lines":45,"op":"READ","origin":"model","path":"log:///1/3/54/READ","status":200,"target":"evaluator/functions.go","tokens":744},
-{"display":"folded","lines":37,"op":"READ","origin":"model","path":"log:///1/3/55/READ","status":200,"target":"evaluator/functions.go","tokens":637},
-{"display":"folded","lines":40,"op":"READ","origin":"model","path":"log:///1/3/56/READ","status":200,"target":"evaluator/functions.go","tokens":724},
-{"display":"folded","lines":41,"op":"READ","origin":"model","path":"log:///1/3/57/READ","status":200,"target":"evaluator/functions.go","tokens":878},
-{"display":"folded","lines":41,"op":"READ","origin":"model","path":"log:///1/3/58/READ","status":200,"target":"evaluator/functions.go","tokens":919},
-{"display":"folded","lines":41,"op":"READ","origin":"model","path":"log:///1/3/59/READ","status":200,"target":"evaluator/functions.go","tokens":789},
-{"display":"folded","lines":41,"op":"READ","origin":"model","path":"log:///1/3/60/READ","status":200,"target":"evaluator/functions.go","tokens":754},
-{"display":"folded","lines":41,"op":"READ","origin":"model","path":"log:///1/3/61/READ","status":200,"target":"evaluator/functions.go","tokens":615},
-{"display":"folded","lines":37,"op":"READ","origin":"model","path":"log:///1/3/62/READ","status":200,"target":"evaluator/functions.go","tokens":673},
-{"display":"folded","lines":46,"op":"READ","origin":"model","path":"log:///1/3/63/READ","status":200,"target":"evaluator/functions.go","tokens":554},
-{"display":"folded","lines":55,"op":"READ","origin":"model","path":"log:///1/3/64/READ","status":200,"target":"evaluator/functions.go","tokens":898},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/65/READ","status":200,"target":"evaluator/functions.go","tokens":869},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/66/READ","status":200,"target":"evaluator/functions.go","tokens":931},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/67/READ","status":200,"target":"evaluator/functions.go","tokens":881},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/68/READ","status":200,"target":"evaluator/functions.go","tokens":937},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/69/READ","status":200,"target":"evaluator/functions.go","tokens":908},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/70/READ","status":200,"target":"evaluator/functions.go","tokens":854},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/71/READ","status":200,"target":"evaluator/functions.go","tokens":885},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/72/READ","status":200,"target":"evaluator/functions.go","tokens":993},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/73/READ","status":200,"target":"evaluator/functions.go","tokens":1034},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/74/READ","status":200,"target":"evaluator/functions.go","tokens":793},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/75/READ","status":200,"target":"evaluator/functions.go","tokens":890},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/76/READ","status":200,"target":"evaluator/functions.go","tokens":823},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/77/READ","status":200,"target":"evaluator/functions.go","tokens":786},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/78/READ","status":200,"target":"evaluator/functions.go","tokens":1103},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/79/READ","status":200,"target":"evaluator/functions.go","tokens":792},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/80/READ","status":200,"target":"evaluator/functions.go","tokens":863},
-{"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/3/81/READ","status":200,"target":"evaluator/functions.go","tokens":1015},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/82/READ","status":200,"target":"evaluator/functions.go","tokens":858},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/83/READ","status":200,"target":"evaluator/functions.go","tokens":856},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/84/READ","status":200,"target":"evaluator/functions.go","tokens":898},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/85/READ","status":200,"target":"evaluator/functions.go","tokens":743},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/86/READ","status":200,"target":"evaluator/functions.go","tokens":839},
-{"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/3/87/READ","status":200,"target":"evaluator/functions.go","tokens":792},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/88/READ","status":200,"target":"evaluator/functions.go","tokens":826},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/89/READ","status":200,"target":"evaluator/functions.go","tokens":855},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/90/READ","status":200,"target":"evaluator/functions.go","tokens":782},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/91/READ","status":200,"target":"evaluator/functions.go","tokens":919},
-{"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/3/92/READ","status":200,"target":"evaluator/functions.go","tokens":863},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/93/READ","status":200,"target":"evaluator/functions.go","tokens":955},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/94/READ","status":200,"target":"evaluator/functions.go","tokens":1006},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/95/READ","status":200,"target":"evaluator/functions.go","tokens":777},
-{"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/3/96/READ","status":200,"target":"evaluator/functions.go","tokens":674},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/97/READ","status":200,"target":"evaluator/functions.go","tokens":828},
-{"display":"folded","lines":51,"op":"READ","origin":"model","path":"log:///1/3/98/READ","status":200,"target":"evaluator/functions.go","tokens":1109},
-{"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/3/99/READ","status":200,"target":"evaluator/functions.go","tokens":956},
-{"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/3/100/READ","status":200,"target":"evaluator/functions.go","tokens":874},
-{"display":"folded","error":"Max Commands Exceeded","op":"error","origin":"plurnk","path":"log:///1/3/101/error","worker":"rail","status":429,"tokens":36},
-{"display":"folded","error":"output truncated at the completion cap (65536 tokens) mid-emission — the parse errors below are truncation artifacts; emit fewer ops per turn and continue","op":"error","origin":"model","path":"log:///1/3/102/error","worker":"engine","status":413,"tokens":102},
-{"display":"folded","error":"Plurnk parser error at line 3992:26 - a turn must end with a terminal `## SEND0 [code]` section","op":"error","origin":"model","path":"log:///1/3/103/error","worker":"grammar","status":400,"tokens":71},
-{"display":"folded","error":"target slot of `## READ0` opened at line 3992 but never closed - add `)`","op":"error","origin":"model","path":"log:///1/3/104/error","worker":"grammar","status":400,"tokens":72},
+{"display":"folded","lines":1,"origin":"model","path":"log:///1/3/1/PLAN","status":200,"tokens":99},
+{"display":"folded","lines":37,"origin":"model","path":"log:///1/3/2/READ","status":200,"target":"evaluator/functions.go","tokens":637},
+{"display":"folded","lines":40,"origin":"model","path":"log:///1/3/3/READ","status":200,"target":"evaluator/functions.go","tokens":724},
+{"display":"folded","lines":41,"origin":"model","path":"log:///1/3/4/READ","status":200,"target":"evaluator/functions.go","tokens":878},
+{"display":"folded","lines":41,"origin":"model","path":"log:///1/3/5/READ","status":200,"target":"evaluator/functions.go","tokens":919},
+{"display":"folded","lines":41,"origin":"model","path":"log:///1/3/6/READ","status":200,"target":"evaluator/functions.go","tokens":789},
+{"display":"folded","lines":41,"origin":"model","path":"log:///1/3/7/READ","status":200,"target":"evaluator/functions.go","tokens":754},
+{"display":"folded","lines":41,"origin":"model","path":"log:///1/3/8/READ","status":200,"target":"evaluator/functions.go","tokens":615},
+{"display":"folded","lines":37,"origin":"model","path":"log:///1/3/9/READ","status":200,"target":"evaluator/functions.go","tokens":673},
+{"display":"folded","lines":46,"origin":"model","path":"log:///1/3/10/READ","status":200,"target":"evaluator/functions.go","tokens":554},
+{"display":"folded","lines":55,"origin":"model","path":"log:///1/3/11/READ","status":200,"target":"evaluator/functions.go","tokens":898},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/12/READ","status":200,"target":"evaluator/functions.go","tokens":869},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/13/READ","status":200,"target":"evaluator/functions.go","tokens":931},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/14/READ","status":200,"target":"evaluator/functions.go","tokens":881},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/15/READ","status":200,"target":"evaluator/functions.go","tokens":937},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/16/READ","status":200,"target":"evaluator/functions.go","tokens":908},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/17/READ","status":200,"target":"evaluator/functions.go","tokens":854},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/18/READ","status":200,"target":"evaluator/functions.go","tokens":885},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/19/READ","status":200,"target":"evaluator/functions.go","tokens":993},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/20/READ","status":200,"target":"evaluator/functions.go","tokens":1034},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/21/READ","status":200,"target":"evaluator/functions.go","tokens":793},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/22/READ","status":200,"target":"evaluator/functions.go","tokens":890},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/23/READ","status":200,"target":"evaluator/functions.go","tokens":823},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/24/READ","status":200,"target":"evaluator/functions.go","tokens":786},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/25/READ","status":200,"target":"evaluator/functions.go","tokens":1103},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/26/READ","status":200,"target":"evaluator/functions.go","tokens":792},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/27/READ","status":200,"target":"evaluator/functions.go","tokens":863},
+{"display":"folded","lines":50,"origin":"model","path":"log:///1/3/28/READ","status":200,"target":"evaluator/functions.go","tokens":1015},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/29/READ","status":200,"target":"evaluator/functions.go","tokens":858},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/30/READ","status":200,"target":"evaluator/functions.go","tokens":856},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/31/READ","status":200,"target":"evaluator/functions.go","tokens":898},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/32/READ","status":200,"target":"evaluator/functions.go","tokens":743},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/33/READ","status":200,"target":"evaluator/functions.go","tokens":839},
+{"display":"folded","lines":50,"origin":"model","path":"log:///1/3/34/READ","status":200,"target":"evaluator/functions.go","tokens":792},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/35/READ","status":200,"target":"evaluator/functions.go","tokens":826},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/36/READ","status":200,"target":"evaluator/functions.go","tokens":855},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/37/READ","status":200,"target":"evaluator/functions.go","tokens":782},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/38/READ","status":200,"target":"evaluator/functions.go","tokens":919},
+{"display":"folded","lines":50,"origin":"model","path":"log:///1/3/39/READ","status":200,"target":"evaluator/functions.go","tokens":863},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/40/READ","status":200,"target":"evaluator/functions.go","tokens":955},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/41/READ","status":200,"target":"evaluator/functions.go","tokens":1006},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/42/READ","status":200,"target":"evaluator/functions.go","tokens":777},
+{"display":"folded","lines":50,"origin":"model","path":"log:///1/3/43/READ","status":200,"target":"evaluator/functions.go","tokens":674},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/44/READ","status":200,"target":"evaluator/functions.go","tokens":828},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/45/READ","status":200,"target":"evaluator/functions.go","tokens":1109},
+{"display":"folded","lines":50,"origin":"model","path":"log:///1/3/46/READ","status":200,"target":"evaluator/functions.go","tokens":956},
+{"display":"folded","lines":50,"origin":"model","path":"log:///1/3/47/READ","status":200,"target":"evaluator/functions.go","tokens":874},
+{"display":"folded","lines":50,"origin":"model","path":"log:///1/3/48/READ","status":200,"target":"evaluator/functions.go","tokens":920},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/49/READ","status":200,"target":"evaluator/functions.go","tokens":655},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/50/READ","status":200,"target":"evaluator/functions.go","tokens":844},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/51/READ","status":200,"target":"evaluator/functions.go","tokens":1030},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/52/READ","status":200,"target":"evaluator/functions.go","tokens":867},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/53/READ","status":200,"target":"evaluator/functions.go","tokens":887},
+{"display":"folded","lines":45,"origin":"model","path":"log:///1/3/54/READ","status":200,"target":"evaluator/functions.go","tokens":744},
+{"display":"folded","lines":37,"origin":"model","path":"log:///1/3/55/READ","status":200,"target":"evaluator/functions.go","tokens":637},
+{"display":"folded","lines":40,"origin":"model","path":"log:///1/3/56/READ","status":200,"target":"evaluator/functions.go","tokens":724},
+{"display":"folded","lines":41,"origin":"model","path":"log:///1/3/57/READ","status":200,"target":"evaluator/functions.go","tokens":878},
+{"display":"folded","lines":41,"origin":"model","path":"log:///1/3/58/READ","status":200,"target":"evaluator/functions.go","tokens":919},
+{"display":"folded","lines":41,"origin":"model","path":"log:///1/3/59/READ","status":200,"target":"evaluator/functions.go","tokens":789},
+{"display":"folded","lines":41,"origin":"model","path":"log:///1/3/60/READ","status":200,"target":"evaluator/functions.go","tokens":754},
+{"display":"folded","lines":41,"origin":"model","path":"log:///1/3/61/READ","status":200,"target":"evaluator/functions.go","tokens":615},
+{"display":"folded","lines":37,"origin":"model","path":"log:///1/3/62/READ","status":200,"target":"evaluator/functions.go","tokens":673},
+{"display":"folded","lines":46,"origin":"model","path":"log:///1/3/63/READ","status":200,"target":"evaluator/functions.go","tokens":554},
+{"display":"folded","lines":55,"origin":"model","path":"log:///1/3/64/READ","status":200,"target":"evaluator/functions.go","tokens":898},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/65/READ","status":200,"target":"evaluator/functions.go","tokens":869},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/66/READ","status":200,"target":"evaluator/functions.go","tokens":931},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/67/READ","status":200,"target":"evaluator/functions.go","tokens":881},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/68/READ","status":200,"target":"evaluator/functions.go","tokens":937},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/69/READ","status":200,"target":"evaluator/functions.go","tokens":908},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/70/READ","status":200,"target":"evaluator/functions.go","tokens":854},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/71/READ","status":200,"target":"evaluator/functions.go","tokens":885},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/72/READ","status":200,"target":"evaluator/functions.go","tokens":993},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/73/READ","status":200,"target":"evaluator/functions.go","tokens":1034},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/74/READ","status":200,"target":"evaluator/functions.go","tokens":793},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/75/READ","status":200,"target":"evaluator/functions.go","tokens":890},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/76/READ","status":200,"target":"evaluator/functions.go","tokens":823},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/77/READ","status":200,"target":"evaluator/functions.go","tokens":786},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/78/READ","status":200,"target":"evaluator/functions.go","tokens":1103},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/79/READ","status":200,"target":"evaluator/functions.go","tokens":792},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/80/READ","status":200,"target":"evaluator/functions.go","tokens":863},
+{"display":"folded","lines":50,"origin":"model","path":"log:///1/3/81/READ","status":200,"target":"evaluator/functions.go","tokens":1015},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/82/READ","status":200,"target":"evaluator/functions.go","tokens":858},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/83/READ","status":200,"target":"evaluator/functions.go","tokens":856},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/84/READ","status":200,"target":"evaluator/functions.go","tokens":898},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/85/READ","status":200,"target":"evaluator/functions.go","tokens":743},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/86/READ","status":200,"target":"evaluator/functions.go","tokens":839},
+{"display":"folded","lines":50,"origin":"model","path":"log:///1/3/87/READ","status":200,"target":"evaluator/functions.go","tokens":792},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/88/READ","status":200,"target":"evaluator/functions.go","tokens":826},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/89/READ","status":200,"target":"evaluator/functions.go","tokens":855},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/90/READ","status":200,"target":"evaluator/functions.go","tokens":782},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/91/READ","status":200,"target":"evaluator/functions.go","tokens":919},
+{"display":"folded","lines":50,"origin":"model","path":"log:///1/3/92/READ","status":200,"target":"evaluator/functions.go","tokens":863},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/93/READ","status":200,"target":"evaluator/functions.go","tokens":955},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/94/READ","status":200,"target":"evaluator/functions.go","tokens":1006},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/95/READ","status":200,"target":"evaluator/functions.go","tokens":777},
+{"display":"folded","lines":50,"origin":"model","path":"log:///1/3/96/READ","status":200,"target":"evaluator/functions.go","tokens":674},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/97/READ","status":200,"target":"evaluator/functions.go","tokens":828},
+{"display":"folded","lines":51,"origin":"model","path":"log:///1/3/98/READ","status":200,"target":"evaluator/functions.go","tokens":1109},
+{"display":"folded","lines":50,"origin":"model","path":"log:///1/3/99/READ","status":200,"target":"evaluator/functions.go","tokens":956},
+{"display":"folded","lines":50,"origin":"model","path":"log:///1/3/100/READ","status":200,"target":"evaluator/functions.go","tokens":874},
+{"display":"folded","error":"Max Commands Exceeded","origin":"plurnk","path":"log:///1/3/101/error","worker":"rail","status":429,"tokens":36},
+{"display":"folded","error":"output truncated at the completion cap (65536 tokens) mid-emission — the parse errors below are truncation artifacts; emit fewer ops per turn and continue","origin":"model","path":"log:///1/3/102/error","worker":"engine","status":413,"tokens":102},
+{"display":"folded","error":"Plurnk parser error at line 3992:26 - a turn must end with a terminal `## SEND0 [code]` section","origin":"model","path":"log:///1/3/103/error","worker":"grammar","status":400,"tokens":71},
+{"display":"folded","error":"target slot of `## READ0` opened at line 3992 but never closed - add `)`","origin":"model","path":"log:///1/3/104/error","worker":"grammar","status":400,"tokens":72},
 {"display":"folded","kind":"model_emission","lines":3992,"origin":"model","path":"log:///1/3/105","status":200,"tokens":105681},
-{"display":"folded","error":"Budget Overflow: newest log items automatically FOLDed — a retrieval larger than Tokens Free arrives folded; FOLD older items first, then fetch within the room made","op":"error","origin":"plurnk","path":"log:///1/4/1/error","worker":"rail","status":413,"tokens":105},
-{"display":"folded","lines":1,"op":"PLAN","origin":"model","path":"log:///1/4/2/PLAN","status":200,"tokens":160},
-{"display":"folded","lines":41,"op":"READ","origin":"model","path":"log:///1/4/6/READ","status":200,"target":"evaluator/functions.go","tokens":683},
-{"display":"folded","items":10,"itemsTokenTotal":35752,"matcher":"#requireCache|packageAliases|packageAliasesLoaded#","op":"FIND","origin":"model","path":"log:///1/4/7/FIND","status":200,"target":"evaluator/functions.go","tokens":879},
-{"display":"folded","lines":41,"op":"READ","origin":"model","path":"log:///1/4/8/READ","status":200,"target":"evaluator/evaluator.go","tokens":856},
-{"display":"folded","lines":16,"op":"READ","origin":"model","path":"log:///1/4/9/READ","status":200,"target":"evaluator/evaluator.go","tokens":355},
-{"display":"folded","lines":39,"op":"READ","origin":"model","path":"log:///1/4/10/READ","status":200,"target":"main.go","tokens":435},
-{"display":"folded","lines":1,"op":"SEND","origin":"model","path":"log:///1/4/11/SEND","status":102,"tokens":56},
+{"display":"folded","error":"Budget Overflow: newest log items automatically FOLDed — a retrieval larger than Tokens Free arrives folded; FOLD older items first, then fetch within the room made","origin":"plurnk","path":"log:///1/4/1/error","worker":"rail","status":413,"tokens":105},
+{"display":"folded","lines":1,"origin":"model","path":"log:///1/4/2/PLAN","status":200,"tokens":160},
+{"display":"folded","lines":41,"origin":"model","path":"log:///1/4/6/READ","status":200,"target":"evaluator/functions.go","tokens":683},
+{"display":"folded","items":10,"itemsTokenTotal":35752,"matcher":"#requireCache|packageAliases|packageAliasesLoaded#","origin":"model","path":"log:///1/4/7/FIND","status":200,"target":"evaluator/functions.go","tokens":879},
+{"display":"folded","lines":41,"origin":"model","path":"log:///1/4/8/READ","status":200,"target":"evaluator/evaluator.go","tokens":856},
+{"display":"folded","lines":16,"origin":"model","path":"log:///1/4/9/READ","status":200,"target":"evaluator/evaluator.go","tokens":355},
+{"display":"folded","lines":39,"origin":"model","path":"log:///1/4/10/READ","status":200,"target":"main.go","tokens":435},
+{"display":"folded","lines":1,"origin":"model","path":"log:///1/4/11/SEND","status":102,"tokens":56},
 {"display":"folded","kind":"model_emission","lines":10,"origin":"model","path":"log:///1/4/12","status":200,"tokens":387},
-{"display":"folded","lines":1,"op":"PLAN","origin":"model","path":"log:///1/5/1/PLAN","status":200,"tokens":123},
-{"display":"folded","lines":16,"op":"READ","origin":"model","path":"log:///1/5/12/READ","status":200,"target":"evaluator/functions.go","tokens":249},
-{"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/5/13/READ","status":200,"target":"object/environment.go","tokens":685},
-{"body":"","display":"none","op":"READ","origin":"model","path":"log:///1/5/14/READ","status":416,"target":"runner/runner.go","tokens":0},
-{"display":"folded","lines":1,"op":"SEND","origin":"model","path":"log:///1/5/15/SEND","status":102,"tokens":59},
+{"display":"folded","lines":1,"origin":"model","path":"log:///1/5/1/PLAN","status":200,"tokens":123},
+{"display":"folded","lines":16,"origin":"model","path":"log:///1/5/12/READ","status":200,"target":"evaluator/functions.go","tokens":249},
+{"display":"folded","lines":50,"origin":"model","path":"log:///1/5/13/READ","status":200,"target":"object/environment.go","tokens":685},
+{"body":"","display":"none","origin":"model","path":"log:///1/5/14/READ","status":416,"target":"runner/runner.go","tokens":0},
+{"display":"folded","lines":1,"origin":"model","path":"log:///1/5/15/SEND","status":102,"tokens":59},
 {"display":"folded","kind":"model_emission","lines":15,"origin":"model","path":"log:///1/5/16","status":200,"tokens":396},
-{"display":"open","lines":1,"op":"PLAN","origin":"model","path":"log:///1/6/1/PLAN","status":200,"tokens":215,"body":"
+{"display":"open","lines":1,"origin":"model","path":"log:///1/6/1/PLAN","status":200,"tokens":215,"body":"
 1:	Continue implementing ABS module loading improvements. First, FOLD old log items to free budget. Then read remaining source sections: functions.go (require implementation), environment.go (struct and methods), main.go (CLI flags), runner/runner.go, evaluator/evaluator.go. Finally, implement deterministic caching, ABS_MODULE_PATH, bare module resolution, cache stats, and CLI flags.
 "},
-{"display":"folded","lines":59,"op":"READ","origin":"model","path":"log:///1/6/3/READ","status":200,"target":"evaluator/functions.go","tokens":944},
-{"body":"","display":"none","op":"READ","origin":"model","path":"log:///1/6/4/READ","status":416,"target":"object/environment.go","tokens":0},
-{"display":"folded","lines":39,"op":"READ","origin":"model","path":"log:///1/6/5/READ","status":200,"target":"main.go","tokens":435},
-{"display":"folded","lines":36,"op":"READ","origin":"model","path":"log:///1/6/6/READ","status":200,"target":"runner/runner.go","tokens":581},
-{"display":"folded","lines":1576,"op":"READ","origin":"model","path":"log:///1/6/7/READ","status":200,"target":"evaluator/evaluator.go","tokens":24519},
-{"display":"open","lines":1,"op":"SEND","origin":"model","path":"log:///1/6/8/SEND","status":102,"tokens":58,"body":"
+{"display":"folded","lines":59,"origin":"model","path":"log:///1/6/3/READ","status":200,"target":"evaluator/functions.go","tokens":944},
+{"body":"","display":"none","origin":"model","path":"log:///1/6/4/READ","status":416,"target":"object/environment.go","tokens":0},
+{"display":"folded","lines":39,"origin":"model","path":"log:///1/6/5/READ","status":200,"target":"main.go","tokens":435},
+{"display":"folded","lines":36,"origin":"model","path":"log:///1/6/6/READ","status":200,"target":"runner/runner.go","tokens":581},
+{"display":"folded","lines":1576,"origin":"model","path":"log:///1/6/7/READ","status":200,"target":"evaluator/evaluator.go","tokens":24519},
+{"display":"open","lines":1,"origin":"model","path":"log:///1/6/8/SEND","status":102,"tokens":58,"body":"
 1:	Reading remaining source sections for module loading implementation.
 "},
 {"display":"folded","kind":"model_emission","lines":15,"origin":"model","path":"log:///1/6/9","status":200,"tokens":396},
-{"display":"open","lines":1,"op":"PLAN","origin":"model","path":"log:///1/7/1/PLAN","status":200,"tokens":124,"body":"
+{"display":"open","lines":1,"origin":"model","path":"log:///1/7/1/PLAN","status":200,"tokens":124,"body":"
 1:	FOLD old log items to free budget, then READ the require function from evaluator/functions.go, then implement deterministic caching, ABS_MODULE_PATH, bare module resolution, cache stats, and CLI flags.
 "},
-{"display":"open","items":1,"itemsTokenTotal":35752,"matcher":"#func.*require#i","op":"FIND","origin":"model","path":"log:///1/7/9/FIND","status":200,"target":"evaluator/functions.go","tokens":113,"body":"
+{"display":"open","items":1,"itemsTokenTotal":35752,"matcher":"#func.*require#i","origin":"model","path":"log:///1/7/9/FIND","status":200,"target":"evaluator/functions.go","tokens":113,"body":"
 1:[{"path":"evaluator/functions.go","channels":{"evaluator/functions.go":{"mimetype":"text/x-go","tokens":35752,"lines":2556}},"matchSpan":{"lineStart":2244,"lineEnd":2244}}]
 "},
-{"display":"open","lines":1,"op":"SEND","origin":"model","path":"log:///1/7/10/SEND","status":102,"tokens":51,"body":"
+{"display":"open","lines":1,"origin":"model","path":"log:///1/7/10/SEND","status":102,"tokens":51,"body":"
 1:	Folding old log items and locating require function.
 "},
 {"display":"folded","kind":"model_emission","lines":10,"origin":"model","path":"log:///1/7/11","status":200,"tokens":302},
-{"display":"open","lines":1,"op":"PLAN","origin":"model","path":"log:///1/8/1/PLAN","status":200,"tokens":102,"body":"
+{"display":"open","lines":1,"origin":"model","path":"log:///1/8/1/PLAN","status":200,"tokens":102,"body":"
 1:	Read the require function and environment struct, then implement deterministic caching, ABS_MODULE_PATH, bare module resolution, cache stats, and CLI flags.
 "},
-{"display":"folded","lines":57,"op":"READ","origin":"model","path":"log:///1/8/5/READ","status":200,"target":"evaluator/functions.go","tokens":983},
-{"display":"folded","lines":100,"op":"READ","origin":"model","path":"log:///1/8/6/READ","status":200,"target":"object/environment.go","tokens":1575},
-{"display":"open","lines":1,"op":"SEND","origin":"model","path":"log:///1/8/7/SEND","status":102,"tokens":64,"body":"
+{"display":"folded","lines":57,"origin":"model","path":"log:///1/8/5/READ","status":200,"target":"evaluator/functions.go","tokens":983},
+{"display":"folded","lines":100,"origin":"model","path":"log:///1/8/6/READ","status":200,"target":"object/environment.go","tokens":1575},
+{"display":"open","lines":1,"origin":"model","path":"log:///1/8/7/SEND","status":102,"tokens":64,"body":"
 1:	Reading require function and environment struct for module loading improvements.
 "},
 {"display":"folded","kind":"model_emission","lines":7,"origin":"model","path":"log:///1/8/8","status":200,"tokens":253},
-{"display":"open","lines":1,"op":"PLAN","origin":"model","path":"log:///1/9/1/PLAN","status":200,"tokens":202,"body":"
+{"display":"open","lines":1,"origin":"model","path":"log:///1/9/1/PLAN","status":200,"tokens":202,"body":"
 1:	1. FOLD old log items (turns 1-5) to free budget. 2. READ main.go for CLI flag handling and evaluator.go for function registration. 3. Implement deterministic caching, ABS_MODULE_PATH, bare module resolution, cache stats, and CLI flags in evaluator/functions.go and object/environment.go. 4. Add require_cache_info function. 5. Test with existing examples.
 "},
-{"body":"","display":"none","op":"READ","origin":"model","path":"log:///1/9/7/READ","status":416,"target":"main.go","tokens":0},
-{"body":"","display":"none","items":0,"itemsTokenTotal":0,"matcher":"#registerBuiltin|registerFunction|builtins#i","op":"FIND","origin":"model","path":"log:///1/9/8/FIND","status":200,"target":"evaluator/evaluator.go","tokens":0},
-{"display":"folded","lines":50,"op":"READ","origin":"model","path":"log:///1/9/9/READ","status":200,"target":"evaluator/evaluator.go","tokens":710},
-{"display":"open","lines":1,"op":"SEND","origin":"model","path":"log:///1/9/10/SEND","status":102,"tokens":72,"body":"
+{"body":"","display":"none","origin":"model","path":"log:///1/9/7/READ","status":416,"target":"main.go","tokens":0},
+{"body":"","display":"none","items":0,"itemsTokenTotal":0,"matcher":"#registerBuiltin|registerFunction|builtins#i","origin":"model","path":"log:///1/9/8/FIND","status":200,"target":"evaluator/evaluator.go","tokens":0},
+{"display":"folded","lines":50,"origin":"model","path":"log:///1/9/9/READ","status":200,"target":"evaluator/evaluator.go","tokens":710},
+{"display":"open","lines":1,"origin":"model","path":"log:///1/9/10/SEND","status":102,"tokens":72,"body":"
 1:	Folding old log items and reading remaining source sections for module loading implementation.
 "},
 {"display":"folded","kind":"model_emission","lines":13,"origin":"model","path":"log:///1/9/11","status":200,"tokens":434},
-{"display":"open","lines":1,"op":"PLAN","origin":"model","path":"log:///1/10/1/PLAN","status":200,"tokens":259,"body":"
+{"display":"open","lines":1,"origin":"model","path":"log:///1/10/1/PLAN","status":200,"tokens":259,"body":"
 1:	1. FOLD old log items (turns 1-5) to free budget. 2. READ the top of evaluator/functions.go (lines 1-2243) for requireCache, packageAliases, and other declarations. 3. READ evaluator/evaluator.go GetFns function to see how builtins are registered. 4. READ main.go for CLI flag handling. 5. Implement: deterministic caching (canonical paths), ABS_MODULE_PATH support, bare module resolution, require_cache_info function, and CLI flags. 6. Test with examples/require.abs.
 "},
-{"display":"folded","lines":2242,"op":"READ","origin":"model","path":"log:///1/10/7/READ","status":200,"target":"evaluator/functions.go","tokens":37233},
-{"display":"folded","lines":99,"op":"READ","origin":"model","path":"log:///1/10/8/READ","status":200,"target":"evaluator/evaluator.go","tokens":1483},
-{"display":"open","lines":39,"op":"READ","origin":"model","path":"log:///1/10/9/READ","status":200,"target":"main.go","tokens":435,"body":"
+{"display":"folded","lines":2242,"origin":"model","path":"log:///1/10/7/READ","status":200,"target":"evaluator/functions.go","tokens":37233},
+{"display":"folded","lines":99,"origin":"model","path":"log:///1/10/8/READ","status":200,"target":"evaluator/evaluator.go","tokens":1483},
+{"display":"open","lines":39,"origin":"model","path":"log:///1/10/9/READ","status":200,"target":"main.go","tokens":435,"body":"
 1:	package main
 2:	
 3:	import (
@@ -251,14 +251,14 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 38:		repl.BeginRepl(args, Version)
 39:	}
 "},
-{"display":"open","lines":1,"op":"SEND","origin":"model","path":"log:///1/10/10/SEND","status":102,"tokens":73,"body":"
+{"display":"open","lines":1,"origin":"model","path":"log:///1/10/10/SEND","status":102,"tokens":73,"body":"
 1:	Folding old log items and reading remaining source sections for module loading implementation.
 "},
 {"display":"folded","kind":"model_emission","lines":13,"origin":"model","path":"log:///1/10/11","status":200,"tokens":470},
-{"display":"open","lines":1,"op":"PLAN","origin":"model","path":"log:///1/11/1/PLAN","status":200,"tokens":179,"body":"
+{"display":"open","lines":1,"origin":"model","path":"log:///1/11/1/PLAN","status":200,"tokens":179,"body":"
 1:	1. FOLD heavy log items to free budget. 2. EDIT evaluator/functions.go: add require_cache_info builtin, modify requireFn for deterministic caching, bare module resolution, ABS_MODULE_PATH, cache stats. 3. EDIT main.go: add --module-path CLI flag. 4. Verify with examples/require.abs. 5. Continue with `## SEND0 [102]`.
 "},
-{"display":"open","lines":119,"op":"EDIT","origin":"model","path":"log:///1/11/9/EDIT","status":200,"target":"evaluator/functions.go","tokens":2344,"body":"
+{"display":"open","lines":119,"origin":"model","path":"log:///1/11/9/EDIT","status":200,"target":"evaluator/functions.go","tokens":2344,"body":"
 2251:		}
 2252:	
 2253:		raw := args[0].Inspect()
@@ -379,7 +379,7 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 2368:	}
 2369:	
 "},
-{"display":"open","lines":11,"op":"EDIT","origin":"model","path":"log:///1/11/10/EDIT","status":200,"target":"evaluator/functions.go","tokens":270,"body":"
+{"display":"open","lines":11,"origin":"model","path":"log:///1/11/10/EDIT","status":200,"target":"evaluator/functions.go","tokens":270,"body":"
 494:				Doc:        "require a file without giving it access to the global environment",
 495:			},
 496:			// require_cache_info() -- returns cache stats
@@ -392,14 +392,14 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 503:			// exec(command) -- execute command with interactive stdio
 504:			"exec": &object.Builtin{
 "},
-{"display":"open","lines":5,"op":"EDIT","origin":"model","path":"log:///1/11/11/EDIT","status":200,"target":"evaluator/functions.go","tokens":65,"body":"
+{"display":"open","lines":5,"origin":"model","path":"log:///1/11/11/EDIT","status":200,"target":"evaluator/functions.go","tokens":65,"body":"
 17:		"strconv"
 18:		"strings"
 19:		"sync/atomic"
 20:		"time"
 21:		"unicode"
 "},
-{"display":"open","lines":16,"op":"EDIT","origin":"model","path":"log:///1/11/12/EDIT","status":200,"target":"evaluator/functions.go","tokens":194,"body":"
+{"display":"open","lines":16,"origin":"model","path":"log:///1/11/12/EDIT","status":200,"target":"evaluator/functions.go","tokens":194,"body":"
 33:	var tok token.Token
 34:	var requireCache map[string]object.Object
 35:	var requireCacheStatsVar struct {
@@ -417,7 +417,7 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 47:	
 48:	/*
 "},
-{"display":"open","lines":18,"op":"EDIT","origin":"model","path":"log:///1/11/13/EDIT","status":200,"target":"main.go","tokens":341,"body":"
+{"display":"open","lines":18,"origin":"model","path":"log:///1/11/13/EDIT","status":200,"target":"main.go","tokens":341,"body":"
 16:	func main() {
 17:		args := os.Args
 18:		// Parse module-related CLI flags before other processing
@@ -437,7 +437,7 @@ Note: jsonplurnk is otherwise-valid JSON; an open nonempty `body` uses one raw m
 32:		if len(args) == 2 && args[1] == "--version" {
 33:			fmt.Println(Version)
 "},
-{"display":"open","lines":1,"op":"SEND","origin":"model","path":"log:///1/11/14/SEND","status":102,"tokens":102,"body":"
+{"display":"open","lines":1,"origin":"model","path":"log:///1/11/14/SEND","status":102,"tokens":102,"body":"
 1:	Implementing module loading improvements: deterministic caching, bare module resolution, ABS_MODULE_PATH, require_cache_info, and --module-path CLI flag.
 "},
 {"display":"folded","kind":"model_emission","lines":235,"origin":"model","path":"log:///1/11/15","status":200,"tokens":4236}

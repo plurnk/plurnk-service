@@ -112,13 +112,13 @@ test("data schemes inherit standard FIND after their optional preparation hook",
         });
 
         assert.equal(result.status, 200);
-        const resources = JSON.parse(String(result.content)) as Array<{
+        const resources = JSON.parse(String(result.content)) as Array<Array<{
             path?: string;
             matchLocationCount?: number;
-        }>;
+        }>>;
         assert.equal(resources.length, 1);
-        assert.equal(resources[0]?.path, "prepared:///fact.md");
-        assert.equal(resources[0]?.matchLocationCount, 1);
+        assert.equal(resources[0]?.[0]?.path, "prepared:///fact.md");
+        assert.equal(resources[0]?.[0]?.matchLocationCount, 1);
     } finally {
         await db.close();
     }

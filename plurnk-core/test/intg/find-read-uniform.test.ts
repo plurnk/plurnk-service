@@ -15,6 +15,7 @@ import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
+import { matchLocations, resourceGroups, resourcePaths } from "./_find.ts";
 
 // Semantic FIND asserts real vector ranking, so re-enable the embedder that the
 // Mock bootstrap turns off; --test-isolation scopes this to this file.
@@ -156,7 +157,7 @@ test("exact xpath FIND returns flat locator evidence", async () => {
     } finally { await db.close(); }
 });
 
-test("broad @graph FIND returns selected resource rows", async () => {
+test("broad @graph FIND returns selected resource channel groups", async () => {
     const { db, engine, mimetypes, ctx, ...ids } = await setup();
     try {
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
@@ -176,8 +177,8 @@ test("broad @graph FIND reports each resource's location count without nesting c
         const r = await new Worker().find(parseOp<FindStatement>("## FIND0 (worker:///**)\n@<foo", "FIND"), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         assert.equal(r.status, 200);
         assert.ok(r.results.length >= 1);
-        assert.ok(r.results.every((x) => "path" in x && (x.matchLocationCount ?? 0) >= 1));
-        assert.ok(r.results.every((x) => !("matches" in x)));
+        assert.ok(resourceGroups(r).every(([item]) => item.matchLocationCount !== undefined && item.matchLocationCount >= 1));
+        assert.ok(resourceGroups(r).every(([item]) => !("matches" in item)));
         assert.equal(r.range?.unit, "resource");
     } finally { await db.close(); }
 });
@@ -191,7 +192,7 @@ test("FIND(bare entry) is the one entry, never a prefix that pulls siblings", as
         await seedRaw(ctx, "config.md.bak", "the backup");
         const r = await new Worker().find(parseOp<FindStatement>("## FIND0 (worker:///config.md)", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results.map((x) => x.path), ["worker:///config.md"], "bare = exact: config.md.bak is NOT pulled in");
+        assert.deepEqual(resourcePaths(r), ["worker:///config.md"], "bare = exact: config.md.bak is NOT pulled in");
     } finally { await db.close(); }
 });
 
@@ -203,7 +204,7 @@ test("FIND(folder/) returns the folder's contents; a glob is a scope", async () 
         await seedRaw(ctx, "top.md", "top");
         const r = await new Worker().find(parseOp<FindStatement>("## FIND0 (worker:///docs/)", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
-        assert.deepEqual(r.results.map((x) => x.path).toSorted(), ["worker:///docs/a.md", "worker:///docs/b.md"], "folder/ = its contents, not top.md");
+        assert.deepEqual(resourcePaths(r).toSorted(), ["worker:///docs/a.md", "worker:///docs/b.md"], "folder/ = its contents, not top.md");
     } finally { await db.close(); }
 });
 
@@ -227,9 +228,9 @@ test("broad matcher FIND emits one item per resource with a complete location co
         const r = await new Worker().find(parseOp<FindStatement>("## FIND0 (worker:///**)\n*target*", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 1);
-        assert.equal(r.results[0]?.path, "worker:///log.md");
-        assert.equal(r.results[0]?.matchLocationCount, 2);
-        assert.equal("matches" in (r.results[0] ?? {}), false);
+        assert.equal(resourceGroups(r)[0]?.[0].path, "worker:///log.md");
+        assert.equal(resourceGroups(r)[0]?.[0].matchLocationCount, 2);
+        assert.equal("matches" in (resourceGroups(r)[0]?.[0] ?? {}), false);
         assert.equal(r.matchingPathCount, 1);
         assert.equal(r.matchLocationCount, 2);
         assert.equal(r.range?.unit, "resource");
@@ -245,7 +246,7 @@ test("a glob remains resource mode when it resolves to one matching path", async
             parseOp<FindStatement>("## FIND0 (worker:///*.md)\n*target*", "FIND"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
-        assert.deepEqual(r.results.map(({ path, matchLocationCount }) => ({ path, matchLocationCount })), [{
+        assert.deepEqual(resourceGroups(r).map(([{ path, matchLocationCount }]) => ({ path, matchLocationCount })), [{
             path: "worker:///only.md",
             matchLocationCount: 2,
         }]);
@@ -289,7 +290,7 @@ test("FIND on an exact target with a result-position scope", async () => {
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(result.results.length, 1);
-        assert.equal(result.results[0]?.path, "worker:///doc.md");
+        assert.equal(resourceGroups(result)[0]?.[0].path, "worker:///doc.md");
     } finally { await db.close(); }
 });
 
@@ -302,7 +303,7 @@ test("FIND on an exact target with a content matcher pages flat match locations"
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(result.results.length, 1);
-        assert.deepEqual(result.results[0]?.region, {
+        assert.deepEqual(matchLocations(result)[0]?.region, {
             startLine: 1, startColumn: 1, endLine: 1, endColumn: 6,
         });
         assert.equal("path" in (result.results[0] ?? {}), false);
@@ -326,7 +327,7 @@ test("{§read-find-normalization}: authored READ aggregates use canonical FIND p
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(resourcePage.range?.unit, "resource");
-        assert.deepEqual(resourcePage.results.map(({ path }) => path), ["worker:///b.md"]);
+        assert.deepEqual(resourcePaths(resourcePage), ["worker:///b.md"]);
 
         const matcherRead = parseOp<FindStatement>("## READ0 (worker:///a.md) <2>\n/target/", "FIND");
         const locationPage = await worker.find(
@@ -334,7 +335,7 @@ test("{§read-find-normalization}: authored READ aggregates use canonical FIND p
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.equal(locationPage.range?.unit, "matchLocation");
-        assert.deepEqual(locationPage.results[0]?.region, {
+        assert.deepEqual(matchLocations(locationPage)[0]?.region, {
             startLine: 2, startColumn: 1, endLine: 2, endColumn: 7,
         });
     } finally { await db.close(); }
@@ -349,8 +350,8 @@ test("broad FIND pagination counts selected resources, not match locations", asy
             parseOp<FindStatement>("## FIND0 (worker:///**) <2>\n*target*", "FIND"),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
-        assert.deepEqual(result.results.map(({ path }) => path), ["worker:///b.md"]);
-        assert.equal(result.results[0]?.matchLocationCount, 1);
+        assert.deepEqual(resourcePaths(result), ["worker:///b.md"]);
+        assert.equal(resourceGroups(result)[0]?.[0].matchLocationCount, 1);
         assert.equal(result.matchingPathCount, 2);
         assert.equal(result.matchLocationCount, 4);
         assert.equal(result.range?.unit, "resource");
@@ -381,7 +382,7 @@ test("FIND coordinates compose into scoped READ for structured JSON", async () =
             locator: "$[0]",
             region: { startLine: 2, startColumn: 3, endLine: 5, endColumn: 4 },
         }]);
-        const span = found.results[0];
+        const span = matchLocations(found)[0];
         assert.ok(span?.region);
         const read = await lookThroughScheme("worker", null,
             {
@@ -408,8 +409,8 @@ test("body-less FIND is the catalog without match metadata", async () => {
         await seedRaw(ctx, "a.md", "alpha");
         await seedRaw(ctx, "b.md", "beta");
         const r = await new Worker().find(parseOp<FindStatement>("## FIND0 (worker:///**)", "FIND"), makeSchemeCtx({ db, workspaceId, workerId }));
-        assert.equal(r.results.length, 2, "two entries → two catalog rows");
-        assert.ok(r.results.every((x) => !("matches" in x)));
+        assert.equal(r.results.length, 2, "two entries → two catalog channel groups");
+        assert.ok(resourceGroups(r).every(([item]) => !("matches" in item)));
         assert.equal(r.range?.unit, "resource");
     } finally { await db.close(); }
 });

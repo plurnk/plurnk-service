@@ -18,6 +18,7 @@ import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
 import PacketWire from "./packet-wire.ts";
+import LogEntryProjection from "./LogEntryProjection.ts";
 import type { RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
@@ -533,12 +534,12 @@ export default class PacketBuilder {
         coordinate: string;
     }>> {
         const rows = await this.#db.engine_render_errors.all<{
-            op: string; sequence: number; status_rx: number;
+            origin: string; op: string; attrs: string; sequence: number; status_rx: number;
             turn_seq: number; loop_seq: number;
         }>({ loop_id: loopId, current_turn_seq: currentTurnSeq });
         return rows.map((r) => ({
             status: r.status_rx,
-            coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}/${r.op}`,
+            coordinate: LogEntryProjection.coordinate(`${r.loop_seq}/${r.turn_seq}/${r.sequence}`, r),
         }));
     }
 

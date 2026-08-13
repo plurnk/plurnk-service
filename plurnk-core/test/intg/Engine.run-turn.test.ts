@@ -2,13 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, LineMarker, PlanStatement, PlurnkStatement, ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
+import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import type { StoredPacketSection } from "../../src/core/StoredPacket.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { rulerCount } from "../../src/core/token-ruler.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, logEntries } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, packetSection, logEntries } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -704,11 +705,11 @@ test("Engine.runTurn: the first turn's log section contains the prompt entry", a
         // Found by its stable identity (origin + target),
         // robust to the turn-0 initialization at 1/1/1 ({§worker-initialization-entry}) and any
         // catalog-preview FIND that shifts its coordinate.
-        const prompt = log.find((e) => e.origin === "plurnk" && e.op === "prompt" && e.target === "prompt:///1/1");
+        const prompt = log.find((e) => e.origin === "plurnk" && e.target === "prompt:///1/1");
         assert.ok(prompt, "first-class prompt row logged against prompt:///1/1");
-        assert.equal(prompt.op, "prompt");
         assert.equal(prompt.origin, "plurnk");
         assert.equal(prompt.target, "prompt:///1/1");
+        assert.match(String(prompt.path), /\/prompt$/, "path owns the prompt operation suffix");
     } finally { await db.close(); }
 });
 
@@ -730,12 +731,12 @@ test("Engine.runTurn: the second turn's log section captures prior actions", asy
         // EDIT and a SEND). Found by identity (origin + op + target), robust to the
         // turn-0 initialization ({§worker-initialization-entry}) and a catalog-preview foist that
         // shift coordinates between the prompt and the model's ops.
-        assert.ok(log.find((e) => e.origin === "plurnk" && e.op === "prompt" && typeof e.target === "string" && e.target.startsWith("prompt:///")), "prompt row logged");
-        const edit = log.find((e) => e.origin === "model" && e.op === "EDIT");
+        assert.ok(log.find((e) => e.origin === "plurnk" && typeof e.target === "string" && e.target.startsWith("prompt:///") && String(e.path).endsWith("/prompt")), "prompt row logged");
+        const edit = log.find((e) => e.origin === "model" && String(e.path).endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
         assert.equal(edit.target, "worker:///a");
-        const send = log.find((e) => e.origin === "model" && e.op === "SEND");
+        const send = log.find((e) => e.origin === "model" && String(e.path).endsWith("/SEND"));
         assert.ok(send, "model SEND logged");
         assert.equal(send.status, 102);
     } finally { await db.close(); }
@@ -757,7 +758,7 @@ test("Engine.runTurn: the log section parses an application/json rx body", async
         const packet = JSON.parse(row?.packet ?? "{}");
         const log = logEntries(packet);
         // Found by identity, robust to a turn-0 catalog-preview foist.
-        const edit = log.find((e) => e.origin === "model" && e.op === "EDIT");
+        const edit = log.find((e) => e.origin === "model" && String(e.path).endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
         // The EDIT's result span renders line-numbered inside the raw multiline body —
@@ -781,6 +782,27 @@ test("Engine.runTurn: Errors is empty on a clean first turn", async () => {
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
         assert.equal(packetSection(packet, "errors"), "");
+    } finally { await db.close(); }
+});
+
+test("Errors pointers use the canonical projected operation of a materialization row", async () => {
+    const { db, workerId, loopId } = await setup();
+    try {
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        await db.engine_insert_log_entry.get({
+            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
+            origin: "plurnk", source: "test", op: "EDIT", suffix: "", signal: null,
+            scheme: "https", username: null, password: null, hostname: "example.org", port: null,
+            pathname: "/rejected", query: null, fragment: null, lineMarker: null,
+            tx: "{}", mimetype_tx: "application/json",
+            rx: "{}", mimetype_rx: "application/json", status_rx: 422, tokens: 0,
+            state: "resolved", outcome: null, attrs: JSON.stringify({ kind: "entry_materialized" }),
+        });
+        const packets = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
+        assert.deepEqual(await packets.buildFailurePointers(loopId, 2), [{
+            status: 422,
+            coordinate: "1/1/1/READ",
+        }]);
     } finally { await db.close(); }
 });
 

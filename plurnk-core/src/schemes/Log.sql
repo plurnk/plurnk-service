@@ -2,7 +2,7 @@
 -- coordinate; open/fold toggle the `expanded` flag on the addressed row.
 
 -- PREP: log_read_by_coordinate
-SELECT le.op, le.scheme, le.pathname, le.status_rx,
+SELECT le.origin, le.op, le.scheme, le.pathname, le.status_rx,
        le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.attrs
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
@@ -12,22 +12,23 @@ WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn
 -- PREP: log_id_by_coordinate
 -- Resolve a concrete log:/// coordinate to its row id within the worker (shared by
 -- OPEN/FOLD's flip and KILL's erase — one resolution, two actions).
-SELECT le.id FROM log_entries le
+SELECT le.id, le.origin, le.op, le.attrs FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
 -- PREP: log_match_coordinates
--- Return the literal-prefix candidate superset for a log path-glob. TypeScript
--- applies the authoritative shell-glob match so `*` remains segment-local and
--- `**` crosses coordinate segments.
-SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate
+-- Return the literal-prefix candidate superset in the durable three-part
+-- coordinate tree. TypeScript appends the canonical projected OP and applies
+-- the authoritative shell-glob match.
+SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
+       le.origin, le.op, le.attrs
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
   AND ($scope_prefix IS NULL OR substr(
-      (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END),
+      (l.sequence || '/' || t.sequence || '/' || le.sequence),
       1,
       length($scope_prefix)
   ) = $scope_prefix)
@@ -47,11 +48,11 @@ DELETE FROM log_entries WHERE id = $id;
 
 -- PREP: log_find_candidates
 -- {§find-source-agnostic} ÷ {§log-coordinate-hierarchy} — the worker's log rows as FIND candidates,
--- coordinate-prefix-scoped (the same candidate semantics log_match_coordinates curates by), each with the
+-- three-part-coordinate-prefix-scoped (the same candidate semantics log_match_coordinates curates by), each with the
 -- fields Log's rx projection renders (FIND must match exactly what READ shows). Coordinate-ordered.
 SELECT
-    (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate,
-    le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash, le.attrs,
+    (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
+    le.origin, le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash, le.attrs,
     COALESCE((
         SELECT json_group_array(ordered.tag)
         FROM (
@@ -63,7 +64,7 @@ JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
   AND ($scope_prefix IS NULL OR substr(
-      (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END),
+      (l.sequence || '/' || t.sequence || '/' || le.sequence),
       1,
       length($scope_prefix)
   ) = $scope_prefix)
@@ -80,13 +81,14 @@ DELETE FROM log_tags WHERE log_entry_id = $log_entry_id AND tag = $tag;
 -- PREP: log_match_coordinates_tagged
 -- {§log-item-tags} — OPEN/FOLD resolution with an ALL-tags AND filter. A
 -- targetless tagged operation uses the whole worker log.
-SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate
+SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
+       le.origin, le.op, le.attrs
 FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
   AND ($scope_prefix IS NULL OR substr(
-      (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END),
+      (l.sequence || '/' || t.sequence || '/' || le.sequence),
       1,
       length($scope_prefix)
   ) = $scope_prefix)
@@ -102,8 +104,8 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- {§log-item-tags} — private matcher-bearing OPEN/FOLD candidates after the
 -- same ALL-tags filter; an authored FIND signal never routes here.
 SELECT
-    (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate,
-    le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash, le.attrs,
+    (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
+    le.origin, le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash, le.attrs,
     COALESCE((
         SELECT json_group_array(ordered.tag)
         FROM (
@@ -115,7 +117,7 @@ JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id
   AND ($scope_prefix IS NULL OR substr(
-      (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END),
+      (l.sequence || '/' || t.sequence || '/' || le.sequence),
       1,
       length($scope_prefix)
   ) = $scope_prefix)
@@ -133,7 +135,8 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- exact body/mimetype READ and FIND expose before hashing or deriving it.
 SELECT
     le.id,
-    (l.sequence || '/' || t.sequence || '/' || le.sequence || CASE WHEN le.op IS NULL THEN '' ELSE '/' || le.op END) AS coordinate,
+    (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
+    le.origin,
     le.op,
     le.tx,
     le.mimetype_tx,

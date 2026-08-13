@@ -270,7 +270,7 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
         assert.equal(delta!.expanded, 0, "the broadcast delta lands FOLDED — listed, collapsed until the model OPENs it");
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
-        const packetDelta = logEntries(packet).find((entry) => entry.target === "worker:///shared.md" && entry.op === "EDIT");
+        const packetDelta = logEntries(packet).find((entry) => entry.target === "worker:///shared.md" && String(entry.path).endsWith("/EDIT"));
         assert.equal(packetDelta?.source, "worker://sibling", "the model sees the same worker identity used by worker control");
     } finally {
         await db.close();

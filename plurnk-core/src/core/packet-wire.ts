@@ -11,6 +11,7 @@ import { Validator, type LineMarker, type ProblemDetails, type RangeExtent, type
 import { renderTarget } from "./plurnk-uri.ts";
 import type { GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
+import LogEntryProjection from "./LogEntryProjection.ts";
 import {
     assertEditReceipt,
     assertResourceEffects,
@@ -345,17 +346,7 @@ export default class PacketWire {
             const meta: Record<string, unknown> = {};
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
             const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
-            // An executor entry sink is durably journaled as the system EDIT that
-            // created the entry. That storage fact is not the model-facing action:
-            // the resulting resource is ordinary readable state pushed into its
-            // environment. Project it as a folded system READ so the log advertises
-            // the available operation instead of implying that the model or another
-            // agent authored a mutation. The coordinate still resolves the same
-            // underlying row; the typed attrs preserve exact replay/client semantics.
-            const materializedEntry = e.origin === "plurnk" && op === "EDIT"
-                && e.attrs !== null && typeof e.attrs === "object"
-                && (e.attrs as { kind?: unknown }).kind === "entry_materialized";
-            const renderedOp = materializedEntry ? "READ" : op;
+            const renderedOp = LogEntryProjection.op(e);
             const actionlessKind = op === null
                 ? LogBody.actionlessKind({ op, attrs: e.attrs })
                 : null;
@@ -365,7 +356,6 @@ export default class PacketWire {
             // {§env-delta-attribution}: render the causal worker address or
             // subsystem token when present; absence means the owning worker.
             if (typeof e.source === "string" && e.source.length > 0) meta.source = e.source;
-            if (renderedOp !== null) meta.op = renderedOp;
             if (actionlessKind !== null) meta.kind = actionlessKind;
             if (e.source === "file" && e.attrs !== null && typeof e.attrs === "object" && "git" in e.attrs) {
                 const git = (e.attrs as { git?: unknown }).git;

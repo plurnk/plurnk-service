@@ -199,8 +199,8 @@ export const packetSection = (packet: unknown, name: string): string =>
     PacketWire.sectionContent(packet as Parameters<typeof PacketWire.sectionContent>[0], name);
 
 // Parse the rendered log section's fenced jsonplurnk array back into structured records — lets
-// tests assert on the model's actual log VIEW with field precision (coordinate via `path`, the
-// model-facing `target` URI, op, status, origin, display). Strips the ONE deviation (a raw
+// tests assert on the model's actual log VIEW with field precision (`path` owns coordinate + OP,
+// alongside the model-facing target URI, status, origin, and display). Strips the ONE deviation (a raw
 // multiline `body` string whose physical lines all carry `N:`) to recover strict JSON ({§jsonplurnk}).
 export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
     const fence = /(`{3,})jsonplurnk\n([\s\S]*?)\n\1(?:\n|$)/.exec(packetSection(packet, "log"));

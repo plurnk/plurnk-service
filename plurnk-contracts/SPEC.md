@@ -354,7 +354,7 @@ Mutation semantics:
 
 | OP   | Successful observation                                                            |
 |------|-----------------------------------------------------------------------------------|
-| FIND | Resource catalog rows or exact-target match locations                             |
+| FIND | Resource catalog groups or exact-target match locations                           |
 | READ | Complete or scoped body projections plus optional text match evidence             |
 | EDIT | Status plus a bounded receipt for the effect that landed                          |
 | COPY | Source and destination selections plus ordered destination effects                |

@@ -422,7 +422,7 @@ ORDER BY e.pathname;
 -- current-turn so a pre-generate engine error surfaces THIS turn rather than a turn late.
 -- {§operation-result-uniform-error-channel}
 SELECT
-    le.op, le.sequence, le.status_rx, le.rx, le.mimetype_rx,
+    le.origin, le.op, le.attrs, le.sequence, le.status_rx, le.rx, le.mimetype_rx,
     le.scheme, le.pathname,
     t.sequence AS turn_seq, l.sequence AS loop_seq
 FROM log_entries le

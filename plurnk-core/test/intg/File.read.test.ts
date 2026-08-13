@@ -11,6 +11,7 @@ import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { MimetypeBinary } from "../../src/content/index.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, lookThroughScheme } from "./_helpers.ts";
+import { resourcePaths } from "./_find.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -259,7 +260,7 @@ test("File.find: a binary member does not poison a body search across readable m
 
         const result = await new File().find(parseFind("## FIND0 (**)\n/needle/"), ctx);
         assert.equal(result.status, 200);
-        assert.deepEqual(result.results.map(({ path }) => path), ["readme.md"]);
+        assert.deepEqual(resourcePaths(result), ["readme.md"]);
     });
 });
 

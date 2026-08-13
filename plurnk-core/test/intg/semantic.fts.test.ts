@@ -12,6 +12,7 @@ import SearchIndex from "../../src/schemes/_search-index.ts";
 import EntrySemantic from "../../src/schemes/_entry-semantic.ts";
 import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, mimetypesFixture } from "./_helpers.ts";
+import { resourcePaths } from "./_find.ts";
 
 // Despite the name, this suite includes chunked-embedding e2e cases that assert REAL vector ranking —
 // re-enable the embedder the Mock bootstrap turns off; per-file isolation.
@@ -320,7 +321,7 @@ test("[#fts-fallback] no embedder uses FTS for unthresholded rank; <0.x> stays 5
             semanticStmt(url(""), "payment", 2),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }),
         );
-        assert.deepEqual(firstTwo.results.map(({ path }) => path), ["worker:///heavy.ts", "worker:///light.ts"]);
+        assert.deepEqual(resourcePaths(firstTwo), ["worker:///heavy.ts", "worker:///light.ts"]);
         const second = await new Worker().find(
             {
                 ...semanticStmt(url(""), "payment", 2),
@@ -329,7 +330,7 @@ test("[#fts-fallback] no embedder uses FTS for unthresholded rank; <0.x> stays 5
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: noEmbedder }),
         );
         assert.deepEqual(
-            second.results.map(({ path }) => path),
+            resourcePaths(second),
             ["worker:///light.ts"],
             "semantic FIND <2> selects ranked result 2 instead of returning the first two",
         );

@@ -20,8 +20,6 @@ const indexingTurn = {
     },
 };
 
-type CatalogItem = { path: string; shown?: unknown; channels: Record<string, { mimetype: string; tokens: number; lines: number }> };
-
 test("the commons catalog is complete and unranked — every selected entry, no `shown`, never itself", async () => {
     const db = await openMigrated();
     try {
@@ -39,8 +37,8 @@ test("the commons catalog is complete and unranked — every selected entry, no 
         const provider = new Mock({ contextWindow: 100000, responses: [indexingTurn] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
-        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId })) as CatalogItem[];
-        const paths = catalog.map((e) => e.path);
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId }));
+        const paths = catalog.map(([channel]) => channel.path);
 
         // Completeness: every seeded entry is listed.
         assert.ok(paths.includes("worker:///france/capital"), `catalog lists france; got ${JSON.stringify(paths)}`);
@@ -48,14 +46,14 @@ test("the commons catalog is complete and unranked — every selected entry, no 
         // It does not list itself.
         assert.ok(!paths.includes("worker:///manifest.json"), "catalog has no synthetic manifest entry");
         // Unranked directory: NO `shown` (or any visibility/relevance) field anywhere.
-        for (const e of catalog) assert.equal("shown" in e, false, `no \`shown\` field — the directory is unranked (offender: ${e.path})`);
+        for (const [channel] of catalog) assert.equal("shown" in channel, false, `no \`shown\` field — the directory is unranked (offender: ${channel.path})`);
 
-        // Shape: { path, channels: { <name>: { mimetype, tokens, lines } } }.
-        const germany = catalog.find((e) => e.path === "worker:///germany/capital");
+        // Shape: a non-empty, default-first array of { path, mimetype, tokens, lines } channels.
+        const germany = catalog.find(([channel]) => channel.path === "worker:///germany/capital");
         assert.ok(germany !== undefined, "germany entry present");
-        // note 4 — the default (body) channel is keyed by the entry's addressable URI, not "body".
-        assert.deepEqual(Object.keys(germany.channels), ["worker:///germany/capital"], "default channel keyed by its URI");
-        const gbody = germany.channels["worker:///germany/capital"];
+        assert.equal(germany.length, 1);
+        const [gbody] = germany;
+        assert.equal(gbody.path, "worker:///germany/capital", "the default channel carries the bare resource URI");
         assert.equal(gbody.mimetype, "text/markdown");
         assert.equal(typeof gbody.tokens, "number", "tokens is the re-counted provider depth");
         assert.ok(gbody.lines >= 1, "lines is the content extent from process().totalLines");
@@ -83,12 +81,12 @@ test("catalog projection selects exactly one owner", async () => {
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
 
         assert.deepEqual(
-            (await EntryManifest.catalogRowsFor(ctx)).map(({ path }) => path),
+            (await EntryManifest.catalogRowsFor(ctx)).map(([channel]) => channel.path),
             ["worker:///shared.md"],
             "an omitted owner means the shared commons, never every workspace row",
         );
         assert.deepEqual(
-            (await EntryManifest.catalogRowsFor(ctx, undefined, workerId)).map(({ path }) => path),
+            (await EntryManifest.catalogRowsFor(ctx, undefined, workerId)).map(([channel]) => channel.path),
             ["worker:///private.md"],
             "an explicit owner selects only that owner's private entries",
         );
@@ -115,12 +113,12 @@ test("manifest build survives a malformed application/json entry — degrades to
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         // The turn's pump survived the malformed entry (no -32603); the catalog renders it degraded.
-        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId })) as CatalogItem[];
-        const paths = catalog.map((e) => e.path);
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId }));
+        const paths = catalog.map(([channel]) => channel.path);
         assert.ok(paths.includes("worker:///good.json"), `valid entry listed; got ${JSON.stringify(paths)}`);
         assert.ok(paths.includes("worker:///bad.json"), "malformed entry still listed (degraded, not crashed)");
-        const bad = catalog.find((e) => e.path === "worker:///bad.json");
-        assert.ok(bad !== undefined && bad.channels["worker:///bad.json"].lines >= 1, "malformed entry degraded to a line count");
+        const bad = catalog.find(([channel]) => channel.path === "worker:///bad.json");
+        assert.ok(bad !== undefined && bad[0].lines >= 1, "malformed entry degraded to a line count");
     } finally { await db.close(); }
 });
 
@@ -145,8 +143,8 @@ test("a JSON entry large enough to tile builds through the live embedder — the
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
 
         // The turn's pump tiled+embedded the large JSON without crashing; the catalog lists it.
-        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId })) as CatalogItem[];
-        assert.ok(catalog.some((e) => e.path === "worker:///big.json"), "the large JSON entry is listed in the catalog");
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId }));
+        assert.ok(catalog.some(([channel]) => channel.path === "worker:///big.json"), "the large JSON entry is listed in the catalog");
     } finally { await db.close(); }
 });
 
@@ -180,23 +178,27 @@ test("{§stream-catalog-lifecycle} catalog distinguishes active, closed, killed,
         await seedStream("/1/1/3", Results.failure("executor:sh", "killed", 499, "killed"));
         await seedStream("/1/1/4", Results.failure("executor:sh", "failed", 503, "failed"));
 
-        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId }), undefined, workerId) as CatalogEntry[];
-        const active = catalog.find((e) => e.path === "sh:///1/1/1");
-        const closed = catalog.find((e) => e.path === "sh:///1/1/2");
-        const killed = catalog.find((e) => e.path === "sh:///1/1/3");
-        const failed = catalog.find((e) => e.path === "sh:///1/1/4");
-        const stat = catalog.find((e) => e.path === "worker:///static/note");
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({
+            db,
+            workspaceId,
+            defaultChannelFor: (scheme) => scheme === "sh" ? "stdout" : "body",
+        }), undefined, workerId) as CatalogEntry[];
+        const active = catalog.find(([channel]) => channel.path === "sh:///1/1/1");
+        const closed = catalog.find(([channel]) => channel.path === "sh:///1/1/2");
+        const killed = catalog.find(([channel]) => channel.path === "sh:///1/1/3");
+        const failed = catalog.find(([channel]) => channel.path === "sh:///1/1/4");
+        const stat = catalog.find(([channel]) => channel.path === "worker:///static/note");
         assert.ok(active !== undefined && closed !== undefined && killed !== undefined && failed !== undefined && stat !== undefined);
-        assert.equal(active.stream?.state, "active");
-        assert.equal(typeof (active.stream?.state === "active" ? active.stream.seconds : undefined), "number");
-        assert.deepEqual(closed.stream, { state: "closed", status: 200 });
-        assert.deepEqual(killed.stream, { state: "killed", status: 499 });
-        assert.deepEqual(failed.stream, { state: "failed", status: 503 });
-        assert.equal(stat.stream, undefined, "an entry with no subscription is not presented as a stream");
+        assert.equal(active[0].stream?.state, "active");
+        assert.equal(typeof (active[0].stream?.state === "active" ? active[0].stream.seconds : undefined), "number");
+        assert.deepEqual(closed[0].stream, { state: "closed", status: 200 });
+        assert.deepEqual(killed[0].stream, { state: "killed", status: 499 });
+        assert.deepEqual(failed[0].stream, { state: "failed", status: 503 });
+        assert.equal(stat[0].stream, undefined, "an entry with no subscription is not presented as a stream");
     } finally { await db.close(); }
 });
 
-test("[note4] manifest keys channels by addressable URI — default bare, non-default #fragment", async () => {
+test("[note4] manifest groups addressable channels default-first — default bare, non-default #fragment", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `note4-${crypto.randomUUID()}`);
@@ -214,18 +216,18 @@ test("[note4] manifest keys channels by addressable URI — default bare, non-de
             content: "network",
             mimetype: "text/plain",
         });
-        // sh's default channel is stdout (the Exec handler) — resolve it so stdout keys bare, stderr by #fragment.
+        // sh's default channel is stdout (the Exec handler) — resolve it so stdout is [0], stderr a #fragment.
         const ctx = makeSchemeCtx({ db, workspaceId, defaultChannelFor: (s) => (s === "sh" ? "stdout" : "body") });
-        const catalog = await EntryManifest.catalogRowsFor(ctx, undefined, workerId) as Array<{ path: string; channels: Record<string, unknown> }>;
-        const stream = catalog.find((e) => e.path === "sh:///1/1/2");
+        const catalog = await EntryManifest.catalogRowsFor(ctx, undefined, workerId);
+        const stream = catalog.find(([channel]) => channel.path === "sh:///1/1/2");
         assert.ok(stream, "exec stream listed");
         assert.deepEqual(
-            Object.keys(stream.channels).toSorted(),
+            stream.map((channel) => channel.path),
             ["sh:///1/1/2", "sh:///1/1/2#preview\\(\\\\", "sh:///1/1/2#stderr"],
-            "the default is bare and non-default channel keys use target-slot spelling",
+            "the default is first and bare; non-default channels use target-slot spelling",
         );
         assert.ok(
-            catalog.some((entry) => entry.path === "https://example.test/x?literal=\\)&encoded=%29"),
+            catalog.some(([channel]) => channel.path === "https://example.test/x?literal=\\)&encoded=%29"),
             "network catalog paths preserve literal and percent-encoded query identity",
         );
     } finally { await db.close(); }

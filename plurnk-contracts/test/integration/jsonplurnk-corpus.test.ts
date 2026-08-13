@@ -5,10 +5,10 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import Jsonplurnk from "../Jsonplurnk.ts";
 
-// {§jsonplurnk} The magnum-opus assertion on real data. The corpus is the renderer's ACTUAL
-// output - run52 packet011's Log, 184 entries, 20 open bodies - and the stripper is built
-// independently from the spec, so agreement here is a true cross-check (two implementations
-// converging on real data), not self-graded homework.
+// {§jsonplurnk} The magnum-opus assertion on real data. The corpus is run52 packet011's
+// 184-entry, 20-open-body renderer output, normalized only as model-facing metadata contracts
+// retire. The stripper is built independently from the spec, so agreement remains a true
+// cross-check (two implementations converging on real data), not self-graded homework.
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const corpus = readFileSync(join(fixtureDir, "packet011.jsonplurnk.md"), "utf8");
 const fence = (() => {
@@ -35,6 +35,11 @@ test("jsonplurnk corpus: every display is one of the ratified states", () => {
     const allowed = new Set(["none", "folded", "open"]);
     const bad = entries.filter((e) => !allowed.has(e.display as string));
     assert.equal(bad.length, 0, `every display in {none,folded,open}; offenders: ${JSON.stringify(bad.map((e) => e.display))}`);
+});
+
+test("jsonplurnk corpus: path owns operation identity without a duplicate op field", () => {
+    const entries = Jsonplurnk.parse(fence) as Array<Record<string, unknown>>;
+    assert.equal(entries.some((entry) => Object.hasOwn(entry, "op")), false);
 });
 
 test("jsonplurnk corpus: body shape agrees with display state (honesty invariant)", () => {
