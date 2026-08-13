@@ -52,7 +52,7 @@ import JournalTurn from "./JournalTurn.ts";
 import NoticeChannel from "./NoticeChannel.ts";
 import ProblemLog from "./ProblemLog.ts";
 import StrikeRail, { type StrikeOutcome } from "./StrikeRail.ts";
-import PacketBuilder, { type ChatMessage, type ContextEnvelopeAdmission } from "./PacketBuilder.ts";
+import PacketBuilder, { type ChatMessage, type ContextEnvelopeAdmission, type TokenBudgetOverflow } from "./PacketBuilder.ts";
 import StoredPacket, { type PacketAssistant } from "./StoredPacket.ts";
 import ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
@@ -235,6 +235,17 @@ type BudgetPressure = {
     readonly ceiling: number;
     readonly deficit: number;
 };
+
+const TOKEN_BUDGET_OVERFLOW_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling. Newest log items were automatically FOLDed to fit within token budget. Curate the log and/or perform more conservatively scoped or chunked retrieval operations to recover.";
+
+const tokenBudgetOverflowFailure = (pressure: TokenBudgetOverflow): SchemeResult => Results.failure(
+    "engine:context",
+    "token-budget-overflow",
+    413,
+    TOKEN_BUDGET_OVERFLOW_DETAIL,
+    {},
+    { ...pressure },
+);
 
 const budgetPressure = (usage: number, ceiling: number): BudgetPressure => {
     if (usage <= ceiling) throw new Error("context-envelope admission requires positive ruler debt");
@@ -1295,6 +1306,17 @@ export default class Engine {
         // SPEC {§grinder} — budget grinder, pre-LLM: reclaim window on actual overflow.
         const enforced = await this.#packets.enforceBudget({
             packet: requestPacket, provider, loopId, turnId,
+            recordOverflow: async (pressure) => {
+                await this.#problems.record({
+                    workerId,
+                    loopId,
+                    turnId,
+                    sequence: nextActionIndex++,
+                    origin: "plurnk",
+                    source: "engine",
+                    result: tokenBudgetOverflowFailure(pressure),
+                });
+            },
             rebuild: () => this.#packets.buildRequestPacket({
                 initialMessages: messages, requirements, workspaceId, workerId, loopId,
                 currentTurnSeq: seq, provider, gitStatus, notices, transientOpenLogEntryId,
@@ -1302,9 +1324,9 @@ export default class Engine {
         });
         requestPacket = enforced.packet;
         if (!enforced.fit) {
-            // {§tokenomics-context-envelope-admission}: ruler debt is model-facing
-            // curation pressure, not a failure. Only the effective total context
-            // envelope can reject the request.
+            // {§tokenomics-context-envelope-admission}: the overflow Problem is
+            // already durable. Remaining ruler debt may still be admitted; only
+            // the effective total context envelope can terminally reject the turn.
             const contextAdmission = await this.#packets.contextEnvelopeAdmission(
                 requestPacket,
                 provider,

@@ -21,6 +21,7 @@ KILL permanently erases a log row.
 
 The Budget section reports the packet ceiling, usage, percentage, and free capacity; negative
 free capacity adds one curation alarm. Each log row carries its own token weight. If a packet
-exceeds the gauge, the engine folds eligible open rows from the newest turn boundary and tags
-them `overflow`; it never selects older history by relevance. Remaining ruler debt is soft when
-the request fits the hard context envelope; otherwise admission stops at 413 before generation.
+exceeds the gauge, the engine records a nonterminal 413 Problem, folds eligible open rows from
+the newest turn boundary, and tags them `overflow`; it never selects older history by relevance.
+Remaining ruler debt may proceed when the request fits the hard context envelope; otherwise a
+separate terminal 413 stops admission before generation.

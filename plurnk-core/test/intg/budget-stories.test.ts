@@ -31,6 +31,7 @@ const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { r
 const WINDOW = 100_000; // the provider's effective window — wide enough to hold a fat read OPEN
 const TINY = 2;         // absolute wall far below any packet → un-foldable overflow
 const FAT = 4000;       // chars of read-back body — renders into the log, the only lever
+const OVERFLOW_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling. Newest log items were automatically FOLDed to fit within token budget. Curate the log and/or perform more conservatively scoped or chunked retrieval operations to recover.";
 
 const heavy = (chars: number): string => "x".repeat(chars);
 const response = (ops: PlurnkStatement[]): MockResponse => ({
@@ -143,8 +144,9 @@ test("budget: overflow is judged on the current assembled packet, not a prior-tu
 
 // 3 — fold RECLAIMS budget and the turn still DELIVERS (the owner's core invariant:
 // "impossible to go over budget if you started under and fold all of your previous
-// turn's log items"). Overflow → fold prior turn → fits → 200, not 413.
-test("budget: folding the prior turn reclaims room and the turn delivers (200, not 413)", async () => {
+// turn's log items"). The 413 diagnoses the recovered overflow without becoming
+// the turn's terminal disposition.
+test("budget: folding reclaims room, surfaces a nonterminal 413 Problem, and the turn delivers", async () => {
     const db = await openMigrated();
     try {
         const { floor, expanded } = await measure(db);
@@ -155,7 +157,17 @@ test("budget: folding the prior turn reclaims room and the turn delivers (200, n
         const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
         const t2 = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t2.status, 200, "the turn delivers after the grinder folds prior-turn logs to fit");
-        assert.equal(t2.budgetHardStop, false, "fold-to-fit, not a hard-413");
+        assert.equal(t2.budgetHardStop, false, "the overflow 413 is model-facing and nonterminal");
+        const packet = (await packetOf(db, t2.turnId)).packet;
+        assert.match(packetSection(packet, "errors"), /^\* 413 log:\/\/\/.+\/error$/m, "the recovered overflow is indexed as a 413");
+        const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
+        const overflow = errors
+            .map(({ rx }) => JSON.parse(rx) as { problem?: { type?: string; status?: number; detail?: string } })
+            .find(({ problem }) => problem?.type === "https://problems.plurnk.dev/engine/context/token-budget-overflow")
+            ?.problem;
+        assert.equal(overflow?.status, 413);
+        assert.equal(overflow?.detail, OVERFLOW_DETAIL);
+        assert.match(packetSection(packet, "log"), /"status":413/, "the exact Problem is visible on its durable log row");
     } finally { await db.close(); }
 });
 
@@ -244,7 +256,7 @@ test("budget: the grinder folds the immediately-prior turn each time, never olde
         const tightP = mockCeiling(Math.floor((floor + expanded) / 2), [...fatReads(FAT, 2), ...okSends(2)]);
         await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const folded = (rows: Array<{ turn_seq: number; expanded: number; op: string; pathname: string | null }>, t: number): boolean =>
-            rows.filter((r) => r.turn_seq === t && !isPrompt(r)).every((r) => r.expanded === 0);
+            rows.filter((r) => r.turn_seq === t && r.op !== "error" && !isPrompt(r)).every((r) => r.expanded === 0);
         assert.ok(folded(await logRows(db, workerId), 1), "turn 2 folded turn 1");
         await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 3 });
         const afterT3 = await logRows(db, workerId);
@@ -269,7 +281,8 @@ test("the grinder stamps every automatically folded row with the overflow tag", 
         assert.ok(foldedRows.length > 0 && foldedRows.every((row) => row.expanded === 0));
         assert.ok(foldedRows.every((row) => (JSON.parse(row.tags) as string[]).includes("overflow")), "every row selected by the atomic fold carries its cause");
         assert.match(packetSection((await packetOf(db, t2.turnId)).packet, "log"), /"tags":\["overflow"\]/, "ambient metadata materializes the tag");
-        assert.equal((await db.test_error_rows_for_worker.all({ worker_id: workerId })).length, 0, "soft folding creates no error trail");
+        const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
+        assert.ok(errors.some(({ rx }) => JSON.parse(rx).problem?.detail === OVERFLOW_DETAIL), "the automatic fold retains its 413 failure truth");
     } finally { await db.close(); }
 });
 

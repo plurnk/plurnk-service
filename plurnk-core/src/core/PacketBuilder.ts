@@ -131,6 +131,12 @@ export type ContextEnvelopeAdmission =
         readonly measurement?: PromptTokenMeasurement;
     };
 
+export interface TokenBudgetOverflow {
+    readonly usage: number;
+    readonly ceiling: number;
+    readonly deficit: number;
+}
+
 // Packet assembly (SPEC {§packet-assembly}) + the budget grinder ({§grinder}):
 // builds the spec'd request packet, measures it, and reclaims window on overflow.
 export default class PacketBuilder {
@@ -452,9 +458,10 @@ export default class PacketBuilder {
     // rows born there plus exact older rows it transitioned folded→open — then
     // rebuild and re-measure.
     // {§grinder-overflow-only} — fires only on actual overflow, never speculatively
-    async enforceBudget({ packet, provider, loopId, turnId, rebuild }: {
+    async enforceBudget({ packet, provider, loopId, turnId, recordOverflow, rebuild }: {
         packet: RequestPacket; provider: Provider;
         loopId: number; turnId: number;
+        recordOverflow: (overflow: TokenBudgetOverflow) => Promise<void>;
         rebuild: () => Promise<RequestPacket>;
     }): Promise<{ packet: RequestPacket; fit: boolean }> {
         const ceiling = this.ceilingFor(provider);
@@ -463,6 +470,9 @@ export default class PacketBuilder {
         if (ceiling === null || measure(packet) <= ceiling) {
             return { packet, fit: true };
         }
+
+        const usage = measure(packet);
+        await recordOverflow({ usage, ceiling, deficit: usage - ceiling });
 
         // ONE rule, every turn ({§grinder-layer1-rollback}): atomically fold/tag
         // context introduced by the newest boundary. Other older history remains
