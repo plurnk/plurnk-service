@@ -33,7 +33,10 @@
             {
                 "name": "git",
                 "glyph": "🔀",
-                "example": "## EXEC0 [git]\nstatus --short\n\n## EXEC0 [git]\ncommit -m \"save work\""
+                "invocation": {
+                    "body": { "role": "Git arguments", "required": true },
+                    "target": { "role": "repository directory", "required": false, "kind": "path" }
+                }
             }
         ]
     },

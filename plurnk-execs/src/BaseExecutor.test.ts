@@ -11,7 +11,7 @@ class EchoExecutor extends BaseExecutor {
         return { results: { mimetype: "application/json" } };
     }
     async run(args: ExecArgs): Promise<ExecResult> {
-        args.write("results", JSON.stringify({ runtime: args.runtime, command: args.command }));
+        args.write("results", JSON.stringify({ runtime: args.runtime, body: args.body }));
         args.setState("results", "closed");
         return { status: 200 };
     }
@@ -24,7 +24,7 @@ const harness = () => {
     const events: Notice[] = [];
     const args = (overrides: Partial<ExecArgs> = {}): ExecArgs => ({
         runtime: "search",
-        command: "pie recipes",
+        body: "pie recipes",
         cwd: null,
         target: null,
         signal: new AbortController().signal,
@@ -61,11 +61,11 @@ test("BaseExecutor: default probe is available", async () => {
 test("BaseExecutor.run: writes to declared channel and closes it", async () => {
     const ex = new EchoExecutor({ runtime: "search", glyph: "🔎" });
     const h = harness();
-    const result = await ex.run(h.args({ runtime: "search", command: "pie recipes" }));
+    const result = await ex.run(h.args({ runtime: "search", body: "pie recipes" }));
 
     assert.deepEqual(result, { status: 200 });
     assert.deepEqual(h.writes, [
-        { channel: "results", chunk: JSON.stringify({ runtime: "search", command: "pie recipes" }) },
+        { channel: "results", chunk: JSON.stringify({ runtime: "search", body: "pie recipes" }) },
     ]);
     assert.deepEqual(h.states, [{ channel: "results", state: "closed" }]);
     assert.equal(h.events.length, 0);
@@ -74,9 +74,9 @@ test("BaseExecutor.run: writes to declared channel and closes it", async () => {
 test("BaseExecutor.run: matched tag flows through to the executor", async () => {
     const ex = new EchoExecutor({ runtime: "images", glyph: "🖼" });
     const h = harness();
-    await ex.run(h.args({ runtime: "images", command: "golden retriever" }));
+    await ex.run(h.args({ runtime: "images", body: "golden retriever" }));
 
-    assert.deepEqual(JSON.parse(h.writes[0].chunk), { runtime: "images", command: "golden retriever" });
+    assert.deepEqual(JSON.parse(h.writes[0].chunk), { runtime: "images", body: "golden retriever" });
 });
 
 // {§executor-output-address} Executor-as-scheme projection.

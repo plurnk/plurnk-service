@@ -1,5 +1,5 @@
 import { PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
-import { RuntimeTag } from "@plurnk/plurnk-execs";
+import { RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
 import Owner from "./Owner.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
@@ -625,12 +625,16 @@ export default class Engine {
     registerRuntime(tag: string, entry: RegistryEntry, scheme?: RuntimeSchemeFacet): void {
         if (this.#executors === undefined) throw new Error("registerRuntime: executor registry not wired yet");
         RuntimeTag.assert(tag, "module runtime");
+        const normalized = {
+            ...entry,
+            invocation: RuntimeInvocation.assert(entry.invocation, entry.namespaceOwner.name, tag),
+        } satisfies RegistryEntry;
         // Preflight both owners before either write; synchronous registration
         // then cannot leave a half-claimed namespace. {§plugin-namespace-arbitration}
-        this.#executors.assertCanRegister(tag, entry.namespaceOwner);
-        this.#schemes.assertRuntimeClaim(tag, entry.namespaceOwner);
-        this.#schemes.registerRuntimeScheme(tag, entry.executor, entry.namespaceOwner, scheme);
-        this.#executors.register(tag, entry);
+        this.#executors.assertCanRegister(tag, normalized.namespaceOwner);
+        this.#schemes.assertRuntimeClaim(tag, normalized.namespaceOwner);
+        this.#schemes.registerRuntimeScheme(tag, normalized.executor, normalized.namespaceOwner, scheme);
+        this.#executors.register(tag, normalized);
     }
 
     // Supply an explicitly configured local constraint; ANTLR remains the

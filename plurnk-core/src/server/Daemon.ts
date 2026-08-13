@@ -13,6 +13,7 @@ import Engine, { type LoopUsage } from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
 import { aggregateProviderAccounting, type Provider, type ProviderAlias } from "@plurnk/plurnk-providers";
 // {§notifications-envelope-carries-workspaceid}: "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped.
@@ -1199,12 +1200,13 @@ export default class Daemon {
         if (typeof namespaceOwner !== "string" || namespaceOwner.trim().length === 0) {
             throw new Error("registerRuntime: namespaceOwner must be a non-empty string");
         }
-        this.#engine.registerRuntime(decl.name, {
+        const runtime = RuntimeDeclaration.assert(decl, namespaceOwner);
+        this.#engine.registerRuntime(runtime.name, {
             executor,
             namespaceOwner: { kind: "module", name: namespaceOwner },
-            glyph: decl.glyph ?? "",
-            example: decl.example ?? "",
-            documentation: decl.documentation ?? "",
+            glyph: runtime.glyph ?? "",
+            invocation: runtime.invocation,
+            documentation: runtime.documentation ?? "",
             available: availability.available,
             detail: availability.detail,
         } satisfies RegistryEntry, scheme);

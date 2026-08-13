@@ -15,7 +15,7 @@ const make = (tag: string): Common => new Common({ runtime: tag, glyph: "•" })
 const run = async (tag: string, command: string): Promise<{ result: ExecResult; out: Record<string, string> }> => {
     const out: Record<string, string> = { stdout: "", stderr: "" };
     const args: ExecArgs = {
-        runtime: tag, command, cwd: null, target: null,
+        runtime: tag, body: command, cwd: null, target: null,
         signal: new AbortController().signal,
         write: (c, chunk) => { out[c] = (out[c] ?? "") + chunk; },
         setState: () => {}, emit: () => {},
@@ -65,7 +65,7 @@ test("a file target runs without +x; transient exec never mutates its mode", asy
         await fs.writeFile(script, "read name; echo \"hi $name\"\n", { mode: 0o644 });
         const out: string[] = [];
         const args: ExecArgs = {
-            runtime: "sh", command: "plurnk", cwd: dir, target: script,
+            runtime: "sh", body: "plurnk", cwd: dir, target: script,
             signal: new AbortController().signal,
             write: (_c, chunk) => { out.push(chunk); },
             setState: () => {}, emit: () => {},

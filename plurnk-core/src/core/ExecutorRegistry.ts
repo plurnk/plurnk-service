@@ -1,5 +1,13 @@
 import { discover } from "@plurnk/plurnk-execs";
-import type { ChannelDecl, ExecArgs, ExecResult, Effect, RuntimeAvailability, ExecutorMetadata } from "@plurnk/plurnk-execs";
+import type {
+    ChannelDecl,
+    ExecArgs,
+    ExecResult,
+    Effect,
+    RuntimeAvailability,
+    ExecutorMetadata,
+    RuntimeInvocationDecl,
+} from "@plurnk/plurnk-execs";
 import Meta, {
     type PackageAttributions,
     type PluginAttribution,
@@ -22,7 +30,7 @@ export interface Executor {
     // ({§executor-probe}). Optional and ignore-safe.
     probe(signal?: AbortSignal): Promise<RuntimeAvailability>;
     // One pure classification of the consumer-canonical logical target
-    // ({§executor-effect}); authored command text is never an admission input.
+    // ({§executor-effect}); authored body text is never an admission input.
     effect(target: string | null): Effect;
 }
 
@@ -37,9 +45,7 @@ export interface RegistryEntry {
     // module-local runtime identity. {§plugin-namespace-arbitration}
     readonly namespaceOwner: RuntimeNamespaceOwner;
     readonly glyph: string;
-    // Compact verbatim plurnk snippet for the tag; every line is a complete
-    // operation ({§executor-runtime-declaration}). Empty when omitted.
-    readonly example: string;
+    readonly invocation: RuntimeInvocationDecl;
     // Fuller reference doc for the tag (plurnk-execs ExecInfo.documentation),
     // materialized at worker://plurnk/docs/<tag>.md. "" when omitted.
     readonly documentation: string;
@@ -115,7 +121,7 @@ export default class ExecutorRegistry {
         probeTimeoutMs?: number;
         cwd?: string;   // discovery root — the dir whose node_modules holds the exec plugins
         discoverFn?: () => Promise<{
-            registry: ReadonlyMap<string, { runtime: string; glyph: string; example?: string; documentation?: string; packageName: string }>;
+            registry: ReadonlyMap<string, { runtime: string; glyph: string; invocation: RuntimeInvocationDecl; documentation?: string; packageName: string }>;
             packageAttributions?: PackageAttributions;
             skipped?: string[];
         }>;
@@ -157,7 +163,7 @@ export default class ExecutorRegistry {
                 executor,
                 namespaceOwner: { kind: "package", name: info.packageName },
                 glyph: info.glyph,
-                example: info.example ?? "",
+                invocation: info.invocation,
                 documentation: info.documentation ?? "",
                 available: availability.available,
                 detail: availability.detail,

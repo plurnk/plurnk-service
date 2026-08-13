@@ -1,7 +1,7 @@
 // {§search-gate} — per-loop duplicate accounting and per-turn flood control.
-// Duplicate runtime+command pairs serve the prior durable result; over-cap
+// Duplicate runtime+query pairs serve the prior durable result; over-cap
 // searches are refused without execution.
-const DEDUP_KEY = (runtime: string, command: string): string => `${runtime}\0${command}`;
+const DEDUP_KEY = (runtime: string, query: string): string => `${runtime}\0${query}`;
 
 export type GateVerdict =
     | { verdict: "pass" }
@@ -9,12 +9,12 @@ export type GateVerdict =
     | { verdict: "capped"; cap: number };
 
 export default class SearchGate {
-    // loopId → (runtime\0command → the prior exec entry's coordinate pathname)
+    // loopId → (runtime\0query → the prior exec entry's coordinate pathname)
     readonly #seen = new Map<number, Map<string, string>>();
     // Spawns are ASYNC: dispatch accepts before run() succeeds or fails, so registration is
     // two-phase — pending at dispatch, promoted to seen only when the stream concludes 200
     // (a failed search must never poison the retry with a dead duplicate).
-    readonly #pending = new Map<string, { loopId: number; turnId: number; runtime: string; command: string }>();
+    readonly #pending = new Map<string, { loopId: number; turnId: number; runtime: string; query: string }>();
     // loopId → this turn's search count (self-resets when the turn changes)
     readonly #turnCount = new Map<number, { turnId: number; n: number }>();
 
@@ -31,9 +31,9 @@ export default class SearchGate {
     }
 
     // Pre-dispatch. Only search runtimes are gated; everything else passes untouched.
-    check(loopId: number, turnId: number, runtime: string, command: string): GateVerdict {
+    check(loopId: number, turnId: number, runtime: string, query: string): GateVerdict {
         if (!this.#runtimes().has(runtime)) return { verdict: "pass" };
-        const prior = this.#seen.get(loopId)?.get(DEDUP_KEY(runtime, command));
+        const prior = this.#seen.get(loopId)?.get(DEDUP_KEY(runtime, query));
         if (prior !== undefined) return { verdict: "duplicate", priorPathname: prior };
         const cap = this.#cap();
         const count = this.#turnCount.get(loopId);
@@ -44,9 +44,9 @@ export default class SearchGate {
 
     // Post-dispatch: the ATTEMPT counts toward the per-turn cap immediately (flood control
     // counts attempts), but dedup registration stays PENDING until the stream concludes 200.
-    registerPending(loopId: number, turnId: number, runtime: string, command: string, pathname: string): void {
+    registerPending(loopId: number, turnId: number, runtime: string, query: string, pathname: string): void {
         if (!this.#runtimes().has(runtime)) return;
-        this.#pending.set(pathname, { loopId, turnId, runtime, command });
+        this.#pending.set(pathname, { loopId, turnId, runtime, query });
         const count = this.#turnCount.get(loopId);
         if (count !== undefined && count.turnId === turnId) count.n += 1;
         else this.#turnCount.set(loopId, { turnId, n: 1 });
@@ -61,7 +61,7 @@ export default class SearchGate {
         if (closeStatus !== 200) return;
         let loopSeen = this.#seen.get(p.loopId);
         if (loopSeen === undefined) { loopSeen = new Map(); this.#seen.set(p.loopId, loopSeen); }
-        loopSeen.set(DEDUP_KEY(p.runtime, p.command), pathname);
+        loopSeen.set(DEDUP_KEY(p.runtime, p.query), pathname);
     }
 
     // The rail-family seam — Engine.cleanup(loopId) calls this with the rest.

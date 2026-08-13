@@ -47,13 +47,13 @@ export default class Jq extends BaseExecutor {
         });
     }
 
-    async run({ command, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
+    async run({ body, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         const detailLimit = ErrorDetail.configuredLimit();
         if (detailLimit === null) {
             setState("results", "errored");
             return ErrorDetail.invalidConfiguration("executor:jq");
         }
-        const program = command.trim() || ".";
+        const program = body.trim() || ".";
         // target = the data-source file; spawn resolves a relative one against cwd
         // (the workspace). Absent → -n, the program stands alone
         // ({§executor-sinks}).

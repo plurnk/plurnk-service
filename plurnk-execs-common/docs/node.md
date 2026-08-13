@@ -16,5 +16,7 @@ on stderr.
 
 ## Working directory
 
-Runs in the workspace project root by default. `## EXEC0 [node] (./dir)` sets the
-working directory; relative module and filesystem paths resolve against it.
+Runs in the workspace project root by default. A directory target sets the
+working directory; a file target runs that JavaScript file and receives the
+body as stdin. Relative module and filesystem paths resolve against the selected
+working directory.

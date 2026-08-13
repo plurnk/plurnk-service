@@ -37,71 +37,114 @@
             {
                 "name": "sh",
                 "glyph": "🐚",
-                "example": "## EXEC0\nuname -sr\n\n## EXEC0 [sh] (build.sh)\n\n## EXEC0 <-1,300>\nnpm run test"
+                "invocation": {
+                    "body": { "role": "shell program, or stdin for a targeted script", "required": false },
+                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                }
             },
             {
                 "name": "bash",
-                "glyph": "🐚"
+                "glyph": "🐚",
+                "invocation": {
+                    "body": { "role": "Bash program, or stdin for a targeted script", "required": false },
+                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                }
             },
             {
                 "name": "node",
                 "glyph": "⬢",
-                "example": "## EXEC0 [node]\nconsole.log(new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10))"
+                "invocation": {
+                    "body": { "role": "JavaScript program, or stdin for a targeted script", "required": false },
+                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                }
             },
             {
                 "name": "python",
                 "glyph": "🐍",
-                "example": "## EXEC0 [python]\nprint(sum(range(101)))"
+                "invocation": {
+                    "body": { "role": "Python program, or stdin for a targeted script", "required": false },
+                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                }
             },
             {
                 "name": "python3",
                 "glyph": "🐍",
-                "example": "## EXEC0 [python3]\nprint(sum(range(101)))"
+                "invocation": {
+                    "body": { "role": "Python program, or stdin for a targeted script", "required": false },
+                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                }
             },
             {
                 "name": "perl",
                 "glyph": "🐪",
-                "example": "## EXEC0 [perl]\nprint join(',', 1..5)"
+                "invocation": {
+                    "body": { "role": "Perl program, or stdin for a targeted script", "required": false },
+                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                }
             },
             {
                 "name": "ruby",
                 "glyph": "💎",
-                "example": "## EXEC0 [ruby]\nputs (1..5).sum"
+                "invocation": {
+                    "body": { "role": "Ruby program, or stdin for a targeted script", "required": false },
+                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                }
             },
             {
                 "name": "php",
                 "glyph": "🐘",
-                "example": "## EXEC0 [php]\necho array_sum([1,2,3]);"
+                "invocation": {
+                    "body": { "role": "PHP program, or stdin for a targeted script", "required": false },
+                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                }
             },
             {
                 "name": "lua",
                 "glyph": "🌙",
-                "example": "## EXEC0 [lua]\nprint(('hi'):upper())"
+                "invocation": {
+                    "body": { "role": "Lua program, or stdin for a targeted script", "required": false },
+                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                }
             },
             {
                 "name": "deno",
                 "glyph": "🦕",
-                "example": "## EXEC0 [deno]\nconsole.log(Deno.version.deno)"
+                "invocation": {
+                    "body": { "role": "Deno program, or stdin for a targeted script", "required": false },
+                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                }
             },
             {
                 "name": "bun",
                 "glyph": "🥟",
-                "example": "## EXEC0 [bun]\nconsole.log(Bun.version)"
+                "invocation": {
+                    "body": { "role": "Bun program, or stdin for a targeted script", "required": false },
+                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                }
             },
             {
                 "name": "tcl",
                 "glyph": "🪶",
-                "example": "## EXEC0 [tcl]\nputs [expr {2**10}]"
+                "invocation": {
+                    "body": { "role": "Tcl program, or stdin for a targeted script", "required": false },
+                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                }
             },
             {
                 "name": "bc",
                 "glyph": "🧮",
-                "example": "## EXEC0 [bc]\nscale=4; 22/7"
+                "invocation": {
+                    "body": { "role": "bc program, or stdin for a targeted script", "required": false },
+                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                }
             },
             {
                 "name": "awk",
                 "glyph": "🪄",
-                "example": "## EXEC0 [awk]\nBEGIN { print 6 * 7 }"
+                "invocation": {
+                    "body": { "role": "AWK program, or stdin for a targeted script", "required": false },
+                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                }
             }
         ]
     },

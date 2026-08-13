@@ -648,10 +648,8 @@ export default class Dispatcher {
                 } else if (statement.op === "PLAN") {
                     result = this.#handlePlan(statement);
                 } else if (statement.op === "EXEC") {
-                    // EXEC's target slot is `cwd`, not a scheme address.
-                    // Per plurnk.md the op routes unconditionally to the
-                    // exec scheme; the scheme handler reads runtime
-                    // (signal), cwd (target), and command (body).
+                    // EXEC routes unconditionally to its operation owner. The
+                    // resolved runtime declaration owns body/target semantics.
                     result = await this.#gatedExec(statement, schemeCtx, loopId, turnId);
                 } else {
                     result = await this.#run(schemeNameOf(statement.target), statement, schemeCtx); // {§op-methods-op-dispatch}
@@ -695,9 +693,9 @@ export default class Dispatcher {
         // entry's coordinate onto result.attrs.pathname (the gate's dedup serves from it).
         if (statement.op === "EXEC" && result.status < 400) {
             const rt = ("signal" in statement && typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
-            const cmd = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
+            const body = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
             const attrPath = (result.attrs as { pathname?: string } | undefined)?.pathname;
-            if (typeof attrPath === "string") this.#searchGate?.registerPending(loopId, turnId, rt, cmd, attrPath);
+            if (typeof attrPath === "string") this.#searchGate?.registerPending(loopId, turnId, rt, body, attrPath);
         }
         onDispatch?.(logEntryId);
         // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}; {§proposal-202-pauses}). When a
@@ -1034,8 +1032,8 @@ export default class Dispatcher {
         if (!MUTATING_OPS.has(statement.op)) return null;
         if (statement.op === "SEND" && statement.target === null) return null;
 
-        // EXEC's target slot is `cwd`, not a scheme address. The op's
-        // authority always belongs to the exec scheme regardless of cwd.
+        // EXEC's operation authority always belongs to the exec scheme;
+        // runtime-specific resource authority is gated separately below.
         if (statement.op === "EXEC") {
             return this.#denyIfDisallowed("exec", origin);
         }
@@ -1068,8 +1066,8 @@ export default class Dispatcher {
     // the prior durable digest and the per-turn cap refuses without execution.
     async #gatedExec(statement: PlurnkStatement, ctx: PlurnkSchemeContext, loopId: number, turnId: number): Promise<DispatchResult> {
         const runtime = ("signal" in statement && typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
-        const command = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
-        const verdict = this.#searchGate?.check(loopId, turnId, runtime, command) ?? { verdict: "pass" as const };
+        const body = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
+        const verdict = this.#searchGate?.check(loopId, turnId, runtime, body) ?? { verdict: "pass" as const };
         if (verdict.verdict === "capped") {
             return Dispatcher.#failure(
                 "search-limit-reached",
@@ -1197,11 +1195,15 @@ export default class Dispatcher {
         if (statement.op === "COPY" || statement.op === "MOVE") {
             return check(statement.target) ?? check(statement.body?.target ?? null);
         }
-        // {§exec-target-routing} — the operation owner and a non-file source
-        // are independent authorities; local/file targets stay executor-local.
+        // {§exec-target-routing} — only a runtime-declared resource target adds
+        // source authority. Literal identifiers and path targets stay executor-local.
         if (statement.op === "EXEC") {
             const operationDenial = checkScheme("exec");
             if (operationDenial !== null) return operationDenial;
+            const requested = typeof statement.signal === "string" ? statement.signal : "";
+            const runtime = requested === "" ? "sh" : requested;
+            const targetKind = this.#executors()?.entry(runtime)?.invocation.target?.kind;
+            if (targetKind !== "resource") return null;
             const sourceScheme = schemeNameOf(statement.target);
             return sourceScheme === null || sourceScheme === "file" ? null : checkScheme(sourceScheme);
         }

@@ -36,8 +36,8 @@ class FakeExecutor {
 // One package, two tags with divergent probe results. {§executor-probe}
 const oneTwoTagPackage = async () => ({
     registry: new Map([
-        ["alpha", { runtime: "alpha", glyph: "α", example: "## EXEC0 [alpha]\ndo a thing", packageName: "fake-pkg" }],
-        ["beta", { runtime: "beta", glyph: "β", packageName: "fake-pkg" }],
+        ["alpha", { runtime: "alpha", glyph: "α", invocation: { body: { role: "alpha input", required: true } }, packageName: "fake-pkg" }],
+        ["beta", { runtime: "beta", glyph: "β", invocation: { body: { role: "beta input", required: true } }, packageName: "fake-pkg" }],
     ]),
 });
 
@@ -57,9 +57,9 @@ const loadAvailable = async () => ({ default: AlwaysAvailable });
 // Native Git and the explicit isomorphic-git subset beside a non-Git runtime.
 const gitAndShell = async () => ({
     registry: new Map([
-        ["sh", { runtime: "sh", glyph: "$", packageName: "fake-common" }],
-        ["git", { runtime: "git", glyph: "⎇", packageName: "@plurnk/plurnk-execs-git" }],
-        ["isogit", { runtime: "isogit", glyph: "iso", packageName: "@plurnk/plurnk-execs-isogit" }],
+        ["sh", { runtime: "sh", glyph: "$", invocation: { body: { role: "shell program", required: true } }, packageName: "fake-common" }],
+        ["git", { runtime: "git", glyph: "⎇", invocation: { body: { role: "Git arguments", required: true } }, packageName: "@plurnk/plurnk-execs-git" }],
+        ["isogit", { runtime: "isogit", glyph: "iso", invocation: { body: { role: "isogit arguments", required: true } }, packageName: "@plurnk/plurnk-execs-isogit" }],
     ]),
 });
 
@@ -72,10 +72,11 @@ test("{§executor-probe} ExecutorRegistry preserves per-tag availability within 
     assert.deepEqual(registry.entry("alpha")?.namespaceOwner, { kind: "package", name: "fake-pkg" },
         "the family-owned npm identity survives loading for host namespace arbitration");
     assert.deepEqual(registry.availableRuntimes(), ["alpha"], "only the present tag is offered to the model");
-    // {§tools-capability-sheet}: the self-documenting example flows through;
-    // absent → "" (not undefined).
-    assert.equal(registry.entry("alpha")?.example, "## EXEC0 [alpha]\ndo a thing", "the declared example is carried to the tools sheet");
-    assert.equal(registry.entry("beta")?.example, "", "a tag with no example defaults to empty");
+    assert.deepEqual(
+        registry.entry("alpha")?.invocation,
+        { body: { role: "alpha input", required: true } },
+        "the runtime-owned invocation contract reaches dispatch and the tools table",
+    );
 });
 
 test("ExecutorRegistry consumes discovery attribution without reopening a strict-export package manifest", async (t: TestContext) => {
@@ -91,7 +92,10 @@ test("ExecutorRegistry consumes discovery attribution without reopening a strict
         plurnk: {
             kind: "exec",
             attribution: "@plurnk/strict",
-            runtimes: [{ name: "alpha" }, { name: "beta" }],
+            runtimes: [
+                { name: "alpha", invocation: { body: { role: "alpha input", required: true } } },
+                { name: "beta", invocation: { body: { role: "beta input", required: true } } },
+            ],
         },
     }));
     await writeFile(join(dir, "index.js"), "export default class Strict {}\n");

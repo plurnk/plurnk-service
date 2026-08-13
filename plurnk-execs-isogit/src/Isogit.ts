@@ -18,7 +18,7 @@ export default class Isogit extends BaseExecutor {
         return { available: true, detail: "isomorphic-git (in-process subset)" };
     }
 
-    async run({ command, cwd, target, signal, write, setState }: ExecArgs): Promise<ExecResult> {
+    async run({ body, cwd, target, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         const dir = target === null
             ? (cwd ?? process.cwd())
             : (isAbsolute(target) ? target : resolve(cwd ?? process.cwd(), target));
@@ -65,7 +65,7 @@ export default class Isogit extends BaseExecutor {
 
         let argv: string[];
         try {
-            argv = tokenizeArgv(command.trim());
+            argv = tokenizeArgv(body.trim());
         } catch (err) {
             return fail(
                 "bad-arguments",

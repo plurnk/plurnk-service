@@ -1,5 +1,5 @@
 // Exec scheme — the EXEC op handler per plurnk.md.
-//   ## EXEC0 [runtime] (cwd)\ncommand
+//   ## EXEC0 [runtime] (target)\nbody
 // Auto-generates a `<runtime>:///<loop>/<turn>/<seq>` entry (the runtime tag IS the
 // authority); spawns the subprocess; streams stdout/stderr into channels; closes
 // subscription + transitions channel state at exit.
@@ -50,7 +50,7 @@ const withWorkspace = async <T>(fn: (ctx: {
     }
 };
 
-test("EXEC: empty body → 400 (no command)", async () => {
+test("EXEC: empty body and absent target → 400", async () => {
     await withWorkspace(async (ctx) => {
         const result = await ctx.engine.dispatch({
             statement: execStmt("sh", null, ""),
@@ -80,7 +80,7 @@ test("Exec.applyResolution: malformed accepted proposal state remains an interna
     });
 });
 
-test("{§exec-target-routing} an empty-body scheme target resolves as the command", async () => {
+test("{§exec-target-routing} an empty-body scheme target is materialized as the targeted script", async () => {
     await withWorkspace(async (ctx) => {
         // A stored script lives at worker:///script; running it runs its content.
         await seedEntryWithChannel(ctx.db, { workspaceId: ctx.workspaceId, scheme: "worker", pathname: "/script", channel: "body", content: "echo resolved-from-scheme", state: "static" });
@@ -108,11 +108,11 @@ test("{§exec-target-routing} an empty-body scheme target resolves as the comman
         const entryRow = await ctx.db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
         assert.ok(entryRow, "sh entry exists");
         const stdout = await ctx.db.test_get_channel.get<{ content: string }>({ entry_id: entryRow.id, name: "stdout" });
-        assert.equal(stdout?.content, "resolved-from-scheme\n", "the stored script's content was resolved into the command and run");
+        assert.equal(stdout?.content, "resolved-from-scheme\n", "the stored script becomes the executor target and runs");
     });
 });
 
-test("bare EXEC defaults to sh and proposes with {runtime, cwd, command, pathname}", async () => {
+test("bare EXEC defaults to sh and proposes with {runtime, cwd, body, pathname}", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
@@ -125,10 +125,10 @@ test("bare EXEC defaults to sh and proposes with {runtime, cwd, command, pathnam
         const row = await ctx.db.test_get_log_entry_by_id.get<{ state: string; status_rx: number; attrs: string }>({ id: logEntryId });
         assert.equal(row?.state, "proposed");
         assert.equal(row?.status_rx, 202);
-        const attrs = JSON.parse(row?.attrs ?? "{}") as { runtime: string; cwd: string | null; command: string; pathname: string };
+        const attrs = JSON.parse(row?.attrs ?? "{}") as { runtime: string; cwd: string | null; body: string; pathname: string };
         assert.equal(attrs.runtime, "sh");
         assert.equal(attrs.cwd, null);
-        assert.equal(attrs.command, "echo hello");
+        assert.equal(attrs.body, "echo hello");
         // Coordinate-only pathname: the runtime lives in the entry's SCHEME (tag authority),
         // so the stream entry at <runtime>:///<loop_seq>/<turn_seq>/<sequence> carries just the
         // coordinate it shares with the log row.
@@ -153,10 +153,10 @@ test("{§exec-target-routing} the target slot remains distinct from cwd", async 
         });
         const logEntryId = await idDeferred.promise;
         const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
-        const attrs = JSON.parse(row?.attrs ?? "{}") as { runtime: string; cwd: string | null; target: string | null; command: string };
+        const attrs = JSON.parse(row?.attrs ?? "{}") as { runtime: string; cwd: string | null; target: string | null; body: string };
         assert.equal(attrs.target, "data/users.json", "the (target) slot is the data source, in attrs.target");
         assert.equal(attrs.cwd, null, "cwd is the workspace (null headless here), never the target");
-        assert.equal(attrs.command, "length", "the body is the jq program");
+        assert.equal(attrs.body, "length", "the body is the jq program");
         await dispatchPromise; // jq(read) auto-runs inline (no proposal); let it settle
         await ctx.exec.idle();
     });
@@ -176,10 +176,10 @@ test("{§exec-target-routing} a file target with an empty body runs the file", a
             });
             const id = await idD.promise;  // a log row minted ⇒ it dispatched (proposed), never the empty-body 400
             const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id });
-            const attrs = JSON.parse(row?.attrs ?? "{}") as { cwd: string | null; target: string | null; command: string };
+            const attrs = JSON.parse(row?.attrs ?? "{}") as { cwd: string | null; target: string | null; body: string };
             assert.equal(attrs.target, "greet.sh", "a FILE target is the program the executor runs (body = stdin)");
             assert.equal(attrs.cwd, root, "a file target never moves cwd — it stays the workspace");
-            assert.equal(attrs.command, "", "empty body is legal for a file target — run it, no stdin");
+            assert.equal(attrs.body, "", "empty body is legal for a file target — run it, no stdin");
             ctx.engine.resolveProposal(id, { decision: "reject" });
             await p.catch(() => {});
         } finally { await rm(root, { recursive: true, force: true }); }
@@ -200,10 +200,10 @@ test("{§exec-target-routing} a directory target overrides cwd", async () => {
             });
             const id = await idD.promise;
             const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id });
-            const attrs = JSON.parse(row?.attrs ?? "{}") as { cwd: string | null; target: string | null; command: string };
+            const attrs = JSON.parse(row?.attrs ?? "{}") as { cwd: string | null; target: string | null; body: string };
             assert.equal(attrs.cwd, join(root, "sub"), "a DIRECTORY target overrides cwd — the body runs there");
             assert.equal(attrs.target, null, "a directory is neither program nor data source — target is cleared");
-            assert.equal(attrs.command, "echo hi", "the body is the command");
+            assert.equal(attrs.body, "echo hi", "the body is the shell program");
             ctx.engine.resolveProposal(id, { decision: "reject" });
             await p.catch(() => {});
         } finally { await rm(root, { recursive: true, force: true }); }
@@ -243,10 +243,10 @@ test("{§exec-target-routing} an absent local target alone takes the executor fi
             });
             const logEntryId = await idDeferred.promise;
             const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
-            const attrs = JSON.parse(row?.attrs ?? "{}") as { target?: unknown; cwd?: unknown; command?: unknown };
+            const attrs = JSON.parse(row?.attrs ?? "{}") as { target?: unknown; cwd?: unknown; body?: unknown };
             assert.equal(attrs.target, "missing.sh");
             assert.equal(attrs.cwd, root);
-            assert.equal(attrs.command, "");
+            assert.equal(attrs.body, "");
             ctx.engine.resolveProposal(logEntryId, { decision: "reject" });
             await dispatchPromise;
         } finally { await rm(root, { recursive: true, force: true }); }
@@ -263,7 +263,7 @@ test("{§exec-target-routing} a non-absence stat failure stops before effect adm
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
             try {
                 const result = await ctx.engine.dispatch({
-                    statement: execStmt("jq", "not-a-directory/child.json", "."),
+                    statement: execStmt("sh", "not-a-directory/child.json", "true"),
                     workspaceId: ctx.workspaceId,
                     workerId: ctx.workerId,
                     loopId: ctx.loopId,

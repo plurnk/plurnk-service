@@ -403,7 +403,7 @@ export default class PacketWire {
                 if (target !== null) meta.target = target;
             }
             // EXEC's output is a separate stream entry ({§exec-stream}); its address rides in a
-            // `stream` link, distinct from `target` (the cwd / executable path it ran in).
+            // `stream` link, distinct from the runtime-owned invocation target.
             if (op === "EXEC" && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
                 meta.stream = (e.attrs as { stream: string }).stream;
             }

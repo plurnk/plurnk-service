@@ -49,7 +49,7 @@ export default class Wasm extends BaseExecutor {
         return { available: true, detail: "WebAssembly + wabt" };
     }
 
-    async run({ runtime, command, cwd, target, signal, write, setState }: ExecArgs): Promise<ExecResult> {
+    async run({ runtime, body, cwd, target, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         const fail = (
             kind: string,
             message: string,
@@ -119,7 +119,7 @@ export default class Wasm extends BaseExecutor {
                     );
                 }
             } else {
-                watText = command;
+                watText = body;
             }
             let wabt: Wabt;
             try { wabt = await getWabt(); }
@@ -170,7 +170,7 @@ export default class Wasm extends BaseExecutor {
                     );
                 }
             } else {
-                bytes = Uint8Array.from(Buffer.from(command.trim(), "base64"));
+                bytes = Uint8Array.from(Buffer.from(body.trim(), "base64"));
             }
         } else {
             throw new Error(`plurnk-execs-wasm received unclaimed runtime tag '${runtime}'`);

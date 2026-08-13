@@ -6,6 +6,8 @@ export { default as SubprocessExecutor } from "./SubprocessExecutor.ts";
 export { default as ErrorDetail, ERROR_DETAIL_LIMIT } from "./ErrorDetail.ts";
 export { CommandSyntaxError, tokenizeArgv } from "./tokenizeArgv.ts";
 export { default as RuntimeTag } from "./RuntimeTag.ts";
+export { default as RuntimeInvocation } from "./RuntimeInvocation.ts";
+export { default as RuntimeDeclaration } from "./RuntimeDeclaration.ts";
 
 // Discovery ({§executor-discovery}). The behavior lives on `Discover`; the
 // documented `discover()` entry is its `scan` static, re-exported here so the
@@ -37,6 +39,10 @@ export type {
     ExecResult,
     Effect,
     RuntimeAvailability,
+    RuntimeBodyDecl,
+    RuntimeTargetKind,
+    RuntimeTargetDecl,
+    RuntimeInvocation as RuntimeInvocationDecl,
     RuntimeDecl,
     RuntimesHook,
     ExecInfo,

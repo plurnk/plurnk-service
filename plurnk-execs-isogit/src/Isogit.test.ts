@@ -20,7 +20,7 @@ const run = async (command: string, cwd: string, signal = new AbortController().
     const states: string[] = [];
     const args: ExecArgs = {
         runtime: "isogit",
-        command,
+        body: command,
         cwd,
         target: null,
         signal,
@@ -54,7 +54,10 @@ test("manifest declares only the explicit isogit runtime, disabled by its shippe
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
     assert.equal(pkg.plurnk.kind, "exec");
     assert.deepEqual(pkg.plurnk.runtimes.map((runtime: { name: string }) => runtime.name), ["isogit"]);
-    assert.match(pkg.plurnk.runtimes[0].example, /^## EXEC0 \[isogit\]\n.+$/);
+    assert.deepEqual(pkg.plurnk.runtimes[0].invocation, {
+        body: { role: "isogit command and arguments", required: true },
+        target: { role: "repository directory", required: false, kind: "path" },
+    });
     assert.match(await readFile(new URL("../.env.defaults", import.meta.url), "utf8"), /^PLURNK_EXECS_ISOGIT=0$/m);
 });
 

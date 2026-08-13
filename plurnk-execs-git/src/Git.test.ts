@@ -25,7 +25,7 @@ const run = async (
     const states: Record<string, string[]> = { stdout: [], stderr: [] };
     const args: ExecArgs = {
         runtime: "git",
-        command,
+        body: command,
         cwd,
         target,
         env,
@@ -48,15 +48,14 @@ after(async () => {
     await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-test("manifest declares the native git runtime with valid examples", async () => {
+test("manifest declares the native git invocation contract", async () => {
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
     assert.equal(pkg.plurnk.kind, "exec");
     assert.deepEqual(pkg.plurnk.runtimes.map((runtime: { name: string }) => runtime.name), ["git"]);
-    const examples = pkg.plurnk.runtimes[0].example.split("\n\n");
-    assert.equal(examples.length, 2);
-    for (const example of examples) {
-        assert.match(example, /^## EXEC0 \[git\]\n.+$/);
-    }
+    assert.deepEqual(pkg.plurnk.runtimes[0].invocation, {
+        body: { role: "Git arguments", required: true },
+        target: { role: "repository directory", required: false, kind: "path" },
+    });
 });
 
 test("native Git exposes stdout/stderr streams and remains host-effecting", () => {

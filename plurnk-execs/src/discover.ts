@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import Meta from "@plurnk/plurnk-meta";
 import type { PluginAttribution, PluginAttributionDeclaration } from "@plurnk/plurnk-meta";
 import Policy from "./policy.ts";
-import RuntimeTag from "./RuntimeTag.ts";
+import RuntimeDeclaration from "./RuntimeDeclaration.ts";
 import type { Discovery, DiscoverOptions, ExecInfo, RuntimeDecl } from "./types.ts";
 
 // An exec package's parsed manifest — its name and the `plurnk` block. Read
@@ -26,12 +26,12 @@ interface ExecManifest {
 //
 // Trust precedes executable hooks ({§executor-trust}). A package is recognized
 // only when its manifest declares `plurnk.kind === "exec"`; tags come from:
-//   - STATIC: `plurnk.runtimes: { name, glyph?, example?, documentation? }[]` —
+//   - STATIC: `plurnk.runtimes: { name, glyph?, invocation, documentation? }[]` —
 //     tags known at publish time.
 //   - DYNAMIC: `plurnk.runtimesModule: "<export-subpath>"` — a trusted hook that
 //     returns deployment-configured declarations ({§executor-dynamic-runtimes}).
 // Each decl registers its tag separately; one package can claim many tags
-// backed by the same default export. Example, documentation, and attribution
+// backed by the same default export. Invocation, documentation, and attribution
 // projection are defined by {§executor-runtime-declaration}.
 //
 // Tags occupy one flat namespace. Two packages claiming one tag are a fail-hard
@@ -124,19 +124,15 @@ export default class Discover {
         attribution: PluginAttributionDeclaration | undefined,
     ): Promise<ExecInfo[]> {
         const infos: ExecInfo[] = [];
-        for (const decl of await Discover.#runtimeDecls(dir, packageName, plurnk)) {
-            const e = typeof decl === "object" && decl !== null
-                ? decl as Record<string, unknown>
-                : {};
-            const runtime = RuntimeTag.assert(e.name, packageName);
+        for (const raw of await Discover.#runtimeDecls(dir, packageName, plurnk)) {
+            const decl = RuntimeDeclaration.assert(raw, packageName);
             // A package doc file wins over inline documentation
             // ({§executor-runtime-declaration}).
-            const inlineDoc = typeof e.documentation === "string" ? e.documentation : "";
-            const documentation = await Discover.#readDocFile(dir, runtime) ?? inlineDoc;
+            const documentation = await Discover.#readDocFile(dir, decl.name) ?? decl.documentation ?? "";
             infos.push({
-                runtime,
-                glyph: typeof e.glyph === "string" ? e.glyph : "",
-                example: typeof e.example === "string" ? e.example : "",
+                runtime: decl.name,
+                glyph: decl.glyph ?? "",
+                invocation: decl.invocation,
                 documentation,
                 packageName,
                 ...(attribution !== undefined ? { attribution } : {}),

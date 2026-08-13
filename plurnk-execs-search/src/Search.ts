@@ -129,13 +129,13 @@ export default class Search extends BaseExecutor {
         return "read";
     }
 
-    async run({ runtime, command, signal, write, setState, emit, entry }: ExecArgs): Promise<ExecResult> {
+    async run({ runtime, body, signal, write, setState, emit, entry }: ExecArgs): Promise<ExecResult> {
         const category = CATEGORY[runtime];
         // A tag we never claimed means the scheme misrouted — a contract
         // violation, not an expected runtime failure. Fail hard.
         if (category === undefined) throw new Error(`plurnk-execs-search received unclaimed runtime tag '${runtime}'`);
 
-        const query = command.trim();
+        const query = body.trim();
         const fail = (
             kind: string,
             message: string,

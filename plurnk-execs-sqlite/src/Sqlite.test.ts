@@ -19,7 +19,7 @@ const run = async (command: string, target: string | null = null, cwd: string | 
     const states: string[] = [];
     const events: Notice[] = [];
     const args: ExecArgs = {
-        runtime: "sqlite", command, cwd, target,
+        runtime: "sqlite", body: command, cwd, target,
         signal: new AbortController().signal,
         write: (_channel, chunk) => { out = (out ?? "") + chunk; },
         setState: (_channel, state) => states.push(state),
@@ -46,16 +46,10 @@ test("manifest declares the sqlite runtime tag", async () => {
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf-8"));
     assert.equal(pkg.plurnk.kind, "exec");
     assert.deepEqual(pkg.plurnk.runtimes.map((r: { name: string }) => r.name), ["sqlite"]);
-    // Two self-documenting examples cover a file-target database
-    // and a transient :memory: tabular calc showing the `*1.0` float idiom that
-    // avoids integer-division truncation.
-    const examples = pkg.plurnk.runtimes[0].example.split("\n\n");
-    assert.equal(examples.length, 2);
-    assert.match(examples[0], /^## EXEC0 \[sqlite\] \(\.\/app\.db\)\n.+$/);
-    assert.match(examples[1], /^## EXEC0 \[sqlite\]\n.*\*1\.0.*$/);
-    for (const example of examples) {
-        assert.match(example, /;$/, "canonical SQL examples use the conventional statement terminator");
-    }
+    assert.deepEqual(pkg.plurnk.runtimes[0].invocation, {
+        body: { role: "SQL statement", required: true },
+        target: { role: "SQLite database", required: false, kind: "path" },
+    });
 });
 
 test("declares a results channel (application/json)", () => {
@@ -179,7 +173,7 @@ test("pre-aborted signal → 499 errored, file mutation skipped", async () => {
     const states: string[] = [];
     let wrote = false;
     const args: ExecArgs = {
-        runtime: "sqlite", command: "CREATE TABLE t (x)", cwd: null, target: path,
+        runtime: "sqlite", body: "CREATE TABLE t (x)", cwd: null, target: path,
         signal: ac.signal,
         write: () => { wrote = true; },
         setState: (_channel, state) => states.push(state),

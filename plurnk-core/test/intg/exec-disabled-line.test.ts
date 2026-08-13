@@ -29,10 +29,11 @@ test("act mode: no disabled line — the runtimes advertise normally", async () 
             const { loopId } = await runLoopToTerminal(ws, 2, { prompt: "what is 2+2?" });
             const turn = await db.test_first_turn_for_loop.get<{ packet: string }>({ loop_id: loopId });
             assert.doesNotMatch(turn!.packet, /EXEC operations are disabled/, "act mode never carries the negative line");
-            // {§packet-operation-fences} Executor examples use the packet's operation fence.
             const packet = JSON.parse(turn!.packet) as { sections?: Array<{ name?: string; header?: string }> };
             const tools = packetSection(packet as Parameters<typeof packetSection>[0], "tools");
-            assert.match(tools, /^```plurnk\n## EXEC0/, "act mode: executor examples advertise inside a plurnk fence, not bullets");
+            assert.match(tools, /^Every EXEC requires a body or `\(target\)`\./, "act mode explains the shared invocation rule");
+            assert.match(tools, /\| `\[node\]` \|/, "an available runtime appears even without a bespoke example");
+            assert.match(tools, /\| `\[executor\]` \| `\(target\)` \| body \|/, "tool buckets use the authored EXEC syntax");
             assert.equal(packet.sections?.find((section) => section.name === "tools")?.header, "Registered Executable Tools");
         } finally { ws.close(); }
     });

@@ -87,7 +87,7 @@ export default class SubprocessExecutor extends BaseExecutor {
         return Runtime.resolve(runtime, command, target);
     }
 
-    run({ runtime, command, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
+    run({ runtime, body, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         const detailLimit = ErrorDetail.configuredLimit();
         if (detailLimit === null) {
             setState("stdout", "errored");
@@ -96,7 +96,7 @@ export default class SubprocessExecutor extends BaseExecutor {
         }
         let spawnArgs: SpawnArgs;
         try {
-            spawnArgs = this.spawnArgs(runtime, command, target);
+            spawnArgs = this.spawnArgs(runtime, body, target);
         } catch (cause) {
             if (!(cause instanceof CommandSyntaxError)) throw cause;
             setState("stdout", "errored");

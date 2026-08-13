@@ -35,7 +35,10 @@
             {
                 "name": "jq",
                 "glyph": "🧰",
-                "example": "## EXEC0 [jq]\n[1,2,3] | add"
+                "invocation": {
+                    "body": { "role": "jq filter", "required": false },
+                    "target": { "role": "JSON input", "required": false, "kind": "resource" }
+                }
             }
         ]
     },

@@ -240,8 +240,8 @@ export default class SchemeRegistry {
     // `manifest.example` contributes concise canonical operation examples, plus a
     // pull doc when it ships `manifest.documentation` (materialized at
     // worker://plurnk/docs/<name>.md by LoopDocs, READ on demand). The verbose semantics live
-    // in that pull doc, not here: terse pushes, depth pulls — exactly the exec tools
-    // sheet's shape (#collectTools). Insertion order; a scheme with no example
+    // in that pull doc, not here: terse pushes, depth pulls. Unlike the executor
+    // contract table, these are complete operation examples. Insertion order; a scheme with no example
     // (provisional, e.g. skill) is omitted. The doc's token weight rides its manifest entry.
     teach(): string {
         const examples: string[] = [];

@@ -36,12 +36,20 @@
             {
                 "name": "wat",
                 "glyph": "🧩",
-                "example": "## EXEC0 [wat]\n(module (func (export \"main\") (result i32) i32.const 42))"
+                "invocation": {
+                    "body": { "role": "inline WAT module", "required": false },
+                    "target": { "role": "WAT module", "required": false, "kind": "resource" },
+                    "exclusive": true
+                }
             },
             {
                 "name": "wasm",
                 "glyph": "🧩",
-                "example": "## EXEC0 [wasm] (module.wasm)\nmain"
+                "invocation": {
+                    "body": { "role": "inline base64 WASM module", "required": false },
+                    "target": { "role": "WASM module", "required": false, "kind": "resource" },
+                    "exclusive": true
+                }
             }
         ]
     },

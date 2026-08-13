@@ -421,9 +421,8 @@ export default class ProposalLifecycle {
     ): Promise<ProposalSettlement> {
         const { workspaceId, workerId, loopId, turnId } = ids;
         if (resolution.decision !== "accept") return { resolution };
-        // EXEC routes to the exec scheme regardless of target (cwd, not
-        // a scheme address). All other ops resolve their handler from
-        // statement.target's scheme.
+        // EXEC routes to the exec scheme regardless of its runtime-owned target.
+        // All other ops resolve their handler from statement.target's scheme.
         // COPY/MOVE write the DEST (statement.body), not the source (target): the
         // accept must reach the dest scheme's applyResolution (File writes disk).
         const routedScheme = (originalResult.attrs as { proposalScheme?: unknown } | undefined)?.proposalScheme;

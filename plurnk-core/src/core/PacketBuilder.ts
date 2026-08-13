@@ -26,6 +26,7 @@ import type { ChatMessage, PromptTokenMeasurement, Provider } from "@plurnk/plur
 import { assertPromptTokenMeasurement, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import BudgetReadout from "./BudgetReadout.ts";
+import ExecutableTools from "./ExecutableTools.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -383,17 +384,19 @@ export default class PacketBuilder {
         return (tag: string) => Policy.isEnabled(tag, execs);
     }
 
-    // The ## Registered Executable Tools capability sheet. Each available executor
-    // tag contributes its self-documenting example; the closed heading distinguishes
-    // registered selectors from the open-ended general examples above it. {§tools-capability-sheet}
+    // The complete ## Registered Executable Tools contract table. {§tools-capability-sheet}
     #collectTools(
         workspaceEnabled: (tag: string) => boolean,
         questionsOn = false,
         activeSchemes?: Set<string>,
     ): { executors: string; optionalOperations: string } {
-        // Registered executors and optional operations remain distinct fenced sheets.
+        // Registered executors and optional operations remain distinct sheets.
+        // The former is a contract table; only the latter is an operation example fence.
         // {§tools-capability-sheet} {§packet-operation-fences}
-        const executorOps: string[] = [];
+        const executorTools: Array<{
+            runtime: string;
+            invocation: NonNullable<ReturnType<ExecutorRegistry["entry"]>>["invocation"];
+        }> = [];
         const notices: string[] = [];
         // {§send-300-choices} — the one-liner rides ONLY where questions are enabled (allowed +
         // client-requested); the fuller questions.md doc injects through docEntries the same way.
@@ -404,25 +407,24 @@ export default class PacketBuilder {
         if (executors !== undefined) {
             const excluded = docsExcludeSet();
             const runtimes = executors.availableRuntimes();
-            // {§tools-capability-sheet} The sheet's lines are EXEC-usage examples, keyed on the 'exec' scheme
-            // (the op face, excludedInAsk). When inactive, say so POSITIVELY (a prose notice): plurnk.md
+            // {§tools-capability-sheet} The table is keyed on the exec scheme (the op face,
+            // excludedInAsk). When inactive, say so positively: plurnk.md
             // still teaches EXEC as language, and silent absence measurably invites confabulated runtimes.
             const execActive = activeSchemes === undefined || activeSchemes.has("exec");
             if (runtimes.length > 0 && !execActive) {
                 notices.push("EXEC operations are disabled for this loop — do not run commands; answer or advise directly");
             } else {
                 for (const tag of runtimes) {
-                    if (excluded.has(tag)) continue; // {§tools-capability-sheet} — exclude drops the example and doc
+                    if (excluded.has(tag)) continue; // {§tools-capability-sheet} — exclude drops the row and doc
                     if (!workspaceEnabled(tag)) continue; // {§operator-config-workspace-execs}
                     const entry = executors.entry(tag);
-                    // {§tools-capability-sheet} — the example set is fenced below; the fuller doc
-                    // materializes at worker://plurnk/docs/<tag>.md. No examples → no catalogue entry.
-                    if (entry?.example) executorOps.push(entry.example);
+                    if (entry !== undefined) executorTools.push({ runtime: tag, invocation: entry.invocation });
                 }
             }
         }
         const parts: string[] = [...notices];
-        if (executorOps.length > 0) parts.push(`\`\`\`plurnk\n${executorOps.join("\n\n")}\n\`\`\``);
+        const directory = ExecutableTools.render(executorTools);
+        if (directory !== "") parts.push(directory);
         return { executors: parts.join("\n\n"), optionalOperations };
     }
 

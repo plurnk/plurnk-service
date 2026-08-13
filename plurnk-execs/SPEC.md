@@ -5,11 +5,12 @@ the framework; executor leaves implement it.
 
 ## §executor-role Role and ownership
 
-An executor owns the runtime-specific mapping from an EXEC body and optional
-target to work, declared output channels, environment availability, and effect
-classification. The consumer owns dispatch, proposal policy, storage,
-subscriptions, deadlines, polling, cancellation delivery, packet projection,
-and all reads of stored output.
+An executor owns one declared runtime-specific invocation shape, its mapping
+from that EXEC body and realized target to work, declared output channels,
+environment availability, and effect classification. The consumer owns
+dispatch, invocation-shape enforcement and target realization, proposal policy,
+storage, subscriptions, deadlines, polling, cancellation delivery, packet
+projection, and all reads of stored output.
 
 ```mermaid
 flowchart LR
@@ -50,7 +51,7 @@ interface ChannelDecl {
 
 interface ExecArgs {
     runtime: string;
-    command: string;
+    body: string;
     cwd: string | null;
     target: string | null;
     env?: NodeJS.ProcessEnv;
@@ -78,16 +79,17 @@ The framework constructs one executor per matched runtime tag with
 `this.runtime`; it must not retain per-run state on the executor instance. The
 derived addressable runtime scheme retains `glyph` for client discovery
 ({§manifest-client-display}); runtime aliases remain excluded from scheme
-model-teaching because EXEC examples own that hot-path surface.
+model-teaching because the EXEC invocation directory owns that hot-path
+surface.
 
 ### §executor-sinks Inputs and sinks
 
 | Field      | Contract                                                                                                |
 | ---------- | ------------------------------------------------------------------------------------------------------- |
 | `runtime`  | The matched tag.                                                                                        |
-| `command`  | The EXEC body: source, query, filter, or command according to the leaf contract.                        |
+| `body`     | The authored EXEC body, interpreted according to the runtime's invocation declaration.                |
 | `cwd`      | Consumer-selected project working directory, or `null` for a runtime that has none.                     |
-| `target`   | Consumer-resolved optional EXEC target. The leaf defines how target and body map to its tool.           |
+| `target`   | Consumer-realized optional EXEC target. Its representation and role come from the invocation declaration. |
 | `env`      | Exact child environment when supplied. A subprocess must use it instead of reconstructing host policy.  |
 | `signal`   | Consumer cancellation. Every executor must honor it at each cancellable boundary.                       |
 | `write`    | Append to a declared channel. An optional mimetype replaces that channel's per-call output type.        |
@@ -226,7 +228,9 @@ carries the canonical attribution fact from {§plugin-attribution}.
       {
         "name": "cobol",
         "glyph": "🗄",
-        "example": "## EXEC0 [cobol]\nDISPLAY 'HI'."
+        "invocation": {
+          "body": { "role": "COBOL program", "required": true }
+        }
       }
     ]
   }
@@ -265,16 +269,49 @@ at boot; changing package membership or configuration requires a restart.
 | --------------- | -------------------------------------------------------------------------------------------------- |
 | `name`          | Canonical runtime tag and derived output-scheme name, admitted below.                              |
 | `glyph`         | Optional presentation glyph.                                                                       |
-| `example`       | Optional compact, verbatim `plurnk` snippet containing complete operation sections.                |
+| `invocation`    | Required body and target contract, validated and normalized below.                                 |
 | `documentation` | Optional full Markdown reference. `docs/<tag>.md` wins over the inline manifest field.             |
 | `attribution`   | Published per-tag projection of the validated package declaration ({§plugin-attribution}).         |
 | `packageName`   | Package that owns and default-exports the executor implementation.                                 |
 
-The framework carries example and documentation content unchanged. The
-consumer decides when and how to present either surface. A multi-tag package
-appears at most once in `Discovery.packageAttributions`, and only when at least
-one of its tags survives discovery policy. An instantiated executor may add
-attempt-time tags through the shared runtime hook ({§plugin-attribution}).
+The framework carries invocation metadata and documentation content unchanged
+after validating the invocation. The consumer derives its complete always-on
+executable-tool directory from invocation metadata; detailed examples belong
+in the on-demand documentation rather than a parallel hot-path catalogue. A
+multi-tag package appears at most once in `Discovery.packageAttributions`, and
+only when at least one of its tags survives discovery policy. An instantiated
+executor may add attempt-time tags through the shared runtime hook
+({§plugin-attribution}).
+
+§executor-invocation Every runtime declares exactly one invocation contract:
+
+| Field              | Contract                                                                                                  |
+| ------------------ | --------------------------------------------------------------------------------------------------------- |
+| `body.role`        | One-line model-facing description of the authored body.                                                    |
+| `body.required`    | When true, an empty body is refused before effect admission.                                               |
+| `target`           | Omitted when this runtime accepts no target; a present authored target is then refused.                    |
+| `target.role`      | One-line model-facing description of the target.                                                          |
+| `target.required`  | When true, an absent target is refused before effect admission.                                           |
+| `target.kind`      | One of the structural realization modes below.                                                            |
+| `target.directory` | Optional `"cwd"`: only a local directory becomes `cwd`; every non-directory remains the declared target. |
+| `exclusive`        | Optional `true`: body and target are alternative inputs and supplying both is refused.                    |
+
+| Target kind | Consumer realization                                                                                                           |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `literal`   | Preserve the complete authored target string. It is an executor identifier, never a scheme read or filesystem classification. |
+| `path`      | Accept only a local or `file://` path and pass that path directly, subject only to an explicit directory rule.                 |
+| `resource`  | Pass a local/file path directly; resolve a non-file data-scheme address through one exact READ and materialize its string representation to a temporary file. |
+
+Every EXEC must supply at least a body or target even when neither field is
+independently required. A target's meaning never changes because the body is
+empty or non-empty. `exclusive` requires a target declaration; `directory` is
+valid only for `path` and `resource` target kinds. An invocation declaration
+with a missing field, unknown field, invalid combination, multiline role, or
+wrong primitive type is a fail-hard plugin contract violation before
+registration. Static, dynamic-hook, and module-owned runtimes use this same
+validation path. The enclosing runtime declaration is closed to `name`,
+`glyph`, `invocation`, and `documentation`; unknown or mistyped metadata is a
+contract violation rather than silently ignored teaching.
 
 Runtime-name admission is one identity contract:
 
@@ -375,13 +412,14 @@ interface SpawnArgs {
 | Runtime                    | No-target spawn                                                      |
 | -------------------------- | -------------------------------------------------------------------- |
 | `sh` / `bash`              | Shell command line.                                                  |
-| `node`                     | `node -e <command>`.                                                 |
-| `python` / `python3`       | `python3 -c <command>`.                                              |
-| Other default-base runtime | `<runtime> -c <command>`; specialized leaves override this fallback. |
+| `node`                     | `node -e <body>`.                                                    |
+| `python` / `python3`       | `python3 -c <body>`.                                                 |
+| Other default-base runtime | `<runtime> -c <body>`; specialized leaves override this fallback.    |
 
 With a target, the target is the program and the body is its stdin. Core
-stat-routes a directory target to `cwd`; a file remains the executor target.
-Data runtimes define their own target mapping.
+routes a local directory to `cwd` only when that runtime's invocation
+declaration opts into the directory rule; every other target remains the
+executor target. Data runtimes define their own declared target kind and role.
 
 Subprocess leaves inherit stdout/stderr streaming, scoped-environment handoff,
 availability probing, operation results, exit code, and process-group

@@ -63,7 +63,7 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
             },
         },
         namespaceOwner: { kind: "module", name: "fetchstub fixture" },
-        glyph: "?", example: "", documentation: "", available: true, detail: undefined,
+        glyph: "?", invocation: { body: { role: "fixture input", required: true } }, documentation: "", available: true, detail: undefined,
     } as never);
     try {
         const workspaceId = await insertWorkspace(db, `fetched-${crypto.randomUUID()}`);

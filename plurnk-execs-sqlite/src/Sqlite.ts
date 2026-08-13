@@ -51,7 +51,7 @@ export default class Sqlite extends BaseExecutor {
         return target === null || target === MEMORY ? "pure" : "host";
     }
 
-    async run({ command, cwd, target, signal, write, setState }: ExecArgs): Promise<ExecResult> {
+    async run({ body, cwd, target, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         // node:sqlite is fully synchronous — no await point to interrupt mid-query —
         // so the only place to honor an abort is before the work starts
         // ({§executor-cancellation}).
@@ -72,7 +72,7 @@ export default class Sqlite extends BaseExecutor {
             );
         }
         const path = dbPath(cwd, target);
-        const sql = command.trim();
+        const sql = body.trim();
         const errorPreview = ErrorDetail.configuredLimit();
         const fail = (
             kind: string,

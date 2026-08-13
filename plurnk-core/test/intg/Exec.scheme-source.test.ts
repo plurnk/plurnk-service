@@ -35,7 +35,7 @@ type Actor = {
 };
 
 type Run = {
-    readonly command: string;
+    readonly body: string;
     readonly target: string | null;
     readonly materialized?: string;
 };
@@ -98,13 +98,13 @@ const wire = async (): Promise<{
         get manifest(): SchemeManifest { return runtimeManifest("tool"); },
         get defaultChannel(): string { return "results"; },
         get channels() { return { results: { mimetype: "text/plain" } }; },
-        async run({ command, target, setState }) {
+        async run({ body, target, setState }) {
             runs.push({
-                command,
+                body,
                 target,
                 ...(target === null ? {} : { materialized: await readFile(target, "utf8") }),
             });
-            if (command === "replace-temporary-with-directory" && target !== null) {
+            if (body === "replace-temporary-with-directory" && target !== null) {
                 await rm(target);
                 await mkdir(target);
             }
@@ -115,7 +115,18 @@ const wire = async (): Promise<{
         effect(target: string | null): Effect { return target === null ? "pure" : "read"; },
     };
     const executors = new ExecutorRegistry(new Map([
-        ["tool", { executor, namespaceOwner: { kind: "module", name: "scheme-source fixture" }, glyph: "🔧", example: "", documentation: "", available: true, detail: undefined }],
+        ["tool", {
+            executor,
+            namespaceOwner: { kind: "module", name: "scheme-source fixture" },
+            glyph: "🔧",
+            invocation: {
+                body: { role: "fixture input", required: false },
+                target: { role: "fixture resource", required: false, kind: "resource" },
+            },
+            documentation: "",
+            available: true,
+            detail: undefined,
+        }],
     ]));
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
@@ -167,7 +178,7 @@ const wire = async (): Promise<{
 };
 
 // {§exec-target-routing} {§exec-source-temporary} A scheme-backed EXEC source
-// is one exact ordinary READ; a non-empty body uses a spawn-scoped temporary.
+// is one exact ordinary READ and always uses a spawn-scoped temporary.
 test("EXEC source READ preserves the complete authored scheme address (#163)", async () => {
     const ctx = await wire();
     const seen: RepresentationPreparationRequest[] = [];
@@ -198,8 +209,8 @@ test("EXEC source READ preserves the complete authored scheme address (#163)", a
         assert.equal(preparedTarget.query, "b=2&a=1&a=3");
         assert.deepEqual(preparedTarget.headers, [["Accept", "text/plain"], ["X-Trace", "one:two"]]);
         assert.equal(preparedTarget.fragment, null, "core withholds channel selection from acquisition");
-        assert.deepEqual(ctx.runs.map(({ command, materialized }) => ({ command, materialized })), [
-            { command: "transform", materialized: completeSource },
+        assert.deepEqual(ctx.runs.map(({ body, materialized }) => ({ body, materialized })), [
+            { body: "transform", materialized: completeSource },
         ]);
         const tempPath = ctx.runs[0]?.target;
         assert.ok(tempPath !== null && tempPath !== undefined);
@@ -275,7 +286,8 @@ test("EXEC source READ preserves worker commons, current, named, and ancestry bo
         assert.equal((await ctx.dispatch(ctx.root, "worker:///script#body")).status, 200);
         assert.equal((await ctx.dispatch(ctx.root, "worker://~/script#body")).status, 200);
         assert.equal((await ctx.dispatch(ctx.root, "worker://child/script#body")).status, 200);
-        assert.deepEqual(ctx.runs.map(({ command }) => command), [
+        assert.deepEqual(ctx.runs.map(({ body }) => body), ["", "", ""]);
+        assert.deepEqual(ctx.runs.map(({ materialized }) => materialized), [
             "commons command",
             "root command",
             "child command",
@@ -318,7 +330,8 @@ test("EXEC source READ preserves current and named runtime-stream ownership (#16
 
         assert.equal((await ctx.dispatch(ctx.root, "tool:///9/8/7#results")).status, 200);
         assert.equal((await ctx.dispatch(ctx.root, "tool://child/9/8/7#results")).status, 200);
-        assert.deepEqual(ctx.runs.map(({ command }) => command), [
+        assert.deepEqual(ctx.runs.map(({ body }) => body), ["", ""]);
+        assert.deepEqual(ctx.runs.map(({ materialized }) => materialized), [
             "root stream command",
             "child stream command",
         ]);

@@ -40,7 +40,7 @@ const harness = (
         states,
         args: {
             runtime: "echo",
-            command: "",
+            body: "",
             cwd: null,
             target: null,
             signal: new AbortController().signal,
@@ -54,10 +54,10 @@ const harness = (
 
 test("runtime declaration has one catalog face and one tool-call shape", () => {
     const declaration = runtimeDecl("echo");
-    assert.equal(
-        declaration.example,
-        "## EXEC0 [echo] (tool_name)\n{\"argument\":\"value\"}",
-    );
+    assert.deepEqual(declaration.invocation, {
+        body: { role: "JSON arguments", required: false },
+        target: { role: "MCP tool", required: true, kind: "literal" },
+    });
     assert.ok(declaration.documentation?.includes("## READ0 (echo:///)"));
     assert.equal(declaration.documentation?.includes("## EXEC0 [echo]\n?"), false);
 });
@@ -81,7 +81,7 @@ test("MCP executor calls a current tool and writes its result", async () => {
     try {
         const h = harness({
             target: "echo",
-            command: JSON.stringify({ message: "hello" }),
+            body: JSON.stringify({ message: "hello" }),
         });
         const result = await executor.run(h.args);
         assert.equal(result.status, 200);

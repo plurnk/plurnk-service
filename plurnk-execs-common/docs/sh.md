@@ -11,9 +11,15 @@ read plurnk's credentials. The project's environment passes through.
 
 ## Working directory
 
-`## EXEC0 [sh] (./dir)` runs in `./dir`. With no target, the command runs in the
-workspace project root where file operations write—not in the daemon's own
-working directory.
+The target in this operation makes `./dir` the working directory for its body:
+
+```plurnk
+## EXEC0 [sh] (./dir)
+pwd
+```
+
+With no target, the command runs in the workspace project root where file
+operations write—not in the daemon's own working directory.
 
 The target's filesystem type selects its role:
 

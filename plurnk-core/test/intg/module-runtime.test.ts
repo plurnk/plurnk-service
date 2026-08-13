@@ -35,7 +35,11 @@ const fakeEntry = (tag: string, namespaceOwner = `test module '${tag}'`): Regist
         effect: () => "read",
     } as unknown as Executor,
     namespaceOwner: { kind: "module", name: namespaceOwner },
-    glyph: "🔌", example: `## EXEC0 [${tag}]\n?`, documentation: "", available: true, detail: "fake",
+    glyph: "🔌",
+    invocation: { body: { role: "fixture input", required: true } },
+    documentation: "",
+    available: true,
+    detail: "fake",
 });
 
 const wire = (db: Awaited<ReturnType<typeof openMigrated>>) => {

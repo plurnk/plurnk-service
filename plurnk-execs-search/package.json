@@ -35,43 +35,52 @@
             {
                 "name": "search",
                 "glyph": "🔎",
-                "example": "## EXEC0 [search]\nfrance population"
+                "invocation": { "body": { "role": "search query", "required": true } }
             },
             {
                 "name": "images",
-                "glyph": "🖼"
+                "glyph": "🖼",
+                "invocation": { "body": { "role": "image search query", "required": true } }
             },
             {
                 "name": "videos",
-                "glyph": "🎬"
+                "glyph": "🎬",
+                "invocation": { "body": { "role": "video search query", "required": true } }
             },
             {
                 "name": "news",
-                "glyph": "📰"
+                "glyph": "📰",
+                "invocation": { "body": { "role": "news search query", "required": true } }
             },
             {
                 "name": "map",
-                "glyph": "🗺"
+                "glyph": "🗺",
+                "invocation": { "body": { "role": "map search query", "required": true } }
             },
             {
                 "name": "music",
-                "glyph": "🎵"
+                "glyph": "🎵",
+                "invocation": { "body": { "role": "music search query", "required": true } }
             },
             {
                 "name": "it",
-                "glyph": "💻"
+                "glyph": "💻",
+                "invocation": { "body": { "role": "IT search query", "required": true } }
             },
             {
                 "name": "science",
-                "glyph": "🔬"
+                "glyph": "🔬",
+                "invocation": { "body": { "role": "science search query", "required": true } }
             },
             {
                 "name": "social",
-                "glyph": "💬"
+                "glyph": "💬",
+                "invocation": { "body": { "role": "social media search query", "required": true } }
             },
             {
                 "name": "downloadable",
-                "glyph": "📥"
+                "glyph": "📥",
+                "invocation": { "body": { "role": "downloadable-file search query", "required": true } }
             }
         ]
     },

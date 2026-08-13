@@ -15,7 +15,12 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 // RegistryEntry itself; registration needs no live driver (the scheme face reads lazily at dispatch).
 const fakeRegistration = (tag: string) => ({
     namespaceOwner: "daemon test module",
-    decl: { name: tag, glyph: "🔌", example: `## EXEC0 [${tag}]\n?`, documentation: "" },
+    decl: {
+        name: tag,
+        glyph: "🔌",
+        invocation: { body: { role: "fixture input", required: true } },
+        documentation: "",
+    },
     executor: {
         runtime: tag, glyph: "🔌",
         get manifest() {
@@ -947,7 +952,12 @@ test("the client-interface seam — a dispatched EXEC's stdout streams as stream
         try {
             await daemon.registerRuntime({
                 namespaceOwner: "stream test module",
-                decl: { name: "streamtag", glyph: "🔌", example: "", documentation: "" },
+                decl: {
+                    name: "streamtag",
+                    glyph: "🔌",
+                    invocation: { body: { role: "fixture input", required: true } },
+                    documentation: "",
+                },
                 executor: {
                     runtime: "streamtag", glyph: "🔌",
                     get manifest() { return { name: "streamtag", channels: { stdout: "text/plain" }, defaultChannel: "stdout", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },

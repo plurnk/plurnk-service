@@ -1498,60 +1498,68 @@ the loop continue; repeated offenses terminate through the engine's 500.
 
 ### §exec EXEC
 
-AST: `{ op: "EXEC", target (optional input source, program, or cwd), body: string | null (command), signal: string | null (runtime tag), lineMarker (timeout/poll) }`.
+AST: `{ op: "EXEC", target (optional runtime-specific target), body: string | null (runtime-specific input), signal: string | null (runtime tag), lineMarker (timeout/poll) }`.
 
-§exec-target-routing Engine routes unconditionally to the `exec` scheme and
-canonicalizes `(target)` before effect admission. With no directory override,
+§exec-target-routing Engine routes unconditionally to the `exec` scheme,
+resolves the runtime first, and enforces that runtime's required
+{§executor-invocation} declaration before effect admission. Core owns target
+realization; neither filesystem type nor body presence may invent a target role
+the selected runtime did not declare. With no declared directory override,
 `cwd` is the workspace's `project_root`, where the File scheme writes — never
-the daemon's own cwd. A non-file scheme address is an eligible content source
-only when the registered scheme is a data scheme. After acceptance, core
-reparses the complete authored address and resolves one exact `<1,-1>` READ
-through {§universal-read-composition}; internal source consumption never
-borrows the model-facing 16-line preview.
+the daemon's own cwd.
 
-| Authored target                       | Body      | Canonical effect target | Accepted executor realization                         |
-| ------------------------------------- | --------- | ----------------------- | ----------------------------------------------------- |
-| Absent                                | Non-empty | `null`                  | Body is the command; target is absent.                |
-| Local/file directory                  | Non-empty | `null`                  | Directory becomes `cwd`; target is absent.            |
-| Local/file file or stat miss          | Any       | Authored local path     | Path is the program/data target; body is its input.   |
-| Readable data-scheme address           | Empty     | `null`                  | Selected READ content becomes the command.            |
-| Readable data-scheme address           | Non-empty | Authored address        | Selected READ content becomes a local target.         |
+| Declared target kind | Authored target                         | Canonical effect target | Executor realization                                      |
+| -------------------- | --------------------------------------- | ----------------------- | --------------------------------------------------------- |
+| Omitted              | Any present target                      | —                       | Refuse 400 before admission.                              |
+| `literal`            | Any target                              | Complete authored string | Preserve that exact string; perform no stat or scheme read. |
+| `path`               | Local or `file://` path                 | Local path              | Pass the path directly.                                   |
+| `path`               | Non-file address                        | —                       | Refuse 400 before admission.                              |
+| `resource`           | Local or `file://` path                 | Local path              | Pass the path directly.                                   |
+| `resource`           | Non-file data-scheme address            | Complete authored address | Resolve one exact READ after acceptance and pass its temporary local file. |
 
-§exec-source-temporary A non-empty-body data-scheme source is materialized into
-one core-owned temporary file after acceptance. The file lives through the
-executor run and core removes it after the subscription's terminal result has
-settled. A removal failure is reported to daemon diagnostics with its complete
-cause; it cannot rewrite the execution result, stream state, or completion
-wake.
+A local directory becomes `cwd` with an absent executor target only when the
+runtime declaration explicitly sets `target.directory: "cwd"`; otherwise it
+remains the target. Core stats only for that declared rule. `ENOENT` remains a
+target so the runtime reports its own not-found. Any other stat failure stops
+before effect admission with a core-owned 500 Problem whose bounded diagnostic
+states the occurrence-specific cause while daemon diagnostics retain the
+complete error.
 
-Loop-flag authority follows the same target classification:
+Body and target requirements come from the same runtime declaration. A runtime
+with no target declaration refuses a target; required body or target fields are
+enforced independently; every EXEC requires at least one of them; and an
+`exclusive` declaration refuses an invocation containing both. A target retains
+its one declared role whether the body is empty or non-empty. Runtime selection,
+target validation, and body/target relation failures therefore occur before
+effect classification or proposal creation.
 
-| Target class                   | Schemes that must be active              |
-| ------------------------------ | ---------------------------------------- |
-| Absent, local, or `file://`     | `exec`                                   |
-| Non-file scheme address        | `exec` and the addressed source scheme   |
+§exec-source-temporary A non-file `resource` target is materialized into one
+core-owned temporary file after acceptance. Core reparses the complete authored
+address and resolves one exact `<1,-1>` READ through
+{§universal-read-composition}; internal source consumption never borrows the
+model-facing 16-line preview. The file lives through the executor run and core
+removes it after the subscription's terminal result has settled. A removal
+failure is reported to daemon diagnostics with its complete cause; it cannot
+rewrite the execution result, stream state, or completion wake.
 
-A stat miss means exactly `ENOENT` and takes the file arm so the runtime reports
-its own not-found rather than dispatch returning 400. Any other stat failure
-stops target classification before effect admission with a core-owned 500
-Problem: its bounded diagnostic states the occurrence-specific cause and daemon
-diagnostics retain the complete error. An empty body is legal for a local file
-or scheme command source; it remains a 400 with no target or a directory target.
-For a scheme-data target, the authored address is an opaque target-present
-identity: the executor neither resolves it nor sees it during `run()`; core
-materializes the selected content only after acceptance and supplies that local
-path.
+Loop-flag authority follows the selected runtime's declaration:
+
+| Target realization                                      | Schemes that must be active            |
+| ------------------------------------------------------- | -------------------------------------- |
+| Absent, `literal`, local `path`, or local `resource`    | `exec`                                 |
+| Non-file `resource`                                     | `exec` and the addressed source scheme |
+
 Worker and runtime-stream authorities, query, fragment, request metadata, and
-every other address component therefore retain their owning READ semantics. A
-failed source READ is preserved as the proposal-application failure. A
-successful READ with no string representation is refused 422; `""` remains a
-present representation, although it cannot by itself become an executable
-command.
+every other component of a `resource` address retain their owning READ
+semantics. A failed source READ is preserved as the proposal-application
+failure. A successful READ with no string representation is refused 422; an
+empty string remains a present representation and is materialized faithfully.
 
-Core calls `effect()` once against this canonical target, without command text,
-stores the resulting fact with the invocation, and reuses it unchanged for
-proposal policy, application, stream registration, and effect-qualified hold
-policy. The post-acceptance materialization path never triggers reclassification.
+Core calls `effect()` once against the canonical target shown above, without
+body text, stores the resulting fact with the invocation, and reuses it
+unchanged for proposal policy, application, stream registration, and
+effect-qualified hold policy. The post-acceptance materialization path never
+triggers reclassification.
 
 §exec-registry-resolves The runtime slot (`signal`) selects an executor,
 resolved against the boot-time `ExecutorRegistry`: siblings are discovered and
@@ -1627,7 +1635,7 @@ observation is born OPEN; a terminal state with no newly publishable body still
 produces one conclusion row. Every READ then obeys {§body-projection} and
 therefore renders its selected result complete. A stream that closes before a
 same-turn wait remains pending until this terminal READ crosses the next packet
-boundary. The EXEC row separately records the command.
+boundary. The EXEC row separately records the authored invocation.
 
 `## KILL0 (<runtime>:///<loop>/<turn>/<seq>)` cancels an active subprocess via
 the subscription registry's stored controller. A terminal stream is immutable:
@@ -2398,7 +2406,7 @@ projection and never re-fetch each match. Because the search family is in
 ({§exec-hold-until-concluded}), so the next packet contains final
 materialization verdicts and folded ambient rows for every acquired page.
 
-§search-gate Coverage protects the composition at distinct seams: HTTP unit tests pin fragmentless-body publication and explicit auxiliary selection; integration tests pin search→materialize→FIND and persistence/publication separation. Model web demos run the live composition end to end — real SearXNG, real pages; stubbed acquisition is confined to unit and integration seams and never appears in a demo. A live positive-control demo requires a materialized HTTPS body and a substantive answer from a real sanitized page. Live discovery demos remain diagnostic and may expose model judgment failures without weakening these assertions. **The search gates** are rail-family accounting — in-memory per-loop state cleaned at the same seam as strikes, restart-drop accepted (a post-restart duplicate re-fetches; the TTL makes it cheap): an IDENTICAL duplicate (same runtime + command in one loop) **strikes and serves** — status 409 (the strike rail counts the turn failure) carrying the prior ranked digest re-read live from the original exec entry, no re-fetch, no provenance prose; the per-turn CAP (`PLURNK_SERVICE_SEARCH_MAX_PER_TURN`) is flood control — 429 with a legible steer, nothing served.
+§search-gate Coverage protects the composition at distinct seams: HTTP unit tests pin fragmentless-body publication and explicit auxiliary selection; integration tests pin search→materialize→FIND and persistence/publication separation. Model web demos run the live composition end to end — real SearXNG, real pages; stubbed acquisition is confined to unit and integration seams and never appears in a demo. A live positive-control demo requires a materialized HTTPS body and a substantive answer from a real sanitized page. Live discovery demos remain diagnostic and may expose model judgment failures without weakening these assertions. **The search gates** are rail-family accounting — in-memory per-loop state cleaned at the same seam as strikes, restart-drop accepted (a post-restart duplicate re-fetches; the TTL makes it cheap): an IDENTICAL duplicate (same runtime + query in one loop) **strikes and serves** — status 409 (the strike rail counts the turn failure) carrying the prior ranked digest re-read live from the original exec entry, no re-fetch, no provenance prose; the per-turn CAP (`PLURNK_SERVICE_SEARCH_MAX_PER_TURN`) is flood control — 429 with a legible steer, nothing served.
 
 **Git is the substrate and the repository is the boundary:**
 
@@ -2904,20 +2912,20 @@ turn.** It cannot execute operations or alter the audited history.
 
 ### §tools user.tools — the capability sheet
 
-§tools-capability-sheet The executable-tools capability sheet renders under `## Registered Executable Tools`, directly after the `definition` (plurnk.md) section. The heading defines the fenced examples as the closed set of valid executor selectors, not suggestions for an open-ended `[tag]` convention. Optional non-EXEC operations render separately under `## Enabled Optional Operations`, so the executable catalogue remains truthful. Both use `plurnk` fences — one packet, one shape for operation-example sheets — assembled by `PacketBuilder.#collectTools`; a prose notice (e.g. the EXEC-disabled line) stays beside the executor fence, and empty sections are omitted.
+§tools-capability-sheet The executable-tools capability sheet renders under `## Registered Executable Tools`, directly after the `definition` (plurnk.md) section. One generated Markdown table is the closed set of valid executor selectors and states each runtime declaration's model-facing `(target)` and body roles and requiredness. A terse preface states the core-owned rule that every EXEC needs a body or target and that `<timeout,poll>` applies uniformly. Optional non-EXEC operations render separately under `## Enabled Optional Operations` in a `plurnk` fence, so the executable catalogue remains truthful. `PacketBuilder.#collectTools` assembles both; a prose notice (e.g. the EXEC-disabled line) stays beside the table, and empty sections are omitted.
 
 §tools-loop-affinity **The capability sheet describes the current loop.** The
 sheet filters registered capabilities through the same
 `SchemeRegistry.resolveForLoop(flags)` predicate the dispatcher enforces. When
-registered executors exist but EXEC is inactive, their examples are replaced by
+registered executors exist but EXEC is inactive, their table is replaced by
 an explicit disabled notice rather than silent absence. The dispatch 403 remains
 the backstop and names the non-retryable loop restriction.
 
-**Contributors: the wired executor tags.** Each available executor tag *with an example* contributes one or more concise canonical ops into the `plurnk` fence (identical shape to the resource directory, {§schemes}); its doc is materialized at `worker://plurnk/docs/<tag>.md` and discovered via the turn-0 `## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, not linked inline. A tag with no example contributes nothing; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's examples + doc. The boot `ExecutorRegistry` probes availability per tag, so the catalogue advertises runnable selectors instead of presuming a particular runtime exists.
+**Contributors: the wired executor tags.** Every available executor tag contributes exactly one row derived from its required {§executor-invocation} declaration. Its doc is materialized at `worker://plurnk/docs/<tag>.md` and discovered via the turn-0 `## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, not linked inline. `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's row and doc. The boot `ExecutorRegistry` probes availability per tag, so the table advertises runnable selectors instead of presuming a particular runtime exists.
 
 ### §schemes user.schemes — the resource directory
 
-§schemes-directory A `## Resources` section renders in the system slot **after the definition (plurnk.md — grammar + imperatives) and the tools sheet** — a terse directory of the scheme families available this workspace, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into a `plurnk` fence ({§tools} shares the shape). Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized at `worker://plurnk/docs/<scheme>.md` and discovered via the turn-0 `## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, keeping the raw packet free of doc links. Meta-owned `log` and `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls, the examples fenced like the tools sheet ({§tools}). A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc.
+§schemes-directory A `## Resources` section renders in the system slot **after the definition (plurnk.md — grammar + imperatives) and the tools sheet** — a terse directory of the scheme families available this workspace, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into a `plurnk` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized at `worker://plurnk/docs/<scheme>.md` and discovered via the turn-0 `## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, keeping the raw packet free of doc links. Meta-owned `log` and `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc.
 
 ### §inject system.inject — the operator injection
 

@@ -39,7 +39,7 @@ Body content is character-perfect, including whitespace.
 | MOVE | move from a target             | add log tags?    | source target              | source region? | destination <region>?       |
 | FOLD | hide matching log bodies       | filter/change log tags? | log item(s)                | -              | pattern?                    |
 | OPEN | reveal matching log bodies     | filter/change log tags? | log item(s)                | -              | pattern?                    |
-| EXEC | execute a registered tool      | executor?    | local path?                | timeout, poll? | input?                      |
+| EXEC | execute a registered tool      | executor?    | tool target?               | timeout, poll? | tool input?                 |
 | WORK | spawn a child worker           | branch?      | `worker://name`            | -              | prompt                      |
 | FORK | fork current worker            | branch?      | `worker://name`            | -              | prompt                      |
 | KILL | delete or terminate            | code?        | target, including log item | -              | -                           |

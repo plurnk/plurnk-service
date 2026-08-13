@@ -20,7 +20,10 @@ const CHANNEL = "body";
 export const runtimeDecl = (name: string): RuntimeDecl => ({
     name,
     glyph: "🔌",
-    example: `## EXEC0 [${name}] (tool_name)\n{"argument":"value"}`,
+    invocation: {
+        body: { role: "JSON arguments", required: false },
+        target: { role: "MCP tool", required: true, kind: "literal" },
+    },
     documentation: `# ${name}
 
 This configured MCP server is available as an executable tool family and an
@@ -91,7 +94,7 @@ export default class McpExecutor extends BaseExecutor {
 
     async run({
         runtime,
-        command,
+        body,
         target,
         signal,
         write,
@@ -122,7 +125,7 @@ export default class McpExecutor extends BaseExecutor {
             setState(CHANNEL, "errored");
             return ErrorDetail.invalidConfiguration("executor:mcp");
         }
-        const body = command.trim();
+        const input = body.trim();
         if (target === null || target.length === 0) {
             return fail(
                 "tool-required",
@@ -136,9 +139,9 @@ export default class McpExecutor extends BaseExecutor {
         }
 
         let args: Record<string, unknown> = {};
-        if (body.length > 0) {
+        if (input.length > 0) {
             try {
-                const parsed: unknown = JSON.parse(body);
+                const parsed: unknown = JSON.parse(input);
                 if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
                     throw new TypeError("tool arguments must be an object");
                 }

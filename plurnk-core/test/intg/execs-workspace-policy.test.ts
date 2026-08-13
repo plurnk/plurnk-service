@@ -78,16 +78,10 @@ test("{§operator-config-workspace-execs} one effective set filters packet teach
         const stored = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
         assert.ok(stored !== undefined);
         const tools = packetSection(JSON.parse(stored.packet) as unknown, "tools");
-        assert.doesNotMatch(tools, /## EXEC0 \[node\]/, "node disabled by workspace policy → no capability example");
-        assert.match(tools, /## EXEC0(?:\n| )/, "an enabled shell example remains advertised");
-        const exampleStarts = [...tools.matchAll(/^## EXEC0/gm)].map(({ index }) => index);
-        assert.ok(exampleStarts.length > 1, "the composed capability sheet contains multiple executable examples");
-        for (const index of exampleStarts.slice(1)) {
-            assert.equal(
-                tools.slice(index - 2, index),
-                "\n\n",
-                "every executable example starts after the same blank-line separator",
-            );
-        }
+        const selectors = [...tools.matchAll(/^\| `\[([a-z][a-z0-9+.-]*)\]` \|/gm)]
+            .map((match) => match[1]);
+        assert.ok(!selectors.includes("node"), "node disabled by workspace policy → no capability row");
+        assert.ok(selectors.includes("sh"), "an enabled shell remains advertised");
+        assert.ok(selectors.length > 1, "the composed capability table contains multiple executable tools");
     } finally { await db.close(); }
 });
