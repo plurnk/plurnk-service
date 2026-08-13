@@ -21,7 +21,7 @@ Each tag maps to a SearXNG search category (`categories=`):
 | `social`       | 💬    | social media |
 | `downloadable` | 📥    | files        |
 
-Engine, language, and time-range selection ride the query string via SearXNG's native `!bang` and `:lang` syntax (for example, body `!gh node streams`). External bangs (`!!`) are refused — they redirect rather than return results.
+Engine, language, and time-range selection ride the query string via SearXNG's native `!bang` and `:lang` syntax (for example, body `!gh node streams`). External bangs (`!!`) are refused — they redirect rather than return results. An operator-configured engine list replaces the runtime category; SearXNG otherwise unions the two selections.
 
 ## Configuration (environment)
 
@@ -31,7 +31,7 @@ Every tunable is an **optional env override** — no code default hides a magic 
 | ----------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
 | `PLURNK_EXECS_SEARCH_SEARXNG_URL`   | yes      | Search is unavailable. URL userinfo, when present, supplies redacted HTTP Basic credentials.   |
 | `PLURNK_EXECS_SEARCH_LANGUAGE`      | no       | SearXNG default.                                                                               |
-| `PLURNK_EXECS_SEARCH_ENGINES`       | no       | SearXNG enabled engines.                                                                       |
+| `PLURNK_EXECS_SEARCH_ENGINES`       | no       | Exclusive SearXNG engine selection; replaces the runtime category.                             |
 | `PLURNK_EXECS_SEARCH_LIMIT`         | no       | `.env.defaults` supplies 12 candidates.                                                        |
 | `PLURNK_EXECS_SEARCH_TIMEOUT`       | no       | Consumer cancellation is the primary deadline; this is an extra local ceiling in milliseconds. |
 | `PLURNK_EXECS_SEARCH_SAFESEARCH`    | no       | Instance default; accepted values are `0`, `1`, or `2`.                                        |

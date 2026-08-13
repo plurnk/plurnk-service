@@ -5,8 +5,10 @@ import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } f
 // claims (package.json `plurnk.runtimes[]`) maps 1:1 onto SearXNG's category
 // tabs (`categories_as_tabs` in its settings.yml). `search` is the general
 // default; `social` and `downloadable` are honest renamings of SearXNG's
-// "social media" and "files" categories. Engine / language / time selection
-// rides the query string via SearXNG's native `!bang` / `:lang` syntax.
+// "social media" and "files" categories. An operator-selected engine list
+// replaces this category routing; SearXNG unions the two parameters rather
+// than treating engines as a filter. Query-local engine / language / time
+// selection rides SearXNG's native `!bang` / `:lang` syntax.
 const CATEGORY: Readonly<Record<string, string>> = Object.freeze({
     search: "general",
     images: "images",
@@ -87,6 +89,7 @@ const configuredInteger = (
 //
 //   PLURNK_EXECS_SEARCH_SEARXNG_URL   (required)  base URL of the instance
 //   PLURNK_EXECS_SEARCH_LANGUAGE      (optional)  SearXNG's own default if unset
+//   PLURNK_EXECS_SEARCH_ENGINES       (optional)  exclusive engine selection; replaces runtime category
 //   PLURNK_EXECS_SEARCH_LIMIT         (optional)  client-side result cap; keep-all if unset
 //   PLURNK_EXECS_SEARCH_TIMEOUT       (optional)  ms; consumer cancellation is primary
 //                                                 ({§executor-cancellation}); this is an extra ceiling
@@ -235,9 +238,9 @@ export default class Search extends BaseExecutor {
         const url = new URL("/search", config.base);
         url.searchParams.set("q", query);
         url.searchParams.set("format", "json");
-        url.searchParams.set("categories", category);
         if (language) url.searchParams.set("language", language);
         if (engines) url.searchParams.set("engines", engines);
+        else url.searchParams.set("categories", category);
         if (safesearch) url.searchParams.set("safesearch", safesearch);
 
         // The consumer's signal is the primary deadline ({§executor-cancellation}); an optional search

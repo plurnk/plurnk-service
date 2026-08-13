@@ -374,16 +374,24 @@ test("tag → categories mapping (news, social→'social media', downloadable→
     assert.equal(seen.qi, "images");
 });
 
-test("ENGINES passes the operator's SearXNG engine selection through", async () => {
-    let seen: string | null = null;
+test("ENGINES exclusively selects the configured engines instead of unioning runtime categories", async () => {
+    const seen: Array<{ engines: string | null; categories: string | null }> = [];
     setFetch(async (u) => {
-        seen = new URL(String(u)).searchParams.get("engines");
+        const url = new URL(String(u));
+        seen.push({
+            engines: url.searchParams.get("engines"),
+            categories: url.searchParams.get("categories"),
+        });
         return { ok: true, status: 200, json: async () => ({ results: [] }) };
     });
     process.env.PLURNK_EXECS_SEARCH_ENGINES = "braveapi";
     await invoke("search", "q");
+    await invoke("news", "qn");
     delete process.env.PLURNK_EXECS_SEARCH_ENGINES;
-    assert.equal(seen, "braveapi");
+    assert.deepEqual(seen, [
+        { engines: "braveapi", categories: null },
+        { engines: "braveapi", categories: null },
+    ]);
 });
 
 test("non-ok response -> durable upstream HTTP Problem with retry facts", async () => {
