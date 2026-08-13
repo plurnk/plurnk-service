@@ -236,15 +236,15 @@ export default class SchemeRegistry {
 
     // {§schemes-directory} The `schemes` packet section sits below tools. Language
     // teaching covers grammar and dialects, not the installed scheme set, so the
-    // service advertises what schemes exist at packet-time. Each handler that ships a
-    // `manifest.example` contributes ONE terse line — its canonical usage — plus a
+    // service advertises what resources exist at packet-time. Each handler that ships
+    // `manifest.example` contributes concise canonical operation examples, plus a
     // pull doc when it ships `manifest.documentation` (materialized at
     // worker://plurnk/docs/<name>.md by LoopDocs, READ on demand). The verbose semantics live
     // in that pull doc, not here: terse pushes, depth pulls — exactly the exec tools
     // sheet's shape (#collectTools). Insertion order; a scheme with no example
     // (provisional, e.g. skill) is omitted. The doc's token weight rides its manifest entry.
     teach(): string {
-        const lines: string[] = [];
+        const examples: string[] = [];
         const excluded = docsExcludeSet();
         for (const [name, handler] of this.#handlers) {
             if (this.#runtimeSchemes.has(name)) continue; // {§exec} — runtime aliases route, but exec is taught once
@@ -252,10 +252,10 @@ export default class SchemeRegistry {
             const manifest = this.manifestFor(name);
             const example = manifest?.example;
             if (typeof example !== "string" || example.length === 0) continue;
-            lines.push(example); // {§packet-operation-fences} — bare op, fenced rather than bulleted
+            examples.push(example); // {§packet-operation-fences} — bare ops, fenced rather than bulleted
         }
         // Scheme examples use the shared model-facing operation fence. {§packet-operation-fences}
-        return lines.length > 0 ? `\`\`\`plurnk\n${lines.join("\n")}\n\`\`\`` : "";
+        return examples.length > 0 ? `\`\`\`plurnk\n${examples.join("\n\n")}\n\`\`\`` : "";
     }
 
     async #requiredSchemeDocs(): Promise<ReadonlyMap<string, string>> {

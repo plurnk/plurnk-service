@@ -103,7 +103,7 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
             const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "start slow job", flags: { auto: true } });
             await flush();
             // Wait for the backgrounded exec's subscription to ACTUALLY open before
-            // cancelling — a fixed sleep races the spawn (the scheme directory + materialized
+            // cancelling — a fixed sleep races the spawn (the resource directory + materialized
             // docs push it past the old 250ms guess). The cancel must land on a live,
             // registered exec so it terminates deterministically and the stream concludes
             // 499; otherwise it fires into the spawn gap and asserts on a stream that never
@@ -175,7 +175,7 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
                 prompt: "first", flags: { auto: true },
             });
             // Wait for the backgrounded exec to ACTUALLY spawn (its entry to exist) before
-            // cancelling — a fixed sleep races the spawn (the scheme directory + materialized
+            // cancelling — a fixed sleep races the spawn (the resource directory + materialized
             // docs push the spawn later than the old 250ms guess). The cancel must land on a
             // running exec, deterministically; otherwise it fires into the spawn gap and the
             // sleep leaks (the failure this replaces).

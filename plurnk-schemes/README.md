@@ -81,12 +81,12 @@ static manifest: SchemeManifest = {
   volatile: false,
   modelVisible: true,
   glyph: "🦊",                          // optional client-only display marker
-  example: "## READ0 (foo://thing/42)", // terse hot-path one-liner, rendered every turn
+  example: "## READ0 (foo://thing/42)", // concise hot-path operation example set
   documentation,                        // deep doc from docs/foo.md, pulled at worker://plurnk/docs/foo.md
 };
 ```
 
-- **`example`** — the scheme's terse **hot-path** one-liner, rendered in the live catalogue every turn (like an execs runtime's `example`). Keep it to one canonical usage line; depth goes in `documentation`. Omit → not advertised.
+- **`example`** — the scheme's concise **hot-path** operation example set, rendered in the live resource catalogue every turn (like an execs runtime's `example`). Use one or more complete operations separated by blank lines; depth goes in `documentation`. Omit → not advertised.
 - **`documentation`** — the **deep doc** (ops, channels, edge cases). The consumer materializes it as a pull-able `worker://plurnk/docs/<name>.md` entry the model READs on demand — off the hot path. Mirrors `ExecInfo.documentation`. **Convention:** keep it in a **`docs/<name>.md`** file (root) and load it at module init with the snippet above — `../` resolves the same from `src/` (test) and `dist/` (built); add `docs/**/*` to `files`. A missing file fails-hard at import.
 - **`glyph`** — optional opaque client display metadata. It is discoverable through the client capability wire and never rendered into model teaching; clients choose fallback, fonts, and theme.
 

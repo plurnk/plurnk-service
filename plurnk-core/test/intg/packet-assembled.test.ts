@@ -527,11 +527,16 @@ test("{§schemes-directory}: the assembled packet renders complete fenced scheme
 
         // The grammar (plurnk.md) must reach the model — a dropped definition section is a dead packet.
         assert.ok(packetSection(packet, "definition").length > 0, "the definition (grammar) section carries content");
-        // Every scheme-directory line is a complete authored operation.
+        // Every resource-directory heading is a complete authored operation.
         const schemesSection = packetSection(packet, "schemes");
-        assert.ok(schemesSection.startsWith("```plurnk"), "the schemes catalog is a fenced plurnk block, not a bullet list");
+        assert.equal(packet.sections.find((section) => section.name === "schemes")?.header, "Resources");
+        assert.ok(schemesSection.startsWith("```plurnk"), "the resource catalogue is a fenced plurnk block, not a bullet list");
         const schemeLines = schemesSection.split("\n").filter((line) => line.startsWith("## "));
-        assert.ok(schemeLines.length > 0, "the schemes directory lists entries");
-        for (const line of schemeLines) assert.match(line, /^## (?:FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|SEND|EXEC|WORK|FORK|KILL)0(?:$| )/, `scheme directory heading must be canonical: ${line}`);
+        assert.ok(schemeLines.length > 0, "the resource directory lists entries");
+        for (const line of schemeLines) assert.match(line, /^## (?:FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|SEND|EXEC|WORK|FORK|KILL)0(?:$| )/, `resource directory heading must be canonical: ${line}`);
+        const headingOffsets = [...schemesSection.matchAll(/^## /gmu)].map((match) => match.index);
+        for (const offset of headingOffsets.slice(1)) {
+            assert.equal(schemesSection.slice(offset - 2, offset), "\n\n", "resource operation examples are separated by one blank line");
+        }
     } finally { await db.close(); }
 });

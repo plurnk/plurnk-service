@@ -18,7 +18,7 @@ test("{§schemes-directory}: teach() pushes an example while docs() carries the 
     registry.register("docstub", new DocStub() as unknown as Parameters<typeof registry.register>[1]);
 
     const teaching = registry.teach();
-    assert.match(teaching, /^```plurnk\n/, "the Schemes catalog is a fenced plurnk block, not a bullet list");
+    assert.match(teaching, /^```plurnk\n/, "the Resources catalogue is a fenced plurnk block, not a bullet list");
     assert.match(teaching, /## READ0 \(docstub:\/\/\/x\)/, "the scheme's canonical example is its bare heading (no bullet, no redundant scheme prefix — the example self-documents)");
     assert.doesNotMatch(teaching, /\(docs:/, "pull references are discovered rather than linked in the pushed catalog");
 

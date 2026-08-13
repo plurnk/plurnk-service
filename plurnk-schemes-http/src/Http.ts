@@ -235,7 +235,15 @@ export default class Http implements SchemeHandler {
         volatile: true,        // remote content can change between fetches
         modelVisible: true,
         glyph: "🌐",
-        example: "## READ0 (https://example.com/page)",
+        example: [
+            "## READ0 (https://example.com/page)",
+            "",
+            "## EDIT0 (https://api.example.com/v1/pets/42{Content-Type: application/json})",
+            '{"name":"Mango","status":"available"}',
+            "",
+            "## SEND0 [200] (https://api.example.com/v1/pets{Content-Type: application/json})",
+            '{"name":"Mango","status":"available"}',
+        ].join("\n"),
         documentation,
         flags: {
             requiresWeb: true, // excluded under the loop's noWeb flag

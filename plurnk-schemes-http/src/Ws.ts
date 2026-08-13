@@ -11,6 +11,7 @@ import type {
     SchemeHandler,
     RepresentationPreparationRequest,
     RepresentationPreparationResult,
+    EditStatement,
     SendStatement,
     KillStatement,
     EntryData,
@@ -77,7 +78,15 @@ export default class Ws implements SchemeHandler {
         volatile: true,
         modelVisible: true,
         glyph: "🔌",
-        example: "## READ0 (wss://api.example.com/feed)",
+        example: [
+            "## READ0 (wss://api.example.com/feed)",
+            "",
+            "## EDIT0 (wss://api.example.com/feed)",
+            '{"type":"subscribe","channel":"updates"}',
+            "",
+            "## SEND0 [200] (wss://api.example.com/feed)",
+            '{"type":"message","text":"Hello"}',
+        ].join("\n"),
         documentation,
         flags: {
             requiresWeb: true,
@@ -405,7 +414,45 @@ export default class Ws implements SchemeHandler {
         if (errors.length > 0) throw new AggregateError(errors, "WebSocket shutdown failed");
     }
 
-    // SEND signal 200 targets only an open owner whose native transport is still OPEN.
+    // EDIT and SEND signal 200 target only an open owner whose native transport
+    // is still OPEN. Both operations converge on one outbound-frame path.
+    async editBatch(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<PassthroughResult> {
+        if (statements.length !== 1) {
+            return Ws.#bad(
+                409,
+                "non-atomic-edit-batch",
+                `${statements.length} EDIT statements cannot be committed atomically to one WebSocket connection.`,
+                {
+                    statements: statements.length,
+                    stage: "mutation",
+                    recovery: "Submit one whole-message EDIT.",
+                    retryable: false,
+                },
+            );
+        }
+        const statement = statements[0];
+        if (statement.target === null || statement.target.kind !== "url") {
+            return Ws.#bad(400, "bad-target", "EDIT requires a ws(s):// URL target.", {
+                stage: "target-validation",
+                recovery: "Provide a ws(s):// URL target.",
+                retryable: false,
+            });
+        }
+        if (statement.lineMarker !== null) {
+            return Ws.#bad(
+                400,
+                "line-edit-unsupported",
+                "WebSocket EDIT sends one whole message and does not accept a line range.",
+                {
+                    stage: "mutation",
+                    recovery: "Remove the line range and submit the complete message body.",
+                    retryable: false,
+                },
+            );
+        }
+        return this.#write(statement.target, statement.body ?? "", ctx, "EDIT");
+    }
+
     // SEND signal 499 is routed to the owning READ handle; scheme dispatch is a no-op.
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
@@ -417,61 +464,68 @@ export default class Ws implements SchemeHandler {
         }
         const status = statement.signal;
         if (status === 499) return { shape: "passthrough", status: 200 };
-        if (status === 200) {
-            const address = Ws.#address(statement.target);
-            if (!(address instanceof NetworkAddress)) return address;
-            const owner = this.#sockets.get(Ws.#key(ctx.workspaceId, address));
-            if (owner === undefined) {
-                return Ws.#bad(
-                    409,
-                    "no-open-socket",
-                    `No WebSocket connection is open for ${address.url}.`,
-                    {
-                        target: address.url,
-                        stage: "connection",
-                        recovery: "READ the WebSocket URL before sending a message.",
-                        retryable: false,
-                    },
-                );
-            }
-            const socket = owner.socket;
-            if (owner.state !== "open" || socket === null || socket.readyState !== SOCKET_OPEN) {
-                const connectionState = owner.state === "open" && socket?.readyState !== SOCKET_OPEN
-                    ? "settling"
-                    : owner.state;
-                if (connectionState === "settling") owner.state = "settling";
-                return Ws.#bad(
-                    409,
-                    "socket-not-open",
-                    `The WebSocket connection to ${address.url} is ${connectionState}; SEND requires open.`,
-                    {
-                        target: address.url,
-                        connectionState,
-                        stage: "connection",
-                        recovery: connectionState === "settling"
-                            ? "Wait for the current READ to settle, then READ the WebSocket URL again."
-                            : "Wait for the connection's active stream event before sending.",
-                        retryable: connectionState !== "settling",
-                    },
-                );
-            }
-            try {
-                socket.send(statement.body?.raw ?? "");
-                return { shape: "passthrough", status: 200 };
-            } catch (err) {
-                console.error("WebSocket send failed", { target: address.url, err });
-                return Ws.#bad(502, "send-failed", "The WebSocket message could not be sent.", {
-                    target: address.url,
-                    stage: "transfer",
-                    retryable: false,
-                });
-            }
-        }
+        if (status === 200) return this.#write(statement.target, statement.body?.raw ?? "", ctx, "SEND");
         return Ws.#bad(501, "send-status-unsupported", `The WebSocket scheme does not interpret SEND status ${status}.`, {
             requestedStatus: status,
             stage: "dispatch",
             retryable: false,
         });
+    }
+
+    async #write(
+        target: UrlPath,
+        body: string,
+        ctx: SchemeCtx,
+        operation: "EDIT" | "SEND",
+    ): Promise<PassthroughResult> {
+        const address = Ws.#address(target);
+        if (!(address instanceof NetworkAddress)) return address;
+        const owner = this.#sockets.get(Ws.#key(ctx.workspaceId, address));
+        if (owner === undefined) {
+            return Ws.#bad(
+                409,
+                "no-open-socket",
+                `No WebSocket connection is open for ${address.url}.`,
+                {
+                    target: address.url,
+                    stage: "connection",
+                    recovery: "READ the WebSocket URL before sending a message.",
+                    retryable: false,
+                },
+            );
+        }
+        const socket = owner.socket;
+        if (owner.state !== "open" || socket === null || socket.readyState !== SOCKET_OPEN) {
+            const connectionState = owner.state === "open" && socket?.readyState !== SOCKET_OPEN
+                ? "settling"
+                : owner.state;
+            if (connectionState === "settling") owner.state = "settling";
+            return Ws.#bad(
+                409,
+                "socket-not-open",
+                `The WebSocket connection to ${address.url} is ${connectionState}; ${operation} requires open.`,
+                {
+                    target: address.url,
+                    connectionState,
+                    stage: "connection",
+                    recovery: connectionState === "settling"
+                        ? "Wait for the current READ to settle, then READ the WebSocket URL again."
+                        : "Wait for the connection's active stream event before sending.",
+                    retryable: connectionState !== "settling",
+                },
+            );
+        }
+        try {
+            socket.send(body);
+            return { shape: "passthrough", status: 200 };
+        } catch (err) {
+            console.error("WebSocket send failed", { operation, target: address.url, err });
+            return Ws.#bad(502, "send-failed", "The WebSocket message could not be sent.", {
+                target: address.url,
+                stage: "transfer",
+                retryable: false,
+            });
+        }
     }
 
     // KILL closes or cancels the one claimed owner. Its terminal path settles

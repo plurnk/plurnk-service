@@ -38,7 +38,7 @@ export interface SchemeManifest {
     readonly foldedByDefault?: boolean;
     readonly flags?: SchemeFlagAffinity;
     // Self-doc: terse pushes, depth pulls ({§manifest-self-doc}).
-    // example = terse hot-path usage line (rendered every turn); documentation =
+    // example = concise hot-path operation example set; documentation =
     // deep doc the consumer materializes as a pull-able worker://plurnk/docs/<name>.md.
     // Field-by-field contract: {§manifest-self-doc}.
     readonly example?: string;

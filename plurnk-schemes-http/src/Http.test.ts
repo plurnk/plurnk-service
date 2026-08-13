@@ -293,12 +293,11 @@ test("manifest: name http, default channel body, requiresWeb, network-volatile",
     assert.equal(Http.manifest.volatile, true);
     assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header", "html"]);
     // Self-doc for the model's packet listing (deep docs ride worker://plurnk/docs/http.md).
-    // Guard the one complete bodyless operation heading without taking a direct
-    // contracts dependency (siblings pin only @plurnk/plurnk-schemes).
-    const example = Http.manifest.example ?? "";
-    const op = example.match(/^## ([A-Z]+)0 \(.+\)$/);
-    assert.ok(op, `example must be one bodyless operation heading, got: ${example}`);
-    assert.equal(op[1], "READ");
+    const examples = (Http.manifest.example ?? "").split("\n\n");
+    assert.equal(examples.length, 3, "HTTP teaches one retrieval and both mutation choices");
+    assert.match(examples[0] ?? "", /^## READ0 \(https:\/\/[^)]+\)$/u);
+    assert.match(examples[1] ?? "", /^## EDIT0 \(https:\/\/[^)]+\{Content-Type: application\/json\}\)\n\{.+\}$/u);
+    assert.match(examples[2] ?? "", /^## SEND0 \[200\] \(https:\/\/[^)]+\{Content-Type: application\/json\}\)\n\{.+\}$/u);
 });
 
 test("manifest: documentation is loaded verbatim from docs/http.md", async () => {

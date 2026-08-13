@@ -12,6 +12,7 @@ import {
     type SchemeCtx,
     type UrlPath,
     type ReadStatement,
+    type EditStatement,
     type SendStatement,
     type KillStatement,
     type EntryCaps,
@@ -197,6 +198,11 @@ const wss = (raw: string, pathname: string): UrlPath => {
     };
 };
 const readStmt = (target: UrlPath): ReadStatement => ({ op: "READ", suffix: "READ", signal: null, target, lineMarker: null, body: null, position: { line: 0, column: 0 } });
+const editStmt = (
+    target: UrlPath,
+    body: string | null,
+    lineMarker: EditStatement["lineMarker"] = null,
+): EditStatement => ({ op: "EDIT", suffix: "EDIT", signal: null, target, lineMarker, body, position: { line: 0, column: 0 } });
 const prepareRepresentation = (ws: Ws, statement: ReadStatement, ctx: SchemeCtx) => {
     const target = statement.target;
     if (target === null || target.kind !== "url") throw new TypeError("WebSocket READ requires a URL target");
@@ -217,9 +223,16 @@ test("manifest: wss scheme - messages channel, requiresWeb, network-volatile", (
     assert.deepEqual(Object.keys(Ws.manifest.channels), ["messages"]);
     assert.equal(Ws.manifest.flags?.requiresWeb, true);
     assert.equal(Ws.manifest.volatile, true);
-    const op = (Ws.manifest.example ?? "").match(/^## ([A-Z]+)0 \(.+\)$/);
-    assert.ok(op, `example must be one bodyless operation heading, got: ${Ws.manifest.example}`);
-    assert.equal(op[1], "READ");
+    const examples = (Ws.manifest.example ?? "").split("\n\n");
+    assert.equal(examples.length, 3, "WebSocket teaches connection acquisition and both outbound choices");
+    const read = examples[0]?.match(/^## READ0 \((wss:\/\/[^)]+)\)$/u);
+    const edit = examples[1]?.match(/^## EDIT0 \((wss:\/\/[^)]+)\)\n.+$/u);
+    const send = examples[2]?.match(/^## SEND0 \[200\] \((wss:\/\/[^)]+)\)\n.+$/u);
+    assert.ok(read);
+    assert.ok(edit);
+    assert.ok(send);
+    assert.equal(edit[1], read[1], "EDIT addresses the connection acquired by READ");
+    assert.equal(send[1], read[1], "SEND addresses the connection acquired by READ");
 });
 
 test("manifest: documentation is loaded verbatim from docs/wss.md", async () => {
@@ -698,12 +711,54 @@ test("WebSocket userinfo is rejected before connection", async () => {
     assert.equal(connected, false);
 });
 
-test("SEND[200]: no claimed socket → 409", async () => {
+test("EDIT and SEND[200]: no claimed socket → 409", async () => {
     const { ctx } = makeCtx();
-    const r = await new Ws(() => fakeSocket()).send(sendStmt(200, wss(PUB, "/feed"), "x"), ctx);
-    assert.equal(r.status, 409);
-    assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/wss/no-open-socket");
-    assert.equal(r.problem?.recovery, "READ the WebSocket URL before sending a message.");
+    const ws = new Ws(() => fakeSocket());
+    const target = wss(PUB, "/feed");
+    const send = await ws.send(sendStmt(200, target, "x"), ctx);
+    const edit = await ws.editBatch([editStmt(target, "x")], ctx);
+    for (const result of [edit, send]) {
+        assert.equal(result.status, 409);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/wss/no-open-socket");
+        assert.equal(result.problem?.recovery, "READ the WebSocket URL before sending a message.");
+    }
+});
+
+test("EDIT and SEND[200]: both send one whole text frame through the open owner", async () => {
+    const sock = fakeSocket();
+    const ws = new Ws(() => sock);
+    const { ctx, awaitClosed } = makeCtx();
+    const target = wss(PUB, "/feed");
+    const read = prepareRepresentation(ws, readStmt(target), ctx);
+    await flush();
+    sock.emit("open");
+    await flush();
+
+    assert.equal((await ws.editBatch([editStmt(target, "edit frame")], ctx)).status, 200);
+    assert.equal((await ws.send(sendStmt(200, target, "send frame"), ctx)).status, 200);
+    assert.deepEqual(sock.sent, ["edit frame", "send frame"]);
+
+    sock.close(1000);
+    await read;
+    await awaitClosed();
+});
+
+test("EDIT: ranges and multi-edit pseudo-atomicity are rejected", async () => {
+    const ws = new Ws(() => fakeSocket());
+    const { ctx } = makeCtx();
+    const target = wss(PUB, "/feed");
+    const ranged = await ws.editBatch([
+        editStmt(target, "partial", { marks: [1] } as NonNullable<EditStatement["lineMarker"]>),
+    ], ctx);
+    assert.equal(ranged.status, 400);
+    assert.equal(ranged.problem?.type, "https://problems.plurnk.dev/scheme/wss/line-edit-unsupported");
+
+    const multiple = await ws.editBatch([
+        editStmt(target, "one"),
+        editStmt(target, "two"),
+    ], ctx);
+    assert.equal(multiple.status, 409);
+    assert.equal(multiple.problem?.type, "https://problems.plurnk.dev/scheme/wss/non-atomic-edit-batch");
 });
 
 test("SEND[200]: a socket send throw becomes a structured transport failure", async () => {

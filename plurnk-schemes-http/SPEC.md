@@ -456,7 +456,7 @@ stateDiagram-v2
     Claimed --> Idle: setup or construction failure
     Connecting --> Open: native open; messages active; READ 102
     Connecting --> Settling: pre-open close/error, KILL, cancel, activation failure, or shutdown
-    Open --> Open: ordered inbound frame or SEND 200
+    Open --> Open: ordered inbound frame, EDIT, or SEND 200
     Open --> Settling: closing state, close/error, KILL, cancel, binary frame, persistence failure, or shutdown
     Settling --> Idle: await retained work, close subscription, release claim
 ```
@@ -465,6 +465,7 @@ stateDiagram-v2
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `## READ0 (ws(s)://…)`            | Claim, seed/subscribe, construct `CONNECTING`, then return `102` after native `open` plus durable activation     |
 | Concurrent duplicate READ         | `409` in `claimed`, `connecting`, `open`, or `settling`; cleanup releases the only claim                         |
+| `## EDIT0 (ws(s)://…)`             | Send one whole text frame only for an open owner; line ranges and multi-statement batches are rejected           |
 | `## SEND0 [200] (ws(s)://…)`      | Send only for owner `open` plus native `readyState=OPEN`; absent or non-open owner is `409`; send throw is `502` |
 | `## SEND0 [499] (ws(s)://…)`      | Engine-routed cancellation closes the owning READ; scheme dispatch returns `200`                                 |
 | `## KILL0 (ws(s)://…)`            | Close/cancel the claimed owner; no owner is `404`; an attempted close throw is `502`                             |
@@ -474,6 +475,12 @@ stateDiagram-v2
 | Socket closes before `open`       | Close subscription with `502 connection-failed`; the pending READ returns that exact failure                     |
 | Socket closes after `open`        | Drain the accepted frame prefix; initial READ remains `102`; settle with `200` unless a drained write fails       |
 | Failure after `open`              | Initial READ remains `102`; persist the exact terminal failure and wake through subscription settlement          |
+
+Markerless single-statement EDIT and SEND with signal `200` converge on one
+outbound text-frame path and have the same connection and transport outcomes.
+Dispatcher phase order ({§op-mode-phases}) runs EDIT before READ and SEND after
+READ, so an EDIT requires an owner opened before the turn while SEND can follow
+the opening READ in the same turn.
 
 The in-instance registry is keyed by workspace, addressed protocol, and
 canonical network pathname. The claim remains registered through terminal

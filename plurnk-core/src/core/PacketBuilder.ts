@@ -260,7 +260,7 @@ export default class PacketBuilder {
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         // plurnk.md (grammar/dialects) ONLY — the definition is the hot-path grammar.
-        // The scheme catalogue is its own `schemes` section below tools ({§schemes-directory}),
+        // The resource catalogue is its own `schemes` section below tools ({§schemes-directory}),
         // NOT appended here: the language teaching is scheme-agnostic, so the service advertises
         // the installed scheme set at packet-time via SchemeRegistry.teach().
         const system_definition = compactDefinitionTables(byRole("system"));
@@ -324,7 +324,7 @@ export default class PacketBuilder {
             ...(tools.optionalOperations.length > 0
                 ? [{ name: "optional-operations", slot: "system" as const, header: "Enabled Optional Operations", content: tools.optionalOperations }]
                 : []),
-            { name: "schemes", slot: "system", header: "Schemes", content: this.#schemes.teach() },
+            { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach() },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // policy: the client's privileged rules — ~/.plurnk/AGENTS.md (system) then <root>/AGENTS.md (project) — below grammar/tools/schemes, above budget-the-law. AGENTS is POLICY here, never a curatable READable entry. Empty content ⇒ section omitted.
             { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
@@ -408,8 +408,8 @@ export default class PacketBuilder {
                     if (excluded.has(tag)) continue; // {§tools-capability-sheet} — exclude drops the example and doc
                     if (!workspaceEnabled(tag)) continue; // {§operator-config-workspace-execs}
                     const entry = executors.entry(tag);
-                    // {§tools-capability-sheet} — the example is the bare op fenced below; the fuller doc
-                    // materializes at worker://plurnk/docs/<tag>.md. No example → no line.
+                    // {§tools-capability-sheet} — the example set is fenced below; the fuller doc
+                    // materializes at worker://plurnk/docs/<tag>.md. No examples → no catalogue entry.
                     if (entry?.example) executorOps.push(entry.example);
                 }
             }
