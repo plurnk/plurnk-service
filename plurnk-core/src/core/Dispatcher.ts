@@ -2672,33 +2672,36 @@ export default class Dispatcher {
         if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(workerId) === true) pending.push("surviving streams");
         const liveChild = await this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId });
         if (liveChild !== undefined) pending.push("surviving workers");
-        const observations = await this.#pendingObservations(workerId, turnId);
-        if (observations.retrievals) pending.push("this turn's retrieval results (they land in the NEXT packet's Log)");
-        if (observations.streamTerminations) {
+        const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
+        if (boundaries.retrievals) pending.push("this turn's retrieval results (they land in the NEXT packet's Log)");
+        if (boundaries.streamTerminations) {
             pending.push("completed stream results that land in the NEXT packet's Log");
         }
-        if (observations.childTerminations) pending.push("worker results that arrived during this turn (they land NEXT turn)");
+        if (boundaries.childTerminations) pending.push("worker results that arrived during this turn (they land NEXT turn)");
         return pending;
     }
 
-    // Results cross an observation boundary only when they have appeared in a
-    // packet. Completion alone is not delivery. Keep the three next-packet
-    // producers in one classifier so SEND signal 200's discard gate and signal 202's
-    // empty-join decision cannot disagree about what remains unseen.
-    async #pendingObservations(workerId: number, turnId: number): Promise<{
+    // Results cross an observation boundary only when they have appeared in a packet;
+    // successful FOLD effects likewise become useful through the curated next packet.
+    // Keep every next-packet boundary in one classifier while letting the callers apply
+    // their distinct contracts: retrievals block explicit completion, whereas FOLD only
+    // prevents an empty wait from being inferred as completion.
+    async #nextPacketBoundaries(workerId: number, turnId: number): Promise<{
         retrievals: boolean;
+        folds: boolean;
         streamTerminations: boolean;
         childTerminations: boolean;
     }> {
-        const [retrievals, streamTermination, childTermination] = await Promise.all([
-            this.#db.engine_turn_retrievals.all<{ id: number }>({ turn_id: turnId }),
+        const [turnBoundaries, streamTermination, childTermination] = await Promise.all([
+            this.#db.engine_turn_packet_boundaries.all<{ id: number; op: string }>({ turn_id: turnId }),
             this.#db.engine_worker_has_undelivered_stream_term
                 .get<{ pending: number }>({ worker_id: workerId }),
             this.#db.engine_worker_has_undelivered_child_term
                 .get<{ pending: number }>({ worker_id: workerId }),
         ]);
         return {
-            retrievals: retrievals.length > 0,
+            retrievals: turnBoundaries.some(({ op }) => op !== "FOLD"),
+            folds: turnBoundaries.some(({ op }) => op === "FOLD"),
             streamTerminations: streamTermination !== undefined,
             childTerminations: childTermination !== undefined,
         };
@@ -2808,8 +2811,8 @@ export default class Dispatcher {
             // all complete-but-unobserved. Their wake edge may already have
             // fired, so do not park; continue directly to the packet that
             // materializes them.
-            const observations = await this.#pendingObservations(workerId, turnId);
-            if (observations.retrievals || observations.streamTerminations || observations.childTerminations) {
+            const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
+            if (boundaries.retrievals || boundaries.folds || boundaries.streamTerminations || boundaries.childTerminations) {
                 return { status: 102 };
             }
             const failCount = await this.#unobservedFailureCount(turnId);

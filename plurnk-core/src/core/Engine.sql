@@ -575,12 +575,15 @@ SELECT l.sequence AS loop_seq,
   JOIN loops l ON l.id = le.loop_id
  WHERE le.id = $id;
 
--- PREP: engine_turn_retrievals
--- {§send-premature-terminate} — the pending set's retrieval leg: THIS turn's READ/FIND/OPEN rows,
--- whose results the model cannot have seen (they fold back next packet). A [200] over them is
--- discarding answers it asked for.
-SELECT id FROM log_entries
-WHERE turn_id = $turn_id AND origin = 'model' AND op IN ('READ', 'FIND', 'OPEN');
+-- PREP: engine_turn_packet_boundaries
+-- {§send-premature-terminate}/{§wait-obligation-matrix} — operations whose useful effect crosses
+-- into the next packet: READ/FIND/OPEN results, plus successful FOLD context curation. Retrievals
+-- block an explicit [200]; FOLD blocks only the empty-[202] inference because explicit final
+-- housekeeping remains valid.
+SELECT id, op FROM log_entries
+WHERE turn_id = $turn_id
+  AND origin = 'model'
+  AND (op IN ('READ', 'FIND', 'OPEN') OR (op = 'FOLD' AND status_rx < 400));
 
 -- PREP: engine_worker_has_undelivered_stream_term
 -- A stream may finish between its EXEC and a same-turn SEND. It is then no longer

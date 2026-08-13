@@ -200,7 +200,7 @@ export class SqlRiteSync {
 	engine_insert_log_entry: SqlRiteSyncPreparedStatements;
 	engine_resolve_log_entry: SqlRiteSyncPreparedStatements;
 	engine_log_entry_coordinate: SqlRiteSyncPreparedStatements;
-	engine_turn_retrievals: SqlRiteSyncPreparedStatements;
+	engine_turn_packet_boundaries: SqlRiteSyncPreparedStatements;
 	engine_worker_has_undelivered_stream_term: SqlRiteSyncPreparedStatements;
 	engine_turn_failures: SqlRiteSyncPreparedStatements;
 	engine_reconcile_turn_status: SqlRiteSyncPreparedStatements;
@@ -660,7 +660,7 @@ export default class SqlRite {
 	engine_insert_log_entry: SqlRitePreparedStatements;
 	engine_resolve_log_entry: SqlRitePreparedStatements;
 	engine_log_entry_coordinate: SqlRitePreparedStatements;
-	engine_turn_retrievals: SqlRitePreparedStatements;
+	engine_turn_packet_boundaries: SqlRitePreparedStatements;
 	engine_worker_has_undelivered_stream_term: SqlRitePreparedStatements;
 	engine_turn_failures: SqlRitePreparedStatements;
 	engine_reconcile_turn_status: SqlRitePreparedStatements;

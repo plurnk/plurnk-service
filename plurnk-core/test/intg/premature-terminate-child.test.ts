@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
-import { execStmt, sendStmt, readStmt } from "./_dsl.ts";
+import { execStmt, foldStmt, sendStmt, readStmt, urlPath } from "./_dsl.ts";
 
 const knownPath = (pathname: string): ParsedPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -169,6 +169,72 @@ test("SEND[202] cannot complete an empty join over a same-turn failed operation"
         const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
         assert.ok((rows.find((row) => row.op === "EXEC")?.status_rx ?? 0) >= 400, "the original operation failure is preserved");
         assert.equal(rows.find((row) => row.op === "SEND")?.status_rx, 409, "the empty-join completion is explicitly refused");
+    } finally { await db.close(); }
+});
+
+test("a successful same-turn FOLD continues an empty SEND[202] without blocking explicit SEND[200] housekeeping", async () => {
+    const db = await openMigrated();
+    try {
+        const run = async (status: 200 | 202) => {
+            const workspaceId = await insertWorkspace(db, `fold-disposition-${status}-${crypto.randomUUID()}`);
+            const workerId = await insertWorker(db, workspaceId);
+            const loopId = await insertLoop(db, workerId, 1, "curate");
+            await seedEntryWithChannel(db, {
+                workspaceId,
+                scheme: "worker",
+                pathname: "/notes.md",
+                channel: "body",
+                content: "context to curate",
+                mimetype: "text/markdown",
+                state: "static",
+            });
+            const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+            const primed = await engine.runTurn({
+                provider: new Mock({
+                    contextWindow: 100000,
+                    responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/notes.md")), sendStmt(102)] } }],
+                }),
+                workspaceId,
+                workerId,
+                loopId,
+                messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+            });
+            const rows = await db.test_log_sequencees_by_turn.all<{ sequence: number; op: string }>({ turn_id: primed.turnId });
+            const read = rows.find((row) => row.op === "READ");
+            assert.ok(read, "the prior READ provides one open log row to curate");
+            const result = await engine.runTurn({
+                provider: new Mock({
+                    contextWindow: 100000,
+                    responses: [{
+                        assistant: {
+                            content: "",
+                            reasoning: null,
+                            ops: [
+                                foldStmt(urlPath("log", `/1/1/${read.sequence}/READ`)),
+                                sendStmt(status, null, status === 202 ? "continue after curation" : "curation complete"),
+                            ],
+                        },
+                    }],
+                }),
+                workspaceId,
+                workerId,
+                loopId,
+                messages: [{ role: "system", content: "SD" }, { role: "user", content: "continue" }],
+            });
+            return { loopId, result };
+        };
+
+        const continued = await run(202);
+        assert.equal(continued.result.status, 102, "FOLD makes the next packet meaningful, so an empty wait continues");
+        assert.equal(
+            (await db.test_get_loop_status.get<{ status: number }>({ id: continued.loopId }))?.status,
+            102,
+            "the FOLDed loop remains available for its next reasoning turn",
+        );
+        assert.equal(continued.result.steerStruck, false, "the normalized continuation is not a model error");
+
+        const concluded = await run(200);
+        assert.equal(concluded.result.status, 200, "an explicit done claim may include final log housekeeping");
     } finally { await db.close(); }
 });
 
