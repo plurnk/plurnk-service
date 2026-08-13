@@ -34,7 +34,7 @@
             {
                 "name": "sqlite",
                 "glyph": "🗃",
-                "example": "## EXEC0 [sqlite] (./app.db)\nSELECT count(*) FROM users\n\n## EXEC0 [sqlite]\nWITH t(item,qty,price) AS (VALUES ('a',3,2),('b',1,5)) SELECT sum(qty*price) AS total, sum(qty*price)*1.0/sum(qty) AS avg_price FROM t"
+                "example": "## EXEC0 [sqlite] (./app.db)\nSELECT count(*) FROM users;\n\n## EXEC0 [sqlite]\nWITH t(item,qty,price) AS (VALUES ('a',3,2),('b',1,5)) SELECT sum(qty*price) AS total, sum(qty*price)*1.0/sum(qty) AS avg_price FROM t;"
             }
         ]
     },

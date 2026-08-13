@@ -53,6 +53,9 @@ test("manifest declares the sqlite runtime tag", async () => {
     assert.equal(examples.length, 2);
     assert.match(examples[0], /^## EXEC0 \[sqlite\] \(\.\/app\.db\)\n.+$/);
     assert.match(examples[1], /^## EXEC0 \[sqlite\]\n.*\*1\.0.*$/);
+    for (const example of examples) {
+        assert.match(example, /;$/, "canonical SQL examples use the conventional statement terminator");
+    }
 });
 
 test("declares a results channel (application/json)", () => {
