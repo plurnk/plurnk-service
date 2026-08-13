@@ -19,6 +19,7 @@ test("MODE schedules mutations, observations, actions, and terminal SEND in stab
         "## EXEC0\nnode verify.mjs",
         "## EDIT0 (notes.md) <2>\nnew",
         "## FIND0 (src/**)",
+        "## BARE0\nclassify this independently",
         "## WORK0 (worker://reviewer)\nreview",
         "## KILL0 (node:///3/1/2)",
         "## SEND0 [200]\ndone",
@@ -26,7 +27,7 @@ test("MODE schedules mutations, observations, actions, and terminal SEND in stab
 
     assert.deepEqual(
         scheduleTurnOps(authored).map(({ op }) => op),
-        ["PLAN", "EDIT", "KILL", "READ", "FIND", "EXEC", "WORK", "SEND"],
+        ["PLAN", "EDIT", "KILL", "READ", "FIND", "BARE", "EXEC", "WORK", "SEND"],
     );
 });
 

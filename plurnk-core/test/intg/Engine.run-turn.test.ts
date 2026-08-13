@@ -791,7 +791,7 @@ test("Errors pointers use the canonical projected operation of a materialization
         const turnId = await insertTurn(db, loopId, 1, 102);
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "plurnk", source: "test", op: "EDIT", suffix: "", signal: null,
+            origin: "plurnk", source: "test", model_call_id: null, op: "EDIT", suffix: "", signal: null,
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/rejected", query: null, fragment: null, lineMarker: null,
             tx: "{}", mimetype_tx: "application/json",

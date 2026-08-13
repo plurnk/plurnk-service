@@ -1,4 +1,5 @@
 import type {
+    BareStatement,
     CopyStatement,
     EditStatement,
     ForkStatement,
@@ -91,6 +92,7 @@ const assertClassifyingSignal = (statement: PlurnkStatement): void => {
         || statement.op === "EDIT"
         || statement.op === "COPY"
         || statement.op === "MOVE"
+        || statement.op === "BARE"
     ) {
         TagSignal.applied(statement.signal);
     }
@@ -851,6 +853,7 @@ export default class Dispatcher {
             sequence,
             origin,
             curationPlan,
+            modelCallId: null,
         });
         // {§search-gate} — register successful searches AFTER #writeLog stamps the runtime
         // entry's coordinate onto result.attrs.pathname (the gate's dedup serves from it).
@@ -1608,14 +1611,16 @@ export default class Dispatcher {
         return this.#deleteEntry(schemeName, entryPathnameOf(path), ctx);
     }
 
-    async #writeActionlessEntry({ verbatim, workerId, loopId, turnId, sequence, origin, kind, folded, attrs = {} }: {
+    async #writeActionlessEntry({ verbatim, workerId, loopId, turnId, sequence, origin, kind, folded, modelCallId = null, attrs = {} }: {
         verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
         origin: "model" | "plurnk"; kind: "initialization" | "model_emission"; folded: boolean;
+        modelCallId?: number | null;
         attrs?: Readonly<Record<string, unknown>>;
     }): Promise<number> {
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
-            origin, source: null, op: null, suffix: "", signal: null,
+            origin, source: null, model_call_id: modelCallId,
+            op: null, suffix: "", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/vnd.plurnk",
@@ -1645,8 +1650,9 @@ export default class Dispatcher {
     // emissions are folded; the bounded invalid-emission lifeline is the one
     // born-open rejected item under {§invalid-emission-attempts} and labels
     // that admission fact structurally.
-    async writeModelEntry({ verbatim, workerId, loopId, turnId, sequence, folded, admission = "accepted", reasoningItems }: {
+    async writeModelEntry({ verbatim, workerId, loopId, turnId, sequence, folded, modelCallId, admission = "accepted", reasoningItems }: {
         verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number; folded: boolean;
+        modelCallId: number;
         admission?: "accepted" | "rejected";
         // {§encrypted-reasoning-carrier} — relay provider-normalized encrypted
         // reasoning items as opaque mirror-row evidence.
@@ -1654,7 +1660,7 @@ export default class Dispatcher {
     }): Promise<number> {
         return this.#writeActionlessEntry({
             verbatim, workerId, loopId, turnId, sequence,
-            origin: "model", kind: "model_emission", folded,
+            origin: "model", kind: "model_emission", folded, modelCallId,
             attrs: {
                 ...(admission === "rejected" ? { admission } : {}),
                 ...(reasoningItems !== undefined && reasoningItems.length > 0 ? { reasoning: reasoningItems } : {}),
@@ -1668,6 +1674,25 @@ export default class Dispatcher {
     #handlePlan(statement: PlurnkStatement): DispatchResult {
         if (statement.op !== "PLAN") throw new Error("unreachable");
         return { status: 200 };
+    }
+
+    // {§bare-inference} Provider work is prepared concurrently by Engine; the
+    // dispatcher owns only the ordinary operation-result commit and notification.
+    async recordBareResult(
+        context: Omit<DispatchContext, "statement"> & { statement: BareStatement },
+        result: DispatchResult,
+        modelCallId: number,
+    ): Promise<DispatchResult> {
+        assertClassifyingSignal(context.statement);
+        Results.assert(result);
+        const logEntryId = await this.#writeLog({
+            ...context,
+            result,
+            curationPlan: null,
+            modelCallId,
+        });
+        context.onDispatch?.(logEntryId);
+        return result;
     }
 
     static #isDispatchResult(
@@ -2826,7 +2851,7 @@ export default class Dispatcher {
     // {§send-premature-terminate} — the unified PENDING SET, judged at the terminal's OWN dispatch
     // (post-batch: the emission's earlier ops already executed, so a same-turn KILL+[200] repairs in
     // ONE turn, and a same-turn WORK+[200] is caught — the spawn is live by the time the SEND lands).
-    // pending = open streams ∪ live children ∪ THIS turn's retrievals (READ/FIND/OPEN, results unseen
+    // pending = open streams ∪ live children ∪ THIS turn's retrievals (READ/FIND/OPEN/BARE, results unseen
     // until next packet). Failed operations are the separate next-packet leg shared by explicit
     // completion and empty-join completion. Nothing pending may be silently discarded; 499 discards
     // BY STATED INTENT and is never gated.
@@ -3382,11 +3407,12 @@ export default class Dispatcher {
     }
 
     async #writeLog({
-        statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan,
+        statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan, modelCallId,
     }: {
         statement: PlurnkStatement; result: DispatchResult;
         workspaceId: number; workerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
         curationPlan: LogCurationPlan | null;
+        modelCallId: number | null;
     }): Promise<number> {
         const durableStatement = DurableStatement.project(statement);
         const target = this.#extractTarget(durableStatement.target);
@@ -3461,6 +3487,7 @@ export default class Dispatcher {
             sequence: sequence,
             origin,
             source: null,  // dispatch entries are self-authored; {§env-delta} deltas set this
+            model_call_id: modelCallId,
             op: durableStatement.op,
             suffix: durableStatement.suffix,
             signal: this.#signalToJson(durableStatement.signal),

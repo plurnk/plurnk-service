@@ -13,9 +13,18 @@ const recordRequest = async (
     db: Awaited<ReturnType<typeof openMigrated>>,
     turnId: number,
     input: number,
+    options: { kind?: "emission" | "bare"; sequence?: number } = {},
 ): Promise<void> => {
-    const attempt = await db.test_context_insert_attempt.get<{ id: number }>({ turn_id: turnId });
-    await db.test_context_insert_request.run({ turn_attempt_id: attempt!.id, input });
+    const kind = options.kind ?? "emission";
+    const modelCall = await db.test_context_insert_model_call.get<{ id: number }>({
+        turn_id: turnId,
+        sequence: options.sequence ?? 1,
+        kind,
+    });
+    if (kind === "emission") {
+        await db.test_context_insert_attempt.run({ model_call_id: modelCall!.id });
+    }
+    await db.test_context_insert_request.run({ model_call_id: modelCall!.id, input });
 };
 
 test("loopUsage.contextTokens is the latest turn's prompt, not the summed total", async () => {
@@ -41,6 +50,27 @@ test("loopUsage.contextTokens is the latest turn's prompt, not the summed total"
         const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);
         assert.equal(usage.accounting.usage?.inputTokens, 350, "inputTokens sums across physical requests");
         assert.equal(usage.contextTokens, 250, "contextTokens is the LAST turn's prompt (occupancy)");
+    } finally { await db.close(); }
+});
+
+test("loopUsage.contextTokens ignores later BARE calls while accounting remains cardinal", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `ctx-bare-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        const turn = await db.test_context_insert_turn.get<{ id: number }>({
+            loop_id: loopId,
+            sequence: 1,
+            prompt_budget: 8192,
+        });
+        await recordRequest(db, turn!.id, 250);
+        await recordRequest(db, turn!.id, 1, { kind: "bare", sequence: 2 });
+
+        const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);
+        assert.equal(usage.accounting.requests.length, 2);
+        assert.equal(usage.accounting.usage?.inputTokens, 251);
+        assert.equal(usage.contextTokens, 250, "the gauge describes the emission packet, not the later isolated prompt");
     } finally { await db.close(); }
 });
 

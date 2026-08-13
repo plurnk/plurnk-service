@@ -134,6 +134,7 @@ export class SqlRiteSync {
 	digest_loops: SqlRiteSyncPreparedStatements;
 	digest_turns: SqlRiteSyncPreparedStatements;
 	digest_turn_attempts: SqlRiteSyncPreparedStatements;
+	digest_model_calls: SqlRiteSyncPreparedStatements;
 	digest_provider_requests: SqlRiteSyncPreparedStatements;
 	digest_log_entries: SqlRiteSyncPreparedStatements;
 	digest_worker_rollups: SqlRiteSyncPreparedStatements;
@@ -172,10 +173,11 @@ export class SqlRiteSync {
 	engine_loop_turn_seqs: SqlRiteSyncPreparedStatements;
 	engine_open_turn: SqlRiteSyncPreparedStatements;
 	engine_close_turn: SqlRiteSyncPreparedStatements;
+	engine_open_model_call: SqlRiteSyncPreparedStatements;
+	engine_observe_model_call_response: SqlRiteSyncPreparedStatements;
+	engine_fail_model_call: SqlRiteSyncPreparedStatements;
 	engine_open_turn_attempt: SqlRiteSyncPreparedStatements;
-	engine_observe_turn_attempt_response: SqlRiteSyncPreparedStatements;
 	engine_classify_turn_attempt_response: SqlRiteSyncPreparedStatements;
-	engine_fail_turn_attempt: SqlRiteSyncPreparedStatements;
 	engine_open_provider_request: SqlRiteSyncPreparedStatements;
 	engine_settle_provider_request: SqlRiteSyncPreparedStatements;
 	engine_list_workspace_entries: SqlRiteSyncPreparedStatements;
@@ -235,7 +237,7 @@ export class SqlRiteSync {
 	journal_turn_insert: SqlRiteSyncPreparedStatements;
 	recovery_fail_active_loops: SqlRiteSyncPreparedStatements;
 	recovery_settle_open_provider_requests: SqlRiteSyncPreparedStatements;
-	recovery_fail_open_provider_attempts: SqlRiteSyncPreparedStatements;
+	recovery_fail_open_model_calls: SqlRiteSyncPreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRiteSyncPreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRiteSyncPreparedStatements;
 	recovery_fail_orphan_subscriptions: SqlRiteSyncPreparedStatements;
@@ -370,6 +372,7 @@ export default class SqlRite {
 	digest_loops: SqlRitePreparedStatements;
 	digest_turns: SqlRitePreparedStatements;
 	digest_turn_attempts: SqlRitePreparedStatements;
+	digest_model_calls: SqlRitePreparedStatements;
 	digest_provider_requests: SqlRitePreparedStatements;
 	digest_log_entries: SqlRitePreparedStatements;
 	digest_worker_rollups: SqlRitePreparedStatements;
@@ -408,10 +411,11 @@ export default class SqlRite {
 	engine_loop_turn_seqs: SqlRitePreparedStatements;
 	engine_open_turn: SqlRitePreparedStatements;
 	engine_close_turn: SqlRitePreparedStatements;
+	engine_open_model_call: SqlRitePreparedStatements;
+	engine_observe_model_call_response: SqlRitePreparedStatements;
+	engine_fail_model_call: SqlRitePreparedStatements;
 	engine_open_turn_attempt: SqlRitePreparedStatements;
-	engine_observe_turn_attempt_response: SqlRitePreparedStatements;
 	engine_classify_turn_attempt_response: SqlRitePreparedStatements;
-	engine_fail_turn_attempt: SqlRitePreparedStatements;
 	engine_open_provider_request: SqlRitePreparedStatements;
 	engine_settle_provider_request: SqlRitePreparedStatements;
 	engine_list_workspace_entries: SqlRitePreparedStatements;
@@ -471,7 +475,7 @@ export default class SqlRite {
 	journal_turn_insert: SqlRitePreparedStatements;
 	recovery_fail_active_loops: SqlRitePreparedStatements;
 	recovery_settle_open_provider_requests: SqlRitePreparedStatements;
-	recovery_fail_open_provider_attempts: SqlRitePreparedStatements;
+	recovery_fail_open_model_calls: SqlRitePreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRitePreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRitePreparedStatements;
 	recovery_fail_orphan_subscriptions: SqlRitePreparedStatements;

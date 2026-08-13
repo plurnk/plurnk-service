@@ -32,17 +32,17 @@ SET state = 'settled',
 WHERE state = 'pending'
   AND EXISTS (
       SELECT 1
-      FROM turn_attempts a
-      JOIN turns t ON t.id = a.turn_id
+      FROM model_calls mc
+      JOIN turns t ON t.id = mc.turn_id
       JOIN loops l ON l.id = t.loop_id
-      WHERE a.id = provider_requests.turn_attempt_id
+      WHERE mc.id = provider_requests.model_call_id
         AND l.terminated_at IS NOT NULL
   );
 
--- PREP: recovery_fail_open_provider_attempts
--- The process-local emission owner vanished. Physical requests have already
+-- PREP: recovery_fail_open_model_calls
+-- The process-local model-call owner vanished. Physical requests have already
 -- been settled above, preserving unknown evidence without fabricating zero use.
-UPDATE turn_attempts
+UPDATE model_calls
 SET state = 'error',
     failure = json_object(
         'status', 500,
@@ -59,7 +59,7 @@ WHERE state = 'pending'
       SELECT 1
       FROM turns t
       JOIN loops l ON l.id = t.loop_id
-      WHERE t.id = turn_attempts.turn_id
+      WHERE t.id = model_calls.turn_id
         AND l.terminated_at IS NOT NULL
   );
 

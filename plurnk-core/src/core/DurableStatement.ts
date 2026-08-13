@@ -12,6 +12,7 @@ export default class DurableStatement {
     static readonly #REDACTED = "__redacted__";
 
     static project(statement: PlurnkStatement): PlurnkStatement {
+        if (statement.op === "BARE") return statement;
         const target = DurableStatement.#projectPath(statement.target);
         if (statement.op === "COPY" || statement.op === "MOVE") {
             return {

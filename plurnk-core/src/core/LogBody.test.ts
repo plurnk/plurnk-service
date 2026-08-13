@@ -39,7 +39,7 @@ const creationReceipt = (context: string) => {
 };
 
 test("LogBody resolves built-in result-backed bodies", () => {
-    for (const op of ["READ", "FIND", "prompt"]) {
+    for (const op of ["READ", "FIND", "BARE", "prompt"]) {
         assert.deepEqual(
             LogBody.resolve({ op, tx: "", rx: content(`${op} body`) }),
             { content: `${op} body`, mimetype: "text/markdown", startLine: 1 },

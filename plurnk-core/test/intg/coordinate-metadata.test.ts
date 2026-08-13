@@ -10,9 +10,9 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, viableWindow }
 import { makeMockResponse } from "./_rpc.ts";
 
 class CoordMock extends Mock {
-    seen: { workspaceId?: string; loop?: number; turn?: number; workerId?: string; primaryWorkerId?: string } = {};
-    override async generate(args: Parameters<Mock["generate"]>[0] & { workspaceId?: string; loop?: number; turn?: number; workerId?: string; primaryWorkerId?: string }): ReturnType<Mock["generate"]> {
-        this.seen = { workspaceId: args.workspaceId, loop: args.loop, turn: args.turn, workerId: args.workerId, primaryWorkerId: args.primaryWorkerId };
+    seen: { workspaceId?: string; loop?: number; turn?: number; workerId?: string; primaryWorkerId?: string; callKind?: string } = {};
+    override async generate(args: Parameters<Mock["generate"]>[0] & { workspaceId?: string; loop?: number; turn?: number; workerId?: string; primaryWorkerId?: string; callKind?: string }): ReturnType<Mock["generate"]> {
+        this.seen = { workspaceId: args.workspaceId, loop: args.loop, turn: args.turn, workerId: args.workerId, primaryWorkerId: args.primaryWorkerId, callKind: args.callKind };
         return super.generate(args);
     }
 }
@@ -32,6 +32,7 @@ test("generate carries the workspace/loop/turn coordinate, using loop sequence r
         assert.equal(mock.seen.workspaceId, String(workspaceId), "Plurnk-Workspace-Id — the workspace id, stringified");
         assert.equal(mock.seen.loop, 5, "Plurnk-Loop — the loop's SEQUENCE (coordinate), not its db id");
         assert.equal(mock.seen.turn, 1, "Plurnk-Turn — the sequence of the turn being generated");
+        assert.equal(mock.seen.callKind, "emission", "ordinary turns declare the emission output contract");
     } finally { await db.close(); }
 });
 

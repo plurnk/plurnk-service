@@ -89,8 +89,9 @@ export default class Fork {
         const turnMap = new Map<number, number>();
         for (const { id, loop_id, ...rest } of turns) {
             // {§machine-processes-fork-cost} — copied turns retain conversational
-            // history but no physical provider-request rows. Branch accounting
-            // therefore begins with only requests it actually issues.
+            // history, while model calls, admission rows, and physical requests
+            // remain owned by the source worker. Branch accounting therefore
+            // begins with only calls it actually issues.
             const nt = await db.fork_insert_turn.get<{ id: number }>({
                 ...rest,
                 loop_id: loopMap.get(loop_id),

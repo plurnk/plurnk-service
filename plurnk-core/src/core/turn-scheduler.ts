@@ -1,7 +1,7 @@
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 
 const MUTATIONS = new Set<PlurnkStatement["op"]>(["EDIT", "COPY", "MOVE", "KILL", "FOLD"]);
-const OBSERVATIONS = new Set<PlurnkStatement["op"]>(["FIND", "READ", "OPEN"]);
+const OBSERVATIONS = new Set<PlurnkStatement["op"]>(["FIND", "READ", "OPEN", "BARE"]);
 
 const phaseOf = (statement: PlurnkStatement): number => {
     if (statement.op === "PLAN") return 0;
@@ -18,4 +18,3 @@ export const scheduleTurnOps = (statements: readonly PlurnkStatement[]): PlurnkS
         .map((statement, authoredIndex) => ({ statement, authoredIndex, phase: phaseOf(statement) }))
         .sort((a, b) => a.phase - b.phase || a.authoredIndex - b.authoredIndex)
         .map(({ statement }) => statement);
-

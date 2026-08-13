@@ -97,7 +97,17 @@ pricing method.
 - caller cancellation through `signal`;
 - optional `grammar` and `maxTokens`;
 - standard `sampling` intent;
+- the caller-owned `callKind` output contract when one applies;
 - opaque attribution tags plus client, strike, workspace, loop, and turn metadata.
+
+§provider-call-kind `callKind` is either `emission` (the response is a PLURNK
+turn emission) or `bare` (the response is unconstrained answer text). The
+consumer states this semantic fact explicitly; providers MUST NOT infer it from
+message count, grammar presence, worker identity, or another incidental request
+shape. The first-party adapter transports a supplied value as
+`Plurnk-Call-Kind`; the metadata gate drops it for every third-party backend.
+The signal is request metadata and never enters model-facing messages. Generic
+provider callers MAY omit it; Core supplies it for every model call.
 
 A successful return carries the model's raw content and reasoning, normalized
 finish reason, model identity, its ordered {§provider-request-accounting},

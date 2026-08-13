@@ -514,8 +514,13 @@ export default class Daemon {
         return (await this.#providerPolicyForLoop(loopId)).providerSpec;
     }
 
-    async #providerForLoop(loopId: number): Promise<Provider> {
-        return ProviderInstantiate.instantiateProvider(await this.#providerSpecForLoop(loopId));
+    async #providersForLoop(loopId: number): Promise<{ provider: Provider; childProvider: Provider }> {
+        const policy = await this.#providerPolicyForLoop(loopId);
+        const provider = await ProviderInstantiate.instantiateProvider(policy.providerSpec);
+        const childProvider = policy.childProviderSpec === null
+            ? provider
+            : await ProviderInstantiate.instantiateProvider(policy.childProviderSpec);
+        return { provider, childProvider };
     }
 
     async #assertLoopProvider(loopId: number, requested: ProviderAlias): Promise<void> {
@@ -1305,7 +1310,7 @@ export default class Daemon {
     async #recoverLifecycle(): Promise<void> {
         await this.#db.recovery_fail_active_loops.run({});
         await this.#db.recovery_settle_open_provider_requests.run({});
-        await this.#db.recovery_fail_open_provider_attempts.run({});
+        await this.#db.recovery_fail_open_model_calls.run({});
         await this.#db.recovery_fail_ownerless_proposals.run({});
         await this.#db.recovery_error_orphan_subscription_channels.run({});
         await this.#db.recovery_fail_orphan_subscriptions.run({});
@@ -1660,7 +1665,7 @@ export default class Daemon {
                     // {§methods-loop-run-model} — provider identity belongs to the claimed loop, not the
                     // drain that happened to claim it. A drain can consume multiple
                     // queued loops; resolve each durable selection at this boundary.
-                    const provider = await this.#providerForLoop(loopRow.id);
+                    const { provider, childProvider } = await this.#providersForLoop(loopRow.id);
                     const onDispatch = (logEntryId: number): void => {
                         // {§methods-event-subscribe} — a log-broadcast failure must never crash the drain.
                         void (async () => {
@@ -1673,7 +1678,7 @@ export default class Daemon {
                         { workspaceId, workerId, "loop.id": loopRow.id },
                         async (span) => {
                             const loopResult = await this.#engine.runLoop({
-                                provider, workspaceId, workerId, loopId: loopRow.id, maxTurns: loopRow.max_turns,
+                                provider, childProvider, workspaceId, workerId, loopId: loopRow.id, maxTurns: loopRow.max_turns,
                                 messages: [
                                     { role: "system", content: systemPrompt },
                                     { role: "user", content: loopRow.prompt },

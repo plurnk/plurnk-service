@@ -12,6 +12,8 @@ import type {
     PromptTokenMeasurement,
     Provider,
     ProviderCostNormalizer,
+    ProviderCallKind,
+    ProviderGenerateArgs,
     ProviderRequestAccounting,
     ProviderRequestObserver,
     ProviderRequestSettlement,
@@ -581,7 +583,7 @@ export default class AiSdkProvider implements Provider {
         }
     }
 
-    // First-party telemetry headers ({§provider-request-authority}): forwarded only when the spec
+    // First-party telemetry headers ({§provider-request-authority} {§provider-call-kind}): forwarded only when the spec
     // opted in (the plurnk endpoint). The gate is here, not at the call site, so
     // attributions/client/strikes can never reach a third-party backend even if
     // the consumer passes them to the wrong provider. Empty values emit no header
@@ -589,7 +591,7 @@ export default class AiSdkProvider implements Provider {
     // absent (consumer didn't report); contract {§strikes-first-party-metadata}. Strikes
     // ride HTTP headers only — the packet never carries them (the model must
     // never see strike state; engine accounting is not a metric to game).
-    #metadataHeaders(attributions: string[] | undefined, client: string | undefined, strikes: number | undefined, workerId: string, primaryWorkerId: string | undefined, workspaceId: string | undefined, loop: number | undefined, turn: number | undefined): Record<string, string> {
+    #metadataHeaders(attributions: string[] | undefined, client: string | undefined, strikes: number | undefined, workerId: string, primaryWorkerId: string | undefined, workspaceId: string | undefined, loop: number | undefined, turn: number | undefined, callKind: ProviderCallKind | undefined): Record<string, string> {
         if (!this.#firstPartyMetadata) return {};
         const h: Record<string, string> = {};
         if (attributions !== undefined && attributions.length > 0) h["Plurnk-Attribution"] = JSON.stringify(attributions);
@@ -614,6 +616,7 @@ export default class AiSdkProvider implements Provider {
         if (workspaceId !== undefined && workspaceId.length > 0) h["Plurnk-Workspace-Id"] = workspaceId;
         if (loop !== undefined && Number.isInteger(loop) && loop >= 1) h["Plurnk-Loop"] = String(loop);
         if (turn !== undefined && Number.isInteger(turn) && turn >= 1) h["Plurnk-Turn"] = String(turn);
+        if (callKind !== undefined) h["Plurnk-Call-Kind"] = callKind;
         return h;
     }
 
@@ -671,9 +674,12 @@ export default class AiSdkProvider implements Provider {
         });
     }
 
-    async generate({ messages, workerId, primaryWorkerId, signal, grammar, maxTokens, attributions, client, strikes, workspaceId, loop, turn, sampling, observeRequest }: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown>; observeRequest?: ProviderRequestObserver }): Promise<ProviderResponse> {
+    async generate({ messages, workerId, primaryWorkerId, signal, grammar, maxTokens, attributions, client, strikes, workspaceId, loop, turn, sampling, observeRequest, callKind }: ProviderGenerateArgs): Promise<ProviderResponse> {
         // {§provider-interface} The worker identity is required.
         if (workerId === undefined || workerId.length === 0) throw new Error("generate: workerId is required — the worker's stable, opaque identity");
+        if (callKind !== undefined && callKind !== "emission" && callKind !== "bare") {
+            throw new Error(`generate: unsupported callKind ${JSON.stringify(callKind)}`);
+        }
         // Reject before any wire call when already aborted
         // ({§provider-failure-normalization}).
         signal?.throwIfAborted();
@@ -712,7 +718,7 @@ export default class AiSdkProvider implements Provider {
         };
 
         // Per-request headers = static auth/routing + any first-party telemetry.
-        const metaHeaders = this.#metadataHeaders(attributions, client, strikes, workerId, primaryWorkerId, workspaceId, loop, turn);
+        const metaHeaders = this.#metadataHeaders(attributions, client, strikes, workerId, primaryWorkerId, workspaceId, loop, turn, callKind);
         const headers = Object.keys(metaHeaders).length === 0
             ? this.#headers
             : { ...this.#headers, ...metaHeaders };

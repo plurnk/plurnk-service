@@ -151,15 +151,20 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
             id: turnId, status: 200, packet: JSON.stringify({ tokens: 0, sections: [], attributions: [] }),
             usage_prompt_budget: null, finish_reason: null, model: "mock", meta: "{}",
         });
-        const attempt = await db.engine_open_turn_attempt.get<{ id: number }>({
+        const modelCall = await db.engine_open_model_call.get<{ id: number }>({
             turn_id: turnId,
             sequence: 1,
+            kind: "emission",
             attributions: "[]",
             model: "mock",
         });
+        assert.ok(modelCall !== undefined);
+        const attempt = await db.engine_open_turn_attempt.get<{ id: number }>({
+            model_call_id: modelCall.id,
+        });
         assert.ok(attempt !== undefined);
         const request = await db.engine_open_provider_request.get<{ id: number }>({
-            turn_attempt_id: attempt.id,
+            model_call_id: modelCall.id,
             sequence: 1,
             provider: "provider:fixture",
             model: "mock",
@@ -175,9 +180,10 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
                 source: "machine fixture",
             },
         }));
-        await db.engine_observe_turn_attempt_response.run({
-            id: attempt.id,
+        await db.engine_observe_model_call_response.run({
+            id: modelCall.id,
             response: JSON.stringify({ assistant: { model: "mock" } }),
+            failure: null,
             finish_reason: null,
             model: "mock",
         });
@@ -185,20 +191,96 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
             id: attempt.id,
             accepted: 1,
             parse_errors: "[]",
+        });
+        const bareCall = await db.engine_open_model_call.get<{ id: number }>({
+            turn_id: turnId,
+            sequence: 2,
+            kind: "bare",
+            attributions: "[]",
+            model: "mock",
+        });
+        assert.ok(bareCall !== undefined);
+        const bareRequest = await db.engine_open_provider_request.get<{ id: number }>({
+            model_call_id: bareCall.id,
+            sequence: 1,
+            provider: "provider:fixture",
+            model: "mock",
+        });
+        await db.engine_settle_provider_request.run(providerRequestSettlementParams(bareRequest!.id, {
+            provider: "provider:fixture",
+            model: "mock",
+            outcome: "response",
+            usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+            cost: {
+                kind: "charged",
+                amount: { amount: "0", currency: "USD" },
+                source: "machine fixture",
+            },
+        }));
+        await db.engine_observe_model_call_response.run({
+            id: bareCall.id,
+            response: JSON.stringify({ assistant: { content: "Berlin", model: "mock" } }),
             failure: null,
+            finish_reason: "stop",
+            model: "mock",
+        });
+        await db.engine_insert_log_entry.run({
+            worker_id: workerId,
+            loop_id: loopId,
+            turn_id: turnId,
+            sequence: 1,
+            origin: "model",
+            source: null,
+            model_call_id: bareCall.id,
+            op: "BARE",
+            suffix: "0",
+            signal: null,
+            scheme: null,
+            username: null,
+            password: null,
+            hostname: null,
+            port: null,
+            pathname: null,
+            query: null,
+            fragment: null,
+            lineMarker: null,
+            tx: JSON.stringify({ op: "BARE", body: "What is the capital of Germany?" }),
+            mimetype_tx: "application/json",
+            rx: JSON.stringify({ status: 200, content: "Berlin", mimetype: "text/plain" }),
+            mimetype_rx: "application/json",
+            status_rx: 200,
+            tokens: 1,
+            state: "resolved",
+            outcome: null,
+            attrs: "{}",
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         assert.equal((await engine.loopUsage(loopId)).accounting.costUsd, "1000");
-        assert.equal((await db.test_count_provider_requests.get<{ n: number }>())?.n, 1);
+        assert.equal((await db.test_count_provider_requests.get<{ n: number }>())?.n, 2);
 
         const branchWorkerId = await Fork.fork(db, workerId);
 
-        assert.equal((await db.test_count_provider_requests.get<{ n: number }>())?.n, 1, "forking creates no provider request");
+        assert.equal((await db.test_count_provider_requests.get<{ n: number }>())?.n, 2, "forking creates no provider request");
         assert.equal((await engine.loopUsage(loopId)).accounting.costUsd, "1000", "parent evidence is untouched");
         const branchLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: branchWorkerId });
         assert.ok(branchLoop !== undefined);
         const branchUsage = await engine.loopUsage(branchLoop.id);
         assert.equal(branchUsage.accounting.costUsd, "0");
         assert.deepEqual(branchUsage.accounting.requests, [], "copied history carries no physical request evidence");
+        const [branchTurn] = await db.test_list_turns_in_loop.all<{ id: number }>({ loop_id: branchLoop.id });
+        assert.ok(branchTurn !== undefined);
+        assert.deepEqual(
+            await db.test_model_calls.all({ turn_id: branchTurn.id }),
+            [],
+            "copied turns carry no logical model-call or admission identity",
+        );
+        const branchRows = await db.test_log_entries_by_turn.all<{ op: string | null; model_call_id: number | null }>({
+            turn_id: branchTurn.id,
+        });
+        assert.deepEqual(
+            branchRows.map(({ op, model_call_id }) => ({ op, model_call_id })),
+            [{ op: "BARE", model_call_id: null }],
+            "the BARE result remains conversational history without claiming the source call",
+        );
     } finally { db.close(); }
 });

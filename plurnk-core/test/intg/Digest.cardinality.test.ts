@@ -35,7 +35,8 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         ): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
-                origin, source: origin === "plurnk" ? "worker://researcher" : null, op, suffix: "", signal: null,
+                origin, source: origin === "plurnk" ? "worker://researcher" : null, model_call_id: null,
+                op, suffix: "", signal: null,
                 scheme, username: null, password: null, hostname, port,
                 pathname, query, fragment, lineMarker: null,
                 tx: "{}", mimetype_tx: "application/json",
@@ -112,7 +113,8 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             json.log_entries[0],
             {
                 id: 1, worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-                origin: "model", source: null, attrs: {}, op: "READ", target: "https://example.test/whale",
+                origin: "model", source: null, model_call_id: null,
+                attrs: {}, op: "READ", target: "https://example.test/whale",
                 status_rx: 200, state: "resolved", outcome: null,
             },
             "JSON preserves the row's actor and lifecycle coordinates",

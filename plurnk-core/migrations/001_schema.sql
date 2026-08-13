@@ -251,19 +251,17 @@ CREATE TABLE IF NOT EXISTS turns (
 CREATE UNIQUE INDEX IF NOT EXISTS turns_loop_id_sequence ON turns (loop_id, sequence);
 CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
 
--- Logical model-emission attempts sit beneath one engine turn. Rejected and
--- interrupted response evidence persists without becoming model-visible
--- history. Physical provider requests are separate child rows because retries
--- and provider failover can make more than one request for one emission.
-CREATE TABLE IF NOT EXISTS turn_attempts (
+-- One logical provider.generate call. Emission attempts and BARE inferences
+-- share response/failure evidence and cardinal physical request accounting;
+-- operation-specific semantics live in their specializing relations.
+CREATE TABLE IF NOT EXISTS model_calls (
     id               INTEGER NOT NULL PRIMARY KEY,
     turn_id          INTEGER NOT NULL,
     sequence         INTEGER NOT NULL CHECK (sequence >= 1),
+    kind             TEXT    NOT NULL CHECK (kind IN ('emission', 'bare')),
     state            TEXT    NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'response', 'error')),
-    accepted         INTEGER          CHECK (accepted IS NULL OR accepted IN (0, 1)),
     response         TEXT             CHECK (response IS NULL OR json_valid(response)),
     failure          TEXT             CHECK (failure IS NULL OR json_valid(failure)),
-    parse_errors     TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(parse_errors)),
     -- Exact opaque tag set forwarded with this provider call.
     -- {§attribution}
     attributions     TEXT    NOT NULL DEFAULT '[]' CHECK (
@@ -275,7 +273,7 @@ CREATE TABLE IF NOT EXISTS turn_attempts (
     completed_at     TEXT,
     CHECK (
         (state = 'pending'
-            AND accepted IS NULL AND response IS NULL AND failure IS NULL
+            AND response IS NULL AND failure IS NULL
             AND finish_reason IS NULL AND completed_at IS NULL)
         OR
         (state = 'response'
@@ -283,48 +281,105 @@ CREATE TABLE IF NOT EXISTS turn_attempts (
             AND completed_at IS NOT NULL)
         OR
         (state = 'error'
-            AND accepted IS NULL AND response IS NULL AND failure IS NOT NULL
+            AND response IS NULL AND failure IS NOT NULL
             AND completed_at IS NOT NULL)
     ),
     UNIQUE (turn_id, sequence),
     FOREIGN KEY (turn_id) REFERENCES turns(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE INDEX IF NOT EXISTS turn_attempts_turn_id ON turn_attempts (turn_id);
-CREATE UNIQUE INDEX IF NOT EXISTS turn_attempts_one_accepted_per_turn
-    ON turn_attempts (turn_id)
-    WHERE accepted = 1;
+CREATE INDEX IF NOT EXISTS model_calls_turn_id ON model_calls (turn_id, sequence);
 
-CREATE TRIGGER IF NOT EXISTS turn_attempts_request_identity_immutable
-BEFORE UPDATE OF turn_id, sequence, attributions, timestamp ON turn_attempts
+CREATE TRIGGER IF NOT EXISTS model_calls_request_identity_immutable
+BEFORE UPDATE OF turn_id, sequence, kind, attributions, timestamp ON model_calls
 BEGIN
-    SELECT RAISE(ABORT, 'provider attempt request identity is immutable');
+    SELECT RAISE(ABORT, 'model call request identity is immutable');
 END;
 
-CREATE TRIGGER IF NOT EXISTS turn_attempts_state_forward_only
-BEFORE UPDATE OF state ON turn_attempts
+CREATE TRIGGER IF NOT EXISTS model_calls_state_forward_only
+BEFORE UPDATE OF state ON model_calls
 WHEN NOT (
     NEW.state = OLD.state
     OR (OLD.state = 'pending' AND NEW.state IN ('response', 'error'))
 )
 BEGIN
-    SELECT RAISE(ABORT, 'provider attempt state may only close once');
+    SELECT RAISE(ABORT, 'model call state may only close once');
 END;
 
-CREATE TRIGGER IF NOT EXISTS turn_attempts_observation_immutable
-BEFORE UPDATE OF response, finish_reason, model, completed_at
-ON turn_attempts
+CREATE TRIGGER IF NOT EXISTS model_calls_observation_immutable
+BEFORE UPDATE OF response, failure, finish_reason, model, completed_at
+ON model_calls
 WHEN OLD.state != 'pending'
 BEGIN
-    SELECT RAISE(ABORT, 'provider attempt observation is immutable');
+    SELECT RAISE(ABORT, 'model call observation is immutable');
+END;
+
+-- Emission admission specializes one model call without re-owning its response,
+-- provider identity, ordering, or accounting evidence.
+CREATE TABLE IF NOT EXISTS turn_attempts (
+    id               INTEGER NOT NULL PRIMARY KEY,
+    model_call_id    INTEGER NOT NULL UNIQUE,
+    accepted         INTEGER          CHECK (accepted IS NULL OR accepted IN (0, 1)),
+    parse_errors     TEXT    NOT NULL DEFAULT '[]' CHECK (
+        json_valid(parse_errors) AND json_type(parse_errors) = 'array'
+    ),
+    FOREIGN KEY (model_call_id) REFERENCES model_calls(id) ON DELETE CASCADE
+) STRICT;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_request_identity_immutable
+BEFORE UPDATE OF model_call_id ON turn_attempts
+BEGIN
+    SELECT RAISE(ABORT, 'emission attempt identity is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_emission_call_only
+BEFORE INSERT ON turn_attempts
+WHEN COALESCE((SELECT kind = 'emission' FROM model_calls WHERE id = NEW.model_call_id), 0) != 1
+BEGIN
+    SELECT RAISE(ABORT, 'turn attempt requires an emission model call');
+END;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_classification_after_response
+BEFORE UPDATE OF accepted, parse_errors ON turn_attempts
+WHEN COALESCE((SELECT state = 'response' FROM model_calls WHERE id = OLD.model_call_id), 0) != 1
+BEGIN
+    SELECT RAISE(ABORT, 'emission classification requires model response evidence');
 END;
 
 CREATE TRIGGER IF NOT EXISTS turn_attempts_classification_once
-BEFORE UPDATE OF accepted, parse_errors, failure
+BEFORE UPDATE OF accepted, parse_errors
 ON turn_attempts
-WHEN OLD.state = 'error' OR (OLD.state = 'response' AND OLD.accepted IS NOT NULL)
+WHEN OLD.accepted IS NOT NULL
 BEGIN
-    SELECT RAISE(ABORT, 'provider attempt classification is immutable');
+    SELECT RAISE(ABORT, 'emission attempt classification is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_one_accepted_insert
+BEFORE INSERT ON turn_attempts
+WHEN NEW.accepted = 1 AND EXISTS (
+    SELECT 1
+    FROM turn_attempts existing
+    JOIN model_calls old_call ON old_call.id = existing.model_call_id
+    JOIN model_calls new_call ON new_call.id = NEW.model_call_id
+    WHERE old_call.turn_id = new_call.turn_id AND existing.accepted = 1
+)
+BEGIN
+    SELECT RAISE(ABORT, 'one emission may be accepted per turn');
+END;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_one_accepted_update
+BEFORE UPDATE OF accepted ON turn_attempts
+WHEN NEW.accepted = 1 AND EXISTS (
+    SELECT 1
+    FROM turn_attempts existing
+    JOIN model_calls old_call ON old_call.id = existing.model_call_id
+    JOIN model_calls new_call ON new_call.id = NEW.model_call_id
+    WHERE old_call.turn_id = new_call.turn_id
+      AND existing.id != OLD.id
+      AND existing.accepted = 1
+)
+BEGIN
+    SELECT RAISE(ABORT, 'one emission may be accepted per turn');
 END;
 
 -- {§provider-request-accounting}: one row is opened before one physical
@@ -333,7 +388,7 @@ END;
 -- accounting representation.
 CREATE TABLE IF NOT EXISTS provider_requests (
     id                       INTEGER NOT NULL PRIMARY KEY,
-    turn_attempt_id          INTEGER NOT NULL,
+    model_call_id            INTEGER NOT NULL,
     sequence                 INTEGER NOT NULL CHECK (sequence >= 1),
     provider                 TEXT    NOT NULL CHECK (length(provider) > 0),
     model                    TEXT    NOT NULL CHECK (length(model) > 0),
@@ -412,15 +467,15 @@ CREATE TABLE IF NOT EXISTS provider_requests (
             AND cost_usd_equivalent IS NULL AND cost_source IS NULL
             AND cost_reason IS NOT NULL AND length(cost_reason) > 0)
     ),
-    UNIQUE (turn_attempt_id, sequence),
-    FOREIGN KEY (turn_attempt_id) REFERENCES turn_attempts(id) ON DELETE CASCADE
+    UNIQUE (model_call_id, sequence),
+    FOREIGN KEY (model_call_id) REFERENCES model_calls(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE INDEX IF NOT EXISTS provider_requests_turn_attempt_id
-    ON provider_requests (turn_attempt_id, sequence);
+CREATE INDEX IF NOT EXISTS provider_requests_model_call_id
+    ON provider_requests (model_call_id, sequence);
 
 CREATE TRIGGER IF NOT EXISTS provider_requests_identity_immutable
-BEFORE UPDATE OF turn_attempt_id, sequence, provider, model, started_at ON provider_requests
+BEFORE UPDATE OF model_call_id, sequence, provider, model, started_at ON provider_requests
 BEGIN
     SELECT RAISE(ABORT, 'provider request identity is immutable');
 END;
@@ -664,6 +719,9 @@ CREATE TABLE IF NOT EXISTS log_entries (
     ambient_event_id INTEGER                  REFERENCES ambient_events(id),
     -- Search derivation attached to this durable log result, when available.
     deep_hash       TEXT                       REFERENCES derivations(deep_hash),
+    -- Exact logical provider call represented by a BARE result or model-emission
+    -- mirror. Other operation and ambient rows carry no model-call identity.
+    model_call_id   INTEGER                    REFERENCES model_calls(id),
 
     -- 'error' is an ACTIONLESS row ({§operation-results} — errors are log items): a parse failure that
     -- produced no op still records a log entry (op='error', status_rx≥400, no target) so the model
@@ -719,9 +777,34 @@ CREATE UNIQUE INDEX IF NOT EXISTS log_entries_turn_id_sequence ON log_entries (t
 CREATE        INDEX IF NOT EXISTS log_entries_worker_id           ON log_entries (worker_id);
 CREATE        INDEX IF NOT EXISTS log_entries_loop_id          ON log_entries (loop_id);
 CREATE        INDEX IF NOT EXISTS log_entries_at               ON log_entries (at);
+CREATE UNIQUE INDEX IF NOT EXISTS log_entries_model_call_id
+    ON log_entries (model_call_id)
+    WHERE model_call_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_worker_ambient_event
     ON log_entries (worker_id, ambient_event_id)
     WHERE ambient_event_id IS NOT NULL;
+
+CREATE TRIGGER IF NOT EXISTS log_entries_model_call_valid
+BEFORE INSERT ON log_entries
+WHEN NEW.model_call_id IS NOT NULL
+ AND NOT EXISTS (
+    SELECT 1
+    FROM model_calls call
+    WHERE call.id = NEW.model_call_id
+      AND call.turn_id = NEW.turn_id
+      AND call.state != 'pending'
+      AND (
+          (call.kind = 'bare' AND NEW.op = 'BARE')
+          OR (
+              call.kind = 'emission'
+              AND NEW.op IS NULL
+              AND json_extract(NEW.attrs, '$.kind') = 'model_emission'
+          )
+      )
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'log entry model call does not match its represented result');
+END;
 
 -- {§log-item-tags} — log classification plus OPEN/FOLD selection and mutation.
 -- CASCADE erases the classification with its row.
@@ -768,7 +851,7 @@ CREATE INDEX IF NOT EXISTS log_tags_tag ON log_tags (tag);
 -- initial folksonomy inside one SQLite commit.
 CREATE TRIGGER IF NOT EXISTS log_entries_classify_signal
 AFTER INSERT ON log_entries
-WHEN NEW.op IN ('FIND', 'READ', 'EDIT', 'COPY', 'MOVE')
+WHEN NEW.op IN ('FIND', 'READ', 'EDIT', 'COPY', 'MOVE', 'BARE')
  AND NEW.signal IS NOT NULL
 BEGIN
     SELECT CASE
@@ -1056,7 +1139,7 @@ END;
 -- private-payload removal cannot exempt changes to any other core column.
 CREATE TRIGGER IF NOT EXISTS log_entries_immutable_core
 BEFORE UPDATE OF
-    worker_id, loop_id, turn_id, sequence, at, origin, source,
+    worker_id, loop_id, turn_id, sequence, at, origin, source, model_call_id,
     op, suffix, signal,
     scheme, username, password, hostname,
     port, pathname, query, fragment,

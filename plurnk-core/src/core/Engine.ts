@@ -2,7 +2,7 @@ import { PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk
 import { RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
 import Owner from "./Owner.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
-import type { PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import type { BareStatement, PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
@@ -36,7 +36,6 @@ import LoopLifecycle from "./LoopLifecycle.ts";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { isDeepStrictEqual } from "node:util";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
@@ -65,9 +64,12 @@ import { scheduleTurnOps } from "./turn-scheduler.ts";
 import { readOptimisticSettlementMs } from "./optimistic-settlement.ts";
 import {
     providerRequestFromStorageRow,
-    providerRequestSettlementParams,
     type ProviderRequestStorageRow,
 } from "./provider-accounting.ts";
+import ModelCall, {
+    ModelCallPersistenceError,
+    ProviderAccountingIntegrityError,
+} from "./ModelCall.ts";
 
 // Proposal types are part of Engine's public API (resolveProposal/onProposalPending);
 // their definitions live with the lifecycle.
@@ -186,8 +188,6 @@ import type {
     ProviderAccounting,
     ProviderAttempt,
     ProviderAttemptFinishReason,
-    ProviderRequestAccounting,
-    ProviderRequestObserver,
     ProviderResponse,
 } from "@plurnk/plurnk-providers";
 import {
@@ -195,7 +195,6 @@ import {
     ProviderError,
     resolveActiveAlias,
     scopeEnvToAlias,
-    validateProviderRequestAccounting,
 } from "@plurnk/plurnk-providers";
 import { validateGbnf } from "@plurnk/gbnf";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
@@ -228,6 +227,12 @@ type EngineTurnResult = {
     emissionExhausted: boolean;
     rejectedModelEntryId?: number;
     budgetFailure?: SchemeResult;
+};
+
+type BareBatchResult = {
+    readonly statement: BareStatement;
+    readonly modelCallId: number;
+    readonly result: DispatchResult;
 };
 
 type BudgetPressure = {
@@ -281,13 +286,6 @@ export type LoopUsage = {
     promptBudget: number | null;
     meta: Record<string, unknown>;
 };
-
-class ProviderAccountingPersistenceError extends Error {
-    constructor(message: string, cause: unknown) {
-        super(message, { cause });
-        this.name = "ProviderAccountingPersistenceError";
-    }
-}
 
 // Runtime normalization for a disposition the engine refuses or resolves as a
 // continue after dispatch ({§send}). Every admitted emission itself ends in an
@@ -687,6 +685,157 @@ export default class Engine {
         return [...tags];
     }
 
+    #providerAttributions(
+        provider: Provider,
+        context: PluginAttributionContext,
+    ): string[] {
+        return [...Meta.composeAttributions(provider.attributions?.(context) ?? [])];
+    }
+
+    static #providerFailure(error: unknown, signal: AbortSignal | undefined): SchemeResult {
+        if (error instanceof ProviderError) {
+            return { status: error.problem.status, problem: error.problem };
+        }
+        if (signal?.aborted === true) {
+            const timedOut = signal.reason === LOOP_TIMEOUT_REASON;
+            return Results.failure(
+                "engine:provider",
+                timedOut ? "provider-call-timeout" : "provider-call-cancelled",
+                timedOut ? 504 : 499,
+                timedOut
+                    ? "The provider call was interrupted by the loop deadline."
+                    : "The provider call was interrupted by loop cancellation.",
+                {},
+                { stage: "provider-request", retryable: false },
+            );
+        }
+        console.error("Provider failed outside its Problem Details contract:", error);
+        return Results.failure(
+            "engine:provider",
+            "provider-contract-violation",
+            502,
+            "The provider failed without returning its required Problem Details.",
+            {},
+            { stage: "provider-request", retryable: false },
+        );
+    }
+
+    async #runBareBatch({
+        statements,
+        provider,
+        turnId,
+        modelCallSequenceStart,
+        workspaceId,
+        workerId,
+        primaryWorkerId,
+        loopSequence,
+        turnSequence,
+        signal,
+    }: {
+        statements: readonly BareStatement[];
+        provider: Provider;
+        turnId: number;
+        modelCallSequenceStart: number;
+        workspaceId: number;
+        workerId: number;
+        primaryWorkerId: string;
+        loopSequence: number;
+        turnSequence: number;
+        signal: AbortSignal | undefined;
+    }): Promise<BareBatchResult[]> {
+        const prepared: Array<{
+            statement: BareStatement;
+            modelCall: ModelCall;
+            attributions: string[];
+        }> = [];
+        for (const [index, statement] of statements.entries()) {
+            const attributionContext: PluginAttributionContext = Object.freeze({
+                workspaceId: String(workspaceId),
+                workerId: String(workerId),
+                primaryWorkerId,
+                loop: loopSequence,
+                turn: turnSequence,
+                attempt: 1,
+            });
+            const attributions = this.#providerAttributions(provider, attributionContext);
+            const modelCall = await ModelCall.open(this.#db, {
+                turnId,
+                sequence: modelCallSequenceStart + index,
+                kind: "bare",
+                attributions,
+                model: provider.model,
+            });
+            prepared.push({ statement, modelCall, attributions });
+        }
+
+        const maxTokens = this.#packets.maxTokensFor(provider) ?? undefined;
+        const settlements = await Promise.allSettled(prepared.map(async ({ statement, modelCall, attributions }) => {
+            try {
+                const response = await observed(
+                    "provider.generate",
+                    { model: provider.model, attempt: 1, kind: "bare" },
+                    async (span) => {
+                        try {
+                            const generated = await provider.generate({
+                                messages: [{ role: "user", content: statement.body }],
+                                workerId: `model-call:${modelCall.id}`,
+                                signal,
+                                maxTokens,
+                                attributions: attributions.length > 0 ? attributions : undefined,
+                                workspaceId: String(workspaceId),
+                                loop: loopSequence,
+                                turn: turnSequence,
+                                observeRequest: modelCall.observeRequest,
+                                callKind: "bare",
+                            });
+                            modelCall.assertAccounting(generated.accounting);
+                            recordCounter(PROVIDER_CALLS, {
+                                model: provider.model,
+                                attempt: 1,
+                                status: "resolved",
+                            });
+                            span.setAttribute("status", "resolved");
+                            return generated;
+                        } catch (error) {
+                            if (error instanceof ProviderError) {
+                                modelCall.assertAccounting(error.accounting);
+                            }
+                            throw error;
+                        }
+                    },
+                );
+                await modelCall.observeResponse(response);
+                return {
+                    statement,
+                    modelCallId: modelCall.id,
+                    result: Results.assert({
+                        status: 200,
+                        content: response.assistant.content,
+                        mimetype: "text/plain",
+                    }),
+                };
+            } catch (error) {
+                if (error instanceof ModelCallPersistenceError || error instanceof ProviderAccountingIntegrityError) {
+                    throw error;
+                }
+                const failure = Engine.#providerFailure(error, signal);
+                if (error instanceof ProviderError && error.attempt !== undefined) {
+                    await modelCall.observeResponse(error.attempt, failure);
+                } else {
+                    await modelCall.fail(failure);
+                }
+                return { statement, modelCallId: modelCall.id, result: failure };
+            }
+        }));
+
+        const internalFailure = settlements.find(
+            (settlement): settlement is PromiseRejectedResult => settlement.status === "rejected",
+        );
+        if (internalFailure !== undefined) throw internalFailure.reason;
+        signal?.throwIfAborted();
+        return settlements.map((settlement) => (settlement as PromiseFulfilledResult<BareBatchResult>).value);
+    }
+
     // {§attribution} — reporting derives from exact provider-request evidence;
     // malformed durable tags fail here instead of being silently filtered.
     async loopAttributions(loopId: number): Promise<string[]> {
@@ -738,13 +887,14 @@ export default class Engine {
     }
 
     async runLoop({
-        provider, messages, requirements = "", workspaceId, workerId, loopId,
+        provider, childProvider = provider, messages, requirements = "", workspaceId, workerId, loopId,
         maxTurns = 50, maxStrikes = readMaxStrikes(),
         minCycles = readPositiveInt("PLURNK_SERVICE_MIN_CYCLES", DEFAULT_MIN_CYCLES),
         maxCyclePeriod = readPositiveInt("PLURNK_SERVICE_MAX_CYCLE_PERIOD", DEFAULT_MAX_CYCLE_PERIOD),
         origin = "model", signal, onDispatch,
     }: {
         provider: Provider;
+        childProvider?: Provider;
         messages: ChatMessage[];
         // Optional Recap override; packet assembly owns default sourcing.
         requirements?: string;
@@ -889,7 +1039,7 @@ export default class Engine {
                     { workerId, "loop.id": loopId },
                     async (span) => {
                         const t = await this.runTurn({
-                            provider, messages, requirements, workspaceId, workerId, loopId, origin, signal, onDispatch,
+                            provider, childProvider, messages, requirements, workspaceId, workerId, loopId, origin, signal, onDispatch,
                             turnNumber: turnIds.length + 1, maxTurns,
                             invalidEmissionRecoveryEntryId,
                         });
@@ -991,10 +1141,11 @@ export default class Engine {
     }
 
     async runTurn({
-        provider, messages, requirements = "", workspaceId, workerId, loopId, origin = "model", signal, onDispatch,
+        provider, childProvider = provider, messages, requirements = "", workspaceId, workerId, loopId, origin = "model", signal, onDispatch,
         turnNumber = 1, maxTurns = 50, invalidEmissionRecoveryEntryId,
     }: {
         provider: Provider;
+        childProvider?: Provider;
         messages: ChatMessage[];
         // Optional Recap override; packet assembly owns default sourcing.
         requirements?: string;
@@ -1392,106 +1543,33 @@ export default class Engine {
         let providerCallInFlight = false;
         let providerAttemptSequence = 0;
         let providerAttemptId: number | null = null;
+        let providerModelCall: ModelCall | null = null;
         let providerAttemptAttributions: string[] = [];
-        let providerRequestSequence = 0;
-        let observedProviderRequests: ProviderRequestAccounting[] = [];
         const providerSignal = this.#loopAborts.get(loopId)?.signal ?? signal;
         // {§client-metadata}
         const { client } = await WorkspaceSettings.read(this.#db, workspaceId);
-        const observeProviderAttempt = async (
-            id: number,
-            attemptResponse: ProviderAttempt,
-        ): Promise<void> => {
-            const { accounting: omittedAccounting, ...responseEvidence } = attemptResponse;
-            void omittedAccounting;
-            await this.#db.engine_observe_turn_attempt_response.run({
-                id,
-                response: JSON.stringify(responseEvidence),
-                finish_reason: attemptResponse.assistant.finishReason,
-                model: attemptResponse.assistant.model,
-            });
-        };
+        const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
+        const primaryWorkerId = String(await this.resolveWorkerPrimary(workerId));
         const classifyProviderAttempt = async (
             id: number,
             attemptSplit: SplitProviderResponse,
             sequence: number,
             accepted: boolean,
-            failure: SchemeResult | null = null,
         ): Promise<void> => {
-            await this.#db.engine_classify_turn_attempt_response.run({
+            const result = await this.#db.engine_classify_turn_attempt_response.run({
                 id,
                 accepted: accepted ? 1 : 0,
                 parse_errors: JSON.stringify(attemptSplit.parseErrors),
-                failure: failure === null ? null : JSON.stringify(failure),
             });
+            if (result.changes !== 1) {
+                throw new Error(`emission attempt ${id} was not awaiting classification`);
+            }
             emissionAttempts = sequence;
-        };
-        const observeProviderRequest: ProviderRequestObserver = async (identity) => {
-            if (providerAttemptId === null) {
-                throw new Error("provider opened a physical request without a durable emission attempt");
-            }
-            if (identity.provider.length === 0 || identity.model.length === 0) {
-                throw new TypeError("provider request identity requires non-empty provider and model names");
-            }
-            const sequence = ++providerRequestSequence;
-            let row: { id: number } | undefined;
-            try {
-                row = await this.#db.engine_open_provider_request.get<{ id: number }>({
-                    turn_attempt_id: providerAttemptId,
-                    sequence,
-                    provider: identity.provider,
-                    model: identity.model,
-                });
-            } catch (cause) {
-                throw new ProviderAccountingPersistenceError(
-                    `could not open provider request ${sequence} for attempt ${providerAttemptId}`,
-                    cause,
-                );
-            }
-            if (row === undefined) {
-                throw new ProviderAccountingPersistenceError(
-                    `provider request ${sequence} for attempt ${providerAttemptId} did not open`,
-                    new Error("INSERT RETURNING produced no row"),
-                );
-            }
-            let settled = false;
-            return async (value) => {
-                if (settled) throw new Error(`provider request ${row.id} was settled more than once`);
-                const accounting = validateProviderRequestAccounting(value);
-                if (accounting.provider !== identity.provider || accounting.model !== identity.model) {
-                    throw new TypeError(`provider request ${row.id} settlement changed its durable identity`);
-                }
-                try {
-                    const result = await this.#db.engine_settle_provider_request.run(
-                        providerRequestSettlementParams(row.id, accounting),
-                    );
-                    if (result.changes !== 1) {
-                        throw new Error(`provider request ${row.id} was not pending at settlement`);
-                    }
-                } catch (cause) {
-                    throw new ProviderAccountingPersistenceError(
-                        `could not settle provider request ${row.id}`,
-                        cause,
-                    );
-                }
-                settled = true;
-                observedProviderRequests.push(accounting);
-            };
-        };
-        const assertObservedProviderAccounting = (
-            accounting: readonly ProviderRequestAccounting[],
-        ): void => {
-            const returned = accounting.map(validateProviderRequestAccounting);
-            if (!isDeepStrictEqual(returned, observedProviderRequests)) {
-                throw new TypeError("provider accounting does not match the cardinal requests observed by Core");
-            }
         };
         try {
             // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
             if (!signal?.aborted) this.#notices.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
-            const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
             railGrammar = await this.#grammarConstraint(provider);
-            const primaryWorkerId = String(await this.resolveWorkerPrimary(workerId));
             const attemptLimit = readEmissionAttempts();
             const maxTokens = this.#packets.maxTokensFor(provider) ?? undefined;
             const strikeStreak = this.#strikes.streak(loopId);
@@ -1511,19 +1589,22 @@ export default class Engine {
                 });
                 providerAttemptAttributions = await this.#attemptAttributions(provider, attributionContext);
                 requestPacket = { ...requestPacket, attributions: providerAttemptAttributions };
-                const attemptRow = await this.#db.engine_open_turn_attempt.get<{ id: number }>({
-                    turn_id: turnId,
+                providerModelCall = await ModelCall.open(this.#db, {
+                    turnId,
                     sequence: attempt,
-                    attributions: JSON.stringify(providerAttemptAttributions),
+                    kind: "emission",
+                    attributions: providerAttemptAttributions,
                     model: provider.model,
+                });
+                const attemptRow = await this.#db.engine_open_turn_attempt.get<{ id: number }>({
+                    model_call_id: providerModelCall.id,
                 });
                 if (attemptRow === undefined) {
                     throw new Error(`Engine.runTurn: provider attempt ${attempt} did not open`);
                 }
                 providerAttemptId = attemptRow.id;
-                providerRequestSequence = 0;
-                observedProviderRequests = [];
                 providerCallInFlight = true;
+                const currentModelCall = providerModelCall;
                 const completedResponse = await observed( // {§observability-boundary}
                     "provider.generate",
                     { model: provider.model, attempt },
@@ -1544,9 +1625,10 @@ export default class Engine {
                                 workspaceId: String(workspaceId),
                                 loop: loopSeq,
                                 turn: seq,
-                                observeRequest: observeProviderRequest,
+                                observeRequest: currentModelCall.observeRequest,
+                                callKind: "emission",
                             }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
-                            assertObservedProviderAccounting(generated.accounting);
+                            currentModelCall.assertAccounting(generated.accounting);
                             providerCallInFlight = false;
                             recordCounter(PROVIDER_CALLS, {
                                 model: provider.model,
@@ -1557,14 +1639,14 @@ export default class Engine {
                             return generated;
                         } catch (error) {
                             if (error instanceof ProviderError) {
-                                assertObservedProviderAccounting(error.accounting);
+                                currentModelCall.assertAccounting(error.accounting);
                             }
                             throw error;
                         }
                     },
                 );
                 response = completedResponse;
-                await observeProviderAttempt(attemptRow.id, completedResponse);
+                await currentModelCall.observeResponse(completedResponse);
                 railEvidence = railGrammar === undefined
                     ? undefined
                     : Engine.#requireGrammarEvidence(completedResponse);
@@ -1581,58 +1663,28 @@ export default class Engine {
         } catch (err) {
             // This handler owns only provider-call failures. Parser, cost, SQL,
             // and engine-contract failures retain their original source.
-            if (err instanceof ProviderAccountingPersistenceError) throw err;
+            if (err instanceof ModelCallPersistenceError || err instanceof ProviderAccountingIntegrityError) throw err;
             if (!providerCallInFlight) throw err;
             providerCallInFlight = false;
-            if (providerAttemptId === null) {
-                throw new Error("provider call failed without a durable attempt identity", { cause: err });
+            if (providerAttemptId === null || providerModelCall === null) {
+                throw new Error("provider call failed without durable model-call and attempt identities", { cause: err });
             }
-            const failure: SchemeResult = err instanceof ProviderError
-                ? { status: err.problem.status, problem: err.problem }
-                : providerSignal?.aborted === true
-                    ? Results.failure(
-                        "engine:provider",
-                        providerSignal.reason === LOOP_TIMEOUT_REASON ? "provider-call-timeout" : "provider-call-cancelled",
-                        providerSignal.reason === LOOP_TIMEOUT_REASON ? 504 : 499,
-                        providerSignal.reason === LOOP_TIMEOUT_REASON
-                            ? "The provider call was interrupted by the loop deadline."
-                            : "The provider call was interrupted by loop cancellation.",
-                        {},
-                        { stage: "provider-request", retryable: false },
-                    )
-                    : (() => {
-                        console.error("Provider failed outside its Problem Details contract:", err);
-                        return Results.failure(
-                            "engine:provider",
-                            "provider-contract-violation",
-                            502,
-                            "The provider failed without returning its required Problem Details.",
-                            {},
-                            {
-                                stage: "provider-request",
-                                retryable: false,
-                            },
-                        );
-                    })();
+            const failure = Engine.#providerFailure(err, providerSignal);
             // {§provider-interrupted-attempt} — a provider-declared interruption
             // carries response evidence without becoming a completed exchange.
             // Persist it as an unaccepted attempt before settling the failure.
             if (err instanceof ProviderError && err.attempt !== undefined) {
                 response = err.attempt;
-                await observeProviderAttempt(providerAttemptId, response);
+                await providerModelCall.observeResponse(response, failure);
                 splitResponse = this.#splitResponse(response);
                 await classifyProviderAttempt(
                     providerAttemptId,
                     splitResponse,
                     providerAttemptSequence,
                     false,
-                    failure,
                 );
             } else {
-                await this.#db.engine_fail_turn_attempt.run({
-                    id: providerAttemptId,
-                    failure: JSON.stringify(failure),
-                });
+                await providerModelCall.fail(failure);
                 emissionAttempts = providerAttemptSequence;
             }
             // {§turn-never-blank} — a ProviderError means no completed exchange exists.
@@ -1678,9 +1730,10 @@ export default class Engine {
             throw new OperationFailureError(recorded.result, { cause: err });
         }
 
-        if (response === undefined || splitResponse === undefined) {
+        if (response === undefined || splitResponse === undefined || providerModelCall === null) {
             throw new Error("provider attempt loop completed without a response");
         }
+        const emissionModelCallId = providerModelCall.id;
         if (!splitResponse.emissionValid) {
             // {§invalid-emission-attempts} The first consecutive exhaustion
             // publishes only the raw final response and generic recovery fact.
@@ -1693,6 +1746,7 @@ export default class Engine {
                     turnId,
                     sequence: nextActionIndex,
                     folded: true,
+                    modelCallId: emissionModelCallId,
                     admission: "rejected",
                 });
                 this.#notices.push(workspaceId, loopId, {
@@ -1873,6 +1927,10 @@ export default class Engine {
             },
         );
         const droppedCount = opsCount - opsToDispatch.length;
+        const bareStatements = opsToDispatch.filter(
+            (statement): statement is BareStatement => statement.op === "BARE",
+        );
+        let bareResults: ReadonlyMap<BareStatement, BareBatchResult> | null = null;
         const outcomes: StrikeOutcome[] = [];
         // Running counter — a multi-file READ writes N rows from one statement (rowsWritten),
         // so the next op's sequence picks up after them. Collapses to nextActionIndex+i when
@@ -1940,11 +1998,44 @@ export default class Engine {
                 "op.dispatch",
                 { op: statement.op },
                 async (span) => {
-                    const dispatchResult = await this.#dispatcher.dispatch({
-                        statement, workspaceId, workerId, loopId, turnId,
-                        sequence: rowSeq,
-                        origin, onDispatch,
-                    });
+                    let dispatchResult: DispatchResult;
+                    if (statement.op === "BARE") {
+                        if (bareResults === null) {
+                            const batch = await this.#runBareBatch({
+                                statements: bareStatements,
+                                provider: childProvider,
+                                turnId,
+                                modelCallSequenceStart: providerAttemptSequence + 1,
+                                workspaceId,
+                                workerId,
+                                primaryWorkerId,
+                                loopSequence: loopSeq,
+                                turnSequence: seq,
+                                signal: providerSignal,
+                            });
+                            bareResults = new Map(batch.map((item) => [item.statement, item]));
+                        }
+                        const bare = bareResults.get(statement);
+                        if (bare === undefined) {
+                            throw new Error("BARE statement reached dispatch without its batch result");
+                        }
+                        dispatchResult = await this.#dispatcher.recordBareResult({
+                            statement,
+                            workspaceId,
+                            workerId,
+                            loopId,
+                            turnId,
+                            sequence: rowSeq,
+                            origin,
+                            onDispatch,
+                        }, bare.result, bare.modelCallId);
+                    } else {
+                        dispatchResult = await this.#dispatcher.dispatch({
+                            statement, workspaceId, workerId, loopId, turnId,
+                            sequence: rowSeq,
+                            origin, onDispatch,
+                        });
+                    }
                     span.setAttribute("status", dispatchResult.status);
                     recordCounter(OPS_DISPATCHED, { op: statement.op, status: dispatchResult.status });
                     return dispatchResult;
@@ -2040,7 +2131,16 @@ export default class Engine {
             ? response.assistant.reasoningEncrypted
             : undefined;
         if (packetAssistant.content.trim().length > 0 || reasoningItems !== undefined) {
-            await this.#dispatcher.writeModelEntry({ verbatim: packetAssistant.content, workerId, loopId, turnId, sequence: errSeq++, folded: true, ...(reasoningItems !== undefined ? { reasoningItems } : {}) });
+            await this.#dispatcher.writeModelEntry({
+                verbatim: packetAssistant.content,
+                workerId,
+                loopId,
+                turnId,
+                sequence: errSeq++,
+                folded: true,
+                modelCallId: emissionModelCallId,
+                ...(reasoningItems !== undefined ? { reasoningItems } : {}),
+            });
         }
 
         return {
@@ -2407,7 +2507,8 @@ export default class Engine {
             const span = editedSpan(d.before, d.after);
             await this.#db.engine_insert_log_entry.get({
                 worker_id: worker.id, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
-                origin: "plurnk", source: "file", op: "EDIT", suffix: "", signal: null,
+                origin: "plurnk", source: "file", model_call_id: null,
+                op: "EDIT", suffix: "", signal: null,
                 // Match Dispatcher.#extractTarget: a bare file address has NULL scheme
                 // only in log target metadata; its entry identity remains `file`.
                 scheme: null, username: null, password: null, hostname: null, port: null,
@@ -2477,6 +2578,7 @@ export default class Engine {
             sequence,
             origin: "plurnk",
             source: null,
+            model_call_id: null,
             op: "prompt",
             suffix: "",
             signal: null,

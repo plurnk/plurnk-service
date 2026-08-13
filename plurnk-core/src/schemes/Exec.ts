@@ -780,7 +780,8 @@ export default class Exec extends CoreSchemeAdapterBase {
                     worker_id: narration.workerId, loop_id: narration.loopId, turn_id: narration.turnId, sequence,
                     // signal carries additive tag terms through the same slot a model's EDIT uses, so the
                     // ambient row renders its tags natively everywhere (packet meta line, digest).
-                    origin: "plurnk", source: causalSource, op: "EDIT", suffix: "", signal: JSON.stringify(tagSignal),
+                    origin: "plurnk", source: causalSource, model_call_id: null,
+                    op: "EDIT", suffix: "", signal: JSON.stringify(tagSignal),
                     scheme, username: null, password: null, hostname: null, port: null,
                     pathname, query: null, fragment: null, lineMarker: null,
                     tx: JSON.stringify({ op: "EDIT", body: source }), mimetype_tx: "application/json",

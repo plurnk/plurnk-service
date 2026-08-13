@@ -42,11 +42,16 @@ const recordResponseAttempt = async (db: Db, args: {
     response: unknown;
     parseErrors: unknown[];
 }): Promise<void> => {
-    const attempt = await db.engine_open_turn_attempt.get<{ id: number }>({
+    const modelCall = await db.engine_open_model_call.get<{ id: number }>({
         turn_id: args.turnId,
         sequence: args.sequence,
+        kind: "emission",
         attributions: "[]",
         model: "mock",
+    });
+    if (modelCall === undefined) throw new Error("requiem fixture model call did not open");
+    const attempt = await db.engine_open_turn_attempt.get<{ id: number }>({
+        model_call_id: modelCall.id,
     });
     if (attempt === undefined) throw new Error("requiem fixture attempt did not open");
     const accounting: ProviderRequestAccounting = {
@@ -67,7 +72,7 @@ const recordResponseAttempt = async (db: Db, args: {
         },
     };
     const request = await db.engine_open_provider_request.get<{ id: number }>({
-        turn_attempt_id: attempt.id,
+        model_call_id: modelCall.id,
         sequence: 1,
         provider: accounting.provider,
         model: accounting.model,
@@ -77,9 +82,10 @@ const recordResponseAttempt = async (db: Db, args: {
         providerRequestSettlementParams(request.id, accounting),
     );
     assert.equal(settled.changes, 1);
-    await db.engine_observe_turn_attempt_response.run({
-        id: attempt.id,
+    await db.engine_observe_model_call_response.run({
+        id: modelCall.id,
         response: JSON.stringify(args.response),
+        failure: null,
         finish_reason: "stop",
         model: "mock",
     });
@@ -87,7 +93,6 @@ const recordResponseAttempt = async (db: Db, args: {
         id: attempt.id,
         accepted: args.accepted ? 1 : 0,
         parse_errors: JSON.stringify(args.parseErrors),
-        failure: null,
     });
 };
 

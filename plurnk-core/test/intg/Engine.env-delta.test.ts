@@ -345,7 +345,7 @@ test("a proposed shared EDIT publishes only on successful resolution", async () 
         const propose = async (sequence: number, pathname: string): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 worker_id: producer, loop_id: producerLoop, turn_id: producerTurn, sequence,
-                origin: "model", source: null, op: "EDIT", suffix: "", signal: null,
+                origin: "model", source: null, model_call_id: null, op: "EDIT", suffix: "", signal: null,
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname, query: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain", rx: JSON.stringify({ status: 202 }),
@@ -569,7 +569,8 @@ test("an environment delta preserves typed source attributes for model-facing pr
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
         const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: plurnk, loop_id: plurnkLoop, turn_id: plurnkTurn, sequence: 1,
-            origin: "plurnk", source: "worker://observer", op: "EDIT", suffix: "", signal: JSON.stringify(["+query"]),
+            origin: "plurnk", source: "worker://observer", model_call_id: null,
+            op: "EDIT", suffix: "", signal: JSON.stringify(["+query"]),
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/page", query: null, fragment: null, lineMarker: null,
             tx: JSON.stringify({ op: "EDIT", body: "page" }), mimetype_tx: "application/json",

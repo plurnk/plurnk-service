@@ -98,16 +98,17 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 SELECT (
            SELECT pr.usage_input
            FROM provider_requests pr
-           JOIN turn_attempts a ON a.id = pr.turn_attempt_id
-           WHERE a.turn_id = (
+           JOIN model_calls mc ON mc.id = pr.model_call_id
+           WHERE mc.turn_id = (
                SELECT latest.id
                FROM turns latest
                WHERE latest.loop_id = $loop_id
                ORDER BY latest.sequence DESC
                LIMIT 1
            )
+           AND mc.kind = 'emission'
            AND pr.state = 'settled'
-           ORDER BY a.sequence DESC, pr.sequence DESC
+           ORDER BY mc.sequence DESC, pr.sequence DESC
            LIMIT 1
        ) AS context,
        -- Latest turn's effective packet allowance; NULL when uncapped or unknown.
@@ -128,10 +129,10 @@ SELECT pr.provider, pr.model, pr.outcome, pr.status,
        pr.cost_kind, pr.cost_amount, pr.cost_currency, pr.cost_usd_equivalent,
        pr.cost_source, pr.cost_reason
 FROM provider_requests pr
-JOIN turn_attempts a ON a.id = pr.turn_attempt_id
-JOIN turns t ON t.id = a.turn_id
+JOIN model_calls mc ON mc.id = pr.model_call_id
+JOIN turns t ON t.id = mc.turn_id
 WHERE t.loop_id = $loop_id AND pr.state = 'settled'
-ORDER BY t.sequence, a.sequence, pr.sequence;
+ORDER BY t.sequence, mc.sequence, pr.sequence;
 
 -- PREP: engine_loop_attributions
 -- {§attribution} — derive the loop projection from exact response-attempt
@@ -144,9 +145,9 @@ FROM (
     WHERE t.loop_id = $loop_id
     UNION
     SELECT value AS attribution
-    FROM turn_attempts a
-    JOIN turns t ON t.id = a.turn_id,
-         json_each(a.attributions)
+    FROM model_calls mc
+    JOIN turns t ON t.id = mc.turn_id,
+         json_each(mc.attributions)
     WHERE t.loop_id = $loop_id
 )
 ORDER BY attribution;
@@ -182,41 +183,46 @@ UPDATE turns SET
     meta = $meta
 WHERE id = $id;
 
--- PREP: engine_open_turn_attempt
--- Identity and request attribution become durable before provider I/O.
-INSERT INTO turn_attempts (turn_id, sequence, attributions, model)
-VALUES ($turn_id, $sequence, $attributions, $model)
+-- PREP: engine_open_model_call
+-- Logical identity and request attribution become durable before provider I/O.
+INSERT INTO model_calls (turn_id, sequence, kind, attributions, model)
+VALUES ($turn_id, $sequence, $kind, $attributions, $model)
 RETURNING id;
 
--- PREP: engine_observe_turn_attempt_response
--- Preserve the logical response before parser classification. Physical request
--- accounting has already settled through its cardinal observer path.
-UPDATE turn_attempts SET
+-- PREP: engine_observe_model_call_response
+-- Preserve the logical response before call-specific interpretation. Physical
+-- request accounting has already settled through its cardinal observer path.
+UPDATE model_calls SET
     state = 'response',
     response = $response,
+    failure = $failure,
     finish_reason = $finish_reason,
     model = $model,
     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = $id AND state = 'pending';
 
--- PREP: engine_classify_turn_attempt_response
-UPDATE turn_attempts SET
-    accepted = $accepted,
-    parse_errors = $parse_errors,
-    failure = $failure
-WHERE id = $id AND state = 'response';
-
--- PREP: engine_fail_turn_attempt
-UPDATE turn_attempts SET
+-- PREP: engine_fail_model_call
+UPDATE model_calls SET
     state = 'error',
     failure = $failure,
     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = $id AND state = 'pending';
 
+-- PREP: engine_open_turn_attempt
+INSERT INTO turn_attempts (model_call_id)
+VALUES ($model_call_id)
+RETURNING id;
+
+-- PREP: engine_classify_turn_attempt_response
+UPDATE turn_attempts SET
+    accepted = $accepted,
+    parse_errors = $parse_errors
+WHERE id = $id AND accepted IS NULL;
+
 -- PREP: engine_open_provider_request
 -- The provider calls this immediately before physical I/O.
-INSERT INTO provider_requests (turn_attempt_id, sequence, provider, model)
-VALUES ($turn_attempt_id, $sequence, $provider, $model)
+INSERT INTO provider_requests (model_call_id, sequence, provider, model)
+VALUES ($model_call_id, $sequence, $provider, $model)
 RETURNING id;
 
 -- PREP: engine_settle_provider_request
@@ -388,10 +394,10 @@ ORDER BY id DESC LIMIT 1;
 -- the channel; attrs.streamEnd is the next turn's cursor; expanded=1 for a terminal
 -- observation, 0 for an ongoing observation. {§exec-stream}
 INSERT INTO log_entries (
-    worker_id, loop_id, turn_id, sequence, origin, source,
+    worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
     op, scheme, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, attrs, expanded
 ) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', NULL,
+    $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', NULL, NULL,
     'READ', $scheme, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $attrs, $expanded
 );
 
@@ -535,14 +541,14 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- triggers the proposal lifecycle (engine pauses dispatch; client resolves
 -- via proposal resolution; entry transitions through engine_resolve_log_entry).
 INSERT INTO log_entries (
-    worker_id, loop_id, turn_id, sequence, origin, source,
+    worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
     op, suffix, signal,
     scheme, username, password, hostname, port,
     pathname, query, fragment, lineMarker,
     tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens,
     state, outcome, attrs
 ) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, $origin, $source,
+    $worker_id, $loop_id, $turn_id, $sequence, $origin, $source, $model_call_id,
     $op, $suffix, $signal,
     $scheme, $username, $password, $hostname, $port,
     $pathname, $query, $fragment, $lineMarker,
@@ -579,13 +585,13 @@ SELECT l.sequence AS loop_seq,
 
 -- PREP: engine_turn_packet_boundaries
 -- {§send-premature-terminate}/{§wait-obligation-matrix} — operations whose useful effect crosses
--- into the next packet: READ/FIND/OPEN results, plus successful FOLD context curation. Retrievals
+-- into the next packet: READ/FIND/OPEN/BARE results, plus successful FOLD context curation. Retrievals
 -- block an explicit [200]; FOLD blocks only the empty-[202] inference because explicit final
 -- housekeeping remains valid.
 SELECT id, op FROM log_entries
 WHERE turn_id = $turn_id
   AND origin = 'model'
-  AND (op IN ('READ', 'FIND', 'OPEN') OR (op = 'FOLD' AND status_rx < 400));
+  AND (op IN ('READ', 'FIND', 'OPEN', 'BARE') OR (op = 'FOLD' AND status_rx < 400));
 
 -- PREP: engine_worker_has_undelivered_stream_term
 -- A stream may finish between its EXEC and a same-turn SEND. It is then no longer

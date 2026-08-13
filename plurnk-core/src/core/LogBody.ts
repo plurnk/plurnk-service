@@ -96,7 +96,7 @@ export default class LogBody {
             return contentBody ?? EMPTY_BODY;
         }
 
-        if (row.op === "READ" || row.op === "FIND" || row.op === "prompt") {
+        if (row.op === "READ" || row.op === "FIND" || row.op === "BARE" || row.op === "prompt") {
             return contentBody ?? EMPTY_BODY;
         }
 

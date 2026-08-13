@@ -19,8 +19,14 @@ interface DigestJson {
     workers: Array<{ id: number; workspace_id: number; accounting: ProviderAccounting }>;
     loops: Array<{ id: number; worker_id: number; prompt: string }>;
     turns: Array<{ id: number; loop_id: number; accounting: ProviderAccounting }>;
+    model_calls: Array<{
+        turn_id: number;
+        kind: "emission" | "bare";
+        log_entry_id: number | null;
+        accounting: ProviderAccounting;
+    }>;
     turn_attempts: Array<{ turn_id: number; model: string }>;
-    provider_requests: Array<{ turn_attempt_id: number; accounting: ProviderRequestAccounting }>;
+    provider_requests: Array<{ model_call_id: number; turn_attempt_id: number | null; accounting: ProviderRequestAccounting }>;
     log_entries: Array<{ worker_id: number; loop_id: number; turn_id: number; target: string | null }>;
 }
 
@@ -44,11 +50,16 @@ const seedWorkerEvidence = async (
         model: `model-${marker}`,
         meta: "{}",
     });
-    const attempt = await db.engine_open_turn_attempt.get<{ id: number }>({
+    const modelCall = await db.engine_open_model_call.get<{ id: number }>({
         turn_id: turnId,
         sequence: 1,
+        kind: "emission",
         attributions: "[]",
         model: `model-${marker}`,
+    });
+    if (modelCall === undefined) throw new Error("digest fixture model call did not open");
+    const attempt = await db.engine_open_turn_attempt.get<{ id: number }>({
+        model_call_id: modelCall.id,
     });
     if (attempt === undefined) throw new Error("digest fixture attempt did not open");
     const accounting: ProviderRequestAccounting = {
@@ -69,7 +80,7 @@ const seedWorkerEvidence = async (
         },
     };
     const request = await db.engine_open_provider_request.get<{ id: number }>({
-        turn_attempt_id: attempt.id,
+        model_call_id: modelCall.id,
         sequence: 1,
         provider: accounting.provider,
         model: accounting.model,
@@ -79,9 +90,10 @@ const seedWorkerEvidence = async (
         providerRequestSettlementParams(request.id, accounting),
     );
     assert.equal(settled.changes, 1);
-    await db.engine_observe_turn_attempt_response.run({
-        id: attempt.id,
+    await db.engine_observe_model_call_response.run({
+        id: modelCall.id,
         response: JSON.stringify({ assistant: { reasoning: `reason-${marker}` } }),
+        failure: null,
         finish_reason: "stop",
         model: `model-${marker}`,
     });
@@ -89,7 +101,6 @@ const seedWorkerEvidence = async (
         id: attempt.id,
         accepted: 1,
         parse_errors: "[]",
-        failure: null,
     });
     await db.engine_insert_log_entry.run({
         worker_id: workerId,
@@ -98,6 +109,7 @@ const seedWorkerEvidence = async (
         sequence: 1,
         origin: "model",
         source: null,
+        model_call_id: null,
         op,
         suffix: "",
         signal: null,
@@ -121,6 +133,82 @@ const seedWorkerEvidence = async (
         attrs: "{}",
     });
     return { workerId, loopId, turnId };
+};
+
+const seedBareEvidence = async (
+    db: Db,
+    coordinates: { workerId: number; loopId: number; turnId: number },
+): Promise<void> => {
+    const modelCall = await db.engine_open_model_call.get<{ id: number }>({
+        turn_id: coordinates.turnId,
+        sequence: 2,
+        kind: "bare",
+        attributions: JSON.stringify(["provider:digest-bare"]),
+        model: "digest-bare",
+    });
+    if (modelCall === undefined) throw new Error("digest BARE model call did not open");
+    const accounting: ProviderRequestAccounting = {
+        provider: "provider:digest-bare",
+        model: "digest-bare",
+        outcome: "response",
+        usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            inputTokenDetails: { noCacheTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+            outputTokenDetails: { textTokens: 0, reasoningTokens: 0 },
+        },
+        cost: {
+            kind: "estimated",
+            amount: { amount: "0", currency: "USD" },
+            source: "digest BARE fixture",
+        },
+    };
+    const request = await db.engine_open_provider_request.get<{ id: number }>({
+        model_call_id: modelCall.id,
+        sequence: 1,
+        provider: accounting.provider,
+        model: accounting.model,
+    });
+    if (request === undefined) throw new Error("digest BARE provider request did not open");
+    await db.engine_settle_provider_request.run(providerRequestSettlementParams(request.id, accounting));
+    await db.engine_observe_model_call_response.run({
+        id: modelCall.id,
+        response: JSON.stringify({ assistant: { content: "Berlin", reasoning: null } }),
+        failure: null,
+        finish_reason: "stop",
+        model: accounting.model,
+    });
+    await db.engine_insert_log_entry.run({
+        worker_id: coordinates.workerId,
+        loop_id: coordinates.loopId,
+        turn_id: coordinates.turnId,
+        sequence: 2,
+        origin: "model",
+        source: null,
+        model_call_id: modelCall.id,
+        op: "BARE",
+        suffix: "0",
+        signal: JSON.stringify(["+fact"]),
+        scheme: null,
+        username: null,
+        password: null,
+        hostname: null,
+        port: null,
+        pathname: null,
+        query: null,
+        fragment: null,
+        lineMarker: null,
+        tx: JSON.stringify({ op: "BARE", body: "What is the capital of Germany?" }),
+        mimetype_tx: "application/json",
+        rx: JSON.stringify({ status: 200, content: "Berlin", mimetype: "text/plain" }),
+        mimetype_rx: "application/json",
+        status_rx: 200,
+        tokens: 1,
+        state: "resolved",
+        outcome: null,
+        attrs: "{}",
+    });
 };
 
 test("{§digest-programmatic-surface}: importing the public subpath performs no process or filesystem action", async () => {
@@ -173,6 +261,7 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         workspaceA = await insertWorkspace(db, "digest-workspace-a");
         workspaceB = await insertWorkspace(db, "digest-workspace-b");
         a1 = await seedWorkerEvidence(db, workspaceA, "a1", 1, "READ");
+        await seedBareEvidence(db, a1);
         a2 = await seedWorkerEvidence(db, workspaceA, "a2", 2, "EDIT");
         b1 = await seedWorkerEvidence(db, workspaceB, "b1", 3, "COPY");
     } finally {
@@ -204,15 +293,19 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.deepEqual(worker.json.workers.map(({ id }) => id), [a1.workerId]);
         assert.deepEqual(worker.json.loops.map(({ id }) => id), [a1.loopId]);
         assert.deepEqual(worker.json.turns.map(({ id }) => id), [a1.turnId]);
+        assert.deepEqual(worker.json.model_calls.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId]);
+        assert.deepEqual(worker.json.model_calls.map(({ kind }) => kind), ["emission", "bare"]);
+        assert.ok(worker.json.model_calls[1]?.log_entry_id !== null);
         assert.deepEqual(worker.json.turn_attempts.map(({ turn_id }) => turn_id), [a1.turnId]);
-        assert.equal(worker.json.provider_requests.length, 1);
-        assert.deepEqual(worker.json.log_entries.map(({ turn_id }) => turn_id), [a1.turnId]);
+        assert.equal(worker.json.provider_requests.length, 2);
+        assert.equal(worker.json.provider_requests[1]?.turn_attempt_id, null);
+        assert.deepEqual(worker.json.log_entries.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId]);
         assert.deepEqual(worker.json.workers.map(({ accounting }) => accounting.costUsd), ["0.001"]);
         assert.deepEqual(worker.json.turns.map(({ accounting }) => accounting.usage?.inputTokens), [100]);
         assert.match(worker.markdown, /prompt-a1/);
         assert.match(worker.markdown, /Tokens:\s+input=100 output=10 reasoning=1 cache-read=0/);
         assert.match(worker.markdown, /Cost:\s+\$0\.001/);
-        assert.match(worker.markdown, /Op mix:\s+READ=1/);
+        assert.match(worker.markdown, /Op mix:\s+BARE=1 READ=1/);
         assert.match(worker.reasoning, /reason-a1/);
         assert.doesNotMatch(`${JSON.stringify(worker.json)}${worker.markdown}${worker.reasoning}`, /(?:prompt|reason)-(?:a2|b1)/);
         assert.doesNotMatch(worker.markdown, /(?:\$0\.002000|\$0\.003000|Op mix:\s+(?:EDIT|COPY)=1)/);
@@ -228,9 +321,10 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         );
         assert.deepEqual(workspace.json.loops.map(({ id }) => id), [a1.loopId, a2.loopId]);
         assert.deepEqual(workspace.json.turns.map(({ id }) => id), [a1.turnId, a2.turnId]);
+        assert.deepEqual(workspace.json.model_calls.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId, a2.turnId]);
         assert.deepEqual(workspace.json.turn_attempts.map(({ turn_id }) => turn_id), [a1.turnId, a2.turnId]);
-        assert.equal(workspace.json.provider_requests.length, 2);
-        assert.deepEqual(workspace.json.log_entries.map(({ turn_id }) => turn_id), [a1.turnId, a2.turnId]);
+        assert.equal(workspace.json.provider_requests.length, 3);
+        assert.deepEqual(workspace.json.log_entries.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId, a2.turnId]);
         assert.deepEqual(
             workspace.json.workers
                 .filter(({ id }) => id === a1.workerId || id === a2.workerId)
@@ -239,7 +333,7 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         );
         assert.match(workspace.markdown, /prompt-a1/);
         assert.match(workspace.markdown, /prompt-a2/);
-        assert.match(workspace.markdown, /Op mix:\s+READ=1/);
+        assert.match(workspace.markdown, /Op mix:\s+BARE=1 READ=1/);
         assert.match(workspace.markdown, /Op mix:\s+EDIT=1/);
         assert.doesNotMatch(`${JSON.stringify(workspace.json)}${workspace.markdown}${workspace.reasoning}`, /(?:prompt|reason)-b1/);
         assert.doesNotMatch(workspace.markdown, /(?:\$0\.003000|Op mix:\s+COPY=1)/);
@@ -250,6 +344,7 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.deepEqual(intersection.json.workers, []);
         assert.deepEqual(intersection.json.loops, []);
         assert.deepEqual(intersection.json.turns, []);
+        assert.deepEqual(intersection.json.model_calls, []);
         assert.deepEqual(intersection.json.turn_attempts, []);
         assert.deepEqual(intersection.json.provider_requests, []);
         assert.deepEqual(intersection.json.log_entries, []);

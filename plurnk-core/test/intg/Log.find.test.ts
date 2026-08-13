@@ -222,6 +222,7 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
             sequence: 4,
             origin: "model",
             source: null,
+            model_call_id: null,
             op: "PLAN",
             suffix: "",
             signal: null,

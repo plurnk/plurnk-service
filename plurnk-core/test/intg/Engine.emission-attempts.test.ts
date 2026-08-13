@@ -8,6 +8,7 @@ import type { MockResponse, ProviderAttempt, ProviderRequestAccounting, Provider
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Digest from "../../src/digest/Digest.ts";
+import { ProviderAccountingIntegrityError } from "../../src/core/ModelCall.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection, seedEntryWithChannel } from "./_helpers.ts";
 
@@ -975,7 +976,6 @@ test("a classified provider error retains billed usage and authoritative charge 
 
 test("Core rejects a ProviderError whose accounting differs from its observed physical requests", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
-    const realConsoleError = console.error;
     try {
         const provider = new AttemptWitness({ contextWindow: 100_000, responses: [] });
         const requestAccounting: ProviderRequestAccounting = {
@@ -997,8 +997,6 @@ test("Core rejects a ProviderError whose accounting differs from its observed ph
                 "provider omitted its accounting return",
             );
         };
-        console.error = () => {};
-
         await assert.rejects(
             () => engine.runTurn({
                 provider,
@@ -1008,19 +1006,14 @@ test("Core rejects a ProviderError whose accounting differs from its observed ph
                 messages: [{ role: "user", content: "do the task" }],
             }),
             (error: unknown) => {
-                assert.ok(error instanceof OperationFailureError);
-                assert.equal(error.result.status, 502);
-                assert.equal(
-                    error.result.problem.type,
-                    "https://problems.plurnk.dev/engine/provider/provider-contract-violation",
-                );
+                assert.ok(error instanceof ProviderAccountingIntegrityError);
+                assert.match(error.message, /does not match the cardinal requests observed by Core/);
                 return true;
             },
         );
 
         assert.deepEqual((await engine.loopUsage(loopId)).accounting.requests, [requestAccounting]);
     } finally {
-        console.error = realConsoleError;
         await db.close();
     }
 });

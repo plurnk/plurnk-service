@@ -64,15 +64,25 @@ SELECT id, loop_id, sequence, status,
 FROM turns WHERE id = $id;
 
 -- PREP: test_turn_attempts
-SELECT id, sequence, state, accepted, response, failure, parse_errors,
-       attributions,
-       finish_reason, model, timestamp, completed_at
-FROM turn_attempts
-WHERE turn_id = $turn_id
-ORDER BY sequence;
+SELECT a.id, mc.sequence, mc.state, a.accepted, mc.response,
+       mc.failure, a.parse_errors,
+       mc.attributions, mc.finish_reason, mc.model, mc.timestamp, mc.completed_at
+FROM turn_attempts a
+JOIN model_calls mc ON mc.id = a.model_call_id
+WHERE mc.turn_id = $turn_id
+ORDER BY mc.sequence;
+
+-- PREP: test_model_calls
+SELECT mc.id, mc.sequence, mc.kind, mc.state, mc.response, mc.failure,
+       mc.attributions, mc.finish_reason, mc.model, mc.timestamp, mc.completed_at,
+       le.id AS log_entry_id
+FROM model_calls mc
+LEFT JOIN log_entries le ON le.model_call_id = mc.id
+WHERE mc.turn_id = $turn_id
+ORDER BY mc.sequence;
 
 -- PREP: test_provider_requests
-SELECT pr.id, pr.turn_attempt_id, a.sequence AS attempt_sequence, pr.sequence,
+SELECT pr.id, a.id AS turn_attempt_id, mc.sequence AS attempt_sequence, pr.sequence,
        pr.provider, pr.model, pr.state, pr.outcome, pr.status,
        pr.usage_input, pr.usage_output, pr.usage_total,
        pr.usage_input_no_cache, pr.usage_input_cache_read, pr.usage_input_cache_write,
@@ -80,9 +90,10 @@ SELECT pr.id, pr.turn_attempt_id, a.sequence AS attempt_sequence, pr.sequence,
        pr.cost_kind, pr.cost_amount, pr.cost_currency, pr.cost_usd_equivalent,
        pr.cost_source, pr.cost_reason, pr.started_at, pr.completed_at
 FROM provider_requests pr
-JOIN turn_attempts a ON a.id = pr.turn_attempt_id
-WHERE a.turn_id = $turn_id
-ORDER BY a.sequence, pr.sequence;
+JOIN model_calls mc ON mc.id = pr.model_call_id
+LEFT JOIN turn_attempts a ON a.model_call_id = mc.id
+WHERE mc.turn_id = $turn_id
+ORDER BY mc.sequence, pr.sequence;
 
 -- PREP: test_get_log_entry_by_id
 SELECT id, status_rx, state, outcome, attrs, rx
@@ -156,7 +167,7 @@ SELECT status FROM turns WHERE id = $id;
 SELECT id, sequence, status, packet FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_turn
-SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, rx, attrs
+SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, rx, attrs, model_call_id
 FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_worker

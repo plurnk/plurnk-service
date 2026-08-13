@@ -1465,6 +1465,25 @@ test("firstPartyMetadata: attributions + client ride as Plurnk-* headers", async
     assert.equal(headerVal(calls[0].init, "Plurnk-Client"), "plurnk.nvim/1.4.0");
 });
 
+test("Plurnk-Call-Kind carries the caller's emission or bare output contract under the first-party gate", async () => {
+    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "emission", messages: [], callKind: "emission" });
+    await p.generate({ workerId: "bare", messages: [], callKind: "bare" });
+    assert.equal(headerVal(calls[0].init, "Plurnk-Call-Kind"), "emission");
+    assert.equal(headerVal(calls[1].init, "Plurnk-Call-Kind"), "bare");
+});
+
+test("generate rejects an unknown call kind before provider I/O", async () => {
+    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await assert.rejects(
+        p.generate({ workerId: "invalid", messages: [], callKind: "unknown" as never }),
+        /unsupported callKind "unknown"/,
+    );
+    assert.equal(calls.length, 0);
+});
+
 test("Plurnk-Worker-Primary: the lineage root rides under the gate; emitted even when it equals workerId", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
@@ -1494,9 +1513,10 @@ test("Plurnk-Worker-Primary is structurally dropped when firstPartyMetadata is o
 test("firstPartyMetadata off (default): the headers are structurally dropped even when values are passed", async () => {
     const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], attributions: ["@acme/x@1.2.0"], client: "plurnk-cli/2.0.0" });
+    await p.generate({ workerId: "r", messages: [], attributions: ["@acme/x@1.2.0"], client: "plurnk-cli/2.0.0", callKind: "bare" });
     assert.equal(headerVal(calls[0].init, "Plurnk-Attribution"), undefined);   // never leaks to a non-first-party backend
     assert.equal(headerVal(calls[0].init, "Plurnk-Client"), undefined);
+    assert.equal(headerVal(calls[0].init, "Plurnk-Call-Kind"), undefined);
 });
 
 test("firstPartyMetadata on but empty values: no header emitted", async () => {

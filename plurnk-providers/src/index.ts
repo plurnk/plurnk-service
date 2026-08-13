@@ -13,6 +13,8 @@ export type {
     ProviderAccounting,
     ProviderCost,
     ProviderCostNormalizer,
+    ProviderCallKind,
+    ProviderGenerateArgs,
     ProviderRequestAccounting,
     ProviderRequestIdentity,
     ProviderRequestObserver,

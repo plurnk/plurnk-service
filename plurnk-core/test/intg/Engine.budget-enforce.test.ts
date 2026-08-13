@@ -162,7 +162,7 @@ test("{§grinder-layer1-rollback}: overflow rolls back only the exact older rows
         const seed = async (sequence: number, op: "READ" | "EDIT" | "PLAN", content: string): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: oldTurnId, sequence,
-                origin: "model", source: null, op, suffix: "", signal: null,
+                origin: "model", source: null, model_call_id: null, op, suffix: "", signal: null,
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: `/old-${sequence}`, query: null, fragment: null, lineMarker: null,
                 tx: JSON.stringify({ op }), mimetype_tx: "application/json",
@@ -248,7 +248,7 @@ test("{§grinder-layer1-rollback}: a reopened target folded again before grindin
         const oldTurnId = await insertTurn(db, loopId, 1, 200);
         const target = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: oldTurnId, sequence: 1,
-            origin: "model", source: null, op: "READ", suffix: "", signal: null,
+            origin: "model", source: null, model_call_id: null, op: "READ", suffix: "", signal: null,
             scheme: "worker", username: null, password: null, hostname: null, port: null,
             pathname: "/old", query: null, fragment: null, lineMarker: null,
             tx: "{}", mimetype_tx: "application/json",
@@ -370,7 +370,7 @@ test("{§grinder-layer1-rollback}: a huge current-turn engine row folds with the
         const turnId = await insertTurn(db, loopId, 2, 102);
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "plurnk", source: null, op: "READ", suffix: "", signal: null,
+            origin: "plurnk", source: null, model_call_id: null, op: "READ", suffix: "", signal: null,
             scheme: "search", username: null, password: null, hostname: null, port: null,
             pathname: "/1/1/7", query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",

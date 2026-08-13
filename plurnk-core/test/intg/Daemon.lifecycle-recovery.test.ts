@@ -76,15 +76,20 @@ test("boot settles a crash-open physical request as unknown and closes its emiss
         const loopId = await enqueueLoop(db, workerId, 1, "interrupted unscoped provider call");
         await db.engine_reclaim_queued_loop.run({ loop_id: loopId });
         const turnId = await insertTurn(db, loopId, 1, 102);
-        const attempt = await db.engine_open_turn_attempt.get<{ id: number }>({
+        const modelCall = await db.engine_open_model_call.get<{ id: number }>({
             turn_id: turnId,
             sequence: 1,
+            kind: "emission",
             attributions: "[]",
             model: mock.model,
         });
+        assert.ok(modelCall !== undefined);
+        const attempt = await db.engine_open_turn_attempt.get<{ id: number }>({
+            model_call_id: modelCall.id,
+        });
         assert.ok(attempt !== undefined);
         const request = await db.engine_open_provider_request.get<{ id: number }>({
-            turn_attempt_id: attempt.id,
+            model_call_id: modelCall.id,
             sequence: 1,
             provider: "provider:mock",
             model: mock.model,
@@ -104,6 +109,9 @@ test("boot settles a crash-open physical request as unknown and closes its emiss
         assert.equal(requests[0]?.outcome, "error");
         assert.equal(requests[0]?.cost_kind, "unknown");
         assert.match(requests[0]?.cost_reason ?? "", /restarted before provider request evidence/);
+        const calls = await db.test_model_calls.all<{ state: string; failure: string | null }>({ turn_id: turnId });
+        assert.equal(calls[0]?.state, "error");
+        assert.match(calls[0]?.failure ?? "", /owner-vanished/);
         const usage = await daemon.engine.loopUsage(loopId);
         assert.equal(usage.accounting.costUsd, null);
     } finally {
@@ -217,6 +225,7 @@ test("boot terminalizes a proposed occurrence whose process-local resolution own
             sequence: 1,
             origin: "model",
             source: null,
+            model_call_id: null,
             op: "EDIT",
             suffix: "",
             signal: null,

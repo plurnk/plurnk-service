@@ -28,7 +28,7 @@ const TEXT_EXTENSIONS = new Set([
     ".yaml",
     ".yml",
 ]);
-const RETIRED_NAMES = "OP|TURN|PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|SEND|EXEC|WORK|FORK|KILL|LOOK|BUFF";
+const RETIRED_NAMES = "OP|TURN|PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|SEND|EXEC|BARE|WORK|FORK|KILL|LOOK|BUFF";
 const RETIRED_FORMS = [
     new RegExp(`<\\|(?:${RETIRED_NAMES})[A-Za-z0-9_]*(?=[\\[>(<|])`, "g"),
     new RegExp(`<(?:${RETIRED_NAMES})[A-Za-z0-9_]*\\|>`, "g"),
