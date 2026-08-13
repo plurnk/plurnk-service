@@ -16,12 +16,13 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|W
 
 ```plurnk
 # PLANsuffix
-new findings, unresolved questions, current priorities
+new reasoning conclusions, open inquiries, unresolved priorities
 
 ## OPsuffix [signal]? (path)? <scope>?
 body?
 ```
 
+PLAN persists new reasoning conclusions, open inquiries, and unresolved priorities.
 PLAN begins the turn as H1. Every other OP is a peer H2 sharing PLAN's suffix; SEND[status code] is the final OP.
 Nested OP headings in body content use a suffix different from the containing turn.
 A single blank line between sections is optional and is not body content; additional blank lines are body content.
@@ -31,7 +32,7 @@ Body content is character-perfect, including whitespace.
 
 | OP   | purpose                        | `[signal]`   | `(path)`                   | `<scope>`      | `body`                      |
 |------|--------------------------------|--------------|----------------------------|----------------|-----------------------------|
-| PLAN | add working-state deltas        | -            | -                          | -              | new findings, questions, priorities |
+| PLAN | persist working-state deltas    | -            | -                          | -              | conclusions, inquiries, priorities |
 | FIND | list matching targets          | add log tags?    | target or glob             | result range?  | pattern?                    |
 | READ | retrieve target content        | add log tags?    | target                     | text region?   | -                           |
 | EDIT | create or edit scoped content  | add log tags?    | file or entry              | text region?   | literal text                |
@@ -69,9 +70,9 @@ Matcher bodies select resources by content.
 
 ```plurnk
 # PLAN0
-* Goal: Survey representative resources with every matcher dialect.
-* Method: Compare how each query narrows its target.
-* Completion: Inspect the relevant returned evidence before concluding.
+* The six queries cover every matcher dialect across exact and broad targets.
+* Still unresolved: which returned matches are relevant enough to inspect.
+* Compare the result shapes, then read the relevant targets before concluding.
 
 ## FIND0 (src/**/*.ts)
 /createCoder/i
@@ -126,9 +127,9 @@ Text scopes use 1-based lines and Unicode code-point columns consistently across
 
 ```plurnk
 # PLAN0
-* Goal: Apply exact text selections across working entries without disturbing adjacent content.
-* Method: Delete obsolete text, inspect a column range, insert and prepend literal text, then copy a selection and append a moved line.
-* Completion: Verify every changed boundary and destination next turn before concluding.
+* Obsolete line 2 should be deleted; the draft insertion belongs at line 2, column 5; the preface belongs before line 1.
+* Still need to inspect the notes selection and verify the copy and move destinations.
+* Check every changed boundary after the results materialize.
 
 ## EDIT0 (worker:///obsolete.md) <2>
 
@@ -186,7 +187,8 @@ sequenceDiagram
 
 ```plurnk
 # PLAN0
-Delegate the capital question, then wait.
+* The capital claim needs primary-source evidence before answering.
+* `capital-checker` owns that lookup; wait for its result.
 
 ## WORK0 (worker://capital-checker)
 Find the capital of France from a primary source
@@ -197,7 +199,8 @@ Awaiting capital-checker.
 
 ```plurnk
 # PLAN0
-Deliver the collected answer.
+* `capital-checker` verified from a primary source that France's capital is Paris.
+* The primary-source inquiry is resolved; deliver the answer.
 
 ## SEND0 [200]
 The capital of France is Paris.
