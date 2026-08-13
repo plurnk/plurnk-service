@@ -415,7 +415,7 @@ export default class PacketBuilder {
             }
         }
         const parts: string[] = [...notices];
-        if (executorOps.length > 0) parts.push(`\`\`\`plurnk\n${executorOps.join("\n")}\n\`\`\``);
+        if (executorOps.length > 0) parts.push(`\`\`\`plurnk\n${executorOps.join("\n\n")}\n\`\`\``);
         return { executors: parts.join("\n\n"), optionalOperations };
     }
 
