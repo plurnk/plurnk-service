@@ -5,7 +5,7 @@ import LineAnchors from "./line-anchors.ts";
 
 const identity = "worker:///notes.md";
 
-test("LineAnchors: tokens are deterministic Base62 handles over identity, ordinal, and a radius-four context", () => {
+test("LineAnchors: tokens are deterministic Base62 handles over identity, ordinal, and configured context", () => {
     const content = Array.from({ length: 13 }, (_, index) => `line-${index + 1}`).join("\n");
     const token = LineAnchors.token(identity, 7, content);
     assert.match(token, /^@[0-9A-Za-z]{5}$/);
@@ -13,10 +13,30 @@ test("LineAnchors: tokens are deterministic Base62 handles over identity, ordina
     assert.notEqual(LineAnchors.token("worker:///other.md", 7, content), token);
     assert.notEqual(LineAnchors.token(identity, 8, content), token);
 
-    const nearby = content.replace("line-3", "changed-nearby");
-    const outside = content.replace("line-2", "changed-outside");
+    const nearby = content.replace("line-5", "changed-nearby");
+    const outside = content.replace("line-4", "changed-outside");
     assert.notEqual(LineAnchors.token(identity, 7, nearby), token);
     assert.equal(LineAnchors.token(identity, 7, outside), token);
+});
+
+test("LineAnchors: context tuning is hash-domain state and fails hard when missing or malformed", () => {
+    const prior = process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES;
+    try {
+        process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES = "2";
+        const radiusTwo = LineAnchors.token(identity, 1, "alpha");
+        process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES = "3";
+        assert.notEqual(LineAnchors.token(identity, 1, "alpha"), radiusTwo);
+
+        delete process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES;
+        assert.throws(() => LineAnchors.token(identity, 1, "alpha"), /EDIT_ANCHOR_CONTEXT_LINES/);
+        for (const malformed of ["-1", "1.5", "not-a-number"]) {
+            process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES = malformed;
+            assert.throws(() => LineAnchors.token(identity, 1, "alpha"), /EDIT_ANCHOR_CONTEXT_LINES/);
+        }
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES;
+        else process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES = prior;
+    }
 });
 
 test("LineAnchors: rendering preserves physical content and separators while carrying the visible ordinal", () => {
@@ -65,7 +85,7 @@ test("LineAnchors: changed content, nearby context, or ordinal makes an authored
         ok: false,
         failure: { kind: "stale", anchor },
     });
-    assert.deepEqual(LineAnchors.resolve(LineAnchors.tokens(identity, content.replace("epsilon", "changed-nearby")), { marks: [anchor] }), {
+    assert.deepEqual(LineAnchors.resolve(LineAnchors.tokens(identity, content.replace("delta", "changed-nearby")), { marks: [anchor] }), {
         ok: false,
         failure: { kind: "stale", anchor },
     });
@@ -82,20 +102,20 @@ test("LineAnchors: a mutation precondition checks only its anchored neighborhood
         checks: [{ anchor: LineAnchors.token(identity, 5, content), line: 5 }],
     };
     assert.equal(LineAnchors.satisfies(precondition, content), true);
-    assert.equal(LineAnchors.satisfies(precondition, content.replace("line-9", "nearby-change")), false);
-    assert.equal(LineAnchors.satisfies(precondition, content.replace("line-10", "outside-change")), true);
+    assert.equal(LineAnchors.satisfies(precondition, content.replace("line-7", "nearby-change")), false);
+    assert.equal(LineAnchors.satisfies(precondition, content.replace("line-8", "outside-change")), true);
 });
 
 test("LineAnchors: a rare target-local collision fails as ambiguous", () => {
-    const collisionIdentity = "worker:///collision-8.md";
+    const collisionIdentity = "worker:///collision-0.md";
     const content = Array.from({ length: 25_000 }, (_, index) => `line-${index + 1}`).join("\n");
     const anchors = LineAnchors.tokens(collisionIdentity, content);
-    const anchor = "@Y7OGt";
-    assert.equal(anchors[1_572], anchor);
-    assert.equal(anchors[12_399], anchor);
+    const anchor = "@cvYPX";
+    assert.equal(anchors[1_468], anchor);
+    assert.equal(anchors[19_258], anchor);
     assert.deepEqual(LineAnchors.resolve(anchors, { marks: [anchor] }), {
         ok: false,
-        failure: { kind: "ambiguous", anchor, matches: [1_573, 12_400] },
+        failure: { kind: "ambiguous", anchor, matches: [1_469, 19_259] },
     });
 });
 

@@ -430,7 +430,7 @@ test("Engine.dispatch: a scoped READ anchor includes nearby lines outside the re
         assert.match(anchor ?? "", /^@[0-9A-Za-z]{5}$/);
 
         assert.equal((await engine.dispatch({
-            statement: editStmt({ target, marker: { marks: [9] }, body: "changed-nearby" }),
+            statement: editStmt({ target, marker: { marks: [7] }, body: "changed-nearby" }),
             ...env, sequence: 3, origin: "model",
         })).status, 200);
 

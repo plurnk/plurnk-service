@@ -1234,9 +1234,10 @@ AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker
   authority admits the contracts-owned {§edit-line-anchor-syntax} as a
   current-line precondition.
   For canonical model-facing resource identity `R`, one-based line ordinal `L`,
-  and ordered content array `W` containing that line and up to four complete
-  lines on either side (all excluding separators), core hashes the JSON tuple
-  `["plurnk-line-anchor-v1",R,L,W]` with SHA-256, interprets the digest as a
+  configured non-negative neighbor count `C`, and ordered content array `W`
+  containing that line and up to `C` complete lines on either side (all
+  excluding separators), core hashes the JSON tuple
+  `["plurnk-line-anchor-v1",R,L,C,W]` with SHA-256, interprets the digest as a
   big-endian integer modulo `62^5`, and encodes five fixed-width characters with
   alphabet `0-9A-Za-z`. The universal READ projector derives anchors from the
   complete canonical selected channel before applying the authored text slice;
@@ -1251,8 +1252,9 @@ AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker
   textual EDIT scopes return 400 without invoking the scheme; an upstream
   current-read failure preserves its status. No revision sidecar or fuzzy
   relocation exists. A range authenticates both endpoint neighborhoods, so
-  every line of a range up to ten lines is covered; a longer range retains an
-  unauthenticated interior gap.
+  every line of a range up to `2C + 2` lines is covered; a longer range retains
+  an unauthenticated interior gap. The shipped `C = 2` covers ranges through six
+  lines.
 - §edit-collision Every standard entry EDIT lands by compare-and-swap against
   the exact channel content used to calculate it, including numeric-only EDITs.
   A concurrent creator that wins the resource identity or channel, an anchor
@@ -1969,6 +1971,7 @@ Model selection: separate alias cascade in `ProviderRegistry` ({§provider-insta
 | `PLURNK_SERVICE_EMISSION_ATTEMPTS`                          | `3` | Completed provider responses allowed beneath one engine turn before an untrustworthy model-turn frame exhausts admission. Bounded interior operation errors are admitted and do not spend this budget. Consecutive exhaustion after the one informed recovery turn terminates independently of strikes. |
 | `PLURNK_SERVICE_PREVIEW_LINES`                              | `16` | Maximum lines in an ordinary bounded log-body projection ({§body-projection}). |
 | `PLURNK_SERVICE_PREVIEW_CHARS`                              | `2560` | Maximum characters in an ordinary bounded log-body projection; independently contains single-line bodies ({§body-projection}). |
+| `PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES`                  | `2` | Complete neighboring lines hashed on each side of a model-facing EDIT line anchor ({§edit-line-anchors}). |
 | `PLURNK_SERVICE_MIN_CYCLES`                                 | `3` | Min repetitions before cycle detection fires ({§engine-rails}). |
 | `PLURNK_SERVICE_MAX_CYCLE_PERIOD`                           | `4` | Max period length cycle detection examines ({§engine-rails}). |
 | `PLURNK_SERVICE_REQUIEM_MAX_TOKENS`                         | `16384` | Initial forensic witness output allowance ({§digest-requiem}). |

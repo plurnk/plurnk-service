@@ -30,7 +30,6 @@ export interface LineAnchorPrecondition {
 export default class LineAnchors {
     static readonly #ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     static readonly #LENGTH = 5;
-    static readonly #RADIUS = 4;
     static readonly #MODULUS = BigInt(LineAnchors.#ALPHABET.length) ** BigInt(LineAnchors.#LENGTH);
     static readonly #TOKEN = /^@[0-9A-Za-z]{5}$/;
     static readonly #PREFIXED_LINE = /^@[0-9A-Za-z]{5}:[1-9]\d*:/;
@@ -68,13 +67,29 @@ export default class LineAnchors {
         });
     }
 
-    static #encode(identity: string, lineNumber: number, context: readonly string[]): string {
+    static #contextLines(): number {
+        const raw = process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES;
+        const value = Number(raw);
+        if (!Number.isSafeInteger(value) || value < 0) {
+            throw new RangeError(
+                `PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES must be a non-negative safe integer, got ${JSON.stringify(raw)}`,
+            );
+        }
+        return value;
+    }
+
+    static #encode(
+        identity: string,
+        lineNumber: number,
+        contextLines: number,
+        context: readonly string[],
+    ): string {
         if (identity.length === 0) throw new TypeError("A line anchor requires a non-empty resource identity.");
         if (!Number.isSafeInteger(lineNumber) || lineNumber < 1) {
             throw new RangeError(`A line anchor requires a positive safe line number, got ${lineNumber}.`);
         }
         const digest = createHash("sha256")
-            .update(JSON.stringify(["plurnk-line-anchor-v1", identity, lineNumber, context]))
+            .update(JSON.stringify(["plurnk-line-anchor-v1", identity, lineNumber, contextLines, context]))
             .digest("hex");
         let value = BigInt(`0x${digest}`) % LineAnchors.#MODULUS;
         let encoded = "";
@@ -86,14 +101,16 @@ export default class LineAnchors {
     }
 
     static tokens(identity: string, content: string): readonly string[] {
+        const contextLines = LineAnchors.#contextLines();
         const lines = TextCoordinates.logicalLines(content);
         const bodies = lines.map((line) => content.slice(line.start, line.contentEnd));
         return bodies.map((_, index) => LineAnchors.#encode(
             identity,
             index + 1,
+            contextLines,
             bodies.slice(
-                Math.max(0, index - LineAnchors.#RADIUS),
-                index + LineAnchors.#RADIUS + 1,
+                Math.max(0, index - contextLines),
+                index + contextLines + 1,
             ),
         ));
     }
