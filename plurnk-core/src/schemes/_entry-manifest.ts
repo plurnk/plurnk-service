@@ -26,6 +26,7 @@ type ManifestRow = {
     seconds: number | null;
     close_status: number | null;
     deep_hash: string | null;
+    parse_issues: number | null;
 };
 
 export type StreamLifecycle = EntryStreamLifecycle;
@@ -96,6 +97,9 @@ export default class EntryManifest {
                 mimetype: row.mimetype,
                 tokens: tokenize(row.content),
                 lines: totalLines,
+                ...(row.channel === "body" && row.parse_issues !== null
+                    ? { parseIssues: row.parse_issues }
+                    : {}),
             });
         }
         return [...byEntry.values()].map(({ path, defaultChannel, stream, channels }) => {

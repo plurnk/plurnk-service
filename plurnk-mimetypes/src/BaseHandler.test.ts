@@ -38,6 +38,11 @@ describe("BaseHandler", () => {
         assert.doesNotThrow(() => h.validate("anything"));
     });
 
+    it("reports no parser recovery evidence by default", () => {
+        const h = new BaseHandler(metadata);
+        assert.equal(h.parseIssues("anything"), 0);
+    });
+
     it("declares no effective projection configuration by default", () => {
         const h = new BaseHandler(metadata);
         assert.equal(h.projectionConfiguration(), "");

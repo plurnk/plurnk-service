@@ -39,7 +39,7 @@ import type {
 export type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "embedding";
 
 const DEFAULT_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", "references", "content"];
-const FRAMEWORK_PROJECTION_REVISION = "1";
+const FRAMEWORK_PROJECTION_REVISION = "2";
 const HANDLER_METHODS = [
     "extractRaw",
     "deepJson",
@@ -47,6 +47,7 @@ const HANDLER_METHODS = [
     "references",
     "content",
     "validate",
+    "parseIssues",
     "projectionConfiguration",
     "query",
     "symbolsRaw",
@@ -104,6 +105,8 @@ export interface ProcessResult {
     totalLines: number;
     // Missing grammar package for a non-strict structural degradation.
     grammarMissing?: string;
+    // Positive parser-recovery count from requested structural work.
+    parseIssues?: number;
 
     // Projection fields are present iff requested.
     // Structured definitions and outline source.
@@ -462,17 +465,23 @@ export default class Mimetypes {
         const usesDefaultDeepXml = channels.has("deepXml")
             && handler.deepXml === BaseHandler.prototype.deepXml;
         const needsDeepJson = channels.has("deepJson") || usesDefaultDeepXml;
+        const needsParseIssues = channels.has("symbols")
+            || channels.has("deepJson")
+            || channels.has("deepXml")
+            || channels.has("references");
         let symbols: MimeSymbol[] | undefined;
         let deepJsonValue: unknown;
         let references: MimeRef[] | undefined;
         let contentValue: string | undefined;
+        let rawParseIssues: number | undefined;
         let deepXml: string | undefined;
         try {
-            [symbols, deepJsonValue, references, contentValue] = await Promise.all([
+            [symbols, deepJsonValue, references, contentValue, rawParseIssues] = await Promise.all([
                 channels.has("symbols") ? handler.extractRaw(content) : undefined,
                 needsDeepJson ? handler.deepJson(content) : undefined,
                 channels.has("references") ? handler.references(content) : undefined,
                 channels.has("content") ? handler.content(content) : undefined,
+                needsParseIssues ? handler.parseIssues(content) : undefined,
             ]);
             if (channels.has("deepXml")) {
                 deepXml = usesDefaultDeepXml
@@ -497,11 +506,13 @@ export default class Mimetypes {
         const embeddingPart = channels.has("embedding")
             ? await this.#embeddings.embedFor(content, handler, options.strict === true)
             : {};
+        const parseIssues = normalizeParseIssues(rawParseIssues, mimetype);
 
         return attachNotices({
             mimetype,
             ok: true,
             totalLines,
+            ...(parseIssues === undefined ? {} : { parseIssues }),
             ...(channels.has("symbols") && { symbols }),
             ...(channels.has("deepJson") && { deepJson: deepJsonValue }),
             ...(channels.has("deepXml") && { deepXml }),
@@ -772,6 +783,16 @@ function isMissingFile(error: unknown): boolean {
         && error !== null
         && "code" in error
         && (error as { code?: unknown }).code === "ENOENT";
+}
+
+function normalizeParseIssues(value: number | undefined, mimetype: string): number | undefined {
+    if (value === undefined || value === 0) return undefined;
+    if (!Number.isSafeInteger(value) || value < 0) {
+        throw new TypeError(
+            `Invalid parseIssues result for ${mimetype}: expected a nonnegative safe integer; got ${JSON.stringify(value)}`,
+        );
+    }
+    return value;
 }
 
 // One metadata-only returned-error shape ({§mimetype-error-policy}).

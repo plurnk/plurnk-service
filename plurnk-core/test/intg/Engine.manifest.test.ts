@@ -48,7 +48,8 @@ test("the commons catalog is complete and unranked — every selected entry, no 
         // Unranked directory: NO `shown` (or any visibility/relevance) field anywhere.
         for (const [channel] of catalog) assert.equal("shown" in channel, false, `no \`shown\` field — the directory is unranked (offender: ${channel.path})`);
 
-        // Shape: a non-empty, default-first array of { path, mimetype, tokens, lines } channels.
+        // Shape: a non-empty, default-first array of channel metadata; exceptional
+        // parser evidence is independently covered below.
         const germany = catalog.find(([channel]) => channel.path === "worker:///germany/capital");
         assert.ok(germany !== undefined, "germany entry present");
         assert.equal(germany.length, 1);
@@ -119,6 +120,53 @@ test("manifest build survives a malformed application/json entry — degrades to
         assert.ok(paths.includes("worker:///bad.json"), "malformed entry still listed (degraded, not crashed)");
         const bad = catalog.find(([channel]) => channel.path === "worker:///bad.json");
         assert.ok(bad !== undefined && bad[0].lines >= 1, "malformed entry degraded to a line count");
+    } finally { await db.close(); }
+});
+
+test("{§scheme-catalog-parse-issues} catalog quietly marks parser recovery without disabling the derivation", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `manifest-parse-issues-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "what's available?");
+        const brokenId = await seedEntryWithChannel(db, {
+            workspaceId,
+            scheme: "worker",
+            pathname: "/broken.ts",
+            channel: "body",
+            content: "const x = ;",
+            mimetype: "text/typescript",
+        });
+        await db.test_seed_channel.run({
+            entry_id: brokenId,
+            name: "notes",
+            content: "auxiliary channel",
+            mimetype: "text/plain",
+            state: "static",
+        });
+        await seedEntryWithChannel(db, {
+            workspaceId,
+            scheme: "worker",
+            pathname: "/clean.ts",
+            channel: "body",
+            content: "const x = 1;",
+            mimetype: "text/typescript",
+        });
+
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextWindow: 100000, responses: [indexingTurn] });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId }));
+        const broken = catalog.find(([channel]) => channel.path === "worker:///broken.ts");
+        const clean = catalog.find(([channel]) => channel.path === "worker:///clean.ts");
+        assert.equal(broken?.[0].parseIssues, 1);
+        const notes = broken?.find((channel) => channel.path === "worker:///broken.ts#notes");
+        assert.equal(notes !== undefined && "parseIssues" in notes, false, "the body derivation never labels an unparsed sibling channel");
+        assert.equal(clean !== undefined && "parseIssues" in clean[0], false, "clean source carries no success badge");
+
+        const derivation = await db.test_derivation_disposition.get<{ disposition: string }>({ entry_id: brokenId });
+        assert.notEqual(derivation?.disposition, "failed", "advisory parser recovery leaves indexing available");
     } finally { await db.close(); }
 });
 

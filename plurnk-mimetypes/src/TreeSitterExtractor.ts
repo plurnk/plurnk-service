@@ -24,6 +24,11 @@ export interface TreeSitterTree {
 export interface TreeSitterNode {
     readonly type: string;
     readonly text: string;
+    // Parser-recovery evidence from web-tree-sitter. Optional for adapters
+    // that supply the smaller synthetic-node seam.
+    readonly hasError?: boolean;
+    readonly isError?: boolean;
+    readonly isMissing?: boolean;
     // Present on web-tree-sitter nodes. Optional here preserves the public
     // structural seam for adapters that supply point-only synthetic nodes.
     readonly startIndex?: number;
@@ -99,6 +104,18 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         if (!tree) return [];
         try {
             return this.extractFromTree(tree, content);
+        } finally {
+            tree.delete?.();
+        }
+    }
+
+    override async parseIssues(content: HandlerContent): Promise<number> {
+        if (typeof content !== "string") return 0;
+        const parser = await this.getParser();
+        const tree = parser.parse(content);
+        if (!tree) return 0;
+        try {
+            return countParseIssues(tree.rootNode);
         } finally {
             tree.delete?.();
         }
@@ -197,6 +214,24 @@ export function walkDeepNode(node: TreeSitterNode, content?: string): DeepTreeNo
         node,
         content === undefined ? undefined : new ParserCoordinates(content),
     );
+}
+
+// Count concrete recovery sites, not ancestor nodes whose `hasError` merely
+// summarizes a descendant ({§mimetype-parse-issues}). The iterative walk
+// avoids consuming the JavaScript call stack on a deeply nested source tree.
+function countParseIssues(root: TreeSitterNode): number {
+    if (root.hasError === false) return 0;
+    let count = 0;
+    const pending = [root];
+    while (pending.length > 0) {
+        const node = pending.pop()!;
+        if (node.isError === true || node.isMissing === true) count += 1;
+        for (let index = node.childCount - 1; index >= 0; index -= 1) {
+            const child = node.child(index);
+            if (child !== null) pending.push(child);
+        }
+    }
+    return count;
 }
 
 function walkIndexedDeepNode(

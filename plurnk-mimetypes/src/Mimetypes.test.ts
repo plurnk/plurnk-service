@@ -388,6 +388,39 @@ describe("Mimetypes — process: metadata + error paths", () => {
 });
 
 describe("Mimetypes — process: channel selection ({§mimetype-channel-selection})", () => {
+    it("{§mimetype-parse-issues} projects only positive parser-recovery counts with structural work", async () => {
+        let issues = 3;
+        class IssueReportingHandler extends FakePlainHandler {
+            override parseIssues(): number {
+                return issues;
+            }
+        }
+        const m = new Mimetypes({
+            discovery: makeDiscovery([plainInfo]),
+            loader: async () => ({ default: IssueReportingHandler }),
+        });
+
+        const recovered = await m.process(
+            { path: "foo.txt", content: "broken" },
+            { channels: ["symbols"] },
+        );
+        assert.equal(recovered.parseIssues, 3);
+
+        issues = 0;
+        const clean = await m.process(
+            { path: "foo.txt", content: "clean" },
+            { channels: ["symbols"] },
+        );
+        assert.equal("parseIssues" in clean, false, "the ordinary clean case carries no metadata");
+
+        issues = 3;
+        const metadataOnly = await m.process(
+            { path: "foo.txt", content: "broken" },
+            { channels: [] },
+        );
+        assert.equal("parseIssues" in metadataOnly, false, "metadata-only processing performs no parse");
+    });
+
     it("default selects every structural channel", async () => {
         const m = new Mimetypes({
             discovery: makeDiscovery([plainInfo]),

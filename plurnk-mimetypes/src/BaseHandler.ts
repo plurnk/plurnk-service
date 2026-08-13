@@ -59,6 +59,12 @@ export default class BaseHandler {
         // Default: anything is valid.
     }
 
+    // Positive parser-recovery sites are advisory metadata; the default
+    // handler has no parser evidence ({§mimetype-parse-issues}).
+    parseIssues(_content: HandlerContent): number | Promise<number> {
+        return 0;
+    }
+
     // Canonical effective settings that can change projection output
     // ({§mimetype-projection-identity}).
     projectionConfiguration(): string | Promise<string> {

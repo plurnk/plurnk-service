@@ -75,6 +75,7 @@ export interface EntryCatalogChannel {
     readonly mimetype: string;
     readonly tokens: number;
     readonly lines: number;
+    readonly parseIssues?: number;
 }
 
 export interface EntryCatalogDefaultChannel extends EntryCatalogChannel {

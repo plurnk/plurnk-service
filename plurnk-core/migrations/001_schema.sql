@@ -456,6 +456,7 @@ CREATE TABLE IF NOT EXISTS derivations (
     state       TEXT    NOT NULL DEFAULT 'building' CHECK (state IN ('building', 'complete')),
     disposition TEXT    CHECK (disposition IN ('vector', 'lexical', 'excluded', 'nonsemantic', 'failed')),
     reason      TEXT,
+    parse_issues INTEGER CHECK (parse_issues IS NULL OR parse_issues > 0),
     CHECK ((state = 'building' AND disposition IS NULL) OR (state = 'complete' AND disposition IS NOT NULL))
 ) STRICT;
 

@@ -67,6 +67,7 @@ LIMIT 1;
 -- {§entry-owner} — one principal's entries (catalogRowsFor source for an owner-scoped FIND/foist):
 -- the commons, a worker's own space, or a named space — exactly one owner's rows, its perspective.
 SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens AS tokens, e.deep_hash,
+    d.parse_issues,
     s.id AS subscription_id,
     CASE WHEN s.closed_at IS NULL
         THEN CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER)
@@ -75,6 +76,7 @@ SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, e
     s.close_status
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
+LEFT JOIN derivations d ON d.deep_hash = e.deep_hash
 LEFT JOIN subscriptions s ON s.id = (
     SELECT latest.id
     FROM subscriptions latest
