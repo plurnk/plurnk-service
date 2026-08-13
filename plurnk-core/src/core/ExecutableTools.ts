@@ -8,11 +8,8 @@ interface ExecutableTool {
 const escapeCell = (value: string): string => value.replaceAll("|", "\\|");
 
 const bucket = (role: string, required: boolean, exclusive: boolean): string => {
-    const qualifiers = [
-        ...(required ? ["required"] : []),
-        ...(exclusive ? ["either/or"] : []),
-    ];
-    return `${escapeCell(role)}${qualifiers.length === 0 ? "" : ` (${qualifiers.join("; ")})`}`;
+    const marker = exclusive ? " ↔" : required ? "" : " ?";
+    return `${escapeCell(role)}${marker}`;
 };
 
 export default class ExecutableTools {
@@ -24,12 +21,16 @@ export default class ExecutableTools {
                 const exclusive = invocation.exclusive === true;
                 const target = invocation.target === undefined
                     ? "—"
-                    : bucket(invocation.target.role, invocation.target.required, exclusive);
+                    : bucket(
+                        `${invocation.target.role}${invocation.target.directory === "cwd" ? " or local directory with body" : ""}`,
+                        invocation.target.required,
+                        exclusive,
+                    );
                 const body = bucket(invocation.body.role, invocation.body.required, exclusive);
                 return `| \`[${runtime}]\` | ${target} | ${body} |`;
             });
         return [
-            "Every EXEC requires a body or `(target)`. `required` marks stricter rules; `either/or` forbids supplying both. `<timeout,poll>` applies to every tool. `—` means the bucket is not accepted.",
+            "EXEC bodies are literal tool input; Markdown fences are passed through. For body-only EXEC, omit `(target)` and put the body immediately below `## EXEC0 [executor]`; optional `<timeout,poll>` belongs on any EXEC heading. Every EXEC needs at least one input. Unmarked inputs are required; `?` is optional; paired `↔` inputs require exactly one; `—` is not accepted.",
             "",
             "| `[executor]` | `(target)` | body |",
             "| --- | --- | --- |",

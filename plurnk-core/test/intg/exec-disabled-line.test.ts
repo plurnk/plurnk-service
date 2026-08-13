@@ -31,7 +31,8 @@ test("act mode: no disabled line — the runtimes advertise normally", async () 
             assert.doesNotMatch(turn!.packet, /EXEC operations are disabled/, "act mode never carries the negative line");
             const packet = JSON.parse(turn!.packet) as { sections?: Array<{ name?: string; header?: string }> };
             const tools = packetSection(packet as Parameters<typeof packetSection>[0], "tools");
-            assert.match(tools, /^Every EXEC requires a body or `\(target\)`\./, "act mode explains the shared invocation rule");
+            assert.match(tools, /Every EXEC needs at least one input/, "act mode explains the shared invocation rule");
+            assert.match(tools, /Markdown fences are passed through/, "the literal-body boundary is explicit");
             assert.match(tools, /\| `\[node\]` \|/, "an available runtime appears even without a bespoke example");
             assert.match(tools, /\| `\[executor\]` \| `\(target\)` \| body \|/, "tool buckets use the authored EXEC syntax");
             assert.equal(packet.sections?.find((section) => section.name === "tools")?.header, "Registered Executable Tools");

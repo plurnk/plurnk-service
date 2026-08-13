@@ -38,112 +38,112 @@
                 "name": "sh",
                 "glyph": "🐚",
                 "invocation": {
-                    "body": { "role": "shell program, or stdin for a targeted script", "required": false },
-                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                    "body": { "role": "shell program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
                 }
             },
             {
                 "name": "bash",
                 "glyph": "🐚",
                 "invocation": {
-                    "body": { "role": "Bash program, or stdin for a targeted script", "required": false },
-                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                    "body": { "role": "Bash program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
                 }
             },
             {
                 "name": "node",
                 "glyph": "⬢",
                 "invocation": {
-                    "body": { "role": "JavaScript program, or stdin for a targeted script", "required": false },
-                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                    "body": { "role": "JavaScript program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
                 }
             },
             {
                 "name": "python",
                 "glyph": "🐍",
                 "invocation": {
-                    "body": { "role": "Python program, or stdin for a targeted script", "required": false },
-                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                    "body": { "role": "Python program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
                 }
             },
             {
                 "name": "python3",
                 "glyph": "🐍",
                 "invocation": {
-                    "body": { "role": "Python program, or stdin for a targeted script", "required": false },
-                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                    "body": { "role": "Python program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
                 }
             },
             {
                 "name": "perl",
                 "glyph": "🐪",
                 "invocation": {
-                    "body": { "role": "Perl program, or stdin for a targeted script", "required": false },
-                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                    "body": { "role": "Perl program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
                 }
             },
             {
                 "name": "ruby",
                 "glyph": "💎",
                 "invocation": {
-                    "body": { "role": "Ruby program, or stdin for a targeted script", "required": false },
-                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                    "body": { "role": "Ruby program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
                 }
             },
             {
                 "name": "php",
                 "glyph": "🐘",
                 "invocation": {
-                    "body": { "role": "PHP program, or stdin for a targeted script", "required": false },
-                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                    "body": { "role": "PHP program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
                 }
             },
             {
                 "name": "lua",
                 "glyph": "🌙",
                 "invocation": {
-                    "body": { "role": "Lua program, or stdin for a targeted script", "required": false },
-                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                    "body": { "role": "Lua program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
                 }
             },
             {
                 "name": "deno",
                 "glyph": "🦕",
                 "invocation": {
-                    "body": { "role": "Deno program, or stdin for a targeted script", "required": false },
-                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                    "body": { "role": "Deno program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
                 }
             },
             {
                 "name": "bun",
                 "glyph": "🥟",
                 "invocation": {
-                    "body": { "role": "Bun program, or stdin for a targeted script", "required": false },
-                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                    "body": { "role": "Bun program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
                 }
             },
             {
                 "name": "tcl",
                 "glyph": "🪶",
                 "invocation": {
-                    "body": { "role": "Tcl program, or stdin for a targeted script", "required": false },
-                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                    "body": { "role": "Tcl program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
                 }
             },
             {
                 "name": "bc",
                 "glyph": "🧮",
                 "invocation": {
-                    "body": { "role": "bc program, or stdin for a targeted script", "required": false },
-                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                    "body": { "role": "bc program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
                 }
             },
             {
                 "name": "awk",
                 "glyph": "🪄",
                 "invocation": {
-                    "body": { "role": "AWK program, or stdin for a targeted script", "required": false },
-                    "target": { "role": "script; working directory requires body", "required": false, "kind": "resource", "directory": "cwd" }
+                    "body": { "role": "AWK program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
                 }
             }
         ]
