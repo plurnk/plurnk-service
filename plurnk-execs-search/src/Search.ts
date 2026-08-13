@@ -1,25 +1,13 @@
 import { BaseExecutor, ErrorDetail, renderJsonResult, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
-// Runtime tag → SearXNG `categories=` value. The flat tag set this sibling
-// claims (package.json `plurnk.runtimes[]`) maps 1:1 onto SearXNG's category
-// tabs (`categories_as_tabs` in its settings.yml). `search` is the general
-// default; `social` and `downloadable` are honest renamings of SearXNG's
-// "social media" and "files" categories. An operator-selected engine list
-// replaces this category routing; SearXNG unions the two parameters rather
-// than treating engines as a filter. Query-local engine / language / time
-// selection rides SearXNG's native `!bang` / `:lang` syntax.
+// Runtime tag → the two SearXNG categories this text-retrieval harness can
+// represent faithfully. Specialized engine, language, and time selection rides
+// SearXNG's native `!bang` / `:lang` syntax; an operator-selected engine list
+// replaces category routing because SearXNG otherwise unions the parameters.
 const CATEGORY: Readonly<Record<string, string>> = Object.freeze({
     search: "general",
-    images: "images",
-    videos: "videos",
     news: "news",
-    map: "map",
-    music: "music",
-    it: "it",
-    science: "science",
-    social: "social media",
-    downloadable: "files",
 });
 
 const preview = (query: string, maximum?: number): string => (

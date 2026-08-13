@@ -173,6 +173,7 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
         invocation: {
             body: { role: "fixture input", required: false },
             target: { role: "fixture resource", required: false, kind: "resource", directory: "cwd" },
+            example: { body: "fixture" },
         },
         documentation: "",
         available: true,

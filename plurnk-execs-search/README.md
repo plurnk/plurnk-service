@@ -6,22 +6,14 @@ The first non-subprocess `@plurnk/plurnk-execs-*` sibling, built on the [plurnk-
 
 ## Runtime tags
 
-Each tag maps to a SearXNG search category (`categories=`):
+The text-retrieval harness exposes the two SearXNG categories it can represent faithfully:
 
 | Tag            | Glyph | Category     |
 | -------------- | ----- | ------------ |
 | `search`       | 🔎    | general      |
-| `images`       | 🖼    | images       |
-| `videos`       | 🎬    | videos       |
 | `news`         | 📰    | news         |
-| `map`          | 🗺    | map          |
-| `music`        | 🎵    | music        |
-| `it`           | 💻    | it           |
-| `science`      | 🔬    | science      |
-| `social`       | 💬    | social media |
-| `downloadable` | 📥    | files        |
 
-Engine, language, and time-range selection ride the query string via SearXNG's native `!bang` and `:lang` syntax (for example, body `!gh node streams`). External bangs (`!!`) are refused — they redirect rather than return results. An operator-configured engine list replaces the runtime category; SearXNG otherwise unions the two selections.
+Engine, language, and time-range selection ride the query string via SearXNG's native `!bang` and `:lang` syntax (for example, body `!gh node streams`). External bangs (`!!`) are refused — they redirect rather than return results. An operator-configured engine list replaces the runtime category; SearXNG otherwise unions the two selections. Media and vertical categories are not registered because this executor projects ranked text metadata and materialized readable pages, not their category-specific payloads.
 
 ## Configuration (environment)
 

@@ -9,17 +9,22 @@ test("{§tools-capability-sheet} renders every registered selector from its invo
             invocation: {
                 body: { role: "Bash program; stdin with a targeted script file", required: false },
                 target: { role: "script file", required: false, kind: "resource", directory: "cwd" },
+                example: { body: "npm test" },
             },
         },
         {
             runtime: "search",
-            invocation: { body: { role: "search query", required: true } },
+            invocation: {
+                body: { role: "search query", required: true },
+                example: { body: "Plurnk agent protocol" },
+            },
         },
         {
             runtime: "mcpserver",
             invocation: {
                 body: { role: "JSON arguments", required: false },
                 target: { role: "MCP tool", required: true, kind: "literal" },
+                example: { target: "get_issue", body: "{}" },
             },
         },
         {
@@ -28,28 +33,29 @@ test("{§tools-capability-sheet} renders every registered selector from its invo
                 body: { role: "inline WAT module", required: false },
                 target: { role: "WAT module", required: false, kind: "resource" },
                 exclusive: true,
+                example: { target: "module.wat" },
             },
         },
     ]);
 
-    assert.equal(rendered, [
-        "EXEC bodies are literal tool input; Markdown fences are passed through. For body-only EXEC, omit `(target)` and put the body immediately below `## EXEC0 [executor]`; optional `<timeout,poll>` belongs on any EXEC heading. Every EXEC needs at least one input. Unmarked inputs are required; `?` is optional; paired `↔` inputs require exactly one; `—` is not accepted.",
-        "",
-        "| `[executor]` | `(target)` | body |",
-        "| --- | --- | --- |",
-        "| `[bash]` | script file or local directory with body ? | Bash program; stdin with a targeted script file ? |",
-        "| `[mcpserver]` | MCP tool | JSON arguments ? |",
-        "| `[search]` | — | search query |",
-        "| `[wat]` | WAT module ↔ | inline WAT module ↔ |",
-    ].join("\n"));
+    assert.match(rendered, /^YOU SHOULD use purpose-built Plurnk OPs/m);
+    assert.match(rendered, /^`\?` optional · `↔` choose one · `—` unavailable · `<timeout,poll>` optional$/m);
+    assert.match(rendered, /^\| `\[executor\]` \| `\(target\)` \| body \| example \|$/m);
+    assert.match(rendered, /\| `\[bash\]` \| script file or local directory with body \? \| Bash program; stdin with a targeted script file \? \| `## EXEC0 \[bash\]`<br>`npm test` \|/);
+    assert.match(rendered, /\| `\[mcpserver\]` \| MCP tool \| JSON arguments \? \| `## EXEC0 \[mcpserver\] \(get_issue\)`<br>`\{\}` \|/);
+    assert.match(rendered, /\| `\[search\]` \| — \| search query \| `## EXEC0 \[search\]`<br>`Plurnk agent protocol` \|/);
+    assert.match(rendered, /\| `\[wat\]` \| WAT module ↔ \| inline WAT module ↔ \| `## EXEC0 \[wat\] \(module\.wat\)` \|/);
 });
 
 test("{§tools-capability-sheet} escapes plugin-authored table delimiters", () => {
     assert.match(
         ExecutableTools.render([{
             runtime: "fixture",
-            invocation: { body: { role: "query | program", required: true } },
+            invocation: {
+                body: { role: "query | program", required: true },
+                example: { body: "alpha | beta" },
+            },
         }]),
-        /query \\\| program/,
+        /query \\| program.*alpha \\| beta/,
     );
 });

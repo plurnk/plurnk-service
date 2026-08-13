@@ -54,9 +54,10 @@ test("resource directory: the packet's `schemes` section is a terse directory be
         assert.match(schemes, /glyph-test:\/\/\/example/, "the scheme's ordinary example remains teachable");
         assert.doesNotMatch(schemes, /GLYPH_MUST_STAY_CLIENT_SIDE/, "client display metadata never enters model teaching");
 
-        // Order: the static prefix is definition → tools → schemes (tools sits right below the grammar).
+        // Stable policy may intervene after definition; capabilities remain tools → resources.
         const sysOrder = (packet.sections as Array<{ name: string; slot: string }>).filter((s) => s.slot === "system").map((s) => s.name);
-        assert.deepEqual(sysOrder.slice(0, 3), ["definition", "tools", "schemes"], "tools sits right below the grammar; the resource directory follows");
+        assert.ok(sysOrder.indexOf("tools") > sysOrder.indexOf("definition"), "tools follow definition and any privileged policy");
+        assert.equal(sysOrder.indexOf("schemes"), sysOrder.indexOf("tools") + 1, "the resource directory follows tools");
     } finally {
         await db.close();
     }

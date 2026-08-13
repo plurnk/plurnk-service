@@ -1,5 +1,5 @@
 // Runtime executor contract. Each `@plurnk/plurnk-execs-*` sibling declares
-// one or more runtime tags (`sh`, `bash`, `python`, `search`, `news`, …) in
+// one or more runtime tags (`sh`, `bash`, `python`, `search`, `news`) in
 // its `package.json` `plurnk.runtimes[]` block, and provides a BaseExecutor
 // subclass implementing the dispatch for those tags.
 //
@@ -34,7 +34,7 @@ export interface ExecutorMetadata {
 // notices, and honors `signal`.
 export interface ExecArgs {
     // The matched runtime tag. Multi-tag executors branch on it (e.g. the
-    // search sibling maps `news`/`images` → SearXNG `categories=`).
+    // search sibling maps `search`/`news` → SearXNG `categories=`).
     runtime: string;
     // The authored EXEC body; its role comes from the runtime invocation declaration.
     body: string;
@@ -117,10 +117,16 @@ export interface RuntimeTargetDecl {
     readonly directory?: "cwd";
 }
 
+export interface RuntimeInvocationExample {
+    readonly body?: string;
+    readonly target?: string;
+}
+
 export interface RuntimeInvocation {
     readonly body: RuntimeBodyDecl;
     readonly target?: RuntimeTargetDecl;
     readonly exclusive?: true;
+    readonly example: RuntimeInvocationExample;
 }
 
 // One discovered runtime tag and the package that provides it.

@@ -23,6 +23,7 @@ export const runtimeDecl = (name: string): RuntimeDecl => ({
     invocation: {
         body: { role: "JSON arguments", required: false },
         target: { role: "MCP tool", required: true, kind: "literal" },
+        example: { target: "tool_name", body: '{"argument":"value"}' },
     },
     documentation: `# ${name}
 

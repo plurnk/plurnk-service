@@ -2269,12 +2269,12 @@ Conditional absence never reorders the surviving default sections.
 | Order | Slot   | Section               | Wire contract |
 |------:|:-------|:----------------------|:--------------|
 |     1 | system | `definition`          | Framework definition; leads the most stable prefix. |
-|     2 | system | `tools`               | Executable capability sheet for this loop. |
-|     3 | system | `optional-operations` | Present only when optional operations are enabled. |
-|     4 | system | `schemes`             | Active resource catalogue. |
-|     5 | system | `inject`              | Present only when operator notes are configured. |
-|     6 | system | `system-policy`       | Operator policy; empty content is omitted on the wire. |
-|     7 | system | `project-policy`      | Project policy; empty content is omitted on the wire. |
+|     2 | system | `system-policy`       | Operator policy; empty content is omitted on the wire. |
+|     3 | system | `project-policy`      | Project policy; empty content is omitted on the wire. |
+|     4 | system | `tools`               | Executable capability sheet for this loop. |
+|     5 | system | `optional-operations` | Present only when optional operations are enabled. |
+|     6 | system | `schemes`             | Active resource catalogue. |
+|     7 | system | `inject`              | Present only when operator notes are configured. |
 |     8 | user   | `log`                 | Append-mostly model-visible history. |
 |     9 | user   | `child-streams`       | Per-turn status; empty content is omitted. |
 |    10 | user   | `child-workers`       | Per-turn status; empty content is omitted. |
@@ -2285,8 +2285,8 @@ Conditional absence never reorders the surviving default sections.
 |    15 | user   | `prompt`              | Current prompt-entry pointers. |
 
 The order favors prefix-cache locality where semantics permit: the definition
-leads capability and privileged policy, while the append-mostly log leads the
-volatile user-status clump. It does **not** claim that every system byte is
+and privileged policy lead loop-dependent capabilities, while the append-mostly
+log leads the volatile user-status clump. It does **not** claim that every system byte is
 immutable or that the complete packet is globally monotone in volatility:
 capabilities, operator notes, and policies can change. Trust is a separate
 admission rule. The system slot contains trusted control-plane material;
@@ -2912,7 +2912,7 @@ turn.** It cannot execute operations or alter the audited history.
 
 ### §tools user.tools — the capability sheet
 
-§tools-capability-sheet The executable-tools capability sheet renders under `## Registered Executable Tools`, directly after the `definition` (plurnk.md) section. One generated Markdown table is the closed set of valid executor selectors and states each runtime declaration's model-facing `(target)` and body roles. Its legend leaves required inputs unmarked, marks optional inputs with `?`, pairs mutually exclusive alternatives with `↔`, and marks refused buckets with `—`. The preface also states that EXEC bodies are literal tool input, gives the universal body-only composition (no target; body immediately after the heading), requires at least one invocation input, and locates optional `<timeout,poll>` on the heading. For a declaration with `target.directory: "cwd"`, the target cell distinguishes a local-directory working context from the plugin-authored non-directory target role. Optional non-EXEC operations render separately under `## Enabled Optional Operations` in a `plurnk` fence, so the executable catalogue remains truthful. `PacketBuilder.#collectTools` assembles both; a prose notice (e.g. the EXEC-disabled line) stays beside the table, and empty sections are omitted.
+§tools-capability-sheet The tools capability sheet renders under `## Registered Tools`, after the policy sections. One generated Markdown table is the closed set of valid executor selectors and states each runtime declaration's model-facing `(target)` role, body role, and exact canonical example. The compact legend leaves required inputs unmarked, marks optional inputs with `?`, pairs mutually exclusive alternatives with `↔`, marks refused buckets with `—`, and locates optional `<timeout,poll>` on the heading. The preface prefers purpose-built Plurnk operations over EXEC scripts. For a declaration with `target.directory: "cwd"`, the target cell distinguishes a local-directory working context from the plugin-authored non-directory target role. Optional non-EXEC operations render separately under `## Enabled Optional Operations` in a `plurnk` fence, so the catalogue remains truthful. `PacketBuilder.#collectTools` assembles both; a prose notice (e.g. the EXEC-disabled line) stays beside the table, and empty sections are omitted.
 
 §tools-loop-affinity **The capability sheet describes the current loop.** The
 sheet filters registered capabilities through the same
@@ -2925,15 +2925,15 @@ the backstop and names the non-retryable loop restriction.
 
 ### §schemes user.schemes — the resource directory
 
-§schemes-directory A `## Resources` section renders in the system slot **after the definition (plurnk.md — grammar + imperatives) and the tools sheet** — a terse directory of the scheme families available this workspace, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into a `plurnk` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized at `worker://plurnk/docs/<scheme>.md` and discovered via the turn-0 `## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, keeping the raw packet free of doc links. Meta-owned `log` and `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc.
+§schemes-directory A `## Resources` section renders in the system slot **after the policy sections and tools sheet** — a terse directory of the scheme families available this workspace, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into a `plurnk` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized at `worker://plurnk/docs/<scheme>.md` and discovered via the turn-0 `## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, keeping the raw packet free of doc links. Meta-owned `log` and `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc.
 
 ### §inject system.inject — the operator injection
 
-§packet-inject When `PLURNK_SERVICE_PACKET_INJECT` names a readable markdown file, its content renders as an `## Operator Notes` section in the system slot **right after the teaching** (definition → tools → schemes → inject), ahead of the policy sections — part of the cached prefix. Read per-turn so the operator's edits take effect live; a set-but-unreadable path fails the turn hard (a deliberate setting with a broken path is a misconfig, surfaced not hidden). `~/` expands to home. It's the operator-side complement to the plugin section hook — a pressure valve so reshaping the packet edits operator content, never the core. Unset → no section.
+§packet-inject When `PLURNK_SERVICE_PACKET_INJECT` names a readable markdown file, its content renders as an `## Operator Notes` section in the system slot after policy and capability teaching (definition → policy → project policy → tools → resources → inject). Read per-turn so the operator's edits take effect live; a set-but-unreadable path fails the turn hard (a deliberate setting with a broken path is a misconfig, surfaced not hidden). `~/` expands to home. It's the operator-side complement to the plugin section hook — a pressure valve so reshaping the packet edits operator content, never the core. Unset → no section.
 
 ### §policy system.policy — the client's policy injection
 
-§policy-sections Two sections ride the system slot **below the operator notes, at the slot's bottom**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `~/.plurnk/AGENTS.md`) and `## Project Policy` from `PLURNK_SERVICE_PROJECT` (default `<projectRoot>/AGENTS.md`, resolved relative to the workspace root). AGENTS.md is **policy** — the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. Reference and scratch docs are NOT policy; `PLURNK_SERVICE_MD_*` materializes them as READ-able entries ({§operator-config}).
+§policy-sections Two sections ride the system slot **after the definition and before loop-dependent capabilities**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `~/.plurnk/AGENTS.md`) and `## Project Policy` from `PLURNK_SERVICE_PROJECT` (default `<projectRoot>/AGENTS.md`, resolved relative to the workspace root). AGENTS.md is **policy** — the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. Reference and scratch docs are NOT policy; `PLURNK_SERVICE_MD_*` materializes them as READ-able entries ({§operator-config}).
 
 On first run, and only when `~/.plurnk` itself is absent, the service seeds
 `AGENTS.md` from `@plurnk/plurnk-meta/PLURNK_PERSONALITY.md` ({§teaching-corpus}).

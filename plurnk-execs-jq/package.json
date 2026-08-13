@@ -37,7 +37,8 @@
                 "glyph": "🧰",
                 "invocation": {
                     "body": { "role": "jq filter", "required": false },
-                    "target": { "role": "JSON input", "required": false, "kind": "resource" }
+                    "target": { "role": "JSON input", "required": false, "kind": "resource" },
+                    "example": { "target": "package.json", "body": ".name" }
                 }
             }
         ]

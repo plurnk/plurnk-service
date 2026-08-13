@@ -9,8 +9,8 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
-// {§packet-inject} — PLURNK_SERVICE_PACKET_INJECT lands as an operator section right after the teaching,
-// in the cached system slot, before the log. The operator-side pressure valve.
+// {§packet-inject} — PLURNK_SERVICE_PACKET_INJECT lands after capability teaching
+// in the cached system slot. The operator-side pressure valve.
 test("PLURNK_SERVICE_PACKET_INJECT: operator file rides as a system section after schemes", async () => {
     const db = await openMigrated();
     const dir = await mkdtemp(join(tmpdir(), "plurnk-inject-intg-"));
@@ -33,7 +33,7 @@ test("PLURNK_SERVICE_PACKET_INJECT: operator file rides as a system section afte
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
         assert.match(packetSection(packet, "inject"), /Prefer sqlite over node/, "the operator file is the inject section's content");
         const sysOrder = (packet.sections as Array<{ name: string; slot: string }>).filter((s) => s.slot === "system").map((s) => s.name);
-        assert.deepEqual(sysOrder.slice(0, 4), ["definition", "tools", "schemes", "inject"], "inject sits right after the teaching, before the log");
+        assert.equal(sysOrder.indexOf("inject"), sysOrder.indexOf("schemes") + 1, "inject follows the resource directory");
     } finally {
         if (prior === undefined) delete process.env.PLURNK_SERVICE_PACKET_INJECT; else process.env.PLURNK_SERVICE_PACKET_INJECT = prior;
         await db.close();

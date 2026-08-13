@@ -48,7 +48,7 @@ const wire = async (finishAfterMs: number, effect: "read" | "host" | "pure" = "p
             },
         },
         namespaceOwner: { kind: "module", name: `${tag} fixture` },
-        glyph: "?", invocation: { body: { role: "fixture input", required: true } }, documentation: "", available: true, detail: undefined,
+        glyph: "?", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } }, documentation: "", available: true, detail: undefined,
     });
     const workspaceId = await insertWorkspace(db, `hold-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);

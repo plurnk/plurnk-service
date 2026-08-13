@@ -9,6 +9,7 @@ test("{§executor-runtime-declaration} validates the complete runtime declaratio
         invocation: {
             body: { role: "JSON arguments", required: false },
             target: { role: "MCP tool", required: true, kind: "literal" },
+            example: { target: "get_issue", body: "{}" },
         },
         documentation: "# MCP server",
     }, "@acme/acme-execs-mcp"), {
@@ -17,13 +18,14 @@ test("{§executor-runtime-declaration} validates the complete runtime declaratio
         invocation: {
             body: { role: "JSON arguments", required: false },
             target: { role: "MCP tool", required: true, kind: "literal" },
+            example: { target: "get_issue", body: "{}" },
         },
         documentation: "# MCP server",
     });
 });
 
 test("{§executor-runtime-declaration} refuses legacy, misspelled, and mistyped metadata", () => {
-    const invocation = { body: { role: "query", required: true } };
+    const invocation = { body: { role: "query", required: true }, example: { body: "find it" } };
     const cases: Array<[unknown, RegExp]> = [
         [null, /declaration must be an object/],
         [{ name: "search", invocation, example: "## EXEC0" }, /unknown field 'example'/],

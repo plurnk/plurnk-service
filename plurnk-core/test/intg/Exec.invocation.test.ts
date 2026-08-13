@@ -32,22 +32,27 @@ const INVOCATIONS: Readonly<Record<string, RuntimeInvocationDecl>> = {
     literaltool: {
         body: { role: "JSON arguments", required: false },
         target: { role: "tool", required: true, kind: "literal" },
+        example: { target: "fixture_tool", body: "{}" },
     },
     bodyonly: {
         body: { role: "query", required: true },
+        example: { body: "fixture query" },
     },
     pathtool: {
         body: { role: "operation", required: true },
         target: { role: "database", required: false, kind: "path" },
+        example: { body: "inspect" },
     },
     resourcetool: {
         body: { role: "filter", required: false },
         target: { role: "input", required: false, kind: "resource" },
+        example: { body: "inspect" },
     },
     exclusivetool: {
         body: { role: "inline module", required: false },
         target: { role: "module", required: false, kind: "resource" },
         exclusive: true,
+        example: { body: "(module)" },
     },
 };
 

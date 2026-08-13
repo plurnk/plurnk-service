@@ -12,6 +12,18 @@ const bucket = (role: string, required: boolean, exclusive: boolean): string => 
     return `${escapeCell(role)}${marker}`;
 };
 
+const code = (value: string): string => {
+    const longest = Math.max(0, ...[...value.matchAll(/`+/g)].map((match) => match[0].length));
+    const fence = "`".repeat(longest + 1);
+    const padding = value.startsWith("`") || value.endsWith("`") ? " " : "";
+    return `${fence}${padding}${escapeCell(value)}${padding}${fence}`;
+};
+
+const example = (runtime: string, invocation: RuntimeInvocationDecl): string => {
+    const heading = `## EXEC0 [${runtime}]${invocation.example.target === undefined ? "" : ` (${invocation.example.target})`}`;
+    return [heading, invocation.example.body].filter((line) => line !== undefined).map((line) => code(line)).join("<br>");
+};
+
 export default class ExecutableTools {
     static render(tools: readonly ExecutableTool[]): string {
         if (tools.length === 0) return "";
@@ -27,13 +39,15 @@ export default class ExecutableTools {
                         exclusive,
                     );
                 const body = bucket(invocation.body.role, invocation.body.required, exclusive);
-                return `| \`[${runtime}]\` | ${target} | ${body} |`;
+                return `| \`[${runtime}]\` | ${target} | ${body} | ${example(runtime, invocation)} |`;
             });
         return [
-            "EXEC bodies are literal tool input; Markdown fences are passed through. For body-only EXEC, omit `(target)` and put the body immediately below `## EXEC0 [executor]`; optional `<timeout,poll>` belongs on any EXEC heading. Every EXEC needs at least one input. Unmarked inputs are required; `?` is optional; paired `↔` inputs require exactly one; `—` is not accepted.",
+            "YOU SHOULD use purpose-built Plurnk OPs when possible; use EXEC for scripts only when necessary.",
             "",
-            "| `[executor]` | `(target)` | body |",
-            "| --- | --- | --- |",
+            "`?` optional · `↔` choose one · `—` unavailable · `<timeout,poll>` optional",
+            "",
+            "| `[executor]` | `(target)` | body | example |",
+            "| --- | --- | --- | --- |",
             ...rows,
         ].join("\n");
     }

@@ -36,7 +36,8 @@
                 "glyph": "🗃",
                 "invocation": {
                     "body": { "role": "SQL statement", "required": true },
-                    "target": { "role": "SQLite database", "required": false, "kind": "path" }
+                    "target": { "role": "SQLite database", "required": false, "kind": "path" },
+                    "example": { "target": "app.db", "body": "SELECT 1;" }
                 }
             }
         ]

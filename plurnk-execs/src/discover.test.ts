@@ -28,6 +28,7 @@ const makePkg = async (pkg: unknown): Promise<string> => {
 
 const fixtureInvocation = {
     body: { role: "fixture input", required: true },
+    example: { body: "fixture" },
 } as const;
 const runtime = (name: string, fields: Record<string, unknown> = {}): Record<string, unknown> => ({
     name,
@@ -38,6 +39,7 @@ const runtime = (name: string, fields: Record<string, unknown> = {}): Record<str
 test("{§executor-invocation} discovery requires and publishes each runtime invocation contract", async () => {
     const invocation = {
         body: { role: "search query", required: true },
+        example: { body: "Plurnk agent protocol" },
     } as const;
     const valid = await makePkg({
         name: "@plurnk/plurnk-execs-search",
@@ -199,8 +201,8 @@ test("discover: dynamic runtimesModule hook materializes per-deployment tags", a
         "@plurnk/plurnk-execs-dynamic-fixture",
         `export async function runtimes() {
             return [
-                { name: "github", glyph: "🐙", invocation: { body: { role: "JSON arguments", required: false }, target: { role: "MCP tool", required: true, kind: "literal" } }, documentation: "gh tools" },
-                { name: "figma", glyph: "🎨", invocation: { body: { role: "JSON arguments", required: false }, target: { role: "MCP tool", required: true, kind: "literal" } } },
+                { name: "github", glyph: "🐙", invocation: { body: { role: "JSON arguments", required: false }, target: { role: "MCP tool", required: true, kind: "literal" }, example: { target: "get_issue", body: "{}" } }, documentation: "gh tools" },
+                { name: "figma", glyph: "🎨", invocation: { body: { role: "JSON arguments", required: false }, target: { role: "MCP tool", required: true, kind: "literal" }, example: { target: "get_file", body: "{}" } } },
             ];
         }`,
     );
@@ -209,12 +211,12 @@ test("discover: dynamic runtimesModule hook materializes per-deployment tags", a
     assert.equal(registry.size, 2);
     assert.deepEqual(registry.get("github"), {
         runtime: "github", glyph: "🐙",
-        invocation: { body: { role: "JSON arguments", required: false }, target: { role: "MCP tool", required: true, kind: "literal" } },
+        invocation: { body: { role: "JSON arguments", required: false }, target: { role: "MCP tool", required: true, kind: "literal" }, example: { target: "get_issue", body: "{}" } },
         documentation: "gh tools", packageName: "@plurnk/plurnk-execs-dynamic-fixture",
     });
     assert.deepEqual(registry.get("figma"), {
         runtime: "figma", glyph: "🎨",
-        invocation: { body: { role: "JSON arguments", required: false }, target: { role: "MCP tool", required: true, kind: "literal" } },
+        invocation: { body: { role: "JSON arguments", required: false }, target: { role: "MCP tool", required: true, kind: "literal" }, example: { target: "get_file", body: "{}" } },
         documentation: "", packageName: "@plurnk/plurnk-execs-dynamic-fixture",
     });
 });
@@ -222,7 +224,7 @@ test("discover: dynamic runtimesModule hook materializes per-deployment tags", a
 test("discover: the dynamic hook accepts a default export and a sync return", async () => {
     const dir = await makeDynamicPkg(
         "@plurnk/plurnk-execs-dynamic-fixture",
-        `export default () => [{ name: "slack", invocation: { body: { role: "fixture input", required: true } } }];`,
+        `export default () => [{ name: "slack", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } } }];`,
     );
     const { registry } = await Discover.scan({ packageDirs: [dir] });
     assert.deepEqual([...registry.keys()], ["slack"]);

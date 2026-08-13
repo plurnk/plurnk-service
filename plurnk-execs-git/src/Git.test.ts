@@ -55,6 +55,7 @@ test("manifest declares the native git invocation contract", async () => {
     assert.deepEqual(pkg.plurnk.runtimes[0].invocation, {
         body: { role: "Git arguments", required: true },
         target: { role: "repository directory", required: false, kind: "path" },
+        example: { target: ".", body: "status --short" },
     });
 });
 

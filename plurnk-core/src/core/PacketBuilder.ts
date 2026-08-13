@@ -328,15 +328,16 @@ export default class PacketBuilder {
             .map((r) => ({ status: r.status, path: `worker://${r.name}` }));
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
-            { name: "tools", slot: "system", header: "Registered Executable Tools", content: tools.executors },
+            // Stable privileged policy leads loop-dependent capabilities for
+            // prefix-cache locality. Empty policy sections simply disappear.
+            { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
+            { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "" },
+            { name: "tools", slot: "system", header: "Registered Tools", content: tools.executors },
             ...(tools.optionalOperations.length > 0
                 ? [{ name: "optional-operations", slot: "system" as const, header: "Enabled Optional Operations", content: tools.optionalOperations }]
                 : []),
             { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach() },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
-            // policy: the client's privileged rules — ~/.plurnk/AGENTS.md (system) then <root>/AGENTS.md (project) — below grammar/tools/schemes, above budget-the-law. AGENTS is POLICY here, never a curatable READable entry. Empty content ⇒ section omitted.
-            { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
-            { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "" },
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
             { name: "log", slot: "user", header: "Log", content: PacketWire.renderLog(log, countTokens) },
             // The per-turn status clump follows the log ({§packet-cache-monotone}).
@@ -384,7 +385,7 @@ export default class PacketBuilder {
         return (tag: string) => Policy.isEnabled(tag, execs);
     }
 
-    // The complete ## Registered Executable Tools contract table. {§tools-capability-sheet}
+    // The complete ## Registered Tools contract table. {§tools-capability-sheet}
     #collectTools(
         workspaceEnabled: (tag: string) => boolean,
         questionsOn = false,

@@ -36,7 +36,7 @@ const fakeEntry = (tag: string, namespaceOwner = `test module '${tag}'`): Regist
     } as unknown as Executor,
     namespaceOwner: { kind: "module", name: namespaceOwner },
     glyph: "🔌",
-    invocation: { body: { role: "fixture input", required: true } },
+    invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } },
     documentation: "",
     available: true,
     detail: "fake",

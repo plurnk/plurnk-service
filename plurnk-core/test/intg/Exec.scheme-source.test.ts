@@ -122,6 +122,7 @@ const wire = async (): Promise<{
             invocation: {
                 body: { role: "fixture input", required: false },
                 target: { role: "fixture resource", required: false, kind: "resource" },
+                example: { body: "fixture" },
             },
             documentation: "",
             available: true,

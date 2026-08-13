@@ -57,6 +57,7 @@ test("runtime declaration has one catalog face and one tool-call shape", () => {
     assert.deepEqual(declaration.invocation, {
         body: { role: "JSON arguments", required: false },
         target: { role: "MCP tool", required: true, kind: "literal" },
+        example: { target: "tool_name", body: '{"argument":"value"}' },
     });
     assert.ok(declaration.documentation?.includes("## READ0 (echo:///)"));
     assert.equal(declaration.documentation?.includes("## EXEC0 [echo]\n?"), false);

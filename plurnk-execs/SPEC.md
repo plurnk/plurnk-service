@@ -229,7 +229,8 @@ carries the canonical attribution fact from {§plugin-attribution}.
         "name": "cobol",
         "glyph": "🗄",
         "invocation": {
-          "body": { "role": "COBOL program", "required": true }
+          "body": { "role": "COBOL program", "required": true },
+          "example": { "body": "DISPLAY 'HELLO'." }
         }
       }
     ]
@@ -276,8 +277,8 @@ at boot; changing package membership or configuration requires a restart.
 
 The framework carries invocation metadata and documentation content unchanged
 after validating the invocation. The consumer derives its complete always-on
-executable-tool directory from invocation metadata; detailed examples belong
-in the on-demand documentation rather than a parallel hot-path catalogue. A
+tools directory, including one concise invocation example per selector, from
+that metadata; detailed instruction remains in on-demand documentation. A
 multi-tag package appears at most once in `Discovery.packageAttributions`, and
 only when at least one of its tags survives discovery policy. An instantiated
 executor may add attempt-time tags through the shared runtime hook
@@ -295,6 +296,7 @@ executor may add attempt-time tags through the shared runtime hook
 | `target.kind`      | One of the structural realization modes below.                                                            |
 | `target.directory` | Optional `"cwd"`: only a local directory becomes `cwd`; every non-directory remains the declared target. |
 | `exclusive`        | Optional `true`: body and target are alternative inputs and supplying both is refused.                    |
+| `example`          | Required concise invocation witness with a one-line `body`, `target`, or both as the declared shape permits. |
 
 | Target kind | Consumer realization                                                                                                           |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -305,7 +307,9 @@ executor may add attempt-time tags through the shared runtime hook
 Every EXEC must supply at least a body or target even when neither field is
 independently required. A target's meaning never changes because the body is
 empty or non-empty. `exclusive` requires a target declaration; `directory` is
-valid only for `path` and `resource` target kinds. An invocation declaration
+valid only for `path` and `resource` target kinds. The example must satisfy the
+same required, refused, and exclusive buckets and parse as exactly one EXEC
+section for the runtime. An invocation declaration
 with a missing field, unknown field, invalid combination, multiline role, or
 wrong primitive type is a fail-hard plugin contract violation before
 registration. Static, dynamic-hook, and module-owned runtimes use this same
@@ -386,7 +390,7 @@ tags are offered in a particular workspace ({§bundled-set}).
 | -------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------- | ---------------------------------- |
 | `common` | `sh`, `bash`, `node`, `python`, `python3`, `perl`, `ruby`, `php`, `lua`, `deno`, `bun`, `tcl`, `bc`, `awk` | `host`                          | `stdout`, `stderr` / `text/stream` |
 | `git`    | `git`                                                                                                      | `host`                          | `stdout`, `stderr` / `text/stream` |
-| `search` | `search`, `images`, `videos`, `news`, `map`, `music`, `it`, `science`, `social`, `downloadable`            | `read`                          | `results` / `application/json`     |
+| `search` | `search`, `news`                                                                                          | `read`                          | `results` / `application/json`     |
 | `jq`     | `jq`                                                                                                       | no target `pure`; target `read` | `results` / `application/jsonl`    |
 | `sqlite` | `sqlite`                                                                                                   | memory `pure`; file `host`      | `results` / `application/json`     |
 | `wasm`   | `wat`, `wasm`                                                                                              | no target `pure`; file `read`   | `results` / `application/json`     |

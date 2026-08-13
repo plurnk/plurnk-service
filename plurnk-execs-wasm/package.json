@@ -39,7 +39,8 @@
                 "invocation": {
                     "body": { "role": "inline WAT module", "required": false },
                     "target": { "role": "WAT module", "required": false, "kind": "resource" },
-                    "exclusive": true
+                    "exclusive": true,
+                    "example": { "body": "(module)" }
                 }
             },
             {
@@ -48,7 +49,8 @@
                 "invocation": {
                     "body": { "role": "inline base64 WASM module", "required": false },
                     "target": { "role": "WASM module", "required": false, "kind": "resource" },
-                    "exclusive": true
+                    "exclusive": true,
+                    "example": { "target": "module.wasm" }
                 }
             }
         ]

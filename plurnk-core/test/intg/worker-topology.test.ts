@@ -71,7 +71,7 @@ test("an empty failed child stream is observed by the child before its terminal 
     await withDaemon(mock, async (_db, daemon, addr) => {
         await daemon.registerRuntime({
             namespaceOwner: "worker topology test module",
-            decl: { name: "emptyfail", glyph: "×", invocation: { body: { role: "fixture input", required: true } }, documentation: "" },
+            decl: { name: "emptyfail", glyph: "×", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } }, documentation: "" },
             executor: {
                 runtime: "emptyfail", glyph: "×",
                 get manifest() { return { name: "emptyfail", channels: { results: "text/plain" }, defaultChannel: "results", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },

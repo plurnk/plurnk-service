@@ -1,5 +1,7 @@
+import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type {
     RuntimeBodyDecl,
+    RuntimeInvocationExample,
     RuntimeInvocation as RuntimeInvocationDecl,
     RuntimeTargetDecl,
     RuntimeTargetKind,
@@ -48,13 +50,24 @@ const requiredOf = (
     return value;
 };
 
+const exampleLineOf = (
+    value: unknown,
+    field: string,
+    fail: (detail: string) => never,
+): string => {
+    if (typeof value !== "string" || value.trim() === "" || value !== value.trim() || /[\r\n]/.test(value)) {
+        fail(`${field} must be one non-empty canonical line`);
+    }
+    return value;
+};
+
 export default class RuntimeInvocation {
     static assert(value: unknown, packageName: string, runtime: string): RuntimeInvocationDecl {
         const fail = (detail: string): never => {
             throw new Error(`runtime declaration invalid: ${packageName} '${runtime}' ${detail}`);
         };
         const invocation = recordOf(value, "invocation", fail);
-        assertKnownFields(invocation, new Set(["body", "target", "exclusive"]), "invocation", fail);
+        assertKnownFields(invocation, new Set(["body", "target", "exclusive", "example"]), "invocation", fail);
 
         const bodyValue = recordOf(invocation.body, "invocation.body", fail);
         assertKnownFields(bodyValue, new Set(["role", "required"]), "invocation.body", fail);
@@ -67,28 +80,61 @@ export default class RuntimeInvocation {
         if ("exclusive" in invocation) {
             exclusive = requiredOf(invocation.exclusive, "invocation.exclusive", fail);
         }
-        if (!("target" in invocation)) {
-            if (exclusive) fail("exclusive invocation must declare a target");
-            return { body };
+        let target: RuntimeTargetDecl | undefined;
+        if ("target" in invocation) {
+            const targetValue = recordOf(invocation.target, "invocation.target", fail);
+            assertKnownFields(targetValue, new Set(["role", "required", "kind", "directory"]), "invocation.target", fail);
+            if (typeof targetValue.kind !== "string" || !TARGET_KINDS.has(targetValue.kind as RuntimeTargetKind)) {
+                fail("invocation.target.kind must be literal, path, or resource");
+            }
+            const kind = targetValue.kind as RuntimeTargetKind;
+            let directory: "cwd" | undefined;
+            if ("directory" in targetValue) {
+                if (targetValue.directory !== "cwd") fail("invocation.target.directory must be cwd");
+                if (kind === "literal") fail("literal target cannot route a directory to cwd");
+                directory = "cwd";
+            }
+            target = {
+                role: roleOf(targetValue.role, "invocation.target.role", fail),
+                required: requiredOf(targetValue.required, "invocation.target.required", fail),
+                kind,
+                ...(directory === undefined ? {} : { directory }),
+            };
+        } else if (exclusive) {
+            fail("exclusive invocation must declare a target");
         }
-        const targetValue = recordOf(invocation.target, "invocation.target", fail);
-        assertKnownFields(targetValue, new Set(["role", "required", "kind", "directory"]), "invocation.target", fail);
-        if (typeof targetValue.kind !== "string" || !TARGET_KINDS.has(targetValue.kind as RuntimeTargetKind)) {
-            fail("invocation.target.kind must be literal, path, or resource");
-        }
-        const kind = targetValue.kind as RuntimeTargetKind;
-        let directory: "cwd" | undefined;
-        if ("directory" in targetValue) {
-            if (targetValue.directory !== "cwd") fail("invocation.target.directory must be cwd");
-            if (kind === "literal") fail("literal target cannot route a directory to cwd");
-            directory = "cwd";
-        }
-        const target: RuntimeTargetDecl = {
-            role: roleOf(targetValue.role, "invocation.target.role", fail),
-            required: requiredOf(targetValue.required, "invocation.target.required", fail),
-            kind,
-            ...(directory === undefined ? {} : { directory }),
+
+        const exampleValue = recordOf(invocation.example, "invocation.example", fail);
+        assertKnownFields(exampleValue, new Set(["body", "target"]), "invocation.example", fail);
+        const example: RuntimeInvocationExample = {
+            ...("body" in exampleValue
+                ? { body: exampleLineOf(exampleValue.body, "invocation.example.body", fail) }
+                : {}),
+            ...("target" in exampleValue
+                ? { target: exampleLineOf(exampleValue.target, "invocation.example.target", fail) }
+                : {}),
         };
-        return { body, target, ...(exclusive ? { exclusive: true } : {}) };
+        const hasBody = example.body !== undefined;
+        const hasTarget = example.target !== undefined;
+        if (!hasBody && !hasTarget) fail("invocation.example must provide a body or target");
+        if (body.required && !hasBody) fail("invocation.example must provide the required body");
+        if (target === undefined && hasTarget) fail("invocation.example cannot provide a refused target");
+        if (target?.required === true && !hasTarget) fail("invocation.example must provide the required target");
+        if (exclusive && hasBody && hasTarget) fail("invocation.example must provide exactly one exclusive input");
+
+        const source = `## EXEC0 [${runtime}]${hasTarget ? ` (${example.target})` : ""}${hasBody ? `\n${example.body}` : ""}`;
+        const parsed = PlurnkParser.parseStatements(source);
+        const statements = parsed.items.filter((item) => item.kind === "statement");
+        const errors = parsed.items.filter((item) => item.kind === "error");
+        if (statements.length !== 1 || statements[0]?.statement.op !== "EXEC" || errors.length > 0 || parsed.unparsedTail !== undefined) {
+            fail("invocation.example must render one valid EXEC section");
+        }
+
+        return {
+            body,
+            ...(target === undefined ? {} : { target }),
+            ...(exclusive ? { exclusive: true } : {}),
+            example,
+        };
     }
 }

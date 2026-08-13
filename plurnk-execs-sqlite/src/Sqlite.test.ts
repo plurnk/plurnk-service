@@ -49,6 +49,7 @@ test("manifest declares the sqlite runtime tag", async () => {
     assert.deepEqual(pkg.plurnk.runtimes[0].invocation, {
         body: { role: "SQL statement", required: true },
         target: { role: "SQLite database", required: false, kind: "path" },
+        example: { target: "app.db", body: "SELECT 1;" },
     });
 });
 

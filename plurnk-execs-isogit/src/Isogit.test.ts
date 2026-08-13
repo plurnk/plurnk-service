@@ -57,6 +57,7 @@ test("manifest declares only the explicit isogit runtime, disabled by its shippe
     assert.deepEqual(pkg.plurnk.runtimes[0].invocation, {
         body: { role: "isogit command and arguments", required: true },
         target: { role: "repository directory", required: false, kind: "path" },
+        example: { target: ".", body: "status" },
     });
     assert.match(await readFile(new URL("../.env.defaults", import.meta.url), "utf8"), /^PLURNK_EXECS_ISOGIT=0$/m);
 });

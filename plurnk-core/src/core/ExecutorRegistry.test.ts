@@ -16,6 +16,11 @@ const attributionContext = (attempt: number): PluginAttributionContext => ({
     attempt,
 });
 
+const invocation = (role: string, body: string) => ({
+    body: { role, required: true },
+    example: { body },
+});
+
 // A fake executor whose probe() diverges by tag (this.runtime). build() only
 // constructs it + calls probe(), so this minimal shape is a complete stand-in.
 class FakeExecutor {
@@ -36,8 +41,8 @@ class FakeExecutor {
 // One package, two tags with divergent probe results. {§executor-probe}
 const oneTwoTagPackage = async () => ({
     registry: new Map([
-        ["alpha", { runtime: "alpha", glyph: "α", invocation: { body: { role: "alpha input", required: true } }, packageName: "fake-pkg" }],
-        ["beta", { runtime: "beta", glyph: "β", invocation: { body: { role: "beta input", required: true } }, packageName: "fake-pkg" }],
+        ["alpha", { runtime: "alpha", glyph: "α", invocation: invocation("alpha input", "alpha"), packageName: "fake-pkg" }],
+        ["beta", { runtime: "beta", glyph: "β", invocation: invocation("beta input", "beta"), packageName: "fake-pkg" }],
     ]),
 });
 
@@ -57,9 +62,9 @@ const loadAvailable = async () => ({ default: AlwaysAvailable });
 // Native Git and the explicit isomorphic-git subset beside a non-Git runtime.
 const gitAndShell = async () => ({
     registry: new Map([
-        ["sh", { runtime: "sh", glyph: "$", invocation: { body: { role: "shell program", required: true } }, packageName: "fake-common" }],
-        ["git", { runtime: "git", glyph: "⎇", invocation: { body: { role: "Git arguments", required: true } }, packageName: "@plurnk/plurnk-execs-git" }],
-        ["isogit", { runtime: "isogit", glyph: "iso", invocation: { body: { role: "isogit arguments", required: true } }, packageName: "@plurnk/plurnk-execs-isogit" }],
+        ["sh", { runtime: "sh", glyph: "$", invocation: invocation("shell program", "pwd"), packageName: "fake-common" }],
+        ["git", { runtime: "git", glyph: "⎇", invocation: invocation("Git arguments", "status --short"), packageName: "@plurnk/plurnk-execs-git" }],
+        ["isogit", { runtime: "isogit", glyph: "iso", invocation: invocation("isogit arguments", "status"), packageName: "@plurnk/plurnk-execs-isogit" }],
     ]),
 });
 
@@ -74,7 +79,7 @@ test("{§executor-probe} ExecutorRegistry preserves per-tag availability within 
     assert.deepEqual(registry.availableRuntimes(), ["alpha"], "only the present tag is offered to the model");
     assert.deepEqual(
         registry.entry("alpha")?.invocation,
-        { body: { role: "alpha input", required: true } },
+        invocation("alpha input", "alpha"),
         "the runtime-owned invocation contract reaches dispatch and the tools table",
     );
 });
@@ -93,8 +98,8 @@ test("ExecutorRegistry consumes discovery attribution without reopening a strict
             kind: "exec",
             attribution: "@plurnk/strict",
             runtimes: [
-                { name: "alpha", invocation: { body: { role: "alpha input", required: true } } },
-                { name: "beta", invocation: { body: { role: "beta input", required: true } } },
+                { name: "alpha", invocation: invocation("alpha input", "alpha") },
+                { name: "beta", invocation: invocation("beta input", "beta") },
             ],
         },
     }));

@@ -39,7 +39,8 @@
                 "glyph": "🐚",
                 "invocation": {
                     "body": { "role": "shell program; stdin with a targeted script file", "required": false },
-                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "pwd" }
                 }
             },
             {
@@ -47,7 +48,8 @@
                 "glyph": "🐚",
                 "invocation": {
                     "body": { "role": "Bash program; stdin with a targeted script file", "required": false },
-                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "npm test" }
                 }
             },
             {
@@ -55,7 +57,8 @@
                 "glyph": "⬢",
                 "invocation": {
                     "body": { "role": "JavaScript program; stdin with a targeted script file", "required": false },
-                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "console.log(process.version);" }
                 }
             },
             {
@@ -63,7 +66,8 @@
                 "glyph": "🐍",
                 "invocation": {
                     "body": { "role": "Python program; stdin with a targeted script file", "required": false },
-                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "print(\"hello\")" }
                 }
             },
             {
@@ -71,7 +75,8 @@
                 "glyph": "🐍",
                 "invocation": {
                     "body": { "role": "Python program; stdin with a targeted script file", "required": false },
-                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "print(\"hello\")" }
                 }
             },
             {
@@ -79,7 +84,8 @@
                 "glyph": "🐪",
                 "invocation": {
                     "body": { "role": "Perl program; stdin with a targeted script file", "required": false },
-                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "print \"hello\\n\";" }
                 }
             },
             {
@@ -87,7 +93,8 @@
                 "glyph": "💎",
                 "invocation": {
                     "body": { "role": "Ruby program; stdin with a targeted script file", "required": false },
-                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "puts \"hello\"" }
                 }
             },
             {
@@ -95,7 +102,8 @@
                 "glyph": "🐘",
                 "invocation": {
                     "body": { "role": "PHP program; stdin with a targeted script file", "required": false },
-                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "<?php echo \"hello\\n\";" }
                 }
             },
             {
@@ -103,7 +111,8 @@
                 "glyph": "🌙",
                 "invocation": {
                     "body": { "role": "Lua program; stdin with a targeted script file", "required": false },
-                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "print(\"hello\")" }
                 }
             },
             {
@@ -111,7 +120,8 @@
                 "glyph": "🦕",
                 "invocation": {
                     "body": { "role": "Deno program; stdin with a targeted script file", "required": false },
-                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "console.log(Deno.version.deno);" }
                 }
             },
             {
@@ -119,7 +129,8 @@
                 "glyph": "🥟",
                 "invocation": {
                     "body": { "role": "Bun program; stdin with a targeted script file", "required": false },
-                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "console.log(Bun.version);" }
                 }
             },
             {
@@ -127,7 +138,8 @@
                 "glyph": "🪶",
                 "invocation": {
                     "body": { "role": "Tcl program; stdin with a targeted script file", "required": false },
-                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "puts \"hello\"" }
                 }
             },
             {
@@ -135,7 +147,8 @@
                 "glyph": "🧮",
                 "invocation": {
                     "body": { "role": "bc program; stdin with a targeted script file", "required": false },
-                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "2 + 2" }
                 }
             },
             {
@@ -143,7 +156,8 @@
                 "glyph": "🪄",
                 "invocation": {
                     "body": { "role": "AWK program; stdin with a targeted script file", "required": false },
-                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" }
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "BEGIN { print \"hello\" }" }
                 }
             }
         ]

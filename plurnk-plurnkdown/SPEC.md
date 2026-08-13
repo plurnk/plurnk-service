@@ -27,12 +27,12 @@ Markdown strings; a trusted plugin may transform the section list before renderi
 flowchart LR
     subgraph system[system slot]
         direction LR
-        definition["definition<br/>bare content"] --> tools["Registered Executable Tools"]
-        tools --> optional["Enabled Optional Operations"]
-        optional --> schemes["Schemes"]
-        schemes --> notes["Operator Notes"]
-        notes --> policy["Policy"]
+        definition["definition<br/>bare content"] --> policy["Policy"]
         policy --> project["Project Policy"]
+        project --> tools["Registered Tools"]
+        tools --> optional["Enabled Optional Operations"]
+        optional --> schemes["Resources"]
+        schemes --> notes["Operator Notes"]
     end
 
     subgraph user[user slot]
@@ -51,12 +51,12 @@ flowchart LR
 | Default section       | Slot   | Wire form                                     | Semantic owner                  |
 | --------------------- | ------ | --------------------------------------------- | ------------------------------- |
 | `definition`          | system | Bare `plurnk.md`; no wrapper heading          | {§definition-table-projection}  |
-| `tools`               | system | Optional terse notice, then a `plurnk` fence  | {§tools-capability-sheet}       |
+| `system-policy`       | system | Authored Markdown                             | {§policy-sections}              |
+| `project-policy`      | system | Authored Markdown                             | {§policy-sections}              |
+| `tools`               | system | Generated Markdown capability table          | {§tools-capability-sheet}       |
 | `optional-operations` | system | `plurnk` fence                                | {§tools-capability-sheet}       |
 | `schemes`             | system | `plurnk` fence                                | {§schemes-directory}            |
 | `inject`              | system | Authored Markdown                             | {§packet-inject}                |
-| `system-policy`       | system | Authored Markdown                             | {§policy-sections}              |
-| `project-policy`      | system | Authored Markdown                             | {§policy-sections}              |
 | `log`                 | user   | Dynamic `jsonplurnk` fence                    | {§jsonplurnk}                   |
 | `child-streams`       | user   | `* <status> <path>` pointers                  | {§child-orientation}            |
 | `child-workers`       | user   | `* <status> <path>` pointers                  | {§child-orientation}            |
