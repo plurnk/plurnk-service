@@ -63,7 +63,7 @@ Matcher bodies select resources by content.
 
 * The leading symbol commits its dialect.
 * In path targets, `*` maps one level and `**` crosses directories.
-* JSONPath filters bracket directly: `$[?(@.role=="admin")]`.
+* JSONPath filters bracket directly: `$[*][?(@.tokens>500)]`.
 * Mapping is universal: JSONPath can query XML and XPath can query JSON.
 * Patterned FIND returns resources for broad targets and locations for exact targets.
 
@@ -76,11 +76,11 @@ Matcher bodies select resources by content.
 ## FIND0 (src/**/*.ts)
 /createCoder/i
 
-## FIND0 (config/**/*.xml)
-//user[@role='admin']
+## FIND0 (log:///1/2/4/FIND)
+//item[contains(path,'#')]/path
 
-## FIND0 (data/**/*.json)
-$..users[?(@.active==true)]
+## FIND0 (log:///1/2/4/FIND)
+$[*][0].path
 
 ## FIND0 (worker:///**) <0.7,1,50>
 ~french revolutionary history
