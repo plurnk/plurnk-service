@@ -76,8 +76,8 @@ Matcher bodies select resources by content.
 ## FIND0 (src/**/*.ts)
 /createCoder/i
 
-## FIND0 (log:///1/2/4/FIND)
-//item[contains(path,'#')]/path
+## FIND0 (https://example.com#html)
+(//p)[1]
 
 ## FIND0 (log:///1/2/4/FIND)
 $[*][0].path
