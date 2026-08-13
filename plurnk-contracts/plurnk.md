@@ -100,7 +100,7 @@ Continue next turn when the matcher results are visible, then compare them and i
 * READ with a path glob or body pattern becomes FIND; otherwise READ addresses one exact target.
 * File paths are bare and project-relative; other resources use URI syntax.
 * Log item paths are nested: `log:///1/2/3` is loop/turn/item.
-* Append `#channel` to override the scheme's default channel.
+* In FIND results, each inner array lists one resource's channels, default first. Append `#channel` to override the default.
 * A file or entry extension declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28`, `)` becomes `%29`, and `<` becomes `%3C`.
 
