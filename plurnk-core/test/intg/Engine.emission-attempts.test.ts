@@ -107,6 +107,38 @@ test("provider I/O begins only after its pending attempt row is durable", async 
     }
 });
 
+test("separator-free provider preamble does not reject a complete model turn", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const content = "harmless status.# PLAN0\ncomplete the task\n\n## SEND0 [200]\ndone";
+        const provider = new AttemptWitness({
+            contextWindow: 100_000,
+            responses: [invalid(content)],
+        });
+
+        const result = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "do the task" }],
+        });
+
+        assert.equal(result.status, 200);
+        assert.equal(result.emissionAttempts, 1);
+        assert.equal(result.emissionExhausted, false);
+        const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
+        assert.deepEqual(attempts.map(({ accepted, parse_errors }) => ({
+            accepted,
+            parseErrors: JSON.parse(parse_errors),
+        })), [{ accepted: 1, parseErrors: [] }]);
+        const turn = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
+        assert.equal((JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } }).assistant?.content, content);
+    } finally {
+        await db.close();
+    }
+});
+
 test("invalid emissions retry beneath one turn against the identical packet, then admit only the valid response", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {

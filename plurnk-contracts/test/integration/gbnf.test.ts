@@ -236,6 +236,42 @@ test("ANTLR preserves provider preamble text before the PLAN anchor", () => {
     assert.equal(result.items.find((item) => item.kind === "statement")?.statement.op, "PLAN");
 });
 
+test("ANTLR recognizes a PLAN anchor directly after provider preamble text", () => {
+    const source = `harmless status.${turn("do the thing", [mid("READ", " (worker:///x)")], 200, "done")}`;
+    const result = PlurnkParser.parse(source);
+    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+    assert.deepEqual(
+        result.items.filter((item) => item.kind === "text").map(({ text }) => text),
+        ["harmless", "status."],
+    );
+    assert.deepEqual(
+        result.items.filter((item) => item.kind === "statement").map(({ statement }) => statement.op),
+        ["PLAN", "READ", "SEND"],
+    );
+    assert.deepEqual(
+        result.items.find((item) => item.kind === "statement")?.statement.position,
+        { line: 1, column: "harmless status.".length },
+    );
+});
+
+test("separator-free PLAN tolerance does not promote ordinary hashes or inline operations", () => {
+    const source = `ordinary.# PLAN0! remains preamble\n${turn(
+        "keep inline ## READ0 (worker:///not-an-operation) as body",
+        [],
+        200,
+        "done",
+    )}`;
+    const result = PlurnkParser.parse(source);
+    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+    assert.deepEqual(
+        result.items.filter((item) => item.kind === "text").map(({ text }) => text),
+        ["ordinary.", "#", "PLAN0!", "remains", "preamble"],
+    );
+    const statements = result.items.filter((item) => item.kind === "statement").map(({ statement }) => statement);
+    assert.deepEqual(statements.map(({ op }) => op), ["PLAN", "SEND"]);
+    assert.equal(statements[0]?.body, "keep inline ## READ0 (worker:///not-an-operation) as body");
+});
+
 // {§park-202-only} {§waitpid-dispositions}
 test("GBNF terminal dispositions and 202 park scope are bounded", () => {
     assert.equal(derivesTurn(turn("p", [], 202, "bounded", " <30>")), true);

@@ -680,7 +680,7 @@ possible. EOF is a valid body boundary. An unfinished signal or target produces
 
 | Location                    | Canonical generation                  | Tolerant ANTLR ingestion                                  |
 |-----------------------------|---------------------------------------|-----------------------------------------------------------|
-| Heading marker              | `# PLAN0` or `## OP0` at column zero  | Exact heading depth and column are structural             |
+| Heading marker              | `# PLAN0` or `## OP0` at column zero  | The initial PLAN may directly follow leading TEXT; subsequent headings retain exact depth and column |
 | Between OP and suffix       | Adjacent                              | Must remain adjacent                                      |
 | Before each header slot     | One ASCII space                       | Zero or more horizontal whitespace characters             |
 | Inside signal               | Adjacent values                       | Horizontal whitespace is ignored; newline is invalid      |
@@ -688,16 +688,17 @@ possible. EOF is a valid body boundary. An unfinished signal or target produces
 | Inside scope                | Comma-separated numbers               | Dash separator and one post-comma space are also accepted |
 | Inside body                 | Character-perfect                     | Character-perfect                                         |
 | Between canonical sections  | One empty separator line              | A directly following structural heading is also admitted  |
-| Before the first PLAN       | Nothing                               | Whitespace or TEXT may surface as preamble items           |
+| Before the first PLAN       | Nothing                               | Whitespace or TEXT may surface as preamble items without requiring a separator before PLAN |
 
 PLURNK never escape-decodes body text: `\n` reaches the owning operation as
 backslash plus `n`. A matcher or executor may interpret those characters under
 its own body dialect. Producers that need a physical newline in literal EDIT
 content emit an actual newline.
 
-`parse` admits TEXT before its PLAN and returns it as ordered text items without
-assigning semantics. Once a heading begins, all nonstructural text belongs to
-that section body. `parseStatements` and `parseClient` admit H2 statements;
+`parse` admits TEXT before its PLAN, including without an intervening line
+break, and returns it as ordered text items without assigning semantics. Once
+a heading begins, all nonstructural text belongs to that section body.
+`parseStatements` and `parseClient` admit H2 statements;
 `parseLog` admits consecutive H1 PLAN turns. PLURNK defines no comment syntax.
 
 ## §public-api 12. Public API

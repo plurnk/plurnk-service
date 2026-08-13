@@ -76,7 +76,11 @@ private headingAt(offset: number): { level: 1 | 2; op: string; suffix: string } 
 }
 
 private matchesHeading(level: 1 | 2, op: string): boolean {
-    if (this.column !== 0) return false;
+    // The initial PLAN terminates tolerated provider preamble text, even when
+    // the provider omitted a separating newline. Once PLAN establishes the
+    // lane, every heading retains the ordinary column-zero boundary.
+    const initialPlan = level === 1 && op === "PLAN" && this.activeSuffix === null;
+    if (this.column !== 0 && !initialPlan) return false;
     const heading = this.headingAt(1);
     return heading !== null && heading.level === level && heading.op === op;
 }
@@ -176,7 +180,10 @@ FENCE_CLOSE : { this.column === 0 && this.inDocumentFence() }? '```' EOL? { this
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
 THINK_BLOCK   : '<think>' .*? '</think>' -> type(TEXT) ;
 CHANNEL_BLOCK : '<|channel>' .*? '<channel|>' -> type(TEXT) ;
-TEXT : ~[ \t\r\n]+ ;
+// Keep `#` at a token boundary so a separator-free initial PLAN can terminate
+// ordinary provider preamble instead of being swallowed by greedy TEXT.
+TEXT : ~[ \t\r\n#]+ ;
+TEXT_HASH : '#' -> type(TEXT) ;
 
 mode SLOTS;
 SLOTS_WS : [ \t]+ { this.slotReady = true; } -> skip ;
