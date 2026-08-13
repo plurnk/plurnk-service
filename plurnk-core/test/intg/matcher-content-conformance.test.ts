@@ -1,22 +1,7 @@
-// Conformance tests for the canonical examples in plurnk.md.
-//
-// Each test reconstructs the world a plurnk.md example presupposes and asserts
-// the behavior the example demonstrates. The worlds are built DISCRIMINATING:
-// every matchable token lives in exactly one field (pathname XOR content), and
-// the two fields are swapped between entries — so "match the pathname" and
-// "match the content" return DISJOINT results. An implementation that matches
-// the wrong field cannot pass by accident.
-//
-// Contract (plurnk.md "Pattern Filtering"): the
-// (target) selects WHICH entries are candidates; the body matcher runs against
-// the entry CONTENT. The canonical examples are unambiguous about this:
-//   ## FIND0 (config/**/*.xml)\n//user[@role='admin']   — xpath over XML content
-//   ## FIND0 (log:///**/error)\n/timeout|deadline exceeded/i — regex over log content
-// The path-globs live in the (target); the body is the content matcher.
-//
-// READ resolves via read-resolve; FIND runs its body matcher through
-// _entry-find (#matchPathnames -> matchAgainstContent) against the candidate's
-// CONTENT, returning the matched entries' catalog channel groups.
+// Composed coverage for {§find-glob-filter-on-content},
+// {§find-source-agnostic}, and {§find-semantic-selection}. Fixtures put matching
+// text in either the pathname or content, never both, so querying the wrong
+// surface cannot pass accidentally.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -27,8 +12,8 @@ import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
 import { resourcePaths } from "./_find.ts";
 
-// One plurnk.md example (FIND ~query RAG) asserts REAL vector ranking — re-enable the embedder the
-// Mock bootstrap turns off; --test-isolation scopes this to this file.
+// Semantic conformance uses real vector ranking; the test bootstrap disables
+// the embedder by default, and test isolation scopes this override to this file.
 process.env.PLURNK_SERVICE_EMBED_DISABLE = "0";
 
 const url = (pathname: string): UrlPath => ({
@@ -79,7 +64,7 @@ const seed = async (
 // Anchors "correct." The matched token appears ONLY in the content; the
 // pathname shares no character with it, so a pathname-matcher returns nothing.
 
-test("[plurnk.md-FIND-glob-on-content] FIND glob body matches entry CONTENT, not pathname", async () => {
+test("{§find-glob-filter-on-content}: FIND glob body matches entry content, not pathname", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // pathname "doc" contains no "TODO"; only the content does.
@@ -90,7 +75,7 @@ test("[plurnk.md-FIND-glob-on-content] FIND glob body matches entry CONTENT, not
     } finally { db.close(); }
 });
 
-test("[plurnk.md-FIND-regex-on-content] FIND regex body matches entry CONTENT, not pathname", async () => {
+test("{§find-glob-filter-on-content}: FIND regex body matches entry content, not pathname", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // pathname "doc" contains no "timeout"; only the content does.
@@ -101,10 +86,7 @@ test("[plurnk.md-FIND-regex-on-content] FIND regex body matches entry CONTENT, n
     } finally { db.close(); }
 });
 
-// plurnk.md: ## READ0 (/etc/hosts) <2> — the line-slice rides the <L> marker
-// slot (NOT the body matcher). Read line 2 of a 3-line entry → just that line.
-// Pins the <L>?:body? slot order — the seam the live READ-<2> mis-slot exposed.
-test("[plurnk.md-ex-READ-line-slice] READ <L> slices by line via the marker slot, not the body", async () => {
+test("{§scope-slot}: READ <L> slices by line via the marker slot, not the body", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seed(db, workspaceId, workerId, [["lines", "alpha\nbeta\ngamma"]]);
@@ -116,14 +98,12 @@ test("[plurnk.md-ex-READ-line-slice] READ <L> slices by line via the marker slot
     } finally { db.close(); }
 });
 
-// --- FIND: body matcher runs against CONTENT (plurnk.md ex. above) --------
+// --- FIND: body matcher runs against content ------------------------------
 // Each world swaps the token between fields: the entry that matches by CONTENT
 // is NOT the entry that matches by PATHNAME. The impl selects the content-bearing
 // entry — a pathname-matcher (the old divergence) would return the other one.
 
-// plurnk.md: ## FIND0 (log:///**/error)\n/timeout|deadline exceeded/i
-//   → select entries whose CONTENT matches the regex.
-test("[plurnk.md-ex-FIND-regex-on-content] FIND regex body selects entries by CONTENT, not pathname", async () => {
+test("{§find-glob-filter-on-content}: FIND regex selects entries by content, not pathname", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seed(db, workspaceId, workerId, [
@@ -137,7 +117,7 @@ test("[plurnk.md-ex-FIND-regex-on-content] FIND regex body selects entries by CO
 });
 
 // A glob body selects entries whose CONTENT matches.
-test("[plurnk.md-ex-FIND-glob-on-content] FIND glob body selects entries by CONTENT, not pathname", async () => {
+test("{§find-glob-filter-on-content}: FIND glob selects entries by content, not pathname", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         await seed(db, workspaceId, workerId, [
@@ -151,11 +131,10 @@ test("[plurnk.md-ex-FIND-glob-on-content] FIND glob body selects entries by CONT
 });
 
 // --- FIND with structural dialects (jsonpath/xpath) over native content -------
-// plurnk.md: ## FIND0 (config/**/*.xml)\n//user[@role='admin'] — xpath over XML.
 // The dialects route through the plugin's deep-json / deep-xml channels; these
 // prove they are wired through FIND end-to-end on their native mimetypes (NOT 501).
 
-test("[plurnk.md-ex-FIND-jsonpath-on-json] FIND jsonpath selects JSON entries by content structure", async () => {
+test("{§find-source-agnostic}: FIND JSONPath selects JSON entries by content structure", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // `.json` suffix → application/json mimetype → plugin's deep-json channel.
@@ -169,7 +148,7 @@ test("[plurnk.md-ex-FIND-jsonpath-on-json] FIND jsonpath selects JSON entries by
     } finally { db.close(); }
 });
 
-test("[plurnk.md-ex-FIND-xpath-on-xml] FIND xpath selects XML entries by content structure", async () => {
+test("{§find-source-agnostic}: FIND XPath selects XML entries by content structure", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // `.xml` suffix → application/xml mimetype → plugin's deep-xml channel.
@@ -188,7 +167,7 @@ test("[plurnk.md-ex-FIND-xpath-on-xml] FIND xpath selects XML entries by content
 // dialect against the matching projection — so xpath works on a JSON doc and
 // jsonpath on an XML doc. Source mimetype is irrelevant to the dialect.
 
-test("[plurnk.md-ex-FIND-xpath-on-json] FIND xpath selects JSON entries by structure (over deepXml)", async () => {
+test("{§find-source-agnostic}: FIND XPath selects JSON entries through deepXml", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // JSON content → process() also yields deepXml (`<root><role>…</role></root>`); xpath runs over it.
@@ -202,7 +181,7 @@ test("[plurnk.md-ex-FIND-xpath-on-json] FIND xpath selects JSON entries by struc
     } finally { db.close(); }
 });
 
-test("[plurnk.md-ex-FIND-jsonpath-on-xml] FIND jsonpath selects XML entries by structure (over deepJson)", async () => {
+test("{§find-source-agnostic}: FIND JSONPath selects XML entries through deepJson", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // XML content → process() also yields deepJson (`…attrs.role`); jsonpath runs over it.
@@ -216,13 +195,12 @@ test("[plurnk.md-ex-FIND-jsonpath-on-xml] FIND jsonpath selects XML entries by s
     } finally { db.close(); }
 });
 
-// plurnk.md: `## FIND0 (worker:///**)\n~constitutional history`
-// — markerless RAG semantic similarity, using the universal first-16 page. Runs against the REAL embedder
+// Markerless RAG semantic similarity uses the universal first-16 page and real embedder
 // (all-MiniLM-L6-v2 via @plurnk/plurnk-mimetypes-embeddings) — the production tile+embed
 // path, not a model-free stub. Semantics is normal intg coverage; the model load is an
 // accepted cost (AGENTS: no fast-tier carve-out that hides a working feature). The body
 // `raw` is the bare query the parser yields after consuming the ~ sigil (_entry-find.ts:82).
-test("[plurnk.md-ex-FIND-rag] FIND ~query selects entries by semantic similarity", async () => {
+test("{§find-semantic-selection}: FIND ~query selects entries by semantic similarity", async () => {
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
     const { db, workspaceId, workerId } = await setup();
