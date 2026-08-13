@@ -229,7 +229,7 @@ The following constraints are structural:
 - PLAN is the only H1 operation and every non-PLAN operation is H2.
 - A header occupies one physical line.
 - Each admitted signal, target, and scope slot appears at most once.
-- OPEN, FOLD, WORK, FORK, and KILL do not admit a scope slot.
+- OPEN, FOLD, BARE, WORK, FORK, and KILL do not admit a scope slot.
 - An ingested suffix is `[A-Za-z0-9_]*`; canonical teaching and the GBNF use `0`.
 
 §slot-order Canonical producers and the GBNF rail emit signal, then target, then
@@ -255,7 +255,7 @@ or safely execute understandable input:
 
 | Element     | Accepted shape or role                                             |
 |-------------|--------------------------------------------------------------------|
-| `OP`        | `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC WORK FORK KILL PLAN` |
+| `OP`        | `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC BARE WORK FORK KILL PLAN` |
 | `suffix`    | `[A-Za-z0-9_]*`, adjacent to PLAN or OP                            |
 | `[signal]`  | Operation-specific tags, identifier, branch, or integer            |
 | `(path)`    | Local path or scheme URL target; detailed in §5                    |
@@ -278,6 +278,7 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | FOLD | optional filter/change tags   | optional log selection                       | none                            | optional matcher               |
 | OPEN | optional filter/change tags   | optional log selection                       | none                            | optional matcher               |
 | EXEC | optional executor             | optional local working path                  | optional timeout, poll          | optional executor input        |
+| BARE | optional add log tags         | none                                         | none                            | required prompt                |
 | WORK | optional Git branch           | required fresh `worker://name`               | none                            | required prompt                |
 | FORK | optional Git branch           | required context-inheriting `worker://name`  | none                            | required prompt                |
 | KILL | optional target-specific code | required target, including a log item        | none                            | empty                          |
@@ -294,7 +295,7 @@ new material conclusions or unresolved questions and the current turn's prioriti
 it does not restate settled context. PLAN is public, durable log content—not provider
 reasoning. Dispatch records it and has no other runtime effect.
 
-§log-tag-signal FIND, READ, EDIT, COPY, and MOVE canonically express additions
+§log-tag-signal FIND, READ, EDIT, COPY, MOVE, and BARE canonically express additions
 as `+tag`. Because those operations have no tag-selection semantics, ANTLR also
 tolerates unsigned `tag` as an equivalent addition; `-tag` is invalid. Core
 strips any `+`; the signal neither filters nor modifies resources. OPEN and
@@ -325,6 +326,12 @@ ingestion tolerance, the runtime accepts three integers as
 four-coordinate region ending after the final code point of `endLine`.
 Producers never emit that form. Other arities and decimal text coordinates are
 runtime 416 failures.
+
+§bare-statement **BARE requests one isolated model inference.** Its required
+body is the complete prompt. It admits only optional additive log tags: no
+target, scope, persistent worker identity, or output-language statement shape
+is represented in the AST. Runtime provider selection, batching, accounting,
+and observation timing belong to the consuming service.
 
 §read-find-normalization An authored READ with a nonempty matcher body or a
 target path classified as a glob normalizes during AST construction to one
@@ -363,6 +370,7 @@ Mutation semantics:
 | FOLD | Status and matched log-item count                                                 |
 | SEND | Status and recipient acknowledgement when applicable                              |
 | EXEC | Spawn acknowledgement; output arrives through named stream channels               |
+| BARE | The one-shot model response                                                        |
 | WORK | Spawn acknowledgement; the deliverable arrives through the log                    |
 | FORK | Spawn acknowledgement; the inherited worker's deliverable arrives through the log |
 | KILL | Status of deletion or termination                                                 |

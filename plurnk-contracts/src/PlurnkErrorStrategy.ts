@@ -32,6 +32,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         [plurnkParser.OPEN_FOLD]: "H2 operation heading `## OPsuffix`",
         [plurnkParser.OPEN_SEND]: "H2 operation heading `## OPsuffix`",
         [plurnkParser.OPEN_EXEC]: "H2 operation heading `## OPsuffix`",
+        [plurnkParser.OPEN_BARE]: "H2 operation heading `## OPsuffix`",
         [plurnkParser.OPEN_WORK]: "H2 operation heading `## OPsuffix`",
         [plurnkParser.OPEN_FORK]: "H2 operation heading `## OPsuffix`",
         [plurnkParser.OPEN_KILL]: "H2 operation heading `## OPsuffix`",

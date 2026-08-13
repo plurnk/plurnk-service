@@ -22,7 +22,7 @@ const R = (a: string, b: string): [number, number] => [a.codePointAt(0)!, b.code
 const C = (chars: string): Array<[number, number]> => [...new Set(chars)].map((character) => R(character, character));
 const cls = (ranges: Array<[number, number]>, negate = false): GItem => ({ kind: "cls", ranges, negate });
 
-const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "WORK", "FORK", "KILL"] as const;
+const OPS = ["FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD", "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL"] as const;
 const DIGIT = cls([R("0", "9")]);
 const BASE62 = cls([R("0", "9"), R("A", "Z"), R("a", "z")]);
 const WS = cls(C(" \t\r\n"));
@@ -157,6 +157,7 @@ export const buildModel = (): GModel => {
         opt(target[0]),
         opt(line[0]),
     ], "section-body");
+    requiredBodySection(model, "bare", [lit("## BARE0"), opt(ref("add-tags-slot"))]);
     requiredBodySection(model, "work", [lit("## WORK0"), opt(ref("branch-slot")), target[0]]);
     requiredBodySection(model, "fork", [lit("## FORK0"), opt(ref("branch-slot")), target[0]]);
     emptySection(model, "kill", [lit("## KILL0"), opt(ref("kill-slot")), target[0]]);
@@ -189,7 +190,7 @@ export const buildModel = (): GModel => {
 
     model.set("op-statement", [
         [ref("find")], [ref("read")], [ref("edit")], [ref("copy")], [ref("move")],
-        [ref("open")], [ref("fold")], [ref("exec")], [ref("work")], [ref("fork")], [ref("kill")],
+        [ref("open")], [ref("fold")], [ref("exec")], [ref("bare")], [ref("work")], [ref("fork")], [ref("kill")],
     ]);
 
     const maxMidSteps = 14;

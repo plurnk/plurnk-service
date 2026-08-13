@@ -13,6 +13,7 @@
         { "$ref": "#/$defs/MoveStatement" },
         { "$ref": "#/$defs/SendStatement" },
         { "$ref": "#/$defs/ExecStatement" },
+        { "$ref": "#/$defs/BareStatement" },
         { "$ref": "#/$defs/WorkStatement" },
         { "$ref": "#/$defs/ForkStatement" },
         { "$ref": "#/$defs/KillStatement" },
@@ -216,6 +217,20 @@
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
                 "body": { "type": ["string", "null"] },
+                "position": { "$ref": "#/$defs/PositionRef" }
+            }
+        },
+        "BareStatement": {
+            "type": "object",
+            "required": ["op", "suffix", "signal", "target", "lineMarker", "body", "position"],
+            "additionalProperties": false,
+            "properties": {
+                "op": { "const": "BARE" },
+                "suffix": { "type": "string" },
+                "signal": { "$ref": "#/$defs/AppliedTagSignal" },
+                "target": { "type": "null" },
+                "lineMarker": { "type": "null" },
+                "body": { "type": "string", "minLength": 1 },
                 "position": { "$ref": "#/$defs/PositionRef" }
             }
         },

@@ -9,7 +9,7 @@ import { PlurnkParser } from "../../src/index.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const plurnkMd = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
-const operations = ["PLAN", "FIND", "READ", "EDIT", "COPY", "MOVE", "FOLD", "OPEN", "EXEC", "WORK", "FORK", "KILL", "SEND"];
+const operations = ["PLAN", "FIND", "READ", "EDIT", "COPY", "MOVE", "FOLD", "OPEN", "EXEC", "BARE", "WORK", "FORK", "KILL", "SEND"];
 const fencePattern = /^```plurnk\n([\s\S]*?)^```/gm;
 const fences = [...plurnkMd.matchAll(fencePattern)].map((match) => match[1].trim());
 const proseAndInline = plurnkMd.replace(fencePattern, "");

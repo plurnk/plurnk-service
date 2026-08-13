@@ -9,7 +9,7 @@ import {
 } from "../../src/index.ts";
 
 type Op = "PLAN" | "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "OPEN" | "FOLD"
-    | "SEND" | "EXEC" | "WORK" | "FORK" | "KILL";
+    | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL";
 
 const section = (op: Op, slots = "", body?: string, suffix = "0"): string => {
     const level = op === "PLAN" ? "#" : "##";
@@ -65,6 +65,7 @@ test("protocol operations parse as Markdown sections", () => {
         ["FOLD", " [memory] (log:///**)", undefined],
         ["SEND", " [400] (worker://child)", "progress"],
         ["EXEC", " [node] (./) <60,5>", "console.log(1)"],
+        ["BARE", " [+fact]", "What is the capital of Germany?"],
         ["WORK", " [feature/x] (worker://child)", "do the work"],
         ["FORK", " (worker://child)", "recheck the work"],
         ["KILL", " [15] (worker://child)", undefined],
@@ -161,14 +162,29 @@ test("empty sections have one representation and normalize to null", () => {
         ["FOLD", " (log:///1)"],
         ["SEND", " [400]"],
         ["EXEC", ""],
+        ["BARE", ""],
         ["WORK", " (worker://child)"],
         ["FORK", " (worker://child)"],
         ["KILL", " (a)"],
         ["PLAN", ""],
     ] as const) {
         const statement = oneStatement(section(op, slots));
-        assert.equal(statement.body, op === "WORK" || op === "FORK" ? "" : null, op);
+        assert.equal(statement.body, op === "BARE" || op === "WORK" || op === "FORK" ? "" : null, op);
     }
+});
+
+// {§bare-statement}
+test("BARE admits only additive tags and a prompt body", () => {
+    const statement = oneStatement(section("BARE", " [+fact,capital]", "What is the capital of Germany?"));
+    assert.equal(statement.op, "BARE");
+    assert.deepEqual(statement.signal, ["+fact", "capital"]);
+    assert.equal(statement.target, null);
+    assert.equal(statement.lineMarker, null);
+    assert.equal(statement.body, "What is the capital of Germany?");
+
+    assert.ok(errorsOf(section("BARE", " [-stale]", "prompt")).length > 0);
+    assert.ok(errorsOf(section("BARE", " (worker://child)", "prompt")).length > 0);
+    assert.ok(errorsOf(section("BARE", " <1>", "prompt")).length > 0);
 });
 
 test("same-lane sections compose and section whitespace is structural", () => {

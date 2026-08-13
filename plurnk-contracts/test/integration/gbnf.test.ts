@@ -364,6 +364,7 @@ test("GBNF represents every rail-legal empty operation as an empty section", () 
         ["OPEN", " (log:///1)", true],
         ["FOLD", " (log:///1)", true],
         ["EXEC", "", true],
+        ["BARE", "", false],
         ["WORK", " (worker://child)", false],
         ["FORK", " (worker://child)", false],
         ["KILL", " (worker://child)", true],
@@ -396,9 +397,15 @@ test("GBNF mid-turn SENDs are statusless or carry non-disposition three-digit co
     assert.equal(derives("send-statement", "## SEND0 [4000]\nmessage\n\n"), false);
 });
 
-test("GBNF EXEC, WORK, and FORK retain their operation-specific slots and bodies", () => {
+test("GBNF BARE, EXEC, WORK, and FORK retain their operation-specific slots and bodies", () => {
     assert.equal(derives("statement", mid("EXEC", " [node] (./) <60,5>", "npm test")), true);
     assert.equal(derives("statement", mid("EXEC", " <60,5> [node] (./)", "npm test")), false);
+    assert.equal(derives("statement", mid("BARE", " [+fact]", "What is the capital of Germany?")), true);
+    assert.equal(derives("statement", mid("BARE", "", "prompt")), true);
+    assert.equal(derives("statement", mid("BARE", " [-stale]", "prompt")), false);
+    assert.equal(derives("statement", mid("BARE", " (worker://child)", "prompt")), false);
+    assert.equal(derives("statement", mid("BARE", " <1>", "prompt")), false);
+    assert.equal(derives("statement", mid("BARE")), false);
     assert.equal(derives("statement", mid("WORK", " [feature/x] (worker://child)", "implement it")), true);
     assert.equal(derives("statement", mid("FORK", " (worker://child)", "recheck it")), true);
     assert.equal(derives("statement", mid("WORK", " (worker://child)")), false);

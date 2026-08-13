@@ -47,6 +47,7 @@ statement
     | sendStatement
     | midSend
     | execStatement
+    | bareStatement
     | workStatement
     | forkStatement
     | killStatement
@@ -63,6 +64,7 @@ midStatement
     | foldStatement
     | midSend
     | execStatement
+    | bareStatement
     | workStatement
     | forkStatement
     | killStatement
@@ -78,6 +80,7 @@ foldStatement : OPEN_FOLD curationModifiers? statementEnd ;
 sendStatement : OPEN_SEND termModifiers statementEnd ;
 midSend       : OPEN_SEND midModifiers? statementEnd ;
 execStatement : OPEN_EXEC execModifiers? statementEnd ;
+bareStatement : OPEN_BARE tagSignal? statementEnd ;
 workStatement : OPEN_WORK branchModifiers? statementEnd ;
 forkStatement : OPEN_FORK branchModifiers? statementEnd ;
 killStatement : OPEN_KILL intOpModifiers? statementEnd ;

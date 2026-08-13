@@ -5,6 +5,7 @@ import * as xpath from "xpath";
 import { JSONPathEnvironment } from "json-p3/dist/json-p3.esm.js";
 import type {
     BuffStatement,
+    BareStatement,
     ClientOp,
     ClientStatement,
     CopyStatement,
@@ -34,6 +35,7 @@ import type {
 } from "./types.ts";
 import type {
     BuffStatementContext,
+    BareStatementContext,
     ClientStatementContext,
     CopyStatementContext,
     EditStatementContext,
@@ -108,6 +110,7 @@ export default class AstBuilder {
             const send = ctx.sendStatement(); if (send) return AstBuilder.#buildSend(send);
         }
         const exec = ctx.execStatement(); if (exec) return AstBuilder.#buildExec(exec);
+        const bare = ctx.bareStatement(); if (bare) return AstBuilder.#buildBare(bare);
         const work = ctx.workStatement(); if (work) return AstBuilder.#buildWork(work);
         const fork = ctx.forkStatement(); if (fork) return AstBuilder.#buildFork(fork);
         const kill = ctx.killStatement(); if (kill) return AstBuilder.#buildKill(kill);
@@ -308,6 +311,21 @@ export default class AstBuilder {
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_EXEC().getText(), "EXEC"),
             ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
+            position,
+        };
+    }
+
+    static #buildBare(ctx: BareStatementContext): BareStatement {
+        const position = AstBuilder.#positionOf(ctx);
+        const signal = AstBuilder.#tagsFromSignal(ctx.tagSignal());
+        AstBuilder.#assertAppliedTags(signal, position);
+        return {
+            op: "BARE",
+            suffix: AstBuilder.#splitSuffix(ctx.OPEN_BARE().getText(), "BARE"),
+            signal,
+            target: null,
+            lineMarker: null,
+            body: AstBuilder.#requiredBodyTextOf(ctx),
             position,
         };
     }

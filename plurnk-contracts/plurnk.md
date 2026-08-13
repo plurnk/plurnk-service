@@ -10,7 +10,7 @@ Plurnk is an agentic service that acts on and answers user prompts.
 
 ## Grammar
 
-YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|WORK|FORK|KILL|SEND).
+YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|BARE|WORK|FORK|KILL|SEND).
 
 ### Syntax
 
@@ -41,6 +41,7 @@ Body content is character-perfect, including whitespace.
 | FOLD | hide matching log bodies       | filter/change log tags? | log item(s)                | -              | pattern?                    |
 | OPEN | reveal matching log bodies     | filter/change log tags? | log item(s)                | -              | pattern?                    |
 | EXEC | execute a registered tool      | executor?    | tool target?               | timeout, poll? | tool input?                 |
+| BARE | retrieve one model response    | add log tags? | -                          | -              | prompt                      |
 | WORK | spawn a child worker           | branch?      | `worker://name`            | -              | prompt                      |
 | FORK | fork current worker            | branch?      | `worker://name`            | -              | prompt                      |
 | KILL | delete or terminate            | code?        | target, including log item | -              | -                           |
@@ -166,8 +167,9 @@ YOU SHOULD FOLD superseded PLANs, stale READs, and irrelevant log items.
 ## Delegation
 
 * Work on a Git branch: `## WORK0 [feature/recheck] (worker://recheck)` with body `Implement the alternative`.
-* Send a worker another message: `## SEND0 (worker://recheck)` with body `Also, what is the capital of Germany?`.
+* Send a worker another message: `## SEND0 (worker://recheck)` with body `Also verify the alternative against the existing tests.`.
 * Fork with inherited history: `## FORK0 (worker://recheck)` with body `Re-derive the capital from a primary source`.
+* Retrieve a one-shot child-model response using only the body prompt: `## BARE0` with body `What is the capital of Germany?`.
 * Terminate a worker: `## KILL0 (worker://recheck)`.
 
 Before using a branch signal, ensure the repository is clean.

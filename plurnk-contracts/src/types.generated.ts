@@ -24,7 +24,7 @@ export type ClientStatement = (PlurnkStatement | LookStatement | BuffStatement)
  * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, lineMarker, body, suffix, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
  */
 
-export type PlurnkStatement = (FindStatement | ReadStatement | OpenStatement | FoldStatement | EditStatement | CopyStatement | MoveStatement | SendStatement | ExecStatement | WorkStatement | ForkStatement | KillStatement | PlanStatement)
+export type PlurnkStatement = (FindStatement | ReadStatement | OpenStatement | FoldStatement | EditStatement | CopyStatement | MoveStatement | SendStatement | ExecStatement | BareStatement | WorkStatement | ForkStatement | KillStatement | PlanStatement)
 /**
  * A parsed target slot from a plurnk statement. Discriminated on `kind`: a bare local path or a WHATWG-decomposed URL. Targets carry an exact address or a path glob; content matching belongs in the statement body.
  */
@@ -256,6 +256,16 @@ signal: (string | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
 body: (string | null)
+position: Position
+}
+
+export interface BareStatement {
+op: "BARE"
+suffix: string
+signal: (string[] | null)
+target: null
+lineMarker: null
+body: string
 position: Position
 }
 
@@ -493,7 +503,7 @@ logEntryId: number
 workerId: number
 loopId: number
 turnId: number
-op: ("FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "OPEN" | "FOLD" | "SEND" | "EXEC" | "WORK" | "FORK" | "KILL" | "PLAN")
+op: ("FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "OPEN" | "FOLD" | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL" | "PLAN")
 target: {
 scheme: (string | null)
 pathname: (string | null)

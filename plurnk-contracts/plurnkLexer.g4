@@ -20,7 +20,7 @@ private documentFence: boolean = false;
 
 private static readonly PROTOCOL_OPS = [
     "FIND", "READ", "EDIT", "COPY", "MOVE", "OPEN", "FOLD",
-    "SEND", "EXEC", "WORK", "FORK", "KILL",
+    "SEND", "EXEC", "BARE", "WORK", "FORK", "KILL",
 ];
 private static readonly CLIENT_OPS = ["LOOK", "BUFF"];
 
@@ -172,6 +172,7 @@ OPEN_OPEN : { this.matchesHeading(2, "OPEN") }? '## OPEN' SUFFIX? { this.open(2,
 OPEN_FOLD : { this.matchesHeading(2, "FOLD") }? '## FOLD' SUFFIX? { this.open(2, "FOLD"); } -> mode(SLOTS) ;
 OPEN_SEND : { this.matchesHeading(2, "SEND") }? '## SEND' SUFFIX? { this.open(2, "SEND"); } -> mode(SLOTS) ;
 OPEN_EXEC : { this.matchesHeading(2, "EXEC") }? '## EXEC' SUFFIX? { this.open(2, "EXEC"); } -> mode(SLOTS) ;
+OPEN_BARE : { this.matchesHeading(2, "BARE") }? '## BARE' SUFFIX? { this.open(2, "BARE"); } -> mode(SLOTS) ;
 OPEN_WORK : { this.matchesHeading(2, "WORK") }? '## WORK' SUFFIX? { this.open(2, "WORK"); } -> mode(SLOTS) ;
 OPEN_FORK : { this.matchesHeading(2, "FORK") }? '## FORK' SUFFIX? { this.open(2, "FORK"); } -> mode(SLOTS) ;
 OPEN_KILL : { this.matchesHeading(2, "KILL") }? '## KILL' SUFFIX? { this.open(2, "KILL"); } -> mode(SLOTS) ;

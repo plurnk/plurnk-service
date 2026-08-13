@@ -89,6 +89,20 @@ test("PlurnkStatement: EXEC with executor and code body", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
+// {§bare-statement}
+test("PlurnkStatement: BARE requires a prompt and admits only additive tags", () => {
+    const parsed = validateRoundTrip("## BARE0 [+fact]\nWhat is the capital of Germany?");
+    assert.equal(parsed!.valid, true, JSON.stringify(parsed!.errors));
+
+    const missing = baseFields("BARE");
+    assert.equal(Validator.validatePlurnkStatement(missing).valid, false);
+    assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt" }).valid, true);
+    assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt", signal: ["+fact", "capital"] }).valid, true);
+    assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt", signal: ["-stale"] }).valid, false);
+    assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt", target: { kind: "local", raw: "." } }).valid, false);
+    assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt", lineMarker: { marks: [1] } }).valid, false);
+});
+
 test("PlurnkStatement parser preserves a decimal marker for runtime validation", () => {
     const r = validateRoundTrip("## EDIT0 (known://plan) <2.5>\n- [ ] new step");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
@@ -207,10 +221,11 @@ test("PlurnkStatement: FIND rejects numeric signal", () => {
 });
 
 test("PlurnkStatement: classifying and curation tag terms retain distinct wire shapes", () => {
-    for (const op of ["FIND", "READ", "EDIT", "COPY", "MOVE"] as const) {
-        assert.equal(Validator.validatePlurnkStatement({ ...baseFields(op), signal: ["+research"] }).valid, true, op);
-        assert.equal(Validator.validatePlurnkStatement({ ...baseFields(op), signal: ["research"] }).valid, true, op);
-        assert.equal(Validator.validatePlurnkStatement({ ...baseFields(op), signal: ["-research"] }).valid, false, op);
+    for (const op of ["FIND", "READ", "EDIT", "COPY", "MOVE", "BARE"] as const) {
+        const statement = { ...baseFields(op), body: op === "BARE" ? "prompt" : null };
+        assert.equal(Validator.validatePlurnkStatement({ ...statement, signal: ["+research"] }).valid, true, op);
+        assert.equal(Validator.validatePlurnkStatement({ ...statement, signal: ["research"] }).valid, true, op);
+        assert.equal(Validator.validatePlurnkStatement({ ...statement, signal: ["-research"] }).valid, false, op);
     }
     for (const op of ["FOLD", "OPEN"] as const) {
         assert.equal(
