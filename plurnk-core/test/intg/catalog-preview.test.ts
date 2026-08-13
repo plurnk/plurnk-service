@@ -163,7 +163,7 @@ test("turn-0 once-per-worker foists fire on the worker's first loop only, not ev
     }
 });
 
-test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a static print", async () => {
+test("the turn-0 initialization mirrors the REAL foisted survey — dynamic, not a static print", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist each ordinary first page at turn 0
@@ -181,19 +181,23 @@ test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a sta
                 const map = JSON.parse((JSON.parse(commons.rx) as { content: string }).content) as Array<{ path: string; items?: number; tokens?: number }>;
                 assert.deepEqual(map.map((item) => item.path), ["worker:///a.md", "worker:///nested/**"]);
                 assert.equal(map[1]?.items, 1, "the automatic shallow map retains the nested subtree as a complete aggregate");
-                // The worker's first turn opens with the actionless turn-0 exemplar at 1/1/1, born OPEN.
+                // The worker's first turn opens with the actionless initialization at 1/1/1, born OPEN.
                 const row = await db.log_read_by_coordinate.get<{ op: string | null; rx: string; attrs: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
-                assert.equal(row?.op, null, "the turn-0 exemplar does not fabricate an operation");
-                assert.equal((JSON.parse(row!.attrs) as { kind?: string }).kind, "model_emission");
+                assert.equal(row?.op, null, "the turn-0 initialization does not fabricate an operation");
+                assert.equal((JSON.parse(row!.attrs) as { kind?: string }).kind, "initialization");
                 const content = (JSON.parse(row!.rx) as { content: string }).content;
                 // Dynamic - it carries the FIND the foist ACTUALLY dispatched (worker:///*), rendered to
                 // DSL and framed PLAN → SEND. Not a frozen print: feed-as-turn-0, show-in-turn-1 are one act.
-                assert.match(content, /^# PLAN0\nSurvey context, then address the prompt\./, "opens with an orienting goal");
+                assert.match(
+                    content,
+                    /^# PLAN0\n\* Initialization complete\.\n\* Next: address the prompt\./,
+                    "opens with initialized state and the next priority",
+                );
                 assert.match(content, /## FIND0 \[\+init\] \(worker:\/\/\/\*\)/, "the classified markerless shallow survey is rendered back to DSL");
                 assert.doesNotMatch(content, /## FIND0 \[\+init\] \(worker:\/\/\/\*\) </, "the ordinary survey does not teach an explicit all-results scope");
                 assert.match(
                     content,
-                    /## SEND0 \[102\]\nNext, address the prompt using the survey\.$/,
+                    /## SEND0 \[102\]\nNext, address the prompt\.$/,
                     "closes by stating the next action",
                 );
             } finally { ws.close(); }
@@ -240,7 +244,8 @@ test("an empty workspace executes all four orienting FINDs and preserves empty-s
                 const exemplar = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 const content = (JSON.parse(exemplar!.rx) as { content: string }).content;
                 assert.equal(content, `# PLAN0
-Survey context, then address the prompt.
+* Initialization complete.
+* Next: address the prompt.
 
 ## FIND0 [+init] (*)
 
@@ -251,7 +256,7 @@ Survey context, then address the prompt.
 ## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>
 
 ## SEND0 [102]
-Next, address the prompt using the survey.`);
+Next, address the prompt.`);
                 const logTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: modelWorkerId });
                 const tagsBySequence = new Map<number, string[]>();
                 for (const { sequence } of finds) tagsBySequence.set(sequence, []);

@@ -356,9 +356,9 @@ export default class PacketWire {
                 && e.attrs !== null && typeof e.attrs === "object"
                 && (e.attrs as { kind?: unknown }).kind === "entry_materialized";
             const renderedOp = materializedEntry ? "READ" : op;
-            const modelEmission = op === null
-                && e.attrs !== null && typeof e.attrs === "object"
-                && (e.attrs as { kind?: unknown }).kind === "model_emission";
+            const actionlessKind = op === null
+                ? LogBody.actionlessKind({ op, attrs: e.attrs })
+                : null;
             const path = PacketWire.#entryPath(coordinate, renderedOp);
             if (path !== null) meta.path = path;
             if (typeof e.origin === "string") meta.origin = e.origin;
@@ -366,7 +366,7 @@ export default class PacketWire {
             // subsystem token when present; absence means the owning worker.
             if (typeof e.source === "string" && e.source.length > 0) meta.source = e.source;
             if (renderedOp !== null) meta.op = renderedOp;
-            if (modelEmission) meta.kind = "model_emission";
+            if (actionlessKind !== null) meta.kind = actionlessKind;
             if (e.source === "file" && e.attrs !== null && typeof e.attrs === "object" && "git" in e.attrs) {
                 const git = (e.attrs as { git?: unknown }).git;
                 if (typeof git !== "string" || git.length !== 2) {

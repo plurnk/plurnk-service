@@ -897,6 +897,20 @@ test("an open model-emission row mirrors the model's own emission back, line-num
     assert.match(out, /4:## SEND0 \[102\]\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
 });
 
+test("an open initialization row identifies kernel-authored initialization without impersonating the model", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/1", origin: "plurnk", op: null, status: 200, folded: false,
+        attrs: { kind: "initialization" },
+        rx: {
+            content: "# PLAN0\n* Initialization complete.\n* Next: address the prompt.\n\n## SEND0 [102]\nNext, address the prompt.",
+            mimetype: "text/vnd.plurnk",
+        },
+    }], tok);
+    assert.match(out, /"kind":"initialization"/, "the row states why the kernel-authored actionless body exists");
+    assert.match(out, /"origin":"plurnk"/, "the row preserves its kernel authorship");
+    assert.doesNotMatch(out, /"kind":"model_emission"/, "initialization never masquerades as model output");
+});
+
 test("the Log renders as a fenced jsonplurnk array that strips to valid JSON — one carve-out, deterministically", () => {
     const out = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "worker", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } }, // none: empty FIND, no body

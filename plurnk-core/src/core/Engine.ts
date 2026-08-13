@@ -1057,13 +1057,13 @@ export default class Engine {
         // Model ops dispatch after these pre-model rows.
         let nextActionIndex = 1;
         const turnOpenPaths: string[] = [];
-        // {§model-entry} — the worker's first turn opens with the model's own turn-0, mirrored OPEN: a
+        // {§worker-initialization-entry} — the worker's first turn opens with a kernel-authored initialization: a
         // worked turn PLAN → the environment FINDs the foist ACTUALLY dispatches → SEND signal 102. Built
         // from the real ops below (not a static print — we lean into the genuine echo paradigm) and
-        // written at sequence 1, so it reads first as the emission with the foisted results following.
+        // written at sequence 1, so it reads first with the foisted results following.
         const turnZeroMoves: string[] = [];
         if (seq === 1) {
-            if (workerFirstLoop) nextActionIndex = 2;  // reserve sequence 1 for the turn-0 echo
+            if (workerFirstLoop) nextActionIndex = 2;  // reserve sequence 1 for initialization
             // Operator doc READs (PLURNK_SERVICE_MD_<ALIAS>, {§actor-boundary-doc-injection}). The docs were materialized
             // as worker://plurnk/<entry> entries by the plurnk worker (LoopDocs, via the
             // {§actor-boundary} keystone); foist a READ of each into THIS turn-0 so the model
@@ -1233,13 +1233,17 @@ export default class Engine {
                     turnZeroMoves.push(exemplar);
                 }
             }
-            // {§model-entry} — mirror the model's turn-0 OPEN at sequence 1: PLAN → the FINDs actually
+            // {§worker-initialization-entry} — write the kernel's turn-0 initialization OPEN at sequence 1: PLAN → the FINDs actually
             // foisted above (real, their results already in the log) → SEND signal 102. Dynamic — it reflects
             // the true survey, never a frozen print — and OPEN: the worked example the model orients on,
-            // so the grammar can stay thin. Subsequent turns mirror the model's real output, folded.
+            // so the grammar can stay thin.
             if (workerFirstLoop) {
-                const emission = ["# PLAN0\nSurvey context, then address the prompt.", ...turnZeroMoves, "## SEND0 [102]\nNext, address the prompt using the survey."].join("\n\n");
-                await this.#dispatcher.writeModelEntry({ verbatim: emission, workerId, loopId, turnId, sequence: 1, folded: false, origin: "plurnk" });
+                const initialization = [
+                    "# PLAN0\n* Initialization complete.\n* Next: address the prompt.",
+                    ...turnZeroMoves,
+                    "## SEND0 [102]\nNext, address the prompt.",
+                ].join("\n\n");
+                await this.#dispatcher.writeInitializationEntry({ verbatim: initialization, workerId, loopId, turnId, sequence: 1 });
             }
         }
 

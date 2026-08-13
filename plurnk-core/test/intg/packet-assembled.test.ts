@@ -151,8 +151,8 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.match(log, /"op":"FIND"/, "the catalog foist appears as a FIND op in the log");
         assert.match(
             log,
-            /12:## SEND0 \[102\]\n13:Next, address the prompt using the survey\./,
-            "the turn-0 exemplar teaches SEND[102] as an explicit next action",
+            /13:## SEND0 \[102\]\n14:Next, address the prompt\./,
+            "the turn-0 initialization teaches SEND[102] as an explicit next action",
         );
 
     } finally {

@@ -661,8 +661,8 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- 'error' is an ACTIONLESS row ({§operation-results} — errors are log items): a parse failure that
     -- produced no op still records a log entry (op='error', status_rx≥400, no target) so the model
     -- can fold/kill/recall its own mistakes like any other log row — one budget surface, the log.
-    -- A model-emission artifact ({§model-entry}) carries NULL here and
-    -- attrs.kind='model_emission': no operation was executed or fabricated.
+    -- Actionless artifacts carry NULL here: kernel-authored worker initialization
+    -- ({§worker-initialization-entry}) or a model emission ({§model-entry}).
     -- No op enum here: the grammar op set is grammar's contract (PlurnkOp), and this column is written
     -- only by the PlurnkOp-typed engine (grammar ops), service row selectors, or NULL for no op.
     -- A SQL enum would be a hand-copy of grammar's op list that silently goes stale on every new verb
@@ -699,7 +699,9 @@ CREATE TABLE IF NOT EXISTS log_entries (
 
     expanded         INTEGER NOT NULL DEFAULT 1 CHECK (expanded IN (0, 1)),
 
-    CHECK ((op IS NULL) = COALESCE(json_extract(attrs, '$.kind') = 'model_emission', 0)),
+    CHECK ((op IS NULL) = COALESCE(json_extract(attrs, '$.kind') IN ('initialization', 'model_emission'), 0)),
+    CHECK (json_extract(attrs, '$.kind') != 'initialization' OR origin = 'plurnk'),
+    CHECK (json_extract(attrs, '$.kind') != 'model_emission' OR origin = 'model'),
 
     FOREIGN KEY (worker_id)  REFERENCES workers(id)  ON DELETE CASCADE,
     FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE,

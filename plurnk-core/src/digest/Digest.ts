@@ -46,6 +46,7 @@ import type { SqlRiteSyncPreparedStatements } from "@possumtech/sqlrite";
 // block accessor to its shipped generic statement shape at the use site.
 type SyncPrep<T> = SqlRiteSyncPreparedStatements<T>;
 import PacketWire from "../core/packet-wire.ts";
+import LogBody from "../core/LogBody.ts";
 import StoredPacket, { type DurablePacket } from "../core/StoredPacket.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
@@ -362,8 +363,13 @@ export default class Digest {
     static #renderGroupedOpLine(row: LogRow): string {
         const attrs = Digest.#parseJson(row.attrs, {}) as { kind?: unknown };
         const materialized = row.origin === "plurnk" && row.op === "EDIT" && attrs.kind === "entry_materialized";
-        const modelEmission = row.op === null && attrs.kind === "model_emission";
-        return Digest.#renderOpLine(row, materialized ? "materialized entry" : modelEmission ? "model emission" : row.op ?? "actionless row");
+        const actionlessKind = row.op === null
+            ? LogBody.actionlessKind({ op: row.op, attrs })
+            : null;
+        const label = actionlessKind === "model_emission"
+            ? "model emission"
+            : actionlessKind ?? row.op ?? "actionless row";
+        return Digest.#renderOpLine(row, materialized ? "materialized entry" : label);
     }
 
     // Human triage is not a row dump. Preserve every row in digest.json, but

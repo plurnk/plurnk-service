@@ -119,6 +119,38 @@ test("log_entries: origin enum", async () => {
     } finally { await db.close(); }
 });
 
+test("log_entries: actionless kinds have exact authorship", async () => {
+    const db = await openMigrated();
+    try {
+        const ctx = await seedEnvelope(db, "ws-log-actionless-kinds");
+        await minimalLog(db, ctx, {
+            sequence: 1, origin: "plurnk", op: null,
+            attrs: JSON.stringify({ kind: "initialization" }),
+        });
+        await minimalLog(db, ctx, {
+            sequence: 2, origin: "model", op: null,
+            attrs: JSON.stringify({ kind: "model_emission" }),
+        });
+        for (const [sequence, origin, kind] of [
+            [3, "model", "initialization"],
+            [4, "plurnk", "model_emission"],
+        ] as const) {
+            await assert.rejects(
+                () => minimalLog(db, ctx, { sequence, origin, op: null, attrs: JSON.stringify({ kind }) }),
+                /CHECK constraint failed/,
+            );
+        }
+        await assert.rejects(
+            () => minimalLog(db, ctx, { sequence: 5, origin: "plurnk", op: null, attrs: JSON.stringify({ kind: "other" }) }),
+            /CHECK constraint failed/,
+        );
+        await assert.rejects(
+            () => minimalLog(db, ctx, { sequence: 6, origin: "plurnk", op: "READ", attrs: JSON.stringify({ kind: "initialization" }) }),
+            /CHECK constraint failed/,
+        );
+    } finally { await db.close(); }
+});
+
 // (No "op enum" test: log_entries.op no longer CHECK-enumerates the grammar op set — that was a
 // hand-copy of grammar's contract that went stale on every new verb. Op validity lives at the parse
 // (grammar) + type (PlurnkOp) layer; the column stores what the typed engine writes.)

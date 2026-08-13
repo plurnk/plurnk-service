@@ -104,7 +104,7 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         assert.equal(turn.status, 200);
         assert.equal((await engine.loopUsage(loopId)).accounting.usage?.outputTokens, 42);
 
-        // 5 log entries: the turn-0 `model` exemplar (mirrored OPEN at sequence 1),
+        // 5 log entries: the turn-0 initialization (OPEN at sequence 1),
         // one first-class prompt row, two model ops (EDIT, SEND), and one folded
         // `model` echo of this turn's verbatim emission.
         // Turn-as-container model — pre-model writes share the turn's sequence counter.
@@ -209,7 +209,7 @@ test("Engine.runTurn: admitted response does not change packet request-weight se
 
 test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", async () => {
     // Turn-as-container model, 1-based. The worker's first turn opens with sequence=1
-    // reserved for the turn-0 model-emission exemplar, the prompt row at 2, then the
+    // reserved for the turn-0 initialization, the prompt row at 2, then the
     // three model ops and terminal SEND on the running counter.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
@@ -231,7 +231,7 @@ test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", as
         assert.deepEqual(
             indices.map((r) => ({ idx: r.sequence, op: r.op })),
             [
-                { idx: 1, op: null }, // the turn-0 exemplar, mirrored OPEN at sequence 1 ({§model-entry})
+                { idx: 1, op: null }, // the turn-0 initialization, OPEN at sequence 1 ({§worker-initialization-entry})
                 { idx: 2, op: "prompt" }, // the prompt (prompt:///<loop>/1, owner-keyed)
                 { idx: 3, op: "EDIT" },
                 { idx: 4, op: "EDIT" },
@@ -702,7 +702,7 @@ test("Engine.runTurn: the first turn's log section contains the prompt entry", a
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // The prompt is one actionless plurnk-origin row against prompt:///<loop>/1.
         // Found by its stable identity (origin + target),
-        // robust to the turn-0 `model` exemplar at 1/1/1 ({§model-entry}) and any
+        // robust to the turn-0 initialization at 1/1/1 ({§worker-initialization-entry}) and any
         // catalog-preview FIND that shifts its coordinate.
         const prompt = log.find((e) => e.origin === "plurnk" && e.op === "prompt" && e.target === "prompt:///1/1");
         assert.ok(prompt, "first-class prompt row logged against prompt:///1/1");
@@ -728,7 +728,7 @@ test("Engine.runTurn: the second turn's log section captures prior actions", asy
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // Turn 2 packet sees the prompt row + the prior turn's two model ops (an
         // EDIT and a SEND). Found by identity (origin + op + target), robust to the
-        // turn-0 `model` exemplar ({§model-entry}) and a catalog-preview foist that
+        // turn-0 initialization ({§worker-initialization-entry}) and a catalog-preview foist that
         // shift coordinates between the prompt and the model's ops.
         assert.ok(log.find((e) => e.origin === "plurnk" && e.op === "prompt" && typeof e.target === "string" && e.target.startsWith("prompt:///")), "prompt row logged");
         const edit = log.find((e) => e.origin === "model" && e.op === "EDIT");
@@ -806,7 +806,7 @@ test("Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors sec
         const packet = JSON.parse(row?.packet ?? "{}");
         // {§log-row-self-explains}: the pointer targets the OP ROW — the row carries its own
         // failure message on its meta line, so the pointer leads to a record that states its why.
-        // Turn-as-container, 1-based: model exemplar 1/1/1, prompt 1/1/2,
+        // Turn-as-container, 1-based: initialization 1/1/1, prompt 1/1/2,
         // then the model's denied EDIT at 1/1/3.
         assert.equal(packetSection(packet, "errors"), "* 403 log:///1/1/3/EDIT", "the pointer targets the failing op row itself");
     } finally { await db.close(); }

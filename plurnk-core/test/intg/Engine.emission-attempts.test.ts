@@ -167,7 +167,8 @@ test("invalid emissions retry beneath one turn against the identical packet, the
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string }>({ turn_id: result.turnId });
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "invalid emissions do not mint model-visible errors");
-        assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "model_emission").length, 2, "only the turn-zero exemplar and accepted emission are mirrored");
+        assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "initialization").length, 1, "the turn-zero initialization is classified independently");
+        assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "model_emission").length, 1, "only the accepted model emission is mirrored as model output");
 
         const loopUsage = await engine.loopUsage(loopId);
         assert.equal(loopUsage.accounting.usage?.inputTokens, 60, "aggregate usage includes every request");

@@ -54,6 +54,12 @@ test("LogBody resolves built-in result-backed bodies", () => {
     );
 
     assert.deepEqual(
+        LogBody.resolve({ op: null, attrs: { kind: "initialization" }, tx: "", rx: content("initialization body") }),
+        { content: "initialization body", mimetype: "text/markdown", startLine: 1 },
+        "the actionless initialization kind owns its result-backed body without impersonating model output",
+    );
+
+    assert.deepEqual(
         LogBody.resolve({
             op: "EDIT",
             tx: { body: "input" },

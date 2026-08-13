@@ -1443,19 +1443,10 @@ export default class Dispatcher {
         return this.#deleteEntry(schemeName, entryPathnameOf(path), ctx);
     }
 
-    // {§model-entry} — mirror a model emission back as an actionless log row, so
-    // the model can inspect and curate its own prior behavior. Ordinary admitted
-    // emissions are folded; the bounded invalid-emission lifeline is the one
-    // born-open rejected item under {§invalid-emission-attempts} and labels
-    // that admission fact structurally.
-    // Born FOLDED by default (budget-neutral until OPENed); the turn-0 exemplar passes folded:false
-    // (born open — the one worked example the model orients on, thinning the grammar). text/vnd.plurnk.
-    async writeModelEntry({ verbatim, workerId, loopId, turnId, sequence, folded, origin = "model", admission = "accepted", reasoningItems }: {
-        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number; folded: boolean; origin?: WriterTier;
-        admission?: "accepted" | "rejected";
-        // {§encrypted-reasoning-carrier} — relay provider-normalized encrypted
-        // reasoning items as opaque mirror-row evidence.
-        reasoningItems?: ReadonlyArray<ProviderEncryptedReasoningItem>;
+    async #writeActionlessEntry({ verbatim, workerId, loopId, turnId, sequence, origin, kind, folded, attrs = {} }: {
+        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
+        origin: "model" | "plurnk"; kind: "initialization" | "model_emission"; folded: boolean;
+        attrs?: Readonly<Record<string, unknown>>;
     }): Promise<number> {
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
@@ -1466,15 +1457,44 @@ export default class Dispatcher {
             rx: JSON.stringify({ content: verbatim, mimetype: "text/vnd.plurnk" }),
             mimetype_rx: "application/json",
             status_rx: 200, tokens: this.#tokenize(verbatim), state: "resolved", outcome: null,
-            attrs: JSON.stringify({
-                kind: "model_emission",
-                ...(admission === "rejected" ? { admission } : {}),
-                ...(reasoningItems !== undefined && reasoningItems.length > 0 ? { reasoning: reasoningItems } : {}),
-            }),
+            attrs: JSON.stringify({ ...attrs, kind }),
         });
-        if (row === undefined) throw new Error("Dispatcher.writeModelEntry: insert returned no row");
+        if (row === undefined) throw new Error("Dispatcher.#writeActionlessEntry: insert returned no row");
         if (folded) await this.#db.engine_fold_log_entry.run({ id: row.id });
         return row.id;
+    }
+
+    // {§worker-initialization-entry} — the kernel-authored, born-open worked
+    // turn that initializes a worker's log without impersonating model output.
+    async writeInitializationEntry({ verbatim, workerId, loopId, turnId, sequence }: {
+        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
+    }): Promise<number> {
+        return this.#writeActionlessEntry({
+            verbatim, workerId, loopId, turnId, sequence,
+            origin: "plurnk", kind: "initialization", folded: false,
+        });
+    }
+
+    // {§model-entry} — mirror a model emission back as an actionless log row, so
+    // the model can inspect and curate its own prior behavior. Ordinary admitted
+    // emissions are folded; the bounded invalid-emission lifeline is the one
+    // born-open rejected item under {§invalid-emission-attempts} and labels
+    // that admission fact structurally.
+    async writeModelEntry({ verbatim, workerId, loopId, turnId, sequence, folded, admission = "accepted", reasoningItems }: {
+        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number; folded: boolean;
+        admission?: "accepted" | "rejected";
+        // {§encrypted-reasoning-carrier} — relay provider-normalized encrypted
+        // reasoning items as opaque mirror-row evidence.
+        reasoningItems?: ReadonlyArray<ProviderEncryptedReasoningItem>;
+    }): Promise<number> {
+        return this.#writeActionlessEntry({
+            verbatim, workerId, loopId, turnId, sequence,
+            origin: "model", kind: "model_emission", folded,
+            attrs: {
+                ...(admission === "rejected" ? { admission } : {}),
+                ...(reasoningItems !== undefined && reasoningItems.length > 0 ? { reasoning: reasoningItems } : {}),
+            },
+        });
     }
 
     // PLAN — the model's intended-goals op. An ordinary op: dispatched like any
