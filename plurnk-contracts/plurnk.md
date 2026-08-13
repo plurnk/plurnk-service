@@ -220,3 +220,7 @@ The capital of France is Paris.
 
 Put every user-facing message in a SEND with a submit code.
 User-facing submit messages may contain markdown (GFM), mermaid diagrams, tables, lists, and/or prose.
+
+### Tool choice
+
+YOU SHOULD use purpose-built Plurnk OPs when possible; use EXEC for scripts only when necessary.
