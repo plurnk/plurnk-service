@@ -127,11 +127,11 @@ Text scopes use 1-based lines and Unicode code-point columns consistently across
 
 ```plurnk
 # PLAN0
-* Obsolete line 2 should be deleted; the draft insertion belongs at line 2, column 5; the preface belongs before line 1.
+* The prior READ identified obsolete line 1847 with `@aB3dE`; the draft insertion belongs at line 2, column 5; the preface belongs before line 1.
 * Still need to inspect the notes selection and verify the copy and move destinations.
 * Check every changed boundary after the results materialize.
 
-## EDIT0 (worker:///obsolete.md) <2>
+## EDIT0 (worker:///obsolete.md) <@aB3dE>
 
 ## READ0 (worker:///notes.md) <2,1,2,5>
 
