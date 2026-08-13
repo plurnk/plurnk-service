@@ -8,9 +8,9 @@
 // selected model's own reserves) and never hardcoded per-tier in package.json.
 //
 // The REAL models (turboderp, gbuild) carry their ONE real config as PLURNK_*_<alias> knobs in
-// operator env or the shell; the committed .env.test deliberately contains no model selection. This
-// bootstrap is the Mock tier's parallel: a fake `mocktest` alias (Mocks are injected, so it's never
-// dialed) with fixture-scaled reserves that no real model ever sees.
+// operator env or the shell; the committed .env.test selects turboderp as its safe gate default.
+// This bootstrap is the Mock tier's parallel and overrides that selection with a fake `mocktest`
+// alias (Mocks are injected, so it's never dialed) whose fixture-scaled reserves no real model sees.
 const fixture = {
     // A fake alias — never dialed (the tests inject Mock providers); it only gives the
     // alias-scoped machinery a stable name whose bare partition (below) governs.

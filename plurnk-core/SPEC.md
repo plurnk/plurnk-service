@@ -1952,14 +1952,14 @@ template both ways: every `PLURNK_SERVICE_*` the service reads has a
 declared `PLURNK_SERVICE_*` is read. A half-landed rename therefore fails a test
 instead of a user's boot, and a dead knob cannot ship.
 
-§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to gate-wide service posture: semantic search enabled, complete catalog orientation, automatic Git membership when the operator ceiling permits Git, and ambient operator-file docs/packet notes cleared. Configuration with a narrower or variable owner stays outside it:
+§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to the safe default model plus gate-wide service posture: Turboderp, semantic search enabled, complete catalog orientation, automatic Git membership when the operator ceiling permits Git, and ambient operator-file docs/packet notes cleared. Configuration with a narrower or variable owner stays outside it:
 
 | Owner | Configuration |
 |---|---|
-| `.env.test` | Universal real-model gate posture only; no aliases, routes, secrets, model tuning, or cost/sandbox ceilings. |
+| `.env.test` | Safe default model selection and universal real-model gate posture; no alias declarations, routes, secrets, model tuning, or cost/sandbox ceilings. |
 | Live/demo scripts | The repository personality path and runner topology. |
 | Benchlets | Their snapshotted policy, workspace restrictions, and task-specific exceptions; direct env wins over the profile. |
-| Operator env/shell | Model selection, provider capability such as GBNF, endpoints, credentials, tuning, and deliberate ceiling overrides. |
+| Operator env/shell | Model alias declarations and explicit selection overrides, provider capability such as GBNF, endpoints, credentials, tuning, and deliberate ceiling overrides. |
 | `test/setup.ts` | Mock-only alias, envelope, resource, storage, and isolation fixtures; unit/integration never consume the real-model profile. |
 
 The profile does not repeat `NODE_OPTIONS`: runner selection belongs to the invoking command, and a process-global Node option would leak into the daemon and its children. Hard ceilings such as max turns, max commands, and Git denial remain operator-owned; harnesses bound paid experiments through their per-call contract and never widen a configured ceiling here.

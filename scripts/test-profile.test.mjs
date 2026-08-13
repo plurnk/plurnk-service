@@ -11,6 +11,7 @@ const root = resolve(import.meta.dirname, "..");
 const profilePath = resolve(root, "plurnk-core", ".env.test");
 const operatorEnvironment = resolve(root, "scripts", "operator-environment.sh");
 const expectedProfile = {
+    PLURNK_MODEL: "turboderp",
     PLURNK_SERVICE_EMBED_DISABLE: "0",
     PLURNK_SERVICE_FILES_ITEMS: "-1",
     PLURNK_SERVICE_GIT_AUTO: "1",
@@ -111,11 +112,12 @@ test("the candidate daemon loads the same profile below direct benchmark overrid
         profileArg,
         "--input-type=module",
         "--eval",
-        "process.stdout.write(JSON.stringify({ embed: process.env.PLURNK_SERVICE_EMBED_DISABLE, files: process.env.PLURNK_SERVICE_FILES_ITEMS, git: process.env.PLURNK_SERVICE_GIT_AUTO, policy: process.env.PLURNK_SERVICE_POLICY }))",
+        "process.stdout.write(JSON.stringify({ model: process.env.PLURNK_MODEL, embed: process.env.PLURNK_SERVICE_EMBED_DISABLE, files: process.env.PLURNK_SERVICE_FILES_ITEMS, git: process.env.PLURNK_SERVICE_GIT_AUTO, policy: process.env.PLURNK_SERVICE_POLICY }))",
     ], {
         encoding: "utf8",
         env: {
             ...cleanEnv,
+            PLURNK_MODEL: "spark",
             PLURNK_SERVICE_EMBED_DISABLE: "1",
             PLURNK_SERVICE_GIT_AUTO: "0",
             PLURNK_SERVICE_POLICY: "/bench/candidate-policy.md",
@@ -123,6 +125,7 @@ test("the candidate daemon loads the same profile below direct benchmark overrid
     });
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(JSON.parse(result.stdout), {
+        model: "spark",
         embed: "1",
         files: "-1",
         git: "0",
