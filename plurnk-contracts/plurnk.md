@@ -154,8 +154,10 @@ worker:///archive.md <-1>
 Continue next turn by inspecting each result and reading the changed destinations.
 ```
 
-* Rendered `@hash:L:` prefixes are coordinates, not content; in EDIT scopes, YOU MAY use `@hash` instead of `L`.
+* Rendered `@hash:L:` prefixes are coordinates, not content.
 * Unscoped FIND returns items 1-16; unscoped READ returns lines 1–16. Use `<1,-1>` for all.
+
+YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale targets.
 
 ### The Log
 
