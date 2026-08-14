@@ -1,27 +1,28 @@
 // The differential corpus: (grammar, input, expectation) cases, each justified by a
 // real-world truth rather than by what the oracle happens to say (so it is a genuine
-// test, not a tautology). Two grammar fixtures:
+// test, not a tautology). Two grammar sources:
 //
 //   echo.gbnf   — a tiny hand-written grammar that pins the verdict trichotomy with
 //                 oracle-independent certainty.
-//   plurnk.gbnf — a verbatim snapshot of plurnk-contracts/dist/plurnk.gbnf, the actual
-//                 generated grammar that constrains the live model. This is the real
-//                 situation the tooling exists for; refresh it from the sibling repo.
+//   plurnk.gbnf — freshly serialized from plurnk-contracts' owning generator. This is
+//                 the real situation the tooling exists for without a copied snapshot.
 //
-// Shapes are drawn from the live ecosystem: the FIND/READ/SEND enclosure form, the
-// Harmony reasoning channel that the grammar's root requires, terminal
-// SEND status codes, and the complement-automaton bodies that swallow text until a
-// matching close tag (see plurnk-contracts' plurnkLexer.g4 and plurnk.md).
+// Shapes are drawn from the live ecosystem: Markdown operation sections, the
+// Harmony reasoning channel that the grammar's root requires, terminal SEND
+// status codes, and lane-aware section bodies (see plurnk-contracts' lexer and
+// model reference).
 
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildModel, serializeGbnf } from "../../../plurnk-contracts/scriptify/generate-gbnf.ts";
 import type { Verdict } from "./_oracle.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = (name: string): string => join(here, "fixtures", name);
 
-export const ECHO_GBNF = fixture("echo.gbnf");
-export const PLURNK_GBNF = fixture("plurnk.gbnf");
+export const ECHO_GBNF = readFileSync(fixture("echo.gbnf"), "utf8");
+export const PLURNK_GBNF = serializeGbnf(buildModel(), "root-turn");
 
 export type Case = {
     name: string;
@@ -37,10 +38,10 @@ export type Case = {
 const CHANNEL = "<|channel>thought\n<channel|>\n";
 const REAL_PACKET =
     CHANNEL +
-    "<|PLAN>Find and verify the answer.<PLAN|>\n" +
-    "<|FIND(known:///**)>~capital of France<FIND|>\n" +
-    "<|READ(plurnk:///manifest.json)>$[?(@.channels.body)]<READ|>\n" +
-    "<|SEND[200]>Paris<SEND|>";
+    "# PLAN0\nFind and verify the answer.\n\n" +
+    "## FIND0 (known:///**)\n~capital of France\n\n" +
+    "## READ0 (plurnk:///manifest.json)\n$[?(@.channels.body)]\n\n" +
+    "## SEND0 [200]\nParis";
 
 export const CORPUS: Case[] = [
     // ---- controlled grammar: the verdict trichotomy, oracle-independent ----
@@ -59,7 +60,7 @@ export const CORPUS: Case[] = [
     { name: "plurnk/representative-turn", grammar: PLURNK_GBNF, input: REAL_PACKET, expect: "accept",
       note: "the current rail must admit its representative full turn" },
     { name: "plurnk/channel-plan-read-send", grammar: PLURNK_GBNF,
-      input: `${CHANNEL}<|PLAN>Read the greeting.<PLAN|>\n<|READ(README.md)>$.greeting<READ|>\n<|SEND[200]>done<SEND|>`, expect: "accept",
+      input: `${CHANNEL}# PLAN0\nRead the greeting.\n\n## READ0 (README.md)\n$.greeting\n\n## SEND0 [200]\ndone`, expect: "accept",
       note: "a well-formed turn: Harmony channel + PLAN + statement + terminal SEND" },
     { name: "plurnk/prose", grammar: PLURNK_GBNF, input: "Sure! The capital of France is Paris.",
       expect: "reject", pos: 0, note: "natural-language prose is not a plurnk turn" },
@@ -67,7 +68,7 @@ export const CORPUS: Case[] = [
       note: "a turn needs at least the Harmony channel" },
     { name: "plurnk/channel-only", grammar: PLURNK_GBNF, input: CHANNEL, expect: "incomplete", pos: CHANNEL.length,
       note: "the channel alone is a prefix; PLAN and a terminal SEND are still expected" },
-    { name: "plurnk/mismatched-close", grammar: PLURNK_GBNF,
-      input: `${CHANNEL}<|PLAN>Search first.<PLAN|>\n<|FIND(known:///**)>~x<READ|>`, expect: "incomplete",
-      note: "the FIND body absorbs '<READ|>' as content; the matching '<FIND|>' never arrives" },
+    { name: "plurnk/alternate-lane-literal", grammar: PLURNK_GBNF,
+      input: `${CHANNEL}# PLAN0\nStore the quoted section.\n\n## EDIT0 (worker:///quoted.md)\nquoted section:\n## READ2 (README.md)\nliteral\n\n## SEND0 [200]\ndone`, expect: "reject",
+      note: "the rail reserves every operation heading stem for lane 0; ANTLR alone admits alternate-lane literals" },
 ];

@@ -60,11 +60,11 @@ export default class EntrySend {
             );
         }
 
-        // SEND[410] Gone — delete the targeted resource (SPEC {§send-dispatch}). With a
+        // SEND signal 410 Gone — delete the targeted resource (SPEC {§send-dispatch}). With a
         // #fragment, deletes just that channel; without, deletes the whole entry.
         if (status === 410) {
             const pathname = EntrySend.#pathnameOf(statement);
-            if (pathname === null) return failure("target-required", 400, "SEND[410] requires a target path.");
+            if (pathname === null) return failure("target-required", 400, "`## SEND0 [410]` requires a target path.");
             const target = renderAddress(scheme, pathname);
             const fragment = EntrySend.#fragmentOf(statement);
             if (fragment !== null) {
@@ -97,13 +97,13 @@ export default class EntrySend {
             return result;
         }
 
-        // SEND[499] Client Closed Request — cancel active subscription (SPEC {§send-dispatch}, {§stream-control}).
+        // SEND signal 499 Client Closed Request — cancel active subscription (SPEC {§send-dispatch}, {§stream-control}).
         // Entry-bearing schemes never have subscriptions in v0; always return 404.
         // Streaming schemes (sse / exec / etc.) override this and look up via
         // findActiveSubscription, then call their teardown using the stored handle.
         if (status === 499) {
             const pathname = EntrySend.#pathnameOf(statement);
-            if (pathname === null) return failure("target-required", 400, "SEND[499] requires a target path.");
+            if (pathname === null) return failure("target-required", 400, "`## SEND0 [499]` requires a target path.");
             const target = renderAddress(scheme, pathname);
             const { db, workspaceId, workerId } = ctx;
             const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: explicitOwnerId ?? await Owner.commonsId(db, workspaceId), scheme, pathname });

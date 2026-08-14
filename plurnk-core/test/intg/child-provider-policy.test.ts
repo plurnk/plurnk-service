@@ -40,16 +40,16 @@ test("{§methods-loop-run-child-provider}: a smaller WORK provider carries throu
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
-            makeMockResponse("<|WORK(worker://child)>delegate once<WORK|>\n<|SEND[202]<-1>>waiting<SEND|>"),
-            makeMockResponse("<|SEND[200]>tree complete<SEND|>"),
+            makeMockResponse("## WORK0 (worker://child)\ndelegate once\n\n## SEND0 [202] <-1>\nwaiting"),
+            makeMockResponse("## SEND0 [200]\ntree complete"),
         ],
     });
     const child = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("<|WORK(worker://grandchild)>delegate again<WORK|>\n<|SEND[202]<-1>>waiting<SEND|>"),
-            makeMockResponse("<|SEND[200]>leaf complete<SEND|>"),
-            makeMockResponse("<|SEND[200]>child complete<SEND|>"),
+            makeMockResponse("## WORK0 (worker://grandchild)\ndelegate again\n\n## SEND0 [202] <-1>\nwaiting"),
+            makeMockResponse("## SEND0 [200]\nleaf complete"),
+            makeMockResponse("## SEND0 [200]\nchild complete"),
         ],
     });
     ProviderInstantiate.registerInstance(parent, parentSpec);
@@ -98,13 +98,13 @@ test("{§methods-loop-run-child-provider}: the configured child alias supplies a
     const parent = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("<|WORK(worker://child)>use configured child<WORK|>\n<|SEND[202]<-1>>waiting<SEND|>"),
-            makeMockResponse("<|SEND[200]>parent complete<SEND|>"),
+            makeMockResponse("## WORK0 (worker://child)\nuse configured child\n\n## SEND0 [202] <-1>\nwaiting"),
+            makeMockResponse("## SEND0 [200]\nparent complete"),
         ],
     });
     const child = new Mock({
         contextWindow: 8192,
-        responses: [makeMockResponse("<|SEND[200]>child complete<SEND|>")],
+        responses: [makeMockResponse("## SEND0 [200]\nchild complete")],
     });
     ProviderInstantiate.registerInstance(parent, parentSpec);
     ProviderInstantiate.registerInstance(child, childSpec);
@@ -133,15 +133,58 @@ test("{§methods-loop-run-child-provider}: the configured child alias supplies a
     });
 });
 
+test("{§bare-inference}: BARE consumes the loop's durable child provider without spawning a worker", async () => {
+    const parentSpec = provider("bare-parent", "bare-parent-model");
+    const childSpec = provider("bare-child", "bare-child-model");
+    const parent = new Mock({
+        contextWindow: 16_384,
+        responses: [
+            makeMockResponse("# PLAN0\nAsk the isolated factual question.\n\n## BARE0 [+fact]\nWhat is the capital of Germany?\n\n## SEND0 [102]\nReview the answer."),
+            makeMockResponse("## SEND0 [200]\nThe isolated answer was reviewed."),
+        ],
+    });
+    const child = new Mock({
+        contextWindow: 8_192,
+        responses: [{ assistant: { content: "Berlin", reasoning: null } }],
+    });
+    ProviderInstantiate.registerInstance(parent, parentSpec);
+    ProviderInstantiate.registerInstance(child, childSpec);
+
+    await withDaemon(null, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: `bare-child-policy-${crypto.randomUUID()}` });
+            const result = await runLoopToTerminal(ws, 2, {
+                prompt: "answer one isolated factual question",
+                alias: parentSpec.alias,
+                model: `${parentSpec.provider}/${parentSpec.model}`,
+                childAlias: childSpec.alias,
+                childModel: `${childSpec.provider}/${childSpec.model}`,
+                flags: { auto: true },
+            });
+            assert.equal(result.finalStatus, 200);
+            assert.equal(parent.remaining, 0);
+            assert.equal(child.remaining, 0, "the selected child provider handled BARE");
+            const rows = await db.test_log_entries_by_loop.all<{ op: string | null; rx: string }>({ loop_id: result.loopId });
+            const bare = rows.find(({ op }) => op === "BARE");
+            assert.equal((JSON.parse(bare?.rx ?? "null") as { content?: string } | null)?.content, "Berlin");
+            const workers = await db.test_workers_with_parent.all<{ parent_worker_id: number | null }>({});
+            assert.equal(workers.filter(({ parent_worker_id }) => parent_worker_id !== null).length, 0, "BARE creates no child worker");
+        } finally {
+            ws.close();
+        }
+    });
+});
+
 test("{§methods-loop-run-child-provider}: explicit inherit overrides configuration and follows the spawning loop", async () => {
     const spec = provider("inherit", "same-through-tree");
     const configuredSpec = provider("ignored", "configured-child-must-not-run");
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("<|WORK(worker://child)>do it<WORK|>\n<|SEND[202]<-1>>waiting<SEND|>"),
-            makeMockResponse("<|SEND[200]>child complete<SEND|>"),
-            makeMockResponse("<|SEND[200]>parent complete<SEND|>"),
+            makeMockResponse("## WORK0 (worker://child)\ndo it\n\n## SEND0 [202] <-1>\nwaiting"),
+            makeMockResponse("## SEND0 [200]\nchild complete"),
+            makeMockResponse("## SEND0 [200]\nparent complete"),
         ],
     });
     ProviderInstantiate.registerInstance(mock, spec);
@@ -178,8 +221,8 @@ test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinar
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
-            makeMockResponse("<|FORK(worker://branch)>continue with inherited history<FORK|>\n<|SEND[202]<-1>>waiting<SEND|>"),
-            makeMockResponse("<|SEND[200]>observed child failure<SEND|>"),
+            makeMockResponse("## FORK0 (worker://branch)\ncontinue with inherited history\n\n## SEND0 [202] <-1>\nwaiting"),
+            makeMockResponse("## SEND0 [200]\nobserved child failure"),
         ],
     });
     const child = new Mock({ contextWindow: 4096, responses: [] });

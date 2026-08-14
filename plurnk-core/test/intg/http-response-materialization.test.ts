@@ -50,7 +50,7 @@ const statement = (
 };
 
 const parsedRead = (target: string): ReadStatement => {
-    const parsed = PlurnkParser.parse(`<|PLAN>acquire the addressed representation<PLAN|>\n<|READ(${target})|>\n<|SEND[102]>acquisition pending<SEND|>`);
+    const parsed = PlurnkParser.parse(`# PLAN0\nacquire the addressed representation\n\n## READ0 (${target})\n\n## SEND0 [102]\nacquisition pending`);
     const item = parsed.items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
     );

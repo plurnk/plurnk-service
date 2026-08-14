@@ -3,7 +3,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
@@ -24,7 +25,7 @@ const enc = (pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, query: null, fragment: null,
 });
-const editStmt = (target: UrlPath, body: string): EditStatement => ({ op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 } });
+const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({ op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 } });
 const readStmt = (target: UrlPath): ReadStatement => ({ op: "READ", suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
 
 test("{§path-parentheses} a percent-encoded pathname alias resolves to literal parentheses", async () => {

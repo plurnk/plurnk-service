@@ -6,13 +6,13 @@ the requested text scope. HTML becomes a readable model-facing body (normally
 Markdown); original server source is retained separately. Auxiliary channels
 are never presented by default.
 
-| Operation                         | Remote action | Effect                                                                     |
-| --------------------------------- | ------------- | -------------------------------------------------------------------------- |
-| `READ(http(s)://…)<scope?>`       | GET if needed | Acquire/reuse the complete response, then return the selected scoped text  |
-| `FIND(http(s)://…):matcher`       | GET if needed | Prepare an exact URL, then return flat match locations                     |
-| `<|SEND[200](http(s)://…)>body<SEND|>` | POST          | Submit the body and stream the response                               |
-| `<|EDIT(http(s)://…)>body<EDIT|>`      | PUT           | Replace the whole remote resource; do not use a line scope            |
-| `KILL(http(s)://…)`               | DELETE        | Delete the remote resource and stream the response                         |
+| Operation                                      | Remote action | Effect                                                                    |
+| ---------------------------------------------- | ------------- | ------------------------------------------------------------------------- |
+| `## READ0 (http(s)://…) <scope?>`              | GET if needed | Acquire/reuse the complete response, then return the selected scoped text |
+| `## FIND0 (http(s)://…)` with matcher body     | GET if needed | Prepare an exact URL, then return flat match locations                    |
+| `## SEND0 [200] (http(s)://…)` with body       | POST          | Submit the body and stream the response                                  |
+| `## EDIT0 (http(s)://…)` with body             | PUT           | Replace the whole remote resource; do not use a line scope               |
+| `## KILL0 (http(s)://…)`                       | DELETE        | Delete the remote resource and stream the response                       |
 
 A path-pattern FIND searches only web entries already materialized in the
 workspace; a pattern cannot discover the remote web. FIND returns navigation
@@ -55,7 +55,7 @@ adds its route, status, timing, any reported request ID and credits, and bounded
 failure evidence. `body`, `header`, and `html` carry independent durable
 producer outcomes; the selected channel determines success. Thus `#html` or
 `#header` can remain readable after a body failure, while a Tavily body can
-succeed without fabricating unavailable server HTML. `SEND[code]` is never the
+succeed without fabricating unavailable server HTML. A SEND signal is never the
 remote HTTP status. A direct non-success origin response is still materialized:
 origin-backed channels carry its exact durable `http-response-status` Problem,
 while independently produced Tavily content and acquisition headers retain
@@ -92,8 +92,10 @@ Request headers ride inside the target as ordered trailing `{Key: value}`
 blocks, one header per block:
 
 ```plurnk
-<|READ(https://api.example.com/v1/me{Authorization: Bearer TOKEN}{Accept: application/json})|>
-<|EDIT(https://api.example.com/v1/thing/42{Authorization: Bearer TOKEN}{Content-Type: application/json})>{"done":true}<EDIT|>
+## READ0 (https://api.example.com/v1/me{Authorization: Bearer TOKEN}{Accept: application/json})
+
+## EDIT0 (https://api.example.com/v1/thing/42{Authorization: Bearer TOKEN}{Content-Type: application/json})
+{"done":true}
 ```
 
 Percent-encode `)`, `<`, and `}` inside a header value.
@@ -109,7 +111,7 @@ identity. POST, PUT, and DELETE never use that rewrite.
 
 | Control                  | Effect                                                                |
 | ------------------------ | --------------------------------------------------------------------- |
-| `SEND[499](http(s)://…)` | Cancel the routed in-flight acquisition                               |
-| `SEND[410](http(s)://…)` | Delete the local stored response; the next READ must acquire it again |
+| `## SEND0 [499] (http(s)://…)` | Cancel the routed in-flight acquisition                               |
+| `## SEND0 [410] (http(s)://…)` | Delete the local stored response; the next READ must acquire it again |
 
 For a persistent bidirectional connection, use `wss://`.

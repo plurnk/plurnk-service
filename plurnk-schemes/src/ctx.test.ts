@@ -12,7 +12,6 @@ import type {
     SchemeCtx,
     EntryCaps,
     ChannelCaps,
-    TagCaps,
     NotifyCaps,
     ProjectionCaps,
     SubscriptionCaps,
@@ -78,7 +77,7 @@ const makeCtx = () => {
                     name,
                     { ...channel, state: channel.state ?? "static" },
                 ])),
-                tags: entry.tags,
+                ...(entry.attributes === undefined ? {} : { attributes: entry.attributes }),
             });
             return { status: created ? 201 : 200, created, entryId: 1 };
         },
@@ -125,24 +124,6 @@ const makeCtx = () => {
                 channels: { ...entry.channels, [channel]: { ...previous, state } },
             });
             return { status: 200 };
-        },
-    };
-
-    const tags: TagCaps = {
-        async add(pathname) {
-            return store.has(pathname)
-                ? Results.assert({ status: 200 })
-                : failure("entry-not-found", 404, `No entry exists at ${pathname}.`);
-        },
-        async remove(pathname) {
-            return store.has(pathname)
-                ? Results.assert({ status: 200 })
-                : failure("entry-not-found", 404, `No entry exists at ${pathname}.`);
-        },
-        async list(pathname) {
-            return store.has(pathname)
-                ? Results.assert({ status: 200, tags: store.get(pathname)?.tags ?? [] })
-                : failure("entry-not-found", 404, `No entry exists at ${pathname}.`, { tags: [] });
         },
     };
 
@@ -210,7 +191,7 @@ const makeCtx = () => {
 
     const ctx: SchemeCtx = {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
-        entries, channels, tags, notify, projection, subscriptions,
+        entries, channels, notify, projection, subscriptions,
     };
 
     return { ctx, inspect: () => ({ events, chunks, woken, closed }) };
@@ -218,7 +199,10 @@ const makeCtx = () => {
 
 test("ctx: entries cap does real CRUD scoped to the store", async () => {
     const { ctx } = makeCtx();
-    const data: EntryData = { channels: { body: { content: "hi", mimetype: "text/markdown" } }, tags: ["a"] };
+    const data: EntryData = {
+        channels: { body: { content: "hi", mimetype: "text/markdown" } },
+        attributes: { kind: "note" },
+    };
     assert.equal((await ctx.entries.read("notes:///x")).status, 404);
     const w = await ctx.entries.write("notes:///x", data);
     assert.equal(w.status, 201);
@@ -227,22 +211,18 @@ test("ctx: entries cap does real CRUD scoped to the store", async () => {
     assert.equal(r.status, 200);
     assert.equal(r.entry?.channels.body.content, "hi");
     assert.equal(r.entry?.channels.body.state, "static");
+    assert.deepEqual(r.entry?.attributes, { kind: "note" });
     assert.equal((await ctx.entries.delete("notes:///x")).status, 200);
     assert.equal((await ctx.entries.read("notes:///x")).status, 404);
 });
 
 test("ctx: channels append accumulates (append-only store)", async () => {
     const { ctx } = makeCtx();
-    await ctx.entries.write("notes:///x", { channels: {}, tags: [] });
+    await ctx.entries.write("notes:///x", { channels: {} });
     await ctx.channels.append("notes:///x", "body", "foo");
     await ctx.channels.append("notes:///x", "body", "bar");
     const r = await ctx.entries.read("notes:///x");
     assert.equal(r.entry?.channels.body.content, "foobar");
-});
-
-test("ctx: tags return 404 for absent entries", async () => {
-    const { ctx } = makeCtx();
-    assert.equal((await ctx.tags.list("notes:///nope")).status, 404);
 });
 
 test("ctx: subscriptions.open returns an awaitable AbortSignal", async () => {
@@ -310,7 +290,7 @@ test("ctx: ProposalAware hook applies a resolution and returns a result", async 
     const scheme: ProposalAware = {
         async applyResolution(request, c) {
             assert.deepEqual(request, { attrs: { pathname: "file://x" }, body: "applied" });
-            await c.entries.write("file://x", { channels: { body: { content: request.body ?? "", mimetype: "text/markdown" } }, tags: [] });
+            await c.entries.write("file://x", { channels: { body: { content: request.body ?? "", mimetype: "text/markdown" } } });
             return { status: 200, outcome: "applied" };
         },
     };

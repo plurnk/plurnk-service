@@ -20,6 +20,8 @@ const provider = (): AiSdkProvider => new AiSdkProvider({
     reasoningReserve: { tokens: reasoningAllowance },
     completionReserve: { tokens: generationEnvelope - reasoningAllowance },
     fetchTimeoutMs: 120_000,
+    operationTimeoutMs: 240_000,
+    firstContentTimeoutMs: 120_000,
     temperature: 0,
     repeatPenalty: 1.15,
     retryAttempts: 0,

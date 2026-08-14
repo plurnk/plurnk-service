@@ -116,20 +116,18 @@ test("SEND[410](skill:///x) deletes skill entry", async () => {
     } finally { await db.close(); }
 });
 
-test("SEND[410] cascades — channels and tags all removed", async () => {
+test("SEND[410] cascades to entry channels", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         const k = new Worker();
-        await k.edit({ ...editStmt(urlPath("worker", "/doomed"), "body"), signal: ["a", "b"] }, makeSchemeCtx({ db, workspaceId, workerId }));
+        await k.edit(editStmt(urlPath("worker", "/doomed"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
         const entryRow = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/doomed" });
         const entryId = entryRow!.id;
         assert.ok(((await db.test_count_channels_for_entry.get<{ n: number }>({ entry_id: entryId }))?.n ?? 0) > 0);
-        assert.ok(((await db.test_count_entry_tags.get<{ n: number }>({ entry_id: entryId }))?.n ?? 0) > 0);
 
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(410, urlPath("worker", "/doomed")));
         assert.equal(r.status, 200);
 
         assert.equal((await db.test_count_channels_for_entry.get<{ n: number }>({ entry_id: entryId }))?.n, 0);
-        assert.equal((await db.test_count_entry_tags.get<{ n: number }>({ entry_id: entryId }))?.n, 0);
     } finally { await db.close(); }
 });

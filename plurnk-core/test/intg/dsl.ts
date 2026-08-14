@@ -2,7 +2,7 @@
 // statement parser so Core receives production AST shapes. {§tier-entrypoints}
 // {§methods-op-mirror}
 
-import { PlurnkParser } from "@plurnk/plurnk-contracts";
+import { PLURNK_OPS, PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { LineMarker, PlurnkStatement } from "@plurnk/plurnk-contracts";
 
 interface OpWithMatcher {
@@ -46,15 +46,25 @@ interface OpExecParams {
 }
 
 export default class Dsl {
-    // Random suffix per call. Collision space is 2^32 against the user's body
-    // content; vanishingly unlikely for any reasonable input.
-    static #randomSuffix(): string {
-        return Math.floor(Math.random() * 0xFFFFFFFF).toString(16).padStart(8, "0");
+    // Use the canonical lane unless the body contains a heading in that lane;
+    // then deterministically choose the first lane that leaves the body opaque.
+    static #suffixFor(body: string): string {
+        const h2Ops = PLURNK_OPS.filter((op) => op !== "PLAN").join("|");
+        for (let lane = 1; ; lane++) {
+            const suffix = String(lane);
+            const structuralHeading = new RegExp(`^(?:# PLAN|## (?:${h2Ops}))${suffix}(?=$|[ \\t])`, "m");
+            if (!structuralHeading.test(body)) return suffix;
+        }
     }
 
     static #formatTags(tags: string[] | undefined): string {
         if (tags === undefined || tags.length === 0) return "";
         return `[${tags.join(",")}]`;
+    }
+
+    static #formatAppliedTags(tags: string[] | undefined): string {
+        if (tags === undefined || tags.length === 0) return "";
+        return `[${tags.map((tag) => `+${tag}`).join(",")}]`;
     }
 
     static #formatLineMarker(lm: LineMarker | undefined): string {
@@ -67,23 +77,22 @@ export default class Dsl {
         return `(${path})`;
     }
 
-    // Build one tagged statement. `signal` is the raw signal payload —
-    // CSV tags `[a,b,c]` for most ops, a single number for SEND (`[200]`),
+    // Build one statement. `signal` is the already-formatted signal payload —
+    // additive tags for producer ops, selectors/changes for curation, a single number for SEND (`[200]`),
     // a single runtime tag for EXEC (`[node]`).
     static #buildStatement({
-        op, suffix, signal, target, lineMarker, body,
+        op, signal, target, lineMarker, body,
     }: {
         op: string;
-        suffix: string;
         signal: string;
         target: string;
         lineMarker: string;
         body: string;
     }): string {
-        const header = `<|${op}${suffix}${signal}${target}${lineMarker}`;
-        return body.length === 0
-            ? `${header}|>`
-            : `${header}>${body}<${op}${suffix}|>`;
+        const suffix = Dsl.#suffixFor(body);
+        const modifiers = [signal, target, lineMarker].filter((value) => value.length > 0).join(" ");
+        const heading = `## ${op}${suffix}${modifiers.length > 0 ? ` ${modifiers}` : ""}`;
+        return body.length === 0 ? heading : `${heading}\n${body}`;
     }
 
     static parseSingleStatement(text: string): PlurnkStatement {
@@ -106,8 +115,8 @@ export default class Dsl {
 
     static buildEdit(p: OpEditParams): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "EDIT", suffix: Dsl.#randomSuffix(),
-            signal: Dsl.#formatTags(p.tags),
+            op: "EDIT",
+            signal: Dsl.#formatAppliedTags(p.tags),
             target: Dsl.#formatPath(p.target),
             lineMarker: Dsl.#formatLineMarker(p.lineRange),
             body: p.content ?? "",
@@ -116,8 +125,8 @@ export default class Dsl {
 
     static buildRead(p: OpWithMatcher): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "READ", suffix: Dsl.#randomSuffix(),
-            signal: Dsl.#formatTags(p.tags),
+            op: "READ",
+            signal: Dsl.#formatAppliedTags(p.tags),
             target: Dsl.#formatPath(p.target),
             lineMarker: Dsl.#formatLineMarker(p.lineRange),
             body: p.matcher ?? "",
@@ -126,8 +135,8 @@ export default class Dsl {
 
     static buildFind(p: { scope: string; matcher?: string; tags?: string[]; lineRange?: LineMarker }): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "FIND", suffix: Dsl.#randomSuffix(),
-            signal: Dsl.#formatTags(p.tags),
+            op: "FIND",
+            signal: Dsl.#formatAppliedTags(p.tags),
             target: Dsl.#formatPath(p.scope),
             lineMarker: Dsl.#formatLineMarker(p.lineRange),
             body: p.matcher ?? "",
@@ -136,7 +145,7 @@ export default class Dsl {
 
     static buildOpen(p: OpCuration): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "OPEN", suffix: Dsl.#randomSuffix(),
+            op: "OPEN",
             signal: Dsl.#formatTags(p.tags),
             target: Dsl.#formatPath(p.target),
             lineMarker: "",
@@ -146,7 +155,7 @@ export default class Dsl {
 
     static buildFold(p: OpCuration): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "FOLD", suffix: Dsl.#randomSuffix(),
+            op: "FOLD",
             signal: Dsl.#formatTags(p.tags),
             target: Dsl.#formatPath(p.target),
             lineMarker: "",
@@ -157,8 +166,8 @@ export default class Dsl {
     static buildCopy(p: OpCopyMoveParams): PlurnkStatement {
         if (p.destination === undefined) throw new Error("op.copy requires destination");
         return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "COPY", suffix: Dsl.#randomSuffix(),
-            signal: Dsl.#formatTags(p.tags),
+            op: "COPY",
+            signal: Dsl.#formatAppliedTags(p.tags),
             target: Dsl.#formatPath(p.source),
             lineMarker: Dsl.#formatLineMarker(p.lineRange),
             body: `${p.destination}${Dsl.#formatLineMarker(p.destinationRange)}`,
@@ -167,8 +176,8 @@ export default class Dsl {
 
     static buildMove(p: OpCopyMoveParams): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "MOVE", suffix: Dsl.#randomSuffix(),
-            signal: Dsl.#formatTags(p.tags),
+            op: "MOVE",
+            signal: Dsl.#formatAppliedTags(p.tags),
             target: Dsl.#formatPath(p.source),
             lineMarker: Dsl.#formatLineMarker(p.lineRange),
             body: p.destination === undefined
@@ -179,7 +188,7 @@ export default class Dsl {
 
     static buildSend(p: OpSendParams): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "SEND", suffix: Dsl.#randomSuffix(),
+            op: "SEND",
             signal: `[${p.status}]`,
             target: p.recipient !== undefined ? Dsl.#formatPath(p.recipient) : "",
             lineMarker: "",
@@ -189,7 +198,7 @@ export default class Dsl {
 
     static buildExec(p: OpExecParams): PlurnkStatement {
         return Dsl.parseSingleStatement(Dsl.#buildStatement({
-            op: "EXEC", suffix: Dsl.#randomSuffix(),
+            op: "EXEC",
             signal: p.runtime !== undefined ? `[${p.runtime}]` : "",
             target: p.cwd !== undefined ? Dsl.#formatPath(p.cwd) : "",
             lineMarker: "",

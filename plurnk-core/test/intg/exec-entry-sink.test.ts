@@ -21,7 +21,7 @@ const execStmt = (runtime: string, body: string): ExecStatement => ({
 });
 
 const parseOne = (input: string): PlurnkStatement => {
-    const parsed = PlurnkParser.parse(`<|PLAN|>\n${input}`);
+    const parsed = PlurnkParser.parse(`# PLAN0\n${input}`);
     const item = parsed.items.find((x) => x.kind === "statement" && x.statement.op !== "PLAN");
     if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
     return item.statement;
@@ -125,7 +125,7 @@ const wire = async (opts?: {
             },
         },
         namespaceOwner: { kind: "module", name: `${tag} fixture` },
-        glyph: "?", example: "", documentation: "", available: true, detail: undefined,
+        glyph: "?", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } }, documentation: "", available: true, detail: undefined,
     });
     const workspaceId = await insertWorkspace(db, `sink-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId, null, "researcher");
@@ -134,7 +134,7 @@ const wire = async (opts?: {
     return { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag };
 };
 
-test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plurnk worker narrates it", async () => {
+test("entry() materializes an https resource and classifies each plurnk narration row", async () => {
     const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire();
     try {
         const result = await engine.dispatch({
@@ -156,12 +156,10 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
             url: "https://example.org/turkeys",
             pruned: true,
         }]);
-        // The entry exists, with the SECOND write's content and BOTH tags (union, not replace).
+        // The entry exists with the second write's content; classifications live on receipts.
         const entry = await db.test_entries_by_pathname.get<{ id: number; scheme: string }>({ pathname: "/example.org/turkeys" });
         assert.ok(entry !== undefined, "the https entry materialized (authority folded into the pathname)");
         assert.equal(entry.scheme, "https");
-        const tags = await db.crud_read_tags.all<{ tag: string }>({ entry_id: entry.id });
-        assert.deepEqual(tags.map((t) => t.tag).sort(), ["second_query", "turkeys_query"], "the upsert UNIONED the slug tags across both writes");
         // The ambience: the reserved plurnk worker carries ONE narration row per write (2 here), the
         // fs-fiction shape — origin plurnk, source = the calling worker, tokens on the meta line.
         const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
@@ -171,8 +169,15 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
         assert.equal(narrations.length, 2, "one narration row per entry() write");
         assert.equal(narrations[0]?.source, "worker://researcher", "source uses the calling worker's control identity");
         assert.ok((narrations[0]?.tokens ?? 0) > 0, "the row carries the write's real token weight");
-        assert.ok(/turkeys_query/.test(narrations[0]?.attrs ?? ""), "attrs carry the slug tags for the meta line");
         assert.equal(JSON.parse(narrations[0]?.attrs ?? "{}").kind, "entry_materialized", "machine acquisition is typed so live clients compact it without erasing durable history");
+        assert.deepEqual(
+            await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: plurnkWorker.id }),
+            [
+                { coordinate: "1/1/1", tag: "turkeys_query" },
+                { coordinate: "1/1/2", tag: "second_query" },
+            ],
+            "each materialization classifies its own receipt at creation",
+        );
 
         // {§env-delta-entry-materialization} — durable narration retains the
         // write statement and its source-numbered resulting span.
@@ -191,13 +196,13 @@ test("entry() materializes a tagged https entry (upsert UNIONS tags) and the plu
             coordinate: "1/1/2", origin: "plurnk", op: "EDIT", suffix: "", signal: null,
             target: { scheme: "https", username: null, password: null, hostname: null, port: null, pathname: "/example.org/turkeys", query: null, fragment: null },
             status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
-            folded, source: "worker://researcher", attrs: { kind: "entry_materialized", tags: ["turkeys_query"] },
+            folded, source: "worker://researcher", attrs: { kind: "entry_materialized" }, tags: ["second_query"],
         }];
         const countTokens = (t: string): number => Math.ceil(t.length / 4);
         const foldedLine = PacketWire.renderLog(view(true), countTokens);
-        assert.match(foldedLine, /"op":"READ"/, "machine acquisition presents the resulting readable resource, not an authored EDIT");
+        assert.match(foldedLine, /"path":"log:\/\/\/[^\"]+\/READ"/, "machine acquisition presents the resulting readable resource, not an authored EDIT");
         assert.match(foldedLine, /"path":"log:\/\/\/1\/1\/2\/READ"/, "the model-facing log handle agrees with the projected operation");
-        assert.doesNotMatch(foldedLine, /"op":"EDIT"/, "the internal storage operation does not leak into model reasoning");
+        assert.doesNotMatch(foldedLine, /\/EDIT"/, "the internal storage operation does not leak into model reasoning");
         assert.match(foldedLine, /"display":"folded"/, "a sink resource row is folded by default — display:folded, OPENable");
         assert.match(foldedLine, /"tokens":\d*[1-9]/, "the folded meta line carries a real OPEN cost, not 0");
         assert.match(foldedLine, /"lines":1/, "the meta line carries the line count for slice planning");
@@ -269,7 +274,7 @@ test("entry() preserves an exact failed write Problem on its durable narration r
         );
         assert.equal(result.problem.detail, "The fetched resource has no model-facing content.");
         assert.equal(result.problem.target, "https://example.org/rejected");
-        assert.match(result.problem.instance ?? "", /^log:\/\/\/\d+\/\d+\/\d+\/EDIT$/);
+        assert.match(result.problem.instance ?? "", /^log:\/\/\/\d+\/\d+\/\d+\/READ$/);
     } finally {
         await quiesceExecs(schemes);
         await schemes.close();
@@ -291,7 +296,7 @@ test("search-prefetched https content is matcher-queryable in place — no origi
         // materialized. Calling Http.read here would hit the network and make a
         // deterministic integration test impossible by construction.
         const queried = await engine.dispatch({
-            statement: parseOne("<|FIND(https://example.org/turkeys)>*large birds*<FIND|>") as FindStatement,
+            statement: parseOne("## FIND0 (https://example.org/turkeys)\n*large birds*") as FindStatement,
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 200);
@@ -334,7 +339,7 @@ test("search-prefetched encoded parentheses resolve through later scoped HTTPS R
         assert.equal(stored?.pathname, "/example.org/people_(current)",
             "ingestion stores one canonical decoded identity");
         const read = await engine.dispatch({
-            statement: parseOne("<|READ(https://example.org/people_%28current%29)<2,2>|>") as ReadStatement,
+            statement: parseOne("## READ0 (https://example.org/people_%28current%29) <2,2>") as ReadStatement,
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(read.status, 200);
@@ -357,12 +362,11 @@ test("an exact HTTPS semantic FIND cannot leak or retarget a match from another 
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, mimetypes: DEFAULT_MIMETYPES });
         await EntryCrud.writeEntry("/other.example/cake", {
             channels: { body: { content: "preheat the oven and frost the birthday cake", mimetype: "text/markdown" } },
-            tags: [],
         }, ctx, "https");
         await SearchIndex.maintain(ctx);
 
         const queried = await engine.dispatch({
-            statement: parseOne("<|FIND(https://example.org/turkeys)>~birthday cake<FIND|>") as FindStatement,
+            statement: parseOne("## FIND0 (https://example.org/turkeys)\n~birthday cake") as FindStatement,
             workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 204);
@@ -378,7 +382,7 @@ test("an absolute web URL ending in slash is one fetchable resource, not a folde
     })) as typeof fetch;
     try {
         const result = await engine.dispatch({
-            statement: parseOne("<|READ(https://example.org/)|>") as ReadStatement,
+            statement: parseOne("## READ0 (https://example.org/)") as ReadStatement,
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200, "the finite HTTP representation settled through exact READ");

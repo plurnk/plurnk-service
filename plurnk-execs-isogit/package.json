@@ -34,7 +34,11 @@
             {
                 "name": "isogit",
                 "glyph": "git",
-                "example": "<|EXEC[isogit]>status<EXEC|>"
+                "invocation": {
+                    "body": { "role": "isogit command and arguments", "required": true },
+                    "target": { "role": "repository directory", "required": false, "kind": "path" },
+                    "example": { "target": ".", "body": "status" }
+                }
             }
         ]
     },

@@ -16,7 +16,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { ParsedPath, KillStatement } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES, seedStaticChannel } from "./_helpers.ts";
 import { urlPath, localPath, editStmt, copyStmt, moveStmt, fullReplace } from "./_dsl.ts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
@@ -56,12 +56,10 @@ const seedFileMember = async (ctx: Ctx, root: string, rel: string, content: stri
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, content, "utf8");
     const seeded = await ctx.db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${rel}` });
-    await ctx.db.ops_upsert_channel.run({
-        entry_id: seeded?.id,
+    await seedStaticChannel(ctx.db, seeded?.id, {
         name: "body",
         content,
         mimetype: rel.endsWith(".md") ? "text/markdown" : "text/plain",
-        tokens: 0,
     });
     const st = await stat(abs);
     await ctx.db.crud_set_synced_sig.run({ entry_id: seeded?.id, synced_sig: `${st.mtimeMs}:${st.size}` });

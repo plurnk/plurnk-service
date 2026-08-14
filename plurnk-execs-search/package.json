@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-execs-search",
     "version": "1.5.0",
-    "description": "Web search runtime executor for plurnk-service's exec scheme — dispatches search/news/images/… runtime tags to a SearXNG instance.",
+    "description": "Web search runtime executor for plurnk-service's exec scheme — dispatches general and news searches to a SearXNG instance.",
     "keywords": [
         "plurnk",
         "exec",
@@ -35,43 +35,18 @@
             {
                 "name": "search",
                 "glyph": "🔎",
-                "example": "<|EXEC[search]>france population<EXEC|>"
-            },
-            {
-                "name": "images",
-                "glyph": "🖼"
-            },
-            {
-                "name": "videos",
-                "glyph": "🎬"
+                "invocation": {
+                    "body": { "role": "search query", "required": true },
+                    "example": { "body": "Plurnk agent protocol" }
+                }
             },
             {
                 "name": "news",
-                "glyph": "📰"
-            },
-            {
-                "name": "map",
-                "glyph": "🗺"
-            },
-            {
-                "name": "music",
-                "glyph": "🎵"
-            },
-            {
-                "name": "it",
-                "glyph": "💻"
-            },
-            {
-                "name": "science",
-                "glyph": "🔬"
-            },
-            {
-                "name": "social",
-                "glyph": "💬"
-            },
-            {
-                "name": "downloadable",
-                "glyph": "📥"
+                "glyph": "📰",
+                "invocation": {
+                    "body": { "role": "news search query", "required": true },
+                    "example": { "body": "artificial intelligence regulation" }
+                }
             }
         ]
     },

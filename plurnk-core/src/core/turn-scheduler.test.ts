@@ -13,32 +13,33 @@ const statements = (source: string): PlurnkStatement[] => {
 };
 
 test("MODE schedules mutations, observations, actions, and terminal SEND in stable phases", () => {
-    const authored = statements(`
-        <|PLAN>work<PLAN|>
-        <|READ(notes.md)|>
-        <|EXEC>node verify.mjs<EXEC|>
-        <|EDIT(notes.md)<2>>new<EDIT|>
-        <|FIND(src/**)|>
-        <|WORK(worker://reviewer)>review<WORK|>
-        <|KILL(node:///3/1/2)|>
-        <|SEND[200]>done<SEND|>
-    `);
+    const authored = statements([
+        "# PLAN0\nwork",
+        "## READ0 (notes.md)",
+        "## EXEC0\nnode verify.mjs",
+        "## EDIT0 (notes.md) <2>\nnew",
+        "## FIND0 (src/**)",
+        "## BARE0\nclassify this independently",
+        "## WORK0 (worker://reviewer)\nreview",
+        "## KILL0 (node:///3/1/2)",
+        "## SEND0 [200]\ndone",
+    ].join("\n\n"));
 
     assert.deepEqual(
         scheduleTurnOps(authored).map(({ op }) => op),
-        ["PLAN", "EDIT", "KILL", "READ", "FIND", "EXEC", "WORK", "SEND"],
+        ["PLAN", "EDIT", "KILL", "READ", "FIND", "BARE", "EXEC", "WORK", "SEND"],
     );
 });
 
 test("MODE preserves authored order within each phase", () => {
-    const authored = statements(`
-        <|EDIT(a.md)<1>>a<EDIT|>
-        <|COPY(b.md)>c.md<COPY|>
-        <|READ(a.md)|>
-        <|READ(c.md)|>
-        <|EXEC>one<EXEC|>
-        <|SEND(worker://reviewer)>two<SEND|>
-    `);
+    const authored = statements([
+        "## EDIT0 (a.md) <1>\na",
+        "## COPY0 (b.md)\nc.md",
+        "## READ0 (a.md)",
+        "## READ0 (c.md)",
+        "## EXEC0\none",
+        "## SEND0 (worker://reviewer)\ntwo",
+    ].join("\n\n"));
 
     assert.deepEqual(scheduleTurnOps(authored), authored);
 });

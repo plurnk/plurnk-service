@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import * as SourceContracts from "../src/index.ts";
+import { buildModel, serializeGbnf } from "./generate-gbnf.ts";
 
 const run = promisify(execFile);
 // npm exports its config as npm_config_* into lifecycle children — when this smoke runs
@@ -59,12 +60,15 @@ try {
     if (Object.hasOwn(installedPackage.exports, "./grammar")) {
         throw new Error("installed package retains a second grammar code entrypoint");
     }
-    for (const gbnf of ["plurnk.gbnf"]) {
-        const shipped = await readFile(join(installedRoot, "dist", gbnf), "utf8");
-        const local = await readFile(join(contractsDir, "dist", gbnf), "utf8");
-        if (shipped !== local) throw new Error(`shipped dist/${gbnf} diverges from the local build`);
-        process.stdout.write(`[smoke] dist/${gbnf} shipped intact (${shipped.length} bytes)\n`);
+    if (installedPackage.exports["./plurnk.gbnf"] !== "./dist/plurnk.gbnf") {
+        throw new Error("installed package does not export its generated GBNF build artifact");
     }
+    const generatedRail = serializeGbnf(buildModel(), "root-turn");
+    const localRail = await readFile(join(contractsDir, "dist", "plurnk.gbnf"), "utf8");
+    const shippedRail = await readFile(join(installedRoot, "dist", "plurnk.gbnf"), "utf8");
+    if (localRail !== generatedRail) throw new Error("local dist/plurnk.gbnf diverges from its generator");
+    if (shippedRail !== generatedRail) throw new Error("shipped dist/plurnk.gbnf diverges from its generator");
+    process.stdout.write(`[smoke] generated dist/plurnk.gbnf shipped intact (${shippedRail.length} bytes)\n`);
 
     await writeFile(join(tempDir, "consume.js"), `
 import * as Contracts from "@plurnk/plurnk-contracts";
@@ -97,11 +101,11 @@ const assertClean = (label, result) => {
     }
 };
 
-assertClean("model turn", PlurnkParser.parse("<|PLAN>smoke<PLAN|>\\n<|SEND[200]>done<SEND|>"));
-const result = PlurnkParser.parseStatements("<|EDIT(worker:///foo)>body content<EDIT|>");
+assertClean("model turn", PlurnkParser.parse("# PLAN0\\nsmoke\\n\\n## SEND0 [200]\\ndone"));
+const result = PlurnkParser.parseStatements("## EDIT0 (worker:///foo)\\nbody content");
 assertClean("statement sequence", result);
-assertClean("wrapped log", PlurnkParser.parseLog("<|TURN><|PLAN>smoke<PLAN|>\\n<|SEND[200]>done<SEND|><TURN|>"));
-assertClean("client tier", PlurnkParser.parseClient("<|LOOK(known://foo)|>"));
+assertClean("turn log", PlurnkParser.parseLog("# PLAN0\\nsmoke\\n\\n## SEND0 [200]\\ndone"));
+assertClean("client tier", PlurnkParser.parseClient("## LOOK0 (known://foo)"));
 
 // Parse a simple statement and validate its schema-derived position.
 const item = result.items[0];
@@ -168,7 +172,7 @@ export const parse = (input) => PlurnkParser.parse(input);
     const browserConsumer = await import(`${pathToFileURL(browserBundle).href}?${crypto.randomUUID()}`) as {
         parse(input: string): { items: Array<{ kind: string }> };
     };
-    const browserResult = browserConsumer.parse("<|PLAN>browser bundle initialized<PLAN|>\n<|SEND[200]>browser-safe<SEND|>");
+    const browserResult = browserConsumer.parse("# PLAN0\nbrowser bundle initialized\n\n## SEND0 [200]\nbrowser-safe");
     if (browserResult.items.some(({ kind }) => kind === "error")) {
         throw new Error(`browser bundle returned parse errors: ${JSON.stringify(browserResult.items)}`);
     }

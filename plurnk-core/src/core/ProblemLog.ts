@@ -57,6 +57,7 @@ export default class ProblemLog {
             sequence: input.sequence,
             origin: input.origin,
             source: input.source,
+            model_call_id: null,
             op: "error",
             suffix: "",
             signal: null,

@@ -45,6 +45,7 @@ const THIRD_PARTY_HANDLER_SOURCE = `
             this.extensions = extensions;
         }
         validate() {}
+        parseIssues() { return 0; }
         projectionConfiguration() { return ""; }
         extractRaw() { return []; }
         deepJson() { return null; }

@@ -34,7 +34,7 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         const seeded = await entries.write("/run", { channels: {
             stdout: { content: "", mimetype: "text/plain", state: "active" },
             stderr: { content: "", mimetype: "text/plain", state: "active" },
-        }, tags: [] });
+        } });
         const entryId = seeded.entryId as number;
 
         // open → a live (un-aborted) signal
@@ -72,7 +72,7 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         await entries.write("/mixed", { channels: {
             stdout: { content: "", mimetype: "text/plain", state: "active" },
             stderr: { content: "evidence", mimetype: "text/plain", state: "active" },
-        }, tags: [] });
+        } });
         await subs.open("/mixed", { cancel: () => {} });
         const bodyFailure = Results.failure("scheme:exec", "body-failed", 500, "The default body failed.");
         await assert.rejects(
@@ -88,7 +88,7 @@ test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, clos
         // a worker abort propagates to the subscription signal AND force-cancels the handle
         await entries.write("/run2", { channels: {
             stdout: { content: "", mimetype: "text/plain", state: "active" },
-        }, tags: [] });
+        } });
         const signal2 = await subs.open("/run2", { cancel: () => { cancelCalls += 1; } });
         const entry2 = await entries.read("/run2");
         assert.equal(entry2.status, 200);

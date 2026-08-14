@@ -15,7 +15,7 @@ const setup = async () => {
 test("Skill.edit writes a commons-owned entry with scheme='skill'", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
-        const r = await new Skill().edit(editStmt(urlPath("skill", "/shell/grep"), "find text in files using grep", ["shell", "search"]), makeHandlerCtx(makeSchemeCtx({ db, workspaceId, workerId }), Skill.manifest));
+        const r = await new Skill().edit(editStmt(urlPath("skill", "/shell/grep"), "find text in files using grep", ["+shell", "+search"]), makeHandlerCtx(makeSchemeCtx({ db, workspaceId, workerId }), Skill.manifest));
         assert.equal(r.status, 201);
         const entry = await db.test_get_entry_by_id.get<{ pathname: string }>({ id: r.entryId });
         assert.equal(entry?.pathname, "/shell/grep");

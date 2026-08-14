@@ -12,7 +12,7 @@ import { connect, withDaemon, rpcCall, rpcProblem, makeMockResponse, runLoopToTe
 // Run a loop against a provider whose generate() is shadowed to capture the `client` arg, with the
 // workspace created carrying settings.client = clientId (or no client setting when null).
 const captureClient = async (clientId: string | null): Promise<string | undefined> => {
-    const mock = new Mock({ contextWindow: 100000, responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 5)] });
+    const mock = new Mock({ contextWindow: 100000, responses: [makeMockResponse("## SEND0 [200]\ndone", 5)] });
     let captured: string | undefined;
     let seen = false;
     const real = mock.generate.bind(mock);

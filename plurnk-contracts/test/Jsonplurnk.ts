@@ -4,8 +4,8 @@
  * implementation without making the checker a package API.
  */
 export default class Jsonplurnk {
-    static #OPENER = /"body":\s*<\|BODY>\n/g;
-    static #CLOSE = "<BODY|>";
+    static #OPENER = /"body":"\n/g;
+    static #COORDINATE = /^(?:[1-9]\d*:|@[0-9A-Za-z]{5}:[1-9]\d*:)/;
 
     static strip(block: string): string {
         const opener = Jsonplurnk.#OPENER;
@@ -16,9 +16,8 @@ export default class Jsonplurnk {
         while ((m = opener.exec(block)) !== null) {
             const contentStart = m.index + m[0].length;
             const closeStart = Jsonplurnk.#findClose(block, contentStart);
-            if (closeStart === -1) throw new Error("jsonplurnk: unterminated body <|BODY>");
             out += block.slice(cursor, m.index) + '"body":' + JSON.stringify(block.slice(contentStart, closeStart));
-            cursor = closeStart + Jsonplurnk.#CLOSE.length;
+            cursor = closeStart + 1;
             opener.lastIndex = cursor;
         }
         return out + block.slice(cursor);
@@ -29,19 +28,25 @@ export default class Jsonplurnk {
     }
 
     static #findClose(block: string, from: number): number {
-        const close = Jsonplurnk.#CLOSE;
-        if (block.startsWith(close, from) && Jsonplurnk.#endsLine(block, from + close.length)) return from;
         let at = from;
-        for (;;) {
-            const nl = block.indexOf(`\n${close}`, at);
-            if (nl === -1) return -1;
-            const start = nl + 1;
-            if (Jsonplurnk.#endsLine(block, start + close.length)) return start;
-            at = start;
+        let coordinateLines = 0;
+        while (at < block.length) {
+            if (block.startsWith('"}', at)) {
+                if (coordinateLines === 0) {
+                    throw new Error("jsonplurnk: raw multiline body must contain a coordinate line");
+                }
+                return at;
+            }
+            const newline = block.indexOf("\n", at);
+            const end = newline === -1 ? block.length : newline;
+            const line = block.slice(at, end).replace(/\r$/, "");
+            if (!Jsonplurnk.#COORDINATE.test(line)) {
+                throw new Error("jsonplurnk: body line is missing its coordinate prefix");
+            }
+            coordinateLines++;
+            if (newline === -1) break;
+            at = newline + 1;
         }
-    }
-
-    static #endsLine(block: string, pos: number): boolean {
-        return pos === block.length || block[pos] === "\n";
+        throw new Error("jsonplurnk: unterminated raw multiline body");
     }
 }

@@ -6,11 +6,12 @@ import EntryFind from "./_entry-find.ts";
 import EntryCrud from "./_entry-crud.ts";
 import EntrySend from "./_entry-send.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
-import type { FindResult } from "./_entry-find.ts";
+import type { FindResult, MatchItem } from "./_entry-find.ts";
 import Owner from "../core/Owner.ts";
-import type { EditStatement, SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import type { SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type {
     ChannelProducerResult,
+    ResolvedEditStatement,
     RepresentationPreparationRequest,
     RepresentationPreparationResult,
     SchemeCtx,
@@ -21,6 +22,7 @@ import Results, { type SchemeResultBase } from "../core/results.ts";
 import BranchReceipt from "../core/BranchReceipt.ts";
 import TerminalResult from "../core/TerminalResult.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
+import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 
 // {§worker-scheme} — worker:// is the knowledgebase plus inter-worker control (irc=SEND; WORK/FORK are
 // Dispatcher.#handleWorkerControl). The authority names the OWNER ({§worker-authority-carving}):
@@ -43,7 +45,8 @@ export default class Worker extends CoreSchemeAdapterBase {
         volatile: false,
         modelVisible: true,
         folderScopes: true,
-        example: "<|EDIT(worker:///notes.md)>Investigation notes.<EDIT|>",
+        textEditScopes: true,
+        example: "## EDIT0 (worker:///notes.md)\nInvestigation notes.",
     };
 
     // The authority from a worker:// target — "" for the empty (commons) form; null when the
@@ -230,12 +233,12 @@ export default class Worker extends CoreSchemeAdapterBase {
                     producerResult,
                 },
             },
-            tags: [],
         });
         return Results.isErrorStatus(written.status) ? written : { status: 200 };
     }
 
-    async editBatch(statements: readonly EditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
+    async editBatch(statements: readonly ResolvedEditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
+        const precondition = SchemeCtxImpl.editPreconditionOf(ctx);
         const failure = (
             code: string,
             status: number,
@@ -277,7 +280,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         const entryPath = Worker.#entryPath(statement.target);
 
         // The worker ENTITY (path-absent worker://<name>) is not EDITable — EDIT is entry only
-        // (grammar 0.74.55): WORK(worker://<name>) spawns a worker; FORK(worker://<name>) forks a branch.
+        // WORK on worker://<name> spawns a worker; FORK on that address forks a branch.
         if (entryPath === "") {
             return failure(
                 "worker-entity-not-editable",
@@ -325,10 +328,16 @@ export default class Worker extends CoreSchemeAdapterBase {
                 },
             );
         }
-        return EntryOps.editWorkspaceEntryBatch(statements.map((candidate) => Worker.#stripAuthority(candidate)), core, Worker.manifest, resolved.ownerId);
+        return EntryOps.editWorkspaceEntryBatch(
+            statements.map((candidate) => Worker.#stripAuthority(candidate)),
+            core,
+            Worker.manifest,
+            resolved.ownerId,
+            precondition,
+        );
     }
 
-    async edit(statement: EditStatement, ctx: CoreSchemeCallContext): Promise<EditResult> {
+    async edit(statement: ResolvedEditStatement, ctx: CoreSchemeCallContext): Promise<EditResult> {
         return this.editBatch([statement], ctx);
     }
 
@@ -416,7 +425,9 @@ export default class Worker extends CoreSchemeAdapterBase {
         // is the address it typed (worker://~/x, worker://beta/x).
         if (authority === "") return found;
         const reface = (p: string): string => p.replace(/^worker:\/\/\//, `worker://${authority}/`);
-        const results = found.results.map((r) => typeof r.path === "string" ? { ...r, path: reface(r.path) } : r);
+        const results: MatchItem[] = found.results.map((result) => Array.isArray(result)
+            ? result.map((item) => ({ ...item, path: reface(item.path) })) as typeof result
+            : result);
         const content = found.content === null ? null : found.content.replaceAll("worker:///", `worker://${authority}/`);
         return { ...found, results, content };
     }

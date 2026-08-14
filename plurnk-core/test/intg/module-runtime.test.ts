@@ -35,7 +35,11 @@ const fakeEntry = (tag: string, namespaceOwner = `test module '${tag}'`): Regist
         effect: () => "read",
     } as unknown as Executor,
     namespaceOwner: { kind: "module", name: namespaceOwner },
-    glyph: "🔌", example: `<|EXEC[${tag}]>?<EXEC|>`, documentation: "", available: true, detail: "fake",
+    glyph: "🔌",
+    invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } },
+    documentation: "",
+    available: true,
+    detail: "fake",
 });
 
 const wire = (db: Awaited<ReturnType<typeof openMigrated>>) => {
@@ -150,7 +154,6 @@ test("a runtime resource facet claims only its subtree and preserves output-stre
                             mimetype: "text/plain",
                         },
                     },
-                    tags: [],
                 });
                 assert.ok(written.status === 200 || written.status === 201);
                 return { status: 200 };

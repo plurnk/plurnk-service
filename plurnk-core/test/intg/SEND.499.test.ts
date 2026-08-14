@@ -2,13 +2,14 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { SendStatement, EditStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { SendStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import {
     Results,
+    type ResolvedEditStatement,
     type RepresentationPreparationRequest,
     type SchemeCtx,
     type StreamSubscription,
@@ -27,7 +28,7 @@ const sendStmt = (status: number, recipient: UrlPath | null = null, body: string
     position: { line: 1, column: 1 },
 });
 
-const editStmt = (target: UrlPath, body: string | null = null): EditStatement => ({
+const editStmt = (target: UrlPath, body: string | null = null): ResolvedEditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
@@ -105,7 +106,6 @@ test("End-to-end: synthetic streaming scheme — SEND[499] tears down subscripti
                 }
                 await ctx.entries.write(request.pathname, {
                     channels: { data: { content: "", mimetype: "text/plain", state: "active" } },
-                    tags: [],
                 });
                 let subscription: StreamSubscription | undefined;
                 subscription = await ctx.subscriptions.open(request.pathname, {

@@ -1,5 +1,5 @@
 // Shared pathname→entry identity resolution for the db-backed capability impls.
-// channels/tags/notify operate on entry-id-keyed statements; entries goes
+// channels/notify operate on entry-id-keyed statements; entries goes
 // through EntryCrud (which resolves internally). Static delegation, not a base
 // class — the caps call it, they don't inherit it.
 

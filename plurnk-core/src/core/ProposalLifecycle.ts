@@ -375,7 +375,7 @@ export default class ProposalLifecycle {
         }
         if (signal !== 300) return false;
         if (typeof attrs.question !== "string") {
-            throw new Error(`Pending SEND[300] proposal ${row.logEntryId} has no question.`);
+            throw new Error(`Pending SEND signal 300 proposal ${row.logEntryId} has no question.`);
         }
         return true;
     }
@@ -421,9 +421,8 @@ export default class ProposalLifecycle {
     ): Promise<ProposalSettlement> {
         const { workspaceId, workerId, loopId, turnId } = ids;
         if (resolution.decision !== "accept") return { resolution };
-        // EXEC routes to the exec scheme regardless of target (cwd, not
-        // a scheme address). All other ops resolve their handler from
-        // statement.target's scheme.
+        // EXEC routes to the exec scheme regardless of its runtime-owned target.
+        // All other ops resolve their handler from statement.target's scheme.
         // COPY/MOVE write the DEST (statement.body), not the source (target): the
         // accept must reach the dest scheme's applyResolution (File writes disk).
         const routedScheme = (originalResult.attrs as { proposalScheme?: unknown } | undefined)?.proposalScheme;

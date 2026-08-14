@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { EmbeddingVector } from "@plurnk/plurnk-mimetypes";
-import type { EditStatement, Notice, UrlPath } from "@plurnk/plurnk-contracts";
+import type { Notice, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, mimetypesFixture } from "./_helpers.ts";
@@ -13,7 +14,7 @@ const target: UrlPath = {
     username: null, password: null, hostname: null, port: null,
     pathname: "/interrupted.md", query: null, fragment: null,
 };
-const statement: EditStatement = {
+const statement: ResolvedEditStatement = {
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null,
     body: "an interrupted derivation must never attach", position: { line: 1, column: 1 },
 };

@@ -1,27 +1,19 @@
 # @plurnk/plurnk-execs-search
 
-Web search runtime executor for [plurnk-service](https://github.com/plurnk/plurnk-service)'s `exec` scheme. Dispatches an `<|EXEC[search]>pie recipes<EXEC|>` op to a [SearXNG](https://docs.searxng.org/) instance and returns a compact digest of results (`title` / `url` / `snippet`).
+Web search runtime executor for [plurnk-service](https://github.com/plurnk/plurnk-service)'s `exec` scheme. Dispatches `## EXEC0 [search]` with a query body to a [SearXNG](https://docs.searxng.org/) instance and returns a compact digest of results (`title` / `url` / `snippet`).
 
 The first non-subprocess `@plurnk/plurnk-execs-*` sibling, built on the [plurnk-execs](https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs) framework.
 
 ## Runtime tags
 
-Each tag maps to a SearXNG search category (`categories=`):
+The text-retrieval harness exposes the two SearXNG categories it can represent faithfully:
 
 | Tag            | Glyph | Category     |
 | -------------- | ----- | ------------ |
 | `search`       | 🔎    | general      |
-| `images`       | 🖼    | images       |
-| `videos`       | 🎬    | videos       |
 | `news`         | 📰    | news         |
-| `map`          | 🗺    | map          |
-| `music`        | 🎵    | music        |
-| `it`           | 💻    | it           |
-| `science`      | 🔬    | science      |
-| `social`       | 💬    | social media |
-| `downloadable` | 📥    | files        |
 
-Engine, language, and time-range selection ride the query string via SearXNG's native `!bang` and `:lang` syntax (e.g. `<|EXEC[search]>!gh node streams<EXEC|>`). External bangs (`!!`) are refused — they redirect rather than return results.
+Engine, language, and time-range selection ride the query string via SearXNG's native `!bang` and `:lang` syntax (for example, body `!gh node streams`). External bangs (`!!`) are refused — they redirect rather than return results. An operator-configured engine list replaces the runtime category; SearXNG otherwise unions the two selections. Media and vertical categories are not registered because this executor projects ranked text metadata and materialized readable pages, not their category-specific payloads.
 
 ## Configuration (environment)
 
@@ -31,7 +23,7 @@ Every tunable is an **optional env override** — no code default hides a magic 
 | ----------------------------------- | -------- | ---------------------------------------------------------------------------------------------- |
 | `PLURNK_EXECS_SEARCH_SEARXNG_URL`   | yes      | Search is unavailable. URL userinfo, when present, supplies redacted HTTP Basic credentials.   |
 | `PLURNK_EXECS_SEARCH_LANGUAGE`      | no       | SearXNG default.                                                                               |
-| `PLURNK_EXECS_SEARCH_ENGINES`       | no       | SearXNG enabled engines.                                                                       |
+| `PLURNK_EXECS_SEARCH_ENGINES`       | no       | Exclusive SearXNG engine selection; replaces the runtime category.                             |
 | `PLURNK_EXECS_SEARCH_LIMIT`         | no       | `.env.defaults` supplies 12 candidates.                                                        |
 | `PLURNK_EXECS_SEARCH_TIMEOUT`       | no       | Consumer cancellation is the primary deadline; this is an extra local ceiling in milliseconds. |
 | `PLURNK_EXECS_SEARCH_SAFESEARCH`    | no       | Instance default; accepted values are `0`, `1`, or `2`.                                        |

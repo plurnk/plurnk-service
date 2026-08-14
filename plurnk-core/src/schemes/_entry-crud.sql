@@ -1,17 +1,14 @@
 -- Entry CRUD primitives (SPEC {§crud}). Used by entry-bearing schemes and
--- the engine for cross-scheme COPY/MOVE/SEND[410].
+-- the engine for cross-scheme COPY/MOVE/SEND signal 410.
 
 -- PREP: crud_find_workspace_entry
 -- {§entry-identity-no-null} — every identity component is NOT NULL (bare/absolute paths
 -- persist under the reserved 'file' scheme), so plain `=` is the honest comparison.
-SELECT id FROM entries
+SELECT id, attributes FROM entries
 WHERE workspace_id = $workspace_id AND owner_id = $owner_id AND scheme = $scheme AND pathname = $pathname;
 
 -- PREP: crud_read_channels
 SELECT name, content, mimetype, state, producer_result FROM entry_channels WHERE entry_id = $entry_id;
-
--- PREP: crud_read_tags
-SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
 -- PREP: crud_insert_workspace_entry
 INSERT INTO entries (workspace_id, owner_id, scheme, pathname)
@@ -67,19 +64,10 @@ DELETE FROM entry_channels WHERE entry_id = $entry_id;
 DELETE FROM entry_channels WHERE entry_id = $entry_id AND name = $name
 RETURNING name;
 
--- PREP: crud_delete_tags
-DELETE FROM entry_tags WHERE entry_id = $entry_id;
-
 -- PREP: crud_write_channel
 -- {§tokenomics-content-hash-identity}: every static write stamps stable content identity.
 INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, content_hash, state, producer_result)
 VALUES ($entry_id, $name, $content, $mimetype, $tokens, $content_hash, $state, $producer_result);
-
--- PREP: crud_write_tag
-INSERT OR IGNORE INTO entry_tags (entry_id, tag) VALUES ($entry_id, $tag);
-
--- PREP: crud_delete_tag
-DELETE FROM entry_tags WHERE entry_id = $entry_id AND tag = $tag;
 
 -- PREP: crud_delete_entry
 DELETE FROM entries WHERE id = $entry_id;

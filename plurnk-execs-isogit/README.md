@@ -9,7 +9,7 @@ execution, and is disabled by default.
 This package is deliberately outside the batteries-included executor inventory.
 It implements a limited, overlapping Git dialect for deployments without a
 native Git executable; the default inventory carries the complete native
-`EXEC[git]` capability instead of presenting most deployments with two choices
+native `## EXEC0 [git]` capability instead of presenting most deployments with two choices
 that are not interchangeable.
 
 Install the package into the same Node module graph as the service. A setting
@@ -30,16 +30,21 @@ Restart the service so boot discovery can register and advertise the runtime.
 See {§executor-installation}.
 
 `isogit` is not Git CLI emulation and never replaces or falls back from
-`EXEC[git]`.
+native Git execution.
 
 Supported operations are `init`, `status`, `add`, `commit -m`, `log -n`,
 `branch`, and `checkout`. Results are JSON on `#results`. `(target)` names the
 repo directory.
 
 ```plurnk
-<|EXEC[isogit]>status<EXEC|>
-<|EXEC[isogit]>branch feature/example<EXEC|>
-<|EXEC[isogit]>checkout feature/example<EXEC|>
+## EXEC0 [isogit]
+status
+
+## EXEC0 [isogit]
+branch feature/example
+
+## EXEC0 [isogit]
+checkout feature/example
 ```
 
-Use `EXEC[git]` when native Git semantics are required.
+Use `## EXEC0 [git]` when native Git semantics are required.

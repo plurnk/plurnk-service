@@ -5,9 +5,11 @@ import * as xpath from "xpath";
 import { JSONPathEnvironment } from "json-p3/dist/json-p3.esm.js";
 import type {
     BuffStatement,
+    BareStatement,
     ClientOp,
     ClientStatement,
     CopyStatement,
+    EditLineMarker,
     EditStatement,
     ExecStatement,
     FindStatement,
@@ -33,6 +35,7 @@ import type {
 } from "./types.ts";
 import type {
     BuffStatementContext,
+    BareStatementContext,
     ClientStatementContext,
     CopyStatementContext,
     EditStatementContext,
@@ -67,6 +70,7 @@ import {
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import PlurnkParseError from "./PlurnkParseError.ts";
 import PathSyntax from "./PathSyntax.ts";
+import TagSignal, { InvalidTagSignalError } from "./TagSignal.ts";
 
 // The xpath package's .d.ts omits its `parse` function; augment here.
 declare module "xpath" {
@@ -76,6 +80,7 @@ declare module "xpath" {
 type Ctor<T> = new (...args: any[]) => T;
 
 type TagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: LineMarker | null };
+type EditTagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: EditLineMarker | null };
 type CurationSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: null };
 type IntSlots = { signal: number | null; target: ParsedPath | null };
 type ExecSlots = { signal: string | null; target: ParsedPath | null; lineMarker: LineMarker | null };
@@ -105,6 +110,7 @@ export default class AstBuilder {
             const send = ctx.sendStatement(); if (send) return AstBuilder.#buildSend(send);
         }
         const exec = ctx.execStatement(); if (exec) return AstBuilder.#buildExec(exec);
+        const bare = ctx.bareStatement(); if (bare) return AstBuilder.#buildBare(bare);
         const work = ctx.workStatement(); if (work) return AstBuilder.#buildWork(work);
         const fork = ctx.forkStatement(); if (fork) return AstBuilder.#buildFork(fork);
         const kill = ctx.killStatement(); if (kill) return AstBuilder.#buildKill(kill);
@@ -119,6 +125,7 @@ export default class AstBuilder {
     static #buildFind(ctx: FindStatementContext): FindStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        AstBuilder.#assertAppliedTags(slots.signal, position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "FIND",
@@ -171,6 +178,7 @@ export default class AstBuilder {
     static #buildRead(ctx: ReadStatementContext): FindStatement | ReadStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        AstBuilder.#assertAppliedTags(slots.signal, position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         const targetPath = slots.target?.kind === "url"
             ? slots.target.pathname
@@ -198,6 +206,15 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractCurationSlots(ctx.curationModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
+        const tags = AstBuilder.#curationTags(slots.signal, position);
+        if (slots.target === null && raw === null && tags.filter.length === 0 && (tags.add.length > 0 || tags.remove.length > 0)) {
+            throw new PlurnkParseError(
+                position.line,
+                position.column,
+                "visitor",
+                "signed tags modify selected log items but do not select them - add a path, body pattern, or unsigned tag",
+            );
+        }
         return {
             op: "OPEN",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_OPEN().getText(), "OPEN"),
@@ -211,6 +228,15 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractCurationSlots(ctx.curationModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
+        const tags = AstBuilder.#curationTags(slots.signal, position);
+        if (slots.target === null && raw === null && tags.filter.length === 0 && (tags.add.length > 0 || tags.remove.length > 0)) {
+            throw new PlurnkParseError(
+                position.line,
+                position.column,
+                "visitor",
+                "signed tags modify selected log items but do not select them - add a path, body pattern, or unsigned tag",
+            );
+        }
         return {
             op: "FOLD",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_FOLD().getText(), "FOLD"),
@@ -222,7 +248,8 @@ export default class AstBuilder {
 
     static #buildEdit(ctx: EditStatementContext): EditStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        const slots = AstBuilder.#extractEditTagSlots(ctx.tagOpModifiers(), position);
+        AstBuilder.#assertAppliedTags(slots.signal, position);
         return {
             op: "EDIT",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_EDIT().getText(), "EDIT"),
@@ -235,6 +262,7 @@ export default class AstBuilder {
     static #buildCopy(ctx: CopyStatementContext): CopyStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        AstBuilder.#assertAppliedTags(slots.signal, position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "COPY",
@@ -248,6 +276,7 @@ export default class AstBuilder {
     static #buildMove(ctx: MoveStatementContext): MoveStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        AstBuilder.#assertAppliedTags(slots.signal, position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "MOVE",
@@ -282,6 +311,21 @@ export default class AstBuilder {
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_EXEC().getText(), "EXEC"),
             ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
+            position,
+        };
+    }
+
+    static #buildBare(ctx: BareStatementContext): BareStatement {
+        const position = AstBuilder.#positionOf(ctx);
+        const signal = AstBuilder.#tagsFromSignal(ctx.tagSignal());
+        AstBuilder.#assertAppliedTags(signal, position);
+        return {
+            op: "BARE",
+            suffix: AstBuilder.#splitSuffix(ctx.OPEN_BARE().getText(), "BARE"),
+            signal,
+            target: null,
+            lineMarker: null,
+            body: AstBuilder.#requiredBodyTextOf(ctx),
             position,
         };
     }
@@ -356,6 +400,14 @@ export default class AstBuilder {
         };
     }
 
+    static #extractEditTagSlots(modCtx: TagOpModifiersContext | null, pos: Position): EditTagSlots {
+        return {
+            signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
+            target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
+            lineMarker: AstBuilder.#editLineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
+        };
+    }
+
     static #extractCurationSlots(modCtx: CurationModifiersContext | null, pos: Position): CurationSlots {
         return {
             signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
@@ -423,6 +475,24 @@ export default class AstBuilder {
         return Array.isArray(tags) ? tags.map((t) => t.getText()) : [];
     }
 
+    static #assertAppliedTags(signal: readonly string[] | null, position: Position): void {
+        try {
+            TagSignal.applied(signal);
+        } catch (cause) {
+            if (!(cause instanceof InvalidTagSignalError)) throw cause;
+            throw new PlurnkParseError(position.line, position.column, "visitor", cause.message);
+        }
+    }
+
+    static #curationTags(signal: readonly string[] | null, position: Position): ReturnType<typeof TagSignal.curation> {
+        try {
+            return TagSignal.curation(signal);
+        } catch (cause) {
+            if (!(cause instanceof InvalidTagSignalError)) throw cause;
+            throw new PlurnkParseError(position.line, position.column, "visitor", cause.message);
+        }
+    }
+
     static #targetFromCtx(ctx: TargetContext | null, pos: Position): ParsedPath | null {
         if (ctx === null) return null;
         const text = ctx.TARGET_TEXT().map((token) => token.getText()).join("");
@@ -433,6 +503,15 @@ export default class AstBuilder {
         if (ctx === null) return null;
         const text = ctx.L_MARKER()?.getText() ?? "";
         return AstBuilder.#parseLineMarker(text);
+    }
+
+    static #editLineMarkerFromCtx(ctx: LineMarkerContext | null): EditLineMarker | null {
+        if (ctx === null) return null;
+        const text = ctx.L_MARKER()?.getText() ?? "";
+        if (!text.includes("@")) return AstBuilder.#parseLineMarker(text);
+        const marks = text.slice(1, -1).split(/, ?/).map((component) =>
+            component.startsWith("@") ? component : Number.parseFloat(component));
+        return { marks: marks as [number | string, ...(number | string)[]] };
     }
 
     static #positionOf(ctx: { start: { line: number; column: number } | null }): Position {
@@ -448,8 +527,9 @@ export default class AstBuilder {
         return AstBuilder.#bodyTextOf(ctx) ?? "";
     }
 
-    static #splitSuffix(openTagText: string, op: PlurnkOp | ClientOp): string {
-        return openTagText.slice(2 + op.length);
+    static #splitSuffix(headingText: string, op: PlurnkOp | ClientOp): string {
+        const marker = op === "PLAN" ? "# " : "## ";
+        return headingText.slice(marker.length + op.length);
     }
 
     static #isDigit(c: string | undefined): boolean {
@@ -503,7 +583,7 @@ export default class AstBuilder {
                 pos.line,
                 pos.column,
                 "visitor",
-                "COPY/MOVE destination scope must immediately precede the operation close; remove the extra `:` after the scope",
+                "COPY/MOVE destination scope must end the destination selection; remove the extra `:` after the scope",
             );
         }
         const pathText = markerText === null ? raw : raw.slice(0, -markerText.length);

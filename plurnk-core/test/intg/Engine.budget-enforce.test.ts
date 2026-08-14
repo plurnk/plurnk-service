@@ -25,6 +25,7 @@ const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => r
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
 const TINY = 2;          // absolute wall far below any real packet → forces overflow
 const WIDE = 1_000_000;  // absolute wall capped to the window → never overflows
+const OVERFLOW_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling. Newest log items were automatically FOLDed to fit within token budget. Curate the log and/or perform more conservatively scoped or chunked retrieval operations to recover.";
 
 // {§tokenomics-window-partition} — the envelope is provider-owned, so the policy ceiling pins via reserves against the
 // provider's own window: promptBudget = window − reserves. parseReserve rejects
@@ -161,7 +162,7 @@ test("{§grinder-layer1-rollback}: overflow rolls back only the exact older rows
         const seed = async (sequence: number, op: "READ" | "EDIT" | "PLAN", content: string): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: oldTurnId, sequence,
-                origin: "model", source: null, op, suffix: "", signal: null,
+                origin: "model", source: null, model_call_id: null, op, suffix: "", signal: null,
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: `/old-${sequence}`, query: null, fragment: null, lineMarker: null,
                 tx: JSON.stringify({ op }), mimetype_tx: "application/json",
@@ -216,15 +217,18 @@ test("{§grinder-layer1-rollback}: overflow rolls back only the exact older rows
         const openPacket = await builder.buildRequestPacket(args);
         const provider = mockAt(openPacket.tokens - 50, [], 1_000_000);
         args.provider = provider;
+        let overflowCalls = 0;
         const result = await builder.enforceBudget({
             packet: await builder.buildRequestPacket(args),
             provider,
             loopId: curationLoopId,
             turnId: currentTurnId,
+            recordOverflow: async () => { overflowCalls += 1; },
             rebuild: () => builder.buildRequestPacket(args),
         });
 
         assert.equal(result.fit, true, "rolling back the newly introduced older body makes the packet fit");
+        assert.equal(overflowCalls, 1, "one over-ceiling assembly emits one overflow event");
         const rows = await db.engine_render_log.all<{ id: number; expanded: number; tags: string }>({ worker_id: workerId });
         const byId = new Map(rows.map((row) => [row.id, row]));
         assert.equal(byId.get(newlyOpenedId)?.expanded, 0, "the folded-to-open target is rolled back");
@@ -244,7 +248,7 @@ test("{§grinder-layer1-rollback}: a reopened target folded again before grindin
         const oldTurnId = await insertTurn(db, loopId, 1, 200);
         const target = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: oldTurnId, sequence: 1,
-            origin: "model", source: null, op: "READ", suffix: "", signal: null,
+            origin: "model", source: null, model_call_id: null, op: "READ", suffix: "", signal: null,
             scheme: "worker", username: null, password: null, hostname: null, port: null,
             pathname: "/old", query: null, fragment: null, lineMarker: null,
             tx: "{}", mimetype_tx: "application/json",
@@ -313,7 +317,9 @@ test("repeated negative ruler pressure remains soft while the effective context 
             assert.equal(budget.match(/Context Token Budget Panic:/gu)?.length, 1, "the pressure instruction is transient and singular");
         }
         const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        assert.deepEqual(errors, [], "soft pressure creates no durable failure row");
+        const problems = errors.map(({ rx }) => JSON.parse(rx).problem);
+        assert.equal(problems.length, result.turnIds.length, "each actual overflow remains durable even though generation proceeds");
+        assert.ok(problems.every((problem) => problem?.status === 413 && problem?.detail === OVERFLOW_DETAIL));
     } finally { await db.close(); }
 });
 
@@ -330,7 +336,7 @@ test("negative ruler pressure may conclude cleanly at 200", async () => {
     } finally { await db.close(); }
 });
 
-test("automatic pressure folding is visible through overflow tags without minting an error", async () => {
+test("automatic pressure folding is visible through overflow tags and its nonterminal 413 Problem", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -347,7 +353,8 @@ test("automatic pressure folding is visible through overflow tags without mintin
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row!.packet);
         assert.match(packetSection(packet, "log"), /"tags":\["overflow"\]/, "the ambient folded row explains why it was folded");
-        assert.equal(packetSection(packet, "errors"), "", "soft pressure is not a durable failure");
+        assert.match(packetSection(packet, "errors"), /^\* 413 log:\/\/\/.+\/error$/m, "the recovered overflow remains an indexed failure");
+        assert.match(packetSection(packet, "log"), new RegExp(OVERFLOW_DETAIL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     } finally { await db.close(); }
 });
 
@@ -363,7 +370,7 @@ test("{§grinder-layer1-rollback}: a huge current-turn engine row folds with the
         const turnId = await insertTurn(db, loopId, 2, 102);
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "plurnk", source: null, op: "READ", suffix: "", signal: null,
+            origin: "plurnk", source: null, model_call_id: null, op: "READ", suffix: "", signal: null,
             scheme: "search", username: null, password: null, hostname: null, port: null,
             pathname: "/1/1/7", query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -381,19 +388,20 @@ test("{§grinder-layer1-rollback}: a huge current-turn engine row folds with the
         const provider = mockAt(open.tokens - 50, [], 1_000_000);
         args.provider = provider;
         const packet = await builder.buildRequestPacket(args);
+        let overflowCalls = 0;
         const result = await builder.enforceBudget({
             packet, provider, loopId, turnId,
+            recordOverflow: async () => { overflowCalls += 1; },
             rebuild: () => builder.buildRequestPacket(args),
         });
-        assert.equal(result.fit, true, "stage 2 folded the current turn's engine row — the packet fits, no 413");
+        assert.equal(result.fit, true, "stage 2 folded the current turn's engine row and the rebuilt packet fits");
         const rows = await db.engine_render_log.all<{ turn_seq: number; op: string; expanded: number; tags: string }>({ worker_id: workerId });
         const bigRow = rows.find((r) => r.turn_seq === 2 && r.op === "READ");
         assert.ok(bigRow !== undefined, "the wake row is still LISTED (folded, not deleted)");
         assert.equal(bigRow.expanded, 0, "the wake row is FOLDED (re-OPENable) — and not fatal");
         assert.deepEqual(JSON.parse(bigRow.tags), ["overflow"], "the automatic fold stamps its canonical reason tag");
         assert.match(packetSection(result.packet, "log"), /"tags":\["overflow"\]/, "the rebuilt ambient projection exposes the persisted tag");
-        const errorRows = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        assert.deepEqual(errorRows, [], "a successful curation fold does not manufacture a Problem row");
+        assert.equal(overflowCalls, 1, "the enforcement owner emits one overflow event for the composed engine to persist");
     } finally { await db.close(); }
 });
 

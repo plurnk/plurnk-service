@@ -32,13 +32,16 @@ export interface SchemeManifest {
     // Explicit globs and matcher bodies remain queries everywhere. Absent/false
     // means `/` is ordinary resource syntax and dispatches directly.
     readonly folderScopes?: boolean;
+    // True only when EDIT accepts the shared textual <scope> contract. Core
+    // then lowers rendered line anchors to numeric coordinates before dispatch.
+    readonly textEditScopes?: boolean;
     // Entries land FOLDED, off the ranked manifest surface (READable by address,
     // not poured into the ranked view). Absent/false → first-class ranked.
     // Full contract + containment rationale: SPEC {§manifest} (foldedByDefault).
     readonly foldedByDefault?: boolean;
     readonly flags?: SchemeFlagAffinity;
     // Self-doc: terse pushes, depth pulls ({§manifest-self-doc}).
-    // example = terse hot-path usage line (rendered every turn); documentation =
+    // example = concise hot-path operation example set; documentation =
     // deep doc the consumer materializes as a pull-able worker://plurnk/docs/<name>.md.
     // Field-by-field contract: {§manifest-self-doc}.
     readonly example?: string;

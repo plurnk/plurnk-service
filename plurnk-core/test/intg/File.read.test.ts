@@ -11,6 +11,7 @@ import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { MimetypeBinary } from "../../src/content/index.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, lookThroughScheme } from "./_helpers.ts";
+import { resourcePaths } from "./_find.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -35,14 +36,14 @@ const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
 // Parse a single op the way production does, so a bare path carries its REAL parsed shape
 // (a LocalPath {kind:"local"}), not a hand-built UrlPath that hides the kind the model emits.
 const parseRead = (dsl: string): ReadStatement => {
-    const found = PlurnkParser.parse(`<|PLAN|>\n${dsl}`).items
+    const found = PlurnkParser.parse(`# PLAN0\n${dsl}`).items
         .find((i) => i.kind === "statement" && i.statement.op === "READ");
     if (found === undefined) throw new Error(`no READ parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: ReadStatement }).statement;
 };
 
 const parseFind = (dsl: string): FindStatement => {
-    const found = PlurnkParser.parse(`<|PLAN|>\n${dsl}`).items
+    const found = PlurnkParser.parse(`# PLAN0\n${dsl}`).items
         .find((i) => i.kind === "statement" && i.statement.op === "FIND");
     if (found === undefined) throw new Error(`no FIND parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: FindStatement }).statement;
@@ -60,7 +61,7 @@ const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<vo
     const content = await readFile(canonical, "utf8");
     // Entry key is namespace-absolute (`/notes.md`), mirroring production's
     // git-membership pass — the disk path (canonical) stays workspace-relative.
-    await EntryCrud.writeEntry(`${pathname}`, { channels: { body: { content, mimetype } }, tags: [] }, ctx, "file");
+    await EntryCrud.writeEntry(`${pathname}`, { channels: { body: { content, mimetype } } }, ctx, "file");
 };
 
 // Set up a workspace whose project_root points at a fresh temp directory,
@@ -252,14 +253,14 @@ test("File.find: a binary member does not poison a body search across readable m
         await addMember(ctx, "readme.md");
         await EntryCrud.writeEntry(
             "blob.bin",
-            { channels: { body: { content: "", mimetype: "application/octet-stream" } }, tags: [] },
+            { channels: { body: { content: "", mimetype: "application/octet-stream" } } },
             ctx,
             "file",
         );
 
-        const result = await new File().find(parseFind("<|FIND(**)>/needle/<FIND|>"), ctx);
+        const result = await new File().find(parseFind("## FIND0 (**)\n/needle/"), ctx);
         assert.equal(result.status, 200);
-        assert.deepEqual(result.results.map(({ path }) => path), ["readme.md"]);
+        assert.deepEqual(resourcePaths(result), ["readme.md"]);
     });
 });
 
@@ -326,14 +327,13 @@ test("File.find: a zero-match selector returns 204", async () => {
     });
 });
 
-test("File.read: non-empty tag filter on file:/// returns 404 (no tag concept)", async () => {
+test("File.read: signal does not filter the file resource", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "x");
         await addMember(ctx, "f.txt");
-        // Entry exists, but file entries carry no tags → a tag-filtered read 404s
-        // via the shared EntryOps tag gate.
-        const r = await readFileScheme(readStmt(urlPath("file", "/f.txt"), { tags: ["any"] }), ctx);
-        assert.equal(r.status, 404);
+        const r = await readFileScheme(readStmt(urlPath("file", "/f.txt"), { tags: ["+any"] }), ctx);
+        assert.equal(r.status, 200);
+        assert.equal(r.content, "x");
     });
 });
 
@@ -368,7 +368,7 @@ test("File.read: bare relative path (no leading slash) normalizes to the member 
         // The member is keyed "/notes.md", but the model naturally types the bare "notes.md"
         // it copies from the catalog. READ must resolve it the way WRITE does — the regression
         // that 404'd "read the codename from notes.md" against the live model.
-        const result = await readFileScheme(parseRead("<|READ(notes.md)|>"), ctx);
+        const result = await readFileScheme(parseRead("## READ0 (notes.md)"), ctx);
         assert.equal(result.status, 200, "bare relative READ resolves to the /notes.md member, not 404");
         assert.equal(result.content, "Codename: Bluejay\n");
     });
@@ -380,13 +380,13 @@ test("File.read: markerless exact READ returns 16 lines and explicit <1,-1> retu
         await writeFile(join(root, "bounded.txt"), content);
         await addMember(ctx, "bounded.txt");
 
-        const bounded = await readFileScheme(parseRead("<|READ(bounded.txt)|>"), ctx);
+        const bounded = await readFileScheme(parseRead("## READ0 (bounded.txt)"), ctx);
         assert.equal(bounded.status, 200);
         assert.equal(bounded.content, Array.from({ length: 16 }, (_, index) => `line ${index + 1}`).join("\n"));
         assert.equal(bounded.range?.total, 20);
         assert.deepEqual(bounded.range?.returned, [1, 16]);
 
-        const all = await readFileScheme(parseRead("<|READ(bounded.txt)<1,-1>|>"), ctx);
+        const all = await readFileScheme(parseRead("## READ0 (bounded.txt) <1,-1>"), ctx);
         assert.equal(all.status, 200);
         assert.equal(all.content, content);
         assert.deepEqual(all.range?.returned, [1, 20]);
@@ -398,7 +398,7 @@ test("File.read: bare nested relative path resolves to its member key too", asyn
         await mkdir(join(root, "src"));
         await writeFile(join(root, "src", "app.js"), "// TODO: rename\n");
         await addMember(ctx, "src/app.js");
-        const result = await readFileScheme(parseRead("<|READ(src/app.js)|>"), ctx);
+        const result = await readFileScheme(parseRead("## READ0 (src/app.js)"), ctx);
         assert.equal(result.status, 200, "bare nested relative READ resolves");
         assert.equal(result.content, "// TODO: rename\n");
     });

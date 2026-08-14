@@ -108,7 +108,6 @@ test("trailing slash is ordinary resource syntax unless the scheme declares fold
                 channels: {
                     body: { content: "opaque root resource", mimetype: "text/markdown" },
                 },
-                tags: [],
             });
             return { status: 200 };
         }

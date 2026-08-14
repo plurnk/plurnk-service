@@ -10,7 +10,7 @@ than SQL. Use their SQL equivalents, such as querying `sqlite_master`.
 
 ## Database target
 
-`EXEC[sqlite](./app.db):…` runs against the file `./app.db` (created if absent),
+`## EXEC0 [sqlite] (./app.db)` with a SQL body runs against the file `./app.db` (created if absent),
 a persistent host-mutating database that requires proposal review. With no
 target, it runs against a fresh `:memory:` database that is gone when the
 operation finishes and bypasses proposal review. A directory is not a database

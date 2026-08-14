@@ -55,7 +55,6 @@ class AffinitySource {
         this.preparations += 1;
         await ctx.entries.write(request.pathname, {
             channels: { body: { content: "source", mimetype: "text/plain" } },
-            tags: [],
         });
         return { status: 200 };
     }
@@ -90,7 +89,8 @@ const setup = async () => {
     schemes.register("sideeffect-test", new SideEffectingScheme());
     const engine = new Engine({ db, schemes, mimetypes: makeMimetypes() });
     engine.setExecutors(new ExecutorRegistry(new Map([
-        ["flag-tool", { executor: flagExecutor, namespaceOwner: { kind: "module", name: "flag-tool fixture" }, glyph: "🧪", example: "", documentation: "", available: true, detail: undefined }],
+        ["flag-tool", { executor: flagExecutor, namespaceOwner: { kind: "module", name: "flag-tool fixture" }, glyph: "🧪", invocation: { body: { role: "fixture input", required: true }, target: { role: "fixture resource", required: false, kind: "resource" }, example: { body: "fixture" } }, documentation: "", available: true, detail: undefined }],
+        ["literal-tool", { executor: flagExecutor, namespaceOwner: { kind: "module", name: "literal-tool fixture" }, glyph: "🧪", invocation: { body: { role: "fixture input", required: false }, target: { role: "tool identifier", required: true, kind: "literal" }, example: { target: "fixture_tool", body: "{}" } }, documentation: "", available: true, detail: undefined }],
     ])));
     return { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec: schemes.get("exec") as Exec };
 };
@@ -293,6 +293,21 @@ test("EXEC additionally gates non-file sources by their own affinity (#164)", as
         assert.equal(interactionResult.problem?.scheme, "interaction-source");
         assert.equal(web.preparations, 0);
         assert.equal(interaction.preparations, 0);
+    } finally { await exec.idle(); await db.close(); }
+});
+
+test("{§exec-target-routing} literal executor identifiers never inherit a same-spelled scheme's affinity", async () => {
+    const { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec } = await setup();
+    const web = new AffinitySource("web-source", { requiresWeb: true });
+    schemes.register("web-source", web);
+    try {
+        await setLoopFlags(db, loopId, { mode: "act", noWeb: true });
+        const result = await engine.dispatch({
+            statement: execStmt("literal-tool", "{}", urlPath("web-source", "/tool")),
+            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+        });
+        assert.equal(result.status, 200);
+        assert.equal(web.preparations, 0, "a literal target is not read as a resource");
     } finally { await exec.idle(); await db.close(); }
 });
 

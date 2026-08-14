@@ -24,6 +24,7 @@ behavior their content algebra supports.
 | `references(content)`       | `[]`                                            | Emit classified symbol uses, never definitions.                               |
 | `content(content)`          | `undefined`                                     | Emit readable text only when it differs from the raw body.                    |
 | `validate(content)`         | No-op                                           | Reject content only when the mimetype has a meaningful validity check.        |
+| `parseIssues(content)`      | `0`                                             | Count parser recovery sites without deciding source validity.                 |
 | `query(...)`                | Text and structural dialect dispatch.           | Override when native parsing can provide more faithful evidence.              |
 | `symbolsRaw(content)`       | `format(await extractRaw(content))`             | Human/diagnostic outline; not a model-facing projection channel.              |
 | `toText(content)`           | String passthrough; binary content unsupported. | Supply readable text for binary regex/glob matching and embedding when valid. |
@@ -355,6 +356,18 @@ Current plurnk-service consumers:
 The framework performs no packet budgeting and renders no preview. `format()`
 is the unbudgeted human/diagnostic renderer for structured symbols.
 
+§mimetype-parse-issues **Parser recovery is advisory.** When `process()`
+materializes any structural channel, it also awaits the handler's
+`parseIssues(content)`. A positive safe-integer result appears as
+`ProcessResult.parseIssues`; zero is omitted, and a metadata-only or
+non-structural request performs no issue parse. The count describes parser
+recovery sites relative to the installed grammar. It is not a compiler,
+linter, type-system, or decisive source-validity verdict and does not suppress
+partial projections, matching, indexing, or any operation. Tree-sitter counts
+both explicit error nodes and parser-inserted missing nodes. Parser execution
+and handler defects retain the ordinary hard-failure policy rather than being
+misreported as source issues.
+
 ## §mimetype-validation 6. `validate`
 
 Default: no-op. Override only for mimetypes with a real syntax check that can fail (e.g., `application/json` throws on malformed JSON).
@@ -372,6 +385,7 @@ The exported `ProcessResult` type owns the executable field shape.
 |--------------------------------------|----------------------------------------------------------------------------------------------------|
 | `mimetype`, `ok`, `totalLines`       | Present on every returned result.                                                                  |
 | Projection channel fields            | Requested only; absence differs from an honest empty projection ({§mimetype-channel-selection}).   |
+| `parseIssues`                         | Present only as a positive parser-recovery count from requested structural work.                    |
 | `grammarMissing`, `embeddingMissing` | Present only for the corresponding non-strict degradation.                                         |
 | `embeddingModel`                     | Present only when the returned vector carries a model-space identity.                              |
 | `notices`                            | Present only when a successful result carries one or more non-fatal degradations ({§notice}).      |
@@ -491,6 +505,11 @@ loading, WASM loading, parse execution, mapping import, query compilation or
 execution, extraction, and deep-walk exceptions propagate unchanged. Only an
 exact absent grammar package becomes `GrammarNotInstalledError`; a corrupt or
 inaccessible installed artifact is not absence.
+
+The shared extractor implements `{§mimetype-parse-issues}` from the same
+Tree-sitter node vocabulary: every node whose `isError` or `isMissing` flag is
+true is one recovery site. A returned partial tree remains available to every
+structural consumer.
 
 ### §mimetype-parser-coordinates 9.4.1 Parser coordinate boundary
 
@@ -975,7 +994,9 @@ embedding or token-count job exactly once. Cancellation requested through a
 job's `AbortSignal` is terminal. Worker errors, exits, protocol defects, and
 bounded non-response reject the affected job and retire the unhealthy worker
 before queued or later work can use its capacity. Teardown settles queued and
-active work before releasing the execution generation.
+active work before releasing the execution generation. An idle pool worker
+cooperatively releases its embedding runtime before its thread exits; an
+unhealthy or still-active worker is force-terminated after its job settles.
 
 §mimetype-embedding-wire `EmbeddingVector` owns one portable vector wire:
 

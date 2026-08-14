@@ -1,8 +1,8 @@
 import { PlurnkParser, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
-import { RuntimeTag } from "@plurnk/plurnk-execs";
+import { RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
 import Owner from "./Owner.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
-import type { PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import type { BareStatement, PlurnkStatement, EditStatement, ReadStatement, UrlPath, FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
@@ -36,7 +36,6 @@ import LoopLifecycle from "./LoopLifecycle.ts";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { isDeepStrictEqual } from "node:util";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
@@ -52,7 +51,7 @@ import JournalTurn from "./JournalTurn.ts";
 import NoticeChannel from "./NoticeChannel.ts";
 import ProblemLog from "./ProblemLog.ts";
 import StrikeRail, { type StrikeOutcome } from "./StrikeRail.ts";
-import PacketBuilder, { type ChatMessage, type ContextEnvelopeAdmission } from "./PacketBuilder.ts";
+import PacketBuilder, { type ChatMessage, type ContextEnvelopeAdmission, type TokenBudgetOverflow } from "./PacketBuilder.ts";
 import StoredPacket, { type PacketAssistant } from "./StoredPacket.ts";
 import ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
@@ -65,9 +64,12 @@ import { scheduleTurnOps } from "./turn-scheduler.ts";
 import { readOptimisticSettlementMs } from "./optimistic-settlement.ts";
 import {
     providerRequestFromStorageRow,
-    providerRequestSettlementParams,
     type ProviderRequestStorageRow,
 } from "./provider-accounting.ts";
+import ModelCall, {
+    ModelCallPersistenceError,
+    ProviderAccountingIntegrityError,
+} from "./ModelCall.ts";
 
 // Proposal types are part of Engine's public API (resolveProposal/onProposalPending);
 // their definitions live with the lifecycle.
@@ -117,7 +119,7 @@ const ENGINE_PROBLEMS = Object.freeze({
     idle_turn: {
         status: 409,
         code: "idle-turn",
-        detail: "SEND[102] was emitted without an operation to continue from.",
+        detail: "`## SEND0 [102]` was emitted without an operation to continue from.",
     },
 } as const);
 type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
@@ -186,8 +188,6 @@ import type {
     ProviderAccounting,
     ProviderAttempt,
     ProviderAttemptFinishReason,
-    ProviderRequestAccounting,
-    ProviderRequestObserver,
     ProviderResponse,
 } from "@plurnk/plurnk-providers";
 import {
@@ -195,7 +195,6 @@ import {
     ProviderError,
     resolveActiveAlias,
     scopeEnvToAlias,
-    validateProviderRequestAccounting,
 } from "@plurnk/plurnk-providers";
 import { validateGbnf } from "@plurnk/gbnf";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
@@ -230,11 +229,28 @@ type EngineTurnResult = {
     budgetFailure?: SchemeResult;
 };
 
+type BareBatchResult = {
+    readonly statement: BareStatement;
+    readonly modelCallId: number;
+    readonly result: DispatchResult;
+};
+
 type BudgetPressure = {
     readonly usage: number;
     readonly ceiling: number;
     readonly deficit: number;
 };
+
+const TOKEN_BUDGET_OVERFLOW_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling. Newest log items were automatically FOLDed to fit within token budget. Curate the log and/or perform more conservatively scoped or chunked retrieval operations to recover.";
+
+const tokenBudgetOverflowFailure = (pressure: TokenBudgetOverflow): SchemeResult => Results.failure(
+    "engine:context",
+    "token-budget-overflow",
+    413,
+    TOKEN_BUDGET_OVERFLOW_DETAIL,
+    {},
+    { ...pressure },
+);
 
 const budgetPressure = (usage: number, ceiling: number): BudgetPressure => {
     if (usage <= ceiling) throw new Error("context-envelope admission requires positive ruler debt");
@@ -270,13 +286,6 @@ export type LoopUsage = {
     promptBudget: number | null;
     meta: Record<string, unknown>;
 };
-
-class ProviderAccountingPersistenceError extends Error {
-    constructor(message: string, cause: unknown) {
-        super(message, { cause });
-        this.name = "ProviderAccountingPersistenceError";
-    }
-}
 
 // Runtime normalization for a disposition the engine refuses or resolves as a
 // continue after dispatch ({§send}). Every admitted emission itself ends in an
@@ -333,7 +342,7 @@ export default class Engine {
     // Boot-discovered runtime executors. Daemon builds + sets via
     // setExecutors at start(); undefined until then (and in bare tests).
     #executors: ExecutorRegistry | undefined;
-    // {§send-premature-terminate}/SEND[202]<T> — park deadlines by loopId, written at dispatch (the
+    // {§send-premature-terminate}/scoped SEND signal 202 — park deadlines by loopId, written at dispatch (the
     // marker's seconds; -1 = indefinite), consumed by the daemon's drain park-exit to schedule
     // the deadline wake. In-memory: a daemon restart drops pending deadlines (documented).
     readonly parkDeadlines: Map<number, number> = new Map();
@@ -614,12 +623,16 @@ export default class Engine {
     registerRuntime(tag: string, entry: RegistryEntry, scheme?: RuntimeSchemeFacet): void {
         if (this.#executors === undefined) throw new Error("registerRuntime: executor registry not wired yet");
         RuntimeTag.assert(tag, "module runtime");
+        const normalized = {
+            ...entry,
+            invocation: RuntimeInvocation.assert(entry.invocation, entry.namespaceOwner.name, tag),
+        } satisfies RegistryEntry;
         // Preflight both owners before either write; synchronous registration
         // then cannot leave a half-claimed namespace. {§plugin-namespace-arbitration}
-        this.#executors.assertCanRegister(tag, entry.namespaceOwner);
-        this.#schemes.assertRuntimeClaim(tag, entry.namespaceOwner);
-        this.#schemes.registerRuntimeScheme(tag, entry.executor, entry.namespaceOwner, scheme);
-        this.#executors.register(tag, entry);
+        this.#executors.assertCanRegister(tag, normalized.namespaceOwner);
+        this.#schemes.assertRuntimeClaim(tag, normalized.namespaceOwner);
+        this.#schemes.registerRuntimeScheme(tag, normalized.executor, normalized.namespaceOwner, scheme);
+        this.#executors.register(tag, normalized);
     }
 
     // Supply an explicitly configured local constraint; ANTLR remains the
@@ -670,6 +683,157 @@ export default class Engine {
             provider.attributions?.(context) ?? [],
         );
         return [...tags];
+    }
+
+    #providerAttributions(
+        provider: Provider,
+        context: PluginAttributionContext,
+    ): string[] {
+        return [...Meta.composeAttributions(provider.attributions?.(context) ?? [])];
+    }
+
+    static #providerFailure(error: unknown, signal: AbortSignal | undefined): SchemeResult {
+        if (error instanceof ProviderError) {
+            return { status: error.problem.status, problem: error.problem };
+        }
+        if (signal?.aborted === true) {
+            const timedOut = signal.reason === LOOP_TIMEOUT_REASON;
+            return Results.failure(
+                "engine:provider",
+                timedOut ? "provider-call-timeout" : "provider-call-cancelled",
+                timedOut ? 504 : 499,
+                timedOut
+                    ? "The provider call was interrupted by the loop deadline."
+                    : "The provider call was interrupted by loop cancellation.",
+                {},
+                { stage: "provider-request", retryable: false },
+            );
+        }
+        console.error("Provider failed outside its Problem Details contract:", error);
+        return Results.failure(
+            "engine:provider",
+            "provider-contract-violation",
+            502,
+            "The provider failed without returning its required Problem Details.",
+            {},
+            { stage: "provider-request", retryable: false },
+        );
+    }
+
+    async #runBareBatch({
+        statements,
+        provider,
+        turnId,
+        modelCallSequenceStart,
+        workspaceId,
+        workerId,
+        primaryWorkerId,
+        loopSequence,
+        turnSequence,
+        signal,
+    }: {
+        statements: readonly BareStatement[];
+        provider: Provider;
+        turnId: number;
+        modelCallSequenceStart: number;
+        workspaceId: number;
+        workerId: number;
+        primaryWorkerId: string;
+        loopSequence: number;
+        turnSequence: number;
+        signal: AbortSignal | undefined;
+    }): Promise<BareBatchResult[]> {
+        const prepared: Array<{
+            statement: BareStatement;
+            modelCall: ModelCall;
+            attributions: string[];
+        }> = [];
+        for (const [index, statement] of statements.entries()) {
+            const attributionContext: PluginAttributionContext = Object.freeze({
+                workspaceId: String(workspaceId),
+                workerId: String(workerId),
+                primaryWorkerId,
+                loop: loopSequence,
+                turn: turnSequence,
+                attempt: 1,
+            });
+            const attributions = this.#providerAttributions(provider, attributionContext);
+            const modelCall = await ModelCall.open(this.#db, {
+                turnId,
+                sequence: modelCallSequenceStart + index,
+                kind: "bare",
+                attributions,
+                model: provider.model,
+            });
+            prepared.push({ statement, modelCall, attributions });
+        }
+
+        const maxTokens = this.#packets.maxTokensFor(provider) ?? undefined;
+        const settlements = await Promise.allSettled(prepared.map(async ({ statement, modelCall, attributions }) => {
+            try {
+                const response = await observed(
+                    "provider.generate",
+                    { model: provider.model, attempt: 1, kind: "bare" },
+                    async (span) => {
+                        try {
+                            const generated = await provider.generate({
+                                messages: [{ role: "user", content: statement.body }],
+                                workerId: `model-call:${modelCall.id}`,
+                                signal,
+                                maxTokens,
+                                attributions: attributions.length > 0 ? attributions : undefined,
+                                workspaceId: String(workspaceId),
+                                loop: loopSequence,
+                                turn: turnSequence,
+                                observeRequest: modelCall.observeRequest,
+                                callKind: "bare",
+                            });
+                            modelCall.assertAccounting(generated.accounting);
+                            recordCounter(PROVIDER_CALLS, {
+                                model: provider.model,
+                                attempt: 1,
+                                status: "resolved",
+                            });
+                            span.setAttribute("status", "resolved");
+                            return generated;
+                        } catch (error) {
+                            if (error instanceof ProviderError) {
+                                modelCall.assertAccounting(error.accounting);
+                            }
+                            throw error;
+                        }
+                    },
+                );
+                await modelCall.observeResponse(response);
+                return {
+                    statement,
+                    modelCallId: modelCall.id,
+                    result: Results.assert({
+                        status: 200,
+                        content: response.assistant.content,
+                        mimetype: "text/plain",
+                    }),
+                };
+            } catch (error) {
+                if (error instanceof ModelCallPersistenceError || error instanceof ProviderAccountingIntegrityError) {
+                    throw error;
+                }
+                const failure = Engine.#providerFailure(error, signal);
+                if (error instanceof ProviderError && error.attempt !== undefined) {
+                    await modelCall.observeResponse(error.attempt, failure);
+                } else {
+                    await modelCall.fail(failure);
+                }
+                return { statement, modelCallId: modelCall.id, result: failure };
+            }
+        }));
+
+        const internalFailure = settlements.find(
+            (settlement): settlement is PromiseRejectedResult => settlement.status === "rejected",
+        );
+        if (internalFailure !== undefined) throw internalFailure.reason;
+        signal?.throwIfAborted();
+        return settlements.map((settlement) => (settlement as PromiseFulfilledResult<BareBatchResult>).value);
     }
 
     // {§attribution} — reporting derives from exact provider-request evidence;
@@ -723,13 +887,14 @@ export default class Engine {
     }
 
     async runLoop({
-        provider, messages, requirements = "", workspaceId, workerId, loopId,
+        provider, childProvider = provider, messages, requirements = "", workspaceId, workerId, loopId,
         maxTurns = 50, maxStrikes = readMaxStrikes(),
         minCycles = readPositiveInt("PLURNK_SERVICE_MIN_CYCLES", DEFAULT_MIN_CYCLES),
         maxCyclePeriod = readPositiveInt("PLURNK_SERVICE_MAX_CYCLE_PERIOD", DEFAULT_MAX_CYCLE_PERIOD),
         origin = "model", signal, onDispatch,
     }: {
         provider: Provider;
+        childProvider?: Provider;
         messages: ChatMessage[];
         // Optional Recap override; packet assembly owns default sourcing.
         requirements?: string;
@@ -783,11 +948,11 @@ export default class Engine {
         };
 
         // Cleanup splits by termination kind:
-        // - "graceful" (SEND[202] Accepted): in-flight streaming-scheme spawns
+        // - "graceful" (SEND signal 202 Accepted): in-flight streaming-scheme spawns
         //   are ALLOWED to outlive the loop — they complete naturally, write final
         //   channel state, and wake-on-completion (E.4) opens a fresh loop. 202 is
         //   the only terminal that means "keep my async work."
-        // - "forceful" (SEND[200] done, max_turns, strike, cancel, context-envelope rejection, 4xx/5xx):
+        // - "forceful" (SEND signal 200 done, max_turns, strike, cancel, context-envelope rejection, 4xx/5xx):
         //   fire the loop-level abort so leftover spawns tear down. "Done" reaps.
         const cleanup = (kind: "graceful" | "forceful", reason?: string): void => {
             clearTimeout(wall);
@@ -874,7 +1039,7 @@ export default class Engine {
                     { workerId, "loop.id": loopId },
                     async (span) => {
                         const t = await this.runTurn({
-                            provider, messages, requirements, workspaceId, workerId, loopId, origin, signal, onDispatch,
+                            provider, childProvider, messages, requirements, workspaceId, workerId, loopId, origin, signal, onDispatch,
                             turnNumber: turnIds.length + 1, maxTurns,
                             invalidEmissionRecoveryEntryId,
                         });
@@ -976,10 +1141,11 @@ export default class Engine {
     }
 
     async runTurn({
-        provider, messages, requirements = "", workspaceId, workerId, loopId, origin = "model", signal, onDispatch,
+        provider, childProvider = provider, messages, requirements = "", workspaceId, workerId, loopId, origin = "model", signal, onDispatch,
         turnNumber = 1, maxTurns = 50, invalidEmissionRecoveryEntryId,
     }: {
         provider: Provider;
+        childProvider?: Provider;
         messages: ChatMessage[];
         // Optional Recap override; packet assembly owns default sourcing.
         requirements?: string;
@@ -1057,13 +1223,13 @@ export default class Engine {
         // Model ops dispatch after these pre-model rows.
         let nextActionIndex = 1;
         const turnOpenPaths: string[] = [];
-        // {§model-entry} — the worker's first turn opens with the model's own turn-0, mirrored OPEN: a
-        // worked turn PLAN → the environment FINDs the foist ACTUALLY dispatches → SEND[102]. Built
+        // {§worker-initialization-entry} — the worker's first turn opens with a kernel-authored initialization: a
+        // worked turn PLAN → the environment FINDs the foist ACTUALLY dispatches → SEND signal 102. Built
         // from the real ops below (not a static print — we lean into the genuine echo paradigm) and
-        // written at sequence 1, so it reads first as the emission with the foisted results following.
+        // written at sequence 1, so it reads first with the foisted results following.
         const turnZeroMoves: string[] = [];
         if (seq === 1) {
-            if (workerFirstLoop) nextActionIndex = 2;  // reserve sequence 1 for the turn-0 echo
+            if (workerFirstLoop) nextActionIndex = 2;  // reserve sequence 1 for initialization
             // Operator doc READs (PLURNK_SERVICE_MD_<ALIAS>, {§actor-boundary-doc-injection}). The docs were materialized
             // as worker://plurnk/<entry> entries by the plurnk worker (LoopDocs, via the
             // {§actor-boundary} keystone); foist a READ of each into THIS turn-0 so the model
@@ -1096,7 +1262,6 @@ export default class Engine {
                 const promptPath = promptTarget(promptLoopSeq, seq);
                 const entry: EntryData = {
                     channels: { body: { content: promptRow.prompt, mimetype: "text/markdown" } },
-                    tags: [],
                     attributes: { openPaths },
                 };
                 await EntryCrud.writeEntry(promptPath.pathname, entry, systemCtx, "prompt", workerId);
@@ -1180,96 +1345,71 @@ export default class Engine {
         await this.#queueWorkspaceWarm(systemCtx, true, false);
 
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
-        // FIND surveys foisted into the worker's first model turn so it opens with its catalog.
-        // Folder-capable surfaces reveal one level with `*`; each deeper directory is an
-        // actionable `dir/**` aggregate. The curated kernel docs remain recursive, so the
-        // opening packet demonstrates both navigation forms. Empty results are orientation.
+        // Four FIND surveys foisted into the worker's first model turn establish the project,
+        // commons, private, and documentation surfaces in that order. Their `init`
+        // classification lets the model curate this opening survey as one log set.
         if (seq === 1) {
             // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
             const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
             const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
             if (filesItems !== null && workerFirstLoop) { // {§actor-boundary-catalog-preview} — once per worker
-                // engine_scheme_catalog_summary is the workspace-bounded scheme source: ordered,
-                // one row per stored entry scheme. log:// is absent —
-                // it lives in log_entries, not the catalog (present-mode, the # Log section).
                 const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
-                // Entry-bearing plugin schemes foist alongside the four structural surveys below.
-                const foistSchemes = catalogSchemes
-                    .filter((catalog) => catalog.scheme !== "prompt" && catalog.scheme !== "worker")
-                    .map(({ scheme, shallow_items }) => ({ scheme, shallow_items }));
-                // Commons + project files always foist. An empty result establishes that the
-                // surface exists and currently contains nothing.
-                foistSchemes.push({
-                    scheme: "worker",
-                    shallow_items: catalogSchemes.find((c) => c.scheme === "worker")?.shallow_items ?? 0,
-                });
-                if (!foistSchemes.some((c) => c.scheme === "file")) foistSchemes.push({ scheme: "file", shallow_items: 0 }); // Empty project surface still receives its orienting FIND.
-                for (const { scheme, shallow_items: shallowItems } of foistSchemes) {
-                    const isFile = scheme === "file";
-                    const pattern = this.#schemes.manifestFor(scheme)?.folderScopes === true ? "*" : "**";
-                    // Only the file map takes PLURNK_SERVICE_FILES_ITEMS as an explicit first-N
-                    // cap. Every other ordinary survey uses FIND's markerless first page.
-                    const cap = isFile && filesItems > 0 && shallowItems > 0 ? Math.min(filesItems, shallowItems) : null;
-                    const catalogMarker = cap === null ? null : { marks: [1, cap] as [number, number] };
-                    // The file survey foists as the BARE relative glob — the path shape plurnk.md
-                    // teaches (`*`, `src/**`, `**/notes.md`; bare = project-relative) — so the turn-0
-                    // exemplar and the log rows the model reads never train a leading-slash or
-                    // file:/// habit the rest of the teaching contradicts.
-                    const catalogFind: FindStatement = {
-                        op: "FIND", suffix: "", signal: null,
-                        target: isFile ? { kind: "local", raw: pattern } : {
-                            kind: "url",
-                            raw: `${scheme}:///${pattern}`,
-                            scheme,
-                            username: null, password: null, hostname: null, port: null,
-                            pathname: `/${pattern}`,
-                            query: null, fragment: null,
+                const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
+                const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
+                await Owner.kernelId(this.#db, workspaceId);
+                const surveys: Array<{ statement: FindStatement; exemplar: string }> = [
+                    {
+                        statement: {
+                            op: "FIND", suffix: "", signal: ["+init"],
+                            target: { kind: "local", raw: "*" },
+                            body: null,
+                            lineMarker: fileCap === null ? null : { marks: [1, fileCap] },
+                            position: UNKNOWN_POSITION,
                         },
-                        body: null,
-                        lineMarker: catalogMarker,
-                        position: UNKNOWN_POSITION,
-                    };
-                    await this.dispatch({
-                        statement: catalogFind, workspaceId, workerId, loopId, turnId,
-                        sequence: nextActionIndex, origin: "plurnk", onDispatch,
-                    });
+                        exemplar: `## FIND0 [+init] (*)${fileCap === null ? "" : ` <1,${fileCap}>`}`,
+                    },
+                    {
+                        statement: {
+                            op: "FIND", suffix: "", signal: ["+init"],
+                            target: { kind: "url", raw: "worker:///*", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
+                            body: null, lineMarker: null, position: UNKNOWN_POSITION,
+                        },
+                        exemplar: "## FIND0 [+init] (worker:///*)",
+                    },
+                    {
+                        statement: {
+                            op: "FIND", suffix: "", signal: ["+init"],
+                            target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", query: null, fragment: null },
+                            body: null, lineMarker: null, position: UNKNOWN_POSITION,
+                        },
+                        exemplar: "## FIND0 [+init] (worker://~/*)",
+                    },
+                    {
+                        statement: {
+                            op: "FIND", suffix: "", signal: ["+init", "+docs"],
+                            target: { kind: "url", raw: "worker://plurnk/docs/**", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/docs/**", query: null, fragment: null },
+                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                        },
+                        exemplar: "## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>",
+                    },
+                ];
+                for (const { statement, exemplar } of surveys) {
+                    await this.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
                     nextActionIndex++;
-                    // {§model-entry} — the same FIND, rendered back to DSL for the turn-0 echo
-                    // (the model's own survey, mirrored OPEN). An explicit file cap rides as
-                    // `<1,N>`; ordinary surveys teach the safe markerless default by example.
-                    const target = isFile ? pattern : `${scheme}:///${pattern}`;
-                    turnZeroMoves.push(`<|FIND(${target})${cap === null ? "" : `<1,${cap}>`}|>`);
+                    turnZeroMoves.push(exemplar);
                 }
-                // The kernel's self-documenting surface — FIND(worker://plurnk/docs/**), uncapped,
-                // always ({§schemes-directory}, published under {§entry-owner}).
-                await Owner.kernelId(this.#db, workspaceId); // the row exists even before docs materialize — the empty survey is orienting, never 404
-                const kernelDocsFind: FindStatement = {
-                    op: "FIND", suffix: "", signal: null,
-                    target: { kind: "url", raw: "worker://plurnk/docs/**", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/docs/**", query: null, fragment: null },
-                    body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-                };
-                await this.dispatch({ statement: kernelDocsFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
-                nextActionIndex++;
-                turnZeroMoves.push("<|FIND(worker://plurnk/docs/**)<1,-1>|>");
-                // {§worker-scheme} — the building worker's own scratch gets the same markerless
-                // one-level survey in its perspective alone. It always executes: an empty private
-                // space is useful orientation, not grounds to hide the surface.
-                const ownFind: FindStatement = {
-                    op: "FIND", suffix: "", signal: null,
-                    target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", query: null, fragment: null },
-                    body: null, lineMarker: null, position: UNKNOWN_POSITION,
-                };
-                await this.dispatch({ statement: ownFind, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
-                nextActionIndex++;
-                turnZeroMoves.push("<|FIND(worker://~/*)|>");  // {§model-entry} — the own-space survey, into the turn-0 echo
             }
-            // {§model-entry} — mirror the model's turn-0 OPEN at sequence 1: PLAN → the FINDs actually
-            // foisted above (real, their results already in the log) → SEND[102]. Dynamic — it reflects
+            // {§worker-initialization-entry} — write the kernel's turn-0 initialization OPEN at sequence 1: PLAN → the FINDs actually
+            // foisted above (real, their results already in the log) → SEND signal 102. Dynamic — it reflects
             // the true survey, never a frozen print — and OPEN: the worked example the model orients on,
-            // so the grammar can stay thin. Subsequent turns mirror the model's real output, folded.
+            // so the grammar can stay thin.
             if (workerFirstLoop) {
-                const emission = ["<|PLAN>Survey context, then address the prompt.<PLAN|>", ...turnZeroMoves, "<|SEND[102]>Next, address the prompt using the survey.<SEND|>"].join("\n");
-                await this.#dispatcher.writeModelEntry({ verbatim: emission, workerId, loopId, turnId, sequence: 1, folded: false, origin: "plurnk" });
+                const initialization = [
+                    "# PLAN0\n* Initialization complete.\n* Next: address the prompt.",
+                    ...turnZeroMoves,
+                    "## SEND0 [102]\nNext, address the prompt.",
+                ].join("\n\n");
+                await this.#dispatcher.writeInitializationEntry({ verbatim: initialization, workerId, loopId, turnId, sequence: 1 });
             }
         }
 
@@ -1321,6 +1461,17 @@ export default class Engine {
         // SPEC {§grinder} — budget grinder, pre-LLM: reclaim window on actual overflow.
         const enforced = await this.#packets.enforceBudget({
             packet: requestPacket, provider, loopId, turnId,
+            recordOverflow: async (pressure) => {
+                await this.#problems.record({
+                    workerId,
+                    loopId,
+                    turnId,
+                    sequence: nextActionIndex++,
+                    origin: "plurnk",
+                    source: "engine",
+                    result: tokenBudgetOverflowFailure(pressure),
+                });
+            },
             rebuild: () => this.#packets.buildRequestPacket({
                 initialMessages: messages, requirements, workspaceId, workerId, loopId,
                 currentTurnSeq: seq, provider, gitStatus, notices, transientOpenLogEntryId,
@@ -1328,9 +1479,9 @@ export default class Engine {
         });
         requestPacket = enforced.packet;
         if (!enforced.fit) {
-            // {§tokenomics-context-envelope-admission}: ruler debt is model-facing
-            // curation pressure, not a failure. Only the effective total context
-            // envelope can reject the request.
+            // {§tokenomics-context-envelope-admission}: the overflow Problem is
+            // already durable. Remaining ruler debt may still be admitted; only
+            // the effective total context envelope can terminally reject the turn.
             const contextAdmission = await this.#packets.contextEnvelopeAdmission(
                 requestPacket,
                 provider,
@@ -1392,106 +1543,33 @@ export default class Engine {
         let providerCallInFlight = false;
         let providerAttemptSequence = 0;
         let providerAttemptId: number | null = null;
+        let providerModelCall: ModelCall | null = null;
         let providerAttemptAttributions: string[] = [];
-        let providerRequestSequence = 0;
-        let observedProviderRequests: ProviderRequestAccounting[] = [];
         const providerSignal = this.#loopAborts.get(loopId)?.signal ?? signal;
         // {§client-metadata}
         const { client } = await WorkspaceSettings.read(this.#db, workspaceId);
-        const observeProviderAttempt = async (
-            id: number,
-            attemptResponse: ProviderAttempt,
-        ): Promise<void> => {
-            const { accounting: omittedAccounting, ...responseEvidence } = attemptResponse;
-            void omittedAccounting;
-            await this.#db.engine_observe_turn_attempt_response.run({
-                id,
-                response: JSON.stringify(responseEvidence),
-                finish_reason: attemptResponse.assistant.finishReason,
-                model: attemptResponse.assistant.model,
-            });
-        };
+        const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
+        const primaryWorkerId = String(await this.resolveWorkerPrimary(workerId));
         const classifyProviderAttempt = async (
             id: number,
             attemptSplit: SplitProviderResponse,
             sequence: number,
             accepted: boolean,
-            failure: SchemeResult | null = null,
         ): Promise<void> => {
-            await this.#db.engine_classify_turn_attempt_response.run({
+            const result = await this.#db.engine_classify_turn_attempt_response.run({
                 id,
                 accepted: accepted ? 1 : 0,
                 parse_errors: JSON.stringify(attemptSplit.parseErrors),
-                failure: failure === null ? null : JSON.stringify(failure),
             });
+            if (result.changes !== 1) {
+                throw new Error(`emission attempt ${id} was not awaiting classification`);
+            }
             emissionAttempts = sequence;
-        };
-        const observeProviderRequest: ProviderRequestObserver = async (identity) => {
-            if (providerAttemptId === null) {
-                throw new Error("provider opened a physical request without a durable emission attempt");
-            }
-            if (identity.provider.length === 0 || identity.model.length === 0) {
-                throw new TypeError("provider request identity requires non-empty provider and model names");
-            }
-            const sequence = ++providerRequestSequence;
-            let row: { id: number } | undefined;
-            try {
-                row = await this.#db.engine_open_provider_request.get<{ id: number }>({
-                    turn_attempt_id: providerAttemptId,
-                    sequence,
-                    provider: identity.provider,
-                    model: identity.model,
-                });
-            } catch (cause) {
-                throw new ProviderAccountingPersistenceError(
-                    `could not open provider request ${sequence} for attempt ${providerAttemptId}`,
-                    cause,
-                );
-            }
-            if (row === undefined) {
-                throw new ProviderAccountingPersistenceError(
-                    `provider request ${sequence} for attempt ${providerAttemptId} did not open`,
-                    new Error("INSERT RETURNING produced no row"),
-                );
-            }
-            let settled = false;
-            return async (value) => {
-                if (settled) throw new Error(`provider request ${row.id} was settled more than once`);
-                const accounting = validateProviderRequestAccounting(value);
-                if (accounting.provider !== identity.provider || accounting.model !== identity.model) {
-                    throw new TypeError(`provider request ${row.id} settlement changed its durable identity`);
-                }
-                try {
-                    const result = await this.#db.engine_settle_provider_request.run(
-                        providerRequestSettlementParams(row.id, accounting),
-                    );
-                    if (result.changes !== 1) {
-                        throw new Error(`provider request ${row.id} was not pending at settlement`);
-                    }
-                } catch (cause) {
-                    throw new ProviderAccountingPersistenceError(
-                        `could not settle provider request ${row.id}`,
-                        cause,
-                    );
-                }
-                settled = true;
-                observedProviderRequests.push(accounting);
-            };
-        };
-        const assertObservedProviderAccounting = (
-            accounting: readonly ProviderRequestAccounting[],
-        ): void => {
-            const returned = accounting.map(validateProviderRequestAccounting);
-            if (!isDeepStrictEqual(returned, observedProviderRequests)) {
-                throw new TypeError("provider accounting does not match the cardinal requests observed by Core");
-            }
         };
         try {
             // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
             if (!signal?.aborted) this.#notices.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
-            const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
             railGrammar = await this.#grammarConstraint(provider);
-            const primaryWorkerId = String(await this.resolveWorkerPrimary(workerId));
             const attemptLimit = readEmissionAttempts();
             const maxTokens = this.#packets.maxTokensFor(provider) ?? undefined;
             const strikeStreak = this.#strikes.streak(loopId);
@@ -1511,19 +1589,22 @@ export default class Engine {
                 });
                 providerAttemptAttributions = await this.#attemptAttributions(provider, attributionContext);
                 requestPacket = { ...requestPacket, attributions: providerAttemptAttributions };
-                const attemptRow = await this.#db.engine_open_turn_attempt.get<{ id: number }>({
-                    turn_id: turnId,
+                providerModelCall = await ModelCall.open(this.#db, {
+                    turnId,
                     sequence: attempt,
-                    attributions: JSON.stringify(providerAttemptAttributions),
+                    kind: "emission",
+                    attributions: providerAttemptAttributions,
                     model: provider.model,
+                });
+                const attemptRow = await this.#db.engine_open_turn_attempt.get<{ id: number }>({
+                    model_call_id: providerModelCall.id,
                 });
                 if (attemptRow === undefined) {
                     throw new Error(`Engine.runTurn: provider attempt ${attempt} did not open`);
                 }
                 providerAttemptId = attemptRow.id;
-                providerRequestSequence = 0;
-                observedProviderRequests = [];
                 providerCallInFlight = true;
+                const currentModelCall = providerModelCall;
                 const completedResponse = await observed( // {§observability-boundary}
                     "provider.generate",
                     { model: provider.model, attempt },
@@ -1544,9 +1625,10 @@ export default class Engine {
                                 workspaceId: String(workspaceId),
                                 loop: loopSeq,
                                 turn: seq,
-                                observeRequest: observeProviderRequest,
+                                observeRequest: currentModelCall.observeRequest,
+                                callKind: "emission",
                             }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
-                            assertObservedProviderAccounting(generated.accounting);
+                            currentModelCall.assertAccounting(generated.accounting);
                             providerCallInFlight = false;
                             recordCounter(PROVIDER_CALLS, {
                                 model: provider.model,
@@ -1557,14 +1639,14 @@ export default class Engine {
                             return generated;
                         } catch (error) {
                             if (error instanceof ProviderError) {
-                                assertObservedProviderAccounting(error.accounting);
+                                currentModelCall.assertAccounting(error.accounting);
                             }
                             throw error;
                         }
                     },
                 );
                 response = completedResponse;
-                await observeProviderAttempt(attemptRow.id, completedResponse);
+                await currentModelCall.observeResponse(completedResponse);
                 railEvidence = railGrammar === undefined
                     ? undefined
                     : Engine.#requireGrammarEvidence(completedResponse);
@@ -1581,58 +1663,28 @@ export default class Engine {
         } catch (err) {
             // This handler owns only provider-call failures. Parser, cost, SQL,
             // and engine-contract failures retain their original source.
-            if (err instanceof ProviderAccountingPersistenceError) throw err;
+            if (err instanceof ModelCallPersistenceError || err instanceof ProviderAccountingIntegrityError) throw err;
             if (!providerCallInFlight) throw err;
             providerCallInFlight = false;
-            if (providerAttemptId === null) {
-                throw new Error("provider call failed without a durable attempt identity", { cause: err });
+            if (providerAttemptId === null || providerModelCall === null) {
+                throw new Error("provider call failed without durable model-call and attempt identities", { cause: err });
             }
-            const failure: SchemeResult = err instanceof ProviderError
-                ? { status: err.problem.status, problem: err.problem }
-                : providerSignal?.aborted === true
-                    ? Results.failure(
-                        "engine:provider",
-                        providerSignal.reason === LOOP_TIMEOUT_REASON ? "provider-call-timeout" : "provider-call-cancelled",
-                        providerSignal.reason === LOOP_TIMEOUT_REASON ? 504 : 499,
-                        providerSignal.reason === LOOP_TIMEOUT_REASON
-                            ? "The provider call was interrupted by the loop deadline."
-                            : "The provider call was interrupted by loop cancellation.",
-                        {},
-                        { stage: "provider-request", retryable: false },
-                    )
-                    : (() => {
-                        console.error("Provider failed outside its Problem Details contract:", err);
-                        return Results.failure(
-                            "engine:provider",
-                            "provider-contract-violation",
-                            502,
-                            "The provider failed without returning its required Problem Details.",
-                            {},
-                            {
-                                stage: "provider-request",
-                                retryable: false,
-                            },
-                        );
-                    })();
+            const failure = Engine.#providerFailure(err, providerSignal);
             // {§provider-interrupted-attempt} — a provider-declared interruption
             // carries response evidence without becoming a completed exchange.
             // Persist it as an unaccepted attempt before settling the failure.
             if (err instanceof ProviderError && err.attempt !== undefined) {
                 response = err.attempt;
-                await observeProviderAttempt(providerAttemptId, response);
+                await providerModelCall.observeResponse(response, failure);
                 splitResponse = this.#splitResponse(response);
                 await classifyProviderAttempt(
                     providerAttemptId,
                     splitResponse,
                     providerAttemptSequence,
                     false,
-                    failure,
                 );
             } else {
-                await this.#db.engine_fail_turn_attempt.run({
-                    id: providerAttemptId,
-                    failure: JSON.stringify(failure),
-                });
+                await providerModelCall.fail(failure);
                 emissionAttempts = providerAttemptSequence;
             }
             // {§turn-never-blank} — a ProviderError means no completed exchange exists.
@@ -1678,9 +1730,10 @@ export default class Engine {
             throw new OperationFailureError(recorded.result, { cause: err });
         }
 
-        if (response === undefined || splitResponse === undefined) {
+        if (response === undefined || splitResponse === undefined || providerModelCall === null) {
             throw new Error("provider attempt loop completed without a response");
         }
+        const emissionModelCallId = providerModelCall.id;
         if (!splitResponse.emissionValid) {
             // {§invalid-emission-attempts} The first consecutive exhaustion
             // publishes only the raw final response and generic recovery fact.
@@ -1693,6 +1746,7 @@ export default class Engine {
                     turnId,
                     sequence: nextActionIndex,
                     folded: true,
+                    modelCallId: emissionModelCallId,
                     admission: "rejected",
                 });
                 this.#notices.push(workspaceId, loopId, {
@@ -1873,6 +1927,10 @@ export default class Engine {
             },
         );
         const droppedCount = opsCount - opsToDispatch.length;
+        const bareStatements = opsToDispatch.filter(
+            (statement): statement is BareStatement => statement.op === "BARE",
+        );
+        let bareResults: ReadonlyMap<BareStatement, BareBatchResult> | null = null;
         const outcomes: StrikeOutcome[] = [];
         // Running counter — a multi-file READ writes N rows from one statement (rowsWritten),
         // so the next op's sequence picks up after them. Collapses to nextActionIndex+i when
@@ -1940,11 +1998,44 @@ export default class Engine {
                 "op.dispatch",
                 { op: statement.op },
                 async (span) => {
-                    const dispatchResult = await this.#dispatcher.dispatch({
-                        statement, workspaceId, workerId, loopId, turnId,
-                        sequence: rowSeq,
-                        origin, onDispatch,
-                    });
+                    let dispatchResult: DispatchResult;
+                    if (statement.op === "BARE") {
+                        if (bareResults === null) {
+                            const batch = await this.#runBareBatch({
+                                statements: bareStatements,
+                                provider: childProvider,
+                                turnId,
+                                modelCallSequenceStart: providerAttemptSequence + 1,
+                                workspaceId,
+                                workerId,
+                                primaryWorkerId,
+                                loopSequence: loopSeq,
+                                turnSequence: seq,
+                                signal: providerSignal,
+                            });
+                            bareResults = new Map(batch.map((item) => [item.statement, item]));
+                        }
+                        const bare = bareResults.get(statement);
+                        if (bare === undefined) {
+                            throw new Error("BARE statement reached dispatch without its batch result");
+                        }
+                        dispatchResult = await this.#dispatcher.recordBareResult({
+                            statement,
+                            workspaceId,
+                            workerId,
+                            loopId,
+                            turnId,
+                            sequence: rowSeq,
+                            origin,
+                            onDispatch,
+                        }, bare.result, bare.modelCallId);
+                    } else {
+                        dispatchResult = await this.#dispatcher.dispatch({
+                            statement, workspaceId, workerId, loopId, turnId,
+                            sequence: rowSeq,
+                            origin, onDispatch,
+                        });
+                    }
                     span.setAttribute("status", dispatchResult.status);
                     recordCounter(OPS_DISPATCHED, { op: statement.op, status: dispatchResult.status });
                     return dispatchResult;
@@ -2007,7 +2098,7 @@ export default class Engine {
                 }
                 : {
                     stage: "turn",
-                    recovery: "Perform an operation before continuing with SEND[102].",
+                    recovery: "Perform an operation before continuing with `## SEND0 [102]`.",
                     retryable: false,
                 };
             await this.#problems.record({
@@ -2040,7 +2131,16 @@ export default class Engine {
             ? response.assistant.reasoningEncrypted
             : undefined;
         if (packetAssistant.content.trim().length > 0 || reasoningItems !== undefined) {
-            await this.#dispatcher.writeModelEntry({ verbatim: packetAssistant.content, workerId, loopId, turnId, sequence: errSeq++, folded: true, ...(reasoningItems !== undefined ? { reasoningItems } : {}) });
+            await this.#dispatcher.writeModelEntry({
+                verbatim: packetAssistant.content,
+                workerId,
+                loopId,
+                turnId,
+                sequence: errSeq++,
+                folded: true,
+                modelCallId: emissionModelCallId,
+                ...(reasoningItems !== undefined ? { reasoningItems } : {}),
+            });
         }
 
         return {
@@ -2190,6 +2290,7 @@ export default class Engine {
             pathname: string | null;
             rx: string | null;
             attrs: string | null;
+            tags: string | null;
             status_rx: number | null;
             terminated_by: string | null;
         }>({ workspace_id: workspaceId, worker_id: workerId });
@@ -2208,6 +2309,14 @@ export default class Engine {
                 throw new Error(`ambient loop-termination event ${r.event_id} status ${r.status_rx} does not match its terminal result status ${terminal.status}`);
             }
             let attrs = r.attrs ?? "{}";
+            const parsedTags = JSON.parse(r.tags ?? "[]") as unknown;
+            if (!Array.isArray(parsedTags) || !parsedTags.every((tag) => typeof tag === "string" && tag.length > 0)) {
+                throw new TypeError(`ambient event ${r.event_id} tags must be an array of nonempty strings`);
+            }
+            const tags = [...new Set(parsedTags)].toSorted();
+            if (tags.length !== parsedTags.length || tags.some((tag, index) => tag !== parsedTags[index])) {
+                throw new TypeError(`ambient event ${r.event_id} tags must be unique and sorted`);
+            }
             if (terminal !== null) {
                 const inherited = JSON.parse(attrs) as unknown;
                 if (inherited === null || typeof inherited !== "object" || Array.isArray(inherited)) {
@@ -2235,6 +2344,14 @@ export default class Engine {
                 expanded: terminal !== null && terminal.status >= 200 && terminal.status < 300 ? 1 : 0,
                 attrs,
             });
+            const materialized = inserted ?? await this.#db.engine_ambient_delta_id.get<{ id: number }>({
+                worker_id: workerId,
+                event_id: r.event_id,
+            });
+            if (materialized === undefined) throw new Error(`ambient event ${r.event_id} has no observer log row after materialization`);
+            for (const tag of tags) {
+                await this.#db.log_write_tag.run({ log_entry_id: materialized.id, tag });
+            }
             if (inserted !== undefined) written++;
         }
         await this.#db.engine_advance_ambient_cursor.get({
@@ -2390,7 +2507,8 @@ export default class Engine {
             const span = editedSpan(d.before, d.after);
             await this.#db.engine_insert_log_entry.get({
                 worker_id: worker.id, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
-                origin: "plurnk", source: "file", op: "EDIT", suffix: "", signal: null,
+                origin: "plurnk", source: "file", model_call_id: null,
+                op: "EDIT", suffix: "", signal: null,
                 // Match Dispatcher.#extractTarget: a bare file address has NULL scheme
                 // only in log target metadata; its entry identity remains `file`.
                 scheme: null, username: null, password: null, hostname: null, port: null,
@@ -2460,6 +2578,7 @@ export default class Engine {
             sequence,
             origin: "plurnk",
             source: null,
+            model_call_id: null,
             op: "prompt",
             suffix: "",
             signal: null,
@@ -2596,7 +2715,6 @@ export default class Engine {
         };
         const entry: EntryData = {
             channels: { body: { content: prompt, mimetype: "text/markdown" } },
-            tags: [],
             attributes: { openPaths },
         };
         await EntryCrud.writeEntry(pathname, entry, ctx, "prompt", workerId);

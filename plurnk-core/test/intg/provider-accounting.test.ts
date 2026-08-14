@@ -24,14 +24,18 @@ const openRequest = async (
         loop_id: loopId,
         sequence: turnSequence,
     });
-    const attempt = await db.engine_open_turn_attempt.get<{ id: number }>({
+    const modelCall = await db.engine_open_model_call.get<{ id: number }>({
         turn_id: turn!.id,
         sequence: 1,
+        kind: "emission",
         attributions: "[]",
         model: accounting.model,
     });
+    const attempt = await db.engine_open_turn_attempt.get<{ id: number }>({
+        model_call_id: modelCall!.id,
+    });
     const request = await db.engine_open_provider_request.get<{ id: number }>({
-        turn_attempt_id: attempt!.id,
+        model_call_id: modelCall!.id,
         sequence: 1,
         provider: accounting.provider,
         model: accounting.model,
@@ -40,6 +44,25 @@ const openRequest = async (
         providerRequestSettlementParams(request!.id, accounting),
     );
     assert.equal(settled.changes, 1);
+    if (accounting.outcome === "response") {
+        await db.engine_observe_model_call_response.run({
+            id: modelCall!.id,
+            response: JSON.stringify({ assistant: { content: "fixture" } }),
+            failure: null,
+            finish_reason: "stop",
+            model: accounting.model,
+        });
+        await db.engine_classify_turn_attempt_response.run({
+            id: attempt!.id,
+            accepted: 1,
+            parse_errors: "[]",
+        });
+    } else {
+        await db.engine_fail_model_call.run({
+            id: modelCall!.id,
+            failure: JSON.stringify({ status: 502, problem: { status: 502 } }),
+        });
+    }
 };
 
 const fixture = async (): Promise<{
@@ -130,7 +153,7 @@ test("the baseline has no floating-point or denormalized accounting columns", as
         const sqlite = new DatabaseSync(path, { readOnly: true });
         const tableInfo = (table: string): Array<{ name: string; type: string }> =>
             sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string; type: string }>;
-        for (const table of ["workspaces", "workers", "turns", "turn_attempts"]) {
+        for (const table of ["workspaces", "workers", "turns", "model_calls", "turn_attempts"]) {
             assert.equal(
                 tableInfo(table).some(({ name }) => name.startsWith("usage_") || name === "cost_usd"),
                 table === "turns",

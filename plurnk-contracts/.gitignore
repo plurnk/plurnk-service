@@ -1,8 +1,7 @@
 node_modules/
 src/generated/
 src/types.generated.ts
-dist/*
-!dist/plurnk.gbnf
+dist/
 *.tokens
 *.interp
 *.tgz

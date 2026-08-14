@@ -11,9 +11,11 @@ import { Validator, type LineMarker, type ProblemDetails, type RangeExtent, type
 import { renderTarget } from "./plurnk-uri.ts";
 import type { GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
+import LogEntryProjection from "./LogEntryProjection.ts";
 import {
     assertEditReceipt,
     assertResourceEffects,
+    LineAnchors,
     type EditReceipt,
 } from "../content/index.ts";
 
@@ -90,6 +92,7 @@ interface LogEntryView {
     source?: unknown;
     attrs?: unknown;
     tags?: unknown;
+    lineAnchors?: readonly string[];
 }
 interface FailurePointer { status?: unknown; coordinate?: unknown }
 interface NoticeView {
@@ -208,9 +211,9 @@ export default class PacketWire {
         ];
     }
 
-    // Number each line of body as `<N>:<line>` — a bare `N:` prefix, NO separator whitespace
+    // Number a non-READ body line as `<N>:<line>` — a bare `N:` prefix, NO separator whitespace
     // ({§render-rule-line-navigable-prefix}): the leading digit prevents column-zero fence collisions and gives
-    // the model line refs for free (`READ<42-46>`), while the absence of any separator means a
+    // the model line refs for free (`## READ0 (...) <42-46>`), while the absence of any separator means a
     // reproduced line has nothing between `N:` and the content to copy — the hard-tab separator used
     // to leak into edit bodies and corrupt indentation. The content's OWN leading whitespace is
     // content, preserved verbatim.
@@ -218,24 +221,30 @@ export default class PacketWire {
     // job now (baked into the preview string).
     static #numberLines(body: string, start = 1): string {
         let line = start;
-        return body.replace(
-            /(^|\r\n|\r|\n)(?=[\s\S])/g,
+        return `${line++}:${body.replace(
+            /(\r\n|\r|\n)(?=[\s\S])/g,
             (separator) => `${separator}${line++}:`,
-        );
+        )}`;
     }
 
-    // The single content-body renderer EVERY output-emitting op routes through, so the line-number
-    // convention the model orients on can't drift. Every textual body receives
-    // the `N:` prefix from `startLine`; matchers consume canonical content before
-    // this presentation projection. Empty content produces no body.
-    static #renderContentBody(content: string, startLine: number | null = 1): string {
+    // The single content-body renderer EVERY output-emitting op routes through.
+    // Exact READ content receives `@hash:N:`; other textual bodies receive `N:`.
+    // Matchers consume canonical content before this presentation projection.
+    // Empty content produces no body.
+    static #renderContentBody(
+        content: string,
+        startLine: number | null = 1,
+        lineAnchors: readonly string[] | null = null,
+    ): string {
         if (content.length === 0) return "";
         // `startLine === null` means the producer already supplied numbered
         // content; re-numbering would duplicate its coordinates.
         const rendered = startLine !== null
-            ? PacketWire.#numberLines(content, startLine)
+            ? lineAnchors === null
+                ? PacketWire.#numberLines(content, startLine)
+                : LineAnchors.render(content, startLine, lineAnchors)
             : content;
-        return PacketWire.#wrapBody(rendered);
+        return PacketWire.#quoteBody(rendered);
     }
 
     // Tolerant JSON parser for log entries' persisted rx/tx strings. The engine
@@ -279,18 +288,20 @@ export default class PacketWire {
         };
     }
 
-    // Wrap a body in the fixed `<|BODY>` enclosure, never the target: every body
-    // line is `N:`-prefixed, so a bare close line can never occur
-    // inside a body, and a fixed fence gives the model nothing address-shaped to
-    // mimic back as op syntax — identity lives in the adjacent meta JSON. Leading
-    // `\n` always (separates the opening fence from the first body character).
-    // Trailing `\n` only when the body doesn't already end with one — otherwise you
-    // get a doubled newline that renders as a blank line before the closing fence,
-    // which reads as "the content has a trailing blank line" when actually it
-    // doesn't. The body's own whitespace decides the shape.
-    static #wrapBody(body: string): string {
-        const sep = body.endsWith("\n") ? "" : "\n";
-        return `<|BODY>\n${body}${sep}<BODY|>`;
+    // {§jsonplurnk} One deliberately raw multiline JSON string. The physical
+    // newline after the opening quote and every positive numeric or anchored coordinate prefix
+    // make the closing `"}` at column zero unambiguous without an invented
+    // delimiter for source text to imitate. Already-numbered producer output is
+    // checked here too: malformed bodies fail at the one projection boundary.
+    static #quoteBody(body: string): string {
+        const endsWithLineBreak = /(?:\r\n|\r|\n)$/.test(body);
+        const lines = body.split(/\r\n|\r|\n/);
+        const contentLines = endsWithLineBreak ? lines.slice(0, -1) : lines;
+        if (contentLines.length === 0 || contentLines.some((line) =>
+            !/^[1-9]\d*:/.test(line) && !LineAnchors.isAnchoredLine(line))) {
+            throw new TypeError("A raw jsonplurnk body requires a positive coordinate prefix on every physical line.");
+        }
+        return `"\n${body}${endsWithLineBreak ? "" : "\n"}"`;
     }
 
     // Render one Log entry → a single bullet line carrying the meta JSON.
@@ -324,7 +335,18 @@ export default class PacketWire {
             if (newline === -1) break;
             if (line === maxLines - 1) lineEnd = newline + 1;
         }
-        const end = Math.min(text.length, lineEnd, maxChars);
+        let end = Math.min(text.length, lineEnd, maxChars);
+        // A character cap still cuts a single-line bomb in place. Once the
+        // preview contains a complete physical line, stop at that boundary so
+        // truncation cannot manufacture a partial next-line prefix (for
+        // example `14` from an already numbered `14:...` body).
+        if (end === maxChars && end < text.length) {
+            const previousBreak = Math.max(
+                text.lastIndexOf("\n", end - 1),
+                text.lastIndexOf("\r", end - 1),
+            );
+            if (previousBreak >= 0) end = previousBreak + 1;
+        }
         return { text: text.slice(0, end), cut: end < text.length };
     }
 
@@ -333,28 +355,17 @@ export default class PacketWire {
             const meta: Record<string, unknown> = {};
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
             const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
-            // An executor entry sink is durably journaled as the system EDIT that
-            // created the entry. That storage fact is not the model-facing action:
-            // the resulting resource is ordinary readable state pushed into its
-            // environment. Project it as a folded system READ so the log advertises
-            // the available operation instead of implying that the model or another
-            // agent authored a mutation. The coordinate still resolves the same
-            // underlying row; the typed attrs preserve exact replay/client semantics.
-            const materializedEntry = e.origin === "plurnk" && op === "EDIT"
-                && e.attrs !== null && typeof e.attrs === "object"
-                && (e.attrs as { kind?: unknown }).kind === "entry_materialized";
-            const renderedOp = materializedEntry ? "READ" : op;
-            const modelEmission = op === null
-                && e.attrs !== null && typeof e.attrs === "object"
-                && (e.attrs as { kind?: unknown }).kind === "model_emission";
+            const renderedOp = LogEntryProjection.op(e);
+            const actionlessKind = op === null
+                ? LogBody.actionlessKind({ op, attrs: e.attrs })
+                : null;
             const path = PacketWire.#entryPath(coordinate, renderedOp);
             if (path !== null) meta.path = path;
             if (typeof e.origin === "string") meta.origin = e.origin;
             // {§env-delta-attribution}: render the causal worker address or
             // subsystem token when present; absence means the owning worker.
             if (typeof e.source === "string" && e.source.length > 0) meta.source = e.source;
-            if (renderedOp !== null) meta.op = renderedOp;
-            if (modelEmission) meta.kind = "model_emission";
+            if (actionlessKind !== null) meta.kind = actionlessKind;
             if (e.source === "file" && e.attrs !== null && typeof e.attrs === "object" && "git" in e.attrs) {
                 const git = (e.attrs as { git?: unknown }).git;
                 if (typeof git !== "string" || git.length !== 2) {
@@ -401,7 +412,7 @@ export default class PacketWire {
                 if (target !== null) meta.target = target;
             }
             // EXEC's output is a separate stream entry ({§exec-stream}); its address rides in a
-            // `stream` link, distinct from `target` (the cwd / executable path it ran in).
+            // `stream` link, distinct from the runtime-owned invocation target.
             if (op === "EXEC" && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
                 meta.stream = (e.attrs as { stream: string }).stream;
             }
@@ -504,7 +515,7 @@ export default class PacketWire {
                 }));
             }
 
-            // The canonical full body is shared with READ(log://), FIND(log://),
+            // The canonical full body is shared with log READ, log FIND,
             // and search derivation. READ/FIND already own selection bounds and
             // render complete; every other body uses this one preview projection.
             const fullBody = LogBody.resolve({
@@ -526,9 +537,10 @@ export default class PacketWire {
             if (projection.cut) {
                 meta.overflow = `Body content truncated. Full body: ${path}`;
             }
+            const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;
             const body = emptyFind || projection.text.length === 0
                 ? ""
-                : PacketWire.#renderContentBody(projection.text, fullBody.startLine);
+                : PacketWire.#renderContentBody(projection.text, fullBody.startLine, lineAnchors);
 
             // tokens on EVERY row (0 when there's genuinely no body) so the model can always weigh
             // it; for a folded row this is the room an OPEN would add.
@@ -545,13 +557,13 @@ export default class PacketWire {
 
             // {§jsonplurnk} — `display` describes the three body states: `none` carries an explicit
             // empty JSON string, `folded` withholds an existing body, and `open` appends that body as
-            // the format's one non-JSON value (a raw BODY enclosure). The explicit empty body keeps
+            // the format's one raw multiline string. The explicit empty body keeps
             // every state self-describing; OPEN/FOLD remain friendly no-ops on `none`.
             const display = body.length === 0 ? "none" : e.folded === true ? "folded" : "open";
             meta.display = display;
             if (display === "none") meta.body = "";
             const obj = PacketWire.#canonicalJson(meta);
-            return display === "open" ? obj.replace(/\}$/, `,"body":\n${body}\n}`) : obj;
+            return display === "open" ? obj.replace(/\}$/, `,"body":${body}}`) : obj;
         }).join(",\n");
     }
 

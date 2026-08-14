@@ -113,7 +113,7 @@ ignore the extension; PLURNK clients consume the same contracts-owned shape as
 every other daemon surface.
 
 - §agui-row-channel **The row channel** — every log row ALSO rides `CUSTOM plurnk.row`
-  carrying the full wire entry (fold state, tags-in-signal, tokens, coordinate) alongside its
+  carrying the full wire entry (fold state, durable tags, tokens, coordinate) alongside its
   core projection. Rich clients (TUI/nvim) render plurnk-native fidelity from `plurnk.row`;
   generic clients never see the difference. This is the metadata channel the exclusive-portal
   migration stands on.

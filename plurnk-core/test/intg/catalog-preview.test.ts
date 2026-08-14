@@ -11,8 +11,8 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-type LogRow = { op: string; pathname: string; scheme: string | null; hostname: string | null; status_rx: number; rx: string };
-const mock = () => new Mock({ contextWindow: 8192, responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 50)] });
+type LogRow = { op: string; pathname: string; scheme: string | null; hostname: string | null; sequence: number; signal: string | null; status_rx: number; rx: string };
+const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
 
 test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
@@ -142,7 +142,7 @@ test("turn-0 once-per-worker foists fire on the worker's first loop only, not ev
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {
-        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 50), makeMockResponse("<|SEND[200]>done<SEND|>", 50)] });
+        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 50), makeMockResponse("## SEND0 [200]\ndone", 50)] });
         await withDaemon(twoLoops, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -163,7 +163,7 @@ test("turn-0 once-per-worker foists fire on the worker's first loop only, not ev
     }
 });
 
-test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a static print", async () => {
+test("the turn-0 initialization mirrors the REAL foisted survey — dynamic, not a static print", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist each ordinary first page at turn 0
@@ -178,22 +178,26 @@ test("the turn-0 exemplar mirrors the REAL foisted survey — dynamic, not a sta
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const commons = rows.find((candidate) => candidate.op === "FIND" && candidate.scheme === "worker" && candidate.hostname === null && candidate.pathname === "/*");
                 assert.ok(commons !== undefined);
-                const map = JSON.parse((JSON.parse(commons.rx) as { content: string }).content) as Array<{ path: string; items?: number; tokens?: number }>;
-                assert.deepEqual(map.map((item) => item.path), ["worker:///a.md", "worker:///nested/**"]);
-                assert.equal(map[1]?.items, 1, "the automatic shallow map retains the nested subtree as a complete aggregate");
-                // The worker's first turn opens with the actionless turn-0 exemplar at 1/1/1, born OPEN.
+                const map = JSON.parse((JSON.parse(commons.rx) as { content: string }).content) as Array<Array<{ path: string; items?: number; tokens?: number }>>;
+                assert.deepEqual(map.map(([item]) => item.path), ["worker:///a.md", "worker:///nested/**"]);
+                assert.equal(map[1]?.[0]?.items, 1, "the automatic shallow map retains the nested subtree as a complete aggregate");
+                // The worker's first turn opens with the actionless initialization at 1/1/1, born OPEN.
                 const row = await db.log_read_by_coordinate.get<{ op: string | null; rx: string; attrs: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
-                assert.equal(row?.op, null, "the turn-0 exemplar does not fabricate an operation");
-                assert.equal((JSON.parse(row!.attrs) as { kind?: string }).kind, "model_emission");
+                assert.equal(row?.op, null, "the turn-0 initialization does not fabricate an operation");
+                assert.equal((JSON.parse(row!.attrs) as { kind?: string }).kind, "initialization");
                 const content = (JSON.parse(row!.rx) as { content: string }).content;
                 // Dynamic - it carries the FIND the foist ACTUALLY dispatched (worker:///*), rendered to
                 // DSL and framed PLAN → SEND. Not a frozen print: feed-as-turn-0, show-in-turn-1 are one act.
-                assert.match(content, /^<\|PLAN>Survey context, then address the prompt\.<PLAN\|>/, "opens with an orienting goal");
-                assert.match(content, /<\|FIND\(worker:\/\/\/\*\)\|>/, "the markerless shallow survey is rendered back to DSL");
-                assert.doesNotMatch(content, /<\|FIND\(worker:\/\/\/\*\)</, "the ordinary survey does not teach an explicit all-results scope");
                 assert.match(
                     content,
-                    /<\|SEND\[102\]>Next, address the prompt using the survey\.<SEND\|>$/,
+                    /^# PLAN0\n\* Initialization complete\.\n\* Next: address the prompt\./,
+                    "opens with initialized state and the next priority",
+                );
+                assert.match(content, /## FIND0 \[\+init\] \(worker:\/\/\/\*\)/, "the classified markerless shallow survey is rendered back to DSL");
+                assert.doesNotMatch(content, /## FIND0 \[\+init\] \(worker:\/\/\/\*\) </, "the ordinary survey does not teach an explicit all-results scope");
+                assert.match(
+                    content,
+                    /## SEND0 \[102\]\nNext, address the prompt\.$/,
                     "closes by stating the next action",
                 );
             } finally { ws.close(); }
@@ -215,6 +219,15 @@ test("an empty workspace executes all four orienting FINDs and preserves empty-s
                 const { loopId, modelWorkerId } = resp as { loopId: number; modelWorkerId: number };
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const finds = rows.filter((r) => r.op === "FIND");
+                assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
+                    { scheme: null, hostname: null, pathname: "*" },
+                    { scheme: "worker", hostname: null, pathname: "/*" },
+                    { scheme: "worker", hostname: "~", pathname: "/*" },
+                    { scheme: "worker", hostname: "plurnk", pathname: "/docs/**" },
+                ], "the four surveys execute in their taught order");
+                assert.deepEqual(finds.map(({ signal }) => JSON.parse(signal ?? "null")), [
+                    ["+init"], ["+init"], ["+init"], ["+init", "+docs"],
+                ]);
                 const orientations = [
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true],
                     ["workspace commons", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/*"), true],
@@ -230,10 +243,30 @@ test("an empty workspace executes all four orienting FINDs and preserves empty-s
                 }
                 const exemplar = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 const content = (JSON.parse(exemplar!.rx) as { content: string }).content;
-                assert.match(content, /<\|FIND\(\*\)\|>/, "the exemplar includes the markerless project survey");
-                assert.match(content, /<\|FIND\(worker:\/\/\/\*\)\|>/, "the exemplar includes markerless workspace commons");
-                assert.match(content, /<\|FIND\(worker:\/\/~\/\*\)\|>/, "the exemplar includes markerless own space");
-                assert.match(content, /<\|FIND\(worker:\/\/plurnk\/docs\/\*\*\)<1,-1>\|>/, "the exemplar includes complete kernel docs");
+                assert.equal(content, `# PLAN0
+* Initialization complete.
+* Next: address the prompt.
+
+## FIND0 [+init] (*)
+
+## FIND0 [+init] (worker:///*)
+
+## FIND0 [+init] (worker://~/*)
+
+## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>
+
+## SEND0 [102]
+Next, address the prompt.`);
+                const logTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: modelWorkerId });
+                const tagsBySequence = new Map<number, string[]>();
+                for (const { sequence } of finds) tagsBySequence.set(sequence, []);
+                for (const { coordinate, tag } of logTags) {
+                    const sequence = Number(coordinate.split("/")[2]);
+                    tagsBySequence.get(sequence)?.push(tag);
+                }
+                assert.deepEqual(finds.map(({ sequence }) => tagsBySequence.get(sequence)), [
+                    ["init"], ["init"], ["init"], ["docs", "init"],
+                ], "each FIND classifies its own durable log item; docs retains the shared init set");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }

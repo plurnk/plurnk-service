@@ -47,7 +47,6 @@ const mockSeam = () => {
                 entryId: 1,
                 target: "worker:///x",
                 channels: {},
-                tags: [],
             },
         }),
         forkWorker: async () => ({ workerId: 11, workerName: "fork-1", parentWorkerId: 10 }),
@@ -191,7 +190,6 @@ test("entry.read defaults to the thread worker, honors an explicit owner, and pr
                 state: "static" as const,
             },
         },
-        tags: ["research"],
     };
     seam.readEntry = async (args) => {
         calls.push(args);
@@ -280,7 +278,7 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
     const { seam } = mockSeam();
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
-        const text = "<|EXEC(😀)[-1,300]>x<EXEC|>";
+        const text = "## EXEC0 (😀) [-1,300]\nx";
         const events = await post(mod.address().port, {
             threadId: "parse-diagnostic",
             runId: "parse-diagnostic-run",
@@ -315,9 +313,9 @@ test("#58: op.parse projects the parser-owned diagnostic and structured position
         assert.doesNotMatch(failure.detail ?? "", /Plurnk lexer error at line/);
         assert.deepEqual(
             { line: failure.line, column: failure.column, source: failure.source, severity: failure.severity },
-            { line: 1, column: 10, source: "lexer", severity: "error" },
+            { line: 1, column: 14, source: "lexer", severity: "error" },
         );
-        assert.equal(text.indexOf("-1"), 11, "the client projection retains code-point, not UTF-16, columns");
+        assert.equal(text.indexOf("-1"), 15, "the UTF-16 index differs from the parser's code-point column");
         assert.equal(failure.recovery, undefined, "AG-UI does not author generic parser recovery");
     } finally { await mod.close(); }
 });
@@ -358,7 +356,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             return event.value;
         };
 
-        const source = " \n<|LOOK[draft](worker:///x)<1-2>>~needle<LOOK|>\n";
+        const source = " \n## LOOK0 [draft] (worker:///x) <1-2>\n~needle\n";
         const admitted = await invoke(source);
         assert.equal(admitted.ok, true);
         assert.equal(admitted.result?.content, "looked");
@@ -375,27 +373,27 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
         assert.equal(missing.problem?.type, "https://problems.plurnk.dev/agui/action/invalid-action-parameters");
         assert.equal(missing.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required.");
 
-        const extra = await invoke("<|LOOK(worker:///x)|>\n<|LOOK(worker:///y)|>");
+        const extra = await invoke("## LOOK0 (worker:///x)\n\n## LOOK0 (worker:///y)");
         assert.equal(extra.ok, false);
         assert.equal(extra.problem?.type, "https://problems.plurnk.dev/agui/action/invalid-action-parameters");
         assert.equal(extra.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required.");
         assert.equal(extra.problem?.stage, "action-validation");
 
         for (const operation of ["READ", "EDIT"] as const) {
-            const body = operation === "EDIT" ? ">bad<EDIT|>" : "|>";
-            const wrongOperation = await invoke(`<|${operation}(worker:///x)${body}`);
+            const body = operation === "EDIT" ? "\nbad" : "";
+            const wrongOperation = await invoke(`## ${operation}0 (worker:///x)${body}`);
             assert.equal(wrongOperation.ok, false);
             assert.equal(wrongOperation.problem?.type, "https://problems.plurnk.dev/agui/action/invalid-action-parameters");
             assert.equal(wrongOperation.problem?.detail, `op.look parsed ${operation}; the single statement must be LOOK.`);
         }
 
-        const bounded = await invoke("text <|LOOK(worker:///x)|>");
+        const bounded = await invoke("text ## LOOK0 (worker:///x)");
         assert.equal(bounded.ok, false);
         assert.deepEqual(bounded.problem, {
             type: "https://problems.plurnk.dev/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
-            detail: "unexpected text between statements; expected open tag `<|OPsuffix`",
+            detail: "unexpected text before PLAN; expected PLAN heading `# PLANsuffix`, H2 operation heading `## OPsuffix`, or H2 client heading `## OPsuffix`",
             line: 1,
             column: 0,
             source: "parser",
@@ -404,14 +402,14 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             retryable: false,
         });
 
-        const tailed = await invoke("<|LOOK(worker:///x)|>\n<|EDIT(worker:///y)>unterminated");
+        const tailed = await invoke("## LOOK0 (worker:///x)\n\n## EDIT0 (worker:///y");
         assert.equal(tailed.ok, false);
         assert.deepEqual(tailed.problem, {
             type: "https://problems.plurnk.dev/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
-            detail: "body of `<|EDIT` opened at line 2 but never closed - add `<EDIT|>` to terminate",
-            line: 2,
+            detail: "target slot of `## EDIT0` opened at line 3 but never closed - add `)`",
+            line: 3,
             column: 0,
             source: "grammar",
             severity: "error",
@@ -432,7 +430,7 @@ test("#127: op.parse dispatches only the trusted prefix and appends one parser-o
     };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
-        const text = "<|EDIT(worker:///ok)>yes<EDIT|>\n<|EDIT(worker:///bad)>unterminated";
+        const text = "## EDIT0 (worker:///ok)\nyes\n\n## EDIT0 (worker:///bad";
         const events = await post(mod.address().port, {
             threadId: "parse-tail",
             runId: "parse-tail-run",
@@ -466,8 +464,8 @@ test("#127: op.parse dispatches only the trusted prefix and appends one parser-o
             type: "https://problems.plurnk.dev/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
-            detail: "body of `<|EDIT` opened at line 2 but never closed - add `<EDIT|>` to terminate",
-            line: 2,
+            detail: "target slot of `## EDIT0` opened at line 4 but never closed - add `)`",
+            line: 4,
             column: 0,
             source: "grammar",
             severity: "error",

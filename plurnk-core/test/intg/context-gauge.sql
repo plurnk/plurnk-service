@@ -15,39 +15,42 @@ VALUES (
 )
 RETURNING id;
 
--- PREP: test_context_insert_attempt
-INSERT INTO turn_attempts (
+-- PREP: test_context_insert_model_call
+INSERT INTO model_calls (
     turn_id,
     sequence,
+    kind,
     state,
-    accepted,
     response,
-    parse_errors,
     finish_reason,
     model,
     completed_at
 )
 VALUES (
     $turn_id,
-    1,
+    $sequence,
+    $kind,
     'response',
-    1,
     '{"assistant":{"content":"fixture"}}',
-    '[]',
     'stop',
     'fixture',
     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 )
 RETURNING id;
 
+-- PREP: test_context_insert_attempt
+INSERT INTO turn_attempts (model_call_id, accepted)
+VALUES ($model_call_id, 1)
+RETURNING id;
+
 -- PREP: test_context_insert_request
 INSERT INTO provider_requests (
-    turn_attempt_id, sequence, provider, model, state, outcome,
+    model_call_id, sequence, provider, model, state, outcome,
     usage_input, usage_output, usage_total,
     cost_kind, cost_amount, cost_currency, cost_source, completed_at
 )
 VALUES (
-    $turn_attempt_id, 1, 'provider:fixture', 'fixture', 'settled', 'response',
+    $model_call_id, 1, 'provider:fixture', 'fixture', 'settled', 'response',
     $input, 0, $input,
     'estimated', '0', 'USD', 'context gauge fixture',
     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')

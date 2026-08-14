@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { contextWindowFromEnv, effectiveContextWindow, parseRequiredInt, requireEnv } from "./env.ts";
+import { contextWindowFromEnv, effectiveContextWindow, parseTimeoutMs, requireEnv } from "./env.ts";
 import { providerFromSdkModel } from "./catalogProvider.ts";
 import type { Provider, ProviderOptions } from "./types.ts";
 
@@ -20,7 +20,7 @@ const fetchContextWindow = async ({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model }),
-        signal: AbortSignal.timeout(timeout),
+        ...(timeout > 0 ? { signal: AbortSignal.timeout(timeout) } : {}),
     });
     if (!response.ok) throw new Error(`ollama provider: /api/show returned ${response.status}`);
     const data = await response.json() as ShowResponse;
@@ -41,7 +41,7 @@ export const ollamaProviderFromEnv = async (
         "OLLAMA_BASE_URL or OLLAMA_HOST (or a PLURNK_BASEURL_<alias> override)",
         "ollama",
     ).replace(/\/+$/, "").replace(/\/v1$/, "");
-    const timeout = parseRequiredInt(
+    const timeout = parseTimeoutMs(
         env.PLURNK_PROVIDERS_FETCH_TIMEOUT,
         "PLURNK_PROVIDERS_FETCH_TIMEOUT",
         "ollama",

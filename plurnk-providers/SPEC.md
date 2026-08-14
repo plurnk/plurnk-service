@@ -97,7 +97,17 @@ pricing method.
 - caller cancellation through `signal`;
 - optional `grammar` and `maxTokens`;
 - standard `sampling` intent;
+- the caller-owned `callKind` output contract when one applies;
 - opaque attribution tags plus client, strike, workspace, loop, and turn metadata.
+
+§provider-call-kind `callKind` is either `emission` (the response is a PLURNK
+turn emission) or `bare` (the response is unconstrained answer text). The
+consumer states this semantic fact explicitly; providers MUST NOT infer it from
+message count, grammar presence, worker identity, or another incidental request
+shape. The first-party adapter transports a supplied value as
+`Plurnk-Call-Kind`; the metadata gate drops it for every third-party backend.
+The signal is request metadata and never enters model-facing messages. Generic
+provider callers MAY omit it; Core supplies it for every model call.
 
 A successful return carries the model's raw content and reasoning, normalized
 finish reason, model identity, its ordered {§provider-request-accounting},
@@ -153,8 +163,10 @@ rail observed.
 
 §provider-sdk-boundary Cataloged providers instantiate their
 Models.dev-declared AI SDK package.
-Standard request shaping, streaming, retries, cancellation, timeouts, usage,
-and vendor error parsing belong to the SDK.
+Standard request shaping, streaming, usage, and vendor error parsing belong to
+the SDK. PLURNK supplies cancellation and deadline signals and owns the sole
+cross-attempt scheduler so every physical request remains observable and
+accountable.
 
 PLURNK maps its generic settings to AI SDK call settings:
 
@@ -204,7 +216,7 @@ The universal groups are:
 - reasoning activation and optional explicit budget;
 - explicit reasoning response-content style;
 - decode tuning;
-- request, stream-idle, retry, and probe budgets;
+- operation, physical-attempt, first-content, stream-idle, retry, and probe budgets;
 - local GBNF and llama-server capability pins;
 - context-window and generation-envelope overrides;
 - opt-in logprob and raw-body capture.
@@ -375,17 +387,30 @@ normal value. Retry exhaustion is preserved as `attempts` and
 `retryExhausted`, and the resulting Problem is not marked retryable after the
 provider has consumed its automatic retry budget.
 
-The provider adapter owns one attempt scheduler around the complete generation exchange.
-`PLURNK_PROVIDERS_RETRY_ATTEMPTS` is the maximum retry count, including a
-configured stream-chunk deadline that expires while consuming a response body.
-The total generation deadline and caller cancellation span that scheduler and
-every attempt; neither restarts during replay. Total and stream-chunk deadlines
-are separately configurable. Every scheduler iteration produces one ordered
-{§provider-request-accounting} record, including response-less network failures.
+§provider-connectivity The provider adapter owns one attempt scheduler around
+the complete generation exchange; SDK-internal retries are disabled.
+`PLURNK_PROVIDERS_RETRY_ATTEMPTS=N` permits at most `N + 1` physical requests.
+The layers are independent and a configured value of zero disables only that
+deadline:
+
+| Layer | Operator knob | Boundary | Expiry |
+| --- | --- | --- | --- |
+| Operation | `PLURNK_PROVIDERS_OPERATION_TIMEOUT` | Complete logical call, including every attempt and retry delay. | Final `deadline_exceeded` Problem at 504 with `timeoutPhase=operation`; never retried. |
+| Attempt | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | One physical generation request, including response consumption. | Retryable `network_failure` with `timeoutPhase=attempt`. |
+| First content | `PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT` | Response-stream start through first semantic model content; metadata, empty deltas, and transport activity do not satisfy it. | Retryable `network_failure` with `timeoutPhase=first_content`. |
+| Stream idle | `PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT` | Silence between semantic content chunks after content begins. | Retryable `network_failure` with `timeoutPhase=stream_idle`. |
+
+Caller cancellation spans the operation and preserves the caller's reason.
+Inner deadline failures consume the ordinary retry budget; retry exhaustion
+adds `attempts` and `retryExhausted`, retains the inner `timeoutPhase` and
+`timeoutMs`, and is final. Every scheduler iteration opens and settles exactly
+one ordered {§provider-request-accounting} record, including response-less
+network failures and timed-out attempts.
 
 HTTP 408, 409, 429, and ordinary 5xx responses are retryable unless the endpoint
-explicitly says otherwise. Endpoint control responses 520–527 are final so a
-router can prevent multiplicative retries behind its own retry policy.
+explicitly says otherwise through `X-Should-Retry`. That header is authoritative;
+without an explicit directive, endpoint control responses 520–527 are final so
+a router can prevent multiplicative retries behind its own policy.
 
 ### §provider-interrupted-attempt Provider-declared interruption
 

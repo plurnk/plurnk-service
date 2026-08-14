@@ -50,18 +50,6 @@ SELECT entry_id, name, content, mimetype, tokens, state, producer_result FROM en
 -- PREP: test_entry_channels_count_all
 SELECT COUNT(*) AS n FROM entry_channels;
 
--- PREP: test_entry_tags_insert
-INSERT INTO entry_tags (entry_id, tag) VALUES ($entry_id, $tag);
-
--- PREP: test_entry_tags_count_all
-SELECT COUNT(*) AS n FROM entry_tags;
-
--- PREP: test_entry_tags_by_tag
-SELECT entry_id FROM entry_tags WHERE tag = $tag ORDER BY entry_id;
-
--- PREP: test_entry_tags_index
-SELECT name FROM sqlite_master WHERE type='index' AND name='entry_tags_tag';
-
 -- EXEC: test_entries_insert_workspace_no_workspace_id
 INSERT INTO entries (owner_id, scheme, pathname) VALUES ((SELECT id FROM workers ORDER BY id LIMIT 1), 'x', '/x');
 

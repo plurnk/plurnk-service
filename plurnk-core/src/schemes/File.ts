@@ -3,7 +3,7 @@ import Namespace from "../core/namespace.ts";
 import Owner from "../core/Owner.ts";
 import { dirname, relative, isAbsolute, join, matchesGlob, sep } from "node:path";
 import { createPatch } from "diff";
-import type { EditStatement, FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import GitMembership from "../core/git-membership.ts";
@@ -17,9 +17,11 @@ import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
+import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 import {
     type EntryAddress,
     InvalidOperationResultError,
+    type ResolvedEditStatement,
     type ScopeNormalization,
     type ProposalApplyResult,
 } from "@plurnk/plurnk-schemes";
@@ -36,6 +38,8 @@ type WriteTarget =
     };
 import {
     LineMarkerOps,
+    LineAnchors,
+    EditCollision,
     MimetypeBinary,
     editReceipt,
     projectEditReceipt,
@@ -91,7 +95,8 @@ export default class File extends CoreSchemeAdapterBase {
         volatile: false,
         modelVisible: true,
         folderScopes: true,
-        example: "<|READ(README.md)|>",
+        textEditScopes: true,
+        example: "## READ0 (README.md)",
         documentation: "The project's workspace files (git-tracked members, shown as bare paths) — THE TASK'S FILES: when asked to change the project, EDIT these, not your notes or scratch. READ and FIND them like any entry; EDIT proposes a diff for review and only writes to disk once accepted — the review is normal, not a refusal, so propose the edit rather than working around it. Non-members are invisible, so you can't read or clobber a file outside the tracked surface.",
     };
 
@@ -324,7 +329,8 @@ export default class File extends CoreSchemeAdapterBase {
     // {§membership-edit-write-cas}, {§proposal-202-pauses}: return status=202
     // with a udiff body for client review and attrs carrying the full patched
     // content. Engine pauses dispatch and calls applyResolution() after accept.
-    async editBatch(statements: readonly EditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
+    async editBatch(statements: readonly ResolvedEditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
+        LineAnchors.assertResolved(statements);
         const failure = (
             code: string,
             status: number,
@@ -386,6 +392,11 @@ export default class File extends CoreSchemeAdapterBase {
             }
         }
 
+        const precondition = SchemeCtxImpl.editPreconditionOf(ctx);
+        if (precondition !== null && !LineAnchors.satisfies(precondition, original)) {
+            return EditCollision.result(precondition.identity) as EditResult;
+        }
+
         // {§edit-marker-required-on-existing} — markerless content creates a new
         // file; every existing-file rewrite states its range explicitly.
         let patched: string;
@@ -441,7 +452,7 @@ export default class File extends CoreSchemeAdapterBase {
         };
     }
 
-    async edit(statement: EditStatement, ctx: CoreSchemeCallContext): Promise<EditResult> {
+    async edit(statement: ResolvedEditStatement, ctx: CoreSchemeCallContext): Promise<EditResult> {
         return this.editBatch([statement], ctx);
     }
 
@@ -532,7 +543,8 @@ export default class File extends CoreSchemeAdapterBase {
         }
         // CAS — the write-side twin of #materializeMember's read-gate (synced_sig === sig). The
         // proposal was computed against the snapshot (body + baseSig); if disk drifted out-of-band
-        // since propose, the full-blob write would clobber it. Refuse and surface a write_conflict —
+        // since propose, the full-blob write would clobber it. Refuse and surface the same neutral
+        // edit collision as an entry compare-and-swap —
         // the next reconcile narrates disk truth via FsDivergence; the model re-reads + re-proposes.
         // No clever re-diff, no clobber. {§membership-edit-write-cas}
         const baseSig = (args.attrs.baseSig ?? null) as string | null;
@@ -549,17 +561,7 @@ export default class File extends CoreSchemeAdapterBase {
         // assumed an absent path, so any file present now is the conflict.
         const conflict = existed ? (baseSig !== null && currentSig !== baseSig) : (currentSig !== null);
         if (conflict) {
-            const expected = existed ? baseSig : null;
-            const detail = `${relPath} changed on disk since the proposal; expected ${expected ?? "absence"} but found ${currentSig ?? "absence"}.`;
-            return Results.failure("scheme:file", "write-conflict", 409, detail, {
-                outcome: "write_conflict",
-            }, {
-                path: relPath,
-                expectedSignature: expected,
-                currentSignature: currentSig,
-                recovery: "READ the current file before proposing a new EDIT.",
-                retryable: false,
-            }) as ApplyResult;
+            return EditCollision.result(relPath, { outcome: "edit_collision" }) as ApplyResult;
         }
         let receipt = attrs.editReceipt;
         if (body !== undefined && body !== attrs.patched) {
@@ -606,7 +608,6 @@ export default class File extends CoreSchemeAdapterBase {
             // `file` identity; bare-path rendering is a projection of that row.
             const { entryId } = await EntryCrud.writeEntry(relPath, {
                 channels: { body: { content: patched, mimetype } },
-                tags: [],
             }, core, "file");
             // {§fs-write-surface} — stamp the grantor the blind-write closure PROVED at propose
             // time; provenance never waits for the reconcile to guess what was already known.

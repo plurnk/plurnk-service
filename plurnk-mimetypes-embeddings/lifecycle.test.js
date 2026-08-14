@@ -44,7 +44,118 @@ const embedCore = (releaseRuntime) => ({
     contextWindow: 8,
     async loadRuntime() { return {}; },
     async embedText() { return new Uint8Array(new Float32Array([0, 0]).buffer); },
+    countTokensWith(_tokenizer, text) { return text.length; },
     releaseRuntime,
+});
+
+test("{§mimetype-embedding-terminality}: a pool worker releases its runtime before closing", async (t) => {
+    const runtime = { session: "owned" };
+    const released = [];
+    const messages = [];
+    const parentPort = new EventEmitter();
+    let closed;
+    const close = new Promise((resolve) => { closed = resolve; });
+    parentPort.postMessage = (message) => { messages.push(message); };
+    parentPort.close = () => { closed(); };
+    t.mock.module("node:worker_threads", { exports: { parentPort } });
+    t.mock.module("./embed-core.js", {
+        exports: {
+            ...embedCore(async (value) => { released.push(value); }),
+            async loadRuntime() { return runtime; },
+        },
+    });
+
+    await import("./embed-worker.js?cooperative-dispose");
+    parentPort.emit("message", { kind: "dispose" });
+    await settleWithin(close);
+
+    assert.deepEqual(released, [runtime]);
+    assert.deepEqual(messages, [
+        { ready: true, dispose: true },
+        { disposed: true },
+    ]);
+});
+
+test("{§mimetype-embedding-terminality}: pool disposal cooperatively releases idle workers", async (t) => {
+    localEnvironment(t, "1");
+    const events = [];
+    class ReleasingWorker extends EventEmitter {
+        constructor() {
+            super();
+            queueMicrotask(() => this.emit("message", { ready: true, dispose: true }));
+        }
+
+        ref() {}
+        unref() {}
+
+        postMessage({ kind, text }) {
+            if (kind === "dispose") {
+                events.push("dispose");
+                queueMicrotask(() => {
+                    this.emit("message", { disposed: true });
+                    this.emit("exit", 0);
+                });
+                return;
+            }
+            queueMicrotask(() => this.emit("message", { count: text.length }));
+        }
+
+        async terminate() {
+            events.push("terminate");
+        }
+    }
+    t.mock.module("node:worker_threads", { exports: { Worker: ReleasingWorker } });
+    t.mock.module("./embed-core.js", { exports: embedCore(async () => {}) });
+    const { countTokens, dispose } = await import("./index.js?cooperative-dispose");
+
+    assert.equal(await countTokens("warm"), 4);
+    await dispose();
+    assert.deepEqual(events, ["dispose"]);
+});
+
+test("{§mimetype-embedding-terminality}: failed cooperative release is surfaced and force-terminated", async (t) => {
+    localEnvironment(t, "1");
+    const events = [];
+    class ReleaseFailureWorker extends EventEmitter {
+        constructor() {
+            super();
+            queueMicrotask(() => this.emit("message", { ready: true, dispose: true }));
+        }
+
+        ref() {}
+        unref() {}
+
+        postMessage({ kind, text }) {
+            if (kind === "dispose") {
+                events.push("dispose");
+                queueMicrotask(() => {
+                    this.emit("message", { disposed: false, error: "session close failed" });
+                    this.emit("exit", 0);
+                });
+                return;
+            }
+            queueMicrotask(() => this.emit("message", { count: text.length }));
+        }
+
+        async terminate() {
+            events.push("terminate");
+        }
+    }
+    t.mock.module("node:worker_threads", { exports: { Worker: ReleaseFailureWorker } });
+    t.mock.module("./embed-core.js", { exports: embedCore(async () => {}) });
+    const { countTokens, dispose } = await import("./index.js?cooperative-dispose-failure");
+
+    assert.equal(await countTokens("warm"), 4);
+    await assert.rejects(dispose(), (error) => {
+        assert.ok(error instanceof AggregateError);
+        assert.equal(error.message, "embedder shutdown failed");
+        assert.deepEqual(
+            error.errors.map((cause) => cause.message),
+            ["embed worker runtime release failed: session close failed"],
+        );
+        return true;
+    });
+    assert.deepEqual(events, ["dispose", "terminate"]);
 });
 
 test("dispose attempts runtime and every worker teardown and preserves every failure", async (t) => {

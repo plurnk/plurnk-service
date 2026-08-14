@@ -29,7 +29,7 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
         const workspaceId = await insertWorkspace(db, `authored-${crypto.randomUUID()}`);
         const ctx = makeSchemeCtx({ db, workspaceId, mimetypes: DEFAULT_MIMETYPES, tokenize: (t: string) => Math.ceil(t.length / 4) });
 
-        const written = await EntryCrud.writeEntry("/roster.html", { channels: { body: { content: ROSTER, mimetype: "text/html" } }, tags: [] }, ctx, "worker");
+        const written = await EntryCrud.writeEntry("/roster.html", { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "worker");
         assert.equal(written.status, 201);
         const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string }>({ entry_id: written.entryId });
         assert.deepEqual(rows.map((r) => r.name), ["body"], "one verbatim channel — no projection, no #html sibling");
@@ -63,7 +63,7 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
             },
         },
         namespaceOwner: { kind: "module", name: "fetchstub fixture" },
-        glyph: "?", example: "", documentation: "", available: true, detail: undefined,
+        glyph: "?", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } }, documentation: "", available: true, detail: undefined,
     } as never);
     try {
         const workspaceId = await insertWorkspace(db, `fetched-${crypto.randomUUID()}`);
@@ -101,7 +101,6 @@ test("a scoped HTTP READ slices the materialized readable body instead of starti
                 header: { content: "HTTP 200 OK", mimetype: "text/plain" },
                 html: { content: "<p>one</p><p>two</p><p>three</p><p>four</p>", mimetype: "text/html" },
             },
-            tags: [],
         }, ctx, "https");
         const statement: ReadStatement = {
             op: "READ", suffix: "", signal: null,
@@ -133,7 +132,6 @@ test("a scoped HTTP READ slices the selected auxiliary channel when body is empt
                     mimetype: "text/plain",
                 },
             },
-            tags: [],
         }, ctx, "https");
         const statement: ReadStatement = {
             op: "READ", suffix: "", signal: null,

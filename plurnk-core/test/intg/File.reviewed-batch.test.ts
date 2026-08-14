@@ -35,10 +35,10 @@ test("a reviewer replacement supersedes every authored EDIT and receipts its one
         const mock = new Mock({
             contextWindow: 32768,
             responses: [makeMockResponse(
-                "<|PLAN>edit two disjoint lines<PLAN|>\n"
-                + "<|EDIT(file:///reviewed.md)<2>>TWO<EDIT|>\n"
-                + "<|EDIT(file:///reviewed.md)<4>>FOUR<EDIT|>\n"
-                + "<|SEND[200]>done<SEND|>",
+                "# PLAN0\nedit two disjoint lines\n"
+                + "## EDIT0 (file:///reviewed.md) <2>\nTWO\n"
+                + "## EDIT0 (file:///reviewed.md) <4>\nFOUR\n"
+                + "## SEND0 [200]\ndone",
                 20,
             )],
         });

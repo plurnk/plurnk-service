@@ -17,11 +17,12 @@ test("op.edit creates an entry via engine.dispatch (origin=client)", async () =>
             assert.equal(entry?.pathname, "/france/capital");
             const body = (await db.test_get_body_by_pathname.get<{ content: string }>({ pathname: "/france/capital" }))?.content;
             assert.equal(body, "Paris");
-            const tags = await db.test_parser_tags.all<{ tag: string }>();
-            assert.deepEqual(tags.map((t) => t.tag), ["france", "geography"]);
-            const log = await db.test_first_log_entry.get<{ origin: string; op: string }>();
+            const log = await db.test_first_log_entry.get<{ id: number; worker_id: number; origin: string; op: string }>();
+            assert.ok(log !== undefined);
             assert.equal(log?.origin, "client");
             assert.equal(log?.op, "EDIT");
+            const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: log.worker_id });
+            assert.deepEqual(tags.map(({ tag }) => tag), ["france", "geography"]);
         } finally { ws.close(); }
     });
 });
@@ -79,7 +80,7 @@ test("{§op-look}: resolves like READ without writing a log entry", async () => 
             await rpcCall(ws, 1, "workspace.create", { name: "look-test" });
             await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "secret" });
             const before = (await db.test_log_entries_count_all.get<{ n: number }>())?.n ?? -1;
-            const response = await rpcCall(ws, 3, "op.look", { text: "<|READ(worker:///x)|>" });
+            const response = await rpcCall(ws, 3, "op.look", { text: "## READ0 (worker:///x)" });
             const result = response.result as { status: number; content: string };
             assert.equal(result.status, 200);
             assert.equal(result.content, "secret");
@@ -94,7 +95,7 @@ test("{§op-look}: rejects a non-READ statement", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "look-readonly" });
-            const response = await rpcCall(ws, 2, "op.look", { text: "<|EDIT(worker:///x)>nope<EDIT|>" });
+            const response = await rpcCall(ws, 2, "op.look", { text: "## EDIT0 (worker:///x)\nnope" });
             assert.ok(response.error, "a non-READ LOOK must be rejected");
             assert.match(response.error!.message, /READ only/);
         } finally { ws.close(); }

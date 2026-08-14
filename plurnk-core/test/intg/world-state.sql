@@ -16,9 +16,6 @@ WHERE e.scheme = 'file';
 -- PREP: ws_orphan_channels
 SELECT COUNT(*) AS n FROM entry_channels c LEFT JOIN entries e ON e.id = c.entry_id WHERE e.id IS NULL;
 
--- PREP: ws_orphan_tags
-SELECT COUNT(*) AS n FROM entry_tags t LEFT JOIN entries e ON e.id = t.entry_id WHERE e.id IS NULL;
-
 -- PREP: ws_alien_origin
 -- The closed admission set ({§fs-write-surface} sandbox narrative): a file row's grantor is
 -- git or a client act ('client'/'constraint'), or NULL for the create-accepted-this-instant

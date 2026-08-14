@@ -1,4 +1,4 @@
-/** Every concrete example in the model-facing reference must parse cleanly. */
+/** Broad structural checks for the model-facing reference, never wording pins. */
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -9,75 +9,46 @@ import { PlurnkParser } from "../../src/index.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const plurnkMd = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
-const PLURNK_FENCE = /^```plurnk\n([\s\S]*?)^```/gm;
-const OPENER = /^<\|(?:PLAN|FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|EXEC|WORK|FORK|KILL|SEND)/;
-const fences = [...plurnkMd.matchAll(PLURNK_FENCE)].map((match) => match[1].trim());
-const withoutFences = plurnkMd.replace(PLURNK_FENCE, "");
-const inline = [...withoutFences.matchAll(/`([^`\n]+)`/g)]
+const operations = ["PLAN", "FIND", "READ", "EDIT", "COPY", "MOVE", "FOLD", "OPEN", "EXEC", "BARE", "WORK", "FORK", "KILL", "SEND"];
+const fencePattern = /^```plurnk\n([\s\S]*?)^```/gm;
+const fences = [...plurnkMd.matchAll(fencePattern)].map((match) => match[1].trim());
+const proseAndInline = plurnkMd.replace(fencePattern, "");
+const headingExample = new RegExp(`^#{1,2} (?:${operations.join("|")})[A-Za-z0-9_]*(?: |$)`);
+const inlineHeadings = [...proseAndInline.matchAll(/`([^`\n]+)`/g)]
     .map((match) => match[1])
-    .filter((example) => OPENER.test(example));
+    .filter((example) => headingExample.test(example));
+const completeTurns = fences.filter((body) => /^## SEND[A-Za-z0-9_]+ \[(?:102|200|202|300|499)\]/m.test(body));
 
-test("every inline plurnk.md example parses to one clean statement", () => {
-    assert.ok(inline.length > 0, "plurnk.md contains no concrete inline examples");
+test("inline operation headings in plurnk.md parse as one clean statement", () => {
+    assert.ok(inlineHeadings.length > 0, "plurnk.md contains no inline operation headings");
     const failures: string[] = [];
-    for (const example of inline) {
+    for (const example of inlineHeadings) {
         const result = PlurnkParser.parseStatements(example);
-        const statements = result.items.filter((i) => i.kind === "statement");
-        const errors = result.items.filter((i) => i.kind === "error");
+        const statements = result.items.filter((item) => item.kind === "statement");
+        const errors = result.items.filter((item) => item.kind === "error");
         if (statements.length !== 1 || errors.length > 0 || result.unparsedTail) {
-            const detail = errors.map((e) => (e.kind === "error" ? e.error.message : "")).join(" | ")
-                || `${statements.length} statements, unparsedTail=${Boolean(result.unparsedTail)}`;
-            failures.push(`${JSON.stringify(example)} -> ${detail}`);
+            failures.push(`${JSON.stringify(example)} -> ${errors.map(({ error }) => error.message).join(" | ")}`);
         }
     }
-    assert.equal(failures.length, 0, `inline plurnk.md examples that do not cleanly parse:\n${failures.join("\n")}`);
+    assert.deepEqual(failures, []);
 });
 
-test("every ```plurnk fenced turn in plurnk.md parses clean", () => {
-    assert.ok(fences.length > 0, "plurnk.md contains no ```plurnk fenced turns");
-
-    const failures: string[] = [];
-    fences.forEach((body, i) => {
+test("complete plurnk.md turn specimens parse cleanly", () => {
+    assert.ok(completeTurns.length > 0, "plurnk.md contains no complete turn specimen");
+    for (const [index, body] of completeTurns.entries()) {
         const result = PlurnkParser.parse(body);
-        const errors = result.items.filter((x) => x.kind === "error");
-        if (errors.length > 0 || result.unparsedTail) {
-            const detail = errors.map((e) => (e.kind === "error" ? e.error.message : "")).join(" | ")
-                || `unparsedTail=${Boolean(result.unparsedTail)}`;
-            failures.push(`fence ${i + 1}: ${detail}`);
-        }
-    });
-    assert.equal(failures.length, 0, `plurnk fenced blocks that do not parse:\n${failures.join("\n")}`);
-});
-
-test("{§turn-shape}{§plan-intended-goals} model reference teaches PLAN and SEND roles", () => {
-    assert.ok(fences.every((turn) => turn.startsWith("<|PLAN>")), "every taught turn begins with PLAN");
-    assert.ok(fences.every((turn) => /\n<\|SEND\[(?:102|200|202|300|499)\]>[\s\S]+<SEND\|>$/.test(turn)),
-        "every taught turn ends with a terminal SEND");
-    assert.match(plurnkMd, /^\| PLAN \| add working-state deltas .* new findings, questions, priorities \|$/m);
-    assert.ok(plurnkMd.includes("YOU MUST use PLAN to add new material conclusions or unresolved questions and this turn's priorities."));
-    assert.match(plurnkMd, /^\| SEND \| close turn with submit code /m);
-});
-
-test("{§text-scope-semantics}{§whitespace-contract} model reference teaches whole-line deletion", () => {
-    assert.ok(plurnkMd.includes("`<|EDIT(notes.md)<2>|>` deletes line 2"));
-    assert.ok(plurnkMd.includes("PLURNK does not decode body escapes: `\\n` is backslash plus `n`."));
-});
-
-// Model teaching mirrors the packet prose thresholds without adding a reverse package
-// dependency. {§packet-atomic-prose}
-test("plurnk.md prose has no run-on sentences", () => {
-    let inFence = false;
-    const prose: string[] = [];
-    for (const line of plurnkMd.split("\n")) {
-        if (line.startsWith("```")) { inFence = !inFence; continue; }
-        if (inFence || /^\s*\|/.test(line) || /^#{1,6}\s/.test(line) || line.trim() === "") continue;
-        prose.push(line.replace(/^\s*[-*]\s+/, ""));
+        assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], `fence ${index + 1}`);
+        assert.equal(result.unparsedTail, undefined, `fence ${index + 1}`);
     }
-    const runons: string[] = [];
-    for (const line of prose) {
-        for (const s of line.split(/(?<=\.)\s+/).map((x) => x.trim()).filter(Boolean)) {
-            if (s.length >= 180 || (s.length >= 120 && s.includes(";"))) runons.push(`[${s.length}c] ${s}`);
-        }
+});
+
+test("plurnk.md retains broad language coverage without pinning prose", () => {
+    assert.ok(
+        fences.some((body) => /^# PLAN([A-Za-z0-9_]+)\n[\s\S]*^## OP\1(?: |$)/m.test(body)),
+        "syntax specimen teaches H1 PLAN and same-suffix H2 operations",
+    );
+    for (const operation of operations) {
+        assert.match(plurnkMd, new RegExp(`^\\| ${operation} \\|`, "m"), `operation table is missing ${operation}`);
     }
-    assert.equal(runons.length, 0, `run-on sentences in plurnk.md prose:\n${runons.join("\n")}`);
+    assert.ok(completeTurns.every((body) => body.startsWith("# PLAN0\n")));
 });

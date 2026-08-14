@@ -14,8 +14,10 @@ The module comes from the **EXEC body** (inline) or, when a `(target)` path is g
 | `wasm` | 🧩    | `.wasm` binary bytes   | Base64-encoded WebAssembly binary |
 
 ```plurnk
-<|EXEC[wat]>(module (func (export "main") (result i32) (i32.const 42)))<EXEC|>
-<|EXEC[wasm](./build/mod.wasm)|>
+## EXEC0 [wat]
+(module (func (export "main") (result i32) (i32.const 42)))
+
+## EXEC0 [wasm] (./build/mod.wasm)
 ```
 
 `wat` is assembled through [wabt](https://github.com/AssemblyScript/wabt.js),

@@ -6,7 +6,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import { packetSection } from "./_helpers.ts";
 
-const answer = () => new Mock({ contextWindow: 16384, responses: [makeMockResponse("<|SEND[200]>the answer is 4<SEND|>", 10)] });
+const answer = () => new Mock({ contextWindow: 16384, responses: [makeMockResponse("## SEND0 [200]\nthe answer is 4", 10)] });
 
 test("{§tools-loop-affinity}: ask mode states that EXEC is disabled", async () => {
     await withDaemon(answer(), async (db, _daemon, addr) => {
@@ -29,11 +29,12 @@ test("act mode: no disabled line — the runtimes advertise normally", async () 
             const { loopId } = await runLoopToTerminal(ws, 2, { prompt: "what is 2+2?" });
             const turn = await db.test_first_turn_for_loop.get<{ packet: string }>({ loop_id: loopId });
             assert.doesNotMatch(turn!.packet, /EXEC operations are disabled/, "act mode never carries the negative line");
-            // {§packet-operation-fences} Executor examples use the packet's operation fence.
             const packet = JSON.parse(turn!.packet) as { sections?: Array<{ name?: string; header?: string }> };
             const tools = packetSection(packet as Parameters<typeof packetSection>[0], "tools");
-            assert.match(tools, /^```plurnk\n<\|/, "act mode: executor examples advertise inside a plurnk fence, not bullets");
-            assert.equal(packet.sections?.find((section) => section.name === "tools")?.header, "Registered Executable Tools");
+            assert.match(tools, /YOU SHOULD use purpose-built Plurnk OPs/, "act mode carries the tool-choice policy");
+            assert.match(tools, /\| `\[node\]` \|.*`## EXEC0 \[node\]`/, "an available runtime contributes its declared example");
+            assert.match(tools, /\| `\[executor\]` \| `\(target\)` \| body \| example \|/, "tool buckets and examples use authored EXEC syntax");
+            assert.equal(packet.sections?.find((section) => section.name === "tools")?.header, "Registered Tools");
         } finally { ws.close(); }
     });
 });

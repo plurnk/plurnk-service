@@ -11,7 +11,8 @@ import { execSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -31,7 +32,7 @@ const url = (pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, query: null, fragment: null,
 });
-const editStmt = (target: UrlPath, body: string): EditStatement => ({
+const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 const fts = async (db: Db, workspaceId: number, query: string): Promise<string[]> => {

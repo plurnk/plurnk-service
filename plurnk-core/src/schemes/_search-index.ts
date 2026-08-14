@@ -10,6 +10,7 @@ import { availableParallelism } from "node:os";
 import EntryGraph from "./_entry-graph.ts";
 import EntrySemantic, { type SemanticPlan } from "./_entry-semantic.ts";
 import LogBody from "../core/LogBody.ts";
+import LogEntryProjection from "../core/LogEntryProjection.ts";
 import matchSearchExclusion from "./_search-exclusion.ts";
 
 type EntryRow = {
@@ -85,8 +86,14 @@ export default class SearchIndex {
         }
         if (artifact === undefined) throw new Error(`failed to create derivation artifact ${hash}`);
         const derivationId = artifact.id;
+        let parseIssues: number | null = null;
         const attachComplete = async (disposition: "vector" | "lexical" | "excluded" | "nonsemantic" | "failed", reason: string | null = null): Promise<void> => {
-            await db.derivation_complete.run({ derivation_id: derivationId, disposition, reason });
+            await db.derivation_complete.run({
+                derivation_id: derivationId,
+                disposition,
+                reason,
+                parse_issues: parseIssues,
+            });
             await attach();
         };
         const wantGraph = r.content.length > 0 && !binary;
@@ -119,6 +126,7 @@ export default class SearchIndex {
             return;
         }
         ctx.signal?.throwIfAborted();
+        parseIssues = result.parseIssues ?? null;
         for (const notice of result.notices ?? []) callbacks.onNotice?.(notice);
         // Persistence and embedding operations are outside typed input-failure
         // containment. An internal/operational failure leaves the artifact
@@ -166,6 +174,7 @@ export default class SearchIndex {
         const logRows = await db.log_derivation_rows.all<{
             id: number;
             coordinate: string;
+            origin: string;
             op: string | null;
             tx: string;
             mimetype_tx: string;
@@ -259,7 +268,7 @@ export default class SearchIndex {
                 r: {
                     id: row.id,
                     attachment: "log",
-                    pathname: row.coordinate,
+                    pathname: LogEntryProjection.coordinate(row.coordinate, row),
                     content: projection.content,
                     mimetype: projection.mimetype,
                 },

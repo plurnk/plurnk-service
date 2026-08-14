@@ -1,5 +1,6 @@
-import type { EntryAddress, EntryEditResult, EntryFindResult, SchemeCtx, SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
-import type { EditStatement, FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import type { EntryAddress, EntryEditResult, EntryFindResult, ResolvedEditStatement, SchemeCtx, SchemeHandler, SchemeManifest } from "@plurnk/plurnk-schemes";
+import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import LineAnchors from "../content/line-anchors.ts";
 
 // {§prompt-self-only} — prompt:// carries the worker's own task frames: each loop's prompt at
 // prompt:///<loopSeq>/<turnSeq>, owned by the worker via owner_id — the address carries only the
@@ -18,7 +19,8 @@ export default class Prompt implements SchemeHandler {
         volatile: false,
         modelVisible: true,
         folderScopes: true,
-        example: "<|READ(prompt:///1/1)|>",
+        textEditScopes: true,
+        example: "## READ0 (prompt:///1/1)",
         documentation: "Your task frames — each loop's prompt at `prompt:///<loop>/<N>` (READ the address the Active User Prompts section lists). READ-ONLY: the engine writes these for you; your scratch lives at `worker://~/` and the shared blackboard at `worker:///`.",
     };
 
@@ -30,7 +32,8 @@ export default class Prompt implements SchemeHandler {
 
     // Engine and client prompt writers persist the frame owner-keyed to the
     // worker it addresses. The actionless prompt log row is written separately.
-    async editBatch(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EntryEditResult> {
+    async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EntryEditResult> {
+        LineAnchors.assertResolved(statements);
         return ctx.entries.operations.editBatch(statements, "worker");
     }
 

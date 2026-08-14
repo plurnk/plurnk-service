@@ -159,7 +159,7 @@ WHERE id IN (SELECT id FROM orphaned)
 RETURNING id, pathname;
 
 -- PREP: drain_find_slept_loop
--- A worker's parked (slept) loop — SEND[202] suspends it at status 202, resumable by a wake
+-- A worker's parked (slept) loop — SEND signal 202 suspends it at status 202, resumable by a wake
 -- ({§worker-lifecycle-wake-liveness}). A worker parks one at a time; take the most recent.
 SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequence DESC LIMIT 1;
 

@@ -1,5 +1,7 @@
 import {
+    InvalidTagSignalError,
     PathSyntax,
+    TagSignal,
     type FindStatement,
     type FoldStatement,
     type OpenStatement,
@@ -18,26 +20,44 @@ import type {
 } from "../core/CoreSchemeServices.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
 import LogBody from "../core/LogBody.ts";
+import LogEntryProjection from "../core/LogEntryProjection.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import EntryGraph from "./_entry-graph.ts";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
 import { pathFolderSummaries, pathScope, pathScopeMatches } from "./_path-scope.ts";
+import type { CatalogChannel, CatalogDefaultChannel } from "./_entry-manifest.ts";
 
 type OpenFoldResult = SchemeResultBase & { matched?: number };
+type LogCatalogMatch = [CatalogDefaultChannel & { tags?: string[] }, ...CatalogChannel[]];
+type LogCoordinate = {
+    loopSeq: number;
+    turnSeq: number;
+    sequence: number;
+    op: string | null;
+};
+type CoordinateRow = {
+    id: number;
+    coordinate: string;
+    origin: string;
+    op: string | null;
+    attrs: string;
+};
 
-export interface LogCurationEffect {
-    readonly targetLogEntryId: number;
-    readonly expandedBefore: 0 | 1;
+export interface LogCurationPlan {
+    readonly targetLogEntryIds: readonly number[];
+    readonly expanded: 0 | 1;
+    readonly add: readonly string[];
+    readonly remove: readonly string[];
 }
 
 export interface LogCurationOutcome {
     readonly result: OpenFoldResult;
-    readonly effects: ReadonlyArray<LogCurationEffect>;
+    readonly plan: LogCurationPlan | null;
 }
 
 // log:///<loop_seq>/<turn_seq>/<sequence>[/<op>] — the trailing /op segment
-// is wire-rendering self-documentation derived from the row's `op` field;
-// parsing accepts it (or omits it) and identifies the row by coordinate. The op
+// is canonical model-facing identity derived from the row's projected `op`;
+// parsing accepts it (or omits it), but a supplied suffix must agree. The op
 // suffix is case-INSENSITIVE: model ops render UPPERCASE (READ/EDIT/FIND) while
 // engine-minted selectors such as `error` are lowercase. An actionless model
 // emission has no suffix at all.
@@ -58,24 +78,32 @@ const coordinateGlob = (pathname: string): string | null => {
     return null;
 };
 
-const parseCoordinate = (pathname: string): { loopSeq: number; turnSeq: number; sequence: number } | null => {
+const parseCoordinate = (pathname: string): LogCoordinate | null => {
     const match = COORDINATE.exec(pathname);
     if (match === null) return null;
     return {
         loopSeq: Number(match[1]),
         turnSeq: Number(match[2]),
         sequence: Number(match[3]),
+        op: match[4] ?? null,
     };
 };
 
-const canonicalCoordinate = (coordinate: string): string => coordinate.replace(/\/[A-Za-z]+$/, "");
-
 // A rendered log path appends `/OP` to the canonical loop/turn/item coordinate
-// as self-documentation. Selection honors both views: ordinary path globs map
+// as identity. Selection honors both views: ordinary path globs map
 // the three-level resource tree, while an explicit OP segment can still filter
 // rows (`log:///**/READ`).
 const coordinateScopeMatches = (scope: ReturnType<typeof pathScope>, coordinate: string): boolean =>
-    pathScopeMatches(scope, coordinate) || pathScopeMatches(scope, canonicalCoordinate(coordinate));
+    pathScopeMatches(scope, coordinate) || pathScopeMatches(scope, LogEntryProjection.base(coordinate));
+
+const projectedCoordinateRows = <T extends Omit<CoordinateRow, "id"> & { id?: number }>(rows: readonly T[]): T[] => rows.map((row) => ({
+    ...row,
+    coordinate: LogEntryProjection.coordinate(row.coordinate, row),
+}));
+
+const coordinateCandidatePrefix = (prefix: string | null): string | null => prefix === null
+    ? null
+    : LogEntryProjection.base(prefix);
 
 export default class Log extends CoreSchemeAdapterBase implements CoreRepresentationProvider {
     static manifest: SchemeManifest = {
@@ -89,7 +117,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         volatile: false,
         modelVisible: true,
         folderScopes: true,
-        example: "<|READ(log:///1/2/3)|>",
+        example: "## READ0 (log:///1/2/3)",
     };
 
     async resolveCoreRepresentation(
@@ -140,6 +168,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         }
 
         const row = await db.log_read_by_coordinate.get<{
+            origin: string;
             op: string | null;
             scheme: string | null;
             pathname: string | null;
@@ -149,10 +178,12 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             rx: string;
             mimetype_rx: string;
             attrs: string;
-            tags: string;
         }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
 
         if (row === undefined) return failure("entry-not-found", 404, `No log entry exists at log:///${pathname}.`);
+        if (!LogEntryProjection.accepts(coord.op, row)) {
+            return failure("entry-not-found", 404, `No log entry exists at log:///${pathname}.`);
+        }
 
         const { content: underlyingContent, mimetype: underlyingMimetype } = LogBody.resolve({
             op: row.op,
@@ -162,10 +193,6 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             mimetypeTx: row.mimetype_tx,
             mimetypeRx: row.mimetype_rx,
         });
-        const tags = JSON.parse(row.tags) as unknown;
-        if (!Array.isArray(tags) || !tags.every((tag) => typeof tag === "string")) {
-            throw new TypeError(`Log row ${pathname} contains invalid tag storage.`);
-        }
         return {
             representation: {
                 channels: {
@@ -175,7 +202,6 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                         state: "static",
                     },
                 },
-                tags,
             },
         };
     }
@@ -183,7 +209,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     // {§log-uniform-query} — FIND over the worker's log rows, on the SAME source-agnostic primitive
     // every entry scheme runs (Matcher.matchCandidates, {§find-source-agnostic}): candidates are the
     // coordinate-scoped rows resolved by LogBody exactly as READ shows them, so every content
-    // dialect works on log BY CONSTRUCTION and FIND(log)->READ(coordinate) composes like any scheme.
+    // dialect works on log BY CONSTRUCTION and log FIND -> coordinate READ composes like any scheme.
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         return this.#find(statement, this.coreContext(ctx));
     }
@@ -192,6 +218,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         statement: FindStatement,
         core: PlurnkSchemeContext,
         allowTargetless = false,
+        filterTags: readonly string[] = [],
     ): Promise<FindResult> {
         const { db, workerId, mimetypes } = core;
         const empty = (
@@ -244,13 +271,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         if (scope.kind === "exact") {
             const coordinate = parseCoordinate(scope.pathname);
             if (coordinate === null) throw new Error(`Exact log scope has a malformed coordinate ${JSON.stringify(scope.pathname)}`);
-            const exact = await db.log_id_by_coordinate.get<{ id: number }>({
-                worker_id: workerId,
-                loop_seq: coordinate.loopSeq,
-                turn_seq: coordinate.turnSeq,
-                sequence: coordinate.sequence,
-            });
-            if (exact === undefined) {
+            if (await this.#resolveExactId(coordinate, core) === null) {
                 return empty(
                     404,
                     `No log entry exists at ${statement.target?.raw ?? `log:///${scope.pathname}`}.`,
@@ -258,11 +279,9 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 );
             }
         }
-        // {§log-region-tagging} — a tag signal AND-filters the candidates ({§find-tag-filter-and-semantics}):
-        // a row survives only if it carries EVERY listed tag. No signal → the plain coordinate scope.
-        const tags = Array.isArray(statement.signal) ? statement.signal : [];
         type Candidate = {
             coordinate: string;
+            origin: string;
             op: string | null;
             tx: string;
             mimetype_tx: string;
@@ -273,9 +292,10 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             attrs: string;
             tags: string;
         };
-        const candidateRows = tags.length > 0
-            ? await db.log_find_candidates_tagged.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix, tags: JSON.stringify(tags) })
-            : await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: scope.candidatePrefix });
+        const storedCandidateRows = filterTags.length > 0
+            ? await db.log_curation_find_candidates_tagged.all<Candidate>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix), tags: JSON.stringify(filterTags) })
+            : await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix) });
+        const candidateRows = projectedCoordinateRows(storedCandidateRows);
         let rows: Candidate[];
         try { rows = candidateRows.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
         catch {
@@ -289,7 +309,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 },
             );
         }
-        const candidateByCanonicalCoord = new Map(candidateRows.map((row) => [canonicalCoordinate(row.coordinate), row] as const));
+        const candidateByCanonicalCoord = new Map(candidateRows.map((row) => [LogEntryProjection.base(row.coordinate), row] as const));
         const byCoord = new Map(rows.map((r) => [r.coordinate, r] as const));
         const projected = rows.map((r) => ({
             key: r.coordinate,
@@ -372,7 +392,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     retryable: false,
                 },
             );
-            const universeRows = await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: null });
+            const universeRows = projectedCoordinateRows(await db.log_find_candidates.all<Candidate>({ worker_id: workerId, scope_prefix: null }));
             const universe = resolveSearchCandidates(
                 universeRows.map(({ coordinate, deep_hash }) => ({ key: coordinate, deepHash: deep_hash })),
             );
@@ -438,7 +458,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             matches = r.matches.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
         }
         const folderSummaries = statement.body === null
-            ? pathFolderSummaries(scope, candidateRows.map((row) => canonicalCoordinate(row.coordinate)))
+            ? pathFolderSummaries(scope, candidateRows.map((row) => LogEntryProjection.base(row.coordinate)))
             : [];
         const resources: FindProjectionResource[] = [];
         for (const m of matches) {
@@ -453,15 +473,18 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 mimetypeTx: row.mimetype_tx,
                 mimetypeRx: row.mimetype_rx,
             });
-            const item: CatalogMatch = {
+            const channel: LogCatalogMatch[0] = {
                 path,
-                channels: { [path]: { mimetype: proj.mimetype, tokens: row.tokens, lines: proj.content.length === 0 ? 0 : proj.content.split("\n").length } },
+                mimetype: proj.mimetype,
+                tokens: row.tokens,
+                lines: proj.content.length === 0 ? 0 : proj.content.split("\n").length,
             };
             const storedTags = JSON.parse(row.tags) as unknown;
             if (!Array.isArray(storedTags) || !storedTags.every((tag) => typeof tag === "string" && tag.length > 0)) {
                 throw new TypeError(`Log row ${m.pathname} contains invalid tag storage.`);
             }
-            if (storedTags.length > 0) item.tags = storedTags;
+            if (storedTags.length > 0) channel.tags = storedTags;
+            const item: LogCatalogMatch = [channel];
             resources.push({ item, match: m });
         }
         const scopes: CatalogScope[] = [];
@@ -478,42 +501,57 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     }
 
     async open(statement: OpenStatement, ctx: CoreSchemeCallContext): Promise<OpenFoldResult> {
-        return this.#setExpanded(statement, this.coreContext(ctx), 1);
+        const core = this.coreContext(ctx);
+        const outcome = await this.#planCuration(statement, core, 1);
+        if (outcome.plan !== null) await this.#applyDirect(outcome.plan, core);
+        return outcome.result;
     }
 
     // FOLD toggles the expanded bit only — an active subscription stays alive. {§subscriptions-fold-keeps-subscription}
     async fold(statement: FoldStatement, ctx: CoreSchemeCallContext): Promise<OpenFoldResult> {
-        return this.#setExpanded(statement, this.coreContext(ctx), 0);
+        const core = this.coreContext(ctx);
+        const outcome = await this.#planCuration(statement, core, 0);
+        if (outcome.plan !== null) await this.#applyDirect(outcome.plan, core);
+        return outcome.result;
     }
 
     // Core dispatch retains the exact landed effect beside the suppressed
     // OPEN/FOLD event. Direct scheme callers receive the ordinary result above.
     async curate(statement: OpenStatement | FoldStatement, ctx: CoreSchemeCallContext): Promise<LogCurationOutcome> {
-        const effects: LogCurationEffect[] = [];
-        const result = await this.#setExpanded(
+        return this.#planCuration(
             statement,
             this.coreContext(ctx),
             statement.op === "OPEN" ? 1 : 0,
-            effects,
         );
-        return { result, effects };
     }
 
     // Resolve a log:/// target — a concrete coordinate or path-glob — to the matched row ids.
     // OPEN/FOLD/KILL share this one path selection; log curation has no positional pagination.
+    async #resolveExactId(coordinate: LogCoordinate, ctx: PlurnkSchemeContext): Promise<number | null> {
+        const row = await ctx.db.log_id_by_coordinate.get<Pick<CoordinateRow, "id" | "origin" | "op" | "attrs">>({
+            worker_id: ctx.workerId,
+            loop_seq: coordinate.loopSeq,
+            turn_seq: coordinate.turnSeq,
+            sequence: coordinate.sequence,
+        });
+        return row !== undefined && LogEntryProjection.accepts(coordinate.op, row) ? row.id : null;
+    }
+
     async #resolveIds(pathname: string, ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {
         const { db, workerId } = ctx;
         const coord = parseCoordinate(pathname);
         if (coord !== null) {
-            const row = await db.log_id_by_coordinate.get<{ id: number }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
-            return row === undefined ? { status: 404, ids: [] } : { status: 200, ids: [row.id] };
+            const id = await this.#resolveExactId(coord, ctx);
+            return id === null
+                ? { status: 404, ids: [] }
+                : { status: 200, ids: [id] };
         }
         // {§log-coordinate-hierarchy} — one resolution for every consumer (curation here, find below).
         const glob = coordinateGlob(pathname);
         if (glob === null) return { status: 400, ids: [], error: `The log target '${pathname}' is malformed.` };
         const scope = pathScope(glob, false);
-        const candidates = await db.log_match_coordinates.all<{ id: number; coordinate: string }>({ worker_id: workerId, scope_prefix: scope.candidatePrefix });
-        let matched: Array<{ id: number; coordinate: string }>;
+        const candidates = projectedCoordinateRows(await db.log_match_coordinates.all<CoordinateRow>({ worker_id: workerId, scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix) }));
+        let matched: CoordinateRow[];
         try { matched = candidates.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
         catch { return { status: 400, ids: [], error: `The log glob '${glob}' is malformed.` }; }
         // {§log-curation-folder-idiom} — a well-formed empty selection is a
@@ -522,8 +560,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return { status: 200, ids: matched.map((row) => row.id) };
     }
 
-    // {§log-region-tagging} — resolve OPEN[tag] to ids: candidates are the target's glob scope (the
-    // whole worker log when targetless — a bare OPEN[tag] recalls the entire tagged working-set),
+    // {§log-item-tags} — resolve tagged OPEN/FOLD to ids: candidates are the target's glob scope (the
+    // whole worker log when targetless),
     // AND-filtered to rows carrying EVERY listed tag. Zero matches is a no-op success (204), mirroring
     // #resolveIds — recalling a name that tags nothing steers nothing.
     async #resolveByTags(statement: OpenStatement | FoldStatement, tags: string[], ctx: PlurnkSchemeContext): Promise<{ status: number; ids: number[]; error?: string }> {
@@ -531,13 +569,17 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const pathname = statement.target === null ? "" : (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
         const glob = coordinateGlob(pathname);
         if (glob === null) return { status: 400, ids: [], error: `The log target '${pathname}' is malformed.` };
+        const coordinate = parseCoordinate(pathname);
+        if (coordinate !== null && await this.#resolveExactId(coordinate, ctx) === null) {
+            return { status: 404, ids: [] };
+        }
         const scope = pathScope(glob, false);
-        const candidates = await db.log_match_coordinates_tagged.all<{ id: number; coordinate: string }>({
+        const candidates = projectedCoordinateRows(await db.log_match_coordinates_tagged.all<CoordinateRow>({
             worker_id: workerId,
-            scope_prefix: scope.candidatePrefix,
+            scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix),
             tags: JSON.stringify(tags),
-        });
-        let matched: Array<{ id: number; coordinate: string }>;
+        }));
+        let matched: CoordinateRow[];
         try { matched = candidates.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
         catch { return { status: 400, ids: [], error: `The log glob '${glob}' is malformed.` }; }
         if (matched.length === 0) return { status: 204, ids: [] };
@@ -545,26 +587,29 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     }
 
     // A matcher-bearing curation op reuses FIND's complete source-agnostic selector with
-    // explicit all-results pagination. OPEN's tags filter candidates; FOLD's tags are withheld until
-    // after selection because they apply to the rows being folded.
+    // explicit all-results pagination. Curation tags are an independent selector;
+    // an authored FIND signal classifies its result row and never enters candidate selection.
     async #resolveByMatcher(
         statement: OpenStatement | FoldStatement,
-        filterTags: boolean,
+        filterTags: readonly string[],
         ctx: PlurnkSchemeContext,
     ): Promise<{ status: number; ids: number[]; problem?: ProblemDetails }> {
         const selected = await this.#find(
             {
                 ...statement,
                 op: "FIND",
-                signal: filterTags ? statement.signal : null,
+                signal: null,
                 lineMarker: { marks: [1, -1] },
             },
             ctx,
-            filterTags && Array.isArray(statement.signal) && statement.signal.length > 0 && statement.target === null,
+            true,
+            filterTags,
         );
         if (selected.status !== 200) return { status: selected.status, ids: [], problem: selected.problem };
 
-        let selectedPaths = selected.results.flatMap((item) => typeof item.path === "string" ? [item.path] : []);
+        let selectedPaths = selected.results.flatMap((item) => Array.isArray(item) && typeof item[0]?.path === "string"
+            ? [item[0].path]
+            : []);
         if (selectedPaths.length === 0) {
             if (statement.target === null) {
                 throw new Error("A successful broad log matcher selection returned no resource paths");
@@ -582,134 +627,145 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         for (const pathname of selectedPaths) {
             const coordinate = parseCoordinate(pathname.replace(/^log:\/\/\//, "").replace(/^\//, ""));
             if (coordinate === null) throw new Error(`Log matcher selected malformed coordinate '${pathname}'`);
-            const row = await ctx.db.log_id_by_coordinate.get<{ id: number }>({
-                worker_id: ctx.workerId,
-                loop_seq: coordinate.loopSeq,
-                turn_seq: coordinate.turnSeq,
-                sequence: coordinate.sequence,
-            });
-            if (row === undefined) return { status: 404, ids: [] };
-            ids.push(row.id);
+            const id = await this.#resolveExactId(coordinate, ctx);
+            if (id === null) return { status: 404, ids: [] };
+            ids.push(id);
         }
         return ids.length === 0 ? { status: 204, ids: [] } : { status: 200, ids };
     }
 
-    async #applyExpanded(
-        ids: number[],
-        expanded: 0 | 1,
-        tags: string[],
-        ctx: PlurnkSchemeContext,
-        effects?: LogCurationEffect[],
-    ): Promise<OpenFoldResult> {
-        for (const id of ids) {
-            if (effects === undefined) {
-                await ctx.db.log_set_expanded_by_id.run({ id, expanded });
-                continue;
-            }
-            const changed = await ctx.db.log_set_expanded_by_id.get<{ id: number }>({ id, expanded });
-            if (changed !== undefined) {
-                effects.push({ targetLogEntryId: id, expandedBefore: expanded === 1 ? 0 : 1 });
-                continue;
-            }
-            const current = await ctx.db.log_expanded_by_id.get<{ expanded: 0 | 1 }>({ id });
-            if (current === undefined) throw new Error(`Log curation target ${id} disappeared after selection.`);
-            if (current.expanded !== expanded) {
-                throw new Error(`Log curation target ${id} did not reach visibility ${expanded}.`);
-            }
-            effects.push({ targetLogEntryId: id, expandedBefore: current.expanded });
+    async #applyDirect(plan: LogCurationPlan, ctx: PlurnkSchemeContext): Promise<void> {
+        for (const id of plan.targetLogEntryIds) {
+            await ctx.db.log_set_expanded_by_id.run({ id, expanded: plan.expanded });
+            for (const tag of plan.remove) await ctx.db.log_remove_tag.run({ log_entry_id: id, tag });
+            for (const tag of plan.add) await ctx.db.log_write_tag.run({ log_entry_id: id, tag });
         }
-        if (expanded === 0) {
-            for (const id of ids) for (const tag of tags) await ctx.db.log_write_tag.run({ log_entry_id: id, tag });
-        }
-        return { status: 200, matched: ids.length };
     }
 
-    async #setExpanded(
+    async #planCuration(
         statement: OpenStatement | FoldStatement,
         ctx: PlurnkSchemeContext,
         expanded: 0 | 1,
-        effects?: LogCurationEffect[],
-    ): Promise<OpenFoldResult> {
-        const signal = Array.isArray(statement.signal) ? statement.signal : [];
+    ): Promise<LogCurationOutcome> {
+        let tags: ReturnType<typeof TagSignal.curation>;
+        try {
+            tags = TagSignal.curation(statement.signal);
+        } catch (cause) {
+            if (!(cause instanceof InvalidTagSignalError)) throw cause;
+            return {
+                result: Results.failure(
+                    "scheme:log",
+                    "tag-signal-invalid",
+                    400,
+                    cause.message,
+                    {},
+                    { retryable: false },
+                ) as OpenFoldResult,
+                plan: null,
+            };
+        }
+        const planned = (ids: number[]): LogCurationOutcome => ({
+            result: { status: 200, matched: ids.length },
+            plan: {
+                targetLogEntryIds: ids,
+                expanded,
+                add: tags.add,
+                remove: tags.remove,
+            },
+        });
         if (statement.body !== null) {
-            const matched = await this.#resolveByMatcher(statement, expanded === 1, ctx);
-            if (matched.status === 204) return { status: 204, matched: 0 };
+            const matched = await this.#resolveByMatcher(statement, tags.filter, ctx);
+            if (matched.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
             if (matched.status !== 200) {
                 if (matched.problem !== undefined) {
-                    return Results.assert({ status: matched.status, problem: matched.problem }) as OpenFoldResult;
+                    return {
+                        result: Results.assert({ status: matched.status, problem: matched.problem }) as OpenFoldResult,
+                        plan: null,
+                    };
                 }
-                return Results.failure(
-                    "scheme:log",
-                    matched.status === 404 ? "entry-not-found" : "curation-failed",
-                    matched.status,
-                    "No log entry matches the requested selection.",
-                ) as OpenFoldResult;
+                return {
+                    result: Results.failure(
+                        "scheme:log",
+                        matched.status === 404 ? "entry-not-found" : "curation-failed",
+                        matched.status,
+                        "No log entry matches the requested selection.",
+                    ) as OpenFoldResult,
+                    plan: null,
+                };
             }
-            return this.#applyExpanded(matched.ids, expanded, signal, ctx, effects);
+            return planned(matched.ids);
         }
 
-        // {§log-region-tagging} — OPEN[tag] is the READ side: recall rows by tag, target optional (a bare
-        // OPEN[tag] recalls the whole tagged working-set). FOLD never resolves by tag — it is the WRITE
-        // side (it stamps the tag below), always scoped to the target region it folds.
-        if (expanded === 1 && signal.length > 0) {
-            const rt = await this.#resolveByTags(statement, signal, ctx);
-            if (rt.status === 204) return { status: 204, matched: 0 };
-            if (rt.status !== 200) {
-                return Results.failure(
+        // {§log-item-tags} — unsigned terms are the symmetric ALL-tags selector;
+        // signed terms are changes applied only after the exact set is resolved.
+        if (tags.filter.length > 0) {
+            const selected = await this.#resolveByTags(statement, [...tags.filter], ctx);
+            if (selected.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
+            if (selected.status !== 200) {
+                return {
+                    result: Results.failure(
+                        "scheme:log",
+                        "curation-failed",
+                        selected.status,
+                        selected.error ?? "No log entry matches the requested selection.",
+                        {},
+                        {
+                            target: statement.target?.raw ?? null,
+                            ...(selected.status === 400
+                                ? {
+                                    recovery: "Use a log coordinate, prefix, or glob.",
+                                    retryable: false,
+                                }
+                                : {}),
+                        },
+                    ) as OpenFoldResult,
+                    plan: null,
+                };
+            }
+            return planned(selected.ids);
+        }
+
+        if (statement.target === null) {
+            return {
+                result: Results.failure(
                     "scheme:log",
-                    "open-failed",
-                    rt.status,
-                    rt.error ?? "No log entry matches the requested selection.",
+                    "target-required",
+                    400,
+                    `${expanded === 1 ? "OPEN" : "FOLD"} requires a path, body pattern, or unsigned tag; signed tags do not select log items.`,
                     {},
                     {
-                        target: statement.target?.raw ?? null,
-                        ...(rt.status === 400
+                        recovery: "Provide a log coordinate, prefix, glob, body pattern, or unsigned tag.",
+                        retryable: false,
+                    },
+                ) as OpenFoldResult,
+                plan: null,
+            };
+        }
+        const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
+        const selected = await this.#resolveIds(pathname, ctx);
+        if (selected.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
+        if (selected.status !== 200) {
+            return {
+                result: Results.failure(
+                    "scheme:log",
+                    selected.status === 404 ? "entry-not-found" : "curation-failed",
+                    selected.status,
+                    selected.error ?? `No log entry matches '${pathname}'.`,
+                    {},
+                    {
+                        target: pathname,
+                        ...(selected.status === 400
                             ? {
                                 recovery: "Use a log coordinate, prefix, or glob.",
                                 retryable: false,
                             }
                             : {}),
                     },
-                ) as OpenFoldResult;
-            }
-            return this.#applyExpanded(rt.ids, 1, signal, ctx, effects);
+                ) as OpenFoldResult,
+                plan: null,
+            };
         }
-
-        if (statement.target === null) {
-            return Results.failure(
-                "scheme:log",
-                "target-required",
-                400,
-                `${expanded === 1 ? "OPEN" : "FOLD"} requires a log target.`,
-                {},
-                {
-                    recovery: "Provide a log coordinate, prefix, or glob.",
-                    retryable: false,
-                },
-            ) as OpenFoldResult;
-        }
-        const pathname = (statement.target.kind === "url" ? statement.target.pathname : statement.target.raw).replace(/^\//, "");
-        const r = await this.#resolveIds(pathname, ctx);
-        if (r.status === 204) return { status: 204, matched: 0 };
-        if (r.status !== 200) {
-            return Results.failure(
-                "scheme:log",
-                r.status === 404 ? "entry-not-found" : "curation-failed",
-                r.status,
-                r.error ?? `No log entry matches '${pathname}'.`,
-                {},
-                {
-                    target: pathname,
-                    ...(r.status === 400
-                        ? {
-                            recovery: "Use a log coordinate, prefix, or glob.",
-                            retryable: false,
-                        }
-                        : {}),
-                },
-            ) as OpenFoldResult;
-        }
-        return this.#applyExpanded(r.ids, expanded, signal, ctx, effects);
+        return planned(selected.ids);
     }
 
     // KILL shares OPEN/FOLD's address resolution, deletes instead of flipping visibility,

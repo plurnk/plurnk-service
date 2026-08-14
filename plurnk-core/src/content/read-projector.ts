@@ -6,22 +6,29 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import type { SchemeManifest } from "../core/scheme-types.ts";
 import Results from "../core/results.ts";
+import LineAnchors from "./line-anchors.ts";
 import MimetypeBinary from "./mimetype-binary.ts";
 import ReadResolve from "./read-resolve.ts";
 
+export interface AnchoredReadResult extends EntryReadResult {
+    readonly lineAnchorIdentity?: string;
+    readonly lineAnchors?: readonly string[];
+}
+
 // {§universal-read-composition} Core's one exact-resource projection over a complete canonical
-// representation. Storage adapters supply channels and tags; this layer owns
-// channel selection, tag filtering, binary admission, text coordinates, and
+// representation. Storage adapters supply channels; this layer owns channel
+// selection, binary admission, text coordinates, line-anchor projection, and
 // composition of the selected producer's durable result.
 export default class ReadProjector {
     static async project(opts: {
         readonly statement: ReadStatement;
         readonly manifest: SchemeManifest;
         readonly target: string;
+        readonly identity: string;
         readonly representation: StoredEntryData;
         readonly mimetypes: Mimetypes | undefined;
-    }): Promise<EntryReadResult> {
-        const { statement, manifest, target, representation, mimetypes } = opts;
+    }): Promise<AnchoredReadResult> {
+        const { statement, manifest, target, identity, representation, mimetypes } = opts;
         const fragment = statement.target?.kind === "url"
             ? statement.target.fragment
             : null;
@@ -86,18 +93,6 @@ export default class ReadProjector {
             );
         }
 
-        if (Array.isArray(statement.signal) && statement.signal.length > 0) {
-            const tags = new Set(representation.tags);
-            const missing = statement.signal.find((tag) => !tags.has(tag));
-            if (missing !== undefined) {
-                return failure(
-                    "tag-not-found",
-                    404,
-                    `The resource does not carry the required '${missing}' tag.`,
-                );
-            }
-        }
-
         const resolved = await ReadResolve.resolve({
             content: selectedRepresentation.content,
             mimetype: selectedRepresentation.mimetype,
@@ -133,12 +128,31 @@ export default class ReadProjector {
 
         const projected = { ...resolved, channel };
         const producerResult = selectedRepresentation.producerResult;
-        return producerResult === undefined
+        const result = producerResult === undefined
             ? projected
             : Results.assertReadResult({
                 ...producerResult,
                 ...projected,
                 status: producerResult.status,
             }) as EntryReadResult;
+        if (
+            result.status !== 200
+            || manifest.textEditScopes !== true
+            || !manifest.writableBy.includes("model")
+            || typeof result.content !== "string"
+        ) {
+            return result;
+        }
+        const startLine = result.startLine ?? 1;
+        return {
+            ...result,
+            lineAnchorIdentity: identity,
+            lineAnchors: LineAnchors.project(
+                identity,
+                selectedRepresentation.content,
+                result.content,
+                startLine,
+            ),
+        };
     }
 }

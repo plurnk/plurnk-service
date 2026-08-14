@@ -13,29 +13,39 @@ The manifest claims the subprocess tags. Per-tag `probe()` reports Node
 unconditionally because the daemon already runs on it. A cheap `command -v`
 detects every other interpreter, so one executor adapts to the host.
 
-| Tag                              | Binary            | Command via                              |
+| Tag                              | Binary            | Inline body via                          |
 | -------------------------------- | ----------------- | ---------------------------------------- |
-| `sh` 🐚 / `bash` 🐚              | sh / bash         | `-c <command>`                           |
-| `node` ⬢                         | node              | `-e <command>` (always available)        |
-| `python` / `python3` 🐍          | python3           | `-c <command>`                           |
-| `perl` 🐪 / `ruby` 💎 / `lua` 🌙 | perl / ruby / lua | `-e <command>`                           |
-| `php` 🐘                         | php               | `-r <command>`                           |
-| `deno` 🦕                        | deno              | `eval <command>`                         |
-| `bun` 🥟                         | bun               | `-e <command>`                           |
+| `sh` 🐚 / `bash` 🐚              | sh / bash         | `-c <body>`                              |
+| `node` ⬢                         | node              | `-e <body>` (always available)           |
+| `python` / `python3` 🐍          | python3           | `-c <body>`                              |
+| `perl` 🐪 / `ruby` 💎 / `lua` 🌙 | perl / ruby / lua | `-e <body>`                              |
+| `php` 🐘                         | php               | `-r <body>`                              |
+| `deno` 🦕                        | deno              | `eval <body>`                            |
+| `bun` 🥟                         | bun               | `-e <body>`                              |
 | `tcl` 🪶                         | tclsh             | stdin                                    |
 | `bc` 🧮                          | bc                | stdin (for example, `6 * 7`)             |
 | `awk` 🪄                         | awk               | program arg, empty stdin (`BEGIN { … }`) |
 
-### A program with stdin — the `(target)` slot
+### A script or working directory — the `(target)` slot
 
-The table above is the **inline** form: `command` is the program. Put a program
-in the **`(target)` slot** instead and `command` becomes its **stdin**—a shell
-runs `sh -c "<target>"` (the shell tokenizes it), while another interpreter
-runs `<interpreter> <target>` as a script file ({§executor-subprocess-routing}).
+The table above is the **inline** form: the body is the program. A file in the
+`(target)` slot is instead the script each interpreter reads directly, and the
+body becomes that script's stdin. A directory target becomes the working
+directory and the body remains the inline program
+({§executor-subprocess-routing}).
 
 ```plurnk
-<|EXEC[sh](./deploy.sh --prod)>yes\nyes\nno<EXEC|>
-<|EXEC[python](transform.py)>3\n1\n4\n1\n5<EXEC|>
+## EXEC0 [sh] (./deploy.sh)
+yes
+yes
+no
+
+## EXEC0 [python] (transform.py)
+3
+1
+4
+1
+5
 ```
 
 The first operation answers a shell script's prompts through stdin. The second

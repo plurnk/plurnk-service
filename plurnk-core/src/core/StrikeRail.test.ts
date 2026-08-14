@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import StrikeRail, { type StrikeOutcome } from "./StrikeRail.ts";
-import { parsePath, type ReadStatement } from "@plurnk/plurnk-contracts";
+import { parsePath, type BareStatement, type ReadStatement } from "@plurnk/plurnk-contracts";
 
 const base = { fingerprint: "READ(x)", steerStruck: false, minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
 const outcome = (op: StrikeOutcome["op"], status: number): StrikeOutcome => ({ op, status });
@@ -81,4 +81,20 @@ test("network query and channel coordinates remain distinct cycle fingerprints",
     const channel = StrikeRail.fingerprintTurn([statement("https://example.org/x?a=1&b=2#header")]);
     assert.notEqual(first, reordered);
     assert.notEqual(first, channel);
+});
+
+test("distinct BARE prompts remain distinct cycle activities", () => {
+    const statement = (body: string): BareStatement => ({
+        op: "BARE",
+        suffix: "0",
+        signal: null,
+        target: null,
+        lineMarker: null,
+        body,
+        position: { line: 1, column: 1 },
+    });
+    assert.notEqual(
+        StrikeRail.fingerprintTurn([statement("What is the capital of Germany?")]),
+        StrikeRail.fingerprintTurn([statement("What is the capital of France?")]),
+    );
 });

@@ -32,6 +32,42 @@ function fakeNode(text: string): TreeSitterNode {
 }
 
 describe("TreeSitterExtractor", () => {
+    it("{§mimetype-parse-issues} counts parser recovery sites without rejecting the partial tree", async () => {
+        const errorNode = {
+            ...fakeNode("="),
+            type: "ERROR",
+            isError: true,
+        } as TreeSitterNode & { readonly isError: boolean };
+        const missingNode = {
+            ...fakeNode(""),
+            type: ";",
+            isMissing: true,
+        } as TreeSitterNode & { readonly isMissing: boolean };
+        class Fake extends TreeSitterExtractor {
+            protected async loadParser(): Promise<TreeSitterParser> {
+                return {
+                    parse: (content): TreeSitterTree => ({
+                        rootNode: {
+                            ...fakeNode(content),
+                            childCount: 2,
+                            hasError: true,
+                            child: (index) => [errorNode, missingNode][index] ?? null,
+                        } as TreeSitterNode & { readonly hasError: boolean },
+                    }),
+                };
+            }
+            protected override extractFromTree(): MimeSymbol[] {
+                return [{ name: "survives", kind: "variable", line: 1, endLine: 1 }];
+            }
+        }
+        const handler = new Fake(metadata);
+
+        assert.equal(await handler.parseIssues("const x ="), 2);
+        assert.deepEqual(await handler.extractRaw("const x ="), [
+            { name: "survives", kind: "variable", line: 1, endLine: 1 },
+        ]);
+    });
+
     it("calls loadParser once across multiple extractRaw calls (primed cache)", async () => {
         let loadCount = 0;
         class Fake extends TreeSitterExtractor {

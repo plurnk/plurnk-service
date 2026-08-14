@@ -1,0 +1,21 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/EditLineMarker.json",
+    "title": "EditLineMarker",
+    "description": "The ordered components parsed from an EDIT <scope>. A line coordinate may be either numeric or a rendered five-character Base62 line anchor; columns remain numeric. The runtime resolves anchors against the addressed current text before invoking its scheme owner.",
+    "type": "object",
+    "required": ["marks"],
+    "additionalProperties": false,
+    "properties": {
+        "marks": {
+            "type": "array",
+            "items": {
+                "oneOf": [
+                    { "type": "number" },
+                    { "type": "string", "pattern": "^@[0-9A-Za-z]{5}$" }
+                ]
+            },
+            "minItems": 1
+        }
+    }
+}

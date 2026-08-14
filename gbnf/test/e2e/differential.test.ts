@@ -11,7 +11,7 @@ import { VALIDATORS, sameVerdict, describe } from "./_harness.ts";
 test("the oracle binary is compiled", () => {
     assert.ok(
         existsSync(ORACLE),
-        `oracle missing at ${ORACLE} — run \`npm run build:llama\` first (Charter §8)`,
+        `oracle missing at ${ORACLE} — run \`npm run oracle:build\` first (Charter §8)`,
     );
 });
 
@@ -29,14 +29,9 @@ for (const c of CORPUS) {
 }
 
 // 2) Differential: all registered validators agree, character-position included.
-//    A tautology with one validator; a real TS-vs-oracle cross-check once a second
-//    engine is registered. Surfaced explicitly so the single-validator state is never
-//    a silent pass.
 test("differential: every validator agrees on every corpus case", () => {
-    if (VALIDATORS.length < 2) {
-        assert.equal(VALIDATORS[0]?.name, "oracle", "the oracle must be the reference validator");
-        return;
-    }
+    assert.equal(VALIDATORS[0]?.name, "oracle", "the oracle must be the reference validator");
+    assert.ok(VALIDATORS.length >= 2, "differential coverage requires a second validator");
     const disagreements: string[] = [];
     for (const c of CORPUS) {
         const [ref, ...rest] = VALIDATORS.map((v) => ({ name: v.name, verdict: v.validate(c.grammar, c.input) }));

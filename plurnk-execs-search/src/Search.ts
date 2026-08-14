@@ -1,23 +1,13 @@
 import { BaseExecutor, ErrorDetail, renderJsonResult, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } from "@plurnk/plurnk-execs";
 
-// Runtime tag → SearXNG `categories=` value. The flat tag set this sibling
-// claims (package.json `plurnk.runtimes[]`) maps 1:1 onto SearXNG's category
-// tabs (`categories_as_tabs` in its settings.yml). `search` is the general
-// default; `social` and `downloadable` are honest renamings of SearXNG's
-// "social media" and "files" categories. Engine / language / time selection
-// rides the query string via SearXNG's native `!bang` / `:lang` syntax.
+// Runtime tag → the two SearXNG categories this text-retrieval harness can
+// represent faithfully. Specialized engine, language, and time selection rides
+// SearXNG's native `!bang` / `:lang` syntax; an operator-selected engine list
+// replaces category routing because SearXNG otherwise unions the parameters.
 const CATEGORY: Readonly<Record<string, string>> = Object.freeze({
     search: "general",
-    images: "images",
-    videos: "videos",
     news: "news",
-    map: "map",
-    music: "music",
-    it: "it",
-    science: "science",
-    social: "social media",
-    downloadable: "files",
 });
 
 const preview = (query: string, maximum?: number): string => (
@@ -87,6 +77,7 @@ const configuredInteger = (
 //
 //   PLURNK_EXECS_SEARCH_SEARXNG_URL   (required)  base URL of the instance
 //   PLURNK_EXECS_SEARCH_LANGUAGE      (optional)  SearXNG's own default if unset
+//   PLURNK_EXECS_SEARCH_ENGINES       (optional)  exclusive engine selection; replaces runtime category
 //   PLURNK_EXECS_SEARCH_LIMIT         (optional)  client-side result cap; keep-all if unset
 //   PLURNK_EXECS_SEARCH_TIMEOUT       (optional)  ms; consumer cancellation is primary
 //                                                 ({§executor-cancellation}); this is an extra ceiling
@@ -126,13 +117,13 @@ export default class Search extends BaseExecutor {
         return "read";
     }
 
-    async run({ runtime, command, signal, write, setState, emit, entry }: ExecArgs): Promise<ExecResult> {
+    async run({ runtime, body, signal, write, setState, emit, entry }: ExecArgs): Promise<ExecResult> {
         const category = CATEGORY[runtime];
         // A tag we never claimed means the scheme misrouted — a contract
         // violation, not an expected runtime failure. Fail hard.
         if (category === undefined) throw new Error(`plurnk-execs-search received unclaimed runtime tag '${runtime}'`);
 
-        const query = command.trim();
+        const query = body.trim();
         const fail = (
             kind: string,
             message: string,
@@ -235,9 +226,9 @@ export default class Search extends BaseExecutor {
         const url = new URL("/search", config.base);
         url.searchParams.set("q", query);
         url.searchParams.set("format", "json");
-        url.searchParams.set("categories", category);
         if (language) url.searchParams.set("language", language);
         if (engines) url.searchParams.set("engines", engines);
+        else url.searchParams.set("categories", category);
         if (safesearch) url.searchParams.set("safesearch", safesearch);
 
         // The consumer's signal is the primary deadline ({§executor-cancellation}); an optional search

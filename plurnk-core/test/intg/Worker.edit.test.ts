@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, LineMarker, LocalPath, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { LineMarker, LocalPath, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
-import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx, seedStaticChannel } from "./_helpers.ts";
 import { urlPath, fullReplace } from "./_dsl.ts";
 
 const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
@@ -11,7 +12,7 @@ const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
 const editStatement = (opts: {
     target?: ParsedPath | null; tags?: string[] | null; body?: string | null;
     lineMarker?: LineMarker | null; suffix?: string;
-}): EditStatement => ({
+}): ResolvedEditStatement => ({
     op: "EDIT",
     suffix: opts.suffix ?? "",
     signal: opts.tags ?? null,
@@ -38,12 +39,11 @@ const setupContext = async () => {
     return { db, workspaceId, workerId };
 };
 
-test("Worker.edit: new entry — inserts entries row, body channel, tags", async () => {
+test("Worker.edit: new entry — inserts entries row and body channel", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const stmt = editStatement({
             target: urlPath("worker", "/countries/france/capital"),
-            tags: ["france", "europe"],
             body: "Paris",
         });
         const result = await new Worker().edit(stmt, makeSchemeCtx({ db, workspaceId, workerId }));
@@ -63,8 +63,45 @@ test("Worker.edit: new entry — inserts entries row, body channel, tags", async
         assert.equal(channel?.content, "Paris");
         assert.equal(channel?.mimetype, "text/markdown");
         assert.equal(channel?.state, "static");
-        const tags = await db.test_list_entry_tags.all<{ tag: string }>({ entry_id: result.entryId });
-        assert.deepEqual(tags.map((t) => t.tag), ["europe", "france"]);
+    } finally { await db.close(); }
+});
+
+test("Worker.edit: a concurrent creator wins cleanly and the losing EDIT reports a collision", async () => {
+    const { db, workspaceId, workerId } = await setupContext();
+    try {
+        const claim = new Proxy(db.ops_insert_workspace_entry_if_absent, {
+            get(statement, property) {
+                if (property !== "get") return Reflect.get(statement, property, statement) as unknown;
+                return async <R = Record<string, unknown>>(params?: Record<string, unknown>): Promise<R | undefined> => {
+                    const winner = await db.ops_insert_workspace_entry_if_absent.get<{ id: number }>(params);
+                    await seedStaticChannel(db, winner?.id, {
+                        name: "body",
+                        content: "other worker",
+                        mimetype: "text/markdown",
+                    });
+                    return db.ops_insert_workspace_entry_if_absent.get<R>(params);
+                };
+            },
+        });
+        const collisionDb = new Proxy(db, {
+            get(subject, property) {
+                if (property === "ops_insert_workspace_entry_if_absent") return claim;
+                return Reflect.get(subject, property, subject) as unknown;
+            },
+        });
+        const result = await new Worker().edit(
+            editStatement({ target: urlPath("worker", "/create-race.md"), body: "authored edit" }),
+            makeSchemeCtx({ db: collisionDb, workspaceId, workerId }),
+        );
+        assert.equal(result.status, 409);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/edit/edit-collision");
+        assert.equal(result.problem?.detail, "EDIT collided with another change at worker:///create-race.md.");
+        const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+            pathname: "/create-race.md",
+            scheme: "worker",
+            name: "body",
+        });
+        assert.equal(channel?.content, "other worker");
     } finally { await db.close(); }
 });
 
@@ -82,7 +119,54 @@ test("Worker.edit: second EDIT against same path — same entry id, body replace
     } finally { await db.close(); }
 });
 
-test("EDIT that changes nothing returns 304; content change or new tag is still 200", async () => {
+test("Worker.edit: a representation change at atomic landing returns edit-collision without clobbering it", async () => {
+    const { db, workspaceId, workerId } = await setupContext();
+    try {
+        const worker = new Worker();
+        const target = urlPath("worker", "/cas.md");
+        const created = await worker.edit(
+            editStatement({ target, body: "original" }),
+            makeSchemeCtx({ db, workspaceId, workerId }),
+        );
+        assert.equal(created.status, 201);
+        assert.notEqual(created.entryId, null);
+
+        const update = new Proxy(db.ops_update_channel_if_content, {
+            get(statement, property) {
+                if (property !== "get") return Reflect.get(statement, property, statement) as unknown;
+                return async <R = Record<string, unknown>>(params?: Record<string, unknown>): Promise<R | undefined> => {
+                    await db.crud_delete_channels.run({ entry_id: created.entryId });
+                    await seedStaticChannel(db, created.entryId ?? undefined, {
+                        name: "body",
+                        content: "other worker",
+                        mimetype: "text/markdown",
+                    });
+                    return db.ops_update_channel_if_content.get<R>(params);
+                };
+            },
+        });
+        const collisionDb = new Proxy(db, {
+            get(subject, property) {
+                if (property === "ops_update_channel_if_content") return update;
+                return Reflect.get(subject, property, subject) as unknown;
+            },
+        });
+        const result = await worker.edit(
+            editStatement({ target, body: "authored edit", lineMarker: fullReplace }),
+            makeSchemeCtx({ db: collisionDb, workspaceId, workerId }),
+        );
+        assert.equal(result.status, 409);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/edit/edit-collision");
+        assert.equal(result.problem?.detail, "EDIT collided with another change at worker:///cas.md.");
+        const channel = await db.test_get_channel.get<{ content: string }>({
+            entry_id: created.entryId,
+            name: "body",
+        });
+        assert.equal(channel?.content, "other worker");
+    } finally { await db.close(); }
+});
+
+test("EDIT that changes nothing returns 304; only a content change updates the entry", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -90,14 +174,14 @@ test("EDIT that changes nothing returns 304; content change or new tag is still 
         const first = await k.edit(editStatement({ target, body: "same" }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(first.status, 201);
         const reWrite = await k.edit(editStatement({ target, body: "same", lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
-        assert.equal(reWrite.status, 304, "identical content, no tag → no-op");
+        assert.equal(reWrite.status, 304, "identical content → no-op");
         assert.equal(reWrite.entryId, first.entryId, "entry id still returned on 304");
         const changed = await k.edit(editStatement({ target, body: "different", lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(changed.status, 200, "content change is a real update");
-        const newTag = await k.edit(editStatement({ target, body: "different", tags: ["fresh"], lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
-        assert.equal(newTag.status, 200, "same content but a new tag is a real update");
-        const sameTag = await k.edit(editStatement({ target, body: "different", tags: ["fresh"], lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
-        assert.equal(sameTag.status, 304, "same content and an already-present tag → no-op");
+        const newTag = await k.edit(editStatement({ target, body: "different", tags: ["+fresh"], lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
+        assert.equal(newTag.status, 304, "a model signal does not alter the resource");
+        const sameTag = await k.edit(editStatement({ target, body: "different", tags: ["+fresh"], lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
+        assert.equal(sameTag.status, 304, "repeating the signal does not alter the resource");
     } finally { await db.close(); }
 });
 
@@ -111,32 +195,6 @@ test("Worker.edit: empty body clears the channel content (does not delete the en
         assert.equal(channel?.content, "");
         const entryStillThere = await db.test_get_entry_by_id.get<{ pathname: string }>({ id: r1.entryId });
         assert.ok(entryStillThere !== undefined);
-    } finally { await db.close(); }
-});
-
-test("Worker.edit: tags merge additively across multiple EDITs", async () => {
-    const { db, workspaceId, workerId } = await setupContext();
-    try {
-        const k = new Worker();
-        const target = urlPath("worker", "/z");
-        const r = await k.edit(editStatement({ target, tags: ["france"], body: "a" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        await k.edit(editStatement({ target, tags: ["geography"], body: "b", lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
-        await k.edit(editStatement({ target, tags: ["europe", "geography"], body: "c", lineMarker: fullReplace }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const tags = await db.test_list_entry_tags.all<{ tag: string }>({ entry_id: r.entryId });
-        assert.deepEqual(tags.map((t) => t.tag), ["europe", "france", "geography"]);
-    } finally { await db.close(); }
-});
-
-test("Worker.edit: null tags signal and empty tag array both produce no tag rows", async () => {
-    const { db, workspaceId, workerId } = await setupContext();
-    try {
-        const k = new Worker();
-        const r1 = await k.edit(editStatement({ target: urlPath("worker", "/no-tags"), tags: null, body: "body" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r2 = await k.edit(editStatement({ target: urlPath("worker", "/empty-tags"), tags: [], body: "body" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const count1 = (await db.test_count_entry_tags.get<{ n: number }>({ entry_id: r1.entryId }))?.n;
-        const count2 = (await db.test_count_entry_tags.get<{ n: number }>({ entry_id: r2.entryId }))?.n;
-        assert.equal(count1, 0);
-        assert.equal(count2, 0);
     } finally { await db.close(); }
 });
 

@@ -8,6 +8,7 @@ import {
     parseOptionalInt,
     parseRequiredFloat,
     parseRequiredInt,
+    parseTimeoutMs,
     promptCacheKeyFromEnv,
     reasoningFromEnv,
     reasoningResponseStyleFromEnv,
@@ -50,7 +51,10 @@ const probeModels = async (
 ): Promise<EndpointProbe> => {
     const modelsUrl = url.replace(/\/chat\/completions$/, "/models");
     try {
-        const response = await fetch(modelsUrl, { headers, signal: AbortSignal.timeout(timeout) });
+        const response = await fetch(modelsUrl, {
+            headers,
+            ...(timeout > 0 ? { signal: AbortSignal.timeout(timeout) } : {}),
+        });
         if (!response.ok) return { nCtx: null, llamaServer: false, servedModel: null, failed: true };
         const data = await response.json() as {
             data?: Array<{ id?: string; n_ctx?: number; meta?: { n_ctx?: number } }>;
@@ -94,7 +98,7 @@ const probeProps = async (
     try {
         const response = await fetch(url.replace(/\/v1\/chat\/completions$/, "/props"), {
             headers,
-            signal: AbortSignal.timeout(timeout),
+            ...(timeout > 0 ? { signal: AbortSignal.timeout(timeout) } : {}),
         });
         if (!response.ok) return { slotCount: null, eosText: null };
         const data = await response.json() as { total_slots?: number; eos_token?: string };
@@ -118,7 +122,7 @@ export const compatibleProviderFromEnv = async (
     const headers: Record<string, string> = apiKey === undefined || apiKey.length === 0
         ? {}
         : { Authorization: `Bearer ${apiKey}` };
-    const timeout = parseRequiredInt(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "PLURNK_PROVIDERS_FETCH_TIMEOUT", provider);
+    const timeout = parseTimeoutMs(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "PLURNK_PROVIDERS_FETCH_TIMEOUT", provider);
     const attempts = parseRequiredInt(env.PLURNK_PROVIDERS_PROBE_ATTEMPTS, "PLURNK_PROVIDERS_PROBE_ATTEMPTS", provider);
     const probe = await probeModelsRetrying(
         url,
@@ -177,7 +181,9 @@ export const compatibleProviderFromEnv = async (
         headers,
         contextWindow,
         fetchTimeoutMs: timeout,
-        streamIdleTimeoutMs: parseRequiredInt(env.PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT, "PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT", provider),
+        operationTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "PLURNK_PROVIDERS_OPERATION_TIMEOUT", provider),
+        firstContentTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT", provider),
+        streamIdleTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT, "PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT", provider),
         reasoning: reasoningFromEnv(env, provider),
         reasoningResponseStyle: reasoningResponseStyleFromEnv(env, provider),
         reasoningStyle,

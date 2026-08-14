@@ -1,4 +1,5 @@
 import type {
+    BareStatement,
     CopyStatement,
     EditStatement,
     ForkStatement,
@@ -27,7 +28,7 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import Fork from "./fork.ts";
 import WorkerCap from "./worker-cap.ts";
-import { PathSyntax } from "@plurnk/plurnk-contracts";
+import { PathSyntax, TagSignal } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import LoopFlagsReader from "./LoopFlagsReader.ts";
@@ -36,13 +37,17 @@ import {
     assertEditBatchReceipt,
     assertEditReceipt,
     assertResourceEffects,
+    EditCollision,
     editReceipt,
+    LineAnchors,
     LineMarkerOps,
     MimetypeBinary,
     PathMimetype,
     ReadProjector,
     projectEditReceipt,
     type EditBatchReceipt,
+    type LineAnchorCheck,
+    type LineAnchorPrecondition,
     type ResourceEffect,
     type ResourceEffectAction,
 } from "../content/index.ts";
@@ -66,16 +71,32 @@ import {
     type EntryAddress,
     InvalidOperationResultError,
     NetworkAddress,
+    type ResolvedEditStatement,
     type ScopeNormalization,
+    type SchemeCtx,
+    type SchemeHandler,
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import type { ProviderEncryptedReasoningItem } from "@plurnk/plurnk-providers";
 import DurableStatement from "./DurableStatement.ts";
-import type { LogCurationEffect, LogCurationOutcome } from "../schemes/Log.ts";
+import type { LogCurationOutcome, LogCurationPlan } from "../schemes/Log.ts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
 const MUTATING_OPS: ReadonlySet<PlurnkOp> = new Set(["EDIT", "SEND", "COPY", "MOVE", "EXEC", "KILL", "FORK", "WORK"]);
+
+const assertClassifyingSignal = (statement: PlurnkStatement): void => {
+    if (
+        statement.op === "FIND"
+        || statement.op === "READ"
+        || statement.op === "EDIT"
+        || statement.op === "COPY"
+        || statement.op === "MOVE"
+        || statement.op === "BARE"
+    ) {
+        TagSignal.applied(statement.signal);
+    }
+};
 
 export type DispatchContext = {
     statement: PlurnkStatement;
@@ -108,7 +129,6 @@ interface PreparedRepresentation {
     readonly result: DispatchResult | null;
 }
 
-import type { SchemeCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
 type SchemeMethod = (statement: PlurnkStatement, ctx: SchemeCtx) => Promise<DispatchResult>;
 type LogCurationHandler = {
     curate(statement: OpenStatement | FoldStatement, ctx: SchemeCtx): Promise<LogCurationOutcome>;
@@ -223,7 +243,7 @@ export default class Dispatcher {
     #branchCompletionGate: BranchCompletionGate | undefined;
     #cancelWorker: CancelWorkerNotify | undefined;
     #cancelDescendants: CancelDescendantsNotify | undefined;
-    // {§send-premature-terminate}/SEND[202]<T> — the engine-owned park-deadline registry (loopId → seconds;
+    // {§send-premature-terminate}/SEND signal 202 with scope — the engine-owned park-deadline registry (loopId → seconds;
     // -1 = indefinite). The dispatcher WRITES at park; the daemon's drain park-exit consumes.
     #parkDeadlines: Map<number, number>;
     readonly #searchGate: import("./search-gate.ts").default | undefined;
@@ -324,7 +344,12 @@ export default class Dispatcher {
             status: result.status,
             entry: result.entry === null
                 ? null
-                : { channels: { ...result.entry.channels }, tags: [...result.entry.tags] },
+                : {
+                    channels: { ...result.entry.channels },
+                    ...(result.entry.attributes === undefined
+                        ? {}
+                        : { attributes: { ...result.entry.attributes } }),
+                },
         }) as ReadEntryResult;
     }
 
@@ -424,11 +449,151 @@ export default class Dispatcher {
         if (key !== null) target.pathname = key;
     }
 
+    async #resolveEditAnchors(
+        statements: readonly EditStatement[],
+        identity: string | null,
+        schemeName: string,
+        manifest: SchemeManifest,
+        ctx: PlurnkSchemeContext,
+    ): Promise<{
+        readonly statements: readonly ResolvedEditStatement[];
+        readonly precondition: LineAnchorPrecondition | null;
+    } | { readonly result: DispatchResult }> {
+        const anchored = statements.filter(({ lineMarker }) => LineAnchors.hasAnchor(lineMarker));
+        if (anchored.length === 0) {
+            return { statements: statements as readonly ResolvedEditStatement[], precondition: null };
+        }
+        if (manifest.textEditScopes !== true || !manifest.writableBy.includes("model")) {
+            return {
+                result: Dispatcher.#failure(
+                    "line-anchor-unsupported",
+                    400,
+                    `Scheme '${schemeName}' does not support textual EDIT scopes.`,
+                    {},
+                    {
+                        scheme: schemeName,
+                        operation: "EDIT",
+                        recovery: "Remove the scope and submit the scheme's complete editable unit.",
+                        retryable: false,
+                    },
+                ),
+            };
+        }
+        if (identity === null) {
+            return {
+                result: Dispatcher.#failure(
+                    "edit-target-required",
+                    400,
+                    "A line-anchored EDIT requires a target resource.",
+                    {},
+                    { recovery: "Provide the target that rendered the line anchor.", retryable: false },
+                ),
+            };
+        }
+
+        const first = statements[0];
+        if (first === undefined) return { statements: [], precondition: null };
+        const current = await this.#run(schemeName, {
+            op: "READ",
+            suffix: first.suffix,
+            signal: null,
+            target: first.target,
+            lineMarker: { marks: [1, -1] },
+            body: null,
+            position: first.position,
+        }, ctx);
+        if (current.status === 204 || current.status === 404) {
+            return { result: EditCollision.result(identity) };
+        }
+        if (current.status >= 300) {
+            return {
+                result: Dispatcher.#failure(
+                    "line-anchor-validation-failed",
+                    current.status,
+                    `EDIT could not validate its line anchor at ${identity}: ${current.problem?.detail ?? `READ returned ${current.status}`}`,
+                    {},
+                    {
+                        target: identity,
+                        upstreamStatus: current.status,
+                        stage: "mutation-precondition",
+                        retryable: false,
+                    },
+                ),
+            };
+        }
+        if (current.status !== 200) {
+            return { result: EditCollision.result(identity) };
+        }
+        const content = (current as { content?: unknown }).content;
+        if (typeof content !== "string") {
+            throw new InvalidOperationResultError(
+                `Scheme '${schemeName}' returned READ ${current.status} without textual content while validating an EDIT anchor.`,
+            );
+        }
+        const lineAnchors = (current as { lineAnchors?: unknown }).lineAnchors;
+        const lineAnchorIdentity = (current as { lineAnchorIdentity?: unknown }).lineAnchorIdentity;
+        try {
+            LineAnchors.assertProjection(content, lineAnchors);
+            if (typeof lineAnchorIdentity !== "string" || lineAnchorIdentity.length === 0) {
+                throw new TypeError("READ line anchors require their canonical derivation identity.");
+            }
+        } catch (cause) {
+            throw new InvalidOperationResultError(
+                `Scheme '${schemeName}' returned READ 200 without its core-owned line-anchor projection.`,
+                { cause },
+            );
+        }
+
+        const resolved: ResolvedEditStatement[] = [];
+        const checks: LineAnchorCheck[] = [];
+        for (const statement of statements) {
+            if (statement.lineMarker === null || !LineAnchors.hasAnchor(statement.lineMarker)) {
+                resolved.push(statement as ResolvedEditStatement);
+                continue;
+            }
+            const resolution = LineAnchors.resolve(lineAnchors, statement.lineMarker);
+            if (!resolution.ok) {
+                const { anchor, kind } = resolution.failure;
+                const invalid = kind === "invalid";
+                if (!invalid) return { result: EditCollision.result(lineAnchorIdentity) };
+                return {
+                    result: Dispatcher.#failure(
+                        "line-anchor-invalid",
+                        400,
+                        `${anchor} is not valid in that EDIT line-coordinate position.`,
+                        {},
+                        {
+                            anchor,
+                            target: identity,
+                            recovery: "Use anchors only where the EDIT scope denotes a line.",
+                            retryable: false,
+                        },
+                    ),
+                };
+            }
+            for (const [index, anchor] of statement.lineMarker.marks.entries()) {
+                if (typeof anchor !== "string") continue;
+                const line = resolution.marker.marks[index];
+                if (typeof line !== "number") {
+                    throw new InvalidOperationResultError("An EDIT line anchor did not lower to a numeric line.");
+                }
+                checks.push({ anchor, line });
+            }
+            resolved.push({ ...statement, lineMarker: resolution.marker });
+        }
+        const uniqueChecks = [...new Map(checks.map((check) => [`${check.anchor}:${check.line}`, check])).values()];
+        return {
+            statements: resolved,
+            precondition: { identity: lineAnchorIdentity, checks: uniqueChecks },
+        };
+    }
+
     async prepareEditBatches(statements: readonly EditStatement[], context: Omit<DispatchContext, "statement" | "sequence">): Promise<void> {
         const { workspaceId, workerId, loopId, turnId, origin } = context;
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin });
-        const groups = new Map<string, EditStatement[]>();
+        const groups = new Map<string, { readonly identity: string | null; readonly statements: EditStatement[] }>();
         for (const statement of statements) {
+            assertClassifyingSignal(statement); // {§log-tag-signal}
             const target = this.#extractTarget(statement.target);
             await this.#canonColumns(target, workspaceId);
             const key = JSON.stringify([
@@ -439,10 +604,14 @@ export default class Dispatcher {
                 target.fragment,
             ]);
             const group = groups.get(key);
-            if (group === undefined) groups.set(key, [statement]);
-            else group.push(statement);
+            if (group === undefined) groups.set(key, {
+                identity: renderTarget(target),
+                statements: [statement],
+            });
+            else group.statements.push(statement);
         }
-        for (const group of groups.values()) {
+        for (const preparedGroup of groups.values()) {
+            const group = preparedGroup.statements;
             const first = group[0];
             const schemeName = schemeNameOf(first.target);
             let initial: DispatchResult;
@@ -481,17 +650,31 @@ export default class Dispatcher {
                     );
                 } else {
                     try {
-                        const addressedScheme = first.target?.kind === "url" ? first.target.scheme : schemeName;
-                        const publishedChannel = first.target?.kind === "url"
-                            ? first.target.fragment ?? manifest.defaultChannel
-                            : manifest.defaultChannel;
-                        initial = Results.assert(await method.call(handler, group, new SchemeCtxImpl(
-                            schemeCtx,
-                            addressedScheme ?? schemeName,
+                        const resolved = await this.#resolveEditAnchors(
+                            group,
+                            preparedGroup.identity,
+                            schemeName,
                             manifest,
-                            this.#liveSubscriptions,
-                            { publishedChannel },
-                        )));
+                            schemeCtx,
+                        );
+                        if ("result" in resolved) {
+                            initial = resolved.result;
+                        } else {
+                            const addressedScheme = first.target?.kind === "url" ? first.target.scheme : schemeName;
+                            const publishedChannel = first.target?.kind === "url"
+                                ? first.target.fragment ?? manifest.defaultChannel
+                                : manifest.defaultChannel;
+                            initial = Results.assert(await method.call(handler, resolved.statements, new SchemeCtxImpl(
+                                schemeCtx,
+                                addressedScheme ?? schemeName,
+                                manifest,
+                                this.#liveSubscriptions,
+                                {
+                                    publishedChannel,
+                                    editPrecondition: resolved.precondition,
+                                },
+                            )));
+                        }
                     } catch (err) {
                         if (err instanceof InvalidOperationResultError) throw err;
                         console.error(`Scheme '${schemeName}' EDIT batch threw outside its operation result contract:`, err);
@@ -544,6 +727,7 @@ export default class Dispatcher {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
+        assertClassifyingSignal(context.statement); // {§log-tag-signal}
         const result = await this.#dispatchOne(context);
         if (context.statement.op === "EDIT") {
             const prepared = this.#preparedEdits.get(context.statement);
@@ -570,7 +754,7 @@ export default class Dispatcher {
         } = context;
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin });
         let result: DispatchResult;
-        let curationEffects: ReadonlyArray<LogCurationEffect> = [];
+        let curationPlan: LogCurationPlan | null = null;
         let denial = this.#checkWritable(statement, origin);
         if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
         if (denial !== null) {
@@ -617,7 +801,7 @@ export default class Dispatcher {
                 } else if (statement.op === "OPEN" || statement.op === "FOLD") {
                     const curation = await this.#runLogCuration(statement, schemeCtx);
                     result = curation.result;
-                    curationEffects = curation.effects;
+                    curationPlan = curation.plan;
                 } else if (statement.op === "FORK" || statement.op === "WORK") {
                     result = await this.#handleWorkerControl(statement, schemeCtx);
                 } else if (statement.op === "COPY") {
@@ -629,10 +813,8 @@ export default class Dispatcher {
                 } else if (statement.op === "PLAN") {
                     result = this.#handlePlan(statement);
                 } else if (statement.op === "EXEC") {
-                    // EXEC's target slot is `cwd`, not a scheme address.
-                    // Per plurnk.md the op routes unconditionally to the
-                    // exec scheme; the scheme handler reads runtime
-                    // (signal), cwd (target), and command (body).
+                    // EXEC routes unconditionally to its operation owner. The
+                    // resolved runtime declaration owns body/target semantics.
                     result = await this.#gatedExec(statement, schemeCtx, loopId, turnId);
                 } else {
                     result = await this.#run(schemeNameOf(statement.target), statement, schemeCtx); // {§op-methods-op-dispatch}
@@ -661,24 +843,29 @@ export default class Dispatcher {
         // A running-worker READ arms this turn's blocking collect.
         // {§join-blocking-collect}
         if (typeof (result as { awaitWorker?: unknown }).awaitWorker === "string") this.#joinTargets.add(loopId);
-        const logEntryId = await this.#writeLog({ statement, result, workspaceId, workerId, loopId, turnId, sequence, origin });
-        if (curationEffects.length > 0) {
-            await this.#db.log_record_curation_effects.run({
-                operation_log_entry_id: logEntryId,
-                effects: JSON.stringify(curationEffects),
-            });
-        }
+        const logEntryId = await this.#writeLog({
+            statement,
+            result,
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence,
+            origin,
+            curationPlan,
+            modelCallId: null,
+        });
         // {§search-gate} — register successful searches AFTER #writeLog stamps the runtime
         // entry's coordinate onto result.attrs.pathname (the gate's dedup serves from it).
         if (statement.op === "EXEC" && result.status < 400) {
             const rt = ("signal" in statement && typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
-            const cmd = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
+            const body = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
             const attrPath = (result.attrs as { pathname?: string } | undefined)?.pathname;
-            if (typeof attrPath === "string") this.#searchGate?.registerPending(loopId, turnId, rt, cmd, attrPath);
+            if (typeof attrPath === "string") this.#searchGate?.registerPending(loopId, turnId, rt, body, attrPath);
         }
         onDispatch?.(logEntryId);
         // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}; {§proposal-202-pauses}). When a
-        // side-effecting op returns status 202 (a broadcast SEND[202] park is model
+        // side-effecting op returns status 202 (a broadcast SEND signal 202 park is model
         // speech, not a proposal — #isProposal), the entry is written
         // state='proposed'; dispatch then PAUSES on a per-entry waiter until
         // resolution arrives via Engine.resolveProposal (from a client-interface resume,
@@ -1011,8 +1198,8 @@ export default class Dispatcher {
         if (!MUTATING_OPS.has(statement.op)) return null;
         if (statement.op === "SEND" && statement.target === null) return null;
 
-        // EXEC's target slot is `cwd`, not a scheme address. The op's
-        // authority always belongs to the exec scheme regardless of cwd.
+        // EXEC's operation authority always belongs to the exec scheme;
+        // runtime-specific resource authority is gated separately below.
         if (statement.op === "EXEC") {
             return this.#denyIfDisallowed("exec", origin);
         }
@@ -1045,8 +1232,8 @@ export default class Dispatcher {
     // the prior durable digest and the per-turn cap refuses without execution.
     async #gatedExec(statement: PlurnkStatement, ctx: PlurnkSchemeContext, loopId: number, turnId: number): Promise<DispatchResult> {
         const runtime = ("signal" in statement && typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
-        const command = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
-        const verdict = this.#searchGate?.check(loopId, turnId, runtime, command) ?? { verdict: "pass" as const };
+        const body = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
+        const verdict = this.#searchGate?.check(loopId, turnId, runtime, body) ?? { verdict: "pass" as const };
         if (verdict.verdict === "capped") {
             return Dispatcher.#failure(
                 "search-limit-reached",
@@ -1174,11 +1361,15 @@ export default class Dispatcher {
         if (statement.op === "COPY" || statement.op === "MOVE") {
             return check(statement.target) ?? check(statement.body?.target ?? null);
         }
-        // {§exec-target-routing} — the operation owner and a non-file source
-        // are independent authorities; local/file targets stay executor-local.
+        // {§exec-target-routing} — only a runtime-declared resource target adds
+        // source authority. Literal identifiers and path targets stay executor-local.
         if (statement.op === "EXEC") {
             const operationDenial = checkScheme("exec");
             if (operationDenial !== null) return operationDenial;
+            const requested = typeof statement.signal === "string" ? statement.signal : "";
+            const runtime = requested === "" ? "sh" : requested;
+            const targetKind = this.#executors()?.entry(runtime)?.invocation.target?.kind;
+            if (targetKind !== "resource") return null;
             const sourceScheme = schemeNameOf(statement.target);
             return sourceScheme === null || sourceScheme === "file" ? null : checkScheme(sourceScheme);
         }
@@ -1420,38 +1611,61 @@ export default class Dispatcher {
         return this.#deleteEntry(schemeName, entryPathnameOf(path), ctx);
     }
 
-    // {§model-entry} — mirror a model emission back as an actionless log row, so
-    // the model can inspect and curate its own prior behavior. Ordinary admitted
-    // emissions are folded; the bounded invalid-emission lifeline is the one
-    // born-open rejected item under {§invalid-emission-attempts} and labels
-    // that admission fact structurally.
-    // Born FOLDED by default (budget-neutral until OPENed); the turn-0 exemplar passes folded:false
-    // (born open — the one worked example the model orients on, thinning the grammar). text/vnd.plurnk.
-    async writeModelEntry({ verbatim, workerId, loopId, turnId, sequence, folded, origin = "model", admission = "accepted", reasoningItems }: {
-        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number; folded: boolean; origin?: WriterTier;
-        admission?: "accepted" | "rejected";
-        // {§encrypted-reasoning-carrier} — relay provider-normalized encrypted
-        // reasoning items as opaque mirror-row evidence.
-        reasoningItems?: ReadonlyArray<ProviderEncryptedReasoningItem>;
+    async #writeActionlessEntry({ verbatim, workerId, loopId, turnId, sequence, origin, kind, folded, modelCallId = null, attrs = {} }: {
+        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
+        origin: "model" | "plurnk"; kind: "initialization" | "model_emission"; folded: boolean;
+        modelCallId?: number | null;
+        attrs?: Readonly<Record<string, unknown>>;
     }): Promise<number> {
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
-            origin, source: null, op: null, suffix: "", signal: null,
+            origin, source: null, model_call_id: modelCallId,
+            op: null, suffix: "", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/vnd.plurnk",
             rx: JSON.stringify({ content: verbatim, mimetype: "text/vnd.plurnk" }),
             mimetype_rx: "application/json",
             status_rx: 200, tokens: this.#tokenize(verbatim), state: "resolved", outcome: null,
-            attrs: JSON.stringify({
-                kind: "model_emission",
-                ...(admission === "rejected" ? { admission } : {}),
-                ...(reasoningItems !== undefined && reasoningItems.length > 0 ? { reasoning: reasoningItems } : {}),
-            }),
+            attrs: JSON.stringify({ ...attrs, kind }),
         });
-        if (row === undefined) throw new Error("Dispatcher.writeModelEntry: insert returned no row");
+        if (row === undefined) throw new Error("Dispatcher.#writeActionlessEntry: insert returned no row");
         if (folded) await this.#db.engine_fold_log_entry.run({ id: row.id });
         return row.id;
+    }
+
+    // {§worker-initialization-entry} — the kernel-authored, born-open worked
+    // turn that initializes a worker's log without impersonating model output.
+    async writeInitializationEntry({ verbatim, workerId, loopId, turnId, sequence }: {
+        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
+    }): Promise<number> {
+        return this.#writeActionlessEntry({
+            verbatim, workerId, loopId, turnId, sequence,
+            origin: "plurnk", kind: "initialization", folded: false,
+        });
+    }
+
+    // {§model-entry} — mirror a model emission back as an actionless log row, so
+    // the model can inspect and curate its own prior behavior. Ordinary admitted
+    // emissions are folded; the bounded invalid-emission lifeline is the one
+    // born-open rejected item under {§invalid-emission-attempts} and labels
+    // that admission fact structurally.
+    async writeModelEntry({ verbatim, workerId, loopId, turnId, sequence, folded, modelCallId, admission = "accepted", reasoningItems }: {
+        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number; folded: boolean;
+        modelCallId: number;
+        admission?: "accepted" | "rejected";
+        // {§encrypted-reasoning-carrier} — relay provider-normalized encrypted
+        // reasoning items as opaque mirror-row evidence.
+        reasoningItems?: ReadonlyArray<ProviderEncryptedReasoningItem>;
+    }): Promise<number> {
+        return this.#writeActionlessEntry({
+            verbatim, workerId, loopId, turnId, sequence,
+            origin: "model", kind: "model_emission", folded, modelCallId,
+            attrs: {
+                ...(admission === "rejected" ? { admission } : {}),
+                ...(reasoningItems !== undefined && reasoningItems.length > 0 ? { reasoning: reasoningItems } : {}),
+            },
+        });
     }
 
     // PLAN — the model's intended-goals op. An ordinary op: dispatched like any
@@ -1460,6 +1674,25 @@ export default class Dispatcher {
     #handlePlan(statement: PlurnkStatement): DispatchResult {
         if (statement.op !== "PLAN") throw new Error("unreachable");
         return { status: 200 };
+    }
+
+    // {§bare-inference} Provider work is prepared concurrently by Engine; the
+    // dispatcher owns only the ordinary operation-result commit and notification.
+    async recordBareResult(
+        context: Omit<DispatchContext, "statement"> & { statement: BareStatement },
+        result: DispatchResult,
+        modelCallId: number,
+    ): Promise<DispatchResult> {
+        assertClassifyingSignal(context.statement);
+        Results.assert(result);
+        const logEntryId = await this.#writeLog({
+            ...context,
+            result,
+            curationPlan: null,
+            modelCallId,
+        });
+        context.onDispatch?.(logEntryId);
+        return result;
     }
 
     static #isDispatchResult(
@@ -1981,7 +2214,6 @@ export default class Dispatcher {
         edits: ReadonlyArray<{
             readonly marker: LineMarker;
             readonly body: string;
-            readonly tags: string[] | null;
             readonly position: EditStatement["position"];
         }>,
         ctx: PlurnkSchemeContext,
@@ -2000,10 +2232,10 @@ export default class Dispatcher {
                 },
             );
         }
-        const statements: EditStatement[] = edits.map(({ marker, body, tags, position }) => ({
+        const statements: ResolvedEditStatement[] = edits.map(({ marker, body, position }) => ({
             op: "EDIT",
             suffix: "",
-            signal: tags,
+            signal: null,
             target: selection.target,
             lineMarker: marker,
             body,
@@ -2087,7 +2319,6 @@ export default class Dispatcher {
             );
         }
 
-        const tags = Array.isArray(statement.signal) ? statement.signal : [];
         const destinationEffect = this.#pendingEffect(
             destination,
             destinationChannel === undefined ? "create" : "update",
@@ -2123,7 +2354,6 @@ export default class Dispatcher {
                 [{
                     marker: destination.lineMarker,
                     body: source.content,
-                    tags,
                     position: statement.position,
                 }],
                 ctx,
@@ -2146,10 +2376,7 @@ export default class Dispatcher {
                 },
             );
         }
-        const priorTags = existing?.tags ?? [];
-        const mergedTags = [...new Set([...priorTags, ...tags])];
-        const addsTags = mergedTags.length !== priorTags.length;
-        if (destinationChannel !== undefined && !addsTags) return { status: 304 };
+        if (destinationChannel !== undefined) return { status: 304 };
 
         const channels = {
             ...(existing?.channels ?? {}),
@@ -2161,7 +2388,7 @@ export default class Dispatcher {
         const written = await this.#writeEntry(
             destination.scheme,
             destination.pathname,
-            { channels, tags: mergedTags },
+            { channels },
             ctx,
         );
         const exactWritten = Results.assert(written);
@@ -2171,7 +2398,7 @@ export default class Dispatcher {
             : Dispatcher.#withEditMaterialization(
                 exactWritten,
                 editReceipt(
-                    destinationChannel?.content ?? "",
+                    "",
                     source.content,
                     [{
                         marker: { marks: [1, -1] },
@@ -2272,7 +2499,6 @@ export default class Dispatcher {
             [{
                 marker: source.lineMarker,
                 body: "",
-                tags: null,
                 position: statement.position,
             }],
             ctx,
@@ -2311,13 +2537,11 @@ export default class Dispatcher {
                 {
                     marker: destination.lineMarker,
                     body: source.content,
-                    tags: Array.isArray(statement.signal) ? statement.signal : [],
                     position: statement.position,
                 },
                 {
                     marker: source.lineMarker,
                     body: "",
-                    tags: null,
                     position: statement.position,
                 },
             ],
@@ -2627,7 +2851,7 @@ export default class Dispatcher {
     // {§send-premature-terminate} — the unified PENDING SET, judged at the terminal's OWN dispatch
     // (post-batch: the emission's earlier ops already executed, so a same-turn KILL+[200] repairs in
     // ONE turn, and a same-turn WORK+[200] is caught — the spawn is live by the time the SEND lands).
-    // pending = open streams ∪ live children ∪ THIS turn's retrievals (READ/FIND/OPEN, results unseen
+    // pending = open streams ∪ live children ∪ THIS turn's retrievals (READ/FIND/OPEN/BARE, results unseen
     // until next packet). Failed operations are the separate next-packet leg shared by explicit
     // completion and empty-join completion. Nothing pending may be silently discarded; 499 discards
     // BY STATED INTENT and is never gated.
@@ -2638,33 +2862,36 @@ export default class Dispatcher {
         if (openSubs.length > 0 || execHandler?.hasActiveSpawns?.(workerId) === true) pending.push("surviving streams");
         const liveChild = await this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId });
         if (liveChild !== undefined) pending.push("surviving workers");
-        const observations = await this.#pendingObservations(workerId, turnId);
-        if (observations.retrievals) pending.push("this turn's retrieval results (they land in the NEXT packet's Log)");
-        if (observations.streamTerminations) {
+        const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
+        if (boundaries.retrievals) pending.push("this turn's retrieval results (they land in the NEXT packet's Log)");
+        if (boundaries.streamTerminations) {
             pending.push("completed stream results that land in the NEXT packet's Log");
         }
-        if (observations.childTerminations) pending.push("worker results that arrived during this turn (they land NEXT turn)");
+        if (boundaries.childTerminations) pending.push("worker results that arrived during this turn (they land NEXT turn)");
         return pending;
     }
 
-    // Results cross an observation boundary only when they have appeared in a
-    // packet. Completion alone is not delivery. Keep the three next-packet
-    // producers in one classifier so SEND[200]'s discard gate and SEND[202]'s
-    // empty-join decision cannot disagree about what remains unseen.
-    async #pendingObservations(workerId: number, turnId: number): Promise<{
+    // Results cross an observation boundary only when they have appeared in a packet;
+    // successful FOLD effects likewise become useful through the curated next packet.
+    // Keep every next-packet boundary in one classifier while letting the callers apply
+    // their distinct contracts: retrievals block explicit completion, whereas FOLD only
+    // prevents an empty wait from being inferred as completion.
+    async #nextPacketBoundaries(workerId: number, turnId: number): Promise<{
         retrievals: boolean;
+        folds: boolean;
         streamTerminations: boolean;
         childTerminations: boolean;
     }> {
-        const [retrievals, streamTermination, childTermination] = await Promise.all([
-            this.#db.engine_turn_retrievals.all<{ id: number }>({ turn_id: turnId }),
+        const [turnBoundaries, streamTermination, childTermination] = await Promise.all([
+            this.#db.engine_turn_packet_boundaries.all<{ id: number; op: string }>({ turn_id: turnId }),
             this.#db.engine_worker_has_undelivered_stream_term
                 .get<{ pending: number }>({ worker_id: workerId }),
             this.#db.engine_worker_has_undelivered_child_term
                 .get<{ pending: number }>({ worker_id: workerId }),
         ]);
         return {
-            retrievals: retrievals.length > 0,
+            retrievals: turnBoundaries.some(({ op }) => op !== "FOLD"),
+            folds: turnBoundaries.some(({ op }) => op === "FOLD"),
             streamTerminations: streamTermination !== undefined,
             childTerminations: childTermination !== undefined,
         };
@@ -2726,19 +2953,19 @@ export default class Dispatcher {
         }
         const raw = statement.body === null ? "" : statement.body.raw;
 
-        // The park rides SEND[202] only ({§park-202-only}). A scoped SEND[102] is neither
+        // The park rides SEND signal 202 only ({§park-202-only}). A scoped signal 102 is neither
         // a wait nor a meaningful continuation, so reject it instead of preserving the
         // retired dual spelling.
         if (status === 102 && statement.lineMarker !== null) {
             return Dispatcher.#failure(
                 "send-scope-invalid",
                 400,
-                "SEND[102] does not accept a scope.",
+                "`## SEND0 [102]` does not accept a scope.",
                 {},
                 {
                     requestedStatus: 102,
                     scope: statement.lineMarker,
-                    recovery: "Use SEND[202] with a scope to wait, or remove the scope to continue.",
+                    recovery: "Use `## SEND0 [202] <scope>` to wait, or remove the scope to continue.",
                     retryable: false,
                 },
             );
@@ -2755,7 +2982,7 @@ export default class Dispatcher {
             return { status: 102, attrs: { parked: -1, join: true } };
         }
 
-        // {§wait-obligation-matrix} — SEND[202] is the obligation-checked join. A live
+        // {§wait-obligation-matrix} — SEND signal 202 is the obligation-checked join. A live
         // obligation (a spawned child or open stream, J) BLOCKS the loop until it concludes and
         // reawakens it ({§worker-lifecycle-child-wake}); a wait on nothing (∅) is already satisfied and
         // resolves like 200, so <-1>+∅ self-resolves rather than hang the agent; a pending own
@@ -2774,8 +3001,8 @@ export default class Dispatcher {
             // all complete-but-unobserved. Their wake edge may already have
             // fired, so do not park; continue directly to the packet that
             // materializes them.
-            const observations = await this.#pendingObservations(workerId, turnId);
-            if (observations.retrievals || observations.streamTerminations || observations.childTerminations) {
+            const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
+            if (boundaries.retrievals || boundaries.folds || boundaries.streamTerminations || boundaries.childTerminations) {
                 return { status: 102 };
             }
             const failCount = await this.#unobservedFailureCount(turnId);
@@ -2843,7 +3070,7 @@ export default class Dispatcher {
                         {
                             pending: [...pending],
                             stage: "completion",
-                            recovery: "Review the results, then use only PLAN and SEND[200] to conclude.",
+                            recovery: "Review the results, then use only `# PLAN0` and `## SEND0 [200]` to conclude.",
                             retryable: false,
                         },
                     );
@@ -2886,7 +3113,7 @@ export default class Dispatcher {
                 turn_id: turnId,
             });
             if (seqs === undefined) {
-                throw new Error(`SEND[499]: no coordinate for loop=${loopId} turn=${turnId}`);
+                throw new Error(`SEND signal 499: no coordinate for loop=${loopId} turn=${turnId}`);
             }
             Results.attachInstance(
                 failure,
@@ -3012,6 +3239,7 @@ export default class Dispatcher {
                 statement,
                 manifest,
                 target,
+                identity: target,
                 representation: resolved.representation,
                 mimetypes: ctx.mimetypes,
             }));
@@ -3156,7 +3384,7 @@ export default class Dispatcher {
                         retryable: false,
                     },
                 ),
-                effects: [],
+                plan: null,
             };
         }
         const handler = this.#schemes.get("log") as LogCurationHandler | undefined;
@@ -3166,39 +3394,52 @@ export default class Dispatcher {
         }
         const schemeCtx = new SchemeCtxImpl(ctx, "log", manifest, this.#liveSubscriptions);
         const outcome = await handler.curate(statement, schemeCtx);
-        return { result: Results.assert(outcome.result), effects: outcome.effects };
+        return { result: Results.assert(outcome.result), plan: outcome.plan };
     }
 
     // {§proposal}/{§send} — status 202 is a proposal except for broadcast
-    // SEND[202], which parks the loop. The operation disambiguates the status.
+    // SEND signal 202, which parks the loop. The operation disambiguates the status.
     static #isProposal(statement: PlurnkStatement, result: DispatchResult): boolean {
-        // {§send-300-choices} — SEND[300] is the proposal exception.
+        // {§send-300-choices} — SEND signal 300 is the proposal exception.
         if (result.status !== 202) return false;
         if (statement.op === "SEND" && statement.signal === 300) return true;
         return !(statement.op === "SEND" && statement.target === null);
     }
 
     async #writeLog({
-        statement, result, workspaceId, workerId, loopId, turnId, sequence, origin,
+        statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan, modelCallId,
     }: {
         statement: PlurnkStatement; result: DispatchResult;
         workspaceId: number; workerId: number; loopId: number; turnId: number; sequence: number; origin: WriterTier;
+        curationPlan: LogCurationPlan | null;
+        modelCallId: number | null;
     }): Promise<number> {
         const durableStatement = DurableStatement.project(statement);
         const target = this.#extractTarget(durableStatement.target);
         await this.#canonColumns(target, workspaceId); // {§fs-answer-in-canon}
         const lineMarkerJson = "lineMarker" in durableStatement && durableStatement.lineMarker !== null
-            ? JSON.stringify(durableStatement.lineMarker as LineMarker)
+            ? JSON.stringify(durableStatement.lineMarker)
             : null;
         // A proposal (status 202 from a side-effecting op) is written to the log in
         // state='proposed' until the proposal lifecycle resolves it; attrs holds the
         // scheme-supplied payload (file diff, exec command, etc.) the client renders
-        // for review and the scheme consumes on accept. A broadcast SEND[202] is a
+        // for review and the scheme consumes on accept. A broadcast SEND signal 202 is a
         // parked-terminal, not a proposal (#isProposal) → state='resolved'.
         const isProposed = Dispatcher.#isProposal(statement, result);
         let attrsObj: Record<string, unknown> = (result.attrs !== undefined && result.attrs !== null)
             ? { ...(result.attrs as Record<string, unknown>) }
             : {};
+        if (curationPlan !== null) {
+            if (Object.hasOwn(attrsObj, "__plurnk_curation")) {
+                throw new Error("Dispatcher.#writeLog: result attrs collide with private log curation state");
+            }
+            attrsObj.__plurnk_curation = {
+                ids: curationPlan.targetLogEntryIds,
+                expanded: curationPlan.expanded,
+                add: curationPlan.add,
+                remove: curationPlan.remove,
+            };
+        }
         const seqs = statement.op === "EXEC" || result.problem !== undefined
             ? await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
                 loop_id: loopId,
@@ -3246,6 +3487,7 @@ export default class Dispatcher {
             sequence: sequence,
             origin,
             source: null,  // dispatch entries are self-authored; {§env-delta} deltas set this
+            model_call_id: modelCallId,
             op: durableStatement.op,
             suffix: durableStatement.suffix,
             signal: this.#signalToJson(durableStatement.signal),

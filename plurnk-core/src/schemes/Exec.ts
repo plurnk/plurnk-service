@@ -1,4 +1,4 @@
-import { parsePath } from "@plurnk/plurnk-contracts";
+import { parsePath, TagSignal } from "@plurnk/plurnk-contracts";
 import type { ExecStatement, FindStatement, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
 import { Policy, type ChannelState } from "@plurnk/plurnk-execs";
 import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";
@@ -25,7 +25,7 @@ import ExecAbort from "./exec-abort.ts";
 import { entryPathnameOf, renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreEntryAddress, CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
@@ -34,6 +34,7 @@ import { InvalidOperationResultError, NetworkAddress } from "@plurnk/plurnk-sche
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import JournalTurn from "../core/JournalTurn.ts";
+import LogEntryProjection from "../core/LogEntryProjection.ts";
 import { setTimeout as delay } from "node:timers/promises";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
@@ -42,10 +43,10 @@ interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "bash", "node", "python", etc.
     cwd: string | null;     // selected project working directory, or null when the workspace has none ({§executor-sinks})
     target: string | null;  // consumer-routed EXEC target; each executor owns its mapping ({§executor-sinks})
-    command: string;        // body of the EXEC op
+    body: string;           // body of the EXEC op
     pathname: string;       // stamped by Dispatcher.#writeLog as /<loop>/<turn>/<seq>; output persists under the runtime tag, e.g. sh:///1/1/2 ({§executor-output-address}).
     effect: Effect;         // one admission fact, preserved through apply and stream/hold bookkeeping
-    schemeSource?: string;    // complete authored non-file address, resolved through ordinary READ at apply time
+    resourceSource?: string; // complete authored non-file resource address, resolved through ordinary READ at apply time
     timeoutSec?: number;    // `<T,P>` mark[0] > 0: kill the spawn after T seconds (504). Absent/-1 = unbounded.
     turnScoped?: boolean;   // `<0>`: turn-scoped — reaped at the worker's next pre-turn, never surviving into the subsequent turn. {§exec-poll}
     pollSec?: number;       // `<T,P>` mark[1]: absent = default backoff; 0 = disabled; positive = fixed cadence. {§exec-poll}
@@ -56,7 +57,7 @@ interface ExecAttrs {
 // resolves to its sibling executor; the scheme itself stays runtime-agnostic.
 
 // Extract the local arm of {§exec-target-routing}; non-file schemes are
-// classified separately by schemeSourceOf.
+// classified separately by resourceSourceOf.
 const localPathFromTarget = (target: ExecStatement["target"]): string | null => {
     if (target === null) return null;
     if (target.kind === "local") return target.raw;
@@ -69,25 +70,11 @@ const localPathFromTarget = (target: ExecStatement["target"]): string | null => 
 // A non-file scheme target is distinct from the local path handled above. The
 // consumer resolves its content at apply time; executors stay scheme-blind
 // ({§executor-role}).
-const schemeSourceOf = (target: ExecStatement["target"]): string | null => {
+const resourceSourceOf = (target: ExecStatement["target"]): string | null => {
     if (target === null || target.kind !== "url") return null;
     if (target.scheme === null || target.scheme === "file") return null;
     return target.raw;
 };
-
-// {§exec-target-routing} — effect classifies the invocation core is admitting,
-// before a scheme-backed source can be materialized. A scheme target with no
-// body becomes the command, so the executor has no target. With a body, the
-// scheme content becomes a target at run time; its authored address is the
-// stable, opaque target-present identity used only for the one effect call.
-const effectTargetOf = (
-    authoredTarget: ExecStatement["target"],
-    routedTarget: string | null,
-    schemeSource: ReturnType<typeof schemeSourceOf>,
-    command: string,
-): string | null => schemeSource !== null && command.length > 0
-    ? authoredTarget?.raw ?? null
-    : routedTarget;
 
 // EXEC's pathname is <runtime>/<loop_seq>/<turn_seq>/<sequence> (stamped by
 // Dispatcher.#writeLog). Exec owns this convention, so it — not the client — turns
@@ -138,8 +125,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         writableBy: ["model", "client"],
         volatile: true,
         modelVisible: true,
-        example: "<|EXEC[sqlite]>SELECT 22.0 / 7.0<EXEC|>",
-        documentation: "Runs a command in a runtime — `<|EXEC[runtime](target)>command<EXEC|>` — output streams into the worker's `<runtime>:///<loop>/<turn>/<seq>` entry on the runtime's own channels (a subprocess → stdout/stderr; a computational runtime like sqlite/jq → a JSON `results` channel). A host-effecting command proposes for review before it runs; a read-only/pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes to you automatically — folded while the command runs, opened when it finishes.",
+        documentation: "Runs a registered executable tool — `## EXEC0 [executor] (target) <timeout,poll>\nbody` — using the tool's table-declared target and body contract. Output streams into the worker's `<executor>:///<loop>/<turn>/<seq>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. Either way you never fetch the output: the engine surfaces each turn's new stream bytes automatically — folded while it runs, opened when it finishes.",
         flags: {
             excludedInAsk: true,
         },
@@ -272,65 +258,15 @@ export default class Exec extends CoreSchemeAdapterBase {
     }
 
     // EXEC op handler — the actual model-facing entry point per plurnk.md.
-    // `<|EXEC[runtime](target)>command<EXEC|>` →
-    //   signal=runtime, target=optional source/program/cwd, body=command.
+    // `## EXEC0 [runtime] (target)\nbody` → runtime-owned invocation buckets.
     //
-    // Proposes (status=202) with attrs={runtime, cwd, command, pathname}.
+    // Proposes (status=202) with attrs={runtime, cwd, body, pathname}.
     // applyResolution spawns the subprocess; output streams into the
     // coordinate-stamped <runtime>:///<pathname> entry's stdout/stderr channels
     // (e.g. sh:///1/1/2, {§exec}). The model READs that entry on a subsequent turn.
     async exec(statement: ExecStatement, ctx: CoreSchemeCallContext): Promise<ExecResult> {
         const core = this.coreContext(ctx);
-        let command = statement.body ?? "";
-        // Non-file data sources resolve after acceptance. {§exec-target-routing}
-        const schemeSource = schemeSourceOf(statement.target);
-        // A local directory overrides cwd; every other local path remains the
-        // executor target. {§exec-target-routing}
-        const workspaceRow = await core.db.envelope_get_workspace.get<{ project_root: string | null }>({ id: core.workspaceId });
-        const projectRoot = workspaceRow?.project_root ?? null;
-        const localTarget = localPathFromTarget(statement.target);
-        let routedTarget = localTarget;
-        let cwd: string | null = projectRoot;
-        if (localTarget !== null) {
-            const abs = projectRoot !== null ? resolve(projectRoot, localTarget) : localTarget;
-            try {
-                if ((await stat(abs)).isDirectory()) {
-                    cwd = abs;
-                    routedTarget = null;
-                }
-            } catch (cause) {
-                if ((cause as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
-                    console.error(`EXEC target classification failed for '${abs}':`, cause);
-                    return Results.failure(
-                        "scheme:exec",
-                        "target-classification-failed",
-                        500,
-                        `EXEC target '${localTarget}' could not be inspected: ${ErrorDetail.preview(cause)}`,
-                        {},
-                        {
-                            target: localTarget,
-                            stage: "target-classification",
-                        },
-                    ) as ExecResult;
-                }
-            }
-        }
-        // An empty body requires a file/program or scheme command source.
-        // {§exec-target-routing}
-        if (command.length === 0 && schemeSource === null && routedTarget === null) {
-            return Results.failure(
-                "scheme:exec",
-                "command-required",
-                400,
-                "EXEC requires a command body or an executable target.",
-                {},
-                {
-                    recovery: "Provide a command body or executable target.",
-                    retryable: false,
-                },
-            ) as ExecResult;
-        }
-
+        const body = statement.body ?? "";
         const requested = typeof statement.signal === "string" ? statement.signal : "";
         const runtime = requested === "" ? "sh" : requested; // empty signal = default shell
         if (core.executors === undefined) throw new Error("exec dispatched without an executor registry");
@@ -397,14 +333,125 @@ export default class Exec extends CoreSchemeAdapterBase {
                 },
             ) as ExecResult;
         }
-        // The local (target) realization the executor receives — its data source
-        // or program. A directory routes to cwd and a scheme source is resolved
-        // only after acceptance, so either is null here.
-        const target = routedTarget;
-        // Derive one effect from the canonical logical target before any policy
-        // consumes it, then preserve that fact with the invocation (#107,
-        // {§executor-effect}). Leaves never receive authored command text.
-        const effectTarget = effectTargetOf(statement.target, target, schemeSource, command);
+
+        const invocation = resolved.invocation;
+        const hasBody = body.length > 0;
+        const hasTarget = statement.target !== null;
+        const refuse = (
+            code: string,
+            detail: string,
+            recovery: string,
+            extensions: Readonly<Record<string, unknown>> = {},
+        ): ExecResult => Results.failure(
+            "scheme:exec",
+            code,
+            400,
+            detail,
+            {},
+            { runtime, recovery, retryable: false, ...extensions },
+        ) as ExecResult;
+
+        if (invocation.body.required && !hasBody) {
+            return refuse(
+                "body-required",
+                `Executable tool '${runtime}' requires a ${invocation.body.role} body.`,
+                `Provide the ${invocation.body.role} in the EXEC body.`,
+            );
+        }
+        if (invocation.target === undefined && hasTarget) {
+            return refuse(
+                "target-not-supported",
+                `Executable tool '${runtime}' does not accept a target.`,
+                `Remove the target and provide the ${invocation.body.role} in the body.`,
+            );
+        }
+        if (invocation.target?.required === true && !hasTarget) {
+            return refuse(
+                "target-required",
+                `Executable tool '${runtime}' requires a ${invocation.target.role} target.`,
+                `Provide the ${invocation.target.role} in (target).`,
+            );
+        }
+        if (!hasBody && !hasTarget) {
+            return refuse(
+                "input-required",
+                `Executable tool '${runtime}' requires a body or target.`,
+                `Provide ${invocation.target === undefined ? "a body" : "a body or target"}.`,
+            );
+        }
+        if (invocation.exclusive === true && hasBody && hasTarget) {
+            return refuse(
+                "input-conflict",
+                `Executable tool '${runtime}' accepts its ${invocation.body.role} body and ${invocation.target?.role ?? "target"} target only as alternatives.`,
+                "Provide either the body or target, not both.",
+            );
+        }
+
+        const workspaceRow = await core.db.envelope_get_workspace.get<{ project_root: string | null }>({ id: core.workspaceId });
+        const projectRoot = workspaceRow?.project_root ?? null;
+        let cwd: string | null = projectRoot;
+        let target: string | null = null;
+        let resourceSource: string | null = null;
+        const targetDecl = invocation.target;
+        if (statement.target !== null && targetDecl !== undefined) {
+            if (targetDecl.kind === "literal") {
+                target = statement.target.raw;
+            } else {
+                const localTarget = localPathFromTarget(statement.target);
+                if (localTarget !== null) {
+                    target = localTarget;
+                } else if (targetDecl.kind === "resource") {
+                    resourceSource = resourceSourceOf(statement.target);
+                    if (resourceSource === null) {
+                        throw new Error(`EXEC '${runtime}' resource target could not be classified`);
+                    }
+                } else {
+                    return refuse(
+                        "target-kind-invalid",
+                        `Executable tool '${runtime}' accepts only a local or file:// ${targetDecl.role} target.`,
+                        `Use a local or file:// ${targetDecl.role} target.`,
+                        { target: statement.target.raw, targetKind: targetDecl.kind },
+                    );
+                }
+            }
+        }
+
+        if (target !== null && targetDecl?.directory === "cwd") {
+            const inspected = isAbsolute(target)
+                ? target
+                : projectRoot === null ? null : resolve(projectRoot, target);
+            if (inspected !== null) {
+                try {
+                    if ((await stat(inspected)).isDirectory()) {
+                        cwd = inspected;
+                        target = null;
+                    }
+                } catch (cause) {
+                    if ((cause as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") {
+                        console.error(`EXEC target classification failed for '${inspected}':`, cause);
+                        return Results.failure(
+                            "scheme:exec",
+                            "target-classification-failed",
+                            500,
+                            `EXEC target '${target}' could not be inspected: ${ErrorDetail.preview(cause)}`,
+                            {},
+                            { target, stage: "target-classification" },
+                        ) as ExecResult;
+                    }
+                }
+            }
+        }
+        if (!hasBody && target === null && resourceSource === null) {
+            return refuse(
+                "input-required",
+                `Executable tool '${runtime}' has no executable body or realized target.`,
+                `Provide a ${invocation.body.role} body or a non-directory target.`,
+            );
+        }
+
+        // One logical target derives one effect fact before policy consumes it.
+        // A non-file resource keeps its exact authored address until materialization.
+        const effectTarget = resourceSource ?? target;
         const effect = resolved.executor.effect(effectTarget);
         // cwd is the workspace project_root unless target routing selected a
         // directory override. {§exec-target-routing}, {§executor-sinks}
@@ -421,15 +468,14 @@ export default class Exec extends CoreSchemeAdapterBase {
         const turnScoped = typeof marks?.[0] === "number" && marks[0] === 0;
         const pollSec = typeof marks?.[1] === "number" && marks[1] >= 0 ? Math.floor(marks[1]) : undefined;
         const attrs: ExecAttrs = {
-            runtime, cwd, command, target, pathname: "", effect,
-            ...(schemeSource !== null ? { schemeSource } : {}),
+            runtime, cwd, body, target, pathname: "", effect,
+            ...(resourceSource !== null ? { resourceSource } : {}),
             ...(timeoutSec !== undefined ? { timeoutSec } : {}),
             ...(turnScoped ? { turnScoped: true } : {}),
             ...(pollSec !== undefined ? { pollSec } : {}),
         };
-        // Body shown to client during proposal review — `$ command` is the
-        // most-readable summary regardless of runtime.
-        const preview = runtime !== "" ? `[${runtime}] ${command}` : `$ ${command}`;
+        const previewInput = body !== "" ? body : statement.target?.raw ?? "";
+        const preview = runtime !== "" ? `[${runtime}] ${previewInput}` : `$ ${previewInput}`;
         return { status: 202, body: preview, attrs };  // host runtime proposes with 202 — {§exec-host-proposes}
     }
 
@@ -439,7 +485,7 @@ export default class Exec extends CoreSchemeAdapterBase {
     ): Promise<SchemeResultBase & { outcome?: string; body?: string }> {
         const core = this.coreContext(ctx);
         const attrs = args.attrs as Partial<ExecAttrs>;
-        let command = typeof attrs.command === "string" ? attrs.command : "";
+        const body = typeof attrs.body === "string" ? attrs.body : "";
         const pathname = attrs.pathname;
         const runtime = (typeof attrs.runtime === "string" && attrs.runtime !== "") ? attrs.runtime : "sh";
         const cwd = (typeof attrs.cwd === "string" && attrs.cwd.length > 0) ? attrs.cwd : null;
@@ -452,12 +498,11 @@ export default class Exec extends CoreSchemeAdapterBase {
             throw new InvalidOperationResultError("The accepted EXEC proposal is missing its canonical effect fact.");
         }
 
-        // Resolve a scheme target after acceptance: empty body uses the content
-        // as the command; otherwise a temporary file becomes the data target.
-        // {§exec-target-routing}
+        // Every non-file resource becomes a temporary executor target after
+        // acceptance; body presence never changes the target's role.
         let tempPath: string | null = null;
-        if (attrs.schemeSource !== undefined) {
-            const sourceTarget = parsePath(attrs.schemeSource);
+        if (attrs.resourceSource !== undefined) {
+            const sourceTarget = parsePath(attrs.resourceSource);
             if (sourceTarget?.kind !== "url" || sourceTarget.scheme === null || sourceTarget.scheme === "file") {
                 throw new InvalidOperationResultError("The accepted EXEC proposal has an invalid scheme source address.");
             }
@@ -488,28 +533,12 @@ export default class Exec extends CoreSchemeAdapterBase {
                     },
                 );
             }
-            if (command.length === 0) {
-                command = content;
-            } else {
-                tempPath = join(tmpdir(), `plurnk-exec-${core.workspaceId}-${pathname.replace(/[^a-zA-Z0-9]/g, "-")}`);
-                await writeFile(tempPath, content, "utf8");
-                target = tempPath;
-            }
+            tempPath = join(tmpdir(), `plurnk-exec-${core.workspaceId}-${pathname.replace(/[^a-zA-Z0-9]/g, "-")}`);
+            await writeFile(tempPath, content, "utf8");
+            target = tempPath;
         }
-        // {§exec-target-routing} — a local file target is itself the program, so
-        // its body may be empty; no target and no command remains invalid.
-        if (command.length === 0 && target === null) {
-            if (attrs.schemeSource !== undefined) {
-                return Results.failure(
-                    "scheme:exec",
-                    "source-command-empty",
-                    422,
-                    "The EXEC source resolved to an empty command.",
-                    { outcome: "scheme_source_command_empty" },
-                    { retryable: false },
-                );
-            }
-            throw new InvalidOperationResultError("The accepted EXEC proposal has neither a command nor a target.");
+        if (body.length === 0 && target === null) {
+            throw new InvalidOperationResultError("The accepted EXEC proposal has neither a body nor a realized target.");
         }
 
         // Resolve the runtime's executor from the boot registry, then seed
@@ -532,7 +561,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 state: decl.defaultState ?? "active",
             };
         }
-        const seed: EntryData = { channels: seedChannels, tags: [] };
+        const seed: EntryData = { channels: seedChannels };
         // {§exec} — the stream entry's scheme IS the runtime tag (sh/node), so it addresses by
         // tag authority (sh:///l/t/s). The engine registers each runtime tag → this handler.
         const { entryId } = await EntryCrud.writeEntry(pathname, seed, core, runtime, core.workerId);
@@ -548,7 +577,7 @@ export default class Exec extends CoreSchemeAdapterBase {
 
         const subscriptionId = await ChannelWrite.openSubscription(core.db, {
             workerId: core.workerId, entryId, scheme: runtime,
-            handle: runtime !== "" ? `${runtime}: ${command}` : command,
+            handle: runtime !== "" ? `${runtime}: ${body !== "" ? body : target ?? ""}` : body,
             pollSeconds: typeof attrs.pollSec === "number" ? attrs.pollSec : null, // {§exec-poll} — hibernation wake cadence
             turnScoped: attrs.turnScoped === true, // {§exec-poll} — `<0>` reaped at the next pre-turn
         });
@@ -577,7 +606,7 @@ export default class Exec extends CoreSchemeAdapterBase {
 
         const tail = this.#runExecutor({
             executor: resolved.executor,
-            runtime, command, cwd, target, ctx: core, pathname,
+            runtime, body, cwd, target, ctx: core, pathname,
             entryId, subscriptionId, signal: controller.signal, controller, tempPath,
             timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
         });
@@ -604,12 +633,12 @@ export default class Exec extends CoreSchemeAdapterBase {
     // as "active." Chain through a single promise queue to serialize.
     async #runExecutor(opts: {
         executor: Executor;
-        runtime: string; command: string; cwd: string | null; target: string | null; ctx: PlurnkSchemeContext;
+        runtime: string; body: string; cwd: string | null; target: string | null; ctx: PlurnkSchemeContext;
         pathname: string; entryId: number; subscriptionId: number; signal: AbortSignal;
         controller: AbortController; timeoutSec: number | null;
         tempPath: string | null;
     }): Promise<SchemeResult> {
-        const { executor, runtime, command, cwd, target, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath } = opts;
+        const { executor, runtime, body, cwd, target, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath } = opts;
         const db = ctx.db;
         const coordinate = coordinateFromPathname(pathname);
         // grammar 0.74.20 EXEC `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
@@ -703,8 +732,8 @@ export default class Exec extends CoreSchemeAdapterBase {
                         ?? `entry(): '${path.slice(0, 80)}' produced no readable body`,
                     );
                 }
-                const prior = await EntryCrud.readEntry(pathname, ctx, scheme);
-                const tags = [...new Set([...(prior.entry?.tags ?? []), ...opts.tags])];
+                const tags = TagSignal.applied(opts.tags.map((tag) => `+${tag}`)).add;
+                const tagSignal = tags.map((tag) => `+${tag}`);
                 // {§exec-entry-sink}/{§html-materialization} The shared
                 // materializer owns the decisive projection and its provenance.
                 const channels: EntryData["channels"] = WebFetcher.materializedChannels(
@@ -717,7 +746,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                 const source = web.html?.content ?? decisive;
                 const causalSource = await resolveCallerSource();
                 const written = Results.assert(
-                    await EntryCrud.writeEntry(pathname, { channels, tags }, ctx, scheme),
+                    await EntryCrud.writeEntry(pathname, { channels }, ctx, scheme),
                 );
                 if (narration === null) {
                     const worker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: "plurnk" })
@@ -736,24 +765,29 @@ export default class Exec extends CoreSchemeAdapterBase {
                     };
                 }
                 const sequence = narration.seq++;
+                const narrationAttrs = { kind: "entry_materialized" } as const;
                 if (written.problem !== undefined) {
+                    const coordinate = LogEntryProjection.coordinate(
+                        `${narration.loopSeq}/${narration.turnSeq}/${sequence}`,
+                        { origin: "plurnk", op: "EDIT", attrs: narrationAttrs },
+                    );
                     Results.attachInstance(
                         written,
-                        `log:///${narration.loopSeq}/${narration.turnSeq}/${sequence}/EDIT`,
+                        `log:///${coordinate}`,
                     );
                 }
-                await db.engine_insert_log_entry.get({
+                const logRow = await db.engine_insert_log_entry.get<{ id: number }>({
                     worker_id: narration.workerId, loop_id: narration.loopId, turn_id: narration.turnId, sequence,
-                    // signal carries the tags — the SAME slot a model's EDIT[tags] uses, so the
+                    // signal carries additive tag terms through the same slot a model's EDIT uses, so the
                     // ambient row renders its tags natively everywhere (packet meta line, digest).
-                    origin: "plurnk", source: causalSource, op: "EDIT", suffix: "", signal: JSON.stringify(tags),
+                    origin: "plurnk", source: causalSource, model_call_id: null,
+                    op: "EDIT", suffix: "", signal: JSON.stringify(tagSignal),
                     scheme, username: null, password: null, hostname: null, port: null,
                     pathname, query: null, fragment: null, lineMarker: null,
                     tx: JSON.stringify({ op: "EDIT", body: source }), mimetype_tx: "application/json",
                     rx: JSON.stringify(written.problem === undefined
                         ? {
                             ...written,
-                            tags,
                             span: decisive.split("\n").map((l, n) => `${n + 1}:${l}`).join("\n"),
                         }
                         : written),
@@ -761,8 +795,9 @@ export default class Exec extends CoreSchemeAdapterBase {
                     status_rx: written.status, tokens: ctx.tokenize?.(decisive) ?? 0, state: "resolved", outcome: null,
                     // Durable provenance for clients/forensics. This is machine
                     // ambience, not a human/model action waterfall item.
-                    attrs: JSON.stringify({ tags, kind: "entry_materialized" }),
+                    attrs: JSON.stringify(narrationAttrs),
                 });
+                if (logRow === undefined) throw new Error("entry(): log insert returned no row");
                 if (written.problem !== undefined) throw new OperationFailureError(written);
                 return renderAddress(scheme, pathname);
             };
@@ -773,7 +808,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         try {
             try {
                 const reported: ExecutorResult = await executor.run({
-                    runtime, command, cwd, target, signal,
+                    runtime, body, cwd, target, signal,
                     entry: entrySink,
                     env: ExecEnv.scoped(),  // SPEC {§exec} {§exec-env-scoped} — never plurnk's own secrets
                     write: (channel, chunk, mimetype) => enqueue(() => ChannelWrite.appendToChannel(db, {

@@ -25,6 +25,7 @@ class Notes {
         writableBy: ["model", "client"],
         volatile: false,
         modelVisible: true,
+        textEditScopes: true,
         flags: { /* optional SchemeFlagAffinity */ },
     };
 }
@@ -40,8 +41,9 @@ class Notes {
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
 | `folderScopes?` | `true` declares that a trailing slash on FIND is a collection scope. Absent/false means `/` is ordinary resource syntax. |
+| `textEditScopes?` | `true` declares the shared textual EDIT coordinate and collision contract. For model-writable schemes, core's universal READ projector owns line-anchor derivation and resolution; handlers receive only numeric coordinates and route standard entry mutation through `ctx.entries.operations.editBatch`. Absent/false or no model write authority rejects model-facing anchored EDIT before handler invocation. |
 | `flags?` | Optional exact `SchemeFlagAffinity`; see {§manifest-flag-affinity}. |
-| `example?` | The scheme's terse **hot-path** one-liner (e.g. `"READ(foo://thing/42)"`) — renders in the live catalogue every turn, so keep it to one canonical usage line. Omit → not advertised. Depth goes in `documentation`. |
+| `example?` | The scheme's concise **hot-path** operation example set (e.g. `"## READ0 (foo://thing/42)"`) — renders in the live resource catalogue every turn. One or more complete operations may be separated by blank lines; keep semantics in `documentation`. Omit → not advertised. |
 | `documentation?` | The **deep doc** (semantics / channels / edge cases). Consumer materializes it as a pull-able `worker://plurnk/docs/<name>.md` entry READ on demand; never hits the hot path. Mirrors `ExecInfo.documentation`. |
 | §manifest-client-display `glyph?` | Non-empty opaque client presentation glyph. It is projected through {§client-display-capabilities}; omission delegates identity fallback to the client. It never enters model teaching. |
 | `foldedByDefault?` | Entries land FOLDED, off the ranked manifest surface (READable via address, not poured into the ranked view). For executor-output streams (`<tag>://`) — containment one level up. Absent/false → ranked/first-class. |
@@ -66,7 +68,7 @@ Proposal behavior is not scheme affinity. A handler proposes by returning 202;
 the consumer's proposal lifecycle decides whether a client, loop auto,
 `noProposals`, or a timeout resolves it.
 
-§manifest-self-doc **Self-doc split (terse pushes, depth pulls).** `example` is the hot-path listing rendered every turn — keep it terse. `documentation` is the deep prose (every op, channel, status code, gotcha); the consumer materializes it as a pull-able **`worker://plurnk/docs/<name>.md`** entry the model READs on demand, off the hot path. Both live on the manifest; the consumer decides what's pushed vs pulled. `glyph` is client display metadata under {§manifest-client-display}, not self-documentation.
+§manifest-self-doc **Self-doc split (terse pushes, depth pulls).** `example` is the hot-path operation example set rendered every turn — keep it terse. `documentation` is the deep prose (every op, channel, status code, gotcha); the consumer materializes it as a pull-able **`worker://plurnk/docs/<name>.md`** entry the model READs on demand, off the hot path. Both live on the manifest; the consumer decides what's pushed vs pulled. `glyph` is client display metadata under {§manifest-client-display}, not self-documentation.
 
 **Authoring convention — `docs/<name>.md`.** The contract field stays a plain `string`, but a sibling SHOULD keep the deep doc in a **`docs/<name>.md`** file at the package root rather than inline, and load it into the manifest at module init — e.g. `documentation: await readFile(new URL("../docs/<name>.md", import.meta.url), "utf-8")` (top-level await; `../` resolves identically from `src/` in test and `dist/` once built). Ship it by adding `docs/**/*` to `files`. This keeps prose out of the handler source and gives editors real Markdown; the contract and the consumer's `worker://plurnk/docs/<name>.md` materialization are unchanged. A missing file fails-hard at import (no silent empty doc).
 
@@ -82,7 +84,7 @@ narrower request. `editBatch` returns the typed `EditBatchResult`
 specialization:
 
 ```ts
-import type { EditBatchResult, SchemeHandler } from "@plurnk/plurnk-schemes";
+import type { EditBatchResult, ResolvedEditStatement, SchemeHandler } from "@plurnk/plurnk-schemes";
 
 export interface SchemeHandler {
     ready?(): Promise<void>;
@@ -94,7 +96,7 @@ export interface SchemeHandler {
     ): Promise<RepresentationPreparationResult>;
     prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    editBatch?(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
+    editBatch?(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     exec?(statement: ExecStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     work?(statement: WorkStatement, ctx: SchemeCtx): Promise<SchemeResult>;
@@ -104,6 +106,21 @@ export interface SchemeHandler {
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;
 }
 ```
+
+§resolved-edit-statement `ResolvedEditStatement` is the scheme-facing EDIT
+shape: its `lineMarker` is `LineMarker | null` and therefore contains numbers
+only. Core resolves the model-facing {§edit-line-anchor-syntax} before invoking
+`SchemeHandler.editBatch` or `EntryOperationCaps.editBatch`; an unresolved
+anchor crossing that boundary is an internal contract violation. The barrel's
+compatibility export named `EditStatement` aliases this resolved shape, so
+existing plugins do not inherit the model parser's anchor representation.
+The anchor precondition remains core-private. A public handler declaring
+`textEditScopes: true` MUST route its standard textual mutation through
+`ctx.entries.operations.editBatch`, which rechecks that precondition at the
+snapshot owner and lands with the consumer's compare-and-swap. Applying the
+numeric coordinates independently would discard the declared collision
+contract. Core-owned special resources enforce the equivalent invariant inside
+their mutation adapter.
 
 §read-preparation `prepareRepresentation?` is the optional, operation-neutral
 acquisition seam for one exact resource. Core first resolves its canonical
@@ -184,8 +201,9 @@ hook.
 
 The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handler operations; schemes use `ctx.entries`. Proposal application is the optional `applyResolution` handler hook described in §3.bis.
 
-OPEN and FOLD are not handler methods. They curate visibility and tags on the
-core-owned log; an entry scheme has no visibility state and receives 501.
+OPEN and FOLD are not handler methods. They curate visibility by filtering tags
+on the core-owned log; an entry scheme has no visibility or tag state and
+receives 501.
 
 §scheme-edit-batch-receipt **Regional mutation receipts.** COPY and MOVE are not
 handler methods. The engine composes their source and
@@ -255,12 +273,13 @@ effects shown to consumers; plugins do not invent a second effect envelope.
 - Manifest/flags: `SchemeManifest`, `SchemeFlagAffinity`, and `WriterTier`; contracts-owned `LoopFlags` and `DEFAULT_LOOP_FLAGS` are re-exported for compatibility.
 - Mutation receipts: `EditBatchResult`, `EditBatchReceipt`, `EditReceipt`, `EditEffectReceipt`, and `EditReceiptUnit`.
 - §scheme-packet-transform **Packet-section transformation.** A scheme may implement `transformSections(sections: PacketSectionDraft[]) → PacketSectionDraft[] | Promise<…>` to add, remove, or reorder sections before core measures the packet. The exact draft shape is `{ name; slot: "system"|"user"; header: string|null; content }`; no token measurement exists at this boundary. Core invokes implementations in registration order and applies `PacketSections.assertDrafts` to the initial list and every returned list. Names are non-empty and unique within the packet.
-- Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `EditStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`).
+- Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `OpenStatement`, `FoldStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `PlanStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`). EDIT uses `ResolvedEditStatement`, also exported under the compatibility name `EditStatement`, under {§resolved-edit-statement}.
 - Target syntax: contracts-owned `PathSyntax` is re-exported for the shared exact-versus-path-glob classifier {§path-glob}.
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
 - §executor-scheme-output Executor-scheme ("an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring). Executor output is a canonical entry and therefore inherits core's exact READ projection under {§read-preparation}; no executor-specific READ helper exists. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only EXEC-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
 - Results: `SchemeResult` is the universal operation-result contract. Statuses below 400 carry no `problem`; statuses 400–599 require RFC 9457 `ProblemDetails`, and the legacy `error` member is forbidden. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
-- Standard `EntryFindResult` exposes only its paged `results`, complete `matchingPathCount` / `matchLocationCount`, content weights, and typed range. Resource-mode rows are `EntryCatalogItem` or `EntryCatalogScope`; exact matcher mode returns flat `MatchEvidence` locations. Pagination is the materialization bound; no hidden `matches`, `pathnames`, or overflow-only result collection exists.
+- Standard `EntryFindResult` exposes only its paged `results`, complete `matchingPathCount` / `matchLocationCount`, content weights, and typed range. Each resource-mode `EntryCatalogItem` is a nonempty, default-first array of flat `EntryCatalogChannel` objects; a scope is the one-element `EntryCatalogScopeGroup`. Exact matcher mode returns flat `MatchEvidence` locations. Pagination is the materialization bound; no path-owning channel wrapper, hidden `matches`, `pathnames`, or overflow-only result collection exists.
+- §scheme-catalog-parse-issues An `EntryCatalogChannel` may carry a positive `parseIssues` count when its exact content projection reported parser recovery sites. Zero and unavailable evidence are omitted. This is advisory metadata and never a validity gate or operation failure.
 - Capability ctx (see §3.bis): `SchemeCtx`, `StreamSubscription`, and the domain capabilities. Entry authors additionally receive `EntryOperationCaps`, semantic `EntryOwner`/`EntryAddress`, and typed standard-operation results. `editBatch` receives every same-turn EDIT for one canonical resource and channel; it validates against one snapshot and commits one revision or none. There is no sequential single-EDIT fallback.
 
 Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules, the barrel, and the frozen `DEFAULT_LOOP_FLAGS` constant are the only non-class files.
@@ -389,7 +408,7 @@ durable `instance`, because only it knows the committed log coordinate. A
 malformed handler result is a plugin contract violation and fails hard; the
 consumer does not invent a fallback error or reinterpret arbitrary fields.
 The same discrimination applies to every `SchemeCtx` capability result:
-entries, channels, and tags never return a bare failure status.
+entries and channels never return a bare failure status.
 
 ### Matcher dispatch - `Matcher` {§matcher-dispatch}
 
@@ -413,20 +432,22 @@ database schemas, prepared-statement names, and private service modules.
 **Interfaces only**: this repo exports the contract and the consumer injects
 its implementation.
 
-`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`) plus **six live capability namespaces** replacing raw `db`:
+`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`) plus **five live capability namespaces** replacing raw `db`:
 
 - `entries` — direct storage over the scheme's own namespace
   (`read`/`write`/`delete`) plus `operations`, the standard PLURNK
   `READ`/`EDIT`/`FIND`/`SEND` implementation for entry-bearing schemes.
   A write may omit channel state to select the `static` default; a successful
   storage read always returns each channel's persisted lifecycle state.
+  Optional `attributes` are scheme-private durable metadata. They are scoped to
+  that entry, replaced only when explicitly written, and never projected into
+  model content, catalogs, or client entry data.
   Standard operations are bound to the handler's manifest. Their optional
   owner is semantic: `"commons"` (default) or the current `"worker"`; database
   owner IDs are not part of the plugin contract. A handler may implement its
   own op method instead. In particular, a handler with `find()` owns FIND; one
   without it receives the standard stored-entry behavior.
 - `channels` — content writes + state (`append`/`replace`/`setState`).
-- `tags` — entry tags (`add`/`remove`/`list`).
 - `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. (No `wakeWorker`: the worker wake carries subscription-close context that only exists at stream completion, so it lives on `subscriptions.close`. Only streaming schemes wake a worker, always via close.)
 - `projection` — the text and bounded-byte projection capability in {§scheme-projection}. Acquisition schemes own source representations; they do not instantiate or second-guess the reader family. `null` means no readable projection.
 - §scheme-subscriptions `subscriptions` — one streaming lifecycle:

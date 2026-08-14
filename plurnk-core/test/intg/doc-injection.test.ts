@@ -23,7 +23,7 @@ test("PLURNK_SERVICE_MD_<ALIAS>: doc is materialized by the plurnk worker + READ
     const prev = process.env.PLURNK_SERVICE_MD_AGENTS;
     process.env.PLURNK_SERVICE_MD_AGENTS = docPath;
     try {
-        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 50)] });
+        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -68,7 +68,7 @@ test("PLURNK_MD docs foist at turn 0 even when PLURNK_SERVICE_FILES_ITEMS=0 — 
     process.env.PLURNK_SERVICE_MD_POLICY = docPath;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "0"; // catalog preview OFF
     try {
-        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 50)] });
+        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -101,7 +101,7 @@ test("workspace.create settings.mdDocs UNIONs with env PLURNK_SERVICE_MD_* — e
     process.env.PLURNK_SERVICE_MD_POLICY = policyPath; // deliberately absent — the client shadows it before I/O
     process.env.PLURNK_SERVICE_MD_GUIDE = guidePath;   // operator doc the client leaves alone — must survive
     try {
-        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 50)] });
+        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {

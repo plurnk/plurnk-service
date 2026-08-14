@@ -26,6 +26,8 @@ export type StrikeOutcome = {
 //   - FIND/READ/OPEN/FOLD: body IS the search/selection pattern; varied
 //     matchers on the same target ARE different activities (the model is
 //     exploring different queries, not repeating one).
+//   - BARE: the body is the complete isolated prompt and therefore the
+//     activity identity, just as EXEC's body identifies its command.
 const fingerprintOp = (stmt: PlurnkStatement): string => {
     const path = stmt.target;
     const matcherDiscriminator = (): string => {
@@ -49,11 +51,11 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
         //     one fingerprint and the detector mislabels exploration
         //     as a loop.
         //   - SEND: the status code (signal) IS the activity. Different
-        //     SEND[X] are different intentions; same SEND[X] with
+        //     Different SEND signals are different intentions; the same signal with
         //     different message bodies is the same termination signal.
-        if (stmt.op === "EXEC") {
+        if (stmt.op === "EXEC" || stmt.op === "BARE") {
             const body = typeof stmt.body === "string" ? stmt.body : "";
-            return `EXEC|(no-path)${body.length > 0 ? `|body:${body.slice(0, 64)}` : ""}`;
+            return `${stmt.op}|(no-path)${body.length > 0 ? `|body:${body.slice(0, 64)}` : ""}`;
         }
         if (stmt.op === "SEND") {
             const signal = typeof stmt.signal === "number" ? stmt.signal : "";

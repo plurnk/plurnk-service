@@ -5,8 +5,9 @@
 // consumer injects their implementation.
 
 import type { WriterTier } from "./types.ts";
-import type { EditStatement, FindStatement, RangeExtent, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
+import type { FindStatement, RangeExtent, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "./edit-statement.ts";
 import type { ChannelProducerResult, MatchEvidence, SchemeResult } from "./Results.ts";
 import type { EditBatchReceipt, EditBatchResult } from "./edit-receipt.ts";
 // Channel streaming-lifecycle state. Metadata, not an engine gate
@@ -22,7 +23,9 @@ export interface EntryData {
         state?: ChannelState;
         producerResult?: ChannelProducerResult;
     }>;
-    readonly tags: ReadonlyArray<string>;
+    // Scheme-private durable metadata. It is never projected as resource
+    // content, catalog fields, or client entry data.
+    readonly attributes?: Readonly<Record<string, unknown>>;
 }
 
 // Entry read shape. Lifecycle is part of the stored channel representation,
@@ -34,7 +37,7 @@ export interface StoredEntryData {
         state: ChannelState;
         producerResult?: ChannelProducerResult;
     }>;
-    readonly tags: ReadonlyArray<string>;
+    readonly attributes?: Readonly<Record<string, unknown>>;
 }
 
 export type EntryOwner = "commons" | "worker";
@@ -63,13 +66,24 @@ export interface EntryReadResult extends SchemeResult {
     readonly awaitWorker?: string;
 }
 
-export interface EntryCatalogItem {
+export type EntryStreamLifecycle =
+    | { readonly state: "active"; readonly seconds: number }
+    | { readonly state: "closed" | "killed" | "failed"; readonly status: number };
+
+export interface EntryCatalogChannel {
     readonly path: string;
-    readonly seconds?: number;
-    readonly tags?: ReadonlyArray<string>;
-    readonly channels: Readonly<Record<string, { mimetype: string; tokens: number; lines: number }>>;
+    readonly mimetype: string;
+    readonly tokens: number;
+    readonly lines: number;
+    readonly parseIssues?: number;
+}
+
+export interface EntryCatalogDefaultChannel extends EntryCatalogChannel {
+    readonly stream?: EntryStreamLifecycle;
     readonly matchLocationCount?: number;
 }
+
+export type EntryCatalogItem = readonly [EntryCatalogDefaultChannel, ...EntryCatalogChannel[]];
 
 export interface EntryCatalogScope {
     readonly path: string;
@@ -77,10 +91,12 @@ export interface EntryCatalogScope {
     readonly tokens: number;
 }
 
+export type EntryCatalogScopeGroup = readonly [EntryCatalogScope];
+
 export interface EntryFindResult extends SchemeResult {
     readonly content: string | null;
     readonly mimetype: string | null;
-    readonly results: ReadonlyArray<EntryCatalogItem | EntryCatalogScope | MatchEvidence>;
+    readonly results: ReadonlyArray<EntryCatalogItem | EntryCatalogScopeGroup | MatchEvidence>;
     readonly itemsTokenTotal: number;
     readonly returnedItemsTokenTotal: number;
     readonly matchingPathCount: number;
@@ -89,7 +105,7 @@ export interface EntryFindResult extends SchemeResult {
 }
 
 export interface EntryOperationCaps {
-    editBatch(statements: readonly EditStatement[], owner?: EntryOwner): Promise<EntryEditResult>;
+    editBatch(statements: readonly ResolvedEditStatement[], owner?: EntryOwner): Promise<EntryEditResult>;
     read(statement: ReadStatement, owner?: EntryOwner): Promise<EntryReadResult>;
     find(statement: FindStatement, owner?: EntryOwner): Promise<EntryFindResult>;
     send(statement: SendStatement, owner?: EntryOwner): Promise<SchemeResult>;
@@ -133,19 +149,6 @@ export interface ChannelCaps {
 // log-side concern with no entry-visibility for a scheme to set ({§capability-ctx}).
 // If a sibling ever needs to influence what the model
 // retains, that's a log capability, not an entry one — designed if/when forced.
-
-// ── tags ─────────────────────────────────────────────────────────────────
-// Entry-tag add/remove/list. `add`/`remove` are additive/subtractive sets
-// (service SPEC: tags apply additively). Wraps `entry_tags`.
-export interface TagListResult extends SchemeResult {
-    readonly tags: ReadonlyArray<string>;
-}
-
-export interface TagCaps {
-    add(pathname: string, tags: ReadonlyArray<string>): Promise<SchemeResult>;
-    remove(pathname: string, tags: ReadonlyArray<string>): Promise<SchemeResult>;
-    list(pathname: string): Promise<TagListResult>;
-}
 
 // ── notify ───────────────────────────────────────────────────────────────
 // Out-of-band, between-turn signal to clients — today's `streamEventNotify`
@@ -226,7 +229,7 @@ export interface SubscriptionCaps extends Pick<StreamSubscription, "notifyChunk"
 }
 
 // The force-cancel hook a streaming scheme hands to `open`. The engine's
-// cancel router invokes it to tear down from outside (SEND[499] → here).
+// cancel router invokes it to tear down from outside (SEND signal 499 → here).
 export interface SubscriptionHandle {
     cancel(): void | Promise<void>;
 }
@@ -247,7 +250,6 @@ export interface SchemeCtx {
 
     readonly entries: EntryCaps;
     readonly channels: ChannelCaps;
-    readonly tags: TagCaps;
     readonly notify: NotifyCaps;
     readonly projection: ProjectionCaps;
     readonly subscriptions: SubscriptionCaps;

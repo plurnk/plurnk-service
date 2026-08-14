@@ -33,6 +33,7 @@ export interface LogEntryNotification {
         turn_id?: number;
         expanded?: number;
         attrs?: unknown;
+        tags?: string[];
     };
 }
 

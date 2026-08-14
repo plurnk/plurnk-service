@@ -142,15 +142,15 @@ test("effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a 
 
 test("one canonical target derives one preserved effect fact (#107)", async () => {
     const effectCalls: Array<{ target: string | null; argumentCount: number }> = [];
-    const runs: Array<{ command: string; cwd: string | null; target: string | null; materialized?: string }> = [];
+    const runs: Array<{ body: string; cwd: string | null; target: string | null; materialized?: string }> = [];
     const exe: Executor = {
         runtime: "tool", glyph: "🔧",
         get manifest(): SchemeManifest { return { name: "tool" } as unknown as SchemeManifest; },
         get defaultChannel(): string { return "results"; },
         get channels() { return { results: { mimetype: "application/json" } }; },
-        run: async ({ command, cwd, target, setState }) => {
+        run: async ({ body, cwd, target, setState }) => {
             runs.push({
-                command,
+                body,
                 cwd,
                 target,
                 ...(target?.startsWith(tmpdir()) === true
@@ -166,7 +166,19 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
             return target === null ? "pure" : "read";
         },
     };
-    const registry = new ExecutorRegistry(new Map([["tool", { executor: exe, namespaceOwner: { kind: "module", name: "effect fixture" }, glyph: "🔧", example: "", documentation: "", available: true, detail: undefined }]]));
+    const registry = new ExecutorRegistry(new Map([["tool", {
+        executor: exe,
+        namespaceOwner: { kind: "module", name: "effect fixture" },
+        glyph: "🔧",
+        invocation: {
+            body: { role: "fixture input", required: false },
+            target: { role: "fixture resource", required: false, kind: "resource", directory: "cwd" },
+            example: { body: "fixture" },
+        },
+        documentation: "",
+        available: true,
+        detail: undefined,
+    }]]));
     const db = await openMigrated();
     const root = await mkdtemp(join(tmpdir(), "plurnk-effect-"));
     const schemes = new SchemeRegistry();
@@ -220,21 +232,21 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
             { target: null, argumentCount: 1 },
             { target: "data.txt", argumentCount: 1 },
             { target: null, argumentCount: 1 },
-            { target: null, argumentCount: 1 },
             { target: "worker:///source#body", argumentCount: 1 },
-        ], "effect() is called once against the canonical logical target and never receives command metadata");
-        assert.deepEqual(effects, ["pure", "read", "pure", "pure", "read"], "the admitted effect fact is persisted with each invocation");
-        assert.deepEqual(runs.map(({ command, cwd, target, materialized }) => ({
-            command,
+            { target: "worker:///source#body", argumentCount: 1 },
+        ], "effect() is called once against the canonical logical target and never receives body metadata");
+        assert.deepEqual(effects, ["pure", "read", "pure", "read", "read"], "the admitted effect fact is persisted with each invocation");
+        assert.deepEqual(runs.map(({ body, cwd, target, materialized }) => ({
+            body,
             cwd: cwd === join(root, "work") ? "<directory>" : cwd,
             target: target?.startsWith(tmpdir()) === true ? "<materialized>" : target,
             ...(materialized === undefined ? {} : { materialized }),
         })), [
-            { command: "inline", cwd: root, target: null },
-            { command: "file input", cwd: root, target: "data.txt" },
-            { command: "directory cwd", cwd: "<directory>", target: null },
-            { command: "scheme data", cwd: root, target: null },
-            { command: "filter", cwd: root, target: "<materialized>", materialized: "scheme data" },
+            { body: "inline", cwd: root, target: null },
+            { body: "file input", cwd: root, target: "data.txt" },
+            { body: "directory cwd", cwd: "<directory>", target: null },
+            { body: "", cwd: root, target: "<materialized>", materialized: "scheme data" },
+            { body: "filter", cwd: root, target: "<materialized>", materialized: "scheme data" },
         ], "run() receives the correctly routed local realization of the same invocation");
     } finally {
         await exec.idle();

@@ -1,7 +1,7 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import { APICallError, RetryError } from "ai";
-import { ProviderError, classifyProviderError, toProviderError } from "./errors.ts";
+import { ProviderError, ProviderTimeoutError, classifyProviderError, toProviderError } from "./errors.ts";
 import type { ProviderAttempt } from "./types.ts";
 import { providerSource } from "./notices.ts";
 
@@ -29,10 +29,25 @@ test("classifyProviderError maps HTTP status to kind", () => {
     assert.equal(k(403), "unauthorized");
     assert.equal(k(402), "quota_exceeded");
     assert.equal(k(429), "rate_limit");
+    assert.equal(k(408), "network_failure");
+    assert.equal(k(409), "network_failure");
     assert.equal(k(500), "network_failure");
     assert.equal(k(503), "network_failure");
     assert.equal(k(400), "invalid_response");
     assert.equal(k(404), "invalid_response");
+});
+
+test("provider retry directives survive HTTP failure normalization", () => {
+    const final = new APICallError({
+        message: "edge router says not to replay",
+        url: "https://example.test/v1/chat/completions",
+        requestBodyValues: {},
+        statusCode: 524,
+        isRetryable: false,
+    });
+    const error = toProviderError(final, "provider:test");
+    assert.equal(error.kind, "network_failure");
+    assert.equal(error.problem.retryable, false);
 });
 
 test("classifyProviderError: a 422 flagged grammar_invalid is distinct; other 422s are invalid responses", () => {
@@ -152,4 +167,27 @@ test("retry exhaustion is explicit and does not recommend another automatic repl
     assert.equal(error.problem.attempts, 3);
     assert.equal(error.problem.retryExhausted, true);
     assert.equal(error.cause, cause);
+});
+
+test("retry exhaustion retains the exact inner deadline phase", () => {
+    const failures = [1, 2].map(() => new APICallError({
+        message: "attempt timed out",
+        url: "https://example.test/v1/chat/completions",
+        requestBodyValues: {},
+        cause: new ProviderTimeoutError("attempt", 10),
+        isRetryable: true,
+    }));
+    const cause = new RetryError({
+        message: "Failed after 2 attempts.",
+        reason: "maxRetriesExceeded",
+        errors: failures,
+    });
+    const error = toProviderError(cause, "provider:test");
+    assert.equal(error.kind, "network_failure");
+    assert.equal(error.status, 503);
+    assert.equal(error.problem.retryable, false);
+    assert.equal(error.problem.attempts, 2);
+    assert.equal(error.problem.retryExhausted, true);
+    assert.equal(error.problem.timeoutPhase, "attempt");
+    assert.equal(error.problem.timeoutMs, 10);
 });

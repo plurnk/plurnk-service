@@ -349,7 +349,6 @@ test("EntryReadResult validates one exact client entry projection", () => {
                     state: "static" as const,
                 },
             },
-            tags: ["research"],
         },
     };
     assert.equal(Validator.assertEntryReadResult(result), result);
@@ -367,6 +366,7 @@ test("EntryReadResult validates one exact client entry projection", () => {
     assert.equal(Validator.assertEntryReadResult(failure), failure);
 
     for (const invalid of [
+        { ...result, entry: { ...result.entry, tags: ["research"] } },
         { ...result, entry: { ...result.entry, scope: "workspace" } },
         { ...result, entry: { ...result.entry, workspaceId: 2 } },
         { ...result, entry: { ...result.entry, scheme: "worker", pathname: "/notes.md" } },

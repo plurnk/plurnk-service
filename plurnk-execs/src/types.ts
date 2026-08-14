@@ -1,5 +1,5 @@
 // Runtime executor contract. Each `@plurnk/plurnk-execs-*` sibling declares
-// one or more runtime tags (`sh`, `bash`, `python`, `search`, `news`, …) in
+// one or more runtime tags (`sh`, `bash`, `python`, `search`, `news`) in
 // its `package.json` `plurnk.runtimes[]` block, and provides a BaseExecutor
 // subclass implementing the dispatch for those tags.
 //
@@ -34,24 +34,20 @@ export interface ExecutorMetadata {
 // notices, and honors `signal`.
 export interface ExecArgs {
     // The matched runtime tag. Multi-tag executors branch on it (e.g. the
-    // search sibling maps `news`/`images` → SearXNG `categories=`).
+    // search sibling maps `search`/`news` → SearXNG `categories=`).
     runtime: string;
-    // The EXEC op body: a shell line, source to interpret, or a search query.
-    command: string;
+    // The authored EXEC body; its role comes from the runtime invocation declaration.
+    body: string;
     // Process working directory — the workspace workspace. Filesystem-touching
     // runtimes resolve relative paths (including `target`) against it; subprocess
     // runtimes spawn in it. null for logical runtimes (search) that touch no
     // filesystem.
     cwd: string | null;
     // The parsed EXEC `(target)` slot — a referenced file or entry, interpreted
-    // **per-runtime** ({§executor-sinks}). Each executor maps `(target, command)`
-    // onto its own tool's CLI; the framework passes both raw and parses neither:
-    //   - a *data* runtime reads `target` as the input and `command` as the
-    //     program — jq `(file):filter`, sqlite `(db):SQL`, wasm `(module):…`;
-    //   - an *executable* runtime runs `target` as the program and `command` as
-    //     its **stdin** — sh `(cmdline):stdin`, python `(script):stdin`.
+    // according to the runtime's invocation declaration. The framework has
+    // already realized its declared literal/path/resource representation.
     // Resolved relative to `cwd`; null when the op names none (bare
-    // `EXEC[sh]:…`, inline `EXEC[jq]:…`, `:memory:` sqlite). Kept distinct from
+    // shell EXEC, inline jq EXEC, and `:memory:` SQLite). Kept distinct from
     // `cwd` so a runtime receives BOTH the workspace and the slot.
     target: string | null;
     // Environment for runtimes that spawn a child process. When set, the child
@@ -107,19 +103,39 @@ export interface RuntimeAvailability {
     detail?: string;
 }
 
+export interface RuntimeBodyDecl {
+    readonly role: string;
+    readonly required: boolean;
+}
+
+export type RuntimeTargetKind = "literal" | "path" | "resource";
+
+export interface RuntimeTargetDecl {
+    readonly role: string;
+    readonly required: boolean;
+    readonly kind: RuntimeTargetKind;
+    readonly directory?: "cwd";
+}
+
+export interface RuntimeInvocationExample {
+    readonly body?: string;
+    readonly target?: string;
+}
+
+export interface RuntimeInvocation {
+    readonly body: RuntimeBodyDecl;
+    readonly target?: RuntimeTargetDecl;
+    readonly exclusive?: true;
+    readonly example: RuntimeInvocationExample;
+}
+
 // One discovered runtime tag and the package that provides it.
 export interface ExecInfo {
     runtime: string;
     glyph: string;
-    // A compact self-documenting plurnk snippet surfaced verbatim by the
-    // consumer. Every line is a complete operation; empty when omitted
-    // ({§executor-runtime-declaration}).
-    example: string;
-    // Full markdown documentation for this tag — the flags, modes, and gotchas
-    // the compact `example` can't carry. The depth a consumer can serve on
-    // demand, separate from the always-on `example` (progressive disclosure).
-    // Empty when omitted. execs owns this field; HOW it reaches the model is the
-    // consumer's concern, not specified by the contract.
+    invocation: RuntimeInvocation;
+    // Full markdown documentation for this tag. Empty when omitted. execs owns
+    // this field; HOW it reaches the model is the consumer's concern.
     documentation: string;
     packageName: string;
     // Published per-tag projection of the package-level attribution declaration.
@@ -130,12 +146,12 @@ export interface ExecInfo {
 // One runtime-tag declaration — the shape of a static `plurnk.runtimes[]`
 // manifest entry, and the element type a dynamic runtimes hook returns. `name`
 // is the canonical tag from {§executor-runtime-declaration}; the rest are the
-// optional manifest fields discover() surfaces onto ExecInfo (a per-tag
+// manifest fields discover() surfaces onto ExecInfo (a per-tag
 // `docs/<tag>.md` file, when present, still wins over inline documentation).
 export interface RuntimeDecl {
     name: string;
     glyph?: string;
-    example?: string;
+    invocation: RuntimeInvocation;
     documentation?: string;
 }
 

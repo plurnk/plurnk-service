@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS ambient_events (
     pathname           TEXT,
     rx                 TEXT,
     attrs              TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attrs)),
+    tags               TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(tags) AND json_type(tags) = 'array'),
     status_rx          INTEGER NOT NULL CHECK (status_rx BETWEEN 100 AND 599),
     terminated_by      TEXT             CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
     created_at         TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -250,19 +251,17 @@ CREATE TABLE IF NOT EXISTS turns (
 CREATE UNIQUE INDEX IF NOT EXISTS turns_loop_id_sequence ON turns (loop_id, sequence);
 CREATE        INDEX IF NOT EXISTS turns_timestamp        ON turns (timestamp);
 
--- Logical model-emission attempts sit beneath one engine turn. Rejected and
--- interrupted response evidence persists without becoming model-visible
--- history. Physical provider requests are separate child rows because retries
--- and provider failover can make more than one request for one emission.
-CREATE TABLE IF NOT EXISTS turn_attempts (
+-- One logical provider.generate call. Emission attempts and BARE inferences
+-- share response/failure evidence and cardinal physical request accounting;
+-- operation-specific semantics live in their specializing relations.
+CREATE TABLE IF NOT EXISTS model_calls (
     id               INTEGER NOT NULL PRIMARY KEY,
     turn_id          INTEGER NOT NULL,
     sequence         INTEGER NOT NULL CHECK (sequence >= 1),
+    kind             TEXT    NOT NULL CHECK (kind IN ('emission', 'bare')),
     state            TEXT    NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'response', 'error')),
-    accepted         INTEGER          CHECK (accepted IS NULL OR accepted IN (0, 1)),
     response         TEXT             CHECK (response IS NULL OR json_valid(response)),
     failure          TEXT             CHECK (failure IS NULL OR json_valid(failure)),
-    parse_errors     TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(parse_errors)),
     -- Exact opaque tag set forwarded with this provider call.
     -- {§attribution}
     attributions     TEXT    NOT NULL DEFAULT '[]' CHECK (
@@ -274,7 +273,7 @@ CREATE TABLE IF NOT EXISTS turn_attempts (
     completed_at     TEXT,
     CHECK (
         (state = 'pending'
-            AND accepted IS NULL AND response IS NULL AND failure IS NULL
+            AND response IS NULL AND failure IS NULL
             AND finish_reason IS NULL AND completed_at IS NULL)
         OR
         (state = 'response'
@@ -282,48 +281,105 @@ CREATE TABLE IF NOT EXISTS turn_attempts (
             AND completed_at IS NOT NULL)
         OR
         (state = 'error'
-            AND accepted IS NULL AND response IS NULL AND failure IS NOT NULL
+            AND response IS NULL AND failure IS NOT NULL
             AND completed_at IS NOT NULL)
     ),
     UNIQUE (turn_id, sequence),
     FOREIGN KEY (turn_id) REFERENCES turns(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE INDEX IF NOT EXISTS turn_attempts_turn_id ON turn_attempts (turn_id);
-CREATE UNIQUE INDEX IF NOT EXISTS turn_attempts_one_accepted_per_turn
-    ON turn_attempts (turn_id)
-    WHERE accepted = 1;
+CREATE INDEX IF NOT EXISTS model_calls_turn_id ON model_calls (turn_id, sequence);
 
-CREATE TRIGGER IF NOT EXISTS turn_attempts_request_identity_immutable
-BEFORE UPDATE OF turn_id, sequence, attributions, timestamp ON turn_attempts
+CREATE TRIGGER IF NOT EXISTS model_calls_request_identity_immutable
+BEFORE UPDATE OF turn_id, sequence, kind, attributions, timestamp ON model_calls
 BEGIN
-    SELECT RAISE(ABORT, 'provider attempt request identity is immutable');
+    SELECT RAISE(ABORT, 'model call request identity is immutable');
 END;
 
-CREATE TRIGGER IF NOT EXISTS turn_attempts_state_forward_only
-BEFORE UPDATE OF state ON turn_attempts
+CREATE TRIGGER IF NOT EXISTS model_calls_state_forward_only
+BEFORE UPDATE OF state ON model_calls
 WHEN NOT (
     NEW.state = OLD.state
     OR (OLD.state = 'pending' AND NEW.state IN ('response', 'error'))
 )
 BEGIN
-    SELECT RAISE(ABORT, 'provider attempt state may only close once');
+    SELECT RAISE(ABORT, 'model call state may only close once');
 END;
 
-CREATE TRIGGER IF NOT EXISTS turn_attempts_observation_immutable
-BEFORE UPDATE OF response, finish_reason, model, completed_at
-ON turn_attempts
+CREATE TRIGGER IF NOT EXISTS model_calls_observation_immutable
+BEFORE UPDATE OF response, failure, finish_reason, model, completed_at
+ON model_calls
 WHEN OLD.state != 'pending'
 BEGIN
-    SELECT RAISE(ABORT, 'provider attempt observation is immutable');
+    SELECT RAISE(ABORT, 'model call observation is immutable');
+END;
+
+-- Emission admission specializes one model call without re-owning its response,
+-- provider identity, ordering, or accounting evidence.
+CREATE TABLE IF NOT EXISTS turn_attempts (
+    id               INTEGER NOT NULL PRIMARY KEY,
+    model_call_id    INTEGER NOT NULL UNIQUE,
+    accepted         INTEGER          CHECK (accepted IS NULL OR accepted IN (0, 1)),
+    parse_errors     TEXT    NOT NULL DEFAULT '[]' CHECK (
+        json_valid(parse_errors) AND json_type(parse_errors) = 'array'
+    ),
+    FOREIGN KEY (model_call_id) REFERENCES model_calls(id) ON DELETE CASCADE
+) STRICT;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_request_identity_immutable
+BEFORE UPDATE OF model_call_id ON turn_attempts
+BEGIN
+    SELECT RAISE(ABORT, 'emission attempt identity is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_emission_call_only
+BEFORE INSERT ON turn_attempts
+WHEN COALESCE((SELECT kind = 'emission' FROM model_calls WHERE id = NEW.model_call_id), 0) != 1
+BEGIN
+    SELECT RAISE(ABORT, 'turn attempt requires an emission model call');
+END;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_classification_after_response
+BEFORE UPDATE OF accepted, parse_errors ON turn_attempts
+WHEN COALESCE((SELECT state = 'response' FROM model_calls WHERE id = OLD.model_call_id), 0) != 1
+BEGIN
+    SELECT RAISE(ABORT, 'emission classification requires model response evidence');
 END;
 
 CREATE TRIGGER IF NOT EXISTS turn_attempts_classification_once
-BEFORE UPDATE OF accepted, parse_errors, failure
+BEFORE UPDATE OF accepted, parse_errors
 ON turn_attempts
-WHEN OLD.state = 'error' OR (OLD.state = 'response' AND OLD.accepted IS NOT NULL)
+WHEN OLD.accepted IS NOT NULL
 BEGIN
-    SELECT RAISE(ABORT, 'provider attempt classification is immutable');
+    SELECT RAISE(ABORT, 'emission attempt classification is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_one_accepted_insert
+BEFORE INSERT ON turn_attempts
+WHEN NEW.accepted = 1 AND EXISTS (
+    SELECT 1
+    FROM turn_attempts existing
+    JOIN model_calls old_call ON old_call.id = existing.model_call_id
+    JOIN model_calls new_call ON new_call.id = NEW.model_call_id
+    WHERE old_call.turn_id = new_call.turn_id AND existing.accepted = 1
+)
+BEGIN
+    SELECT RAISE(ABORT, 'one emission may be accepted per turn');
+END;
+
+CREATE TRIGGER IF NOT EXISTS turn_attempts_one_accepted_update
+BEFORE UPDATE OF accepted ON turn_attempts
+WHEN NEW.accepted = 1 AND EXISTS (
+    SELECT 1
+    FROM turn_attempts existing
+    JOIN model_calls old_call ON old_call.id = existing.model_call_id
+    JOIN model_calls new_call ON new_call.id = NEW.model_call_id
+    WHERE old_call.turn_id = new_call.turn_id
+      AND existing.id != OLD.id
+      AND existing.accepted = 1
+)
+BEGIN
+    SELECT RAISE(ABORT, 'one emission may be accepted per turn');
 END;
 
 -- {§provider-request-accounting}: one row is opened before one physical
@@ -332,7 +388,7 @@ END;
 -- accounting representation.
 CREATE TABLE IF NOT EXISTS provider_requests (
     id                       INTEGER NOT NULL PRIMARY KEY,
-    turn_attempt_id          INTEGER NOT NULL,
+    model_call_id            INTEGER NOT NULL,
     sequence                 INTEGER NOT NULL CHECK (sequence >= 1),
     provider                 TEXT    NOT NULL CHECK (length(provider) > 0),
     model                    TEXT    NOT NULL CHECK (length(model) > 0),
@@ -411,15 +467,15 @@ CREATE TABLE IF NOT EXISTS provider_requests (
             AND cost_usd_equivalent IS NULL AND cost_source IS NULL
             AND cost_reason IS NOT NULL AND length(cost_reason) > 0)
     ),
-    UNIQUE (turn_attempt_id, sequence),
-    FOREIGN KEY (turn_attempt_id) REFERENCES turn_attempts(id) ON DELETE CASCADE
+    UNIQUE (model_call_id, sequence),
+    FOREIGN KEY (model_call_id) REFERENCES model_calls(id) ON DELETE CASCADE
 ) STRICT;
 
-CREATE INDEX IF NOT EXISTS provider_requests_turn_attempt_id
-    ON provider_requests (turn_attempt_id, sequence);
+CREATE INDEX IF NOT EXISTS provider_requests_model_call_id
+    ON provider_requests (model_call_id, sequence);
 
 CREATE TRIGGER IF NOT EXISTS provider_requests_identity_immutable
-BEFORE UPDATE OF turn_attempt_id, sequence, provider, model, started_at ON provider_requests
+BEFORE UPDATE OF model_call_id, sequence, provider, model, started_at ON provider_requests
 BEGIN
     SELECT RAISE(ABORT, 'provider request identity is immutable');
 END;
@@ -455,6 +511,7 @@ CREATE TABLE IF NOT EXISTS derivations (
     state       TEXT    NOT NULL DEFAULT 'building' CHECK (state IN ('building', 'complete')),
     disposition TEXT    CHECK (disposition IN ('vector', 'lexical', 'excluded', 'nonsemantic', 'failed')),
     reason      TEXT,
+    parse_issues INTEGER CHECK (parse_issues IS NULL OR parse_issues > 0),
     CHECK ((state = 'building' AND disposition IS NULL) OR (state = 'complete' AND disposition IS NOT NULL))
 ) STRICT;
 
@@ -566,14 +623,11 @@ BEGIN
     UPDATE entries SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.entry_id;
 END;
 
-CREATE TABLE IF NOT EXISTS entry_tags (
-    entry_id INTEGER NOT NULL,
-    tag      TEXT    NOT NULL CHECK (length(tag) > 0),
-    PRIMARY KEY (entry_id, tag),
-    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
-) STRICT, WITHOUT ROWID;
-
-CREATE INDEX IF NOT EXISTS entry_tags_tag ON entry_tags (tag);
+CREATE TRIGGER IF NOT EXISTS entries_touch_on_channel_update
+AFTER UPDATE ON entry_channels
+BEGIN
+    UPDATE entries SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.entry_id;
+END;
 
 -- symbol_defs
 -- @graph NODES ({§relation-indexed-dialects}). Code symbol definitions, populated
@@ -665,12 +719,15 @@ CREATE TABLE IF NOT EXISTS log_entries (
     ambient_event_id INTEGER                  REFERENCES ambient_events(id),
     -- Search derivation attached to this durable log result, when available.
     deep_hash       TEXT                       REFERENCES derivations(deep_hash),
+    -- Exact logical provider call represented by a BARE result or model-emission
+    -- mirror. Other operation and ambient rows carry no model-call identity.
+    model_call_id   INTEGER                    REFERENCES model_calls(id),
 
     -- 'error' is an ACTIONLESS row ({§operation-results} — errors are log items): a parse failure that
     -- produced no op still records a log entry (op='error', status_rx≥400, no target) so the model
     -- can fold/kill/recall its own mistakes like any other log row — one budget surface, the log.
-    -- A model-emission artifact ({§model-entry}) carries NULL here and
-    -- attrs.kind='model_emission': no operation was executed or fabricated.
+    -- Actionless artifacts carry NULL here: kernel-authored worker initialization
+    -- ({§worker-initialization-entry}) or a model emission ({§model-entry}).
     -- No op enum here: the grammar op set is grammar's contract (PlurnkOp), and this column is written
     -- only by the PlurnkOp-typed engine (grammar ops), service row selectors, or NULL for no op.
     -- A SQL enum would be a hand-copy of grammar's op list that silently goes stale on every new verb
@@ -707,7 +764,9 @@ CREATE TABLE IF NOT EXISTS log_entries (
 
     expanded         INTEGER NOT NULL DEFAULT 1 CHECK (expanded IN (0, 1)),
 
-    CHECK ((op IS NULL) = COALESCE(json_extract(attrs, '$.kind') = 'model_emission', 0)),
+    CHECK ((op IS NULL) = COALESCE(json_extract(attrs, '$.kind') IN ('initialization', 'model_emission'), 0)),
+    CHECK (json_extract(attrs, '$.kind') != 'initialization' OR origin = 'plurnk'),
+    CHECK (json_extract(attrs, '$.kind') != 'model_emission' OR origin = 'model'),
 
     FOREIGN KEY (worker_id)  REFERENCES workers(id)  ON DELETE CASCADE,
     FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE,
@@ -718,21 +777,130 @@ CREATE UNIQUE INDEX IF NOT EXISTS log_entries_turn_id_sequence ON log_entries (t
 CREATE        INDEX IF NOT EXISTS log_entries_worker_id           ON log_entries (worker_id);
 CREATE        INDEX IF NOT EXISTS log_entries_loop_id          ON log_entries (loop_id);
 CREATE        INDEX IF NOT EXISTS log_entries_at               ON log_entries (at);
+CREATE UNIQUE INDEX IF NOT EXISTS log_entries_model_call_id
+    ON log_entries (model_call_id)
+    WHERE model_call_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_worker_ambient_event
     ON log_entries (worker_id, ambient_event_id)
     WHERE ambient_event_id IS NOT NULL;
 
--- {§log-region-tagging} — named log-region curation. FOLD is the log's write-op (EDIT can't
--- reach engine-written rows): FOLD[tag] stamps a tag on a region; OPEN[tag]/FIND[tag] filter
--- by it. Mirrors entry_tags (apply additive / filter ALL-tags AND); CASCADE with the row on KILL.
+CREATE TRIGGER IF NOT EXISTS log_entries_model_call_valid
+BEFORE INSERT ON log_entries
+WHEN NEW.model_call_id IS NOT NULL
+ AND NOT EXISTS (
+    SELECT 1
+    FROM model_calls call
+    WHERE call.id = NEW.model_call_id
+      AND call.turn_id = NEW.turn_id
+      AND call.state != 'pending'
+      AND (
+          (call.kind = 'bare' AND NEW.op = 'BARE')
+          OR (
+              call.kind = 'emission'
+              AND NEW.op IS NULL
+              AND json_extract(NEW.attrs, '$.kind') = 'model_emission'
+          )
+      )
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'log entry model call does not match its represented result');
+END;
+
+-- {§log-item-tags} — log classification plus OPEN/FOLD selection and mutation.
+-- CASCADE erases the classification with its row.
 CREATE TABLE IF NOT EXISTS log_tags (
     log_entry_id INTEGER NOT NULL,
-    tag          TEXT    NOT NULL CHECK (length(tag) > 0),
+    tag          TEXT    NOT NULL,
     PRIMARY KEY (log_entry_id, tag),
     FOREIGN KEY (log_entry_id) REFERENCES log_entries(id) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
 
+-- The relational table owns stored tag identity. Producers and curation
+-- signals carry signs, but the stored name never does; delimiters, whitespace,
+-- and control characters cannot become durable classifications through a
+-- private SQL caller either.
+CREATE TRIGGER IF NOT EXISTS log_tags_name_valid
+BEFORE INSERT ON log_tags
+WHEN length(NEW.tag) = 0
+  OR substr(NEW.tag, 1, 1) IN ('+', '-')
+  OR instr(NEW.tag, '[') > 0
+  OR instr(NEW.tag, ']') > 0
+  OR instr(NEW.tag, ',') > 0
+  OR instr(NEW.tag, char(0)) > 0
+  OR EXISTS (
+      WITH RECURSIVE offsets(position) AS (
+          SELECT 1
+          UNION ALL
+          SELECT position + 1 FROM offsets WHERE position < length(NEW.tag)
+      )
+      SELECT 1
+      FROM offsets
+      WHERE unicode(substr(NEW.tag, position, 1)) BETWEEN 0 AND 32
+         OR unicode(substr(NEW.tag, position, 1)) BETWEEN 127 AND 159
+         OR unicode(substr(NEW.tag, position, 1)) IN (160, 5760, 8232, 8233, 8239, 8287, 12288, 65279)
+         OR unicode(substr(NEW.tag, position, 1)) BETWEEN 8192 AND 8202
+  )
+BEGIN
+    SELECT RAISE(ABORT, 'log tag name is invalid');
+END;
+
 CREATE INDEX IF NOT EXISTS log_tags_tag ON log_tags (tag);
+
+-- Signal-derived classification is part of the log-row insert, not a later JS
+-- write. This keeps the operation, its ambient occurrence, and its complete
+-- initial folksonomy inside one SQLite commit.
+CREATE TRIGGER IF NOT EXISTS log_entries_classify_signal
+AFTER INSERT ON log_entries
+WHEN NEW.op IN ('FIND', 'READ', 'EDIT', 'COPY', 'MOVE', 'BARE')
+ AND NEW.signal IS NOT NULL
+BEGIN
+    SELECT CASE
+        WHEN json_type(NEW.signal) != 'array'
+          OR EXISTS (
+              SELECT 1 FROM json_each(NEW.signal)
+              WHERE type != 'text'
+                 OR length(value) = 0
+                 OR substr(value, 1, 1) = '-'
+                 OR (
+                    substr(value, 1, 1) = '+'
+                    AND (length(value) < 2 OR substr(value, 2, 1) IN ('+', '-'))
+                 )
+                 OR instr(value, '[') > 0
+                 OR instr(value, ']') > 0
+                 OR instr(value, ',') > 0
+                 OR instr(value, char(0)) > 0
+                 OR EXISTS (
+                     WITH RECURSIVE offsets(position) AS (
+                         SELECT 1
+                         UNION ALL
+                         SELECT position + 1 FROM offsets WHERE position < length(value)
+                     )
+                     SELECT 1
+                     FROM offsets
+                     WHERE unicode(substr(value, position, 1)) BETWEEN 0 AND 32
+                        OR unicode(substr(value, position, 1)) BETWEEN 127 AND 159
+                        OR unicode(substr(value, position, 1)) IN (160, 5760, 8232, 8233, 8239, 8287, 12288, 65279)
+                        OR unicode(substr(value, position, 1)) BETWEEN 8192 AND 8202
+                 )
+          )
+        THEN RAISE(ABORT, 'classifying log operation signal accepts only tag or +tag additions')
+    END;
+    INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
+    SELECT NEW.id, CASE WHEN substr(value, 1, 1) = '+' THEN substr(value, 2) ELSE value END
+    FROM json_each(NEW.signal);
+
+    -- The ambient-event and classification AFTER INSERT triggers may run in
+    -- either order. If the event already exists, finish its initial
+    -- snapshot here; otherwise its own trigger aggregates these rows later.
+    UPDATE ambient_events
+    SET tags = COALESCE((
+        SELECT json_group_array(tag)
+        FROM (SELECT tag FROM log_tags WHERE log_entry_id = NEW.id ORDER BY tag)
+    ), '[]')
+    WHERE kind = 'edit'
+      AND producer_worker_id = NEW.worker_id
+      AND source_record_id = NEW.id;
+END;
 
 -- Successful OPEN/FOLD rows are durable curation events even though their
 -- ordinary packet projection is suppressed ({§fold-open-meta-operations}).
@@ -742,6 +910,10 @@ CREATE TABLE IF NOT EXISTS log_curation_effects (
     operation_log_entry_id INTEGER NOT NULL,
     target_log_entry_id    INTEGER NOT NULL,
     expanded_before        INTEGER NOT NULL CHECK (expanded_before IN (0, 1)),
+    tags_added             TEXT    NOT NULL DEFAULT '[]'
+                                  CHECK (json_valid(tags_added) AND json_type(tags_added) = 'array'),
+    tags_removed           TEXT    NOT NULL DEFAULT '[]'
+                                  CHECK (json_valid(tags_removed) AND json_type(tags_removed) = 'array'),
     PRIMARY KEY (operation_log_entry_id, target_log_entry_id),
     CHECK (operation_log_entry_id != target_log_entry_id),
     FOREIGN KEY (operation_log_entry_id) REFERENCES log_entries(id) ON DELETE CASCADE,
@@ -752,35 +924,239 @@ CREATE INDEX IF NOT EXISTS log_curation_effects_target
     ON log_curation_effects (target_log_entry_id);
 
 -- Make an invalid curation record structurally unavailable: the event must be
--- one successful OPEN/FOLD row and both rows must belong to the same worker.
+-- one successful OPEN/FOLD row, both rows must belong to the same worker, and
+-- both exact delta sets must contain only unique canonical tag identities.
 CREATE TRIGGER IF NOT EXISTS log_curation_effects_valid
 BEFORE INSERT ON log_curation_effects
-WHEN NOT EXISTS (
-    SELECT 1
-    FROM log_entries operation
-    JOIN log_entries target ON target.id = NEW.target_log_entry_id
-    WHERE operation.id = NEW.operation_log_entry_id
-      AND operation.op IN ('OPEN', 'FOLD')
-      AND operation.status_rx < 400
-      AND operation.worker_id = target.worker_id
-)
 BEGIN
-    SELECT RAISE(ABORT, 'log curation effects require one successful same-worker OPEN/FOLD event');
+    SELECT CASE WHEN
+        NOT EXISTS (
+            SELECT 1
+            FROM log_entries operation
+            JOIN log_entries target ON target.id = NEW.target_log_entry_id
+            WHERE operation.id = NEW.operation_log_entry_id
+              AND operation.op IN ('OPEN', 'FOLD')
+              AND operation.status_rx < 400
+              AND operation.worker_id = target.worker_id
+        )
+        OR EXISTS (
+            SELECT 1
+            FROM (
+                SELECT value, type FROM json_each(NEW.tags_added)
+                UNION ALL
+                SELECT value, type FROM json_each(NEW.tags_removed)
+            ) tag
+            WHERE tag.type != 'text'
+               OR length(tag.value) = 0
+               OR substr(tag.value, 1, 1) IN ('+', '-')
+               OR instr(tag.value, '[') > 0
+               OR instr(tag.value, ']') > 0
+               OR instr(tag.value, ',') > 0
+               OR instr(tag.value, char(0)) > 0
+               OR EXISTS (
+                   WITH RECURSIVE offsets(position) AS (
+                       SELECT 1
+                       UNION ALL
+                       SELECT position + 1 FROM offsets WHERE position < length(tag.value)
+                   )
+                   SELECT 1
+                   FROM offsets
+                   WHERE unicode(substr(tag.value, position, 1)) BETWEEN 0 AND 32
+                      OR unicode(substr(tag.value, position, 1)) BETWEEN 127 AND 159
+                      OR unicode(substr(tag.value, position, 1)) IN (160, 5760, 8232, 8233, 8239, 8287, 12288, 65279)
+                      OR unicode(substr(tag.value, position, 1)) BETWEEN 8192 AND 8202
+               )
+        )
+        OR (SELECT COUNT(*) FROM json_each(NEW.tags_added))
+           != (SELECT COUNT(DISTINCT value) FROM json_each(NEW.tags_added))
+        OR (SELECT COUNT(*) FROM json_each(NEW.tags_removed))
+           != (SELECT COUNT(DISTINCT value) FROM json_each(NEW.tags_removed))
+        OR EXISTS (
+            SELECT 1
+            FROM json_each(NEW.tags_added) addition
+            JOIN json_each(NEW.tags_removed) removal ON removal.value = addition.value
+        )
+    THEN RAISE(ABORT, 'invalid log curation effect') END;
 END;
 
--- Column-scoped immutability: the original action's identity and target
--- never change; the proposal lifecycle is allowed to mutate state,
--- outcome, status_rx, rx, expanded.
+-- The dispatcher binds an exact, transient curation plan into attrs on the
+-- successful OPEN/FOLD row. No other row may carry that private payload.
+CREATE TRIGGER IF NOT EXISTS log_entries_curation_payload_valid
+BEFORE INSERT ON log_entries
+WHEN json_type(NEW.attrs, '$.__plurnk_curation') IS NOT NULL
+ AND NOT (
+    NEW.op IN ('OPEN', 'FOLD')
+    AND NEW.status_rx < 400
+    AND json_type(NEW.attrs, '$.__plurnk_curation') = 'object'
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'private log curation payload requires a successful OPEN/FOLD row');
+END;
+
+-- One outer INSERT owns the whole landed curation event: exact selected rows,
+-- their pre-event visibility and tag deltas, the requested visibility, and the
+-- resulting classifications. Trigger failure rolls the operation row and all
+-- effects back together. The private plan is erased before INSERT returns.
+CREATE TRIGGER IF NOT EXISTS log_entries_apply_curation
+AFTER INSERT ON log_entries
+WHEN NEW.op IN ('OPEN', 'FOLD')
+ AND NEW.status_rx < 400
+ AND json_type(NEW.attrs, '$.__plurnk_curation') = 'object'
+BEGIN
+    SELECT CASE WHEN
+        COALESCE(json_type(NEW.attrs, '$.__plurnk_curation.ids'), '') != 'array'
+        OR COALESCE(json_type(NEW.attrs, '$.__plurnk_curation.add'), '') != 'array'
+        OR COALESCE(json_type(NEW.attrs, '$.__plurnk_curation.remove'), '') != 'array'
+        OR COALESCE(json_type(NEW.attrs, '$.__plurnk_curation.expanded'), '') != 'integer'
+        OR json_extract(NEW.attrs, '$.__plurnk_curation.expanded') NOT IN (0, 1)
+        OR json_array_length(NEW.attrs, '$.__plurnk_curation.ids') = 0
+        OR EXISTS (
+            SELECT 1 FROM json_each(NEW.attrs, '$.__plurnk_curation.ids')
+            WHERE type != 'integer' OR value <= 0
+        )
+        OR (
+            SELECT COUNT(*) FROM json_each(NEW.attrs, '$.__plurnk_curation.ids')
+        ) != (
+            SELECT COUNT(DISTINCT value) FROM json_each(NEW.attrs, '$.__plurnk_curation.ids')
+        )
+        OR EXISTS (
+            SELECT 1
+            FROM json_each(NEW.attrs, '$.__plurnk_curation.ids') selected
+            LEFT JOIN log_entries target ON target.id = selected.value
+            WHERE target.id IS NULL OR target.worker_id != NEW.worker_id OR target.id = NEW.id
+        )
+        OR EXISTS (
+            SELECT 1
+            FROM (
+                SELECT value, type FROM json_each(NEW.attrs, '$.__plurnk_curation.add')
+                UNION ALL
+                SELECT value, type FROM json_each(NEW.attrs, '$.__plurnk_curation.remove')
+            ) tag
+            WHERE tag.type != 'text'
+               OR length(tag.value) = 0
+               OR substr(tag.value, 1, 1) IN ('+', '-')
+               OR instr(tag.value, '[') > 0
+               OR instr(tag.value, ']') > 0
+               OR instr(tag.value, ',') > 0
+               OR instr(tag.value, char(0)) > 0
+               OR EXISTS (
+                   WITH RECURSIVE offsets(position) AS (
+                       SELECT 1
+                       UNION ALL
+                       SELECT position + 1 FROM offsets WHERE position < length(tag.value)
+                   )
+                   SELECT 1
+                   FROM offsets
+                   WHERE unicode(substr(tag.value, position, 1)) BETWEEN 0 AND 32
+                      OR unicode(substr(tag.value, position, 1)) BETWEEN 127 AND 159
+                      OR unicode(substr(tag.value, position, 1)) IN (160, 5760, 8232, 8233, 8239, 8287, 12288, 65279)
+                      OR unicode(substr(tag.value, position, 1)) BETWEEN 8192 AND 8202
+               )
+        )
+        OR (
+            SELECT COUNT(*) FROM json_each(NEW.attrs, '$.__plurnk_curation.add')
+        ) != (
+            SELECT COUNT(DISTINCT value) FROM json_each(NEW.attrs, '$.__plurnk_curation.add')
+        )
+        OR (
+            SELECT COUNT(*) FROM json_each(NEW.attrs, '$.__plurnk_curation.remove')
+        ) != (
+            SELECT COUNT(DISTINCT value) FROM json_each(NEW.attrs, '$.__plurnk_curation.remove')
+        )
+        OR EXISTS (
+            SELECT 1
+            FROM json_each(NEW.attrs, '$.__plurnk_curation.add') addition
+            JOIN json_each(NEW.attrs, '$.__plurnk_curation.remove') removal
+              ON removal.value = addition.value
+        )
+    THEN RAISE(ABORT, 'invalid private log curation payload') END;
+
+    INSERT INTO log_curation_effects (
+        operation_log_entry_id,
+        target_log_entry_id,
+        expanded_before,
+        tags_added,
+        tags_removed
+    )
+    SELECT
+        NEW.id,
+        target.id,
+        target.expanded,
+        COALESCE((
+            SELECT json_group_array(ordered.tag)
+            FROM (
+                SELECT addition.value AS tag
+                FROM json_each(NEW.attrs, '$.__plurnk_curation.add') addition
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM log_tags
+                    WHERE log_entry_id = target.id AND tag = addition.value
+                )
+                ORDER BY addition.value
+            ) ordered
+        ), '[]'),
+        COALESCE((
+            SELECT json_group_array(ordered.tag)
+            FROM (
+                SELECT removal.value AS tag
+                FROM json_each(NEW.attrs, '$.__plurnk_curation.remove') removal
+                WHERE EXISTS (
+                    SELECT 1 FROM log_tags
+                    WHERE log_entry_id = target.id AND tag = removal.value
+                )
+                ORDER BY removal.value
+            ) ordered
+        ), '[]')
+    FROM json_each(NEW.attrs, '$.__plurnk_curation.ids') selected
+    JOIN log_entries target ON target.id = selected.value;
+
+    UPDATE log_entries
+    SET expanded = json_extract(NEW.attrs, '$.__plurnk_curation.expanded')
+    WHERE id IN (
+        SELECT value FROM json_each(NEW.attrs, '$.__plurnk_curation.ids')
+    );
+
+    DELETE FROM log_tags
+    WHERE log_entry_id IN (
+        SELECT value FROM json_each(NEW.attrs, '$.__plurnk_curation.ids')
+    )
+      AND tag IN (
+        SELECT value FROM json_each(NEW.attrs, '$.__plurnk_curation.remove')
+    );
+
+    INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
+    SELECT selected.value, addition.value
+    FROM json_each(NEW.attrs, '$.__plurnk_curation.ids') selected
+    CROSS JOIN json_each(NEW.attrs, '$.__plurnk_curation.add') addition;
+
+    UPDATE log_entries
+    SET attrs = json_remove(attrs, '$.__plurnk_curation')
+    WHERE id = NEW.id;
+END;
+
+-- Column-scoped immutability: the original action's identity and target never
+-- change; the proposal lifecycle is allowed to mutate state, outcome,
+-- status_rx, rx, expanded. Keep attrs separate so the curation trigger's one
+-- private-payload removal cannot exempt changes to any other core column.
 CREATE TRIGGER IF NOT EXISTS log_entries_immutable_core
 BEFORE UPDATE OF
-    worker_id, loop_id, turn_id, sequence, at, origin, source,
+    worker_id, loop_id, turn_id, sequence, at, origin, source, model_call_id,
     op, suffix, signal,
     scheme, username, password, hostname,
     port, pathname, query, fragment,
-    lineMarker, tx, mimetype_tx, mimetype_rx, attrs
+    lineMarker, tx, mimetype_tx, mimetype_rx
 ON log_entries
 BEGIN
     SELECT RAISE(ABORT, 'log_entries core fields are immutable; only state/outcome/status_rx/rx/expanded may change');
+END;
+
+CREATE TRIGGER IF NOT EXISTS log_entries_immutable_attrs
+BEFORE UPDATE OF attrs ON log_entries
+WHEN COALESCE((
+    json_type(OLD.attrs, '$.__plurnk_curation') = 'object'
+    AND NEW.attrs = json_remove(OLD.attrs, '$.__plurnk_curation')
+), 0) = 0
+BEGIN
+    SELECT RAISE(ABORT, 'log_entries attrs are immutable outside curation payload removal');
 END;
 
 -- The engine may stamp an originating row exactly once. No later reassignment
@@ -810,10 +1186,17 @@ WHEN NEW.ambient_event_id IS NULL
 BEGIN
     INSERT INTO ambient_events (
         workspace_id, producer_worker_id, kind, source_record_id, source,
-        op, scheme, hostname, pathname, rx, attrs, status_rx
+        op, scheme, hostname, pathname, rx, attrs, tags, status_rx
     )
     SELECT w.workspace_id, NEW.worker_id, 'edit', NEW.id, NEW.source,
-           'EDIT', NEW.scheme, NEW.hostname, NEW.pathname, NEW.rx, NEW.attrs, NEW.status_rx
+           'EDIT', NEW.scheme, NEW.hostname, NEW.pathname, NEW.rx, NEW.attrs,
+           COALESCE((
+               SELECT json_group_array(ordered.tag)
+               FROM (
+                   SELECT tag FROM log_tags WHERE log_entry_id = NEW.id ORDER BY tag
+               ) ordered
+           ), '[]'),
+           NEW.status_rx
     FROM workers w
     WHERE w.id = NEW.worker_id;
     UPDATE log_entries SET ambient_event_id = last_insert_rowid() WHERE id = NEW.id;
@@ -837,10 +1220,17 @@ WHEN OLD.state = 'proposed'
 BEGIN
     INSERT INTO ambient_events (
         workspace_id, producer_worker_id, kind, source_record_id, source,
-        op, scheme, hostname, pathname, rx, attrs, status_rx
+        op, scheme, hostname, pathname, rx, attrs, tags, status_rx
     )
     SELECT w.workspace_id, NEW.worker_id, 'edit', NEW.id, NEW.source,
-           'EDIT', NEW.scheme, NEW.hostname, NEW.pathname, NEW.rx, NEW.attrs, NEW.status_rx
+           'EDIT', NEW.scheme, NEW.hostname, NEW.pathname, NEW.rx, NEW.attrs,
+           COALESCE((
+               SELECT json_group_array(ordered.tag)
+               FROM (
+                   SELECT tag FROM log_tags WHERE log_entry_id = NEW.id ORDER BY tag
+               ) ordered
+           ), '[]'),
+           NEW.status_rx
     FROM workers w
     WHERE w.id = NEW.worker_id;
     UPDATE log_entries SET ambient_event_id = last_insert_rowid() WHERE id = NEW.id;

@@ -13,6 +13,7 @@ import Engine, { type LoopUsage } from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
 import { aggregateProviderAccounting, type Provider, type ProviderAlias } from "@plurnk/plurnk-providers";
 // {§notifications-envelope-carries-workspaceid}: "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped.
@@ -513,8 +514,13 @@ export default class Daemon {
         return (await this.#providerPolicyForLoop(loopId)).providerSpec;
     }
 
-    async #providerForLoop(loopId: number): Promise<Provider> {
-        return ProviderInstantiate.instantiateProvider(await this.#providerSpecForLoop(loopId));
+    async #providersForLoop(loopId: number): Promise<{ provider: Provider; childProvider: Provider }> {
+        const policy = await this.#providerPolicyForLoop(loopId);
+        const provider = await ProviderInstantiate.instantiateProvider(policy.providerSpec);
+        const childProvider = policy.childProviderSpec === null
+            ? provider
+            : await ProviderInstantiate.instantiateProvider(policy.childProviderSpec);
+        return { provider, childProvider };
     }
 
     async #assertLoopProvider(loopId: number, requested: ProviderAlias): Promise<void> {
@@ -1104,14 +1110,12 @@ export default class Daemon {
                     state: c.state,
                 };
             }
-            const tagRows = await this.#db.crud_read_tags.all<{ tag: string }>({ entry_id: row.id });
             return entryReadResult({
                 status: 200,
                 entry: {
                     entryId: row.id,
                     target: location.target,
                     channels,
-                    tags: tagRows.map((tag) => tag.tag),
                 },
             });
         } finally {
@@ -1201,12 +1205,13 @@ export default class Daemon {
         if (typeof namespaceOwner !== "string" || namespaceOwner.trim().length === 0) {
             throw new Error("registerRuntime: namespaceOwner must be a non-empty string");
         }
-        this.#engine.registerRuntime(decl.name, {
+        const runtime = RuntimeDeclaration.assert(decl, namespaceOwner);
+        this.#engine.registerRuntime(runtime.name, {
             executor,
             namespaceOwner: { kind: "module", name: namespaceOwner },
-            glyph: decl.glyph ?? "",
-            example: decl.example ?? "",
-            documentation: decl.documentation ?? "",
+            glyph: runtime.glyph ?? "",
+            invocation: runtime.invocation,
+            documentation: runtime.documentation ?? "",
             available: availability.available,
             detail: availability.detail,
         } satisfies RegistryEntry, scheme);
@@ -1305,7 +1310,7 @@ export default class Daemon {
     async #recoverLifecycle(): Promise<void> {
         await this.#db.recovery_fail_active_loops.run({});
         await this.#db.recovery_settle_open_provider_requests.run({});
-        await this.#db.recovery_fail_open_provider_attempts.run({});
+        await this.#db.recovery_fail_open_model_calls.run({});
         await this.#db.recovery_fail_ownerless_proposals.run({});
         await this.#db.recovery_error_orphan_subscription_channels.run({});
         await this.#db.recovery_fail_orphan_subscriptions.run({});
@@ -1660,7 +1665,7 @@ export default class Daemon {
                     // {§methods-loop-run-model} — provider identity belongs to the claimed loop, not the
                     // drain that happened to claim it. A drain can consume multiple
                     // queued loops; resolve each durable selection at this boundary.
-                    const provider = await this.#providerForLoop(loopRow.id);
+                    const { provider, childProvider } = await this.#providersForLoop(loopRow.id);
                     const onDispatch = (logEntryId: number): void => {
                         // {§methods-event-subscribe} — a log-broadcast failure must never crash the drain.
                         void (async () => {
@@ -1673,7 +1678,7 @@ export default class Daemon {
                         { workspaceId, workerId, "loop.id": loopRow.id },
                         async (span) => {
                             const loopResult = await this.#engine.runLoop({
-                                provider, workspaceId, workerId, loopId: loopRow.id, maxTurns: loopRow.max_turns,
+                                provider, childProvider, workspaceId, workerId, loopId: loopRow.id, maxTurns: loopRow.max_turns,
                                 messages: [
                                     { role: "system", content: systemPrompt },
                                     { role: "user", content: loopRow.prompt },
@@ -1688,12 +1693,12 @@ export default class Daemon {
                         },
                     );
                     if (result.result.status === 202) {
-                        // The loop slept via SEND[202] — suspended, not terminated. Leave it at 202
+                        // The loop slept via SEND signal 202 — suspended, not terminated. Leave it at 202
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
                         // (#handleWakeWorker) re-queues it; and if it holds a polled stream, a poll timer
                         // wakes it every P to inspect ({§exec-poll}). {§worker-lifecycle-wake-liveness}.
                         void this.#schedulePollWake(workspaceId, workerId, systemPrompt).catch((err: unknown) => console.error("poll-wake scheduling failed:", err instanceof Error ? err.message : String(err)));
-                        // {§send-premature-terminate}/SEND[202]<T> — the park deadline:
+                        // {§send-premature-terminate}/scoped SEND signal 202 — the park deadline:
                         // dispatcher recorded the marker's seconds; a bounded park is woken at T
                         // regardless of arrivals, so a park always has a next turn. -1 (indefinite:
                         // the butler, a [300] ask) schedules nothing — irc/inject/conclusions wake it.
@@ -2103,7 +2108,7 @@ export default class Daemon {
      * prompt or replacement loop is created.
      *
      * Skipped on result.status=499 (aborted): the model already knows about
-     * its own SEND[499], and a forcefully-cancelled loop's spawn-abort must
+     * its own SEND signal 499, and a forcefully-cancelled loop's spawn-abort must
      * not resurrect the worker.
      */
     async #handleWakeWorker(payload: WakeWorkerPayload): Promise<void> {
@@ -2138,7 +2143,7 @@ export default class Daemon {
         try {
             const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
 
-            // A slept (202) loop means the worker parked via SEND[202] → resume it in place: re-queue
+            // A slept (202) loop means the worker parked via SEND signal 202 → resume it in place: re-queue
             // it (202→100) so the drain re-claims and CONTINUES it (seq>1 → no re-foist). Checked
             // FIRST: the slept status is the worker's true disposition regardless of a draining
             // sibling mid-teardown (the #ensureDrain lock serializes the re-claim). No fresh loop,
@@ -2174,7 +2179,7 @@ export default class Daemon {
                 return;
             }
 
-            // No slept loop, no active drain — nothing to resume (e.g. a SEND[200]-done worker whose
+            // No slept loop, no active drain — nothing to resume (e.g. a SEND-200-done worker whose
             // streams were swept). Surface the conclusion without opening a loop.
             this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
                 ...conclusion, wakeAction: "no-loop",

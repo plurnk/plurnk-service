@@ -18,6 +18,7 @@ import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
 import PacketWire from "./packet-wire.ts";
+import LogEntryProjection from "./LogEntryProjection.ts";
 import type { RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
@@ -25,6 +26,7 @@ import type { ChatMessage, PromptTokenMeasurement, Provider } from "@plurnk/plur
 import { assertPromptTokenMeasurement, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import BudgetReadout from "./BudgetReadout.ts";
+import ExecutableTools from "./ExecutableTools.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -129,6 +131,12 @@ export type ContextEnvelopeAdmission =
         readonly capacity: number | null;
         readonly measurement?: PromptTokenMeasurement;
     };
+
+export interface TokenBudgetOverflow {
+    readonly usage: number;
+    readonly ceiling: number;
+    readonly deficit: number;
+}
 
 // Packet assembly (SPEC {§packet-assembly}) + the budget grinder ({§grinder}):
 // builds the spec'd request packet, measures it, and reclaims window on overflow.
@@ -260,7 +268,7 @@ export default class PacketBuilder {
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         // plurnk.md (grammar/dialects) ONLY — the definition is the hot-path grammar.
-        // The scheme catalogue is its own `schemes` section below tools ({§schemes-directory}),
+        // The resource catalogue is its own `schemes` section below tools ({§schemes-directory}),
         // NOT appended here: the language teaching is scheme-agnostic, so the service advertises
         // the installed scheme set at packet-time via SchemeRegistry.teach().
         const system_definition = compactDefinitionTables(byRole("system"));
@@ -320,15 +328,16 @@ export default class PacketBuilder {
             .map((r) => ({ status: r.status, path: `worker://${r.name}` }));
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
-            { name: "tools", slot: "system", header: "Registered Executable Tools", content: tools.executors },
+            // Stable privileged policy leads loop-dependent capabilities for
+            // prefix-cache locality. Empty policy sections simply disappear.
+            { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
+            { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "" },
+            { name: "tools", slot: "system", header: "Registered Tools", content: tools.executors },
             ...(tools.optionalOperations.length > 0
                 ? [{ name: "optional-operations", slot: "system" as const, header: "Enabled Optional Operations", content: tools.optionalOperations }]
                 : []),
-            { name: "schemes", slot: "system", header: "Schemes", content: this.#schemes.teach() },
+            { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach() },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
-            // policy: the client's privileged rules — ~/.plurnk/AGENTS.md (system) then <root>/AGENTS.md (project) — below grammar/tools/schemes, above budget-the-law. AGENTS is POLICY here, never a curatable READable entry. Empty content ⇒ section omitted.
-            { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
-            { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "" },
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
             { name: "log", slot: "user", header: "Log", content: PacketWire.renderLog(log, countTokens) },
             // The per-turn status clump follows the log ({§packet-cache-monotone}).
@@ -376,46 +385,47 @@ export default class PacketBuilder {
         return (tag: string) => Policy.isEnabled(tag, execs);
     }
 
-    // The ## Registered Executable Tools capability sheet. Each available executor
-    // tag contributes its self-documenting example; the closed heading distinguishes
-    // registered selectors from the open-ended general examples above it. {§tools-capability-sheet}
+    // The complete ## Registered Tools contract table. {§tools-capability-sheet}
     #collectTools(
         workspaceEnabled: (tag: string) => boolean,
         questionsOn = false,
         activeSchemes?: Set<string>,
     ): { executors: string; optionalOperations: string } {
-        // Registered executors and optional operations remain distinct fenced sheets.
+        // Registered executors and optional operations remain distinct sheets.
+        // The former is a contract table; only the latter is an operation example fence.
         // {§tools-capability-sheet} {§packet-operation-fences}
-        const executorOps: string[] = [];
+        const executorTools: Array<{
+            runtime: string;
+            invocation: NonNullable<ReturnType<ExecutorRegistry["entry"]>>["invocation"];
+        }> = [];
         const notices: string[] = [];
         // {§send-300-choices} — the one-liner rides ONLY where questions are enabled (allowed +
         // client-requested); the fuller questions.md doc injects through docEntries the same way.
         const optionalOperations = questionsOn
-            ? "```plurnk\n<|SEND[300]>Deploy where?;staging;production<SEND|>\n```"
+            ? "```plurnk\n## SEND0 [300]\nDeploy where?;staging;production\n```"
             : "";
         const executors = this.#executors();
         if (executors !== undefined) {
             const excluded = docsExcludeSet();
             const runtimes = executors.availableRuntimes();
-            // {§tools-capability-sheet} The sheet's lines are EXEC-usage examples, keyed on the 'exec' scheme
-            // (the op face, excludedInAsk). When inactive, say so POSITIVELY (a prose notice): plurnk.md
+            // {§tools-capability-sheet} The table is keyed on the exec scheme (the op face,
+            // excludedInAsk). When inactive, say so positively: plurnk.md
             // still teaches EXEC as language, and silent absence measurably invites confabulated runtimes.
             const execActive = activeSchemes === undefined || activeSchemes.has("exec");
             if (runtimes.length > 0 && !execActive) {
                 notices.push("EXEC operations are disabled for this loop — do not run commands; answer or advise directly");
             } else {
                 for (const tag of runtimes) {
-                    if (excluded.has(tag)) continue; // {§tools-capability-sheet} — exclude drops the example and doc
+                    if (excluded.has(tag)) continue; // {§tools-capability-sheet} — exclude drops the row and doc
                     if (!workspaceEnabled(tag)) continue; // {§operator-config-workspace-execs}
                     const entry = executors.entry(tag);
-                    // {§tools-capability-sheet} — the example is the bare op fenced below; the fuller doc
-                    // materializes at worker://plurnk/docs/<tag>.md. No example → no line.
-                    if (entry?.example) executorOps.push(entry.example);
+                    if (entry !== undefined) executorTools.push({ runtime: tag, invocation: entry.invocation });
                 }
             }
         }
         const parts: string[] = [...notices];
-        if (executorOps.length > 0) parts.push(`\`\`\`plurnk\n${executorOps.join("\n")}\n\`\`\``);
+        const directory = ExecutableTools.render(executorTools);
+        if (directory !== "") parts.push(directory);
         return { executors: parts.join("\n\n"), optionalOperations };
     }
 
@@ -451,9 +461,10 @@ export default class PacketBuilder {
     // rows born there plus exact older rows it transitioned folded→open — then
     // rebuild and re-measure.
     // {§grinder-overflow-only} — fires only on actual overflow, never speculatively
-    async enforceBudget({ packet, provider, loopId, turnId, rebuild }: {
+    async enforceBudget({ packet, provider, loopId, turnId, recordOverflow, rebuild }: {
         packet: RequestPacket; provider: Provider;
         loopId: number; turnId: number;
+        recordOverflow: (overflow: TokenBudgetOverflow) => Promise<void>;
         rebuild: () => Promise<RequestPacket>;
     }): Promise<{ packet: RequestPacket; fit: boolean }> {
         const ceiling = this.ceilingFor(provider);
@@ -462,6 +473,9 @@ export default class PacketBuilder {
         if (ceiling === null || measure(packet) <= ceiling) {
             return { packet, fit: true };
         }
+
+        const usage = measure(packet);
+        await recordOverflow({ usage, ceiling, deficit: usage - ceiling });
 
         // ONE rule, every turn ({§grinder-layer1-rollback}): atomically fold/tag
         // context introduced by the newest boundary. Other older history remains
@@ -533,12 +547,12 @@ export default class PacketBuilder {
         coordinate: string;
     }>> {
         const rows = await this.#db.engine_render_errors.all<{
-            op: string; sequence: number; status_rx: number;
+            origin: string; op: string; attrs: string; sequence: number; status_rx: number;
             turn_seq: number; loop_seq: number;
         }>({ loop_id: loopId, current_turn_seq: currentTurnSeq });
         return rows.map((r) => ({
             status: r.status_rx,
-            coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}/${r.op}`,
+            coordinate: LogEntryProjection.coordinate(`${r.loop_seq}/${r.turn_seq}/${r.sequence}`, r),
         }));
     }
 
@@ -564,29 +578,45 @@ export default class PacketBuilder {
             tx: string; mimetype_tx: string; expanded: number; source: string | null; attrs: string | null;
             tags: string;
         }>({ worker_id: workerId });
-        return rows.map((r) => ({
-            coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
-            origin: r.origin,
-            op: r.op,
-            suffix: r.suffix,
-            signal: r.signal === null ? null : JSON.parse(r.signal),
-            target: {
-                scheme: r.scheme,
-                username: r.username, password: r.password,
-                hostname: r.hostname, port: r.port,
-                pathname: r.pathname,
-                query: r.query,
-                fragment: r.fragment,
-            },
-            status: r.status_rx,
-            rx: r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx,
-            mimetype_rx: r.mimetype_rx,
-            tx: r.mimetype_tx === "application/json" ? JSON.parse(r.tx) : r.tx,
-            mimetype_tx: r.mimetype_tx,
-            folded: r.expanded === 0 && r.id !== transientOpenLogEntryId,
-            source: r.source,
-            attrs: r.attrs === null ? null : JSON.parse(r.attrs),
-            tags: JSON.parse(r.tags),
-        }));
+        return rows.map((r) => {
+            const tx = r.mimetype_tx === "application/json" ? JSON.parse(r.tx) as unknown : r.tx;
+            const rx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) as unknown : r.rx;
+            const rawLineAnchors = LogEntryProjection.op(r) === "READ"
+                && r.status_rx === 200
+                && rx !== null
+                && typeof rx === "object"
+                && Object.hasOwn(rx, "lineAnchors")
+                ? (rx as { lineAnchors: unknown }).lineAnchors
+                : undefined;
+            if (rawLineAnchors !== undefined && !Array.isArray(rawLineAnchors)) {
+                throw new TypeError("A READ result's lineAnchors field must be an array.");
+            }
+            const lineAnchors = rawLineAnchors as readonly string[] | undefined;
+            return {
+                coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
+                origin: r.origin,
+                op: r.op,
+                suffix: r.suffix,
+                signal: r.signal === null ? null : JSON.parse(r.signal),
+                target: {
+                    scheme: r.scheme,
+                    username: r.username, password: r.password,
+                    hostname: r.hostname, port: r.port,
+                    pathname: r.pathname,
+                    query: r.query,
+                    fragment: r.fragment,
+                },
+                status: r.status_rx,
+                rx,
+                mimetype_rx: r.mimetype_rx,
+                tx,
+                mimetype_tx: r.mimetype_tx,
+                folded: r.expanded === 0 && r.id !== transientOpenLogEntryId,
+                source: r.source,
+                attrs: r.attrs === null ? null : JSON.parse(r.attrs),
+                tags: JSON.parse(r.tags),
+                ...(lineAnchors === undefined ? {} : { lineAnchors }),
+            };
+        });
     }
 }

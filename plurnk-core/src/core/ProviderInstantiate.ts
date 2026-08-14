@@ -122,7 +122,11 @@ export default class ProviderInstantiate {
         // with the active alias
         // retained only for the boot-global fallback.
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(env)?.alias ?? "";
-        const scoped = scopeEnvToAlias(env, alias, ["PLURNK_PROVIDERS_GBNF", "PLURNK_PROVIDERS_REASONING"]);
+        const scoped = scopeEnvToAlias(env, alias, [
+            "PLURNK_PROVIDERS_GBNF",
+            "PLURNK_PROVIDERS_GBNF_DEBUG",
+            "PLURNK_PROVIDERS_REASONING",
+        ]);
         const gbnf = scoped.PLURNK_PROVIDERS_GBNF;
         if (gbnf === undefined || gbnf === "" || gbnf === "0") return; // rails not requested — nothing to verify
         if (scoped.PLURNK_PROVIDERS_REASONING === "off") {
@@ -137,6 +141,10 @@ export default class ProviderInstantiate {
                 + `If this is a llama-server, set PLURNK_PROVIDERS_LLAMA_SERVER_<alias>=1 when automatic detection is unavailable.`,
             );
         }
+        const debug = scoped.PLURNK_PROVIDERS_GBNF_DEBUG !== undefined
+            && scoped.PLURNK_PROVIDERS_GBNF_DEBUG !== ""
+            && scoped.PLURNK_PROVIDERS_GBNF_DEBUG !== "0";
+        if (debug) return; // transport is deliberately withheld; real turns own validation and verdict evidence
         const forcing = `root ::= ${JSON.stringify(ProviderInstantiate.#VERIFY_INPUT)}`;
         let response;
         try {

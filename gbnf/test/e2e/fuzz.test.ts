@@ -17,17 +17,17 @@ const rng = (seed: number) => () => {
 };
 
 // plurnk-flavoured fragments — assembling these provokes deep traversal of the real
-// grammar (statement openers, targets, matchers, signals, nesting suffixes, close tags),
+// grammar (section headings, targets, matchers, signals, and nesting lanes),
 // landing on a rich mix of accept / incomplete / reject verdicts.
 const FRAGMENTS = [
     "<|channel>thought\n", "<channel|>", "\n", "\n\n", " ", "\t",
-    "<|PLAN", "<|FIND", "<|READ", "<|EDIT", "<|SEND", "<|EXEC", "<|COPY", "<|MOVE", "<|OPEN", "<|FOLD", "<|KILL",
-    "<|EDIT1", "<|FIND2", ">", "|>",
+    "# PLAN0", "# PLAN2", "## FIND0", "## READ0", "## EDIT0", "## SEND0", "## EXEC0",
+    "## COPY0", "## MOVE0", "## OPEN0", "## FOLD0", "## KILL0", "## EDIT2", " ## FIND0", "",
     "(known:///**)", "(plurnk:///manifest.json)", "(README.md)", "(run://x)", "(#re#i)", "()",
     "[200]", "[philosophy,france]", "[]",
     "<1,2>", "<0.7>", "<-1>", "<2.5>",
     ":", "~capital of France", "$.greeting", "$[?(@.x)]", "//h2/text()", "@<sym", "revolution", "Paris",
-    "<PLAN|>", "<FIND|>", "<READ|>", "<EDIT|>", "<SEND|>", "<EXEC|>", "<EDIT1|>", "<FIND2|>", "%28", "%29",
+    "%28", "%29",
 ];
 
 const PRINTABLE = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 <>[](){}:;~$#@/.,-_|*+?!\"'\n\t";
@@ -51,10 +51,10 @@ const genNoise = (r: () => number): string => {
 };
 
 const genMultibyte = (r: () => number): string => {
-    let s = "<|channel>thought\n<channel|>\n<|PLAN>answer<PLAN|>\n<|SEND[200]>";
+    let s = "<|channel>thought\n<channel|>\n# PLAN0\nanswer\n\n## SEND0 [200]\n";
     const n = Math.floor(r() * 6);
     for (let i = 0; i < n; i++) s += r() < 0.5 ? pick(r, MULTIBYTE) : PRINTABLE[Math.floor(r() * PRINTABLE.length)];
-    return s + (r() < 0.5 ? "<SEND|>" : "");
+    return s;
 };
 
 const fuzzCase = (grammar: string, input: string): string | null => {

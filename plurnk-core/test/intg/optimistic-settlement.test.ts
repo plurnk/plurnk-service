@@ -31,7 +31,7 @@ const requestAccounting = {
 } as const;
 
 const response = (content: string, grammar?: string): ProviderResponse => {
-    const turn = content.startsWith("<|PLAN") ? content : `<|PLAN|>\n${content}`;
+    const turn = content.startsWith("# PLAN") ? content : `# PLAN0\n\n${content}`;
     return {
         assistant: {
             content: turn,
@@ -114,7 +114,7 @@ class ControlledWorkerProvider implements Provider {
         await this.#childReleases[index].promise;
         signal?.throwIfAborted();
         await settle?.(requestAccounting);
-        return response(`<|SEND[200]>child ${index + 1} done<SEND|>`, grammar);
+        return response(`## SEND0 [200]\nchild ${index + 1} done`, grammar);
     }
 
     releaseChild(index: number): void {
@@ -132,10 +132,10 @@ test("near-simultaneous child conclusions share one parent provider turn", async
     const provider = new ControlledWorkerProvider({
         childCount: 2,
         parentTurns: [
-            "<|WORK(worker://first)>finish first<WORK|>\n"
-            + "<|WORK(worker://second)>finish second<WORK|>\n"
-            + "<|SEND[202]<-1>>waiting for both<SEND|>",
-            "<|SEND[200]>both children landed<SEND|>",
+            "## WORK0 (worker://first)\nfinish first\n"
+            + "## WORK0 (worker://second)\nfinish second\n"
+            + "## SEND0 [202] <-1>\nwaiting for both",
+            "## SEND0 [200]\nboth children landed",
         ],
     });
     try {
@@ -197,8 +197,8 @@ test("a lone child conclusion resumes immediately without paying the settlement 
     const provider = new ControlledWorkerProvider({
         childCount: 1,
         parentTurns: [
-            "<|WORK(worker://only)>finish the only job<WORK|>\n<|SEND[202]<-1>>waiting<SEND|>",
-            "<|SEND[200]>only child landed<SEND|>",
+            "## WORK0 (worker://only)\nfinish the only job\n\n## SEND0 [202] <-1>\nwaiting",
+            "## SEND0 [200]\nonly child landed",
         ],
     });
     try {
@@ -249,11 +249,11 @@ test("stream conclusions coalesce across the same worker-local settlement window
         contextWindow: 100_000,
         responses: [
             makeMockResponse(
-                "<|EXEC[sh]>sleep 0.25; echo first-stream<EXEC|>\n"
-                + "<|EXEC[sh]>sleep 0.40; echo second-stream<EXEC|>\n"
-                + "<|SEND[202]<-1>>waiting for both streams<SEND|>",
+                "## EXEC0 [sh]\nsleep 0.25; echo first-stream\n"
+                + "## EXEC0 [sh]\nsleep 0.40; echo second-stream\n"
+                + "## SEND0 [202] <-1>\nwaiting for both streams",
             ),
-            makeMockResponse("<|SEND[200]>both streams landed<SEND|>"),
+            makeMockResponse("## SEND0 [200]\nboth streams landed"),
         ],
     });
     try {
@@ -283,10 +283,10 @@ test("a child and stream conclusion share the same settlement window", async () 
     const provider = new ControlledWorkerProvider({
         childCount: 1,
         parentTurns: [
-            "<|WORK(worker://child)>finish independently<WORK|>\n"
-            + "<|EXEC[sh]>sleep 0.50; echo stream-done<EXEC|>\n"
-            + "<|SEND[202]<-1>>waiting for child and stream<SEND|>",
-            "<|SEND[200]>child and stream landed<SEND|>",
+            "## WORK0 (worker://child)\nfinish independently\n"
+            + "## EXEC0 [sh]\nsleep 0.50; echo stream-done\n"
+            + "## SEND0 [202] <-1>\nwaiting for child and stream",
+            "## SEND0 [200]\nchild and stream landed",
         ],
     });
     try {
@@ -334,12 +334,12 @@ test("the settlement deadline is bounded and does not slide on later conclusions
     const provider = new ControlledWorkerProvider({
         childCount: 3,
         parentTurns: [
-            "<|WORK(worker://first)>finish first<WORK|>\n"
-            + "<|WORK(worker://second)>finish second<WORK|>\n"
-            + "<|WORK(worker://third)>finish third<WORK|>\n"
-            + "<|SEND[202]<-1>>waiting for all three<SEND|>",
-            "<|SEND[202]<-1>>two landed; still waiting<SEND|>",
-            "<|SEND[200]>all three landed<SEND|>",
+            "## WORK0 (worker://first)\nfinish first\n"
+            + "## WORK0 (worker://second)\nfinish second\n"
+            + "## WORK0 (worker://third)\nfinish third\n"
+            + "## SEND0 [202] <-1>\nwaiting for all three",
+            "## SEND0 [202] <-1>\ntwo landed; still waiting",
+            "## SEND0 [200]\nall three landed",
         ],
     });
     try {

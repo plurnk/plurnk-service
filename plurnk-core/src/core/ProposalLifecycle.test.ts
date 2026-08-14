@@ -8,6 +8,7 @@ import type { Db } from "./Db.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
+import EditCollision from "../content/edit-collision.ts";
 
 const lifecycleWithDb = (db: Db): ProposalLifecycle => new ProposalLifecycle({
     db,
@@ -69,7 +70,7 @@ test("pending projection rejects malformed durable review material at its owner"
         },
         {
             row: { ...base, op: "SEND", signal: JSON.stringify(300), scheme: null, pathname: null },
-            error: /Pending SEND\[300\] proposal 7 has no question/,
+            error: /Pending SEND signal 300 proposal 7 has no question/,
         },
     ];
 
@@ -169,13 +170,7 @@ test("applyResolution preserves an accepted scheme's failed result and durable o
         },
     } as unknown as Db;
     const lifecycle = lifecycleWithDb(db);
-    const applied = Results.failure(
-        "scheme:file",
-        "write-conflict",
-        409,
-        "The file changed after review.",
-        { outcome: "write_conflict" },
-    );
+    const applied = EditCollision.result("notes.md", { outcome: "edit_collision" });
 
     const result = await lifecycle.applyResolution(41, {
         resolution: { decision: "accept" },
@@ -184,15 +179,18 @@ test("applyResolution preserves an accepted scheme's failed result and durable o
 
     assert.equal(result, applied, "the applying scheme's exact result remains authoritative");
     assert.deepEqual(result.problem, {
-        type: "https://problems.plurnk.dev/scheme/file/write-conflict",
-        title: "Write conflict",
+        type: "https://problems.plurnk.dev/engine/edit/edit-collision",
+        title: "Edit collision",
         status: 409,
-        detail: "The file changed after review.",
+        detail: "EDIT collided with another change at notes.md.",
+        target: "notes.md",
+        recovery: "READ notes.md again and retry the intended edit against its current coordinates.",
+        retryable: true,
         instance: "log:///2/3/4/EDIT",
     });
     assert.equal(persisted?.status_rx, 409);
     assert.equal(persisted?.state, "failed");
-    assert.equal(persisted?.outcome, "write_conflict");
+    assert.equal(persisted?.outcome, "edit_collision");
     assert.deepEqual(JSON.parse(persisted!.rx), result);
 });
 

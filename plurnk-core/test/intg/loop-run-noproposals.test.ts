@@ -38,8 +38,8 @@ test("loop.run flags.noProposals=true: core disposition rejects — model sees 4
     // {§send-premature-terminate}: the rejection is a same-turn unseen failure, so the
     // first [200] is refused; the loop concludes NEXT turn, the 400 weighed.
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("<|EDIT(proposing-test://x)>y<EDIT|>\n<|SEND[200]>done<SEND|>", 50),
-        makeMockResponse("<|SEND[200]>the edit was declined; concluding<SEND|>", 50),
+        makeMockResponse("## EDIT0 (proposing-test://x)\ny\n\n## SEND0 [200]\ndone", 50),
+        makeMockResponse("## SEND0 [200]\nthe edit was declined; concluding", 50),
     ] });
 
     await withDaemon(mock, async (db, daemon, addr) => {

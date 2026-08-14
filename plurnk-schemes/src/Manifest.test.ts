@@ -62,6 +62,14 @@ test("Manifest.of admits only declared top-level fields", () => {
         Manifest.of({ manifest: { ...ownerManifest, glyph: "🦊" } }, "owner").glyph,
         "🦊",
     );
+    assert.equal(
+        Manifest.of({ manifest: { ...ownerManifest, textEditScopes: true } }, "owner").textEditScopes,
+        true,
+    );
+    assert.throws(
+        () => Manifest.of({ manifest: { ...ownerManifest, textEditScopes: "yes" } }, "owner"),
+        /textEditScopes.*boolean/,
+    );
     assert.throws(
         () => Manifest.of({ manifest: { ...ownerManifest, scope: "worker" } }, "owner"),
         /unknown.*scope/,

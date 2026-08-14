@@ -4,14 +4,14 @@ import OutputScheme from "./OutputScheme.ts";
 
 test("manifestFromRuntime: derives a read-only-output manifest from the runtime decl", () => {
     const runtime = {
-        name: "sh", glyph: "🐚", example: "<|EXEC[sh]>ls<EXEC|>",
+        name: "sh", glyph: "🐚", example: "## EXEC0 [sh]\nls",
         channels: { stdout: "text/plain", stderr: "text/plain" }, defaultChannel: "stdout",
     };
     const m = OutputScheme.manifestFromRuntime(runtime);
     // From the decl
     assert.equal(m.name, "sh");
     assert.equal(m.glyph, "🐚");
-    assert.equal(m.example, "<|EXEC[sh]>ls<EXEC|>");
+    assert.equal(m.example, "## EXEC0 [sh]\nls");
     assert.deepEqual(m.channels, { stdout: "text/plain", stderr: "text/plain" });
     assert.equal(m.defaultChannel, "stdout");
     // The read-only-output default

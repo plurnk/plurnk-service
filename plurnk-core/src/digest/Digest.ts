@@ -46,6 +46,7 @@ import type { SqlRiteSyncPreparedStatements } from "@possumtech/sqlrite";
 // block accessor to its shipped generic statement shape at the use site.
 type SyncPrep<T> = SqlRiteSyncPreparedStatements<T>;
 import PacketWire from "../core/packet-wire.ts";
+import LogBody from "../core/LogBody.ts";
 import StoredPacket, { type DurablePacket } from "../core/StoredPacket.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
@@ -138,14 +139,34 @@ interface TurnRow {
 }
 type StoredTurnRow = Omit<TurnRow, "packet"> & { packet: string | null };
 interface TurnAttemptRow {
-    id: number; turn_id: number; sequence: number;
+    id: number; model_call_id: number; turn_id: number; sequence: number; kind: "emission";
     state: "pending" | "response" | "error"; accepted: number | null;
     response: string | null; failure: string | null; parse_errors: string; attributions: string;
     finish_reason: string | null; model: string; timestamp: string; completed_at: string | null;
 }
+interface ModelCallRow {
+    id: number;
+    turn_id: number;
+    sequence: number;
+    kind: "emission" | "bare";
+    state: "pending" | "response" | "error";
+    response: string | null;
+    failure: string | null;
+    attributions: string;
+    finish_reason: string | null;
+    model: string;
+    timestamp: string;
+    completed_at: string | null;
+    turn_attempt_id: number | null;
+    accepted: number | null;
+    parse_errors: string | null;
+    log_entry_id: number | null;
+}
 interface ProviderRequestRow {
     id: number;
-    turn_attempt_id: number;
+    model_call_id: number;
+    turn_attempt_id: number | null;
+    kind: "emission" | "bare";
     turn_id: number;
     loop_id: number;
     worker_id: number;
@@ -175,7 +196,7 @@ interface ProviderRequestRow {
 }
 interface LogRow {
     id: number; worker_id: number; loop_id: number; turn_id: number; sequence: number;
-    origin: string; source: string | null; attrs: string;
+    origin: string; source: string | null; model_call_id: number | null; attrs: string;
     op: string | null; scheme: string | null; hostname: string | null; port: number | null;
     pathname: string | null; query: string | null; fragment: string | null;
     rx: string | null; status_rx: number; state: string; outcome: string | null;
@@ -184,6 +205,8 @@ interface LogCurationEffectRow {
     operation_log_entry_id: number;
     target_log_entry_id: number;
     expanded_before: 0 | 1;
+    tags_added: string;
+    tags_removed: string;
 }
 interface WorkerRollupRow {
     worker_id: number; loops: number; turns: number;
@@ -200,6 +223,7 @@ interface DigestModel {
     workers: WorkerRow[];
     loops: LoopRow[];
     turns: TurnRow[];
+    modelCalls: ModelCallRow[];
     turnAttempts: TurnAttemptRow[];
     providerRequests: ProviderRequestRow[];
     logEntries: LogRow[];
@@ -208,6 +232,7 @@ interface DigestModel {
     loopsByWorker: Map<number, LoopRow[]>;
     turnsByLoop: Map<number, TurnRow[]>;
     attemptsByTurn: Map<number, TurnAttemptRow[]>;
+    requestsByModelCall: Map<number, ProviderRequestRow[]>;
     requestsByAttempt: Map<number, ProviderRequestRow[]>;
     requestsByTurn: Map<number, ProviderRequestRow[]>;
     requestsByLoop: Map<number, ProviderRequestRow[]>;
@@ -360,8 +385,13 @@ export default class Digest {
     static #renderGroupedOpLine(row: LogRow): string {
         const attrs = Digest.#parseJson(row.attrs, {}) as { kind?: unknown };
         const materialized = row.origin === "plurnk" && row.op === "EDIT" && attrs.kind === "entry_materialized";
-        const modelEmission = row.op === null && attrs.kind === "model_emission";
-        return Digest.#renderOpLine(row, materialized ? "materialized entry" : modelEmission ? "model emission" : row.op ?? "actionless row");
+        const actionlessKind = row.op === null
+            ? LogBody.actionlessKind({ op: row.op, attrs })
+            : null;
+        const label = actionlessKind === "model_emission"
+            ? "model emission"
+            : actionlessKind ?? row.op ?? "actionless row";
+        return Digest.#renderOpLine(row, materialized ? "materialized entry" : label);
     }
 
     // Human triage is not a row dump. Preserve every row in digest.json, but
@@ -476,10 +506,11 @@ export default class Digest {
         lines.push("");
         lines.push(`DB: ${m.dbPath}`);
         const rejectedAttempts = m.turnAttempts.filter((attempt) => attempt.accepted === 0).length;
-        const erroredAttempts = m.turnAttempts.filter((attempt) => attempt.state === "error").length;
-        const pendingAttempts = m.turnAttempts.filter((attempt) => attempt.state === "pending").length;
+        const erroredCalls = m.modelCalls.filter((call) => call.state === "error").length;
+        const pendingCalls = m.modelCalls.filter((call) => call.state === "pending").length;
+        const bareCalls = m.modelCalls.filter((call) => call.kind === "bare").length;
         const pendingRequests = m.providerRequests.filter((request) => request.state === "pending").length;
-        lines.push(`Workspaces: ${m.workspaces.length}  Workers: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Emission attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected, ${erroredAttempts} errored, ${pendingAttempts} open)  Provider requests: ${m.providerRequests.length} (${pendingRequests} open)  Log entries: ${m.logEntries.length}`);
+        lines.push(`Workspaces: ${m.workspaces.length}  Workers: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Model calls: ${m.modelCalls.length} (${bareCalls} BARE, ${erroredCalls} errored, ${pendingCalls} open)  Emission attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected)  Provider requests: ${m.providerRequests.length} (${pendingRequests} open)  Log entries: ${m.logEntries.length}`);
         lines.push(`Semantic:  body=${m.embeddings.body_entries} attached=${m.embeddings.derivation_complete} (vector=${m.embeddings.vector_complete} lexical=${m.embeddings.lexical} excluded=${m.embeddings.excluded} nonsemantic=${m.embeddings.nonsemantic} failed=${m.embeddings.failed}) unattached=${m.embeddings.unfinished} artifacts=${m.embeddings.derivation_artifacts_complete} complete/${m.embeddings.derivation_artifacts_building} building chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
         if (m.embeddings.dispositions.length > 0) {
             lines.push("Semantic dispositions:");
@@ -691,6 +722,25 @@ export default class Digest {
                 // tooling. {§meta-passthrough}, {§rail-truth-engine-verdict}
                 meta: Digest.#parseJson(t.meta ?? "null", null),
             })),
+            model_calls: m.modelCalls.map((call) => ({
+                id: call.id,
+                turn_id: call.turn_id,
+                sequence: call.sequence,
+                kind: call.kind,
+                state: call.state,
+                response: Digest.#parseJson(call.response),
+                failure: Digest.#parseJson(call.failure),
+                attributions: Digest.#parseJson(call.attributions, []),
+                accounting: Digest.#accounting(m.requestsByModelCall.get(call.id) ?? []),
+                finish_reason: call.finish_reason,
+                model: call.model,
+                timestamp: call.timestamp,
+                completed_at: call.completed_at,
+                turn_attempt_id: call.turn_attempt_id,
+                accepted: call.accepted === null ? null : call.accepted === 1,
+                parse_errors: Digest.#parseJson(call.parse_errors, []),
+                log_entry_id: call.log_entry_id,
+            })),
             turn_attempts: m.turnAttempts.map((attempt) => ({
                 id: attempt.id,
                 turn_id: attempt.turn_id,
@@ -709,7 +759,9 @@ export default class Digest {
             })),
             provider_requests: m.providerRequests.map((request) => ({
                 id: request.id,
+                model_call_id: request.model_call_id,
                 turn_attempt_id: request.turn_attempt_id,
+                kind: request.kind,
                 sequence: request.sequence,
                 state: request.state,
                 accounting: request.state === "settled"
@@ -721,7 +773,8 @@ export default class Digest {
             log_entries: m.logEntries.map((le) => ({
                 id: le.id, worker_id: le.worker_id, loop_id: le.loop_id,
                 turn_id: le.turn_id, sequence: le.sequence, origin: le.origin,
-                source: le.source, attrs: Digest.#parseJson(le.attrs, {}),
+                source: le.source, model_call_id: le.model_call_id,
+                attrs: Digest.#parseJson(le.attrs, {}),
                 op: le.op, target: Digest.#renderTarget(le),
                 status_rx: le.status_rx, state: le.state, outcome: le.outcome,
                 ...(Digest.#renderStream(le) === null
@@ -729,7 +782,11 @@ export default class Digest {
                     : { stream: Digest.#renderStream(le) }),
                 ...(le.status_rx >= 400 ? { problem: Digest.#rowProblem(le) } : {}),
             })),
-            log_curation_effects: m.curationEffects,
+            log_curation_effects: m.curationEffects.map(({ tags_added, tags_removed, ...effect }) => ({
+                ...effect,
+                tags_added: Digest.#parseJson(tags_added, []),
+                tags_removed: Digest.#parseJson(tags_removed, []),
+            })),
         }, null, 2);
     }
 
@@ -1021,6 +1078,7 @@ export default class Digest {
                 ...turn,
                 packet: StoredPacket.parse(turn.packet, `digest turn ${turn.id}`),
             }));
+        let modelCalls = (db.digest_model_calls as SyncPrep<ModelCallRow>).all();
         let turnAttempts = (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all();
         let providerRequests = (db.digest_provider_requests as SyncPrep<ProviderRequestRow>).all();
         let logEntries = (db.digest_log_entries as SyncPrep<LogRow>).all();
@@ -1038,7 +1096,8 @@ export default class Digest {
         const semanticStateAvailable = has("entries") && has("entry_channels") && hasColumn("entries", "deep_hash");
         if (has("log_curation_effects")) {
             curationEffects = probe.prepare(`
-                SELECT operation_log_entry_id, target_log_entry_id, expanded_before
+                SELECT operation_log_entry_id, target_log_entry_id, expanded_before,
+                       tags_added, tags_removed
                 FROM log_curation_effects
                 ORDER BY operation_log_entry_id, target_log_entry_id
             `).all() as unknown as LogCurationEffectRow[];
@@ -1084,9 +1143,9 @@ export default class Digest {
             const keptLoopIds = new Set(loops.map((l) => l.id));
             turns = turns.filter((t) => keptLoopIds.has(t.loop_id));
             const keptTurnIds = new Set(turns.map((t) => t.id));
+            modelCalls = modelCalls.filter((call) => keptTurnIds.has(call.turn_id));
             turnAttempts = turnAttempts.filter((attempt) => keptTurnIds.has(attempt.turn_id));
-            const keptAttemptIds = new Set(turnAttempts.map((attempt) => attempt.id));
-            providerRequests = providerRequests.filter((request) => keptAttemptIds.has(request.turn_attempt_id));
+            providerRequests = providerRequests.filter((request) => keptTurnIds.has(request.turn_id));
             logEntries = logEntries.filter((le) => keptTurnIds.has(le.turn_id));
             const keptLogEntryIds = new Set(logEntries.map((entry) => entry.id));
             curationEffects = curationEffects.filter((effect) =>
@@ -1113,6 +1172,7 @@ export default class Digest {
             arr.push(attempt);
             attemptsByTurn.set(attempt.turn_id, arr);
         }
+        const requestsByModelCall = new Map<number, ProviderRequestRow[]>();
         const requestsByAttempt = new Map<number, ProviderRequestRow[]>();
         const requestsByTurn = new Map<number, ProviderRequestRow[]>();
         const requestsByLoop = new Map<number, ProviderRequestRow[]>();
@@ -1124,7 +1184,10 @@ export default class Digest {
             map.set(id, rows);
         };
         for (const request of providerRequests) {
-            appendRequest(requestsByAttempt, request.turn_attempt_id, request);
+            appendRequest(requestsByModelCall, request.model_call_id, request);
+            if (request.turn_attempt_id !== null) {
+                appendRequest(requestsByAttempt, request.turn_attempt_id, request);
+            }
             appendRequest(requestsByTurn, request.turn_id, request);
             appendRequest(requestsByLoop, request.loop_id, request);
             appendRequest(requestsByWorker, request.worker_id, request);
@@ -1139,9 +1202,9 @@ export default class Digest {
         for (const o of opMixRows) { const arr = opMixByWorker.get(o.worker_id) ?? []; arr.push(o); opMixByWorker.set(o.worker_id, arr); }
 
         const m: DigestModel = {
-            dbPath, digestDir, workspaces, workers, loops, turns, turnAttempts, providerRequests, logEntries, curationEffects,
+            dbPath, digestDir, workspaces, workers, loops, turns, modelCalls, turnAttempts, providerRequests, logEntries, curationEffects,
             workersByWorkspace, loopsByWorker, turnsByLoop, attemptsByTurn,
-            requestsByAttempt, requestsByTurn, requestsByLoop, requestsByWorker, requestsByWorkspace,
+            requestsByModelCall, requestsByAttempt, requestsByTurn, requestsByLoop, requestsByWorker, requestsByWorkspace,
             logEntriesByTurn, loopsById, workersById,
             workerRollups, opMixByWorker, embeddings,
         };
@@ -1154,6 +1217,6 @@ export default class Digest {
 
         console.log(`digest: wrote ${digestDir}/{digest.md,digest.json,reasoning.md} + ${packetFiles.length} packet section files (${packetIds.join(", ") || "none"})`);
         console.log(`  source: ${dbPath}`);
-        console.log(`  workspaces=${workspaces.length} workers=${workers.length} loops=${loops.length} turns=${turns.length} turn_attempts=${turnAttempts.length} provider_requests=${providerRequests.length} log_entries=${logEntries.length} log_curation_effects=${curationEffects.length}`);
+        console.log(`  workspaces=${workspaces.length} workers=${workers.length} loops=${loops.length} turns=${turns.length} model_calls=${modelCalls.length} turn_attempts=${turnAttempts.length} provider_requests=${providerRequests.length} log_entries=${logEntries.length} log_curation_effects=${curationEffects.length}`);
     }
 }

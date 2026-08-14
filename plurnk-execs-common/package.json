@@ -37,71 +37,128 @@
             {
                 "name": "sh",
                 "glyph": "🐚",
-                "example": "<|EXEC>uname -sr<EXEC|>\n<|EXEC[sh](build.sh)|>\n<|EXEC<-1,300>>npm run test<EXEC|>"
+                "invocation": {
+                    "body": { "role": "shell program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "pwd" }
+                }
             },
             {
                 "name": "bash",
-                "glyph": "🐚"
+                "glyph": "🐚",
+                "invocation": {
+                    "body": { "role": "Bash program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "npm test" }
+                }
             },
             {
                 "name": "node",
                 "glyph": "⬢",
-                "example": "<|EXEC[node]>console.log(new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10))<EXEC|>"
+                "invocation": {
+                    "body": { "role": "JavaScript program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "console.log(process.version);" }
+                }
             },
             {
                 "name": "python",
                 "glyph": "🐍",
-                "example": "<|EXEC[python]>print(sum(range(101)))<EXEC|>"
+                "invocation": {
+                    "body": { "role": "Python program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "print(\"hello\")" }
+                }
             },
             {
                 "name": "python3",
                 "glyph": "🐍",
-                "example": "<|EXEC[python3]>print(sum(range(101)))<EXEC|>"
+                "invocation": {
+                    "body": { "role": "Python program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "print(\"hello\")" }
+                }
             },
             {
                 "name": "perl",
                 "glyph": "🐪",
-                "example": "<|EXEC[perl]>print join(',', 1..5)<EXEC|>"
+                "invocation": {
+                    "body": { "role": "Perl program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "print \"hello\\n\";" }
+                }
             },
             {
                 "name": "ruby",
                 "glyph": "💎",
-                "example": "<|EXEC[ruby]>puts (1..5).sum<EXEC|>"
+                "invocation": {
+                    "body": { "role": "Ruby program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "puts \"hello\"" }
+                }
             },
             {
                 "name": "php",
                 "glyph": "🐘",
-                "example": "<|EXEC[php]>echo array_sum([1,2,3]);<EXEC|>"
+                "invocation": {
+                    "body": { "role": "PHP program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "<?php echo \"hello\\n\";" }
+                }
             },
             {
                 "name": "lua",
                 "glyph": "🌙",
-                "example": "<|EXEC[lua]>print(('hi'):upper())<EXEC|>"
+                "invocation": {
+                    "body": { "role": "Lua program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "print(\"hello\")" }
+                }
             },
             {
                 "name": "deno",
                 "glyph": "🦕",
-                "example": "<|EXEC[deno]>console.log(Deno.version.deno)<EXEC|>"
+                "invocation": {
+                    "body": { "role": "Deno program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "console.log(Deno.version.deno);" }
+                }
             },
             {
                 "name": "bun",
                 "glyph": "🥟",
-                "example": "<|EXEC[bun]>console.log(Bun.version)<EXEC|>"
+                "invocation": {
+                    "body": { "role": "Bun program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "console.log(Bun.version);" }
+                }
             },
             {
                 "name": "tcl",
                 "glyph": "🪶",
-                "example": "<|EXEC[tcl]>puts [expr {2**10}]<EXEC|>"
+                "invocation": {
+                    "body": { "role": "Tcl program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "puts \"hello\"" }
+                }
             },
             {
                 "name": "bc",
                 "glyph": "🧮",
-                "example": "<|EXEC[bc]>scale=4; 22/7<EXEC|>"
+                "invocation": {
+                    "body": { "role": "bc program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "2 + 2" }
+                }
             },
             {
                 "name": "awk",
                 "glyph": "🪄",
-                "example": "<|EXEC[awk]>BEGIN { print 6 * 7 }<EXEC|>"
+                "invocation": {
+                    "body": { "role": "AWK program; stdin with a targeted script file", "required": false },
+                    "target": { "role": "script file", "required": false, "kind": "resource", "directory": "cwd" },
+                    "example": { "body": "BEGIN { print \"hello\" }" }
+                }
             }
         ]
     },

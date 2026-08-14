@@ -2,11 +2,13 @@ import test from "node:test";
 import Worker from "../../src/schemes/Worker.ts";
 import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
-import type { EditStatement, FindStatement, LineMarker, LocalPath, MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { FindStatement, LineMarker, LocalPath, MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { matchLocations } from "./_find.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -20,7 +22,7 @@ const readStmt = (target: ParsedPath | null): ReadStatement => ({
     position: { line: 1, column: 1 },
 });
 
-const editStmt = (pathname: string, body: string): EditStatement => ({
+const editStmt = (pathname: string, body: string): ResolvedEditStatement => ({
     op: "EDIT", suffix: "", signal: null,
     target: urlPath("worker", pathname),
     lineMarker: null, body,
@@ -49,6 +51,21 @@ test("Log.read: EDIT op log entry returns its canonical effect receipt", async (
         assert.equal(result.status, 200);
         assert.equal(result.mimetype, "text/plain");
         assert.equal(result.content, "1:Paris", "storage envelope fields do not replace the model-facing edit result");
+    } finally { db.close(); }
+});
+
+test("Log.read: an exact /OP suffix must agree with the addressed row", async () => {
+    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        await engine.dispatch({
+            statement: editStmt("/france", "Paris"),
+            workspaceId, workerId, loopId, turnId,
+            sequence: 1, origin: "model",
+        });
+        const correct = await readLog(readStmt(urlPath("log", "/1/1/1/EDIT")), makeSchemeCtx({ db, workerId }));
+        const wrong = await readLog(readStmt(urlPath("log", "/1/1/1/READ")), makeSchemeCtx({ db, workerId }));
+        assert.equal(correct.status, 200);
+        assert.equal(wrong.status, 404);
     } finally { db.close(); }
 });
 
@@ -187,7 +204,7 @@ test("Log.find: an exact matcher returns flat locations and complete path/locati
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
         assert.equal(r.results.length, 1);
-        assert.deepEqual(r.results[0]?.region, {
+        assert.deepEqual(matchLocations(r)[0]?.region, {
             startLine: 1,
             startColumn: 2,
             endLine: 1,
@@ -199,24 +216,14 @@ test("Log.find: an exact matcher returns flat locations and complete path/locati
     } finally { db.close(); }
 });
 
-test("Log.read: exact READ applies the same all-tags filter to log-row tags", async () => {
+test("Log.read: a READ signal does not filter the addressed log resource", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({ statement: editStmt("/z", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), signal: ["france"] };
-        assert.equal((await readLog(stmt, makeSchemeCtx({ db, workerId }))).status, 404);
-
-        const row = await db.log_id_by_coordinate.get<{ id: number }>({
-            worker_id: workerId,
-            loop_seq: 1,
-            turn_seq: 1,
-            sequence: 1,
-        });
-        assert.ok(row);
-        await db.log_write_tag.run({ log_entry_id: row.id, tag: "france" });
-        const tagged = await readLog(stmt, makeSchemeCtx({ db, workerId }));
-        assert.equal(tagged.status, 200);
-        assert.equal(tagged.content, "1:v");
+        const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), signal: ["+france"] };
+        const result = await readLog(stmt, makeSchemeCtx({ db, workerId }));
+        assert.equal(result.status, 200);
+        assert.equal(result.content, "1:v");
     } finally { db.close(); }
 });
 

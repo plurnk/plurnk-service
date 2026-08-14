@@ -15,13 +15,15 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PlurnkParser } from "@plurnk/plurnk-contracts";
-import type { FindStatement, ReadStatement, EditStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { FindStatement, ReadStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { MimetypeBinary } from "../../src/content/index.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, lookThroughScheme } from "./_helpers.ts";
+import { resourceGroups, resourcePaths } from "./_find.ts";
 
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
     lookThroughScheme("file", null, statement, ctx);
@@ -29,7 +31,7 @@ const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
 // Parse one op the way production does, so a bare path carries its REAL parsed shape
 // (LocalPath {kind:"local"}) — the exact thing the model emits, not a hand-built UrlPath.
 const parseOp = <T extends PlurnkStatement>(dsl: string, op: T["op"]): T => {
-    const found = PlurnkParser.parse(`<|PLAN|>\n${dsl}`).items.find((i) => i.kind === "statement" && i.statement.op === op);
+    const found = PlurnkParser.parse(`# PLAN0\n${dsl}`).items.find((i) => i.kind === "statement" && i.statement.op === op);
     if (found === undefined) throw new Error(`no ${op} parsed from: ${dsl}`);
     return (found as { kind: "statement"; statement: T }).statement;
 };
@@ -42,7 +44,7 @@ const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<vo
     const canonical = join(row?.project_root ?? "", pathname);
     const mimetype = MimetypeBinary.normalizeAutoTextMimetype(await ctx.mimetypes.detect({ path: canonical }));
     const content = await readFile(canonical, "utf8");
-    await EntryCrud.writeEntry(`${pathname}`, { channels: { body: { content, mimetype } }, tags: [] }, ctx, "file");
+    await EntryCrud.writeEntry(`${pathname}`, { channels: { body: { content, mimetype } } }, ctx, "file");
 };
 
 const withWorkspaceRoot = async (fn: (root: string, ctx: PlurnkSchemeContext, db: Db) => Promise<void>): Promise<void> => {
@@ -74,10 +76,10 @@ test("contract: FIND(bare path) resolves the canonical-stored member", async () 
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
-        const stmt = parseOp<FindStatement>("<|FIND(notes.md)|>", "FIND");
+        const stmt = parseOp<FindStatement>("## FIND0 (notes.md)", "FIND");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200, "FIND succeeds");
-        assert.ok(result.results.some((r) => r.path === "notes.md"), `FIND must find the member (catalog renders it bare: notes.md); got: ${JSON.stringify(result.results.map((r) => r.path))}`);
+        assert.ok(resourcePaths(result).includes("notes.md"), `FIND must find the member (catalog renders it bare: notes.md); got: ${JSON.stringify(resourcePaths(result))}`);
     });
 });
 
@@ -87,7 +89,7 @@ test("contract: READ(bare path) resolves the canonical-stored member (control �
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
-        const stmt = parseOp<ReadStatement>("<|READ(notes.md)|>", "READ");
+        const stmt = parseOp<ReadStatement>("## READ0 (notes.md)", "READ");
         const result = await readFileScheme(stmt, ctx);
         assert.equal(result.status, 200, "READ canonicalizes the bare path and resolves the member");
         assert.match(result.content ?? "", /phoenix/, "READ returns the member content");
@@ -101,7 +103,7 @@ test("contract: EDIT(bare path) resolves the canonical-stored member and propose
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
         // {§edit-marker-required-on-existing} — notes.md already exists; <1,-1> states the rewrite.
-        const stmt = parseOp<EditStatement>("<|EDIT(notes.md)<1,-1>>the codename is dragon<EDIT|>", "EDIT");
+        const stmt = parseOp<ResolvedEditStatement>("## EDIT0 (notes.md) <1,-1>\nthe codename is dragon", "EDIT");
         const result = await new File().edit(stmt, ctx);
         assert.equal(result.status, 202, `EDIT canonicalizes the bare path → proposal; got ${result.status} ${result.problem?.detail ?? ""}`);
     });
@@ -114,9 +116,9 @@ test("contract: FIND(/leading-slash) resolves the member — isolates the missin
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
-        const stmt = parseOp<FindStatement>("<|FIND(/notes.md)|>", "FIND");
+        const stmt = parseOp<FindStatement>("## FIND0 (/notes.md)", "FIND");
         const result = await new File().find(stmt, ctx);
-        assert.ok(result.results.some((r) => r.path === "notes.md"), `the leading-slash form finds it; got: ${JSON.stringify(result.results.map((r) => r.path))}`);
+        assert.ok(resourcePaths(result).includes("notes.md"), `the leading-slash form finds it; got: ${JSON.stringify(resourcePaths(result))}`);
     });
 });
 
@@ -127,11 +129,11 @@ test("contract: a hash-shaped target addresses that literal path, never a pathna
         await addMember(ctx, "#draft.*#i");
         await addMember(ctx, "draft.md");
 
-        const stmt = parseOp<FindStatement>("<|FIND(#draft.*#i)|>", "FIND");
+        const stmt = parseOp<FindStatement>("## FIND0 (#draft.*#i)", "FIND");
         const result = await new File().find(stmt, ctx);
 
         assert.equal(result.status, 200);
-        assert.deepEqual(result.results.map((item) => item.path), ["#draft.*#i"]);
+        assert.deepEqual(resourcePaths(result), ["#draft.*#i"]);
     });
 });
 
@@ -141,7 +143,7 @@ test("an exact regex FIND returns its flat match location", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "heading\nthe codename is phoenix\ncontext\n");
         await addMember(ctx, "notes.md");
-        const stmt = parseOp<FindStatement>("<|FIND(notes.md)>/phoenix/<FIND|>", "FIND");
+        const stmt = parseOp<FindStatement>("## FIND0 (notes.md)\n/phoenix/", "FIND");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200);
         assert.ok(result.results.length > 0);
@@ -152,7 +154,7 @@ test("contract: an exact FIND returns every match as a flat location", async () 
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "log.md"), "alpha\ntarget one\nbeta\ngamma\ntarget two\n");
         await addMember(ctx, "log.md");
-        const stmt = parseOp<FindStatement>("<|FIND(log.md)>*target*<FIND|>", "FIND");
+        const stmt = parseOp<FindStatement>("## FIND0 (log.md)\n*target*", "FIND");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200);
         assert.ok(result.results.length > 0);
@@ -163,7 +165,7 @@ test("contract: an exact jsonpath FIND returns flat structural locations", async
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "config.json"), '{\n  "host": "db.internal",\n  "pool": 5\n}\n');
         await addMember(ctx, "config.json");
-        const stmt = parseOp<FindStatement>("<|FIND(config.json)>$.host<FIND|>", "FIND");
+        const stmt = parseOp<FindStatement>("## FIND0 (config.json)\n$.host", "FIND");
         const result = await new File().find(stmt, ctx);
         assert.equal(result.status, 200);
         assert.ok(result.results.length > 0);
@@ -179,11 +181,11 @@ test("contract: FIND(file:///**) and bare FIND(**) both list every tracked membe
         await writeFile(join(root, "docs/b.md"), "beta");
         await addMember(ctx, "a.md");
         await addMember(ctx, "docs/b.md");
-        for (const dsl of ["<|FIND(file:///**)|>", "<|FIND(**)|>"]) {
+        for (const dsl of ["## FIND0 (file:///**)", "## FIND0 (**)"]) {
             const r = await new File().find(parseOp<FindStatement>(dsl, "FIND"), ctx);
             assert.equal(r.status, 200, `${dsl} → 200`);
             assert.equal(r.results.length, 2, `${dsl} lists both tracked members`);
-            const paths = r.results.map((x) => x.path).join(" ");
+            const paths = resourcePaths(r).join(" ");
             assert.match(paths, /a\.md/, `${dsl} includes a.md`);
             assert.match(paths, /b\.md/, `${dsl} includes docs/b.md`);
         }
@@ -201,14 +203,14 @@ test("contract: bare FIND(*) is a shallow project map; FIND(**) is recursive", a
         await writeFile(join(root, "src/nested/deep.ts"), "deep");
         for (const path of [".env.defaults", ".github/settings.yml", "README.md", "src/index.ts", "src/nested/deep.ts"]) await addMember(ctx, path);
 
-        const shallow = await new File().find(parseOp<FindStatement>("<|FIND(*)|>", "FIND"), ctx);
-        assert.deepEqual(shallow.results.map((item) => item.path), [".env.defaults", ".github/**", "README.md", "src/**"]);
-        const scope = shallow.results.find((item) => item.path === "src/**");
+        const shallow = await new File().find(parseOp<FindStatement>("## FIND0 (*)", "FIND"), ctx);
+        assert.deepEqual(resourcePaths(shallow), [".env.defaults", ".github/**", "README.md", "src/**"]);
+        const scope = resourceGroups(shallow).find(([item]) => item.path === "src/**")?.[0];
         assert.ok(scope !== undefined && "items" in scope);
         assert.equal(scope.items, 2);
 
-        const recursive = await new File().find(parseOp<FindStatement>("<|FIND(**)|>", "FIND"), ctx);
-        assert.deepEqual(recursive.results.map((item) => item.path), [".env.defaults", ".github/settings.yml", "README.md", "src/index.ts", "src/nested/deep.ts"]);
+        const recursive = await new File().find(parseOp<FindStatement>("## FIND0 (**)", "FIND"), ctx);
+        assert.deepEqual(resourcePaths(recursive), [".env.defaults", ".github/settings.yml", "README.md", "src/index.ts", "src/nested/deep.ts"]);
     });
 });
 
@@ -218,7 +220,7 @@ test("contract: the explicit file-scheme root is a recursive collection scope", 
         await writeFile(join(root, "src/a.ts"), "a");
         await addMember(ctx, "src/a.ts");
 
-        const rootScope = await new File().find(parseOp<FindStatement>("<|FIND(file:///)|>", "FIND"), ctx);
-        assert.deepEqual(rootScope.results.map((item) => item.path), ["src/a.ts"]);
+        const rootScope = await new File().find(parseOp<FindStatement>("## FIND0 (file:///)", "FIND"), ctx);
+        assert.deepEqual(resourcePaths(rootScope), ["src/a.ts"]);
     });
 });

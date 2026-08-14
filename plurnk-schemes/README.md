@@ -39,7 +39,6 @@ export default class Foo implements SchemeHandler {
     const { content, mimetype } = await acquire(target);
     const written = await ctx.entries.write(pathname, {
       channels: { body: { content, mimetype } },
-      tags: [],
     });
     return written.status >= 400 ? written : { status: 200 };
   }
@@ -81,15 +80,23 @@ static manifest: SchemeManifest = {
   writableBy: ["model", "client"],
   volatile: false,
   modelVisible: true,
+  textEditScopes: true,                 // use the standard text-edit capability
   glyph: "🦊",                          // optional client-only display marker
-  example: "READ(foo://thing/42)",      // terse hot-path one-liner, rendered every turn
+  example: "## READ0 (foo://thing/42)", // concise hot-path operation example set
   documentation,                        // deep doc from docs/foo.md, pulled at worker://plurnk/docs/foo.md
 };
 ```
 
-- **`example`** — the scheme's terse **hot-path** one-liner, rendered in the live catalogue every turn (like an execs runtime's `example`). Keep it to one canonical usage line; depth goes in `documentation`. Omit → not advertised.
+- **`example`** — the scheme's concise **hot-path** operation example set, rendered in the live resource catalogue every turn (like an execs runtime's `example`). Use one or more complete operations separated by blank lines; depth goes in `documentation`. Omit → not advertised.
 - **`documentation`** — the **deep doc** (ops, channels, edge cases). The consumer materializes it as a pull-able `worker://plurnk/docs/<name>.md` entry the model READs on demand — off the hot path. Mirrors `ExecInfo.documentation`. **Convention:** keep it in a **`docs/<name>.md`** file (root) and load it at module init with the snippet above — `../` resolves the same from `src/` (test) and `dist/` (built); add `docs/**/*` to `files`. A missing file fails-hard at import.
 - **`glyph`** — optional opaque client display metadata. It is discoverable through the client capability wire and never rendered into model teaching; clients choose fallback, fonts, and theme.
+
+Declare `textEditScopes: true` only when `editBatch` accepts PLURNK's shared
+text-coordinate algebra. Core's universal READ projection derives and resolves
+any model-facing line anchor; scheme handlers receive numeric
+`ResolvedEditStatement` coordinates only. Delegate those edits to
+`ctx.entries.operations.editBatch`; it owns the anchor recheck and atomic
+collision guard.
 
 ### 4. Self-doc: terse pushes, depth pulls
 
@@ -102,9 +109,9 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 ### Types
 
 - Manifest/flags: `SchemeManifest` (including `example` / `documentation` self-doc and client-only `glyph`), `SchemeFlagAffinity`, and `WriterTier`; contracts-owned `LoopFlags` / `DEFAULT_LOOP_FLAGS` are re-exported.
-- Behavior contract: `SchemeHandler` + optional `PacketSectionTransformer` (`PacketSectionDraft`); the re-exported scheme-facing grammar types (`PlurnkStatement` + per-op statements + `ParsedPath` / `LocalPath` / `UrlPath`).
+- Behavior contract: `SchemeHandler`, numeric-only `ResolvedEditStatement` (also exported as `EditStatement`), and optional `PacketSectionTransformer` (`PacketSectionDraft`); the remaining re-exported scheme-facing grammar types (`PlurnkStatement` + per-op statements + `ParsedPath` / `LocalPath` / `UrlPath`).
 - Results: universal `SchemeResult` plus RFC 9457 `ProblemDetails`, optional `EntryResult` / `ProposalResult` / `PassthroughResult` authoring shapes, `SchemeResultBase`, matcher navigation `MatchEvidence`, and target-shaped standard `EntryFindResult` pagination/count metadata.
-- Capability ctx: `SchemeCtx` and its entry, channel, tag, notification, projection, and subscription domains. Entry schemes can reuse typed standard operations with semantic commons/worker ownership.
+- Capability ctx: `SchemeCtx` and its entry, channel, notification, projection, and subscription domains. Entry schemes can reuse typed standard operations with semantic commons/worker ownership.
 
 ### Helpers (`export default class`, static methods)
 

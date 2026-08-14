@@ -20,7 +20,7 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
             responses: [{
                 assistant: {
                     // ops deliberately absent: the engine must parse this content.
-                    content: "<|PLAN>curate:<PLAN|>\n<|SEND[200]>observed.<SEND|>",
+                    content: "# PLAN0\ncurate:\n\n## SEND0 [200]\nobserved.",
                     reasoning: null,
                 },
             }],

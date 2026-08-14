@@ -5,7 +5,7 @@ SELECT status FROM loops WHERE id = $loop_id;
 
 -- PREP: engine_worker_has_live_child
 -- A non-terminal child worker (worker:// spawn/fork set parent_worker_id) — a "live thing the worker holds",
--- like an open stream. A SEND[200] while one exists is a premature-terminate ({§send-premature-terminate}).
+-- like an open stream. A SEND signal 200 while one exists is a premature-terminate ({§send-premature-terminate}).
 -- Live = a child whose LATEST loop is still pending/running/parked (100/102/202) — the SAME definition
 -- engine_child_workers_live uses for the Active Child Workers orientation, so the 409 gate and the section the model
 -- reads NEVER disagree: a refused termination is always backed by a child the model can SEE and KILL
@@ -67,6 +67,7 @@ LIMIT 1;
 -- {§entry-owner} — one principal's entries (catalogRowsFor source for an owner-scoped FIND/foist):
 -- the commons, a worker's own space, or a named space — exactly one owner's rows, its perspective.
 SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens AS tokens, e.deep_hash,
+    d.parse_issues,
     s.id AS subscription_id,
     CASE WHEN s.closed_at IS NULL
         THEN CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER)
@@ -75,6 +76,7 @@ SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, e
     s.close_status
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
+LEFT JOIN derivations d ON d.deep_hash = e.deep_hash
 LEFT JOIN subscriptions s ON s.id = (
     SELECT latest.id
     FROM subscriptions latest
@@ -84,14 +86,6 @@ LEFT JOIN subscriptions s ON s.id = (
 )
 WHERE e.workspace_id = $workspace_id AND e.owner_id = $owner_id
 ORDER BY e.updated_at ASC, e.id ASC, ec.name;
-
--- PREP: engine_list_owner_entry_tags
--- {§entry-owner} — (entry, tag) for one principal's entries (the owner-scoped catalog's tags field).
-SELECT et.entry_id, et.tag
-FROM entry_tags et
-JOIN entries e ON e.id = et.entry_id
-WHERE e.workspace_id = $workspace_id AND e.owner_id = $owner_id
-ORDER BY et.entry_id, et.tag;
 
 -- PREP: engine_next_turn_sequence
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
@@ -104,16 +98,17 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 SELECT (
            SELECT pr.usage_input
            FROM provider_requests pr
-           JOIN turn_attempts a ON a.id = pr.turn_attempt_id
-           WHERE a.turn_id = (
+           JOIN model_calls mc ON mc.id = pr.model_call_id
+           WHERE mc.turn_id = (
                SELECT latest.id
                FROM turns latest
                WHERE latest.loop_id = $loop_id
                ORDER BY latest.sequence DESC
                LIMIT 1
            )
+           AND mc.kind = 'emission'
            AND pr.state = 'settled'
-           ORDER BY a.sequence DESC, pr.sequence DESC
+           ORDER BY mc.sequence DESC, pr.sequence DESC
            LIMIT 1
        ) AS context,
        -- Latest turn's effective packet allowance; NULL when uncapped or unknown.
@@ -134,10 +129,10 @@ SELECT pr.provider, pr.model, pr.outcome, pr.status,
        pr.cost_kind, pr.cost_amount, pr.cost_currency, pr.cost_usd_equivalent,
        pr.cost_source, pr.cost_reason
 FROM provider_requests pr
-JOIN turn_attempts a ON a.id = pr.turn_attempt_id
-JOIN turns t ON t.id = a.turn_id
+JOIN model_calls mc ON mc.id = pr.model_call_id
+JOIN turns t ON t.id = mc.turn_id
 WHERE t.loop_id = $loop_id AND pr.state = 'settled'
-ORDER BY t.sequence, a.sequence, pr.sequence;
+ORDER BY t.sequence, mc.sequence, pr.sequence;
 
 -- PREP: engine_loop_attributions
 -- {§attribution} — derive the loop projection from exact response-attempt
@@ -150,9 +145,9 @@ FROM (
     WHERE t.loop_id = $loop_id
     UNION
     SELECT value AS attribution
-    FROM turn_attempts a
-    JOIN turns t ON t.id = a.turn_id,
-         json_each(a.attributions)
+    FROM model_calls mc
+    JOIN turns t ON t.id = mc.turn_id,
+         json_each(mc.attributions)
     WHERE t.loop_id = $loop_id
 )
 ORDER BY attribution;
@@ -188,41 +183,46 @@ UPDATE turns SET
     meta = $meta
 WHERE id = $id;
 
--- PREP: engine_open_turn_attempt
--- Identity and request attribution become durable before provider I/O.
-INSERT INTO turn_attempts (turn_id, sequence, attributions, model)
-VALUES ($turn_id, $sequence, $attributions, $model)
+-- PREP: engine_open_model_call
+-- Logical identity and request attribution become durable before provider I/O.
+INSERT INTO model_calls (turn_id, sequence, kind, attributions, model)
+VALUES ($turn_id, $sequence, $kind, $attributions, $model)
 RETURNING id;
 
--- PREP: engine_observe_turn_attempt_response
--- Preserve the logical response before parser classification. Physical request
--- accounting has already settled through its cardinal observer path.
-UPDATE turn_attempts SET
+-- PREP: engine_observe_model_call_response
+-- Preserve the logical response before call-specific interpretation. Physical
+-- request accounting has already settled through its cardinal observer path.
+UPDATE model_calls SET
     state = 'response',
     response = $response,
+    failure = $failure,
     finish_reason = $finish_reason,
     model = $model,
     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = $id AND state = 'pending';
 
--- PREP: engine_classify_turn_attempt_response
-UPDATE turn_attempts SET
-    accepted = $accepted,
-    parse_errors = $parse_errors,
-    failure = $failure
-WHERE id = $id AND state = 'response';
-
--- PREP: engine_fail_turn_attempt
-UPDATE turn_attempts SET
+-- PREP: engine_fail_model_call
+UPDATE model_calls SET
     state = 'error',
     failure = $failure,
     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = $id AND state = 'pending';
 
+-- PREP: engine_open_turn_attempt
+INSERT INTO turn_attempts (model_call_id)
+VALUES ($model_call_id)
+RETURNING id;
+
+-- PREP: engine_classify_turn_attempt_response
+UPDATE turn_attempts SET
+    accepted = $accepted,
+    parse_errors = $parse_errors
+WHERE id = $id AND accepted IS NULL;
+
 -- PREP: engine_open_provider_request
 -- The provider calls this immediately before physical I/O.
-INSERT INTO provider_requests (turn_attempt_id, sequence, provider, model)
-VALUES ($turn_attempt_id, $sequence, $provider, $model)
+INSERT INTO provider_requests (model_call_id, sequence, provider, model)
+VALUES ($model_call_id, $sequence, $provider, $model)
 RETURNING id;
 
 -- PREP: engine_settle_provider_request
@@ -321,7 +321,7 @@ WITH observation AS (
 SELECT o.cursor, o.boundary,
        ae.id AS event_id, ae.producer_worker_id, producer.name AS producer_worker_name,
        ae.kind, ae.source,
-       ae.op, ae.scheme, ae.hostname, ae.pathname, ae.rx, ae.attrs,
+       ae.op, ae.scheme, ae.hostname, ae.pathname, ae.rx, ae.attrs, ae.tags,
        ae.status_rx, ae.terminated_by
 FROM observation o
 LEFT JOIN ambient_events ae
@@ -347,6 +347,11 @@ INSERT INTO log_entries (
 )
 ON CONFLICT(worker_id, ambient_event_id) WHERE ambient_event_id IS NOT NULL DO NOTHING
 RETURNING id;
+
+-- PREP: engine_ambient_delta_id
+-- Crash replay may find the observation row already inserted but its copied
+-- classifications incomplete. Resolve that row so idempotent tag writes can finish.
+SELECT id FROM log_entries WHERE worker_id = $worker_id AND ambient_event_id = $event_id;
 
 -- PREP: engine_advance_ambient_cursor
 -- Advance only from the snapshot that was actually materialized. A concurrent
@@ -389,15 +394,12 @@ ORDER BY id DESC LIMIT 1;
 -- the channel; attrs.streamEnd is the next turn's cursor; expanded=1 for a terminal
 -- observation, 0 for an ongoing observation. {§exec-stream}
 INSERT INTO log_entries (
-    worker_id, loop_id, turn_id, sequence, origin, source,
+    worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
     op, scheme, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, attrs, expanded
 ) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', NULL,
+    $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', NULL, NULL,
     'READ', $scheme, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $attrs, $expanded
 );
-
--- PREP: engine_entry_tags
-SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
 -- PREP: engine_child_workers_live
 -- The worker's LIVE child workers — latest loop non-terminal (100 pending / 102 processing / 202 parked).
@@ -428,7 +430,7 @@ ORDER BY e.pathname;
 -- current-turn so a pre-generate engine error surfaces THIS turn rather than a turn late.
 -- {§operation-result-uniform-error-channel}
 SELECT
-    le.op, le.sequence, le.status_rx, le.rx, le.mimetype_rx,
+    le.origin, le.op, le.attrs, le.sequence, le.status_rx, le.rx, le.mimetype_rx,
     le.scheme, le.pathname,
     t.sequence AS turn_seq, l.sequence AS loop_seq
 FROM log_entries le
@@ -539,14 +541,14 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- triggers the proposal lifecycle (engine pauses dispatch; client resolves
 -- via proposal resolution; entry transitions through engine_resolve_log_entry).
 INSERT INTO log_entries (
-    worker_id, loop_id, turn_id, sequence, origin, source,
+    worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
     op, suffix, signal,
     scheme, username, password, hostname, port,
     pathname, query, fragment, lineMarker,
     tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens,
     state, outcome, attrs
 ) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, $origin, $source,
+    $worker_id, $loop_id, $turn_id, $sequence, $origin, $source, $model_call_id,
     $op, $suffix, $signal,
     $scheme, $username, $password, $hostname, $port,
     $pathname, $query, $fragment, $lineMarker,
@@ -581,12 +583,15 @@ SELECT l.sequence AS loop_seq,
   JOIN loops l ON l.id = le.loop_id
  WHERE le.id = $id;
 
--- PREP: engine_turn_retrievals
--- {§send-premature-terminate} — the pending set's retrieval leg: THIS turn's READ/FIND/OPEN rows,
--- whose results the model cannot have seen (they fold back next packet). A [200] over them is
--- discarding answers it asked for.
-SELECT id FROM log_entries
-WHERE turn_id = $turn_id AND origin = 'model' AND op IN ('READ', 'FIND', 'OPEN');
+-- PREP: engine_turn_packet_boundaries
+-- {§send-premature-terminate}/{§wait-obligation-matrix} — operations whose useful effect crosses
+-- into the next packet: READ/FIND/OPEN/BARE results, plus successful FOLD context curation. Retrievals
+-- block an explicit [200]; FOLD blocks only the empty-[202] inference because explicit final
+-- housekeeping remains valid.
+SELECT id, op FROM log_entries
+WHERE turn_id = $turn_id
+  AND origin = 'model'
+  AND (op IN ('READ', 'FIND', 'OPEN', 'BARE') OR (op = 'FOLD' AND status_rx < 400));
 
 -- PREP: engine_worker_has_undelivered_stream_term
 -- A stream may finish between its EXEC and a same-turn SEND. It is then no longer

@@ -20,8 +20,8 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
     // exec result created in turn 1 must appear in turn 2's packet log so the
     // model can READ it — assert the ENGINE put a <runtime>:///<coord> stream link there.
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("<|EXEC[sh]>echo plurnk-index-probe<EXEC|>\n<|SEND[202]>waiting<SEND|>", 10),
-        makeMockResponse("<|SEND[200]>done<SEND|>", 10),
+        makeMockResponse("## EXEC0 [sh]\necho plurnk-index-probe\n\n## SEND0 [202]\nwaiting", 10),
+        makeMockResponse("## SEND0 [200]\ndone", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -44,8 +44,8 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
             // into the NEXT turn (origin=plurnk), OPEN because the channel closed: the model SEES
             // its output, it never has to find+pull it. This is the loop the live demo exposed.
             assert.ok(
-                entries.some((e) => e.op === "READ" && e.origin === "plurnk" && String(e.target ?? "").includes("stdout")),
-                `turn-2 must foist a READ of the exec stdout; got ${JSON.stringify(entries.map((e) => ({ op: e.op, origin: e.origin, target: e.target })))}`,
+                entries.some((e) => String(e.path).endsWith("/READ") && e.origin === "plurnk" && String(e.target ?? "").includes("stdout")),
+                `turn-2 must foist a READ of the exec stdout; got ${JSON.stringify(entries.map((e) => ({ path: e.path, origin: e.origin, target: e.target })))}`,
             );
             assert.match(packetSection(packet, "log"), /plurnk-index-probe/, "the foisted delta surfaces the actual stdout, open");
         } finally { ws.close(); }
@@ -55,8 +55,8 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
 test("a generated JSON result stays typed, item-addressable, and complete through the next-turn packet", async () => {
     const query = "WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 30) SELECT n, printf('%0100d', n) AS payload FROM seq";
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("<|EXEC[sqlite]>" + query + "<EXEC|>\n<|SEND[202]>waiting<SEND|>", 10),
-        makeMockResponse("<|SEND[200]>done<SEND|>", 10),
+        makeMockResponse("## EXEC0 [sqlite]\n" + query + "\n\n## SEND0 [202]\nwaiting", 10),
+        makeMockResponse("## SEND0 [200]\ndone", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -88,7 +88,7 @@ test("a generated JSON result stays typed, item-addressable, and complete throug
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(packetRow!.packet);
             const entry = logEntries(packet).find((candidate) =>
-                candidate.op === "READ" && String(candidate.target ?? "").startsWith("sqlite:///"));
+                String(candidate.path).endsWith("/READ") && String(candidate.target ?? "").startsWith("sqlite:///"));
             assert.ok(entry, "the model-facing packet contains the structured observation");
             assert.equal(entry.overflow, undefined, "READ receives no second hidden preview bound");
             assert.match(packetSection(packet, "log"), /30:\{"n":30,/, "the last selected result survives into the packet");
@@ -100,8 +100,8 @@ test("a generated JSON result stays typed, item-addressable, and complete throug
 
 test("a failed EXEC reaches the model as the executor's exact Problem on its terminal ambient READ", async () => {
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("<|EXEC[sh]>printf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3<EXEC|>\n<|SEND[202]>waiting<SEND|>", 10),
-        makeMockResponse("<|SEND[200]>failure observed<SEND|>", 10),
+        makeMockResponse("## EXEC0 [sh]\nprintf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3\n\n## SEND0 [202]\nwaiting", 10),
+        makeMockResponse("## SEND0 [200]\nfailure observed", 10),
     ] });
 
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -171,10 +171,10 @@ test("the cursor-terminal race: a one-burst stream fully shown FOLDED before its
     // complete): the delta shows folded. Turn 3 (closed, nothing new): the terminal marker
     // MUST land, open, carrying the close status — never a silent skip.
     const mock = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("<|EXEC[sh]>echo burst-payload && sleep 2<EXEC|>\n<|SEND[102]>spawned<SEND|>", 10),
-        makeMockResponse("<|SEND[102]>waiting<SEND|>", 10),
-        makeMockResponse("<|SEND[102]>checking<SEND|>", 10),
-        makeMockResponse("<|SEND[200]>done<SEND|>", 10),
+        makeMockResponse("## EXEC0 [sh]\necho burst-payload && sleep 2\n\n## SEND0 [102]\nspawned", 10),
+        makeMockResponse("## SEND0 [102]\nwaiting", 10),
+        makeMockResponse("## SEND0 [102]\nchecking", 10),
+        makeMockResponse("## SEND0 [200]\ndone", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -186,7 +186,7 @@ test("the cursor-terminal race: a one-burst stream fully shown FOLDED before its
             const row = await db.test_get_packet.get<{ packet: string }>({ id: last });
             const packet = JSON.parse(row?.packet ?? "{}");
             const entries = logEntries(packet);
-            const deltas = entries.filter((e) => e.op === "READ" && e.origin === "plurnk" && String(e.target ?? "").includes("stdout"));
+            const deltas = entries.filter((e) => String(e.path).endsWith("/READ") && e.origin === "plurnk" && String(e.target ?? "").includes("stdout"));
             assert.ok(deltas.length >= 1, "the stream's deltas surfaced");
             const log = packetSection(packet, "log");
             assert.match(log, /burst-payload/, "the burst content was delivered");

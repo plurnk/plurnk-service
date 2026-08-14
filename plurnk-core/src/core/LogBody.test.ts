@@ -39,7 +39,7 @@ const creationReceipt = (context: string) => {
 };
 
 test("LogBody resolves built-in result-backed bodies", () => {
-    for (const op of ["READ", "FIND", "prompt"]) {
+    for (const op of ["READ", "FIND", "BARE", "prompt"]) {
         assert.deepEqual(
             LogBody.resolve({ op, tx: "", rx: content(`${op} body`) }),
             { content: `${op} body`, mimetype: "text/markdown", startLine: 1 },
@@ -51,6 +51,12 @@ test("LogBody resolves built-in result-backed bodies", () => {
         LogBody.resolve({ op: null, attrs: { kind: "model_emission" }, tx: "", rx: content("model body") }),
         { content: "model body", mimetype: "text/markdown", startLine: 1 },
         "the actionless model-emission kind owns its result-backed body without inventing an op",
+    );
+
+    assert.deepEqual(
+        LogBody.resolve({ op: null, attrs: { kind: "initialization" }, tx: "", rx: content("initialization body") }),
+        { content: "initialization body", mimetype: "text/markdown", startLine: 1 },
+        "the actionless initialization kind owns its result-backed body without impersonating model output",
     );
 
     assert.deepEqual(

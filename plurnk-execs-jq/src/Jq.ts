@@ -7,8 +7,8 @@ import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability } f
 //   body = the jq program (defaults to `.` identity if empty)
 //   target = optional data source; present → jq reads that file; absent → `-n`
 //            (null input) so the body is self-contained.
-// So `EXEC[jq](data.json):.users[].name` filters a file, `EXEC[jq]:[1,2,3]|add`
-// computes without input, and a tag-addressed prior stream can be the target
+// So `## EXEC0 [jq] (data.json)` filters a file with its body, while a targetless
+// `## EXEC0 [jq]` runs its body against null input. A tag-addressed prior stream can be the target
 // once the consumer resolves it to a path ({§executor-output-address}).
 //
 // jq is a leaf process (no shell, no grandchildren), so a plain signal-based
@@ -47,13 +47,13 @@ export default class Jq extends BaseExecutor {
         });
     }
 
-    async run({ command, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
+    async run({ body, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         const detailLimit = ErrorDetail.configuredLimit();
         if (detailLimit === null) {
             setState("results", "errored");
             return ErrorDetail.invalidConfiguration("executor:jq");
         }
-        const program = command.trim() || ".";
+        const program = body.trim() || ".";
         // target = the data-source file; spawn resolves a relative one against cwd
         // (the workspace). Absent → -n, the program stands alone
         // ({§executor-sinks}).

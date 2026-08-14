@@ -25,6 +25,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import Fork from "../../src/core/fork.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
+import { resourcePaths } from "./_find.ts";
 import { editStmt, sendStmt, readStmt, fullReplace } from "./_dsl.ts";
 
 // {§worker-scheme} — the authority is a worker name or the current-worker sigil `~`.
@@ -108,7 +109,7 @@ test("a fork inherits the parent's private entries under its own owner, then div
         const ctxF = makeSchemeCtx({ db, workspaceId, workerId: forkId, loopId: 0, turnId: 0 });
 
         const inherited = await workerScheme.find(findEntry("~", "**"), ctxF);
-        assert.deepEqual(inherited.results.map((r) => r.path), ["worker://~/todo.md"], "the fork's own-space FIND holds the inherited scratch, addressed as its own");
+        assert.deepEqual(resourcePaths(inherited), ["worker://~/todo.md"], "the fork's own-space FIND holds the inherited scratch, addressed as its own");
         const fRead = await lookThroughScheme("worker", null, readEntry("~", "todo.md"), ctxF);
         assert.equal(fRead.content, "parent note", "the inherited scratch content is copied");
 
@@ -136,15 +137,15 @@ test("FIND draws from the resolved principal alone — ~ is own space, a name is
         // alpha's own-space FIND sees ONLY alpha's entries, addressed as its own.
         const own = await workerScheme.find(findEntry("~", "**"), ctxA);
         assert.equal(own.status, 200);
-        assert.deepEqual(own.results.map((r) => r.path), ["worker://~/todo.md"], "FIND(worker://~/**) returns only the caller's own space ({§entry-owner})");
+        assert.deepEqual(resourcePaths(own), ["worker://~/todo.md"], "FIND(worker://~/**) returns only the caller's own space ({§entry-owner})");
 
         // beta's perspective excludes alpha's — isolation is structural (the owner column).
         const betaOwn = await workerScheme.find(findEntry("~", "**"), ctxB);
-        assert.deepEqual(betaOwn.results.map((r) => r.path), ["worker://~/plan.md"], "a sibling never sees another's space in its own perspective");
+        assert.deepEqual(resourcePaths(betaOwn), ["worker://~/plan.md"], "a sibling never sees another's space in its own perspective");
 
         // {§worker-read-scope} — the PARENT reads its child's space by name (oversight flows down)…
         const child = await workerScheme.find(findEntry("beta", "**"), ctxA);
-        assert.deepEqual(child.results.map((r) => r.path), ["worker://beta/plan.md"], "FIND(worker://beta/**) reaches the named child's space");
+        assert.deepEqual(resourcePaths(child), ["worker://beta/plan.md"], "FIND(worker://beta/**) reaches the named child's space");
         // …but a child cannot snoop upward: the parent's space 404s from below, no existence leak.
         const upward = await workerScheme.find(findEntry("alpha", "**"), ctxB);
         assert.equal(upward.status, 404, "a non-ancestor naming a space is 404 — the reader must be the owner or an ancestor");

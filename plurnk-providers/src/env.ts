@@ -8,6 +8,16 @@ export const parseRequiredInt = (raw: string | undefined, name: string, label: s
     return n;
 };
 
+export const MAX_PROVIDER_TIMEOUT_MS = 2_147_483_647;
+
+export const parseTimeoutMs = (raw: string | undefined, name: string, label: string): number => {
+    const timeoutMs = parseRequiredInt(raw, name, label);
+    if (timeoutMs > MAX_PROVIDER_TIMEOUT_MS) {
+        throw new Error(`${label} provider: ${name} must be at most ${MAX_PROVIDER_TIMEOUT_MS} milliseconds (got "${raw}")`);
+    }
+    return timeoutMs;
+};
+
 export const parseOptionalInt = (raw: string | undefined, name: string, label: string): number | null => {
     if (raw === undefined || raw.length === 0) return null;
     const n = Number(raw);
@@ -199,7 +209,9 @@ export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_CONTEXT_WINDOW",
     "PLURNK_PROVIDERS_RETRY_ATTEMPTS",
     "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT",
+    "PLURNK_PROVIDERS_OPERATION_TIMEOUT",
     "PLURNK_PROVIDERS_FETCH_TIMEOUT",
+    "PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT",
     "PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT",
     "PLURNK_PROVIDERS_LLAMA_SERVER",
     "PLURNK_PROVIDERS_TEMPERATURE",

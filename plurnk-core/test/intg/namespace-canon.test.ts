@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ReadStatement, EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ReadStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import File from "../../src/schemes/File.ts";
 import Namespace from "../../src/core/namespace.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
@@ -21,7 +22,7 @@ const readStmt = (pathname: string): ReadStatement => ({ op: "READ", suffix: "",
 const readFileScheme = (statement: ReadStatement, ctx: ReturnType<typeof makeSchemeCtx>) =>
     lookThroughScheme("file", null, statement, ctx);
 const fullReplace: LineMarker = { marks: [1, -1] };
-const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): EditStatement => ({ op: "EDIT", suffix: "", signal: null, target: fileUrl(pathname), lineMarker: marker, body, position: { line: 1, column: 1 } } as unknown as EditStatement);
+const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ op: "EDIT", suffix: "", signal: null, target: fileUrl(pathname), lineMarker: marker, body, position: { line: 1, column: 1 } });
 
 const setup = async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-canon-"));
@@ -38,7 +39,7 @@ test("{§fs-canonical-name}: every spelling of one member resolves to the same r
     try {
         await mkdir(join(root, "src"), { recursive: true });
         await writeFile(join(root, "src/main.js"), "the one file\n");
-        await EntryCrud.writeEntry("src/main.js", { channels: { body: { content: "the one file\n", mimetype: "text/markdown" } }, tags: [] }, ctx, "file");
+        await EntryCrud.writeEntry("src/main.js", { channels: { body: { content: "the one file\n", mimetype: "text/markdown" } } }, ctx, "file");
 
         const rootBase = root; // e.g. /tmp/plurnk-canon-XXXX
         const spellings = ["src/main.js", "/src/main.js", "./src/main.js", "src/./main.js", "a/../src/main.js", `../${rootBase.split("/").at(-1)}/src/main.js`];
@@ -81,7 +82,7 @@ test("the storage fixpoint: every file-class row is its own canon", async () => 
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "a.md"), "a\n");
-        await EntryCrud.writeEntry("a.md", { channels: { body: { content: "a\n", mimetype: "text/markdown" } }, tags: [] }, ctx, "file");
+        await EntryCrud.writeEntry("a.md", { channels: { body: { content: "a\n", mimetype: "text/markdown" } } }, ctx, "file");
         const rows = await db.test_file_pathnames.all<{ pathname: string }>({ workspace_id: workspaceId });
         assert.ok(rows.length > 0);
         for (const { pathname } of rows) {
@@ -94,7 +95,7 @@ test("the log row: address columns speak canon while tx retains non-sensitive au
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "readme.md"), "hello\n");
-        await EntryCrud.writeEntry("readme.md", { channels: { body: { content: "hello\n", mimetype: "text/markdown" } }, tags: [] }, ctx, "file");
+        await EntryCrud.writeEntry("readme.md", { channels: { body: { content: "hello\n", mimetype: "text/markdown" } } }, ctx, "file");
 
         const Engine = (await import("../../src/core/Engine.ts")).default;
         const SchemeRegistry = (await import("../../src/core/SchemeRegistry.ts")).default;
@@ -157,7 +158,7 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
     const { root, db, workspaceId, ctx } = await setup();
     try {
         await writeFile(join(root, "real.md"), "content\n");
-        await EntryCrud.writeEntry("real.md", { channels: { body: { content: "content\n", mimetype: "text/markdown" } }, tags: [] }, ctx, "file");
+        await EntryCrud.writeEntry("real.md", { channels: { body: { content: "content\n", mimetype: "text/markdown" } } }, ctx, "file");
         const file = new File();
 
         // ENOENT on a READ miss carries the resolved name in wire canon.

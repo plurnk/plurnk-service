@@ -88,7 +88,6 @@ class OwnerBoundPreparationScheme implements SchemeHandler {
                 channels: {
                     body: { content: "prepared for resolved worker", mimetype: "text/plain" },
                 },
-                tags: [],
             });
             assert.equal(written.status, 201);
         }
@@ -97,7 +96,7 @@ class OwnerBoundPreparationScheme implements SchemeHandler {
 }
 
 // A deliberately non-network protocol specimen. It knows aliases, acquisition,
-// channel topology, tags, and producer evidence; it knows nothing about READ,
+// channel topology, private attributes, and producer evidence; it knows nothing about READ,
 // FIND, text scope, matching, or pagination.
 class ArchiveScheme implements SchemeHandler {
     static manifest: SchemeManifest = {
@@ -135,7 +134,7 @@ class ArchiveScheme implements SchemeHandler {
                         mimetype: "application/json",
                     },
                 },
-                tags: ["imported"],
+                attributes: { kind: "imported" },
             });
             assert.ok(written.status === 200 || written.status === 201);
         } else {
@@ -179,7 +178,6 @@ class IndependentChannelScheme implements SchemeHandler {
                     producerResult: htmlFailure,
                 },
             },
-            tags: [],
         });
         assert.ok(written.status === 200 || written.status === 201);
         return { status: 200 };
@@ -187,7 +185,7 @@ class IndependentChannelScheme implements SchemeHandler {
 }
 
 const parseRead = (dsl: string): ReadStatement => {
-    const item = PlurnkParser.parse(`<|PLAN|>\n${dsl}`).items.find(
+    const item = PlurnkParser.parse(`# PLAN0\n${dsl}`).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
     );
     if (item?.kind !== "statement" || item.statement.op !== "READ") {
@@ -197,7 +195,7 @@ const parseRead = (dsl: string): ReadStatement => {
 };
 
 const parseFind = (dsl: string): FindStatement => {
-    const item = PlurnkParser.parse(`<|PLAN|>\n${dsl}`).items.find(
+    const item = PlurnkParser.parse(`# PLAN0\n${dsl}`).items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "FIND",
     );
     if (item?.kind !== "statement" || item.statement.op !== "FIND") {
@@ -227,7 +225,7 @@ test("entry-backed data schemes inherit exact READ projection", async () => {
         });
 
         const result = await engine.dispatch({
-            statement: parseRead("<|READ(entry-backed:///document.txt)|>"),
+            statement: parseRead("## READ0 (entry-backed:///document.txt)"),
             workspaceId,
             workerId,
             loopId,
@@ -272,7 +270,7 @@ test("inherited READ uses the scheme's canonical pathname and owner", async () =
         });
 
         const result = await engine.dispatch({
-            statement: parseRead("<|READ(resolved-entry:///alias_%28v1%29.txt#body)<1,-1>|>"),
+            statement: parseRead("## READ0 (resolved-entry:///alias_%28v1%29.txt#body) <1,-1>"),
             workspaceId,
             workerId,
             loopId,
@@ -299,7 +297,7 @@ test("preparation capabilities bind to the already-resolved canonical owner", as
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseRead("<|READ(owner-bound-preparation:///alias.txt)<1,-1>|>"),
+            statement: parseRead("## READ0 (owner-bound-preparation:///alias.txt) <1,-1>"),
             workspaceId,
             workerId,
             loopId,
@@ -328,7 +326,7 @@ test("scope-blind preparation durably composes producer status with cold and war
 
         for (const sequence of [1, 2]) {
             const result = await engine.dispatch({
-                statement: parseRead("<|READ(archive:///aliases/latest)<17,18>|>"),
+                statement: parseRead("## READ0 (archive:///aliases/latest) <17,18>"),
                 workspaceId,
                 workerId,
                 loopId,
@@ -373,7 +371,7 @@ test("core selects one channel before applying its independent durable producer 
         });
 
         const body = await dispatch(
-            parseRead("<|READ(independent-channel:///item)<1,-1>|>"),
+            parseRead("## READ0 (independent-channel:///item) <1,-1>"),
             1,
         );
         assert.equal(body.status, 200);
@@ -381,7 +379,7 @@ test("core selects one channel before applying its independent durable producer 
 
         for (const sequence of [2, 3]) {
             const html = await dispatch(
-                parseRead("<|READ(independent-channel:///item#html)<1,-1>|>"),
+                parseRead("## READ0 (independent-channel:///item#html) <1,-1>"),
                 sequence,
             );
             assert.equal(html.status, 502);
@@ -408,7 +406,7 @@ test("exact FIND shares representation preparation but retains universal query s
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseFind("<|FIND(archive:///aliases/latest)|>"),
+            statement: parseFind("## FIND0 (archive:///aliases/latest)"),
             workspaceId,
             workerId,
             loopId,
@@ -420,18 +418,19 @@ test("exact FIND shares representation preparation but retains universal query s
         assert.equal(result.status, 203);
         assert.equal(result.producer, "archive-specimen");
         assert.equal(result.matchingPathCount, 1);
-        const [item] = result.results as Array<{
+        const [channels] = result.results as Array<Array<{
             path: string;
-            channels: Record<string, { mimetype: string; tokens: number; lines: number }>;
-        }>;
-        assert.equal(item?.path, "archive:///objects/document.txt");
-        assert.deepEqual(Object.keys(item?.channels ?? {}), [
+            mimetype: string;
+            tokens: number;
+            lines: number;
+        }>>;
+        assert.deepEqual(channels?.map(({ path }) => path), [
             "archive:///objects/document.txt",
             "archive:///objects/document.txt#provenance",
         ]);
-        assert.equal(item?.channels[item.path]?.mimetype, "text/markdown");
-        assert.equal(item?.channels[item.path]?.lines, 20);
-        assert.ok((item?.channels[item.path]?.tokens ?? 0) > 0);
+        assert.equal(channels?.[0]?.mimetype, "text/markdown");
+        assert.equal(channels?.[0]?.lines, 20);
+        assert.ok((channels?.[0]?.tokens ?? 0) > 0);
     } finally {
         await db.close();
     }
@@ -581,7 +580,7 @@ test("cold finite HTTP READ acquires before applying the exact text scope", asyn
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const result = await engine.dispatch({
-            statement: parseRead("<|READ(https://93.184.216.34/document.txt)<17,18>|>"),
+            statement: parseRead("## READ0 (https://93.184.216.34/document.txt) <17,18>"),
             workspaceId,
             workerId,
             loopId,

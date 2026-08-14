@@ -76,7 +76,7 @@ test("resource facet materializes current MCP resources as ordinary entries", as
         assert.equal(result.status, 200);
         assert.equal(entries.get(pathname)?.channels.body?.content, "alpha\nbeta\ngamma\n");
         assert.equal(entries.get(pathname)?.channels.body?.mimetype, "text/plain");
-        assert.deepEqual(entries.get(pathname)?.tags, ["mcp-resource"]);
+        assert.deepEqual(entries.get(pathname)?.attributes, { kind: "mcp-resource" });
     } finally {
         await module.close();
     }

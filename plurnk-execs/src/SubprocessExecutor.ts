@@ -6,7 +6,7 @@ import Runtime from "./runtime.ts";
 import { CommandSyntaxError } from "./tokenizeArgv.ts";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, SpawnArgs } from "./types.ts";
 
-// KILL[code]: an abort reason carrying `{ signal }` (a Unix signal name or
+// KILL signal: an abort reason carrying `{ signal }` (a Unix signal name or
 // number) delivers exactly that signal, once, fire-and-forget — no escalation;
 // the model asked for a specific code. Absent → null → the polite default.
 const overrideSignal = (reason: unknown): NodeJS.Signals | number | null => {
@@ -87,7 +87,7 @@ export default class SubprocessExecutor extends BaseExecutor {
         return Runtime.resolve(runtime, command, target);
     }
 
-    run({ runtime, command, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
+    run({ runtime, body, cwd, target, env, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         const detailLimit = ErrorDetail.configuredLimit();
         if (detailLimit === null) {
             setState("stdout", "errored");
@@ -96,7 +96,7 @@ export default class SubprocessExecutor extends BaseExecutor {
         }
         let spawnArgs: SpawnArgs;
         try {
-            spawnArgs = this.spawnArgs(runtime, command, target);
+            spawnArgs = this.spawnArgs(runtime, body, target);
         } catch (cause) {
             if (!(cause instanceof CommandSyntaxError)) throw cause;
             setState("stdout", "errored");
@@ -149,7 +149,7 @@ export default class SubprocessExecutor extends BaseExecutor {
             // {§exec-env-scoped}); host env inherited when absent.
             // fd0: a provided stdin body gets a pipe (written + EOF'd below); NO
             // stdin body gets /dev/null, never a dangling open pipe. A bare
-            // interpreter reached via the sh fallthrough (`EXEC[python3]` → `sh -c
+            // interpreter reached via the sh fallthrough (EXEC runtime `python3` → `sh -c
             // "python3 …"`) reads its program from fd0 — an unclosed pipe there
             // never EOFs, so the child blocks in the kernel (unix_stream_read) and
             // the exec obligation never resolves: the loop hangs until a client
@@ -179,7 +179,7 @@ export default class SubprocessExecutor extends BaseExecutor {
             };
             const onAbort = (): void => {
                 const reason = signal.reason;
-                // KILL[code]: deliver exactly that signal, once, fire-and-forget.
+                // A KILL signal delivers exactly that signal once, fire-and-forget.
                 const override = overrideSignal(reason);
                 if (override !== null) { killGroup(override); return; }
                 // Default KILL is the polite ask — SIGHUP, once. We trust the

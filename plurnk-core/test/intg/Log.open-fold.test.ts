@@ -10,7 +10,7 @@ import Log from "../../src/schemes/Log.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, openStmt, foldStmt, findStmt } from "./_dsl.ts";
 
-const setup = async () => {
+const setup = async (attrs = "{}") => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
@@ -20,18 +20,19 @@ const setup = async () => {
     await db.engine_insert_log_entry.get({
         worker_id: workerId, loop_id: loopId, turn_id: turnId,
         sequence: 1,
-        origin: "plurnk",
-        source: null,
+            origin: "plurnk",
+            source: null,
+            model_call_id: null,
         op: "EDIT", suffix: "",
         signal: null,
         scheme: "worker", username: null, password: null,
         hostname: null, port: null,
         pathname: "/x", query: null, fragment: null,
         lineMarker: null,
-        tx: "<|EDIT(worker:///x)>body<EDIT|>", mimetype_tx: "text/vnd.plurnk",
+        tx: "## EDIT0 (worker:///x)\nbody", mimetype_tx: "text/vnd.plurnk",
         rx: JSON.stringify({ status: 201 }), mimetype_rx: "application/json",
         status_rx: 201, tokens: 0,
-        state: "resolved", outcome: null, attrs: "{}",
+        state: "resolved", outcome: null, attrs,
     });
     return { db, workspaceId, workerId, loopId, turnId };
 };
@@ -62,7 +63,7 @@ test("FOLD(log:///1/1/1) flips expanded to 0", async () => {
     } finally { await db.close(); }
 });
 
-test("FOLD accepts the /op wire suffix (self-documenting URI)", async () => {
+test("FOLD accepts the canonical /OP suffix", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const r = await new Log().fold(
@@ -72,6 +73,50 @@ test("FOLD accepts the /op wire suffix (self-documenting URI)", async () => {
         assert.equal(r.status, 200);
         assert.equal(await getExpanded(db, workerId), 0);
     } finally { await db.close(); }
+});
+
+test("FOLD rejects a supplied /OP suffix that disagrees with the addressed row", async () => {
+    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        const r = await new Log().fold(
+            foldStmt(urlPath("log", "/1/1/1/READ")),
+            makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }),
+        );
+        assert.equal(r.status, 404);
+        assert.equal(await getExpanded(db, workerId), 1, "a discordant address cannot curate the row");
+    } finally { await db.close(); }
+});
+
+test("a tag filter does not turn a discordant exact /OP suffix into a successful no-op", async () => {
+    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        const result = await new Log().fold(
+            { ...foldStmt(urlPath("log", "/1/1/1/READ")), signal: ["memory"] },
+            makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }),
+        );
+        assert.equal(result.status, 404);
+        assert.equal(await getExpanded(db, workerId), 1, "a discordant exact address cannot curate the row");
+    } finally { await db.close(); }
+});
+
+test("a typed entry-materialization row resolves by its projected /READ suffix, not its durable EDIT event", async () => {
+    const accepted = await setup('{"kind":"entry_materialized"}');
+    try {
+        const result = await new Log().fold(
+            foldStmt(urlPath("log", "/1/1/1/READ")),
+            makeSchemeCtx({ ...accepted, writer: "model" }),
+        );
+        assert.equal(result.status, 200);
+    } finally { await accepted.db.close(); }
+
+    const rejected = await setup('{"kind":"entry_materialized"}');
+    try {
+        const result = await new Log().fold(
+            foldStmt(urlPath("log", "/1/1/1/EDIT")),
+            makeSchemeCtx({ ...rejected, writer: "model" }),
+        );
+        assert.equal(result.status, 404);
+    } finally { await rejected.db.close(); }
 });
 
 test("OPEN(log:///1/1/1) flips expanded back to 1", async () => {
@@ -138,11 +183,11 @@ test("engine_render_log carries the delta source; self-authored entries stay nul
         // A synthetic environment-delta row ({§env-delta}): origin=plurnk, source=a scheme.
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId,
-            sequence: 2, origin: "plurnk", source: "file",
+            sequence: 2, origin: "plurnk", source: "file", model_call_id: null,
             op: "EDIT", suffix: "", signal: null,
             scheme: "file", username: null, password: null, hostname: null, port: null,
             pathname: "/config.toml", query: null, fragment: null, lineMarker: null,
-            tx: "<|EDIT(file:///config.toml)|>", mimetype_tx: "text/vnd.plurnk",
+            tx: "## EDIT0 (file:///config.toml)", mimetype_tx: "text/vnd.plurnk",
             rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
             status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
         });
@@ -152,23 +197,26 @@ test("engine_render_log carries the delta source; self-authored entries stay nul
     } finally { await db.close(); }
 });
 
-test("FOLD matcher selects the tagged set and OPEN filters that set by tag + matcher", async () => {
+test("FOLD and OPEN apply the same tag + matcher filter", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         // setup seeds bodyless 1/1/1 EDIT; add discriminating READ bodies at 1/1/2 and 1/1/3.
-        const seedRead = async (sequence: number, content: string): Promise<void> => {
-            await db.engine_insert_log_entry.get({
+        const seedRead = async (sequence: number, content: string): Promise<number> => {
+            const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
-                origin: "model", source: null, op: "READ", suffix: "", signal: null,
+                origin: "model", source: null, model_call_id: null, op: "READ", suffix: "", signal: null,
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: "/doc", query: null, fragment: null, lineMarker: null,
-                tx: "<|READ(worker:///doc)|>", mimetype_tx: "text/vnd.plurnk",
+                tx: "## READ0 (worker:///doc)", mimetype_tx: "text/vnd.plurnk",
                 rx: JSON.stringify({ status: 200, content, mimetype: "text/plain", startLine: 1 }), mimetype_rx: "application/json",
                 status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
             });
+            assert.ok(row !== undefined);
+            return row.id;
         };
-        await seedRead(2, "retain this row");
+        const retainedId = await seedRead(2, "retain this row");
         await seedRead(3, "discard this row");
+        await db.log_write_tag.run({ log_entry_id: retainedId, tag: "memory" });
         const expandedAt = async (sequence: number): Promise<number> =>
             (await db.test_get_log_expanded.get<{ expanded: number }>({
                 worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence,
@@ -188,7 +236,7 @@ test("FOLD matcher selects the tagged set and OPEN filters that set by tag + mat
         assert.equal(await expandedAt(1), 1, "the non-matching EDIT (1/1/1) is untouched");
 
         const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: workerId });
-        assert.deepEqual(tags, [{ coordinate: "1/1/2", tag: "memory" }], "FOLD applies the tag only to its selected set");
+        assert.deepEqual(tags, [{ coordinate: "1/1/2", tag: "memory" }], "FOLD preserves the existing classification");
 
         const open = await new Log().open({
             ...openStmt(null),
@@ -241,7 +289,7 @@ test("KILL erases an op='error' log item exactly like any other — errors ARE n
         // Seed an actionless op='error' row at 1/1/2 (the errors-into-log shape).
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 2,
-            origin: "model", source: "grammar", op: "error", suffix: "", signal: null,
+            origin: "model", source: "grammar", model_call_id: null, op: "error", suffix: "", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -307,41 +355,44 @@ test("{§log-coordinate-hierarchy} a partial coordinate is a prefix with or with
     } finally { await db.close(); }
 });
 
-test("FOLD[tag] applies + folds; OPEN[tag]/FIND[tag] filter by ALL-tags — named working-set curation", async () => {
+test("FOLD[tag] and OPEN[tag] symmetrically filter ALL-tag classifications", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup(); // seeds 1/1/1 EDIT
     try {
-        const seedRead = async (sequence: number): Promise<void> => {
-            await db.engine_insert_log_entry.get({
+        const seedRead = async (sequence: number): Promise<number> => {
+            const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
-                origin: "model", source: null, op: "READ", suffix: "", signal: null,
+                origin: "model", source: null, model_call_id: null, op: "READ", suffix: "", signal: null,
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: "/doc", query: null, fragment: null, lineMarker: null,
-                tx: "<|READ(worker:///doc)|>", mimetype_tx: "text/vnd.plurnk",
+                tx: "## READ0 (worker:///doc)", mimetype_tx: "text/vnd.plurnk",
                 rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
                 status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
             });
+            assert.ok(row !== undefined);
+            return row.id;
         };
-        await seedRead(2);
+        const classifiedId = await seedRead(2);
         await seedRead(3);
+        await db.log_write_tag.run({ log_entry_id: classifiedId, tag: "projectB" });
+        await db.log_write_tag.run({ log_entry_id: classifiedId, tag: "hot" });
         const mk = () => makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" });
         const log = new Log();
         const expandedAt = async (seq: number): Promise<number> =>
             (await db.test_get_log_expanded.get<{ expanded: number }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: seq }))?.expanded ?? -1;
 
-        // WRITE: FOLD[projectB](log:///1/1/2) folds row 2 AND stamps the tag (FOLD is the log's write-op).
-        const fold = await log.fold({ ...foldStmt(urlPath("log", "/1/1/2")), signal: ["projectB"] }, mk());
+        const fold = await log.fold({ ...foldStmt(null), signal: ["projectB"] }, mk());
         assert.equal(fold.status, 200);
         assert.equal(fold.matched, 1);
         assert.equal(await expandedAt(2), 0, "row 2 folded");
 
-        // READ/filter: FIND[projectB] over the whole run returns ONLY the tagged row (folded or not).
-        const found = await log.find(findStmt(urlPath("log", "/"), null, ["projectB"]), mk());
+        // FIND's signal classifies its own durable receipt at the Dispatcher seam; it does
+        // not filter the rows returned by the scheme.
+        const found = await log.find(findStmt(urlPath("log", "/"), null, ["+projectB"]), mk());
         assert.equal(found.status, 200);
-        assert.equal(found.results.length, 1, "only the tagged row matches");
-        assert.match(found.results[0]?.path ?? "", /1\/1\/2/, "and it is row 2");
-        const foundItem = found.results[0];
-        assert.ok(foundItem !== undefined && "tags" in foundItem);
-        assert.deepEqual(foundItem.tags, ["projectB"], "the catalog exposes the tag used to name the working set");
+        assert.equal(found.results.length, 3);
+        const foundItem = found.results.find((item) => Array.isArray(item) && item[0].path.includes("/1/1/2/"));
+        assert.ok(foundItem !== undefined && Array.isArray(foundItem) && "tags" in foundItem[0]);
+        assert.deepEqual(foundItem[0].tags, ["hot", "projectB"], "the catalog exposes the row's complete classification");
 
         // RECALL: a TARGETLESS OPEN[projectB] reopens the whole named working-set.
         const open = await log.open({ ...openStmt(null), signal: ["projectB"] }, mk());
@@ -351,18 +402,47 @@ test("FOLD[tag] applies + folds; OPEN[tag]/FIND[tag] filter by ALL-tags — name
 
         // An unknown tag is a no-op success (204), never an error.
         assert.equal((await log.open({ ...openStmt(null), signal: ["ghost"] }, mk())).status, 204, "recalling an unused name steers nothing");
-        const emptySurvey = await log.find(findStmt(urlPath("log", "/"), null, ["ghost"]), mk());
+        const emptySurvey = await log.find(findStmt(urlPath("log", "/"), null, ["+ghost"]), mk());
         assert.equal(emptySurvey.status, 200);
-        assert.deepEqual(emptySurvey.results, []);
+        assert.equal(emptySurvey.results.length, 3, "FIND signals classify their own receipt; they do not filter log candidates");
 
-        // Additive apply + ALL-tags AND: stamp a second tag on row 2, then FIND[both] matches, FIND[one-missing] doesn't.
-        await log.fold({ ...foldStmt(urlPath("log", "/1/1/2")), signal: ["hot"] }, mk());
-        const both = await log.find(findStmt(urlPath("log", "/"), null, ["projectB", "hot"]), mk());
-        assert.equal(both.results.length, 1, "row 2 carries BOTH tags (additive) — ALL-tags AND matches");
-        const bothItem = both.results[0];
-        assert.ok(bothItem !== undefined && "tags" in bothItem);
-        assert.deepEqual(bothItem.tags, ["hot", "projectB"], "the complete additive folksonomy is visible, not merely the filter input");
-        assert.deepEqual((await log.find(findStmt(urlPath("log", "/"), null, ["projectB", "cold"]), mk())).results, [], "missing one ANDed tag → empty catalog survey");
+        const both = await log.fold({ ...foldStmt(null), signal: ["projectB", "hot"] }, mk());
+        assert.equal(both.status, 200);
+        assert.equal(both.matched, 1, "ALL-tags AND selects the one row carrying both classifications");
+        assert.equal((await log.open({ ...openStmt(null), signal: ["projectB", "cold"] }, mk())).status, 204, "a missing required tag selects no rows");
+    } finally { await db.close(); }
+});
+
+test("FOLD/OPEN tag changes apply only after unsigned tags select the log set", async () => {
+    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        const row = await db.test_log_entries_by_worker.all<{ id: number }>({ worker_id: workerId });
+        const id = row[0]?.id;
+        assert.ok(id !== undefined);
+        await db.log_write_tag.run({ log_entry_id: id, tag: "research" });
+        await db.log_write_tag.run({ log_entry_id: id, tag: "stale" });
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" });
+        const log = new Log();
+
+        const folded = await log.fold({ ...foldStmt(null), signal: ["research", "+archive", "-stale"] }, ctx);
+        assert.equal(folded.status, 200);
+        assert.equal(folded.matched, 1);
+        assert.equal(await getExpanded(db, workerId), 0);
+        assert.deepEqual(
+            (await db.test_log_tags_by_worker.all<{ tag: string }>({ worker_id: workerId })).map(({ tag }) => tag),
+            ["archive", "research"],
+        );
+
+        const opened = await log.open({ ...openStmt(null), signal: ["archive", "-archive"] }, ctx);
+        assert.equal(opened.status, 200);
+        assert.equal(await getExpanded(db, workerId), 1);
+        assert.deepEqual(
+            (await db.test_log_tags_by_worker.all<{ tag: string }>({ worker_id: workerId })).map(({ tag }) => tag),
+            ["research"],
+        );
+
+        assert.equal((await log.fold({ ...foldStmt(null), signal: ["+orphan"] }, ctx)).status, 400);
+        assert.equal((await log.fold({ ...foldStmt(null), signal: ["research", "+x", "-x"] }, ctx)).status, 400);
     } finally { await db.close(); }
 });
 
@@ -374,7 +454,7 @@ test("FOLD/OPEN curate engine-minted error rows through the same operation coord
         // Curation must work identically on every log row.
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 2,
-            origin: "plurnk", source: "rail", op: "error", suffix: "", signal: null,
+            origin: "plurnk", source: "rail", model_call_id: null, op: "error", suffix: "", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -382,7 +462,7 @@ test("FOLD/OPEN curate engine-minted error rows through the same operation coord
             mimetype_rx: "application/json", status_rx: 429, tokens: 50, state: "failed", outcome: "max_commands_exceeded", attrs: "{}",
         });
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" });
-        // The model's EXACT gesture — fold the error row by its self-documenting coordinate.
+        // The model's exact gesture — fold the error row by its canonical operation address.
         const fold = await new Log().fold(foldStmt(urlPath("log", "/1/1/2/error")), ctx);
         assert.equal(fold.status, 200, "an error row folds by coordinate — the model can reclaim budget by curating its OWN error rows");
         const folded = await db.test_get_log_expanded.get<{ expanded: number }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2 });

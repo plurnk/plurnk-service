@@ -34,7 +34,11 @@
             {
                 "name": "sqlite",
                 "glyph": "🗃",
-                "example": "<|EXEC[sqlite](./app.db)>SELECT count(*) FROM users<EXEC|>\n<|EXEC[sqlite]>WITH t(item,qty,price) AS (VALUES ('a',3,2),('b',1,5)) SELECT sum(qty*price) AS total, sum(qty*price)*1.0/sum(qty) AS avg_price FROM t<EXEC|>"
+                "invocation": {
+                    "body": { "role": "SQL statement", "required": true },
+                    "target": { "role": "SQLite database", "required": false, "kind": "path" },
+                    "example": { "target": "app.db", "body": "SELECT 1;" }
+                }
             }
         ]
     },

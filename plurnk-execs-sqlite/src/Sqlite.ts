@@ -28,8 +28,8 @@ const stripComments = (sql: string): string =>
 // ephemeral `:memory:` when no target is given — and writes the result to the
 // `results` channel as application/json, ready for the jsonpath body-matcher.
 //
-//   <|EXEC[sqlite]>SELECT * FROM users<EXEC|>          → :memory: (ephemeral)
-//   <|EXEC[sqlite](./app.db)>SELECT * FROM users<EXEC|> → ./app.db (persistent)
+//   ## EXEC0 [sqlite]\nSELECT * FROM users          → :memory: (ephemeral)
+//   ## EXEC0 [sqlite] (./app.db)\nSELECT * FROM users → ./app.db (persistent)
 //
 // Row-returning statements (SELECT, RETURNING, PRAGMA) write an array of row
 // objects; mutations write `{ changes, lastInsertRowid }`. The query/mutation
@@ -51,7 +51,7 @@ export default class Sqlite extends BaseExecutor {
         return target === null || target === MEMORY ? "pure" : "host";
     }
 
-    async run({ command, cwd, target, signal, write, setState }: ExecArgs): Promise<ExecResult> {
+    async run({ body, cwd, target, signal, write, setState }: ExecArgs): Promise<ExecResult> {
         // node:sqlite is fully synchronous — no await point to interrupt mid-query —
         // so the only place to honor an abort is before the work starts
         // ({§executor-cancellation}).
@@ -72,7 +72,7 @@ export default class Sqlite extends BaseExecutor {
             );
         }
         const path = dbPath(cwd, target);
-        const sql = command.trim();
+        const sql = body.trim();
         const errorPreview = ErrorDetail.configuredLimit();
         const fail = (
             kind: string,

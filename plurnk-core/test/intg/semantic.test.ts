@@ -7,12 +7,14 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-contracts";
+import type { FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
+import { resourceGroups, resourcePaths } from "./_find.ts";
 
 // This suite asserts REAL vector ranking, so it re-enables the embedder the Mock bootstrap turns off.
 // --test-isolation=process scopes this to this file's process.
@@ -23,7 +25,7 @@ const url = (pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, query: null, fragment: null,
 });
-const editStmt = (target: UrlPath, body: string): EditStatement => ({
+const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
@@ -73,10 +75,10 @@ test("~query ranks by real semantic similarity through the full pipeline", async
         assert.equal(r.status, 200);
         // FIND <1,2> returns the two closest vectors. Cake is eligible for cosine
         // ranking too; it simply falls below both connection entries.
-        assert.deepEqual(r.results.map((f) => f.path).sort(), ["worker:///db.md", "worker:///sql.md"]);
-        assert.ok(!r.results.some((f) => f.path === "worker:///cake.md"), "the unrelated recipe never enters the ranking");
-        assert.ok(r.results.every((row) => typeof row.channels === "object" && !("extent" in (row as object))), "~semantic FIND returns one catalog row per selected resource");
-        assert.ok(r.results.every((row) => row.matchLocationCount === 1), "each broad semantic row reports its indexed chunk location");
+        assert.deepEqual(resourcePaths(r).sort(), ["worker:///db.md", "worker:///sql.md"]);
+        assert.ok(!resourcePaths(r).includes("worker:///cake.md"), "the unrelated recipe never enters the ranking");
+        assert.ok(resourceGroups(r).every(([row]) => !("extent" in row)), "~semantic FIND returns one channel group per selected resource");
+        assert.ok(resourceGroups(r).every(([row]) => row.matchLocationCount === 1), "each broad semantic row reports its indexed chunk location");
         assert.equal(r.matchLocationCount, 3, "complete location metadata includes the unreturned third ranked resource");
     } finally { db.close(); }
 });
@@ -129,33 +131,33 @@ test("{§find-semantic-selection}: a decimal threshold composes with FIND result
         // an eligibility gate.
         const low = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.05), findCtx());
         assert.equal(low.status, 200);
-        const lowPaths = new Set(low.results.map((f) => f.path));
+        const lowPaths = new Set(resourcePaths(low));
         assert.ok(lowPaths.has("worker:///db.md"));
         assert.ok(lowPaths.has("worker:///sql.md"));
 
         // A near-1 floor admits nothing - the threshold actually filters.
         const high = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.999), findCtx());
         assert.equal(high.status, 204);
-        assert.deepEqual([...new Set(high.results.map((f) => f.path))], [], "a 0.999 floor filters everything out");
+        assert.deepEqual([...new Set(resourcePaths(high))], [], "a 0.999 floor filters everything out");
 
         const first = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.05, 1), findCtx());
         assert.deepEqual(
-            first.results.map(({ path }) => path),
-            low.results.slice(0, 1).map(({ path }) => path),
+            resourcePaths(first),
+            resourcePaths(low).slice(0, 1),
             "<threshold,1> selects result position 1 rather than defining a cap dialect",
         );
 
         const second = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.05, 2), findCtx());
         assert.deepEqual(
-            second.results.map(({ path }) => path),
-            low.results.slice(1, 2).map(({ path }) => path),
+            resourcePaths(second),
+            resourcePaths(low).slice(1, 2),
             "<threshold,2> selects result position 2",
         );
 
         const firstTwo = await new Worker().find(thresholdStmt(url(""), "database connection error", 0.05, 1, 2), findCtx());
         assert.deepEqual(
-            firstTwo.results.map(({ path }) => path),
-            low.results.slice(0, 2).map(({ path }) => path),
+            resourcePaths(firstTwo),
+            resourcePaths(low).slice(0, 2),
             "<threshold,1,2> selects the inclusive result range",
         );
 
@@ -190,11 +192,9 @@ test("[#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", 
         const pathname = "/repo/dist/index.json";
         await EntryCrud.writeEntry(pathname, {
             channels: { body: { content: identical, mimetype: "application/json" } },
-            tags: [],
         }, ctx, "file");
         await EntryCrud.writeEntry(pathname, {
             channels: { body: { content: identical, mimetype: "application/json" } },
-            tags: [],
         }, ctx, "https");
         await new Worker().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
         await SearchIndex.maintain(ctx);

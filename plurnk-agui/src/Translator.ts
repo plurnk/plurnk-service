@@ -61,7 +61,7 @@ export default class Translator {
         if (this.#modelWorkerId === null && e.origin === "model" && typeof workerId === "number") this.#modelWorkerId = workerId;
         const foreign = this.#modelWorkerId !== null && typeof workerId === "number" && workerId !== this.#modelWorkerId;
         // {§agui-row-channel} — the FULL wire row rides plurnk.row alongside the core projection:
-        // fold state, tags-in-signal, tokens, coordinates — everything the TUI/nvim render that
+        // fold state, durable tags, tokens, coordinates — everything the TUI/nvim render that
         // the core vocabulary can't hold. Rich clients render from plurnk.row; generic clients
         // never see the difference. This is the metadata channel the exclusive-portal migration
         // stands on: core events for the world, plurnk.* for the family.

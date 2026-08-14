@@ -20,6 +20,7 @@ test("the package root exposes exactly the supported runtime values", () => {
         "InvalidProblemDetailsError",
         "InvalidProposalProjectionError",
         "InvalidRangeExtentError",
+        "InvalidTagSignalError",
         "InvalidTextRegionError",
         "PLURNK_OPS",
         "PathSyntax",
@@ -27,6 +28,7 @@ test("the package root exposes exactly the supported runtime values", () => {
         "PlurnkParser",
         "Problems",
         "RESERVED_AUTHORITIES",
+        "TagSignal",
         "UNKNOWN_POSITION",
         "Validator",
         "WORKER_NAME",
@@ -37,7 +39,7 @@ test("the package root exposes exactly the supported runtime values", () => {
 });
 
 test("the package root is the singular language and wire-contract API", () => {
-    const parsed = PlurnkParser.parseStatements("<|EDIT(worker:///draft)>body<EDIT|>");
+    const parsed = PlurnkParser.parseStatements("## EDIT0 (worker:///draft)\nbody");
     const item = parsed.items[0];
     assert.equal(item.kind, "statement");
     if (item.kind !== "statement") return;

@@ -184,18 +184,19 @@ test("{§search-gate} story: answer a question through live web discovery", { ti
     } finally { await story.cleanup(); }
 });
 
-test("story: retrieve and summarize a live web page", { timeout: TIMEOUT }, async () => {
+test("story: retrieve a fact from a live web page", { timeout: TIMEOUT }, async () => {
     const story = await runStory({
         label: "web-retrieve-live",
-        prompt: "Summarize the fifth paragraph of Marilyn Monroe's Wikipedia entry.",
+        prompt: "From which husband does the Marilyn Monroe wiki claim she received a 'Mexican divorce'?",
         maxTurns: 30,
     });
     try {
-        const ok = story.finalStatus === 200 && story.lastContent.trim().length > 20;
+        const ok = story.finalStatus === 200 && /Arthur Miller/i.test(story.lastContent);
         if (!ok) await story.dump();
         await assertMaterializedWebPage(story);
         assert.equal(story.finalStatus, 200);
-        assert.ok(story.lastContent.trim().length > 20, `the answer contains a substantive summary; got: ${story.lastContent.slice(0, 200)}`);
+        assert.match(story.lastContent, /Arthur Miller/i,
+            `the answer identifies Arthur Miller; got: ${story.lastContent.slice(0, 200)}`);
     } finally { await story.cleanup(); }
 });
 

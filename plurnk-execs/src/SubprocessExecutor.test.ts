@@ -15,7 +15,7 @@ const exec = async (runtime: string, command: string, opts: { signal?: AbortSign
     const states: { channel: string; state: string }[] = [];
     const events: Notice[] = [];
     const args: ExecArgs = {
-        runtime, command, cwd: opts.cwd ?? null, target: opts.target ?? null, env: opts.env,
+        runtime, body: command, cwd: opts.cwd ?? null, target: opts.target ?? null, env: opts.env,
         signal: opts.signal ?? new AbortController().signal,
         write: (channel, chunk) => { out[channel] = (out[channel] ?? "") + chunk; },
         setState: (channel, state) => states.push({ channel, state }),
@@ -107,7 +107,7 @@ class DirectArgvExec extends SubprocessExecutor {
 test("command-tokenization failures return a durable input Problem", async () => {
     const states: { channel: string; state: string }[] = [];
     const result = await new DirectArgvExec({ runtime: "direct", glyph: "d" }).run({
-        runtime: "direct", command: '"unterminated', cwd: null, target: null,
+        runtime: "direct", body: '"unterminated', cwd: null, target: null,
         signal: new AbortController().signal,
         write: () => {},
         setState: (channel, state) => states.push({ channel, state }),
@@ -127,7 +127,7 @@ test("command-tokenization failures return a durable input Problem", async () =>
 test("spawnArgs override + stdin: command fed via stdin reaches stdout", async () => {
     const out: Record<string, string> = { stdout: "", stderr: "" };
     const args: ExecArgs = {
-        runtime: "x", command: "piped-through-stdin", cwd: null, target: null,
+        runtime: "x", body: "piped-through-stdin", cwd: null, target: null,
         signal: new AbortController().signal,
         write: (c, chunk) => { out[c] = (out[c] ?? "") + chunk; },
         setState: () => {}, emit: () => {},
@@ -272,7 +272,7 @@ test("stdin end() racing a fast-exiting child never escapes as EPIPE; outcome is
     }
     for (let i = 0; i < 10; i++) {
         const args: ExecArgs = {
-            runtime: "x", command: "ignored", cwd: null, target: null,
+            runtime: "x", body: "ignored", cwd: null, target: null,
             signal: new AbortController().signal,
             write: () => {}, setState: () => {}, emit: () => {},
         };

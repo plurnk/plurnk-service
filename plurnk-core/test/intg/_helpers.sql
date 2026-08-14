@@ -35,6 +35,7 @@ WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn
 
 -- PREP: test_log_curation_effects_by_worker
 SELECT effect.operation_log_entry_id, effect.target_log_entry_id, effect.expanded_before,
+       effect.tags_added, effect.tags_removed,
        operation.op, operation.turn_id,
        operation.sequence AS operation_sequence,
        target.sequence AS target_sequence
@@ -63,15 +64,25 @@ SELECT id, loop_id, sequence, status,
 FROM turns WHERE id = $id;
 
 -- PREP: test_turn_attempts
-SELECT id, sequence, state, accepted, response, failure, parse_errors,
-       attributions,
-       finish_reason, model, timestamp, completed_at
-FROM turn_attempts
-WHERE turn_id = $turn_id
-ORDER BY sequence;
+SELECT a.id, mc.sequence, mc.state, a.accepted, mc.response,
+       mc.failure, a.parse_errors,
+       mc.attributions, mc.finish_reason, mc.model, mc.timestamp, mc.completed_at
+FROM turn_attempts a
+JOIN model_calls mc ON mc.id = a.model_call_id
+WHERE mc.turn_id = $turn_id
+ORDER BY mc.sequence;
+
+-- PREP: test_model_calls
+SELECT mc.id, mc.sequence, mc.kind, mc.state, mc.response, mc.failure,
+       mc.attributions, mc.finish_reason, mc.model, mc.timestamp, mc.completed_at,
+       le.id AS log_entry_id
+FROM model_calls mc
+LEFT JOIN log_entries le ON le.model_call_id = mc.id
+WHERE mc.turn_id = $turn_id
+ORDER BY mc.sequence;
 
 -- PREP: test_provider_requests
-SELECT pr.id, pr.turn_attempt_id, a.sequence AS attempt_sequence, pr.sequence,
+SELECT pr.id, a.id AS turn_attempt_id, mc.sequence AS attempt_sequence, pr.sequence,
        pr.provider, pr.model, pr.state, pr.outcome, pr.status,
        pr.usage_input, pr.usage_output, pr.usage_total,
        pr.usage_input_no_cache, pr.usage_input_cache_read, pr.usage_input_cache_write,
@@ -79,9 +90,10 @@ SELECT pr.id, pr.turn_attempt_id, a.sequence AS attempt_sequence, pr.sequence,
        pr.cost_kind, pr.cost_amount, pr.cost_currency, pr.cost_usd_equivalent,
        pr.cost_source, pr.cost_reason, pr.started_at, pr.completed_at
 FROM provider_requests pr
-JOIN turn_attempts a ON a.id = pr.turn_attempt_id
-WHERE a.turn_id = $turn_id
-ORDER BY a.sequence, pr.sequence;
+JOIN model_calls mc ON mc.id = pr.model_call_id
+LEFT JOIN turn_attempts a ON a.model_call_id = mc.id
+WHERE mc.turn_id = $turn_id
+ORDER BY mc.sequence, pr.sequence;
 
 -- PREP: test_get_log_entry_by_id
 SELECT id, status_rx, state, outcome, attrs, rx
@@ -106,9 +118,6 @@ WHERE workspace_id = $workspace_id AND scheme = $scheme AND pathname = $pathname
 -- PREP: test_get_channel
 SELECT content, mimetype, tokens, state FROM entry_channels
 WHERE entry_id = $entry_id AND name = $name;
-
--- PREP: test_list_entry_tags
-SELECT tag FROM entry_tags WHERE entry_id = $entry_id ORDER BY tag;
 
 -- PREP: test_get_subscription
 SELECT id, worker_id, entry_id, scheme, handle, poll_seconds, closed_at, close_status, close_result
@@ -148,9 +157,6 @@ RETURNING id;
 INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, state)
 VALUES ($entry_id, $name, $content, $mimetype, 0, $state);
 
--- PREP: test_seed_entry_tag
-INSERT INTO entry_tags (entry_id, tag) VALUES ($entry_id, $tag);
-
 -- PREP: test_get_packet
 SELECT packet FROM turns WHERE id = $id;
 
@@ -161,7 +167,7 @@ SELECT status FROM turns WHERE id = $id;
 SELECT id, sequence, status, packet FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_turn
-SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, rx, attrs
+SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, rx, attrs, model_call_id
 FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_worker
@@ -169,7 +175,7 @@ SELECT id, ambient_event_id, op, pathname, scheme, sequence, turn_id, loop_id, s
 FROM log_entries WHERE worker_id = $worker_id ORDER BY id;
 
 -- PREP: test_log_tags_by_worker
--- {§log-region-tagging} — a worker's log tags with the coordinate they sit on (fork-copy assertions).
+-- {§log-item-tags} — a worker's log tags with the coordinate they classify.
 SELECT (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate, lt.tag
 FROM log_tags lt
 JOIN log_entries le ON le.id = lt.log_entry_id
@@ -182,7 +188,7 @@ WHERE l.worker_id = $worker_id ORDER BY coordinate, lt.tag;
 -- ({§connection-lifecycle}), so a test queries by the loopId it holds.
 -- origin is the writer tier (model | client | plurnk) — lets a test assert an engine foist
 -- (origin='plurnk') vs a model op without a second query.
-SELECT id, op, pathname, scheme, hostname, sequence, turn_id, loop_id, status_rx, tx, rx, expanded, origin, lineMarker, attrs
+SELECT id, op, pathname, scheme, hostname, sequence, turn_id, loop_id, status_rx, signal, tx, rx, expanded, origin, lineMarker, attrs
 FROM log_entries WHERE loop_id = $loop_id ORDER BY id;
 
 -- PREP: test_get_worker_id_by_loop
@@ -254,9 +260,6 @@ LIMIT 1;
 -- PREP: test_get_entry_id_by_pathname
 SELECT id FROM entries WHERE pathname = $pathname;
 
--- PREP: test_count_entry_tags
-SELECT COUNT(*) AS n FROM entry_tags WHERE entry_id = $entry_id;
-
 -- PREP: test_get_entry_by_pathname_scheme
 SELECT id, scheme, pathname FROM entries WHERE pathname = $pathname AND scheme = $scheme;
 
@@ -274,13 +277,6 @@ JOIN entry_channels ec ON ec.entry_id = e.id
 WHERE e.pathname = $pathname AND e.scheme = $scheme AND ec.name = $name
 LIMIT 1;
 
--- PREP: test_tags_by_pathname
-SELECT tag
-FROM entries e
-JOIN entry_tags t ON t.entry_id = e.id
-WHERE e.pathname = $pathname
-ORDER BY tag;
-
 -- PREP: test_list_entry_schemes
 SELECT scheme FROM entries ORDER BY scheme;
 
@@ -294,7 +290,7 @@ INSERT INTO subscriptions (worker_id, entry_id, scheme, handle, close_status)
 VALUES ($worker_id, $entry_id, 'sse', 'h', 200);
 
 -- PREP: test_first_log_entry
-SELECT origin, op, status_rx FROM log_entries
+SELECT id, worker_id, origin, op, status_rx FROM log_entries
 WHERE origin = 'client'
 ORDER BY id LIMIT 1;
 

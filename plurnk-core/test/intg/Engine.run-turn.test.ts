@@ -2,13 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, LineMarker, PlanStatement, PlurnkStatement, ReadStatement, SendStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
+import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import type { StoredPacketSection } from "../../src/core/StoredPacket.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { rulerCount } from "../../src/core/token-ruler.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, logEntries } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, packetSection, logEntries } from "./_helpers.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -43,7 +44,7 @@ const planStmt = (body: string): PlanStatement => ({
 const contentResp = (content: string, completion: number = 0): MockResponse => ({
     assistant: {
         // grammar 0.70: turns lead with PLAN (the Engine re-parses this content).
-        content: content.startsWith("<|PLAN") ? content : `<|PLAN|>\n${content}`,
+        content: content.startsWith("# PLAN") ? content : `# PLAN0\n\n${content}`,
         reasoning: null,
     },
     usage: { inputTokens: 0, outputTokens: completion, totalTokens: completion },
@@ -104,7 +105,7 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         assert.equal(turn.status, 200);
         assert.equal((await engine.loopUsage(loopId)).accounting.usage?.outputTokens, 42);
 
-        // 5 log entries: the turn-0 `model` exemplar (mirrored OPEN at sequence 1),
+        // 5 log entries: the turn-0 initialization (OPEN at sequence 1),
         // one first-class prompt row, two model ops (EDIT, SEND), and one folded
         // `model` echo of this turn's verbatim emission.
         // Turn-as-container model — pre-model writes share the turn's sequence counter.
@@ -184,7 +185,7 @@ test("Engine.runTurn: packet stores system + user content from messages when the
         // the definition; the empty-prompt fallback is the assertion's real subject.
         const definition = packetSection(packet, "definition");
         assert.ok(definition.startsWith("system prompt body"), "system message body leads the definition section");
-        assert.match(packetSection(packet, "schemes"), /<\|EDIT\(worker:\/\/\/notes\.md\)>/, "the scheme directory is its own section now, not appended to the definition");
+        assert.match(packetSection(packet, "schemes"), /^## EDIT0 \(worker:\/\/\/notes\.md\)$/m, "the resource directory is its own section now, not appended to the definition");
         assert.equal(packetSection(packet, "prompt"), "first user msg\n\nsecond user msg");
         assert.ok(packet.assistant !== null);
     } finally { await db.close(); }
@@ -209,7 +210,7 @@ test("Engine.runTurn: admitted response does not change packet request-weight se
 
 test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", async () => {
     // Turn-as-container model, 1-based. The worker's first turn opens with sequence=1
-    // reserved for the turn-0 model-emission exemplar, the prompt row at 2, then the
+    // reserved for the turn-0 initialization, the prompt row at 2, then the
     // three model ops and terminal SEND on the running counter.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
@@ -231,7 +232,7 @@ test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", as
         assert.deepEqual(
             indices.map((r) => ({ idx: r.sequence, op: r.op })),
             [
-                { idx: 1, op: null }, // the turn-0 exemplar, mirrored OPEN at sequence 1 ({§model-entry})
+                { idx: 1, op: null }, // the turn-0 initialization, OPEN at sequence 1 ({§worker-initialization-entry})
                 { idx: 2, op: "prompt" }, // the prompt (prompt:///<loop>/1, owner-keyed)
                 { idx: 3, op: "EDIT" },
                 { idx: 4, op: "EDIT" },
@@ -379,8 +380,8 @@ test("Engine.runLoop: three consecutive hard failures abandon at 500 with strike
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 5 }, (_, i) => contentResp([
-                `<|EDIT(sealed:///x-${i})>v<EDIT|>`,
-                "<|SEND[102]>going<SEND|>",
+                `## EDIT0 (sealed:///x-${i})\nv`,
+                "## SEND0 [102]\ngoing",
             ].join("\n"))),
         });
         const result = await engine.runLoop({
@@ -505,8 +506,8 @@ test("Engine.runLoop: 3 identical period-1 turns trip cycle → strikes accumula
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 8 }, () => contentResp([
-                "<|EDIT(worker:///fixed)<1,-1>>v<EDIT|>",
-                "<|SEND[102]>go<SEND|>",
+                "## EDIT0 (worker:///fixed) <1,-1>\nv",
+                "## SEND0 [102]\ngo",
             ].join("\n"))),
         });
         const result = await engine.runLoop({
@@ -702,13 +703,13 @@ test("Engine.runTurn: the first turn's log section contains the prompt entry", a
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // The prompt is one actionless plurnk-origin row against prompt:///<loop>/1.
         // Found by its stable identity (origin + target),
-        // robust to the turn-0 `model` exemplar at 1/1/1 ({§model-entry}) and any
+        // robust to the turn-0 initialization at 1/1/1 ({§worker-initialization-entry}) and any
         // catalog-preview FIND that shifts its coordinate.
-        const prompt = log.find((e) => e.origin === "plurnk" && e.op === "prompt" && e.target === "prompt:///1/1");
+        const prompt = log.find((e) => e.origin === "plurnk" && e.target === "prompt:///1/1");
         assert.ok(prompt, "first-class prompt row logged against prompt:///1/1");
-        assert.equal(prompt.op, "prompt");
         assert.equal(prompt.origin, "plurnk");
         assert.equal(prompt.target, "prompt:///1/1");
+        assert.match(String(prompt.path), /\/prompt$/, "path owns the prompt operation suffix");
     } finally { await db.close(); }
 });
 
@@ -728,14 +729,14 @@ test("Engine.runTurn: the second turn's log section captures prior actions", asy
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // Turn 2 packet sees the prompt row + the prior turn's two model ops (an
         // EDIT and a SEND). Found by identity (origin + op + target), robust to the
-        // turn-0 `model` exemplar ({§model-entry}) and a catalog-preview foist that
+        // turn-0 initialization ({§worker-initialization-entry}) and a catalog-preview foist that
         // shift coordinates between the prompt and the model's ops.
-        assert.ok(log.find((e) => e.origin === "plurnk" && e.op === "prompt" && typeof e.target === "string" && e.target.startsWith("prompt:///")), "prompt row logged");
-        const edit = log.find((e) => e.origin === "model" && e.op === "EDIT");
+        assert.ok(log.find((e) => e.origin === "plurnk" && typeof e.target === "string" && e.target.startsWith("prompt:///") && String(e.path).endsWith("/prompt")), "prompt row logged");
+        const edit = log.find((e) => e.origin === "model" && String(e.path).endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
         assert.equal(edit.target, "worker:///a");
-        const send = log.find((e) => e.origin === "model" && e.op === "SEND");
+        const send = log.find((e) => e.origin === "model" && String(e.path).endsWith("/SEND"));
         assert.ok(send, "model SEND logged");
         assert.equal(send.status, 102);
     } finally { await db.close(); }
@@ -757,13 +758,13 @@ test("Engine.runTurn: the log section parses an application/json rx body", async
         const packet = JSON.parse(row?.packet ?? "{}");
         const log = logEntries(packet);
         // Found by identity, robust to a turn-0 catalog-preview foist.
-        const edit = log.find((e) => e.origin === "model" && e.op === "EDIT");
+        const edit = log.find((e) => e.origin === "model" && String(e.path).endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
-        // The EDIT's result span renders line-numbered inside the fixed BODY enclosure —
+        // The EDIT's result span renders line-numbered inside the raw multiline body —
         // observable proof #buildLog parsed the JSON rx: a string rx couldn't yield
         // rx.span, so the render would fall back to the authored statement instead.
-        assert.match(packetSection(packet, "log"), /<\|BODY>\n1:v\n<BODY\|>/);
+        assert.match(packetSection(packet, "log"), /"body":"\n1:v\n"\}/);
     } finally { await db.close(); }
 });
 
@@ -781,6 +782,27 @@ test("Engine.runTurn: Errors is empty on a clean first turn", async () => {
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
         assert.equal(packetSection(packet, "errors"), "");
+    } finally { await db.close(); }
+});
+
+test("Errors pointers use the canonical projected operation of a materialization row", async () => {
+    const { db, workerId, loopId } = await setup();
+    try {
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        await db.engine_insert_log_entry.get({
+            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
+            origin: "plurnk", source: "test", model_call_id: null, op: "EDIT", suffix: "", signal: null,
+            scheme: "https", username: null, password: null, hostname: "example.org", port: null,
+            pathname: "/rejected", query: null, fragment: null, lineMarker: null,
+            tx: "{}", mimetype_tx: "application/json",
+            rx: "{}", mimetype_rx: "application/json", status_rx: 422, tokens: 0,
+            state: "resolved", outcome: null, attrs: JSON.stringify({ kind: "entry_materialized" }),
+        });
+        const packets = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
+        assert.deepEqual(await packets.buildFailurePointers(loopId, 2), [{
+            status: 422,
+            coordinate: "1/1/1/READ",
+        }]);
     } finally { await db.close(); }
 });
 
@@ -806,7 +828,7 @@ test("Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors sec
         const packet = JSON.parse(row?.packet ?? "{}");
         // {§log-row-self-explains}: the pointer targets the OP ROW — the row carries its own
         // failure message on its meta line, so the pointer leads to a record that states its why.
-        // Turn-as-container, 1-based: model exemplar 1/1/1, prompt 1/1/2,
+        // Turn-as-container, 1-based: initialization 1/1/1, prompt 1/1/2,
         // then the model's denied EDIT at 1/1/3.
         assert.equal(packetSection(packet, "errors"), "* 403 log:///1/1/3/EDIT", "the pointer targets the failing op row itself");
     } finally { await db.close(); }
@@ -844,7 +866,7 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
         // non-executable, while the SEND[200] after it still parses and dispatches.
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [contentResp("Just thinking out loud here.\n<|SEND[200]>done<SEND|>", 10)],
+            responses: [contentResp("Just thinking out loud here.\n## SEND0 [200]\ndone", 10)],
         });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,

@@ -73,8 +73,11 @@ export type {
     ChannelState,
     TerminalChannelState,
     EntryCaps,
+    EntryCatalogChannel,
+    EntryCatalogDefaultChannel,
     EntryCatalogItem,
     EntryCatalogScope,
+    EntryCatalogScopeGroup,
     EntryData,
     EntryEditResult,
     EntryFindResult,
@@ -83,6 +86,7 @@ export type {
     EntryAddress,
     EntryReadResult,
     EntryStorageReadResult,
+    EntryStreamLifecycle,
     EntryStorageWriteResult,
     StoredEntryData,
     StreamSubscription,
@@ -95,8 +99,6 @@ export type {
     SchemeCtx,
     SubscriptionCaps,
     SubscriptionHandle,
-    TagCaps,
-    TagListResult,
 } from "./ctx.ts";
 
 // ── Behavior contract + the scheme-facing grammar types ──────────────────────
@@ -104,6 +106,10 @@ export type {
 // statement + path types are re-exported from grammar here so a sibling depends
 // on and exact-pins ONLY this package; grammar is the framework's transitive pin
 // (this repo already peers it). The engine speaks one grammar — keep it single.
+export type {
+    ResolvedEditStatement,
+    ResolvedEditStatement as EditStatement,
+} from "./edit-statement.ts";
 export type { RepresentationPreparationRequest, SchemeHandler } from "./handler.ts";
 export type { PacketSectionDraft, PacketSectionTransformer } from "./packet.ts";
 export type {
@@ -117,7 +123,6 @@ export type {
     ReadStatement,
     OpenStatement,
     FoldStatement,
-    EditStatement,
     CopyStatement,
     MoveStatement,
     SendStatement,

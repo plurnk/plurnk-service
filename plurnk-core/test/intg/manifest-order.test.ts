@@ -6,14 +6,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { EditStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
+import type { LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
 
 const url = (p: string): UrlPath => ({ kind: "url", raw: `worker:///${p}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${p}`, query: null, fragment: null });
 const fullReplace: LineMarker = { marks: [1, -1] };
-const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({ op: "EDIT", suffix: "", signal: null, target, lineMarker: marker, body, position: { line: 1, column: 1 } });
+const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ op: "EDIT", suffix: "", signal: null, target, lineMarker: marker, body, position: { line: 1, column: 1 } });
 
 test("catalog is mtime-ordered — a re-edited entry sorts to the tail, the rest hold their prefix", async () => {
     const db = await openMigrated();
@@ -29,7 +30,7 @@ test("catalog is mtime-ordered — a re-edited entry sorts to the tail, the rest
         await k.edit(editStmt(url("a.md"), "alpha-2", fullReplace), ctx); // re-edit a — now most-recently-modified
 
         const catalog = await EntryManifest.catalogRowsFor(ctx);
-        const workerEntries = catalog.map((e) => e.path).filter((p) => p.startsWith("worker:///"));
+        const workerEntries = catalog.map(([channel]) => channel.path).filter((p) => p.startsWith("worker:///"));
         assert.deepEqual(workerEntries, ["worker:///b.md", "worker:///c.md", "worker:///a.md"],
             "b, c, then the re-edited a at the tail — oldest-modified first");
     } finally { await db.close(); }

@@ -8,8 +8,8 @@
 //   body    — matcher (glob/regex/jsonpath/xpath/~semantic/@graph). A content matcher
 //             runs against the entry's default-channel CONTENT (Matcher.matchAgainstContent
 //             → the mimetypes plugin) and INCLUDES/EXCLUDES the entry — e.g.
-//             `FIND(log:///**/error):/timeout/i` keeps logs whose content matches.
-//   signal  — tag filter: candidate entry must have ALL listed tags
+//             log FIND over `log:///**/error` with `/timeout/i` keeps matching rows.
+//   signal  — classifies the durable FIND log item; never filters resources
 //   <L>     — result pagination: resource or match-location positions N..M
 
 import { DEFAULT_RETRIEVAL_LIMIT, renderJsonResult, type FindStatement, type RangeExtent } from "@plurnk/plurnk-contracts";
@@ -20,7 +20,7 @@ import type { SourceCandidateMatch } from "../content/matcher.ts";
 import { entryPathnameOf } from "../core/plurnk-uri.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntryCrud from "./_entry-crud.ts";
-import EntryManifest, { type CatalogEntry } from "./_entry-manifest.ts";
+import EntryManifest, { type CatalogChannel, type CatalogDefaultChannel, type CatalogEntry } from "./_entry-manifest.ts";
 import Owner from "../core/Owner.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
@@ -33,30 +33,27 @@ export type CatalogScope = {
     path: string;
     items: number;
     tokens: number;
-    channels?: never;
     matchLocationCount?: never;
     locator?: never;
     region?: never;
 };
-export type CatalogMatch = CatalogEntry & {
-    matchLocationCount?: number;
-    items?: never;
-    tokens?: never;
-    locator?: never;
-    region?: never;
-};
+export type CatalogMatch = [
+    CatalogDefaultChannel & { items?: never; locator?: never; region?: never },
+    ...CatalogChannel[],
+];
+export type CatalogScopeGroup = [CatalogScope];
+export type CatalogResource = CatalogMatch | CatalogScopeGroup;
 export type MatchLocation = MatchEvidence & {
     path?: never;
-    channels?: never;
     items?: never;
     tokens?: never;
     matchLocationCount?: never;
 };
-export type MatchItem = CatalogMatch | CatalogScope | MatchLocation;
+export type MatchItem = CatalogResource | MatchLocation;
 
-export const findItemTokens = (item: CatalogMatch | CatalogScope): number => item.items === undefined
-    ? Object.values(item.channels).reduce((sum, channel) => sum + channel.tokens, 0)
-    : item.tokens;
+export const findItemTokens = (item: CatalogResource): number => "items" in item[0]
+    ? item[0].tokens
+    : item.reduce((sum, channel) => sum + channel.tokens, 0);
 
 export interface FindFields {
     readonly [field: string]: unknown;
@@ -115,10 +112,11 @@ export const projectFindResult = (
 ): FindResult => {
     const resourcePaths = new Set<string>();
     for (const { item } of resources) {
-        if (resourcePaths.has(item.path)) {
-            throw new Error(`FIND selection contains duplicate resource ${JSON.stringify(item.path)}`);
+        const path = item[0].path;
+        if (resourcePaths.has(path)) {
+            throw new Error(`FIND selection contains duplicate resource ${JSON.stringify(path)}`);
         }
-        resourcePaths.add(item.path);
+        resourcePaths.add(path);
     }
 
     const matchingPathCount = resources.length;
@@ -136,16 +134,23 @@ export const projectFindResult = (
     };
 
     const locationMode = statement.body !== null && scope.kind === "exact";
-    const completeItems: MatchItem[] = locationMode
-        ? uniqueMatchLocations(resources.flatMap(({ match }) => match.matches))
-        : [
+    let completeItems: MatchItem[];
+    if (locationMode) {
+        completeItems = uniqueMatchLocations(resources.flatMap(({ match }) => match.matches));
+    } else {
+        const resourceItems: CatalogResource[] = [
             ...resources.map(({ item, match }): CatalogMatch => statement.body === null
                 ? item
-                : { ...item, matchLocationCount: uniqueMatchLocations(match.matches).length }),
-            ...scopes,
+                : [
+                    { ...item[0], matchLocationCount: uniqueMatchLocations(match.matches).length },
+                    ...item.slice(1),
+                ]),
+            ...scopes.map((item): CatalogScopeGroup => [item]),
         ];
-    if (!locationMode && scopes.length > 0) {
-        completeItems.sort((a, b) => (a.path ?? "").localeCompare(b.path ?? ""));
+        if (scopes.length > 0) {
+            resourceItems.sort((a, b) => a[0].path.localeCompare(b[0].path));
+        }
+        completeItems = resourceItems;
     }
 
     const marker = statement.body?.dialect === "semantic"
@@ -172,7 +177,7 @@ export const projectFindResult = (
     const results = page.items ?? [];
     const returnedItemsTokenTotal = locationMode
         ? itemsTokenTotal
-        : results.reduce((sum, item) => sum + findItemTokens(item as CatalogMatch | CatalogScope), 0);
+        : results.reduce((sum, item) => sum + findItemTokens(item as CatalogResource), 0);
     return {
         status: 200,
         content: renderJsonResult(results), // {§find-result-projection} {§json-result-rendering}
@@ -205,7 +210,7 @@ export default class EntryFind {
 
     // Resolve a FIND to its matched workspace resources — entry-level, unique, in result
     // order (rank for ~semantic, candidate order otherwise). Candidate selection (scope +
-    // tags) runs in SQL (find_workspace_entry_candidates); a content matcher then runs against
+    // scope) runs in SQL (find_workspace_entry_candidates); a content matcher then runs against
     // each candidate's default-channel CONTENT (Matcher.matchAgainstContent → the mimetypes
     // plugin) and INCLUDES/EXCLUDES the entry - 200 keeps it, 204/203 drop it, and a
     // 4xx matcher failure ends the whole operation. Path-scoping stays in the (target). Match
@@ -263,9 +268,6 @@ export default class EntryFind {
         // path matcher owns the shell-glob truth below: unlike SQLite GLOB, `*`
         // cannot cross `/`, while `**` can. A declared folder scope remains a
         // recursive prefix independent of glob syntax. {§find-scope-prefix-filter}
-        const tags = Array.isArray(statement.signal) ? statement.signal : []; // tag filter, AND semantics — {§find-tag-filter-and-semantics}
-        const tagsParam = tags.length > 0 ? JSON.stringify(tags) : "[]";
-
         const { db, workspaceId } = ctx;
         // Candidates are workspace-bounded — a FIND never reaches across workspaces ({§find-scoped-isolation})
         // — and owner-keyed ({§entry-owner}): an owner-carved face passes its resolved owner; every
@@ -278,7 +280,6 @@ export default class EntryFind {
             scheme,
             ...(semantic ? {} : { channel: manifest.defaultChannel }),
             scope_prefix: scope?.candidatePrefix ?? null,
-            tags: tagsParam,
         });
         const candidatePathnames = statement.body === null && scope?.kind === "glob" && scope.shallowPrefix !== null
             ? candidates.map((candidate) => candidate.pathname)
@@ -374,7 +375,7 @@ export default class EntryFind {
         } else if (statement.body.dialect === "graph") {
             // {§relation-indexed-dialects} Body is `@<sym` / `@>sym` / `@sym`. EntryGraph resolves
             // the relation across (workspace, scheme), each as a (file, span); intersect with the
-            // in-scope candidates (target glob + tags) for the final set.
+            // in-scope candidates from the target glob for the final set.
             const scopedCandidates = resolveSearchCandidates(
                 candidates.map(({ pathname, deep_hash }) => ({ key: pathname, deepHash: deep_hash })),
             );
@@ -481,10 +482,9 @@ export default class EntryFind {
         return resolved.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
     }
 
-    // FIND result = the scheme's catalog rows, filtered to the matched entries and kept in
-    // match order. A catalog row is exactly what the manifest catalogs (path + per-channel
-    // {mimetype, tokens, lines}, tags, stream lifecycle) — FIND is the filtered, navigable slice of
-    // that catalog, rendered as a JSON array (application/json). {§find-result-projection}
+    // FIND result = the scheme's default-first channel groups, filtered to the matched
+    // entries and kept in match order. FIND is the filtered, navigable slice of that
+    // catalog, rendered as a JSON array (application/json). {§find-result-projection}
     static async findWorkspaceEntries(
         statement: FindStatement,
         ctx: PlurnkSchemeContext,
@@ -514,12 +514,12 @@ export default class EntryFind {
             ) as FindResult;
         }
         const scheme = EntryCrud.identityScheme(manifest);
-        // The catalog row is keyed by its addressable path; align each selected
-        // resource to its row through the same EntryManifest.toPath the catalog
+        // The catalog group's default channel carries its bare addressable path;
+        // align each selected resource through the same EntryManifest.toPath the catalog
         // uses. Resource order is preserved (rank for ~semantic).
         // {§entry-owner} — the alignment draws from the SAME owner the candidates matched, so a
         // match never pairs with a coordinate-twin sibling's catalog metadata.
-        const byPath = new Map((await EntryManifest.catalogRowsFor(ctx, scheme, address.ownerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId))).map((r) => [r.path, r] as const));
+        const byPath = new Map((await EntryManifest.catalogRowsFor(ctx, scheme, address.ownerId ?? await Owner.commonsId(ctx.db, ctx.workspaceId))).map((r) => [r[0].path, r] as const));
         const resources: FindProjectionResource[] = [];
         for (const m of match.matches) {
             const row = byPath.get(EntryManifest.toPath(scheme, m.pathname));
@@ -539,7 +539,7 @@ export default class EntryFind {
                     const row = byPath.get(EntryManifest.toPath(scheme, pathname));
                     if (row === undefined) continue;
                     items++;
-                    tokens += Object.values(row.channels).reduce((sum, channel) => sum + channel.tokens, 0);
+                    tokens += row.reduce((sum, channel) => sum + channel.tokens, 0);
                 }
                 if (items > 0) {
                     scopes.push({ path: EntryManifest.toPath(scheme, folder.selector), items, tokens });

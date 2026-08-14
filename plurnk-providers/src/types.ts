@@ -28,6 +28,11 @@ export interface ChatMessage {
     content: string;
 }
 
+// {§provider-call-kind} The caller-owned semantic contract for one logical model call. Providers do
+// not infer this from messages or grammar presence: an emission expects PLURNK
+// output, while a bare call expects unconstrained response text.
+export type ProviderCallKind = "emission" | "bare";
+
 // Preflight evidence for the complete provider request. An empirical estimate
 // is useful telemetry but cannot authorize hard context-envelope admission.
 export type PromptTokenMeasurement =
@@ -167,6 +172,24 @@ export interface ProviderResponse<TFinish extends ProviderAttemptFinishReason = 
 
 export type ProviderAttempt = ProviderResponse<ProviderAttemptFinishReason>;
 
+export interface ProviderGenerateArgs {
+    readonly messages: ChatMessage[];
+    readonly workerId: string;
+    readonly primaryWorkerId?: string;
+    readonly signal?: AbortSignal;
+    readonly grammar?: string;
+    readonly maxTokens?: number;
+    readonly attributions?: string[];
+    readonly client?: string;
+    readonly strikes?: number;
+    readonly workspaceId?: string;
+    readonly loop?: number;
+    readonly turn?: number;
+    readonly sampling?: Record<string, unknown>;
+    readonly observeRequest?: ProviderRequestObserver;
+    readonly callKind?: ProviderCallKind;
+}
+
 export interface Provider {
     // Optional package-authored folksonomy evaluated by the consumer immediately
     // before a provider emission attempt ({§plugin-attribution}).
@@ -221,7 +244,12 @@ export interface Provider {
     // `Plurnk-Turn` ONLY under the same firstPartyMetadata gate; dropped
     // everywhere else. Coordinates are 1-based: absent/0 emits no header (no
     // strikes-style zero exception). Headers only, never the packet.
-    generate(args: { messages: ChatMessage[]; workerId: string; primaryWorkerId?: string; signal?: AbortSignal; grammar?: string; maxTokens?: number; attributions?: string[]; client?: string; strikes?: number; workspaceId?: string; loop?: number; turn?: number; sampling?: Record<string, unknown>; observeRequest?: ProviderRequestObserver }): Promise<ProviderResponse>;
+    //
+    // `callKind` is the caller's explicit output contract. It is transported as
+    // `Plurnk-Call-Kind` only under the first-party metadata gate and never
+    // inferred from the request shape. Generic callers may omit it; Core always
+    // supplies `emission` or `bare`.
+    generate(args: ProviderGenerateArgs): Promise<ProviderResponse>;
     // {§model-fact-resolution} — effective total context envelope in tokens,
     // including any stricter operator cap. `null` means unknown; under
     // llama-server parallelism the probed natural value is per slot.

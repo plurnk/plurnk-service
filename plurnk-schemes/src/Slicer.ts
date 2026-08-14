@@ -311,9 +311,8 @@ export default class Slicer {
 
     // READ a line range. Returns the raw selected lines (no `N:` prefix)
     // plus the 1-indexed position of the first selected line. The render
-    // layer adds `N:` per plurnk.md starting from `startLine` - keeps numbering as a
-    // presentation concern, prevents double-prefixing when the same content
-    // passes through the log render.
+    // READ projection and packet presentation add the applicable coordinate
+    // prefix from `startLine`; canonical content remains unprefixed.
     //
     // Sentinel positions <0> and <-1> select no content (they're insertion
     // points, not lines) → status 200 with empty text.

@@ -32,7 +32,7 @@ test("an explicit FOLD of the prompt row is ordinary curation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
-        // The turn-0 model exemplar is row 1; the prompt is row 2.
+        // The turn-0 initialization is row 1; the prompt is row 2.
         const r = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 200, "the valid prompt log row folds like every other open row");
         assert.equal((r as { matched?: number }).matched, 1);
@@ -68,7 +68,7 @@ test("prior and current loop prompts share the same explicit curation contract",
         const stale = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.equal(stale.status, 200, "the old loop's prompt folds");
         assert.equal((stale as { matched?: number }).matched, 1, "the fold matched the stale prompt row - not a vacuous zero-match 200");
-        // Loop 2 has no turn-0 exemplar, so its prompt is row 1.
+        // Loop 2 has no initialization, so its prompt is row 1.
         const current = await engine.dispatch({ statement: foldStmt(urlLog("log:///2/1/1/prompt")), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 2, origin: "model" });
         assert.equal(current.status, 200, "the current prompt folds under the same valid-entry contract");
     } finally { await db.close(); }

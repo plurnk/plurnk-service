@@ -27,12 +27,12 @@ Markdown strings; a trusted plugin may transform the section list before renderi
 flowchart LR
     subgraph system[system slot]
         direction LR
-        definition["definition<br/>bare content"] --> tools["Registered Executable Tools"]
-        tools --> optional["Enabled Optional Operations"]
-        optional --> schemes["Schemes"]
-        schemes --> notes["Operator Notes"]
-        notes --> policy["Policy"]
+        definition["definition<br/>bare content"] --> policy["Policy"]
         policy --> project["Project Policy"]
+        project --> tools["Registered Tools"]
+        tools --> optional["Enabled Optional Operations"]
+        optional --> schemes["Resources"]
+        schemes --> notes["Operator Notes"]
     end
 
     subgraph user[user slot]
@@ -51,12 +51,12 @@ flowchart LR
 | Default section       | Slot   | Wire form                                     | Semantic owner                  |
 | --------------------- | ------ | --------------------------------------------- | ------------------------------- |
 | `definition`          | system | Bare `plurnk.md`; no wrapper heading          | {§definition-table-projection}  |
-| `tools`               | system | Optional terse notice, then a `plurnk` fence  | {§tools-capability-sheet}       |
+| `system-policy`       | system | Authored Markdown                             | {§policy-sections}              |
+| `project-policy`      | system | Authored Markdown                             | {§policy-sections}              |
+| `tools`               | system | Generated Markdown capability table          | {§tools-capability-sheet}       |
 | `optional-operations` | system | `plurnk` fence                                | {§tools-capability-sheet}       |
 | `schemes`             | system | `plurnk` fence                                | {§schemes-directory}            |
 | `inject`              | system | Authored Markdown                             | {§packet-inject}                |
-| `system-policy`       | system | Authored Markdown                             | {§policy-sections}              |
-| `project-policy`      | system | Authored Markdown                             | {§policy-sections}              |
 | `log`                 | user   | Dynamic `jsonplurnk` fence                    | {§jsonplurnk}                   |
 | `child-streams`       | user   | `* <status> <path>` pointers                  | {§child-orientation}            |
 | `child-workers`       | user   | `* <status> <path>` pointers                  | {§child-orientation}            |
@@ -77,15 +77,15 @@ Plurnkdown preserves the semantic evidence supplied by section owners.
 
 | Invariant      | Required projection                                                                                                                           |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Addressability | Paths, URI fragments, log coordinates, scopes, and numbered body lines remain usable without translation.                                     |
+| Addressability | Paths, URI fragments, log coordinates, scopes, and coordinate-prefixed body lines remain usable without translation.                          |
 | Weighability   | The Budget line and log-row `tokens` / `itemsTokenTotal` values remain attached to the artifacts they measure.                                |
 | Honesty        | Statuses, Problems, body visibility, overflow notices, and bodyless rows render as produced; presentation never upgrades or suppresses truth. |
 | Structure      | Typed operation examples and Log data remain typed fences rather than prose paraphrases.                                                      |
 
 ## §packet-operation-fences PLURNK operation fences
 
-Model-facing operation examples use fenced blocks with the `plurnk` info string. A paragraph line
-beginning with `<|` is an `op-fence` error. Each `plurnk` fence is parsed statement-by-statement by
+Model-facing operation examples use fenced blocks with the `plurnk` info string. A structural
+PLURNK operation heading outside such a fence is an `op-fence` error. Each `plurnk` fence is parsed statement-by-statement by
 `@plurnk/plurnk-contracts`; bounded diagnostics and {§unparsed-tail-boundary} surface as
 `op-syntax` diagnostics under {§parse-diagnostics}.
 
@@ -95,7 +95,10 @@ languages are opaque to the PLURNK syntax check.
 ## §packet-jsonplurnk-exception Log fence
 
 The Log is a dynamically fenced `jsonplurnk` array owned by {§jsonplurnk}. It is valid GFM but
-deliberately not labeled `json`: an open nonempty `body` uses a raw `<|BODY> … <BODY|>` enclosure rather than a JSON string.
+deliberately not labeled `json`: an open nonempty `body` uses one raw multiline quoted string rather than a JSON-escaped string.
+Every physical body line begins with either a numeric `N:` or anchored
+`@hash:N:` coordinate prefix, and the closing quote immediately precedes the
+object close at column zero.
 The fence is one backtick longer than the longest run in the rendered entries, with a minimum
 length of three {§jsonplurnk-dynamic-fence}. `@plurnk/plurnk-contracts` owns the deterministic
 transform that recovers strict JSON.
@@ -116,7 +119,7 @@ document-size limit.
 
 | Rule        | Severity         | Trigger                                                                    |
 | ----------- | ---------------- | -------------------------------------------------------------------------- |
-| `op-fence`  | error            | A paragraph line starts with a bare `<|` operation opener.                 |
+| `op-fence`  | error            | A PLURNK operation heading occurs outside a `plurnk` fence.                |
 | `op-syntax` | error or warning | A `plurnk` fence contains a parser diagnostic, advisory, or unparsed tail. |
 | `run-on`    | warning          | Paragraph prose crosses an atomic-prose threshold.                         |
 

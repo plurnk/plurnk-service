@@ -13,8 +13,8 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     static #OFFENDING_CHAR_RE = /at: '([^']*)'$/;
 
     static #LEXER_MODE_CONTEXT: Record<string, string> = {
-        DEFAULT_MODE: "between statements",
-        SLOTS: "in statement header - expected `[signal]`, `(target)`, `<scope>`, `>` for a body, or `|>` to self-close",
+        DEFAULT_MODE: "before the PLAN heading",
+        SLOTS: "in operation heading - expected a space before `[signal]`, `(target)`, or `<scope>`, or a line ending",
         SIGNAL_TAGS: "in tag signal - expected tag, `,`, or `]`",
         SIGNAL_INT: "in signal - expected integer for SEND/KILL, then `]`",
         SIGNAL_IDENT: "in signal - expected executor for EXEC, then `]`",
@@ -23,32 +23,36 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     };
 
     static #SLOT_BY_TOKEN: Record<number, string> = {
-        [plurnkParser.OPEN_FIND]: "open tag `<|OPsuffix`",
-        [plurnkParser.OPEN_READ]: "open tag `<|OPsuffix`",
-        [plurnkParser.OPEN_EDIT]: "open tag `<|OPsuffix`",
-        [plurnkParser.OPEN_COPY]: "open tag `<|OPsuffix`",
-        [plurnkParser.OPEN_MOVE]: "open tag `<|OPsuffix`",
-        [plurnkParser.OPEN_OPEN]: "open tag `<|OPsuffix`",
-        [plurnkParser.OPEN_FOLD]: "open tag `<|OPsuffix`",
-        [plurnkParser.OPEN_SEND]: "open tag `<|OPsuffix`",
-        [plurnkParser.OPEN_EXEC]: "open tag `<|OPsuffix`",
-        [plurnkParser.OPEN_KILL]: "open tag `<|OPsuffix`",
-        [plurnkParser.OPEN_PLAN]: "open tag `<|OPsuffix`",
+        [plurnkParser.OPEN_FIND]: "H2 operation heading `## OPsuffix`",
+        [plurnkParser.OPEN_READ]: "H2 operation heading `## OPsuffix`",
+        [plurnkParser.OPEN_EDIT]: "H2 operation heading `## OPsuffix`",
+        [plurnkParser.OPEN_COPY]: "H2 operation heading `## OPsuffix`",
+        [plurnkParser.OPEN_MOVE]: "H2 operation heading `## OPsuffix`",
+        [plurnkParser.OPEN_OPEN]: "H2 operation heading `## OPsuffix`",
+        [plurnkParser.OPEN_FOLD]: "H2 operation heading `## OPsuffix`",
+        [plurnkParser.OPEN_SEND]: "H2 operation heading `## OPsuffix`",
+        [plurnkParser.OPEN_EXEC]: "H2 operation heading `## OPsuffix`",
+        [plurnkParser.OPEN_BARE]: "H2 operation heading `## OPsuffix`",
+        [plurnkParser.OPEN_WORK]: "H2 operation heading `## OPsuffix`",
+        [plurnkParser.OPEN_FORK]: "H2 operation heading `## OPsuffix`",
+        [plurnkParser.OPEN_KILL]: "H2 operation heading `## OPsuffix`",
+        [plurnkParser.OPEN_PLAN]: "PLAN heading `# PLANsuffix`",
+        [plurnkParser.OPEN_LOOK]: "H2 client heading `## OPsuffix`",
+        [plurnkParser.OPEN_BUFF]: "H2 client heading `## OPsuffix`",
         [plurnkParser.LBRACKET]: "`[` (signal slot opener)",
         [plurnkParser.RBRACKET]: "`]` (signal slot closer)",
         [plurnkParser.LPAREN]: "`(` (target slot opener)",
         [plurnkParser.RPAREN]: "`)` (target slot closer)",
         [plurnkParser.L_MARKER]: "`<L>` line marker",
-        [plurnkParser.BODY_OPEN]: "`>` (body opener)",
-        [plurnkParser.SELF_CLOSE]: "`|>` (self-close)",
+        [plurnkParser.BODY_OPEN]: "operation-heading line ending",
+        [plurnkParser.SECTION_END]: "next same-lane heading",
         [plurnkParser.COMMA]: "`,`",
         [plurnkParser.INT]: "integer (SEND/KILL signal)",
         [plurnkParser.IDENT]: "executor (EXEC signal)",
         [plurnkParser.TAG]: "tag",
         [plurnkParser.TARGET_TEXT]: "target content",
         [plurnkParser.BODY_TEXT]: "body content",
-        [plurnkParser.CLOSE_TAG]: "close tag `<OPsuffix|>`",
-        [plurnkParser.TEXT]: "text between statements",
+        [plurnkParser.TEXT]: "text before PLAN",
     };
 
     static translateLexerMessage(lexer: plurnkLexer, originalMsg: string): string {
@@ -58,13 +62,13 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         // EXEC's identifier cannot start with a digit or `-`, making a leading numeric
         // value an unambiguous misplaced timing scope. {§signal-scope-redirect}
         if (modeName === "SIGNAL_IDENT" && /^'[-\d]'$/.test(ch)) {
-            return `unrecognized character ${ch} in signal - timeout/poll ride the \`<scope>\` slot; try \`<|EXEC<-1,300>|>\``;
+            return `unrecognized character ${ch} in signal - timeout/poll ride the \`<scope>\` slot; try \`## EXEC0 <-1,300>\``;
         }
         // Redirect an unambiguous matcher prefix in the slot region into the body. Slash-led
         // regex and XPath are excluded because `/` may instead be a target whose `(...)` wrap
         // was omitted.
         if (modeName === "SLOTS" && /^'[$~@]'$/.test(ch)) {
-            return `unrecognized character ${ch} in statement header - a matcher belongs after \`>\` and before the matching close tag`;
+            return `unrecognized character ${ch} in operation heading - a matcher belongs on the first body line`;
         }
         return `unrecognized character ${ch} ${context}`;
     }
@@ -89,7 +93,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         if (!expected) return null;
         const types: number[] = expected.toArray();
         if (types.length === 0) return null;
-        // Every OPEN_<OP> token maps to the same canon name (`open tag <|OPsuffix`), so a
+        // Every OPEN_<OP> token maps to the same canonical heading class, so a
         // statement-position expected-set yields that phrase 10+ times. Dedup to one entry -
         // the model needs the distinct options, not the alternation count.
         const names = [...new Set(

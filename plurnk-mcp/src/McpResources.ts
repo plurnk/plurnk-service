@@ -13,8 +13,8 @@ import ServerConnection from "./client.ts";
 const ROOT = "/";
 const RESOURCES = "/resources";
 const RESOURCE_PREFIX = `${RESOURCES}/`;
-const RESOURCE_TAG = "mcp-resource";
-const CATALOG_TAG = "mcp-resource-catalog";
+const RESOURCE_KIND = "mcp-resource";
+const CATALOG_KIND = "mcp-resource-catalog";
 
 class ResourceAddressError extends Error {}
 
@@ -84,14 +84,14 @@ const resourceBody = (result: ReadResourceResult): {
     };
 };
 
-const catalogEntry = (content: string, tags: string[]): EntryData => ({
+const catalogEntry = (content: string, kind: string): EntryData => ({
     channels: {
         body: {
             content,
             mimetype: "application/json",
         },
     },
-    tags,
+    attributes: { kind },
 });
 
 export default class McpResources {
@@ -119,7 +119,7 @@ export default class McpResources {
                     ...resource,
                     address: `${this.#server}://${resourcePath(resource.uri)}`,
                 })),
-            }), ["mcp-catalog"]),
+            }), "mcp-catalog"),
         );
         await ctx.entries.write(
             RESOURCES,
@@ -129,12 +129,12 @@ export default class McpResources {
                     address: `${this.#server}://${resourcePath(resource.uri)}`,
                 })),
                 resourceTemplates: catalog.resourceTemplates,
-            }), ["mcp-resource-index"]),
+            }), "mcp-resource-index"),
         );
         await Promise.all(catalog.resources.map(async (resource) => {
             const pathname = resourcePath(resource.uri);
             const existing = await ctx.entries.read(pathname);
-            if (existing.entry?.tags.includes(RESOURCE_TAG) === true) return;
+            if (existing.entry?.attributes?.kind === RESOURCE_KIND) return;
             await ctx.entries.write(
                 pathname,
                 catalogEntry(
@@ -142,7 +142,7 @@ export default class McpResources {
                         ...resource,
                         address: `${this.#server}://${pathname}`,
                     }),
-                    [CATALOG_TAG],
+                    CATALOG_KIND,
                 ),
             );
         }));
@@ -167,7 +167,7 @@ export default class McpResources {
                     mimetype: body.mimetype,
                 },
             },
-            tags: [RESOURCE_TAG],
+            attributes: { kind: RESOURCE_KIND },
         });
     }
 

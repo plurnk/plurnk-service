@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
-import { execStmt, sendStmt, readStmt } from "./_dsl.ts";
+import { execStmt, foldStmt, sendStmt, readStmt, urlPath } from "./_dsl.ts";
 
 const knownPath = (pathname: string): ParsedPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -131,7 +131,7 @@ test("SEND[102] rejects a wait scope instead of preserving the retired dual spel
         const row = await db.test_send_rows_for_worker.all<{ status_rx: number; rx: string }>({ worker_id: workerId });
         const rejected = row.find((r) => r.status_rx === 400);
         assert.ok(rejected, "the SEND records the contract failure");
-        assert.match(rejected.rx, /SEND\[202\].*wait/, "the failure points to the one wait spelling");
+        assert.match(rejected.rx, /## SEND0 \[202\].*wait/, "the failure points to the one wait spelling");
     } finally { await db.close(); }
 });
 
@@ -169,6 +169,72 @@ test("SEND[202] cannot complete an empty join over a same-turn failed operation"
         const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
         assert.ok((rows.find((row) => row.op === "EXEC")?.status_rx ?? 0) >= 400, "the original operation failure is preserved");
         assert.equal(rows.find((row) => row.op === "SEND")?.status_rx, 409, "the empty-join completion is explicitly refused");
+    } finally { await db.close(); }
+});
+
+test("a successful same-turn FOLD continues an empty SEND[202] without blocking explicit SEND[200] housekeeping", async () => {
+    const db = await openMigrated();
+    try {
+        const run = async (status: 200 | 202) => {
+            const workspaceId = await insertWorkspace(db, `fold-disposition-${status}-${crypto.randomUUID()}`);
+            const workerId = await insertWorker(db, workspaceId);
+            const loopId = await insertLoop(db, workerId, 1, "curate");
+            await seedEntryWithChannel(db, {
+                workspaceId,
+                scheme: "worker",
+                pathname: "/notes.md",
+                channel: "body",
+                content: "context to curate",
+                mimetype: "text/markdown",
+                state: "static",
+            });
+            const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+            const primed = await engine.runTurn({
+                provider: new Mock({
+                    contextWindow: 100000,
+                    responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/notes.md")), sendStmt(102)] } }],
+                }),
+                workspaceId,
+                workerId,
+                loopId,
+                messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
+            });
+            const rows = await db.test_log_sequencees_by_turn.all<{ sequence: number; op: string }>({ turn_id: primed.turnId });
+            const read = rows.find((row) => row.op === "READ");
+            assert.ok(read, "the prior READ provides one open log row to curate");
+            const result = await engine.runTurn({
+                provider: new Mock({
+                    contextWindow: 100000,
+                    responses: [{
+                        assistant: {
+                            content: "",
+                            reasoning: null,
+                            ops: [
+                                foldStmt(urlPath("log", `/1/1/${read.sequence}/READ`)),
+                                sendStmt(status, null, status === 202 ? "continue after curation" : "curation complete"),
+                            ],
+                        },
+                    }],
+                }),
+                workspaceId,
+                workerId,
+                loopId,
+                messages: [{ role: "system", content: "SD" }, { role: "user", content: "continue" }],
+            });
+            return { loopId, result };
+        };
+
+        const continued = await run(202);
+        assert.equal(continued.result.status, 102, "FOLD makes the next packet meaningful, so an empty wait continues");
+        assert.equal(
+            (await db.test_get_loop_status.get<{ status: number }>({ id: continued.loopId }))?.status,
+            102,
+            "the FOLDed loop remains available for its next reasoning turn",
+        );
+        assert.equal(continued.result.steerStruck, false, "the normalized continuation is not a model error");
+
+        const concluded = await run(200);
+        assert.equal(concluded.result.status, 200, "an explicit done claim may include final log housekeeping");
     } finally { await db.close(); }
 });
 
@@ -270,7 +336,7 @@ test("a retrieval-only refusal states the observation boundary, not a live-work 
             problem?.detail,
             "Last turn both performed retrieval operations and attempted to terminate. Retrieval operations force an additional turn so their results can be reviewed.",
         );
-        assert.equal(problem?.recovery, "Review the results, then use only PLAN and SEND[200] to conclude.");
+        assert.equal(problem?.recovery, "Review the results, then use only `# PLAN0` and `## SEND0 [200]` to conclude.");
         assert.equal(problem?.retryable, false);
         assert.doesNotMatch(refused!.rx, /KILL/, "no remedy menu for a leverless kind");
     } finally { await db.close(); }
@@ -360,7 +426,7 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
         });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet) as { sections?: Array<{ name: string; content?: string }> };
         const log = packet.sections?.find((x) => x.name === "log")?.content ?? "";
-        const metaLine = log.split("\n").find((l) => l.includes('"op":"SEND"') && l.includes('"status":409'));
+        const metaLine = log.split("\n").find((l) => /"path":"log:\/\/\/[^\"]+\/SEND"/.test(l) && l.includes('"status":409'));
         assert.ok(metaLine !== undefined, "the refused SEND row renders");
         assert.match(metaLine!, /"problem":\{[^}]*"detail":"Last turn both performed retrieval operations and attempted to terminate\./, "the exact Problem rides the META LINE - visible in every packet, never folded away");
         // And NO minted action_failure item exists — the row is the one record.

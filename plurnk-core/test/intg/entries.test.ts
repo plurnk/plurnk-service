@@ -334,74 +334,10 @@ test("entry_channels: CASCADE chain workspace→entries→entry_channels", async
     } finally { await db.close(); }
 });
 
-test("entry_tags: table is STRICT and WITHOUT ROWID", async () => {
+test("entry resources have no tag relation", async () => {
     const db = await openMigrated();
     try {
         const row = await db.test_entries_table_sql.get<{ sql: string }>({ name: "entry_tags" });
-        assert.match(row?.sql ?? "", /STRICT/);
-        assert.match(row?.sql ?? "", /WITHOUT ROWID/);
-    } finally { await db.close(); }
-});
-
-test("entry_tags: (entry_id, tag) UNIQUE", async () => {
-    const db = await openMigrated();
-    try {
-        const entryId = await insertEntry(db, "worker", "france");
-        await db.test_entry_tags_insert.run({ entry_id: entryId, tag: "geography" });
-        await assert.rejects(
-            () => db.test_entry_tags_insert.run({ entry_id: entryId, tag: "geography" }),
-            /UNIQUE constraint failed/,
-        );
-    } finally { await db.close(); }
-});
-
-test("entry_tags: same tag on different entries is fine", async () => {
-    const db = await openMigrated();
-    try {
-        const a = await insertEntry(db, "worker", "france");
-        const b = await insertEntry(db, "worker", "germany");
-        await db.test_entry_tags_insert.run({ entry_id: a, tag: "geography" });
-        await db.test_entry_tags_insert.run({ entry_id: b, tag: "geography" });
-        const count = (await db.test_entry_tags_count_all.get<{ n: number }>())?.n;
-        assert.equal(count, 2);
-    } finally { await db.close(); }
-});
-
-test("entry_tags: empty tag rejected by CHECK", async () => {
-    const db = await openMigrated();
-    try {
-        const entryId = await insertEntry(db, "worker", "france");
-        await assert.rejects(
-            () => db.test_entry_tags_insert.run({ entry_id: entryId, tag: "" }),
-            /CHECK constraint failed/,
-        );
-    } finally { await db.close(); }
-});
-
-test("entry_tags: ON DELETE CASCADE via entry", async () => {
-    const db = await openMigrated();
-    try {
-        const entryId = await insertEntry(db, "worker", "france");
-        await db.test_entry_tags_insert.run({ entry_id: entryId, tag: "geography" });
-        await db.test_entry_tags_insert.run({ entry_id: entryId, tag: "europe" });
-        await db.test_delete_entry.run({ id: entryId });
-        const remaining = (await db.test_entry_tags_count_all.get<{ n: number }>())?.n;
-        assert.equal(remaining, 0);
-    } finally { await db.close(); }
-});
-
-test("entry_tags: index entry_tags_tag enables tag-filter lookups", async () => {
-    const db = await openMigrated();
-    try {
-        const a = await insertEntry(db, "worker", "france");
-        const b = await insertEntry(db, "worker", "germany");
-        const c = await insertEntry(db, "worker", "japan");
-        await db.test_entry_tags_insert.run({ entry_id: a, tag: "europe" });
-        await db.test_entry_tags_insert.run({ entry_id: b, tag: "europe" });
-        await db.test_entry_tags_insert.run({ entry_id: c, tag: "asia" });
-        const europeEntries = await db.test_entry_tags_by_tag.all<{ entry_id: number }>({ tag: "europe" });
-        assert.deepEqual(europeEntries.map((e) => e.entry_id).toSorted(), [a, b].toSorted());
-        const idxRow = await db.test_entry_tags_index.get<{ name: string }>();
-        assert.equal(idxRow?.name, "entry_tags_tag");
+        assert.equal(row, undefined);
     } finally { await db.close(); }
 });

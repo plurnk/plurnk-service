@@ -19,7 +19,6 @@ import {
     type SubscriptionHandle,
     type EntryCaps,
     type ChannelCaps,
-    type TagCaps,
     type NotifyCaps,
     type ProjectionCaps,
     type SubscriptionCaps,
@@ -29,7 +28,7 @@ import {
     type StoredEntryData,
     type ReadStatement,
     type SendStatement,
-    type EditStatement,
+    type ResolvedEditStatement,
     type KillStatement,
     type FindStatement,
     type UrlPath,
@@ -137,7 +136,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
                     channel,
                     { ...value, state: value.state ?? "static" },
                 ])),
-                tags: entry.tags,
+                ...(entry.attributes === undefined ? {} : { attributes: entry.attributes }),
             };
             return { status: 201, created: true, entryId: 1 };
         },
@@ -152,11 +151,6 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
         async append() { return { status: 200 }; },
         async replace() { return { status: 200 }; },
         async setState() { return { status: 200 }; },
-    };
-    const tags: TagCaps = {
-        async add() { return { status: 200 }; },
-        async remove() { return { status: 200 }; },
-        async list() { return { status: 200, tags: [] }; },
     };
     const notify: NotifyCaps = { streamEvent() {} };
     const projection = overrides.projection ?? projectionCaps();
@@ -186,7 +180,7 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
     };
     const ctx: SchemeCtx = {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: overrides.signal,
-        entries, channels, tags, notify, projection, subscriptions,
+        entries, channels, notify, projection, subscriptions,
     };
     return {
         ctx,
@@ -216,7 +210,7 @@ const sendStmt = (signal: number, target: UrlPath | null, body?: string): SendSt
     body: body === undefined ? null : { raw: body, json: null },
     position: { line: 0, column: 0 },
 });
-const editStmt = (target: UrlPath | null, body: string | null, lineMarker: EditStatement["lineMarker"] = null): EditStatement => ({
+const editStmt = (target: UrlPath | null, body: string | null, lineMarker: ResolvedEditStatement["lineMarker"] = null): ResolvedEditStatement => ({
     op: "EDIT", suffix: "EDIT", signal: null, target, lineMarker, body,
     position: { line: 0, column: 0 },
 });
@@ -299,14 +293,11 @@ test("manifest: name http, default channel body, requiresWeb, network-volatile",
     assert.equal(Http.manifest.volatile, true);
     assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header", "html"]);
     // Self-doc for the model's packet listing (deep docs ride worker://plurnk/docs/http.md).
-    // The manifest example must be one complete copy-pasteable operation.
-    // it verbatim into the scheme directory. Guard the well-formed bodyless
-    // statement with a matching opener/closer shape — catches the regression class
-    // without taking a direct grammar dep (siblings pin only @plurnk/plurnk-schemes).
-    const example = Http.manifest.example ?? "";
-    const op = example.match(/^<\|([A-Z]+)\(.+\)\|>$/);
-    assert.ok(op, `example must be a well-formed self-closing statement, got: ${example}`);
-    assert.equal(op[1], "READ");
+    const examples = (Http.manifest.example ?? "").split("\n\n");
+    assert.equal(examples.length, 3, "HTTP teaches one retrieval and both mutation choices");
+    assert.match(examples[0] ?? "", /^## READ0 \(https:\/\/[^)]+\)$/u);
+    assert.match(examples[1] ?? "", /^## EDIT0 \(https:\/\/[^)]+\{Content-Type: application\/json\}\)\n\{.+\}$/u);
+    assert.match(examples[2] ?? "", /^## SEND0 \[200\] \(https:\/\/[^)]+\{Content-Type: application\/json\}\)\n\{.+\}$/u);
 });
 
 test("manifest: documentation is loaded verbatim from docs/http.md", async () => {
@@ -666,7 +657,6 @@ test("finite GET materializes complete channels without opening a subscription",
     assert.deepEqual(wrote!.entry.channels.body, { content: "x", mimetype: "text/plain" });
     assert.match(wrote!.entry.channels.header?.content ?? "", /^HTTP 200 OK/m);
     assert.equal(wrote!.entry.channels.html?.state, "errored");
-    assert.deepEqual(wrote!.entry.tags, []);
 });
 
 test("SEND[200]: also materializes the entry before subscribing (shares #fetchStream)", async () => {
@@ -1670,7 +1660,7 @@ test("EDIT → PUT with the body (method mapping)", async () => {
 
 test("EDIT: a <L> line marker is rejected — http PUT replaces the whole resource", async () => {
     const { ctx } = makeCtx();
-    const r = await new Http().edit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), "x", { marks: [1] } as NonNullable<EditStatement["lineMarker"]>), ctx);
+    const r = await new Http().edit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), "x", { marks: [1] }), ctx);
     assert.equal(r.status, 400);
     assert.equal(r.problem?.type, "https://problems.plurnk.dev/scheme/http/line-edit-unsupported");
     assert.equal(r.problem?.recovery, "Remove the line range and submit the complete replacement body.");
@@ -1769,7 +1759,6 @@ const priorEntry = (
         header: { content: header, mimetype: "text/plain", state },
         ...(html === undefined ? {} : { html: { content: html, mimetype: "text/html", state } }),
     },
-    tags: [],
 });
 
 const stampedHeader = (

@@ -22,6 +22,38 @@ import { copyStmt, editStmt, readStmt, findStmt, regex, sendStmt, urlPath } from
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; header: string | null; content: string; tokens: number }> }> =>
     JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
 
+test("assembled packet: editable READ lines carry copyable anchors without changing their visible ordinals", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `pkt-line-anchor-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "inspect notes");
+        const schemes = new SchemeRegistry();
+        const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+        const target = urlPath("worker", "/anchored.md");
+        const provider = new Mock({
+            contextWindow: 100000,
+            responses: [
+                { assistant: { content: "", reasoning: null, ops: [
+                    editStmt(target, "alpha\nbeta"),
+                    readStmt(target, { marks: [1, -1] }),
+                    sendStmt(102),
+                ] } },
+                { assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } },
+            ],
+        });
+
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const read = logEntries(await getPacket(db, second.turnId)).find((entry) =>
+            entry.target === "worker:///anchored.md"
+            && typeof entry.path === "string"
+            && entry.path.endsWith("/READ"));
+        assert.equal(read?.target, "worker:///anchored.md");
+        assert.match(String(read?.body), /^@[0-9A-Za-z]{5}:1:alpha\n@[0-9A-Za-z]{5}:2:beta\n$/);
+    } finally { await db.close(); }
+});
+
 test("packet assembly surfaces contract-invalid persisted loop flags at the same owner (#169)", async () => {
     const db = await openMigrated();
     try {
@@ -132,8 +164,8 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const log = packetSection(packet, "log");
 
         // THE REGRESSION GUARD: the foisted FIND(worker:///*) renders its RESULT into the
-        // log ({§render-rule-find-renders-result}) — the model SEES the catalog rows, not just
-        // its own echoed query. The invisible-catalog bug rendered only `<|FIND(...)|>`.
+        // log ({§render-rule-find-renders-result}) — the model SEES the catalog groups, not just
+        // its own echoed query. The invisible-catalog bug rendered only `## FIND0 (...)`.
         assert.match(log, /worker:\/\/\/note\.md/, "the foisted catalog FIND renders a direct entry into the packet's log");
         assert.match(log, /worker:\/\/\/\.env\.defaults/, "the one-level page includes direct dot entries");
         assert.match(log, /"path":"worker:\/\/\/\.github\/\*\*","items":1,"tokens":\d+/, "a dot directory renders as an actionable recursive summary");
@@ -144,15 +176,15 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
             const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             assert.match(
                 log,
-                new RegExp(`\\n\\d+:\\[?\\{"path":"${escaped}`),
+                new RegExp(`\\n\\d+:\\[{1,2}\\{"path":"${escaped}`),
                 `${target} begins its own universally numbered FIND row`,
             );
         }
-        assert.match(log, /"op":"FIND"/, "the catalog foist appears as a FIND op in the log");
+        assert.match(log, /"path":"log:\/\/\/[^\"]+\/FIND"/, "the catalog foist appears as a FIND op in the log address");
         assert.match(
             log,
-            /<\|SEND\[102\]>Next, address the prompt using the survey\.<SEND\|>/,
-            "the turn-0 exemplar teaches SEND[102] as an explicit next action",
+            /13:## SEND0 \[102\]\n14:Next, address the prompt\./,
+            "the turn-0 initialization teaches SEND[102] as an explicit next action",
         );
 
     } finally {
@@ -240,7 +272,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
         ]);
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
-        const copies = logEntries(packet).filter(({ op }) => op === "COPY");
+        const copies = logEntries(packet).filter(({ path }) => String(path).endsWith("/COPY"));
 
         assert.equal(copies.length, 2);
         assert.equal(copies[0]?.source, "worker:///src.md<2,3>");
@@ -287,7 +319,7 @@ test("the default wire preserves canonical order and projects the Recap override
         // {§packet-cache-monotone}: trusted control-plane sections precede the user slot;
         // append-mostly log precedes per-turn status, active prompt pointers, and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
-        assert.deepEqual(slot("system"), ["definition", "tools", "schemes", "system-policy", "project-policy"], "system slot carries trusted control-plane sections in canonical order");
+        assert.deepEqual(slot("system"), ["definition", "system-policy", "project-policy", "tools", "schemes"], "stable privileged policy leads loop-dependent capabilities");
         assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "errors", "notices", "git", "budget", "prompt", "requirements"], "user slot: log -> status clump -> active prompt paths -> Recap");
         assert.equal(packet.sections.find((section) => section.name === "prompt")?.header, "Active User Prompts");
         assert.equal(packet.sections.at(-1)?.header, "Recap");
@@ -295,7 +327,7 @@ test("the default wire preserves canonical order and projects the Recap override
     } finally { await db.close(); }
 });
 
-test("the default Recap projects the two framing reminders from the teaching corpus", async () => {
+test("the default Recap projects the meta-owned teaching source", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-recap-${crypto.randomUUID()}`);
@@ -313,10 +345,7 @@ test("the default Recap projects the two framing reminders from the teaching cor
         });
         const recap = packetSection(await getPacket(db, result.turnId), "requirements");
 
-        assert.equal(
-            recap,
-            "YOU MUST always begin each turn with a PLAN.\nYOU MUST always end each turn with SEND[status code]; retrieval turns use a non-concluding code.\n",
-        );
+        assert.equal(recap, await readFile(Paths.defaultRequirements, "utf8"));
     } finally { await db.close(); }
 });
 
@@ -496,7 +525,7 @@ test("assembled packet: definition tables compact without changing other whitesp
     } finally { await db.close(); }
 });
 
-test("{§definition-table-projection}: canonical inline grammar remains exact on the packet wire", async () => {
+test("{§definition-table-projection}: canonical inline operation examples survive packet projection", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-definition-grammar-${crypto.randomUUID()}`);
@@ -508,17 +537,12 @@ test("{§definition-table-projection}: canonical inline grammar remains exact on
 
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
         const projected = packetSection(await getPacket(db, result.turnId), "definition");
-        const inlineGrammar = [...definition.matchAll(/`([^`\n]*(?:<\||\|>)[^`\n]*)`/gu)].map((match) => match[0]);
+        const inlineGrammar = [...definition.matchAll(/`(#{1,2} [A-Z]+[A-Za-z0-9_]*(?: [^`\n]*)?)`/gu)].map((match) => match[0]);
 
         assert.ok(inlineGrammar.length > 0, "canonical definition must contain inline grammar examples");
         for (const example of inlineGrammar) {
             assert.ok(projected.includes(example), `packet projection changed canonical inline grammar ${JSON.stringify(example)}`);
         }
-        assert.match(projected, /One line: `<\|READ\(notes\.md\)<2>\|>` reads only line 2; `<\|EDIT\(notes\.md\)<2>\|>` deletes line 2\./u);
-        assert.match(projected, /Inclusive line range: `<\|READ\(notes\.md\)<2,3>\|>` reads lines 2 and 3\./u);
-        assert.match(projected, /Exclusive column endpoint: `<\|READ\(notes\.md\)<2,1,2,5>\|>` reads columns 1-4 of line 2\./u);
-        assert.match(projected, /Zero-width position: `<\|EDIT\(notes\.md\)<2,5,2,5>>inserted text<EDIT\|>` inserts at line 2, column 5\./u);
-        assert.doesNotMatch(projected, /< \| (?:READ|EDIT)/u, "table projection must not split an operation's literal pipe characters into cells");
     } finally { await db.close(); }
 });
 
@@ -535,11 +559,16 @@ test("{§schemes-directory}: the assembled packet renders complete fenced scheme
 
         // The grammar (plurnk.md) must reach the model — a dropped definition section is a dead packet.
         assert.ok(packetSection(packet, "definition").length > 0, "the definition (grammar) section carries content");
-        // Every scheme-directory line is a complete authored operation.
+        // Every resource-directory heading is a complete authored operation.
         const schemesSection = packetSection(packet, "schemes");
-        assert.ok(schemesSection.startsWith("```plurnk"), "the schemes catalog is a fenced plurnk block, not a bullet list");
-        const schemeLines = schemesSection.split("\n").filter((l) => l.startsWith("<|"));
-        assert.ok(schemeLines.length > 0, "the schemes directory lists entries");
-        for (const line of schemeLines) assert.match(line, /^<\|/, `scheme directory line must be a complete Plurnk statement: ${line}`);
+        assert.equal(packet.sections.find((section) => section.name === "schemes")?.header, "Resources");
+        assert.ok(schemesSection.startsWith("```plurnk"), "the resource catalogue is a fenced plurnk block, not a bullet list");
+        const schemeLines = schemesSection.split("\n").filter((line) => line.startsWith("## "));
+        assert.ok(schemeLines.length > 0, "the resource directory lists entries");
+        for (const line of schemeLines) assert.match(line, /^## (?:FIND|READ|EDIT|COPY|MOVE|OPEN|FOLD|SEND|EXEC|WORK|FORK|KILL)0(?:$| )/, `resource directory heading must be canonical: ${line}`);
+        const headingOffsets = [...schemesSection.matchAll(/^## /gmu)].map((match) => match.index);
+        for (const offset of headingOffsets.slice(1)) {
+            assert.equal(schemesSection.slice(offset - 2, offset), "\n\n", "resource operation examples are separated by one blank line");
+        }
     } finally { await db.close(); }
 });

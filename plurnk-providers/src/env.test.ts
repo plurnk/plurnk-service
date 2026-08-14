@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { parseRequiredInt, parseOptionalInt, requireEnv, reasoningFromEnv, reasoningResponseStyleFromEnv } from "./env.ts";
+import { parseRequiredInt, parseOptionalInt, parseTimeoutMs, requireEnv, reasoningFromEnv, reasoningResponseStyleFromEnv } from "./env.ts";
 
 test("parseRequiredInt: parses a non-negative integer", () => {
     assert.equal(parseRequiredInt("600000", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), 600000);
@@ -16,6 +16,15 @@ test("parseRequiredInt: rejects non-numeric, fractional, and negative values", (
     assert.throws(() => parseRequiredInt("abc", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "abc"\)/);
     assert.throws(() => parseRequiredInt("1.5", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "1\.5"\)/);
     assert.throws(() => parseRequiredInt("-1", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "-1"\)/);
+});
+
+test("parseTimeoutMs accepts disabled deadlines and rejects timer overflow", () => {
+    assert.equal(parseTimeoutMs("0", "PLURNK_PROVIDERS_OPERATION_TIMEOUT", "openai"), 0);
+    assert.equal(parseTimeoutMs("2147483647", "PLURNK_PROVIDERS_OPERATION_TIMEOUT", "openai"), 2_147_483_647);
+    assert.throws(
+        () => parseTimeoutMs("2147483648", "PLURNK_PROVIDERS_OPERATION_TIMEOUT", "openai"),
+        /must be at most 2147483647 milliseconds/,
+    );
 });
 
 test("parseOptionalInt: absent → null, present → integer", () => {
@@ -86,10 +95,16 @@ test("scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mi
     const env = {
         PLURNK_PROVIDERS_FETCH_TIMEOUT: "600000",
         PLURNK_PROVIDERS_FETCH_TIMEOUT_my_box: "5000",
+        PLURNK_PROVIDERS_OPERATION_TIMEOUT: "2700000",
+        PLURNK_PROVIDERS_OPERATION_TIMEOUT_my_box: "15000",
+        PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT: "600000",
+        PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT_my_box: "2500",
         PLURNK_PROVIDERS_REASONING: "off",
         PLURNK_PROVIDERS_REASONING_BUDGET: "4096", // bare budget — NOT a "_capacity" alias override of REASONING
     } as NodeJS.ProcessEnv;
     assert.equal(scopeEnvToAlias(env, "my_box").PLURNK_PROVIDERS_FETCH_TIMEOUT, "5000");
+    assert.equal(scopeEnvToAlias(env, "my_box").PLURNK_PROVIDERS_OPERATION_TIMEOUT, "15000");
+    assert.equal(scopeEnvToAlias(env, "my_box").PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "2500");
     assert.equal(scopeEnvToAlias(env, "budget").PLURNK_PROVIDERS_REASONING, "off"); // collision guard
 });
 

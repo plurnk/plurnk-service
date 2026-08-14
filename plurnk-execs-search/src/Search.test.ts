@@ -46,7 +46,7 @@ const invoke = async (
     const states: Capture["states"] = [];
     const events: Notice[] = [];
     const args: ExecArgs = {
-        runtime, command, cwd: null, target: null,
+        runtime, body: command, cwd: null, target: null,
         signal: opts.signal ?? new AbortController().signal,
         write: (channel, chunk) => writes.push({ channel, chunk }),
         setState: (channel, state) => states.push({ channel, state }),
@@ -66,12 +66,12 @@ afterEach(() => {
     else process.env.PLURNK_EXECS_SEARCH_QUERY_PREVIEW = origQueryPreview;
 });
 
-test("manifest declares the ten search tags", async () => {
+test("manifest declares only the text-retrieval search tags", async () => {
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf-8"));
     assert.equal(pkg.plurnk.kind, "exec");
     assert.deepEqual(
         pkg.plurnk.runtimes.map((r: { name: string }) => r.name),
-        ["search", "images", "videos", "news", "map", "music", "it", "science", "social", "downloadable"],
+        ["search", "news"],
     );
 });
 
@@ -356,34 +356,38 @@ test("limit caps the candidates — only capped rows ride the digest and get a p
     assert.equal(requested.length, 3, "17 uncapped candidates never get a prefetch request");
 });
 
-test("tag → categories mapping (news, social→'social media', downloadable→files, images)", async () => {
+test("registered tags map to the general and news categories", async () => {
     const seen: Record<string, string | null> = {};
     setFetch(async (u) => {
         const url = new URL(String(u));
         seen[url.searchParams.get("q") ?? ""] = url.searchParams.get("categories");
         return { ok: true, status: 200, json: async () => ({ results: [] }) };
     });
+    await invoke("search", "qg");
     await invoke("news", "qn");
-    await invoke("social", "qs");
-    await invoke("downloadable", "qd");
-    await invoke("images", "qi");
 
+    assert.equal(seen.qg, "general");
     assert.equal(seen.qn, "news");
-    assert.equal(seen.qs, "social media");
-    assert.equal(seen.qd, "files");
-    assert.equal(seen.qi, "images");
 });
 
-test("ENGINES passes the operator's SearXNG engine selection through", async () => {
-    let seen: string | null = null;
+test("ENGINES exclusively selects the configured engines instead of unioning runtime categories", async () => {
+    const seen: Array<{ engines: string | null; categories: string | null }> = [];
     setFetch(async (u) => {
-        seen = new URL(String(u)).searchParams.get("engines");
+        const url = new URL(String(u));
+        seen.push({
+            engines: url.searchParams.get("engines"),
+            categories: url.searchParams.get("categories"),
+        });
         return { ok: true, status: 200, json: async () => ({ results: [] }) };
     });
     process.env.PLURNK_EXECS_SEARCH_ENGINES = "braveapi";
     await invoke("search", "q");
+    await invoke("news", "qn");
     delete process.env.PLURNK_EXECS_SEARCH_ENGINES;
-    assert.equal(seen, "braveapi");
+    assert.deepEqual(seen, [
+        { engines: "braveapi", categories: null },
+        { engines: "braveapi", categories: null },
+    ]);
 });
 
 test("non-ok response -> durable upstream HTTP Problem with retry facts", async () => {

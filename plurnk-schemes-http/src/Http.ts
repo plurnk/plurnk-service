@@ -13,7 +13,7 @@ import type {
     RepresentationPreparationRequest,
     RepresentationPreparationResult,
     SendStatement,
-    EditStatement,
+    ResolvedEditStatement,
     KillStatement,
     UrlPath,
     EntryData,
@@ -235,7 +235,15 @@ export default class Http implements SchemeHandler {
         volatile: true,        // remote content can change between fetches
         modelVisible: true,
         glyph: "🌐",
-        example: "<|READ(https://example.com/page)|>",
+        example: [
+            "## READ0 (https://example.com/page)",
+            "",
+            "## EDIT0 (https://api.example.com/v1/pets/42{Content-Type: application/json})",
+            '{"name":"Mango","status":"available"}',
+            "",
+            "## SEND0 [200] (https://api.example.com/v1/pets{Content-Type: application/json})",
+            '{"name":"Mango","status":"available"}',
+        ].join("\n"),
         documentation,
         flags: {
             requiresWeb: true, // excluded under the loop's noWeb flag
@@ -399,7 +407,6 @@ export default class Http implements SchemeHandler {
             };
             const written = await ctx.entries.write(pathname, {
                 channels,
-                tags: cached.tags,
             });
             if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
             return { status: 200 };
@@ -439,7 +446,6 @@ export default class Http implements SchemeHandler {
         }
         const written = await ctx.entries.write(pathname, {
             channels: WebFetcher.materializedChannels(materialized, { url, method: "GET" }),
-            tags: [],
         });
         if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
         return { status: 200 };
@@ -480,7 +486,7 @@ export default class Http implements SchemeHandler {
 
     // EDIT -> PUT the body (full-resource replace). `<L>` has no meaning against a
     // remote resource - reject rather than silently ignore the model's intent.
-    async editBatch(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<PassthroughResult> {
+    async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statements.length !== 1) {
             return Http.#bad(
                 409,
@@ -519,11 +525,11 @@ export default class Http implements SchemeHandler {
         return this.#request(statement.target, ctx, "PUT", statement.body ?? "");
     }
 
-    async edit(statement: EditStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+    async edit(statement: ResolvedEditStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         return this.editBatch([statement], ctx);
     }
 
-    // KILL -> DELETE the resource. Distinct from SEND[410] (which drops the local
+    // KILL -> DELETE the resource. Distinct from SEND signal 410 (which drops the local
     // cached entry): KILL is an HTTP DELETE request to the remote.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         if (statement.target === null || statement.target.kind !== "url") {
@@ -606,7 +612,7 @@ export default class Http implements SchemeHandler {
             );
         }
 
-        // Local AbortController for force-cancel from outside (SEND[499]).
+        // Local AbortController for force-cancel from outside (SEND signal 499).
         const local = new AbortController();
         const handle: SubscriptionHandle = { cancel: () => local.abort() };
 
@@ -748,7 +754,7 @@ export default class Http implements SchemeHandler {
                 state: "active" as const,
             }]),
         );
-        return { channels, tags: [] };
+        return { channels };
     }
 
     // {§revalidation} The body and header must have settled successfully. An

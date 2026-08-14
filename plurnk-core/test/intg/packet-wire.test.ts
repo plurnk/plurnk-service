@@ -78,7 +78,8 @@ test("log entry: a no-body row renders explicit display:none and body:\"\" — p
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /\{"body":"","display":"none","op":"EDIT","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt","tokens":0\}/, "jsonplurnk object; display:none carries body:\"\"; path = log URI identity; target = action operand; tokens:0");
+    assert.match(out, /\{"body":"","display":"none","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt","tokens":0\}/, "jsonplurnk object; display:none carries body:\"\"; path owns the log identity and operation; target = action operand; tokens:0");
+    assert.doesNotMatch(out, /"op":"EDIT"/, "the canonical path does not duplicate its operation in metadata");
 });
 
 test("log entry: durable folksonomic tags remain visible when the body is folded", () => {
@@ -179,7 +180,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
     );
     assert.match(
         out,
-        /<\|BODY>\n1:before\n2:copied content\n<BODY\|>/,
+        /"body":"\n1:before\n2:copied content\n"\}/,
         "the regional effect exposes its bounded resulting context",
     );
 
@@ -355,7 +356,7 @@ test("log entry: network target preserves port, ordered query, and channel fragm
     assert.match(out, /"target":"https:\/\/example\.org:8443\/a%28b%29\?b=2&a=1&a=3#preview"/);
 });
 
-test("log render: READ@200 with text/markdown rx body → line-numbered BODY enclosure", () => {
+test("log render: READ@200 with text/markdown rx body → line-numbered raw multiline string", () => {
     const system = {
         system_definition: "SD",
         index: [],
@@ -370,7 +371,25 @@ test("log render: READ@200 with text/markdown rx body → line-numbered BODY enc
     };
     const out = PacketWire.renderLog(system.log, tok);
     // Line-navigable mimetype → `N:` prefix per line.
-    assert.match(out, /<\|BODY>\n1:hello\n2:world\n<BODY\|>/);
+    assert.match(out, /"body":"\n1:hello\n2:world\n"\}/);
+});
+
+test("{§jsonplurnk}: a READ beginning with a blank source line numbers every physical line", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/3",
+        origin: "model",
+        op: "READ",
+        status: 200,
+        target: { scheme: "https", hostname: "example.test", pathname: "/article" },
+        rx: {
+            status: 200,
+            content: "\nLead paragraph.\n\nFollowing paragraph.",
+            mimetype: "text/markdown",
+            startLine: 300,
+        },
+    }], tok);
+
+    assert.match(out, /"body":"\n300:\n301:Lead paragraph\.\n302:\n303:Following paragraph\.\n"\}/);
 });
 
 test("log render: a scoped READ preserves its complete source TextRegion", () => {
@@ -466,7 +485,7 @@ test("log render: a matcher FIND exposes surgical coordinates", () => {
     assert.doesNotMatch(out, /"matchLocationCount":/);
     assert.doesNotMatch(out, /"items":|"lines":/);
     assert.match(out, /"unit":"matchLocation"/);
-    assert.match(out, /<\|BODY>\n1:\[\{"region":\{"startLine":143/);
+    assert.match(out, /"body":"\n1:\[\{"region":\{"startLine":143/);
 });
 
 test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metadata owner", async () => {
@@ -607,7 +626,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
     if (tokenizer === null) throw new Error("The bundled Gemma tokenizer is required for the metadata budget contract.");
     assert.equal(tokenizer.tokenizerId, "5f7eee611703c5ce");
     const metadataTokens = await tokenizer.countTokens(metadata.map((row) => JSON.stringify(row)).join("\n"));
-    assert.equal(metadataTokens, 596, "canonical retrieval metadata has one reviewed Gemma-token weight");
+    assert.equal(metadataTokens, 567, "canonical retrieval metadata has one reviewed Gemma-token weight");
 
     assert.throws(
         () => PacketWire.renderLog([{
@@ -636,10 +655,10 @@ test("log render: READ@200 with application/json is line-addressable", () => {
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /<\|BODY>\n1:\[\n2: {2}\{"line":1,"matched":"hello"\}\n3:\]\n<BODY\|>/);
+    assert.match(out, /"body":"\n1:\[\n2: {2}\{"line":1,"matched":"hello"\}\n3:\]\n"\}/);
 });
 
-// EDIT log renders expose bounded resulting context in the fixed BODY enclosure.
+// EDIT log renders expose bounded resulting context in the raw multiline body.
 // No udiff in the model's
 // packet (that format belongs in client communication, where humans want
 // colored before/after rendering).
@@ -655,9 +674,9 @@ test("log render: EDIT@200 with rx.span → wraps the pre-numbered span verbatim
     }], tok);
     // The model sees the edited area as it looks NOW at its TRUE line numbers — editedSpan already
     // line-numbered it, so the renderer wraps verbatim. Re-numbering here would double it (1:3:…)
-    // and lose the real position. (A span-less EDIT — a scheme that returns no span — stands on its meta
-    // line alone; the log NEVER re-serializes the op's emission tag, per the no-tags-in-the-log paradigm.)
-    assert.match(out, /<\|BODY>\n3:- \[x\] ship the fix\n<BODY\|>/, "EDIT wraps the pre-numbered span verbatim under the fixed enclosure");
+    // and lose the real position. A span-less EDIT — a scheme that returns no span — stands on its
+    // metadata line alone; its classifications remain metadata, not body content.
+    assert.match(out, /"body":"\n3:- \[x\] ship the fix\n"\}/, "EDIT preserves the pre-numbered span verbatim in the raw multiline string");
     assert.doesNotMatch(out, /1:3:/, "must NOT re-number an already-numbered span");
 });
 
@@ -732,9 +751,9 @@ test("render guard: every content-emitting op applies the N: convention uniforml
     // The model orients on line numbers, so EVERY op that emits a content body
     // must number textual content regardless of mimetype. Pins the invariant
     // across READ, FIND, EDIT-span,
-    // EXEC-body, the foisted exec-stream delta (incl. its cross-turn startLine), and PLAN/SEND bodies —
-    // which ride into the log as N: content, NEVER re-serialized as a <|OP…>…<OP|> enclosure (the log mirrors
-    // the model's WORK, not its emission syntax). No future content branch can silently diverge.
+    // EXEC-body, the foisted exec-stream delta (incl. its cross-turn startLine), and PLAN/SEND bodies.
+    // Log rows mirror the model's work as numbered content; they do not reserialize operation headings.
+    // No future content branch can silently diverge.
     const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "worker", pathname: "/a" } };
     const execTx = (body: string) => ({ op: "EXEC", suffix: "sh", target: { kind: "url", raw: "sh:///1/1/1", scheme: "sh", pathname: "/1/1/1", fragment: null }, body, signal: null, lineMarker: null });
     const cases: Array<{ label: string; entry: unknown; want: RegExp; anti?: RegExp }> = [
@@ -745,8 +764,8 @@ test("render guard: every content-emitting op applies the N: convention uniforml
         { label: "EDIT span → pre-numbered span preserved verbatim (editedSpan owns the real offsets)", entry: { ...base, op: "EDIT", rx: { status: 200, span: "5:x\n6:y" } }, want: /5:x\n6:y/, anti: /1:5:/ },
         { label: "EXEC body → numbered", entry: { ...base, op: "EXEC", target: { scheme: "sh", pathname: "/1/1/1" }, tx: execTx("ls\npwd") }, want: /1:ls\n2:pwd/ },
         { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "plurnk", target: { scheme: "sh", pathname: "/1/1/1", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:out5\n6:out6/ },
-        { label: "PLAN body → numbered content, never a <|PLAN tag", entry: { ...base, op: "PLAN", tx: { body: "read line 2\nthen answer" } }, want: /1:read line 2\n2:then answer/, anti: /<\|PLAN/ },
-        { label: "SEND body → numbered content, never a <|SEND tag", entry: { ...base, op: "SEND", tx: { body: "here is the answer" } }, want: /1:here is the answer/, anti: /<\|SEND/ },
+        { label: "PLAN body → numbered content, never a PLAN heading", entry: { ...base, op: "PLAN", tx: { body: "read line 2\nthen answer" } }, want: /1:read line 2\n2:then answer/, anti: /^# PLAN/m },
+        { label: "SEND body → numbered content, never a SEND heading", entry: { ...base, op: "SEND", tx: { body: "here is the answer" } }, want: /1:here is the answer/, anti: /^## SEND/m },
     ];
     for (const c of cases) {
         const out = PacketWire.renderLog([c.entry], tok);
@@ -771,6 +790,49 @@ test("an oversized auto-opened terminal stream READ renders its complete observa
     assert.doesNotMatch(rendered, /"overflow"/, "READ owns its selected result bound");
 });
 
+test("READ bodies render copyable Base62 line anchors while other numbered bodies remain numeric", () => {
+    const read = PacketWire.renderLog([{
+        coordinate: "1/2/1",
+        origin: "model",
+        op: "READ",
+        status: 200,
+        target: { scheme: "worker", pathname: "/notes.md" },
+        rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta", startLine: 7 },
+        folded: false,
+        lineAnchors: ["@aZ09b", "@Q1w2E"],
+    }], tok);
+    assert.match(read, /@aZ09b:7:alpha/);
+    assert.match(read, /@Q1w2E:8:beta/);
+
+    const find = PacketWire.renderLog([{
+        coordinate: "1/2/2",
+        origin: "model",
+        op: "FIND",
+        status: 200,
+        target: { scheme: "worker", pathname: "/notes.md" },
+        rx: { status: 200, mimetype: "application/json", content: '["one"]', startLine: 1 },
+        folded: false,
+    }], tok);
+    assert.match(find, /\n1:\["one"\]\n/);
+    assert.doesNotMatch(find, /@[0-9A-Za-z]{5}:1:/);
+});
+
+test("READ rendering fails hard when persisted anchors do not align with the projected snapshot", () => {
+    assert.throws(
+        () => PacketWire.renderLog([{
+            coordinate: "1/2/1",
+            origin: "model",
+            op: "READ",
+            status: 200,
+            target: { scheme: "worker", pathname: "/notes.md" },
+            rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta", startLine: 7 },
+            folded: false,
+            lineAnchors: ["@aZ09b"],
+        }], tok),
+        /line anchors must align one-for-one/,
+    );
+});
+
 test("log render: EDIT@200 with no tx → meta line only (defensive — tx is always written in practice)", () => {
     const system = {
         system_definition: "SD",
@@ -785,7 +847,7 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.doesNotMatch(out, /<\|EDIT\(/);
+    assert.doesNotMatch(out, /## EDIT0 \(/);
 });
 
 test("notice render: message and content-offset share one bounded line, no snippet fence", () => {
@@ -854,16 +916,16 @@ test("log render: READ@200 with text/html is line-addressable", () => {
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /<\|BODY>\n1:<h1>Hi<\/h1>\n<BODY\|>/);
+    assert.match(out, /"body":"\n1:<h1>Hi<\/h1>\n"\}/);
 });
 
 test("a folded model-emission row renders meta-only without inventing an operation", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: true,
         attrs: { kind: "model_emission" },
-        rx: { content: "<|PLAN>Initialize<PLAN|>\n<|SEND[102]>Initialized<SEND|>", mimetype: "text/vnd.plurnk" },
+        rx: { content: "# PLAN0\nInitialize\n\n## SEND0 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /\{"display":"folded","kind":"model_emission","lines":2,"origin":"model","path":"log:\/\/\/1\/1\/1"/, "the actionless row has an undecorated coordinate and explicit kind");
+    assert.match(out, /\{"display":"folded","kind":"model_emission","lines":5,"origin":"model","path":"log:\/\/\/1\/1\/1"/, "the actionless row has an undecorated coordinate and explicit kind");
     assert.doesNotMatch(out, /"op":"model"/, "an emission artifact never masquerades as a grammar operation");
     assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while folded — budget-neutral");
 });
@@ -872,29 +934,43 @@ test("an open model-emission row mirrors the model's own emission back, line-num
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: false,
         attrs: { kind: "model_emission" },
-        rx: { content: "<|PLAN>Initialize<PLAN|>\n<|SEND[102]>Initialized<SEND|>", mimetype: "text/vnd.plurnk" },
+        rx: { content: "# PLAN0\nInitialize\n\n## SEND0 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /"display":"open","kind":"model_emission"/, "open → display:open — lines counts the navigable body");
-    assert.match(out, /1:<\|PLAN>Initialize<PLAN\|>/, "the model sees its own emission — line 1");
-    assert.match(out, /2:<\|SEND\[102\]>Initialized<SEND\|>/, "line 2, referenceable when reasoning through a syntax error");
+    assert.match(out, /1:# PLAN0\n2:Initialize/, "the model sees its own PLAN section");
+    assert.match(out, /4:## SEND0 \[102\]\n5:Initialized/, "the SEND section remains line-addressable after a syntax error");
+});
+
+test("an open initialization row identifies kernel-authored initialization without impersonating the model", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/1", origin: "plurnk", op: null, status: 200, folded: false,
+        attrs: { kind: "initialization" },
+        rx: {
+            content: "# PLAN0\n* Initialization complete.\n* Next: address the prompt.\n\n## SEND0 [102]\nNext, address the prompt.",
+            mimetype: "text/vnd.plurnk",
+        },
+    }], tok);
+    assert.match(out, /"kind":"initialization"/, "the row states why the kernel-authored actionless body exists");
+    assert.match(out, /"origin":"plurnk"/, "the row preserves its kernel authorship");
+    assert.doesNotMatch(out, /"kind":"model_emission"/, "initialization never masquerades as model output");
 });
 
 test("the Log renders as a fenced jsonplurnk array that strips to valid JSON — one carve-out, deterministically", () => {
     const out = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "worker", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } }, // none: empty FIND, no body
         { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: true, target: { scheme: null, pathname: "/a.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } }, // folded: body hidden
-        { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: false, target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // open: BODY enclosure
+        { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: false, target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // open: raw multiline string
     ], tok);
     assert.match(out, /^`{3,}jsonplurnk\n/, "the fence leads — the Log carries data only, no prose note");
     const m = /(`{3,})jsonplurnk\n([\s\S]*?)\n\1/.exec(out);
     assert.ok(m, "a fenced jsonplurnk block");
     // Strip the ONE deviation with a content-agnostic, boundary-anchored transform → strict JSON.
-    const strict = m![2].replace(/"body":\n<\|BODY>\n[\s\S]*?\n<BODY\|>\n\}/g, '"body":""}');
+    const strict = m![2].replace(/"body":"\n(?:\d+:[^\n]*\n)+"(?=\})/g, '"body":""');
     const arr = JSON.parse(strict) as Array<{ display: string; body?: string }>;
     assert.deepEqual(arr.map((e) => e.display), ["none", "folded", "open"], "the three display states render explicitly — no glyph legend");
     assert.equal(arr[0].body, "", "display:none carries an explicit empty JSON body");
     assert.ok(!("body" in arr[1]), "display:folded withholds its body");
-    assert.equal(arr[2].body, "", "the open row's BODY enclosure — the one deviation — strips to a string, recovering valid JSON");
+    assert.equal(arr[2].body, "", "the open row's raw multiline value — the one deviation — strips to a string, recovering valid JSON");
 });
 
 test("the opening fence outgrows any backtick run a body carries — a code sample can't close the block", () => {
@@ -942,7 +1018,7 @@ test("every READ/FIND body bypasses the ordinary preview", () => {
     assert.doesNotMatch(readOut, /"overflow"/, "no preview cut on READ");
 
     const findOut = PacketWire.renderLog([
-        { coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, target: { scheme: null, pathname: "" }, rx: { content: long, mimetype: "text/plain", startLine: null } },
+        { coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, target: { scheme: null, pathname: "" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
     ], tok);
     assert.match(findOut, /line 30 of a runaway/, "a long FIND renders its full result — retrieval is exempt");
     assert.doesNotMatch(findOut, /"overflow"/, "no preview cut on FIND");
@@ -1007,6 +1083,32 @@ test("every non-retrieval body producer uses the same addressable preview", () =
             `${entry.op} exposes the same neutral canonical-body pointer`,
         );
     });
+});
+
+test("{§jsonplurnk}: a character preview never cuts a numbered body inside its next line prefix", () => {
+    const previousLines = process.env.PLURNK_SERVICE_PREVIEW_LINES;
+    const previousChars = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+    try {
+        process.env.PLURNK_SERVICE_PREVIEW_LINES = "16";
+        process.env.PLURNK_SERVICE_PREVIEW_CHARS = "24";
+        const rendered = PacketWire.renderLog([{
+            coordinate: "1/1/1",
+            origin: "plurnk",
+            op: "EDIT",
+            status: 201,
+            target: { scheme: "https", pathname: "/example.test/result" },
+            rx: { span: "1:abcdefghijklmnopqrst\n2:tail" },
+        }], tok);
+
+        assert.match(rendered, /1:abcdefghijklmnopqrst/, "the complete line before the character boundary remains visible");
+        assert.doesNotMatch(rendered, /\n2\n"/, "the preview does not manufacture a dangling line-number prefix");
+        assert.match(rendered, /"overflow":"Body content truncated\. Full body: log:\/\/\/1\/1\/1\/EDIT"/);
+    } finally {
+        if (previousLines === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES;
+        else process.env.PLURNK_SERVICE_PREVIEW_LINES = previousLines;
+        if (previousChars === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+        else process.env.PLURNK_SERVICE_PREVIEW_CHARS = previousChars;
+    }
 });
 
 test("preview bounds are exact and reject invalid configuration", () => {

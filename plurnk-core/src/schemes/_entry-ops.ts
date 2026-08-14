@@ -1,15 +1,16 @@
 import EntrySemantic from "./_entry-semantic.ts";
 import EntryCrud from "./_entry-crud.ts";
-import type { EditStatement, RangeExtent, ReadStatement, TextRegion } from "@plurnk/plurnk-contracts";
+import type { RangeExtent, ReadStatement, TextRegion } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
-import { entryPathnameOf } from "../core/plurnk-uri.ts";
+import { entryPathnameOf, renderTarget } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Owner from "../core/Owner.ts";
 import EntryManifest from "./_entry-manifest.ts";
-import { LineMarkerOps, MimetypeBinary, PathMimetype, ReadProjector, editReceipt } from "../content/index.ts";
-import type { EditBatchReceipt } from "../content/index.ts";
+import { EditCollision, LineAnchors, LineMarkerOps, MimetypeBinary, PathMimetype, ReadProjector, editReceipt } from "../content/index.ts";
+import type { EditBatchReceipt, LineAnchorPrecondition } from "../content/index.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
-import type { ScopeNormalization } from "@plurnk/plurnk-schemes";
+import type { ResolvedEditStatement, ScopeNormalization } from "@plurnk/plurnk-schemes";
+import { contentHash } from "../core/content-hash.ts";
 
 // Shared static-method helpers for owner-addressed entry-bearing schemes.
 // Each scheme passes its manifest; helpers extract scheme name, channels,
@@ -42,7 +43,7 @@ interface ReadAddress {
 }
 
 export default class EntryOps {
-    static #pathnameOf(statement: { target: EditStatement["target"] }): string {
+    static #pathnameOf(statement: { target: ResolvedEditStatement["target"] }): string {
         const t = statement.target;
         if (t === null) throw new Error("unreachable");
         // Owner-carved schemes strip their authority before reaching the shared
@@ -50,7 +51,7 @@ export default class EntryOps {
         return entryPathnameOf(t);
     }
 
-    static #fragmentOf(statement: { target: EditStatement["target"] }): string | null {
+    static #fragmentOf(statement: { target: ResolvedEditStatement["target"] }): string | null {
         const t = statement.target;
         if (t === null || t.kind !== "url") return null;
         return t.fragment;
@@ -100,7 +101,14 @@ export default class EntryOps {
         return Owner.commonsId(ctx.db, ctx.workspaceId);
     }
 
-    static async editWorkspaceEntryBatch(statements: readonly EditStatement[], ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<EditResult> {
+    static async editWorkspaceEntryBatch(
+        statements: readonly ResolvedEditStatement[],
+        ctx: PlurnkSchemeContext,
+        manifest: SchemeManifest,
+        explicitOwnerId?: number,
+        precondition: LineAnchorPrecondition | null = null,
+    ): Promise<EditResult> {
+        LineAnchors.assertResolved(statements);
         const failure = (
             code: string,
             status: number,
@@ -176,9 +184,18 @@ export default class EntryOps {
         const channelManifestDefault = channels[targetChannel];
         const effectiveMimetype = await PathMimetype.resolveEntryMimetype(pathname, channelManifestDefault, ctx.mimetypes);
 
+        const channel = existing === undefined
+            ? undefined
+            : await db.ops_read_channel.get<{ content: string; mimetype: string }>({
+                workspace_id: workspaceId,
+                scheme,
+                pathname,
+                channel: targetChannel,
+                owner_id: ownerId,
+            });
+
         // 415 on binary entries (SPEC.md {§op-invariants}).
         if (existing !== undefined) {
-            const channel = await db.ops_read_channel.get<{ mimetype: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: targetChannel }, owner_id: ownerId });
             if (channel !== undefined && await MimetypeBinary.isBinaryMimetype(channel.mimetype, ctx.mimetypes)) {
                 return failure("binary-edit-unsupported", 415, `The #${targetChannel} channel is binary and cannot be edited.`, { entryId: existing.id, channel: targetChannel });
             }
@@ -189,33 +206,40 @@ export default class EntryOps {
 
         // Read current content unconditionally for diff generation (M.12 —
         // surface diff in EDIT response so wrong-marker mistakes are visible).
-        let originalContent = "";
-        if (existing !== undefined) {
-            const channel = await db.ops_read_channel.get<{ content: string }>({ ...{ workspace_id: workspaceId, scheme, pathname, channel: targetChannel }, owner_id: ownerId });
-            originalContent = channel?.content ?? "";
+        const originalContent = channel?.content ?? "";
+        if (precondition !== null && !LineAnchors.satisfies(precondition, originalContent)) {
+            return EditCollision.result(precondition.identity, {
+                entryId: existing?.id ?? null,
+                channel: targetChannel,
+            }) as EditResult;
         }
 
         // `<scope>` always addresses the selected channel's textual representation.
         // Structured query dialects locate content but never redefine mutation coordinates.
-        // A CREATE (no existing entry) has nothing to scope into, so a markerless body
-        // becomes the new entry's content. {§edit-marker-required-on-existing}: an
-        // EXISTING entry has no easy-clobber path: a marker is REQUIRED, even for a
-        // deliberate full rewrite (`<1,-1>` states that intent explicitly).
+        // A missing selected channel has nothing to scope into, so a markerless body
+        // becomes that channel's content. {§edit-marker-required-on-existing}: an
+        // existing selected channel has no easy-clobber path: a marker is REQUIRED,
+        // even for a deliberate full rewrite (`<1,-1>` states that intent explicitly).
         let newContent: string;
         let scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined;
-        if (existing !== undefined && statements.some(({ lineMarker }) => lineMarker === null)) {
+        const channelExists = channel !== undefined;
+        if (channelExists && existing === undefined) {
+            throw new Error("An entry channel cannot exist without its owning entry.");
+        }
+        const existingEntryId = existing?.id ?? null;
+        if (channelExists && statements.some(({ lineMarker }) => lineMarker === null)) {
             return failure(
                 "line-marker-required",
                 400,
                 "EDIT of an existing entry requires a line marker.",
-                { entryId: existing.id, channel: targetChannel },
+                { entryId: existingEntryId, channel: targetChannel },
                 {
                     recovery: "Use <1,-1> to replace the whole entry or select a narrower range.",
                     retryable: false,
                 },
             );
         }
-        if (existing !== undefined) {
+        if (channelExists) {
             const edits = statements.map((candidate) => ({
                 marker: candidate.lineMarker!,
                 body: candidate.body ?? "",
@@ -224,7 +248,7 @@ export default class EntryOps {
             if (result.status !== 200) {
                 return Results.assert({
                     ...result,
-                    entryId: existing.id,
+                    entryId: existingEntryId,
                     channel: targetChannel,
                 }) as EditResult;
             }
@@ -246,22 +270,14 @@ export default class EntryOps {
             newContent = statement.body ?? "";
         }
 
-        // 304 no-op (SPEC {§edit}): an existing entry whose write would change nothing —
-        // identical content and no new tag. Mirrors OPEN/FOLD's idempotence; hands the
+        // 304 no-op (SPEC {§edit}): an existing entry whose write would change nothing.
+        // Mirrors OPEN/FOLD's idempotence; hands the
         // model a "you already did this" signal instead of a phantom 200 it can't
         // distinguish from a real update.
-        if (existing !== undefined && newContent === originalContent) {
-            const signalTags = statements.flatMap(({ signal }) => Array.isArray(signal) ? signal : []);
-            let addsTag = false;
-            if (signalTags.length > 0) {
-                const have = new Set(
-                    (await db.crud_read_tags.all<{ tag: string }>({ entry_id: existing.id })).map((r) => r.tag),
-                );
-                addsTag = signalTags.some((t) => !have.has(t));
-            }
-            if (!addsTag) return {
+        if (channelExists && newContent === originalContent) {
+            return {
                 status: 304,
-                entryId: existing.id,
+                entryId: existingEntryId,
                 channel: targetChannel,
                 ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
             };  // {§edit-noop-304}
@@ -270,8 +286,18 @@ export default class EntryOps {
         let entryId: number;
         let createdNow: boolean;
         if (existing === undefined) {
-            const row = await db.crud_insert_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: ownerId, scheme, pathname });
-            if (row === undefined) throw new Error("editWorkspaceEntry: insert returned no row");
+            const row = await db.ops_insert_workspace_entry_if_absent.get<{ id: number }>({
+                workspace_id: workspaceId,
+                owner_id: ownerId,
+                scheme,
+                pathname,
+            });
+            if (row === undefined) {
+                return EditCollision.result(
+                    precondition?.identity ?? EntryManifest.toPath(scheme, pathname),
+                    { entryId: null, channel: targetChannel },
+                ) as EditResult;
+            }
             entryId = row.id;
             createdNow = true;
         } else {
@@ -280,19 +306,31 @@ export default class EntryOps {
         }
 
         if (ctx.tokenize === undefined) throw new Error("editWorkspaceEntry: ctx.tokenize is required for token accounting");
-        await db.ops_upsert_channel.run({ entry_id: entryId, name: targetChannel, content: newContent, mimetype: effectiveMimetype, tokens: ctx.tokenize(newContent) }); // EDIT writes exactly the one resolved channel — {§per-entry-channels-edit-writes-only-body}
+        const write = {
+            entry_id: entryId,
+            name: targetChannel,
+            content: newContent,
+            mimetype: effectiveMimetype,
+            tokens: ctx.tokenize(newContent),
+            content_hash: contentHash(newContent),
+        };
+        const landed = channel === undefined
+            ? await db.ops_insert_channel_if_absent.get<{ name: string }>(write)
+            : await db.ops_update_channel_if_content.get<{ name: string }>({
+                ...write,
+                expected_content: originalContent,
+            });
+        if (landed === undefined) {
+            return EditCollision.result(
+                precondition?.identity ?? EntryManifest.toPath(scheme, pathname),
+                { entryId, channel: targetChannel },
+            ) as EditResult;
+        }
+        // EDIT writes exactly the one resolved channel — {§per-entry-channels-edit-writes-only-body}.
         // Search derivation is not a write concern. SearchIndex attaches the
         // updated readable projection before the next model execution.
 
-        // Tags apply additively — each signal tag is written, never replacing existing ones. {§edit-tags-additive}
-        for (const candidate of statements) {
-            if (!Array.isArray(candidate.signal)) continue;
-            for (const tag of candidate.signal) {
-                await db.crud_write_tag.run({ entry_id: entryId, tag });
-            }
-        }
-
-        const receiptEdits = existing === undefined
+        const receiptEdits = !channelExists
             ? [{ marker: { marks: [1, -1] as [number, number] }, body: newContent }]
             : statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }));
         return {
@@ -305,8 +343,8 @@ export default class EntryOps {
     }
 
     // Owner-aware entry delete — the KILL counterpart of editWorkspaceEntry. Resolves
-    // the exact owner-held row, then deletes by id (channels/tags CASCADE). 404 when absent.
-    static async deleteWorkspaceEntry(statement: { target: EditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<SchemeResultBase> {
+    // the exact owner-held row, then deletes it (including channels by CASCADE). 404 when absent.
+    static async deleteWorkspaceEntry(statement: { target: ResolvedEditStatement["target"] }, ctx: PlurnkSchemeContext, manifest: SchemeManifest, explicitOwnerId?: number): Promise<SchemeResultBase> {
         if (statement.target === null) {
             return Results.failure(
                 `scheme:${manifest.name}`,
@@ -369,6 +407,10 @@ export default class EntryOps {
         const scheme = EntryCrud.identityScheme(manifest);
 
         const pathname = address.pathname ?? EntryOps.#pathnameOf(statement);
+        const identity = statement.target.kind === "url"
+            ? renderTarget({ ...statement.target, pathname })
+            : renderTarget({ scheme: null, pathname });
+        if (identity === null) throw new TypeError("READ resolved an unrenderable resource identity.");
         const ownerId = await EntryOps.#ownerOf(address.ownerId, ctx);
         const stored = await EntryCrud.readEntry(pathname, ctx, scheme, ownerId);
         // {§read-read-404} + {§fs-errno} — ENOENT carries its fact, the RESOLVED name in wire
@@ -386,6 +428,7 @@ export default class EntryOps {
             statement,
             manifest: { ...manifest, name: scheme },
             target: EntryManifest.toPath(scheme, pathname),
+            identity,
             representation: stored.entry,
             mimetypes: ctx.mimetypes,
         }) as Promise<ReadResult>;

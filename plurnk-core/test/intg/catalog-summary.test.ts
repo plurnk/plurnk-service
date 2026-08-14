@@ -3,7 +3,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { openMigrated, insertWorkspace, insertWorker, makeHandlerCtx, makeSchemeCtx } from "./_helpers.ts";
@@ -13,7 +14,7 @@ const url = (scheme: string, pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, query: null, fragment: null,
 });
-const editStmt = (target: UrlPath, body: string): EditStatement => ({
+const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
     op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
@@ -31,15 +32,12 @@ test("[catalog] engine_scheme_catalog_summary tallies distinct entries per schem
         await new Skill().edit(editStmt(url("skill", "q"), "a recipe"), makeHandlerCtx(ctx, Skill.manifest));
         await EntryCrud.writeEntry("README.md", {
             channels: { body: { content: "root", mimetype: "text/markdown" } },
-            tags: [],
         }, ctx, "file");
         await EntryCrud.writeEntry("src/a.ts", {
             channels: { body: { content: "a", mimetype: "text/typescript" } },
-            tags: [],
         }, ctx, "file");
         await EntryCrud.writeEntry("src/deep/b.ts", {
             channels: { body: { content: "b", mimetype: "text/typescript" } },
-            tags: [],
         }, ctx, "file");
 
         const rows = await db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });

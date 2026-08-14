@@ -2,11 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type {
     EntryEditResult,
+    ResolvedEditStatement,
     SchemeCtx,
     SchemeHandler,
     SchemeManifest,
 } from "@plurnk/plurnk-schemes";
-import type { EditStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import { Validator, type ClientEntry, type EntryReadResult as EntryReadWire } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -31,7 +32,7 @@ class PrivateNotes implements SchemeHandler {
             : null;
     }
 
-    async editBatch(statements: readonly EditStatement[], ctx: SchemeCtx): Promise<EntryEditResult> {
+    async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EntryEditResult> {
         return ctx.entries.operations.editBatch(statements, "worker");
     }
 }
@@ -64,7 +65,6 @@ test("entry.read resolves one owner-aware client entry and returns the exact sha
                 statement: Dsl.buildEdit({
                     target: "private-notes:///same",
                     content,
-                    tags: [workerId === parent.workerId ? "parent" : "child"],
                 }),
             });
             assert.equal(written.status, 201);
@@ -88,7 +88,6 @@ test("entry.read resolves one owner-aware client entry and returns the exact sha
                     state: "static",
                 },
             },
-            tags: ["parent"],
         });
 
         const childRead = body(await daemon.readEntry({

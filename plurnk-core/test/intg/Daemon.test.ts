@@ -15,7 +15,12 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 // RegistryEntry itself; registration needs no live driver (the scheme face reads lazily at dispatch).
 const fakeRegistration = (tag: string) => ({
     namespaceOwner: "daemon test module",
-    decl: { name: tag, glyph: "🔌", example: `<|EXEC[${tag}]>?<EXEC|>`, documentation: "" },
+    decl: {
+        name: tag,
+        glyph: "🔌",
+        invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } },
+        documentation: "",
+    },
     executor: {
         runtime: tag, glyph: "🔌",
         get manifest() {
@@ -540,10 +545,10 @@ test("the client-interface seam does not manufacture a resolver from an ownerles
         const turnId = await insertTurn(db, loopId, 1, 102);
         const row = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "model", source: null, op: "EDIT", suffix: "", signal: null,
+            origin: "model", source: null, model_call_id: null, op: "EDIT", suffix: "", signal: null,
             scheme: "worker", username: null, password: null, hostname: null, port: null,
             pathname: "/x", query: null, fragment: null, lineMarker: null,
-            tx: "<|EDIT(worker:///x)>body<EDIT|>", mimetype_tx: "text/vnd.plurnk",
+            tx: "## EDIT0 (worker:///x)\nbody", mimetype_tx: "text/vnd.plurnk",
             rx: JSON.stringify({ status: 202 }), mimetype_rx: "application/json",
             status_rx: 202, tokens: 0, state: "proposed", outcome: null, attrs: "{}",
         });
@@ -566,8 +571,8 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
     // budget. This test verifies the seam path, not small-window viability
     // ({§tokenomics-window-partition}).
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("<|SEND[200]>done<SEND|>", 50),
-        makeMockResponse("<|SEND[200]>done again<SEND|>", 50),
+        makeMockResponse("## SEND0 [200]\ndone", 50),
+        makeMockResponse("## SEND0 [200]\ndone again", 50),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -714,7 +719,7 @@ test("the client-interface seam — readLog returns a workspace's journal, owner
 
 test("the client-interface seam — metadata reads surface providers, workspaces, workers, and constraints", async () => {
     // The render surface beyond the journal: providers+budget, workspaces, workers, and the constraint overlay.
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -749,7 +754,7 @@ test("the client-interface seam — metadata reads surface providers, workspaces
 test("the client-interface seam — workspace lifecycle: create/attach/rename/set-root/constrain", async () => {
     // {§methods-workspace-create}: the module decodes its protocol; core owns semantic validation,
     // the envelope, name invariants, membership, and workspace/created.
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("<|SEND[200]>done<SEND|>", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 10)] });
     await withDaemon(mock, async (_db, daemon, _addr) => {
         const events: Array<{ method: string; params: unknown }> = [];
         daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });
@@ -947,7 +952,12 @@ test("the client-interface seam — a dispatched EXEC's stdout streams as stream
         try {
             await daemon.registerRuntime({
                 namespaceOwner: "stream test module",
-                decl: { name: "streamtag", glyph: "🔌", example: "", documentation: "" },
+                decl: {
+                    name: "streamtag",
+                    glyph: "🔌",
+                    invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } },
+                    documentation: "",
+                },
                 executor: {
                     runtime: "streamtag", glyph: "🔌",
                     get manifest() { return { name: "streamtag", channels: { stdout: "text/plain" }, defaultChannel: "stdout", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },

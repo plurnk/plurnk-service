@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { EditStatement, LineMarker, LocalPath, MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { LineMarker, LocalPath, MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -14,7 +15,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
 
 const fullReplace: LineMarker = { marks: [1, -1] };
-const editStatement = (opts: { target: ParsedPath; tags?: string[] | null; body?: string | null; lineMarker?: LineMarker | null }): EditStatement => ({
+const editStatement = (opts: { target: ParsedPath; tags?: string[] | null; body?: string | null; lineMarker?: LineMarker | null }): ResolvedEditStatement => ({
     op: "EDIT", suffix: "",
     signal: opts.tags ?? null,
     target: opts.target,
@@ -174,24 +175,14 @@ test("Worker.find: exact glob matcher returns flat match locations", async () =>
     } finally { db.close(); }
 });
 
-test("Worker.read: tag filter — entry has all requested tags → 200", async () => {
+test("Worker.read: signal classifies the eventual receipt and does not filter the resource", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
-        await k.edit(editStatement({ target: urlPath("worker", "/tagged"), tags: ["france", "geography"], body: "Paris" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const result = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/tagged"), tags: ["france"] }), makeSchemeCtx({ db, workspaceId, workerId }));
+        await k.edit(editStatement({ target: urlPath("worker", "/u"), body: "Paris" }), makeSchemeCtx({ db, workspaceId, workerId }));
+        const result = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/u"), tags: ["+germany"] }), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(result.status, 200);
         assert.equal(result.content, "Paris");
-    } finally { db.close(); }
-});
-
-test("Worker.read: tag filter — entry missing requested tag → 404", async () => {
-    const { db, workspaceId, workerId } = await setupContext();
-    try {
-        const k = new Worker();
-        await k.edit(editStatement({ target: urlPath("worker", "/u"), tags: ["france"], body: "Paris" }), makeSchemeCtx({ db, workspaceId, workerId }));
-        const result = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/u"), tags: ["germany"] }), makeSchemeCtx({ db, workspaceId, workerId }));
-        assert.equal(result.status, 404);
     } finally { db.close(); }
 });
 
@@ -209,7 +200,7 @@ test("Worker.find: matcher evaluates the full resource before projecting locatio
     } finally { db.close(); }
 });
 
-test("Worker.read: empty tag signal ([]) is treated as no filter — read proceeds", async () => {
+test("Worker.read: empty signal reads normally", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();

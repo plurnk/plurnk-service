@@ -20,6 +20,8 @@ export interface ResolvedLogBody {
     readonly startLine: number | null;
 }
 
+export type ActionlessLogKind = "initialization" | "model_emission";
+
 const EMPTY_BODY: ResolvedLogBody = Object.freeze({
     content: "",
     mimetype: "text/plain",
@@ -27,7 +29,7 @@ const EMPTY_BODY: ResolvedLogBody = Object.freeze({
 });
 
 // The durable log row has one canonical body regardless of how it is consumed.
-// Packet rendering projects this body, while READ(log://), FIND(log://), and
+// Packet rendering projects this body, while log READ, log FIND, and
 // search derivation consume it complete. Storage envelopes and tx/rx placement
 // are persistence details and must not change what the row means.
 export default class LogBody {
@@ -67,6 +69,20 @@ export default class LogBody {
         };
     }
 
+    static actionlessKind(row: Pick<LogBodyRow, "op" | "attrs">): ActionlessLogKind | null {
+        if (row.op !== null) return null;
+        const attrs = typeof row.attrs === "string"
+            ? LogBody.#decode(row.attrs, "application/json")
+            : row.attrs;
+        const kind = attrs !== null && typeof attrs === "object"
+            ? (attrs as { kind?: unknown }).kind
+            : undefined;
+        if (kind !== "initialization" && kind !== "model_emission") {
+            throw new TypeError("An actionless log body must carry attrs.kind=initialization or attrs.kind=model_emission.");
+        }
+        return kind;
+    }
+
     static resolve(row: LogBodyRow): ResolvedLogBody {
         const attrs = typeof row.attrs === "string"
             ? LogBody.#decode(row.attrs, "application/json")
@@ -76,13 +92,11 @@ export default class LogBody {
         const contentBody = LogBody.#contentBody(rx, row.mimetypeRx);
 
         if (row.op === null) {
-            if (attrs === null || typeof attrs !== "object" || (attrs as { kind?: unknown }).kind !== "model_emission") {
-                throw new TypeError("An actionless log body must carry attrs.kind=model_emission.");
-            }
+            LogBody.actionlessKind({ op: row.op, attrs });
             return contentBody ?? EMPTY_BODY;
         }
 
-        if (row.op === "READ" || row.op === "FIND" || row.op === "prompt") {
+        if (row.op === "READ" || row.op === "FIND" || row.op === "BARE" || row.op === "prompt") {
             return contentBody ?? EMPTY_BODY;
         }
 

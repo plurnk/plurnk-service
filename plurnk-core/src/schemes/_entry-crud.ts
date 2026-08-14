@@ -1,6 +1,6 @@
 // Shared CRUD primitives for entry-bearing schemes.
 // Per SPEC {§crud} — uniform read/write/delete that the engine drives for
-// cross-scheme orchestration of COPY/MOVE/SEND[410].
+// cross-scheme orchestration of COPY/MOVE/SEND signal 410.
 
 import { contentHash } from "../core/content-hash.ts";
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
@@ -19,8 +19,6 @@ export interface EntryData {
         state?: ChannelState;
         producerResult?: ChannelProducerResult;
     }>;
-    tags: string[];
-    // Core-private metadata, never part of StoredEntryData or extension caps.
     attributes?: Readonly<Record<string, unknown>>;
 }
 
@@ -53,7 +51,7 @@ export default class EntryCrud {
     static async readEntry(pathname: string, ctx: PlurnkSchemeContext, scheme: string, ownerId?: number): Promise<ReadEntryResult> {
         const { db, workspaceId } = ctx;
         const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
-        const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
+        const entry = await db.crud_find_workspace_entry.get<{ id: number; attributes: string }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
         if (entry === undefined) {
             const target = renderAddress(scheme, pathname);
             return Results.failure(
@@ -89,10 +87,19 @@ export default class EntryCrud {
             };
         }
 
-        const tagRows = await db.crud_read_tags.all<{ tag: string }>({ entry_id: entry.id });
-        const tags = tagRows.map((r) => r.tag);
-
-        return { status: 200, entry: { channels, tags } };
+        const attributes = JSON.parse(entry.attributes) as unknown;
+        if (typeof attributes !== "object" || attributes === null || Array.isArray(attributes)) {
+            throw new TypeError(`Entry ${entry.id} contains invalid attributes.`);
+        }
+        return {
+            status: 200,
+            entry: {
+                channels,
+                ...(Object.keys(attributes).length === 0
+                    ? {}
+                    : { attributes: attributes as Readonly<Record<string, unknown>> }),
+            },
+        };
     }
 
     static async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string, ownerId?: number): Promise<WriteEntryResult> {
@@ -126,7 +133,6 @@ export default class EntryCrud {
                 });
             }
             await db.crud_delete_channels.run({ entry_id: entryId });
-            await db.crud_delete_tags.run({ entry_id: entryId });
         }
 
         // Writes are VERBATIM — the scheme never transforms what it's handed. Web-page projection
@@ -144,9 +150,6 @@ export default class EntryCrud {
                 state: channelData.state ?? "static",
                 producer_result: producerResult,
             });
-        }
-        for (const tag of entry.tags) {
-            await db.crud_write_tag.run({ entry_id: entryId, tag });
         }
         return { status: created ? 201 : 200, created, entryId };
     }
@@ -167,7 +170,7 @@ export default class EntryCrud {
             ) as DeleteEntryResult;
         }
         await db.crud_delete_entry.run({ entry_id: existing.id });
-        // CASCADE on entry_channels, entry_tags per FK constraints.
+        // CASCADE on entry_channels per FK constraints.
         return { status: 200 };
     }
 

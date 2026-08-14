@@ -19,7 +19,7 @@ const run = async (runtime: string, command: string, target: string | null = nul
     const states: string[] = [];
     const events: Notice[] = [];
     const args: ExecArgs = {
-        runtime, command, cwd, target,
+        runtime, body: command, cwd, target,
         signal: new AbortController().signal,
         write: (_c, chunk) => { out = (out ?? "") + chunk; },
         setState: (_c, s) => states.push(s),
@@ -48,6 +48,7 @@ test("manifest declares wat + wasm", async () => {
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf-8"));
     assert.equal(pkg.plurnk.kind, "exec");
     assert.deepEqual(pkg.plurnk.runtimes.map((r: { name: string }) => r.name), ["wat", "wasm"]);
+    assert.equal(pkg.plurnk.runtimes.every((r: { invocation?: { exclusive?: unknown } }) => r.invocation?.exclusive === true), true);
 });
 
 test("channels: results (application/json); effect pure; probe available", async () => {
@@ -109,10 +110,10 @@ test("wasm: invalid bytes -> wasm_invalid, 400", async () => {
     assert.equal(events.length, 0);
 });
 
-test("wat from a file-path target compiles + runs the file (body ignored)", async () => {
+test("wat from a file-path target compiles and runs the targeted module", async () => {
     const p = tmp("mod.wat");
     await writeFile(p, WAT, "utf8");
-    const { result, out } = await run("wat", "ignored-body", p);
+    const { result, out } = await run("wat", "", p);
     assert.equal(result.status, 200);
     assert.equal(JSON.parse(out!).returned, 42);
 });
@@ -135,7 +136,7 @@ test("a relative file target resolves against cwd, not the process dir", async (
         await writeFile(join(dir, "mod.wat"), WAT, "utf8");
         // relative target + cwd → resolves inside cwd (the workspace); against the
         // process dir it'd be not-found.
-        const { result, out } = await run("wat", "ignored-body", "mod.wat", dir);
+        const { result, out } = await run("wat", "", "mod.wat", dir);
         assert.equal(result.status, 200);
         assert.equal(JSON.parse(out!).returned, 42, "resolved the relative target inside cwd");
     } finally {
@@ -170,7 +171,7 @@ test("pre-aborted signal → 499 errored, nothing runs", async () => {
     const states: string[] = [];
     let wrote = false;
     const args: ExecArgs = {
-        runtime: "wat", command: WAT, cwd: null, target: null,
+        runtime: "wat", body: WAT, cwd: null, target: null,
         signal: ac.signal,
         write: () => { wrote = true; },
         setState: (_c, s) => states.push(s),

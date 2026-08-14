@@ -12,8 +12,10 @@ import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
+import type { CatalogResource, FindResult } from "../../src/schemes/_entry-find.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { urlPath, findStmt } from "./_dsl.ts";
+import { matchLocations } from "./_find.ts";
 
 const editStmt = (pathname: string, content: string): EditStatement => ({
     op: "EDIT", suffix: "", signal: null,
@@ -23,6 +25,9 @@ const editStmt = (pathname: string, content: string): EditStatement => ({
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
     op: "READ", suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
+const resources = (result: FindResult): CatalogResource[] =>
+    result.results.filter((item): item is CatalogResource => Array.isArray(item));
+const paths = (result: FindResult): string[] => resources(result).map(([item]) => item.path);
 
 const setup = async () => {
     const db = await openMigrated();
@@ -46,13 +51,13 @@ test("FIND(log:///**):/regex/ matches log rows by CONTENT — the jumbo gesture 
             makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(r.status, 200, "no more 501 — log speaks the universal FIND");
-        const paths = r.results.flatMap((item) => typeof item.path === "string" ? [item.path] : []);
+        const foundPaths = paths(r);
         // BOTH rows whose projection carries the phrase match: the EDIT's rx echoes the written
         // span, the READ's rx carries the retrieved content — FIND matches exactly what READ shows.
-        assert.ok(paths.includes("log:///1/1/2/READ"), "the READ-result row matches by its content");
-        assert.ok(paths.includes("log:///1/1/1/EDIT"), "the EDIT row matches too — its rx echoes the written span (the projection is the contract)");
-        assert.ok(!paths.some((x) => x.includes("/1/1/3/")), "the irrelevant row is excluded");
-        assert.ok(r.results.every((item) => (item.matchLocationCount ?? 0) > 0), "each selected row reports its addressable location count");
+        assert.ok(foundPaths.includes("log:///1/1/2/READ"), "the READ-result row matches by its content");
+        assert.ok(foundPaths.includes("log:///1/1/1/EDIT"), "the EDIT row matches too — its rx echoes the written span (the projection is the contract)");
+        assert.ok(!foundPaths.some((x) => x.includes("/1/1/3/")), "the irrelevant row is excluded");
+        assert.ok(resources(r).every(([item]) => (item.matchLocationCount ?? 0) > 0), "each selected row reports its addressable location count");
     } finally { await db.close(); }
 });
 
@@ -64,8 +69,8 @@ test("a body-less FIND(log:///1/1) lists the turn's rows — the hierarchy is th
         assert.equal(r.results.length, 3, "the turn's three rows, catalog-shaped");
         assert.deepEqual(JSON.parse(r.content!), r.results, "line-addressable content remains the exact JSON result array");
         assert.equal(r.content!.split("\n").length, r.results.length, "log FIND uses the same one-item-per-line rendering as entry FIND");
-        assert.ok(r.results.every((item) => typeof item.path === "string" && /^log:\/\/\/1\/1\/\d+\//.test(item.path)), "each item keyed log:///loop/turn/seq/OP");
-        assert.ok(r.results.every((x) => x.channels !== undefined && Object.values(x.channels)[0]!.tokens >= 0), "each carries {mimetype, tokens, lines} — the model budgets its READs");
+        assert.ok(paths(r).every((path) => /^log:\/\/\/1\/1\/\d+\//.test(path)), "each item carries log:///loop/turn/seq/OP");
+        assert.ok(resources(r).every(([item]) => item.tokens >= 0), "each default channel carries {mimetype, tokens, lines}");
     } finally { await db.close(); }
 });
 
@@ -79,6 +84,18 @@ test("an exact body-less log FIND returns 404 when the resource does not exist",
         assert.equal(result.status, 404);
         assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/log/entry-not-found");
         assert.equal(result.problem?.target, "log:///9/9/9/READ");
+    } finally { await db.close(); }
+});
+
+test("an exact log FIND rejects a supplied /OP suffix that disagrees with an existing row", async () => {
+    const { db, workerId } = await setup();
+    try {
+        const result = await new Log().find(
+            findStmt(urlPath("log", "/1/1/1/READ")),
+            makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
+        );
+        assert.equal(result.status, 404);
+        assert.equal(result.problem?.target, "log:///1/1/1/READ");
     } finally { await db.close(); }
 });
 
@@ -122,14 +139,14 @@ test("a single-star log FIND maps one coordinate level without crossing separato
 
         const root = await log.find(findStmt(urlPath("log", "/*")), ctx);
         assert.equal(root.status, 200);
-        assert.deepEqual(root.results.map((item) => item.path), ["log:///1/**"]);
-        const loop = root.results[0];
-        assert.ok(loop !== undefined && loop.items === 3 && (loop.tokens ?? 0) >= 0, "the loop scope summarizes its recursive rows");
+        assert.deepEqual(paths(root), ["log:///1/**"]);
+        const loop = resources(root)[0]?.[0];
+        assert.ok(loop !== undefined && "items" in loop && loop.items === 3 && loop.tokens >= 0, "the loop scope summarizes its recursive rows");
         assert.equal(root.matchingPathCount, 0, "the summary is navigation metadata, not a hidden row match");
 
         const segmented = await log.find(findStmt(urlPath("log", "/*/*/*")), ctx);
         assert.equal(segmented.results.length, 3, "one star per canonical coordinate segment reaches the rows");
-        assert.ok(segmented.results.every((item) => typeof item.path === "string" && /^log:\/\/\/1\/1\/\d+\//.test(item.path)));
+        assert.ok(paths(segmented).every((path) => /^log:\/\/\/1\/1\/\d+\//.test(path)));
 
         const turnRows = await log.find(findStmt(urlPath("log", "/1/1/*")), ctx);
         assert.equal(turnRows.results.length, 3, "a turn-level star lists its item resources rather than /OP decorations");
@@ -172,7 +189,7 @@ test("log FIND reports an exact readable region for structural matches", async (
             makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 200);
-        const match = result.results[0];
+        const match = matchLocations(result)[0];
         assert.equal(match?.locator, "$['second']");
         assert.equal(match?.region?.startLine, 3);
         assert.equal(match?.region?.endLine, 3);
@@ -205,6 +222,7 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
             sequence: 4,
             origin: "model",
             source: null,
+            model_call_id: null,
             op: "PLAN",
             suffix: "",
             signal: null,
@@ -302,7 +320,7 @@ test("semantic and graph FIND over logs use the same persistent derivations as e
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(semantic.status, 200);
-        assert.ok(semantic.results.some(({ path }) => path?.includes("/1/1/2/READ") === true),
+        assert.ok(paths(semantic).some((path) => path.includes("/1/1/2/READ")),
             "semantic rank returns the log address whose READ projection carries the phrase");
         assert.ok(semantic.results.length >= 2, "the semantic specimen has multiple ranked log results");
         const secondSemantic = await new Log().find(
@@ -310,8 +328,8 @@ test("semantic and graph FIND over logs use the same persistent derivations as e
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.deepEqual(
-            secondSemantic.results.map(({ path }) => path),
-            semantic.results.slice(1, 2).map(({ path }) => path),
+            paths(secondSemantic),
+            paths(semantic).slice(1, 2),
             "log semantic FIND uses the same positional result scope as every FIND",
         );
 
@@ -320,7 +338,7 @@ test("semantic and graph FIND over logs use the same persistent derivations as e
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(graph.status, 200);
-        assert.ok(graph.results.some(({ path }) => path?.includes("/1/1/5/READ") === true),
+        assert.ok(paths(graph).some((path) => path.includes("/1/1/5/READ")),
             "graph relation returns the log address whose readable code projection references helper");
 
         const graphMiss = await new Log().find(

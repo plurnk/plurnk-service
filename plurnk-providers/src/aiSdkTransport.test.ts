@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { APICallError } from "ai";
 import { executeOpenAICompatible } from "./aiSdkTransport.ts";
 
 const request = {
@@ -15,22 +16,27 @@ const request = {
 
 test("the transport performs exactly one physical request", async () => {
     let calls = 0;
-    await assert.rejects(executeOpenAICompatible({
-        ...request,
-        fetch: async () => {
-            calls += 1;
-            return new Response(
-                JSON.stringify({ error: { message: "upstream attempts exhausted" } }),
-                {
-                    status: 503,
-                    headers: {
-                        "content-type": "application/json",
-                        "x-should-retry": "false",
+    await assert.rejects(
+        executeOpenAICompatible({
+            ...request,
+            fetch: async () => {
+                calls += 1;
+                return new Response(
+                    JSON.stringify({ error: { message: "upstream attempts exhausted" } }),
+                    {
+                        status: 503,
+                        headers: {
+                            "content-type": "application/json",
+                            "x-should-retry": "false",
+                        },
                     },
-                },
-            );
-        },
-    }));
+                );
+            },
+        }),
+        (error) => APICallError.isInstance(error)
+            && error.statusCode === 503
+            && error.isRetryable === false,
+    );
     assert.equal(calls, 1);
 });
 
