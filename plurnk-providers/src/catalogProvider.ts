@@ -7,7 +7,8 @@ import {
     parseRequiredFloat,
     parseRequiredInt,
     parseTimeoutMs,
-    promptCacheKeyFromEnv,
+    cacheAffinityFromEnv,
+    cacheWritePolicyFromEnv,
     reasoningFromEnv,
     reasoningResponseStyleFromEnv,
     resolveReserve,
@@ -20,6 +21,7 @@ import type { Provider, ProviderCostNormalizer } from "./types.ts";
 import { estimateProviderCost } from "./cost.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import type { LanguageModel } from "ai";
+import type { AiSdkProviderOptions, CacheAffinity } from "./AiSdkProvider.ts";
 import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk-meta";
 
 const reasoningStyleFromEnv = (
@@ -50,6 +52,8 @@ export const providerFromSdkModel = ({
     contextWindow,
     info,
     attributions,
+    cacheAffinity,
+    systemCacheProviderOptions,
 }: {
     name: string;
     env: NodeJS.ProcessEnv;
@@ -61,6 +65,8 @@ export const providerFromSdkModel = ({
     contextWindow: number;
     info?: ModelInfo;
     attributions?: (context: PluginAttributionContext) => PluginAttribution;
+    cacheAffinity?: CacheAffinity;
+    systemCacheProviderOptions?: AiSdkProviderOptions;
 }): Provider => {
     emitWarningOnce(
         `${name} provider: request-level prompt counting is a chars/2 estimate; hard context-envelope admission fails closed without exact or bounded evidence`,
@@ -96,6 +102,8 @@ export const providerFromSdkModel = ({
     };
     const estimateCost = (usage: Parameters<typeof estimateProviderCost>[0]) =>
         estimateProviderCost(usage, rates, "Models.dev catalog rates");
+    const affinityEnabled = cacheAffinityFromEnv(env, name);
+    const cacheWritePolicy = cacheWritePolicyFromEnv(env, name);
 
     return new AiSdkProvider({
         model,
@@ -119,7 +127,10 @@ export const providerFromSdkModel = ({
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", name),
         errorDetailLimit: parseRequiredInt(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT", name),
         reasoningStyle: reasoningStyleFromEnv(env, name),
-        promptCacheKey: url === undefined ? false : promptCacheKeyFromEnv(env, name),
+        ...(affinityEnabled && cacheAffinity !== undefined ? { cacheAffinity } : {}),
+        ...(cacheWritePolicy === "stable-system" && systemCacheProviderOptions !== undefined
+            ? { systemCacheProviderOptions }
+            : {}),
         serviceTier: env.PLURNK_PROVIDERS_SERVICE_TIER,
         estimateCost,
         source: providerSource(name),
@@ -164,6 +175,8 @@ export const catalogProviderFromEnv = (
         normalizeCost: sdk.normalizeCost,
         url: sdk.compatible?.url,
         headers: sdk.compatible?.headers,
+        cacheAffinity: sdk.cacheAffinity,
+        systemCacheProviderOptions: sdk.systemCacheProviderOptions,
         contextWindow,
         info,
     });

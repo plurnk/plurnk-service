@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS workers (
     workspace_id    INTEGER NOT NULL,
     name            TEXT    NOT NULL CHECK (length(name) > 0),
     created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    -- {§worker-provider-identity}: provider affinity must not collide when
+    -- independent databases reuse local integer ids.
+    provider_identity TEXT NOT NULL DEFAULT (lower(hex(randomblob(16))))
+        CHECK (length(provider_identity) = 32 AND provider_identity NOT GLOB '*[^0-9a-f]*'),
     -- workers fork via parent_worker_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
     origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', 'plurnk')),
@@ -42,6 +46,7 @@ CREATE TABLE IF NOT EXISTS workers (
 
 CREATE        INDEX IF NOT EXISTS workers_workspace_id_created_at ON workers (workspace_id, created_at);
 CREATE        INDEX IF NOT EXISTS workers_parent_worker_id         ON workers (parent_worker_id);
+CREATE UNIQUE INDEX IF NOT EXISTS workers_provider_identity         ON workers (provider_identity);
 CREATE UNIQUE INDEX IF NOT EXISTS workers_workspace_default_conversation
     ON workers (workspace_id) WHERE default_conversation = 1;
 -- NOT unique: a name is frozen per worker ({§machine-processes-worker-origin}) but RECLAIMABLE across
@@ -49,6 +54,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS workers_workspace_default_conversation
 -- worker_resolve_by_name picks the newest. A LIVE collision is refused at the spawn gate (Worker.edit
 -- → worker_live_by_name → 409), never by this index. Indexed for the by-name resolve/spawn lookup.
 CREATE        INDEX IF NOT EXISTS workers_workspace_name          ON workers (workspace_id, name);
+
+CREATE TRIGGER IF NOT EXISTS workers_provider_identity_immutable
+BEFORE UPDATE OF provider_identity ON workers
+WHEN NEW.provider_identity != OLD.provider_identity
+BEGIN
+    SELECT RAISE(ABORT, 'workers.provider_identity is immutable');
+END;
 
 -- {§env-delta-log-pull}: one append-only occurrence journal gives every ambient
 -- producer a shared monotonic order. It snapshots only what the observer row

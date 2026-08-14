@@ -42,20 +42,24 @@ test("generate carries primaryWorkerId — a spawned child's differs from its Wo
         const workspaceId = await insertWorkspace(db, `primary-meta-${crypto.randomUUID()}`);
         const root = await insertWorker(db, workspaceId, null, "root");
         const child = await insertWorker(db, workspaceId, root, "child");
+        const rootIdentity = await db.test_workers_get_provider_identity.get<{ provider_identity: string }>({ id: root });
+        const childIdentity = await db.test_workers_get_provider_identity.get<{ provider_identity: string }>({ id: child });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         // The PRIMARY (root) worker: Worker-Primary == Worker-Id (pin 2 — always stamped, self-equal).
         const rootLoop = await insertLoop(db, root, 1, "go");
         const m1 = new CoordMock({ contextWindow: viableWindow(), responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
         await engine.runTurn({ provider: m1, workspaceId, workerId: root, loopId: rootLoop, messages: [{ role: "system", content: "x" }, { role: "user", content: "go" }] });
-        assert.equal(m1.seen.primaryWorkerId, String(root), "the primary's own turn stamps Worker-Primary");
+        assert.equal(m1.seen.workerId, rootIdentity?.provider_identity, "the provider sees the root's durable opaque identity, not its local row id");
+        assert.equal(m1.seen.primaryWorkerId, rootIdentity?.provider_identity, "the primary's own turn stamps Worker-Primary");
         assert.equal(m1.seen.primaryWorkerId, m1.seen.workerId, "Worker-Primary == Worker-Id on the primary — the endpoint routes it to the strong model");
 
         // A SPAWNED child: Worker-Primary is the ROOT, != its own Worker-Id (endpoint routes it cheap).
         const childLoop = await insertLoop(db, child, 1, "go");
         const m2 = new CoordMock({ contextWindow: viableWindow(), responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
         await engine.runTurn({ provider: m2, workspaceId, workerId: child, loopId: childLoop, messages: [{ role: "system", content: "x" }, { role: "user", content: "go" }] });
-        assert.equal(m2.seen.primaryWorkerId, String(root), "a spawned child carries the ROOT as Worker-Primary");
+        assert.equal(m2.seen.workerId, childIdentity?.provider_identity, "the child carries its own durable provider identity");
+        assert.equal(m2.seen.primaryWorkerId, rootIdentity?.provider_identity, "a spawned child carries the ROOT as Worker-Primary");
         assert.notEqual(m2.seen.primaryWorkerId, m2.seen.workerId, "Worker-Primary != Worker-Id on a spawn — routed to the cheap model");
     } finally { await db.close(); }
 });

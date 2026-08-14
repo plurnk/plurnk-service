@@ -181,6 +181,7 @@ export type AiSdkTransportResponse = {
 export type AiSdkModelRequest = Omit<AiSdkTransportRequest, "url" | "model" | "body" | "fetch"> & {
     languageModel: LanguageModel;
     providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
+    systemProviderOptions?: Record<string, Record<string, JSONValue | undefined>>;
     temperature?: number;
     topP?: number;
     topK?: number;
@@ -262,6 +263,7 @@ const executeModelOnce = async (
     const {
         languageModel: model,
         providerOptions,
+        systemProviderOptions,
         temperature,
         topP,
         topK,
@@ -289,9 +291,12 @@ const executeModelOnce = async (
     if (request.messages.slice(instructionCount).some((message) => message.role === "system")) {
         throw new Error("provider messages: system instructions must precede conversational messages");
     }
-    const instructions = request.messages.slice(0, instructionCount).map(({ content }) => ({
+    const instructions = request.messages.slice(0, instructionCount).map(({ content }, index) => ({
         role: "system" as const,
         content,
+        ...(systemProviderOptions !== undefined && index === instructionCount - 1
+            ? { providerOptions: systemProviderOptions }
+            : {}),
     }));
     const messages = request.messages.slice(instructionCount);
     const common = {

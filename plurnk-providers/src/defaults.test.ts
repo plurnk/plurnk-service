@@ -4,7 +4,8 @@ import { withProviderDefaults } from "./defaults.ts";
 
 test("withProviderDefaults supplies the package-owned operational floor", () => {
     const env = withProviderDefaults({});
-    assert.equal(env.PLURNK_PROVIDERS_PROMPT_CACHE_KEY, "1");
+    assert.equal(env.PLURNK_PROVIDERS_CACHE_AFFINITY, "1");
+    assert.equal(env.PLURNK_PROVIDERS_CACHE_WRITE_POLICY, "stable-system");
     assert.equal(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "2700000");
     assert.equal(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "600000");
     assert.equal(env.PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "600000");
@@ -15,12 +16,14 @@ test("withProviderDefaults supplies the package-owned operational floor", () => 
 
 test("withProviderDefaults preserves every explicit operator value", () => {
     const env = withProviderDefaults({
-        PLURNK_PROVIDERS_PROMPT_CACHE_KEY: "malformed",
+        PLURNK_PROVIDERS_CACHE_AFFINITY: "malformed",
+        PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "off",
         PLURNK_PROVIDERS_OPERATION_TIMEOUT: "84",
         PLURNK_PROVIDERS_FETCH_TIMEOUT: "42",
         PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT: "21",
     });
-    assert.equal(env.PLURNK_PROVIDERS_PROMPT_CACHE_KEY, "malformed");
+    assert.equal(env.PLURNK_PROVIDERS_CACHE_AFFINITY, "malformed");
+    assert.equal(env.PLURNK_PROVIDERS_CACHE_WRITE_POLICY, "off");
     assert.equal(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "84");
     assert.equal(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "42");
     assert.equal(env.PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "21");

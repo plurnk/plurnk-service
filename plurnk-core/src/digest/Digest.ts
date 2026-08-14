@@ -121,7 +121,7 @@ const writeJsonDurably = (path: string, value: unknown): void => {
 // DB row shapes — only the columns this tool reads. JSON columns (packet,
 // flags, rx) arrive as strings, parsed on use.
 interface WorkspaceRow { id: number; name: string }
-interface WorkerRow { id: number; workspace_id: number; name: string }
+interface WorkerRow { id: number; workspace_id: number; name: string; provider_identity: string }
 interface LoopRow {
     id: number;
     worker_id: number;
@@ -918,7 +918,7 @@ export default class Digest {
                     content: `# Verbatim worker evidence\n\n${JSON.stringify(evidence, null, 2)}\n\n# Audit request\n\n${REQUIEM_PROMPT}`,
                 },
             ];
-            const id = String(worker.id);
+            const id = worker.provider_identity;
             const report: RequiemWorkerReport = {
                 workerId: worker.id,
                 workerName: worker.name,

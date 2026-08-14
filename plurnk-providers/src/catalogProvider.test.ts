@@ -1,5 +1,7 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
+import { once } from "node:events";
+import { createServer } from "node:http";
 import { catalogProviderFromEnv } from "./catalogProvider.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
 
@@ -18,7 +20,8 @@ const env = {
     PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%",
     PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
     PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT: "512",
-    PLURNK_PROVIDERS_PROMPT_CACHE_KEY: "1",
+    PLURNK_PROVIDERS_CACHE_AFFINITY: "1",
+    PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "stable-system",
 };
 
 test.afterEach(() => {
@@ -103,6 +106,113 @@ test("official AI SDK provider owns the native request while PLURNK owns call se
     assert.equal(calls[0]?.body.top_p, 0.8);
     assert.equal(calls[0]?.body.seed, 7);
     assert.equal(calls[0]?.body.max_tokens, 64);
+    assert.equal(calls[0]?.body.prompt_cache_key, "worker", "the official OpenAI SDK projects the documented affinity key");
+});
+
+test("native provider routes project their documented cache controls through the actual SDK request", async (t) => {
+    const calls: Array<{ url: string; headers: Headers; body: Record<string, unknown> }> = [];
+    mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+        calls.push({
+            url: String(input),
+            headers: new Headers(init?.headers),
+            body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+        });
+        return new Response([
+            `data: ${JSON.stringify({
+                id: "response",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "served",
+                choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
+            })}`,
+            `data: ${JSON.stringify({
+                id: "response",
+                object: "chat.completion.chunk",
+                created: 2,
+                model: "served",
+                choices: [],
+                usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+            })}`,
+            "data: [DONE]",
+        ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
+    });
+
+    await t.test("DeepInfra native options become prompt_cache_key", async () => {
+        const provider = catalogProviderFromEnv("deepinfra", {
+            ...env,
+            DEEPINFRA_API_KEY: "test-key",
+        }, "zai-org/GLM-5.2");
+        await provider?.generate({
+            workerId: "deepinfra-worker",
+            messages: [{ role: "user", content: "hello" }],
+        });
+        assert.equal(calls.at(-1)?.body.prompt_cache_key, "deepinfra-worker");
+    });
+
+    await t.test("OpenRouter carries session affinity and an Anthropic system breakpoint", async () => {
+        let call: { headers: Headers; body: Record<string, unknown> } | undefined;
+        const server = createServer(async (request, response) => {
+            const chunks: Buffer[] = [];
+            for await (const chunk of request) chunks.push(Buffer.from(chunk));
+            call = {
+                headers: new Headers(request.headers as Record<string, string>),
+                body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>,
+            };
+            response.writeHead(200, { "content-type": "text/event-stream" });
+            response.end([
+                `data: ${JSON.stringify({
+                    id: "response",
+                    object: "chat.completion.chunk",
+                    created: 1,
+                    model: "served",
+                    choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
+                })}`,
+                `data: ${JSON.stringify({
+                    id: "response",
+                    object: "chat.completion.chunk",
+                    created: 2,
+                    model: "served",
+                    choices: [],
+                    usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+                })}`,
+                "data: [DONE]",
+            ].join("\n\n"));
+        });
+        server.listen(0, "127.0.0.1");
+        await once(server, "listening");
+        t.after(() => new Promise<void>((resolve, reject) => {
+            server.close((error) => error === undefined ? resolve() : reject(error));
+        }));
+        const address = server.address();
+        if (address === null || typeof address === "string") {
+            throw new Error("OpenRouter request-capture server did not bind a TCP address");
+        }
+
+        const provider = catalogProviderFromEnv("openrouter", {
+            ...env,
+            OPENROUTER_API_KEY: "test-key",
+        }, "anthropic/claude-sonnet-4.6", `http://127.0.0.1:${address.port}/api/v1`);
+        await provider?.generate({
+            workerId: "openrouter-worker",
+            messages: [
+                { role: "system", content: "stable system packet" },
+                { role: "user", content: "changing user packet" },
+            ],
+        });
+        assert.equal(call?.headers.get("x-session-id"), "openrouter-worker");
+        assert.deepEqual((call?.body.messages as unknown[] | undefined)?.[0], {
+            role: "system",
+            content: [{
+                type: "text",
+                text: "stable system packet",
+                cache_control: { type: "ephemeral" },
+            }],
+        });
+        assert.deepEqual((call?.body.messages as unknown[] | undefined)?.[1], {
+            role: "user",
+            content: "changing user packet",
+        });
+    });
 });
 
 test("cataloged unknown model fails unless its context is explicit", () => {

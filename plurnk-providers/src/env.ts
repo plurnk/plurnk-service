@@ -44,15 +44,6 @@ export const requireEnv = (raw: string | undefined, name: string, label: string)
     return raw;
 };
 
-export const promptCacheKeyFromEnv = (env: NodeJS.ProcessEnv, label: string): boolean => {
-    const name = "PLURNK_PROVIDERS_PROMPT_CACHE_KEY";
-    const value = env[name];
-    if (value !== "0" && value !== "1") {
-        throw new Error(`${label} provider: ${name} must be "0" or "1"`);
-    }
-    return value === "1";
-};
-
 // {§provider-configuration} A still-set retired knob fails
 // hard pointing at its successor — never silently coexists with the new floor.
 // The retired names appear ONLY as this function's ARGUMENTS at the call sites
@@ -60,6 +51,27 @@ export const promptCacheKeyFromEnv = (env: NodeJS.ProcessEnv, label: string): bo
 const shedRenamed = (env: NodeJS.ProcessEnv, oldName: string, newName: string, label: string, ref: string): void => {
     const stale = env[oldName];
     if (stale !== undefined && stale.length > 0) throw new Error(`${label} provider: ${oldName} was renamed to ${newName} (${ref}); update the env`);
+};
+
+export type CacheWritePolicy = "off" | "stable-system";
+
+export const cacheAffinityFromEnv = (env: NodeJS.ProcessEnv, label: string): boolean => {
+    const name = "PLURNK_PROVIDERS_CACHE_AFFINITY";
+    shedRenamed(env, "PLURNK_PROVIDERS_PROMPT_CACHE_KEY", name, label, "{§provider-cache-affinity}"); // lexicon-allow
+    const value = env[name];
+    if (value !== "0" && value !== "1") {
+        throw new Error(`${label} provider: ${name} must be "0" or "1"`);
+    }
+    return value === "1";
+};
+
+export const cacheWritePolicyFromEnv = (env: NodeJS.ProcessEnv, label: string): CacheWritePolicy => {
+    const name = "PLURNK_PROVIDERS_CACHE_WRITE_POLICY";
+    const value = env[name];
+    if (value !== "off" && value !== "stable-system") {
+        throw new Error(`${label} provider: ${name} must be "off" or "stable-system"`);
+    }
+    return value;
 };
 
 // {§provider-evidence} Data-capture knobs are read identically by every provider
@@ -218,7 +230,8 @@ export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_REPEAT_PENALTY",
     "PLURNK_PROVIDERS_FREQUENCY_PENALTY",
     "PLURNK_PROVIDERS_SERVICE_TIER",
-    "PLURNK_PROVIDERS_PROMPT_CACHE_KEY",
+    "PLURNK_PROVIDERS_CACHE_WRITE_POLICY",
+    "PLURNK_PROVIDERS_CACHE_AFFINITY",
     "PLURNK_PROVIDERS_REPEAT_LAST_N",
     "PLURNK_PROVIDERS_DRY_MULTIPLIER",
     "PLURNK_PROVIDERS_DRY_BASE",

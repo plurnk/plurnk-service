@@ -47,7 +47,7 @@ test("workers: root worker insert — null parent_worker_id, defaults populate",
         await db.test_workers_insert.run({ workspace_id: workspaceId, name: n("trunk") });
         const row = await db.test_workers_get_by_workspace.get<{
             id: number; version: number; workspace_id: number; name: string; created_at: string;
-            parent_worker_id: number | null;
+            parent_worker_id: number | null; provider_identity: string;
         }>({ workspace_id: workspaceId });
         assert.ok((row?.id ?? 0) >= 1);
         assert.equal(row?.version, 0);
@@ -55,6 +55,36 @@ test("workers: root worker insert — null parent_worker_id, defaults populate",
         assert.match(row?.name ?? "", /^worker-trunk-\d+$/);
         assert.match(row?.created_at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
         assert.equal(row?.parent_worker_id, null);
+        assert.match(row?.provider_identity ?? "", /^[0-9a-f]{32}$/, "provider identity is an opaque 128-bit value, not the local row id");
+    } finally { await db.close(); }
+});
+
+test("{§worker-provider-identity}: every worker mints a unique immutable provider identity", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `ws-provider-identity-${crypto.randomUUID()}`);
+        const first = await db.test_workers_insert_returning.get<{ id: number }>({ workspace_id: workspaceId, name: n("provider-a") });
+        const second = await db.test_workers_insert_returning.get<{ id: number }>({ workspace_id: workspaceId, name: n("provider-b") });
+        const firstIdentity = await db.test_workers_get_provider_identity.get<{ provider_identity: string }>({ id: first?.id });
+        const secondIdentity = await db.test_workers_get_provider_identity.get<{ provider_identity: string }>({ id: second?.id });
+        assert.match(firstIdentity?.provider_identity ?? "", /^[0-9a-f]{32}$/);
+        assert.match(secondIdentity?.provider_identity ?? "", /^[0-9a-f]{32}$/);
+        assert.notEqual(firstIdentity?.provider_identity, secondIdentity?.provider_identity);
+        await assert.rejects(
+            () => db.test_workers_update_provider_identity.run({
+                id: first?.id,
+                provider_identity: "0".repeat(32),
+            }),
+            /workers\.provider_identity is immutable/,
+        );
+        await assert.rejects(
+            () => db.test_workers_insert_provider_identity.run({
+                workspace_id: workspaceId,
+                name: n("provider-duplicate"),
+                provider_identity: firstIdentity?.provider_identity,
+            }),
+            /UNIQUE constraint failed: workers\.provider_identity/,
+        );
     } finally { await db.close(); }
 });
 

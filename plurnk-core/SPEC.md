@@ -347,6 +347,14 @@ therefore carries only shared project-file and shared-entry changes
 
 §machine-processes-worker-origin **A worker carries its actor.** Each worker records its `origin` — `model` (a conversation), `client` (a client-interface actor), or `plurnk` (the runtime's self-hosting worker) — set once at creation and inherited by a fork. `listWorkers` returns it, so a client interface identifies actor class without parsing the name, which is set at instantiation and immutable (a worker is permanent history, {§machine-processes-worker-is-its-log}).
 
+§worker-provider-identity **A worker owns a durable provider identity distinct
+from its database id.** Creation mints a globally unique, opaque 128-bit value;
+forks mint their own value. Core supplies it as the provider `workerId` for every
+emission and supplies the lineage root's value as `primaryWorkerId`
+({§provider-cache-identity}). Database ids remain the internal relational and
+client coordinate. BARE calls use isolated per-call provider identities rather
+than either worker value.
+
 §worker-primary **The primary worker is the lineage root.** The PRIMARY worker of a turn's lineage is the no-parent root reached by walking `parent_worker_id` up; a no-parent worker is its own primary. Core supplies it on the first-party metadata channel alongside `Worker-Id` (same gate, computed per turn), stamped on EVERY turn including the primary's own (where it equals `Worker-Id`) — absent-with-a-Worker-Id is a contract violation, never a silent "assume primary." An unresolvable root (a corrupt/cyclic parent chain the `parent != id` CHECK forbids) fails hard. Providers emits it as `Plurnk-Worker-Primary`; a consumer routes primary-vs-spawned by equality (`Worker-Primary == Worker-Id` ⇒ the primary; `!=` ⇒ any-depth spawn, no depth math) and groups the worker tree by the shared root.
 
 §machine-processes-fork-shares-the-world **A fork copies worker-owned history
@@ -2957,7 +2965,7 @@ turn.** It cannot execute operations or alter the audited history.
 | Scope     | One interview for each worker with model-bearing turns; journal-only workers are omitted.                                                                       |
 | Evidence  | The worker's final packet plus every attempt's exact normalized response and admission evidence; opaque raw transport remains in durable forensic artifacts. |
 | Witness   | An explicitly supplied provider or the active configured provider; absence fails hard.                                                                          |
-| Identity  | The worker's durable id is sent as both `workerId` and `primaryWorkerId`, making the synthetic interview its own root without asserting a live worker topology. |
+| Identity  | The worker's durable provider identity ({§worker-provider-identity}) is sent as both `workerId` and `primaryWorkerId`, making the synthetic interview its own root without asserting a live worker topology. |
 | Attempts  | One call at `PLURNK_SERVICE_REQUIEM_MAX_TOKENS`; only an empty length-limited response receives one retry at `PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS`.         |
 | Artifacts | `requiem.md` carries testimony and exact nullable USD accounting. `requiem.json` is durably materialized before each call and preserves logical call state, messages, normalized responses, every physical request's state and accounting, and their shared aggregate projection. |
 

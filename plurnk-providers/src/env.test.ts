@@ -1,6 +1,15 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { parseRequiredInt, parseOptionalInt, parseTimeoutMs, requireEnv, reasoningFromEnv, reasoningResponseStyleFromEnv } from "./env.ts";
+import {
+    cacheAffinityFromEnv,
+    cacheWritePolicyFromEnv,
+    parseRequiredInt,
+    parseOptionalInt,
+    parseTimeoutMs,
+    requireEnv,
+    reasoningFromEnv,
+    reasoningResponseStyleFromEnv,
+} from "./env.ts";
 
 test("parseRequiredInt: parses a non-negative integer", () => {
     assert.equal(parseRequiredInt("600000", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), 600000);
@@ -66,6 +75,31 @@ test("requireEnv: returns the value or throws a named error", () => {
     assert.equal(requireEnv("sk-x", "OPENAI_API_KEY", "openai"), "sk-x");
     assert.throws(() => requireEnv(undefined, "GROQ_API_KEY", "groq"), /groq provider: GROQ_API_KEY must be set/);
     assert.throws(() => requireEnv("", "GROQ_API_KEY", "groq"), /must be set/);
+});
+
+test("cache policy keeps cost-neutral affinity separate from paid cache writes", () => {
+    assert.equal(cacheAffinityFromEnv({ PLURNK_PROVIDERS_CACHE_AFFINITY: "1" }, "openai"), true);
+    assert.equal(cacheAffinityFromEnv({ PLURNK_PROVIDERS_CACHE_AFFINITY: "0" }, "openai"), false);
+    assert.equal(cacheWritePolicyFromEnv({ PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "stable-system" }, "anthropic"), "stable-system");
+    assert.equal(cacheWritePolicyFromEnv({ PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "off" }, "anthropic"), "off");
+    assert.throws(
+        () => cacheAffinityFromEnv({ PLURNK_PROVIDERS_CACHE_AFFINITY: "auto" }, "openai"),
+        /PLURNK_PROVIDERS_CACHE_AFFINITY must be "0" or "1"/,
+    );
+    assert.throws(
+        () => cacheWritePolicyFromEnv({ PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "everything" }, "anthropic"),
+        /PLURNK_PROVIDERS_CACHE_WRITE_POLICY must be "off" or "stable-system"/,
+    );
+});
+
+test("the generic prompt-cache-key knob is retired rather than retained as a compatibility path", () => {
+    assert.throws(
+        () => cacheAffinityFromEnv({
+            PLURNK_PROVIDERS_PROMPT_CACHE_KEY: "1",
+            PLURNK_PROVIDERS_CACHE_AFFINITY: "1",
+        }, "fireworks"),
+        /PLURNK_PROVIDERS_PROMPT_CACHE_KEY was renamed to PLURNK_PROVIDERS_CACHE_AFFINITY/,
+    );
 });
 
 // — per-alias knob scoping (per-alias scoping doctrine, user 2026-07-03) —

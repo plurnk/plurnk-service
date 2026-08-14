@@ -91,7 +91,14 @@ pricing method.
 
 ### Generation
 
-`generate` requires a non-empty, stable, opaque `workerId`. It accepts:
+§provider-cache-identity `generate` requires a non-empty, stable, opaque
+`workerId`. A durable worker uses one globally unique value for its lifetime;
+independent databases and processes cannot mint the same local sequence. A
+`bare` call instead uses a fresh per-call value, preventing unrelated prompts
+from acquiring affinity with either the parent worker or another BARE call.
+Providers MUST NOT interpret either value.
+
+`generate` accepts:
 
 - `messages`: system, user, and assistant text messages;
 - caller cancellation through `signal`;
@@ -179,6 +186,23 @@ PLURNK maps its generic settings to AI SDK call settings:
 Provider-specific options are permitted only where they preserve a documented
 PLURNK product contract the generic SDK surface cannot express.
 
+§provider-cache-affinity **Cache affinity is route-owned request projection.**
+When a provider documents a semantics-preserving conversation, session, or
+prompt-cache routing key, its catalog adapter projects `workerId` through that
+provider's documented header, body field, or native SDK option. The common
+transport neither guesses from protocol resemblance nor sends a generic cache
+field to an unknown provider. The operator may disable affinity globally or per
+alias; automatic provider caching without an affinity control remains untouched.
+
+§provider-cache-write-policy **Cache-write policy is separate from affinity.**
+`PLURNK_PROVIDERS_CACHE_WRITE_POLICY` is `off` or `stable-system`. The latter
+marks only the final leading system instruction as an explicit reusable cache
+boundary, and only on routes whose native SDK documents that control. It does
+not mark the changing user packet or enable an API-wide automatic cache mode.
+Unsupported routes receive no invented option. The default five-minute
+provider lifetime is used; a longer, differently priced lifetime is not an
+implicit transport choice.
+
 §deepseek-reasoning-request The direct DeepSeek catalog path maps the common
 reasoning intent to its OpenAI-compatible controls:
 
@@ -219,6 +243,7 @@ The universal groups are:
 - operation, physical-attempt, first-content, stream-idle, retry, and probe budgets;
 - local GBNF and llama-server capability pins;
 - context-window and generation-envelope overrides;
+- provider-documented cache affinity and explicit cache-write policy;
 - opt-in logprob and raw-body capture.
 
 Operator secrets and machine-specific values never belong in committed
@@ -363,7 +388,7 @@ intent. It cannot override:
 - data-capture settings;
 - tool, modality, or multi-choice behavior;
 - the consumer-owned output envelope;
-- prompt-cache identity.
+- cache affinity identity or cache-write policy.
 
 Generic AI SDK calls accept only settings represented by the SDK's portable
 surface. Compatible endpoints may carry additional sampling keys after reserved

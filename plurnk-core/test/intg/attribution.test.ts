@@ -28,6 +28,7 @@ test("each emission attempt composes opaque family hooks and records exactly wha
     try {
         const workspaceId = await insertWorkspace(db, `attr-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
+        const workerIdentity = await db.test_workers_get_provider_identity.get<{ provider_identity: string }>({ id: workerId });
         const loopId = await insertLoop(db, workerId, 1, "go");
         const contexts: PluginAttributionContext[] = [];
 
@@ -65,16 +66,16 @@ test("each emission attempt composes opaque family hooks and records exactly wha
         assert.deepEqual(contexts, [
             {
                 workspaceId: String(workspaceId),
-                workerId: String(workerId),
-                primaryWorkerId: String(workerId),
+                workerId: workerIdentity?.provider_identity,
+                primaryWorkerId: workerIdentity?.provider_identity,
                 loop: 1,
                 turn: 1,
                 attempt: 1,
             },
             {
                 workspaceId: String(workspaceId),
-                workerId: String(workerId),
-                primaryWorkerId: String(workerId),
+                workerId: workerIdentity?.provider_identity,
+                primaryWorkerId: workerIdentity?.provider_identity,
                 loop: 1,
                 turn: 1,
                 attempt: 2,

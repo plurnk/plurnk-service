@@ -2234,25 +2234,106 @@ test("router-owned tuning: tuningFloors:false drops the temperature/penalty floo
     assert.equal("frequency_penalty" in body, false); // the floor is suppressed; the router owns tuning
 });
 
-// -- prompt-cache affinity (workerId -> prompt_cache_key) --
+// -- {§provider-cache-affinity} / {§provider-cache-write-policy} --
 
-test("promptCacheKey on: body sends prompt_cache_key = workerId (serverless replica affinity)", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, promptCacheKey: true });
+test("a compatible route's declared body affinity is managed by workerId", async () => {
+    const p = testProvider({
+        model: "m",
+        url: "http://x/v1/chat/completions",
+        fetchTimeoutMs: 5000,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 0,
+        cacheAffinity: { target: "body", name: "prompt_cache_key" },
+    });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "worker-abc", messages: [] });
+    await p.generate({ workerId: "worker-abc", messages: [], sampling: { prompt_cache_key: "hijack" } });
     assert.equal(JSON.parse(calls[0].init.body as string).prompt_cache_key, "worker-abc");
 });
 
-test("promptCacheKey off (default): no prompt_cache_key on the wire", async () => {
+test("an undeclared compatible route receives no guessed cache field", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "worker-abc", messages: [] });
     assert.equal("prompt_cache_key" in JSON.parse(calls[0].init.body as string), false);
 });
 
-test("prompt_cache_key is managed: caller sampling cannot forge/override the affinity key", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, promptCacheKey: true });
+test("a compatible route's declared header affinity composes with static headers", async () => {
+    const p = testProvider({
+        model: "m",
+        url: "http://x/v1/chat/completions",
+        headers: { Authorization: "Bearer key" },
+        fetchTimeoutMs: 5000,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 0,
+        cacheAffinity: { target: "header", name: "x-grok-conv-id" },
+    });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "worker-abc", messages: [], sampling: { prompt_cache_key: "hijack" } });
-    assert.equal(JSON.parse(calls[0].init.body as string).prompt_cache_key, "worker-abc"); // managed wins
+    await p.generate({ workerId: "worker-abc", messages: [] });
+    const headers = new Headers(calls[0].init.headers);
+    assert.equal(headers.get("authorization"), "Bearer key");
+    assert.equal(headers.get("x-grok-conv-id"), "worker-abc");
+});
+
+test("native cache projections carry affinity at call level and cache control only on the final system instruction", async () => {
+    let request: Record<string, unknown> | undefined;
+    const usage = {
+        inputTokens: { total: 2, noCache: 2, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+    };
+    const languageModel = {
+        specificationVersion: "v4",
+        provider: "native.test",
+        modelId: "native-cache",
+        supportedUrls: {},
+        doGenerate: async (options: Record<string, unknown>) => {
+            request = options;
+            return {
+                content: [{ type: "text", text: "ok" }],
+                finishReason: { unified: "stop", raw: "stop" },
+                usage,
+                response: { id: "response", modelId: "native-cache" },
+                warnings: [],
+            };
+        },
+        doStream: async () => { throw new Error("streaming is not under test"); },
+    } as unknown as LanguageModel;
+    const p = testProvider({
+        model: "native-cache",
+        languageModel,
+        fetchTimeoutMs: 5000,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 0,
+        streaming: false,
+        cacheAffinity: { target: "provider-option", provider: "openai", name: "promptCacheKey" },
+        systemCacheProviderOptions: {
+            anthropic: { cacheControl: { type: "ephemeral" } },
+        },
+    });
+    await p.generate({
+        workerId: "worker-native",
+        messages: [
+            { role: "system", content: "stable definition" },
+            { role: "system", content: "stable policy" },
+            { role: "user", content: "changing packet" },
+        ],
+    });
+
+    assert.deepEqual(request?.providerOptions, {
+        openai: { promptCacheKey: "worker-native" },
+    });
+    assert.deepEqual(request?.prompt, [
+        { role: "system", content: "stable definition", providerOptions: undefined },
+        {
+            role: "system",
+            content: "stable policy",
+            providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+        },
+        { role: "user", content: [{ type: "text", text: "changing packet" }], providerOptions: undefined },
+    ]);
 });

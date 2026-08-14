@@ -10,6 +10,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { lookupProvider, type ProviderInfo } from "@plurnk/plurnk-models";
 import type { LanguageModel } from "ai";
 import { providerCostNormalizer } from "./accounting.ts";
+import type { AiSdkProviderOptions, CacheAffinity } from "./AiSdkProvider.ts";
 import type { ProviderCostNormalizer } from "./types.ts";
 
 export type SdkModel = {
@@ -19,8 +20,12 @@ export type SdkModel = {
         readonly url: string;
         readonly headers: Readonly<Record<string, string>>;
     };
+    readonly cacheAffinity?: CacheAffinity;
+    readonly systemCacheProviderOptions?: AiSdkProviderOptions;
     readonly catalog: ProviderInfo | null;
 };
+
+const cacheControl = { type: "ephemeral" as const };
 
 const envPrefix = (provider: string): string =>
     provider.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase();
@@ -113,6 +118,9 @@ export const createSdkModel = (
         case "@ai-sdk/openai":
             return {
                 languageModel: createOpenAI({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).chat(model),
+                ...(catalog.id === "openai"
+                    ? { cacheAffinity: { target: "provider-option" as const, provider: "openai", name: "promptCacheKey" } }
+                    : {}),
                 catalog,
             };
         case "@ai-sdk/groq":
@@ -134,6 +142,9 @@ export const createSdkModel = (
             return {
                 languageModel: createDeepInfra({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).languageModel(model),
                 ...(normalizeCost === undefined ? {} : { normalizeCost }),
+                ...(catalog.id === "deepinfra"
+                    ? { cacheAffinity: { target: "provider-option" as const, provider: "deepinfra", name: "prompt_cache_key" } }
+                    : {}),
                 catalog,
             };
         case "@ai-sdk/google":
@@ -149,6 +160,9 @@ export const createSdkModel = (
                     url: `${compatibleBase}/chat/completions`,
                     headers: { Authorization: `Bearer ${key}` },
                 },
+                ...(catalog.id === "xai"
+                    ? { cacheAffinity: { target: "header" as const, name: "x-grok-conv-id" } }
+                    : {}),
                 ...(normalizeCost === undefined ? {} : { normalizeCost }),
                 catalog,
             };
@@ -156,6 +170,9 @@ export const createSdkModel = (
         case "@ai-sdk/anthropic":
             return {
                 languageModel: createAnthropic({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).languageModel(model),
+                ...(catalog.id === "anthropic"
+                    ? { systemCacheProviderOptions: { anthropic: { cacheControl } } }
+                    : {}),
                 catalog,
             };
         case "@ai-sdk/amazon-bedrock":
@@ -180,6 +197,12 @@ export const createSdkModel = (
                         ...(env.OPENROUTER_X_TITLE === undefined ? {} : { "X-Title": env.OPENROUTER_X_TITLE }),
                     },
                 }).languageModel(model),
+                ...(catalog.id === "openrouter"
+                    ? { cacheAffinity: { target: "header" as const, name: "x-session-id" } }
+                    : {}),
+                ...(catalog.id === "openrouter" && model.replace(/^~/, "").startsWith("anthropic/")
+                    ? { systemCacheProviderOptions: { openrouter: { cacheControl } } }
+                    : {}),
                 ...(normalizeCost === undefined ? {} : { normalizeCost }),
                 catalog,
             };
@@ -194,6 +217,11 @@ export const createSdkModel = (
                         ? {}
                         : { Authorization: `Bearer ${key}` },
                 },
+                ...(catalog.id === "cloudflare-workers-ai"
+                    ? { cacheAffinity: { target: "header" as const, name: "x-session-affinity" } }
+                    : catalog.id === "fireworks-ai"
+                        ? { cacheAffinity: { target: "body" as const, name: "prompt_cache_key" } }
+                        : {}),
                 catalog,
             };
         default:

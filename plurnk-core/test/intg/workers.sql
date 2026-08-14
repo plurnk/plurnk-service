@@ -21,8 +21,18 @@ VALUES ($workspace_id, $name, $parent_worker_id, $origin, 1);
 INSERT INTO workers (workspace_id, name, version) VALUES ($workspace_id, $name, $version);
 
 -- PREP: test_workers_get_by_workspace
-SELECT id, version, workspace_id, name, created_at, parent_worker_id
+SELECT id, version, workspace_id, name, created_at, parent_worker_id, provider_identity
 FROM workers WHERE workspace_id = $workspace_id AND origin != 'plurnk' LIMIT 1;
+
+-- PREP: test_workers_get_provider_identity
+SELECT provider_identity FROM workers WHERE id = $id;
+
+-- PREP: test_workers_insert_provider_identity
+INSERT INTO workers (workspace_id, name, provider_identity)
+VALUES ($workspace_id, $name, $provider_identity);
+
+-- PREP: test_workers_update_provider_identity
+UPDATE workers SET provider_identity = $provider_identity WHERE id = $id;
 
 -- PREP: test_workers_get_parent
 SELECT parent_worker_id FROM workers WHERE id = $id;

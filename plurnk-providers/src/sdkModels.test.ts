@@ -24,6 +24,7 @@ test("createSdkModel uses Models.dev provider facts and operator credentials", (
         url: "https://api.x.ai/v1/chat/completions",
         headers: { Authorization: "Bearer test-key" },
     });
+    assert.deepEqual(sdk?.cacheAffinity, { target: "header", name: "x-grok-conv-id" });
     assert.notEqual(sdk?.normalizeCost, undefined);
 });
 
@@ -53,6 +54,57 @@ test("createSdkModel expands catalog endpoint variables without treating them as
         url: "https://api.cloudflare.com/client/v4/accounts/account/ai/v1/chat/completions",
         headers: { Authorization: "Bearer token" },
     });
+    assert.deepEqual(sdk?.cacheAffinity, { target: "header", name: "x-session-affinity" });
+});
+
+test("catalog routes own their documented cache-affinity request projection", () => {
+    assert.deepEqual(
+        createSdkModel("openai", "gpt-4.1-mini", { OPENAI_API_KEY: "key" })?.cacheAffinity,
+        { target: "provider-option", provider: "openai", name: "promptCacheKey" },
+    );
+    assert.deepEqual(
+        createSdkModel("deepinfra", "zai-org/GLM-5.2", { DEEPINFRA_API_KEY: "key" })?.cacheAffinity,
+        { target: "provider-option", provider: "deepinfra", name: "prompt_cache_key" },
+    );
+    assert.deepEqual(
+        createSdkModel("openrouter", "openai/gpt-5", { OPENROUTER_API_KEY: "key" })?.cacheAffinity,
+        { target: "header", name: "x-session-id" },
+    );
+    assert.deepEqual(
+        createSdkModel("fireworks", "accounts/fireworks/models/test", { FIREWORKS_API_KEY: "key" })?.cacheAffinity,
+        { target: "body", name: "prompt_cache_key" },
+    );
+});
+
+test("explicit stable-system cache breakpoints exist only on supported Claude routes", () => {
+    const cacheControl = { type: "ephemeral" };
+    assert.deepEqual(
+        createSdkModel("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "key" })?.systemCacheProviderOptions,
+        { anthropic: { cacheControl } },
+    );
+    assert.deepEqual(
+        createSdkModel("openrouter", "anthropic/claude-sonnet-4.6", { OPENROUTER_API_KEY: "key" })?.systemCacheProviderOptions,
+        { openrouter: { cacheControl } },
+    );
+    assert.equal(
+        createSdkModel("openrouter", "openai/gpt-5", { OPENROUTER_API_KEY: "key" })?.systemCacheProviderOptions,
+        undefined,
+    );
+    assert.equal(
+        createSdkModel("deepseek", "deepseek-v4-flash", { DEEPSEEK_API_KEY: "key" })?.systemCacheProviderOptions,
+        undefined,
+    );
+});
+
+test("an operator-declared compatible provider receives no guessed cache extension", () => {
+    const sdk = createSdkModel("acme", "model", {
+        ACME_API_KEY: "key",
+        PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@ai-sdk/openai-compatible",
+        PLURNK_PROVIDERS_PROVIDER_ACME_BASE_URL: "https://api.acme.test/v1",
+        PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV: "ACME_API_KEY",
+    });
+    assert.equal(sdk?.cacheAffinity, undefined);
+    assert.equal(sdk?.systemCacheProviderOptions, undefined);
 });
 
 test("#157: a cataloged compatible provider fails before transport when its declared credential is absent", () => {

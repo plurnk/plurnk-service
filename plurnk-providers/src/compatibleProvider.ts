@@ -9,7 +9,8 @@ import {
     parseRequiredFloat,
     parseRequiredInt,
     parseTimeoutMs,
-    promptCacheKeyFromEnv,
+    cacheAffinityFromEnv,
+    cacheWritePolicyFromEnv,
     reasoningFromEnv,
     reasoningResponseStyleFromEnv,
 } from "./env.ts";
@@ -117,6 +118,11 @@ export const compatibleProviderFromEnv = async (
     model: string,
     baseUrlOverride?: string,
 ): Promise<Provider> => {
+    // The knobs remain universal and fail hard when malformed, but this local /
+    // first-party compatible route declares no vendor cache projection. llama-server
+    // already owns slot affinity and the first-party endpoint receives worker metadata.
+    cacheAffinityFromEnv(env, provider);
+    cacheWritePolicyFromEnv(env, provider);
     const url = chatUrl(provider, env, baseUrlOverride);
     const apiKey = provider === "openai" ? env.OPENAI_API_KEY : env.PLURNK_API_KEY;
     const headers: Record<string, string> = apiKey === undefined || apiKey.length === 0
@@ -199,7 +205,6 @@ export const compatibleProviderFromEnv = async (
         tuningFloors: provider !== "plurnk",
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", provider),
         errorDetailLimit: parseRequiredInt(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT", provider),
-        promptCacheKey: promptCacheKeyFromEnv(env, provider),
         source: providerSource(provider),
         grammarStyle,
         gbnfDebug: env.PLURNK_PROVIDERS_GBNF_DEBUG !== undefined

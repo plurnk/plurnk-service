@@ -36,6 +36,7 @@ import LoopLifecycle from "./LoopLifecycle.ts";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { randomUUID } from "node:crypto";
 // Shared module imported by both Engine and bin/digest.ts, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
@@ -668,6 +669,23 @@ export default class Engine {
         return root.id;
     }
 
+    async resolveWorkerProviderIdentity(workerId: number): Promise<{
+        workerId: string;
+        primaryWorkerId: string;
+    }> {
+        const identity = await this.#db.engine_worker_provider_identity.get<{
+            worker_id: string;
+            primary_worker_id: string;
+        }>({ worker_id: workerId });
+        if (identity === undefined) {
+            throw new Error(`resolveWorkerProviderIdentity: worker ${workerId} has no lineage root — corrupt parent chain`);
+        }
+        return {
+            workerId: identity.worker_id,
+            primaryWorkerId: identity.primary_worker_id,
+        };
+    }
+
     promptBudgetFor(provider: Provider): number | null {
         return this.#packets.promptBudgetFor(provider);
     }
@@ -747,11 +765,13 @@ export default class Engine {
             statement: BareStatement;
             modelCall: ModelCall;
             attributions: string[];
+            providerWorkerId: string;
         }> = [];
         for (const [index, statement] of statements.entries()) {
+            const providerWorkerId = randomUUID();
             const attributionContext: PluginAttributionContext = Object.freeze({
                 workspaceId: String(workspaceId),
-                workerId: String(workerId),
+                workerId: providerWorkerId,
                 primaryWorkerId,
                 loop: loopSequence,
                 turn: turnSequence,
@@ -765,11 +785,11 @@ export default class Engine {
                 attributions,
                 model: provider.model,
             });
-            prepared.push({ statement, modelCall, attributions });
+            prepared.push({ statement, modelCall, attributions, providerWorkerId });
         }
 
         const maxTokens = this.#packets.maxTokensFor(provider) ?? undefined;
-        const settlements = await Promise.allSettled(prepared.map(async ({ statement, modelCall, attributions }) => {
+        const settlements = await Promise.allSettled(prepared.map(async ({ statement, modelCall, attributions, providerWorkerId }) => {
             try {
                 const response = await observed(
                     "provider.generate",
@@ -778,7 +798,8 @@ export default class Engine {
                         try {
                             const generated = await provider.generate({
                                 messages: [{ role: "user", content: statement.body }],
-                                workerId: `model-call:${modelCall.id}`,
+                                workerId: providerWorkerId,
+                                primaryWorkerId,
                                 signal,
                                 maxTokens,
                                 attributions: attributions.length > 0 ? attributions : undefined,
@@ -1549,7 +1570,8 @@ export default class Engine {
         // {§client-metadata}
         const { client } = await WorkspaceSettings.read(this.#db, workspaceId);
         const loopSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
-        const primaryWorkerId = String(await this.resolveWorkerPrimary(workerId));
+        const providerIdentity = await this.resolveWorkerProviderIdentity(workerId);
+        const { workerId: providerWorkerId, primaryWorkerId } = providerIdentity;
         const classifyProviderAttempt = async (
             id: number,
             attemptSplit: SplitProviderResponse,
@@ -1581,7 +1603,7 @@ export default class Engine {
                 providerAttemptSequence = attempt;
                 const attributionContext: PluginAttributionContext = Object.freeze({
                     workspaceId: String(workspaceId),
-                    workerId: String(workerId),
+                    workerId: providerWorkerId,
                     primaryWorkerId,
                     loop: loopSeq,
                     turn: seq,
@@ -1612,7 +1634,7 @@ export default class Engine {
                         try {
                             const generated = await provider.generate({
                                 messages: modelMessages,
-                                workerId: String(workerId),
+                                workerId: providerWorkerId,
                                 primaryWorkerId,
                                 signal: providerSignal,
                                 grammar: railGrammar,

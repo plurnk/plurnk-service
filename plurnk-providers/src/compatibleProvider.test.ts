@@ -18,12 +18,13 @@ const env = {
     PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT: "512",
     PLURNK_PROVIDERS_PROBE_ATTEMPTS: "1",
     PLURNK_PROVIDERS_PROBE_DELAY: "0",
-    PLURNK_PROVIDERS_PROMPT_CACHE_KEY: "1",
+    PLURNK_PROVIDERS_CACHE_AFFINITY: "1",
+    PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "stable-system",
 };
 
 test.afterEach(() => mock.restoreAll());
 
-test("compatible endpoints preserve configured prompt-cache affinity", async () => {
+test("an undifferentiated compatible endpoint receives no guessed prompt-cache field", async () => {
     let body: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
         if (String(input).endsWith("/models")) {
@@ -43,7 +44,7 @@ test("compatible endpoints preserve configured prompt-cache affinity", async () 
         messages: [{ role: "user", content: "hello" }],
     });
 
-    assert.equal(body?.prompt_cache_key, "worker-affinity");
+    assert.equal("prompt_cache_key" in (body ?? {}), false);
 });
 
 test("the server-wide DRY-off floor emits no DRY request fields", async () => {

@@ -179,9 +179,13 @@ test("BARE calls receive only their body prompts, run in parallel, and commit in
         ]);
         assert.ok(child.calls.every(({ grammar }) => grammar === undefined), "BARE has no output rail");
         assert.ok(child.calls.every(({ callKind }) => callKind === "bare"), "BARE declares its provider output contract");
-        assert.ok(child.calls.every(({ workerId: callWorker }) => callWorker !== String(workerId)), "BARE does not reuse the parent's provider-affinity identity");
+        const parentIdentity = await db.test_workers_get_provider_identity.get<{ provider_identity: string }>({ id: workerId });
+        const bareIdentities = child.calls.map(({ workerId: callWorker }) => callWorker);
+        assert.ok(bareIdentities.every((identity) => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(identity)), "each BARE call receives an opaque UUID identity");
+        assert.equal(new Set(bareIdentities).size, 2, "parallel BARE calls cannot acquire affinity with one another");
+        assert.ok(bareIdentities.every((identity) => identity !== parentIdentity?.provider_identity), "BARE does not reuse the parent worker's affinity identity");
         assert.ok(child.calls.every(({ primaryWorkerId, client, strikes }) =>
-            primaryWorkerId === undefined && client === undefined && strikes === undefined));
+            primaryWorkerId === parentIdentity?.provider_identity && client === undefined && strikes === undefined));
         assert.ok(child.calls.every(({ attributions }) =>
             JSON.stringify(attributions) === JSON.stringify(["provider:bare-witness"])));
 

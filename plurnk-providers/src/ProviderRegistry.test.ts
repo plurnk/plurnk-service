@@ -17,7 +17,7 @@ const fullEnv = Object.freeze({
     PLURNK_PROVIDERS_OPERATION_TIMEOUT: "2700000",
     PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT: "600000",
     PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT: "0",
-    PLURNK_PROVIDERS_REASONING: "off", PLURNK_PROVIDERS_TEMPERATURE: "0.2", PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15", PLURNK_PROVIDERS_FREQUENCY_PENALTY: "0.4", PLURNK_PROVIDERS_REASONING_RESERVE: "10%", PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%", PLURNK_PROVIDERS_PROBE_ATTEMPTS: "3", PLURNK_PROVIDERS_PROBE_DELAY: "1", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0", PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT: "512", PLURNK_PROVIDERS_PROMPT_CACHE_KEY: "1",
+    PLURNK_PROVIDERS_REASONING: "off", PLURNK_PROVIDERS_TEMPERATURE: "0.2", PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15", PLURNK_PROVIDERS_FREQUENCY_PENALTY: "0.4", PLURNK_PROVIDERS_REASONING_RESERVE: "10%", PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%", PLURNK_PROVIDERS_PROBE_ATTEMPTS: "3", PLURNK_PROVIDERS_PROBE_DELAY: "1", PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0", PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT: "512", PLURNK_PROVIDERS_CACHE_AFFINITY: "1", PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "stable-system",
     OPENAI_BASE_URL: "http://x",
 });
 
@@ -287,19 +287,19 @@ test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog fact
     mock.restoreAll();
 });
 
-test("an explicit malformed operator override still fails at its owning contract", async () => {
+test("an explicit malformed cache-affinity override still fails at its owning contract", async () => {
     await assert.rejects(
         () => instantiateProvider(
             "fireworks",
             {
                 FIREWORKS_API_KEY: "fw",
-                PLURNK_PROVIDERS_PROMPT_CACHE_KEY: "malformed",
+                PLURNK_PROVIDERS_CACHE_AFFINITY: "malformed",
             },
             "deepseek-v4-pro",
             async () => ({}),
             mapOf({}),
         ),
-        /fireworks provider: PLURNK_PROVIDERS_PROMPT_CACHE_KEY must be "0" or "1"/,
+        /fireworks provider: PLURNK_PROVIDERS_CACHE_AFFINITY must be "0" or "1"/,
     );
 });
 

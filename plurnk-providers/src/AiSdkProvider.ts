@@ -21,6 +21,7 @@ import type {
     ProviderUsage,
 } from "./types.ts";
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
+import type { JSONValue } from "ai";
 import { MAX_PROVIDER_TIMEOUT_MS } from "./env.ts";
 import type { Reasoning, ReasoningResponseStyle, ReserveSpec } from "./env.ts";
 import {
@@ -50,6 +51,12 @@ export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" |
 // service-managed constrained sampling; endpoint-owned settings are not inferred.
 export type GrammarStyle = "none" | "llamacpp";
 
+export type CacheAffinity =
+    | { readonly target: "header" | "body"; readonly name: string }
+    | { readonly target: "provider-option"; readonly provider: string; readonly name: string };
+
+export type AiSdkProviderOptions = Record<string, Record<string, JSONValue | undefined>>;
+
 export type AiSdkProviderConfig = {
     model: string;
     url?: string;                             // OpenAI-compatible chat-completions URL
@@ -69,12 +76,12 @@ export type AiSdkProviderConfig = {
     normalizeCost?: ProviderCostNormalizer;
     source?: string;                           // notice/problem source, e.g. "provider:openai"; default "provider"
     grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
-    // Send the OpenAI-standard `prompt_cache_key` set to workerId, so a
-    // serverless backend with REPLICA-LOCAL prompt caching (fireworks, verified)
-    // pins a worker's turns to one replica and claims its stable prefix. Default
-    // false -- a backend that strict-validates unknown fields 400s, so enable only
-    // where the field is accepted. Same identity that already drives slot affinity.
-    promptCacheKey?: boolean;
+    // {§provider-cache-affinity} Provider routes own the exact documented
+    // projection; the common transport only applies it as managed request state.
+    cacheAffinity?: CacheAffinity;
+    // {§provider-cache-write-policy} Already policy-gated by provider construction.
+    // The transport attaches it to only the final leading system instruction.
+    systemCacheProviderOptions?: AiSdkProviderOptions;
     // Optional provider-configured service tier. Unlike caller sampling, this is
     // a fixed deployment choice and therefore wins on every request.
     serviceTier?: string;
@@ -298,7 +305,8 @@ export default class AiSdkProvider implements Provider {
     #normalizeCost?: ProviderCostNormalizer;
     #source: string;
     #grammarStyle: GrammarStyle;
-    #promptCacheKey: boolean;
+    #cacheAffinity: CacheAffinity | undefined;
+    #systemCacheProviderOptions: AiSdkProviderOptions | undefined;
     #serviceTier: string | undefined;
     #gbnfDebug: boolean;
     #streaming: boolean;
@@ -377,7 +385,17 @@ export default class AiSdkProvider implements Provider {
         this.#normalizeCost = config.normalizeCost;
         this.#source = config.source ?? "provider";
         this.#grammarStyle = config.grammarStyle ?? "none";
-        this.#promptCacheKey = config.promptCacheKey ?? false;
+        this.#cacheAffinity = config.cacheAffinity;
+        this.#systemCacheProviderOptions = config.systemCacheProviderOptions;
+        if (this.#languageModel === undefined && this.#cacheAffinity?.target === "provider-option") {
+            throw new Error(`${this.#source}: native provider-option cache affinity requires an AI SDK model`);
+        }
+        if (this.#languageModel !== undefined && this.#cacheAffinity?.target === "body") {
+            throw new Error(`${this.#source}: body cache affinity requires an OpenAI-compatible URL`);
+        }
+        if (this.#languageModel === undefined && this.#systemCacheProviderOptions !== undefined) {
+            throw new Error(`${this.#source}: system cache provider options require an AI SDK model`);
+        }
         this.#serviceTier = config.serviceTier;
         this.#gbnfDebug = config.gbnfDebug ?? false;
         this.#streaming = config.streaming ?? true;
@@ -737,17 +755,19 @@ export default class AiSdkProvider implements Provider {
             // reserved from caller sampling; the env flag is the single control).
             ...(this.#topLogprobs !== null ? { logprobs: true, top_logprobs: this.#topLogprobs } : {}),
             ...this.#slotBody(workerId),
-            // Prompt-cache affinity -- workerId as the OpenAI-standard
-            // prompt_cache_key routes a worker's turns to one serverless replica so
-            // its stable prefix caches (managed; reserved from caller sampling).
-            ...(this.#promptCacheKey ? { prompt_cache_key: workerId } : {}),
+            ...(this.#cacheAffinity?.target === "body"
+                ? { [this.#cacheAffinity.name]: workerId }
+                : {}),
         };
 
         // Per-request headers = static auth/routing + any first-party telemetry.
         const metaHeaders = this.#metadataHeaders(attributions, client, strikes, workerId, primaryWorkerId, workspaceId, loop, turn, callKind);
-        const headers = Object.keys(metaHeaders).length === 0
-            ? this.#headers
-            : { ...this.#headers, ...metaHeaders };
+        const headers = new Headers(this.#headers);
+        if (this.#cacheAffinity?.target === "header") {
+            headers.set(this.#cacheAffinity.name, workerId);
+        }
+        for (const [name, value] of Object.entries(metaHeaders)) headers.set(name, value);
+        const requestHeaders = Object.fromEntries(headers.entries());
         const accounting: ProviderRequestAccounting[] = [];
         const operationTimeout = this.#operationTimeoutMs > 0
             ? AbortSignal.timeout(this.#operationTimeoutMs)
@@ -814,7 +834,7 @@ export default class AiSdkProvider implements Provider {
                     ? await executeOpenAICompatible({
                         url: this.#url!,
                         model: this.#model,
-                        headers,
+                        headers: requestHeaders,
                         body,
                         messages,
                         signal: operationSignal,
@@ -827,7 +847,15 @@ export default class AiSdkProvider implements Provider {
                     })
                     : await executeAiSdkModel({
                         languageModel: this.#languageModel,
-                        headers,
+                        headers: requestHeaders,
+                        providerOptions: this.#cacheAffinity?.target === "provider-option"
+                            ? {
+                                [this.#cacheAffinity.provider]: {
+                                    [this.#cacheAffinity.name]: workerId,
+                                },
+                            }
+                            : undefined,
+                        systemProviderOptions: this.#systemCacheProviderOptions,
                         messages,
                         signal: operationSignal,
                         fetchTimeoutMs: this.#fetchTimeoutMs,

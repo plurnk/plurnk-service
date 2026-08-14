@@ -656,6 +656,22 @@ WITH RECURSIVE lineage(id, parent_worker_id) AS (
 )
 SELECT id FROM lineage WHERE parent_worker_id IS NULL;
 
+-- PREP: engine_worker_provider_identity
+-- Provider routing uses globally unique opaque identities, while all relational
+-- ownership and client coordinates retain the local integer worker id.
+-- {§worker-provider-identity} {§worker-primary}
+WITH RECURSIVE lineage(id, parent_worker_id, provider_identity) AS (
+    SELECT id, parent_worker_id, provider_identity FROM workers WHERE id = $worker_id
+    UNION ALL
+    SELECT w.id, w.parent_worker_id, w.provider_identity
+    FROM workers w JOIN lineage l ON w.id = l.parent_worker_id
+)
+SELECT current.provider_identity AS worker_id,
+       root.provider_identity AS primary_worker_id
+FROM workers current
+JOIN lineage root ON root.parent_worker_id IS NULL
+WHERE current.id = $worker_id;
+
 -- PREP: engine_worker_has_undelivered_child_term
 -- A child conclusion newer than the parent's observation cursor is complete but
 -- not delivered. This is the same durable boundary the next packet consumes,
