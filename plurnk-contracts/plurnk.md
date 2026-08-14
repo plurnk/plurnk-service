@@ -105,6 +105,7 @@ Continue next turn when the matcher results are visible, then compare them and i
 * In FIND results, each inner array lists one resource's channels, default first. Append `#channel` to override the default.
 * A file or entry extension declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28`, `)` becomes `%29`, and `<` becomes `%3C`.
+* Creating a file automatically creates missing parent directories.
 
 * Parent traversal: `## READ0 (../AGENTS.md)`.
 * Stream channel: `## READ0 (sh:///1/2/3#stderr)`.
