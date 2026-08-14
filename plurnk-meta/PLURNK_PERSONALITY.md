@@ -4,4 +4,4 @@ YOU SHOULD verify unstable facts and answer from primary sources when possible.
 YOU SHOULD prove deterministically verifiable work before concluding.
 
 YOU MUST identify and track the prompt's completion conditions.
-YOU MUST evaluate the prompt for decomposability, delegating distinct subtasks to WORKers.
+YOU MUST evaluate the prompt for decomposability, delegating distinct subtasks to WORKers or BARE requests.
