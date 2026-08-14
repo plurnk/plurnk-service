@@ -199,6 +199,54 @@ test("the engine grades the exact pre-projection sentence, not projected content
     }
 });
 
+test("a rail response root composes a template prefix without sending it to constrained sampling", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rail-"));
+    const gbnfPath = join(dir, "template-prefix.gbnf");
+    const content = "# PLAN0\n\n## SEND0 [200]\nok";
+    const sampled = `consider</think>${content}`;
+    const input = `<think>\n${sampled}`;
+    const grammar = [
+        "# @plurnk-response-root root-response",
+        "root ::= root-sampled",
+        `root-sampled ::= ${JSON.stringify(sampled)}`,
+        'root-response ::= "<think>\\n" root-sampled',
+        "",
+    ].join("\n");
+    await writeFile(gbnfPath, grammar);
+    const db = await openMigrated();
+    const key = "PLURNK_PROVIDERS_GBNF_templateroot";
+    const prior = process.env[key];
+    try {
+        process.env[key] = gbnfPath;
+        const calls: Array<{ grammar?: string }> = [];
+        const provider = {
+            ...staticProvider({
+                assistant: { content, reasoning: "consider", finishReason: "stop", model: "fake" },
+                assistantRaw: null,
+                grammarEvidence: { input, contentStart: [..."<think>\nconsider</think>"].length, transported: true },
+            }),
+            generate: async (args: Parameters<Provider["generate"]>[0]) => {
+                calls.push({ grammar: args.grammar });
+                return staticProvider({
+                    assistant: { content, reasoning: "consider", finishReason: "stop", model: "fake" },
+                    assistantRaw: null,
+                    grammarEvidence: { input, contentStart: [..."<think>\nconsider</think>"].length, transported: true },
+                }).generate(args);
+            },
+        } as Provider;
+        ProviderInstantiate.registerAlias(provider, "templateroot");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const { workspaceId, workerId, loopId } = await envelope(db);
+        const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const meta = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: turn.turnId }))!.meta) as Record<string, unknown>;
+        assert.equal(calls[0]?.grammar, grammar, "the transport root is sent unchanged");
+        assert.equal(meta.railsVerdict, "accept", "the declared response root grades the represented response");
+    } finally {
+        if (prior === undefined) delete process.env[key]; else process.env[key] = prior;
+        await db.close(); await rm(dir, { recursive: true, force: true });
+    }
+});
+
 test("raw rail positions map only from content, and debug evidence is stamped withheld", async () => {
     const dir = mkdtempSync(join(tmpdir(), "rail-"));
     const content = "# PLAN0\n\n## SEND0 [200]\nok";

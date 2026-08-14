@@ -60,15 +60,19 @@ try {
     if (Object.hasOwn(installedPackage.exports, "./grammar")) {
         throw new Error("installed package retains a second grammar code entrypoint");
     }
-    if (installedPackage.exports["./plurnk.gbnf"] !== "./dist/plurnk.gbnf") {
-        throw new Error("installed package does not export its generated GBNF build artifact");
+    const railRoots = { gemma: "root-gemma", qwen: "root-qwen" } as const;
+    for (const [profile, root] of Object.entries(railRoots)) {
+        const artifact = `plurnk.${profile}.gbnf`;
+        if (installedPackage.exports[`./${artifact}`] !== `./dist/${artifact}`) {
+            throw new Error(`installed package does not export its generated ${profile} GBNF artifact`);
+        }
+        const generatedRail = serializeGbnf(buildModel(), root);
+        const localRail = await readFile(join(contractsDir, "dist", artifact), "utf8");
+        const shippedRail = await readFile(join(installedRoot, "dist", artifact), "utf8");
+        if (localRail !== generatedRail) throw new Error(`local dist/${artifact} diverges from its generator`);
+        if (shippedRail !== generatedRail) throw new Error(`shipped dist/${artifact} diverges from its generator`);
+        process.stdout.write(`[smoke] generated dist/${artifact} shipped intact (${shippedRail.length} bytes)\n`);
     }
-    const generatedRail = serializeGbnf(buildModel(), "root-turn");
-    const localRail = await readFile(join(contractsDir, "dist", "plurnk.gbnf"), "utf8");
-    const shippedRail = await readFile(join(installedRoot, "dist", "plurnk.gbnf"), "utf8");
-    if (localRail !== generatedRail) throw new Error("local dist/plurnk.gbnf diverges from its generator");
-    if (shippedRail !== generatedRail) throw new Error("shipped dist/plurnk.gbnf diverges from its generator");
-    process.stdout.write(`[smoke] generated dist/plurnk.gbnf shipped intact (${shippedRail.length} bytes)\n`);
 
     await writeFile(join(tempDir, "consume.js"), `
 import * as Contracts from "@plurnk/plurnk-contracts";

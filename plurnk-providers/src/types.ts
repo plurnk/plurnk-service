@@ -135,8 +135,9 @@ export interface ProviderAssistant<TFinish extends ProviderAttemptFinishReason =
 }
 
 export interface GrammarEvidence {
-    // Exact sentence observed at the grammar boundary before any reasoning/content
-    // projection. Offsets are Unicode code points, matching @plurnk/gbnf verdicts.
+    // Exact pre-projection response represented by the provider. A generated
+    // rail's response root composes any template prefix before @plurnk/gbnf
+    // grades it. Offsets are Unicode code points, matching validator verdicts.
     readonly input: string;
     readonly contentStart: number;
     readonly transported: boolean;
@@ -195,7 +196,7 @@ export interface Provider {
     // before a provider emission attempt ({§plugin-attribution}).
     attributions?(context: PluginAttributionContext): PluginAttribution;
     // `grammar` is an optional GBNF string (canonically @plurnk/plurnk-contracts'
-    // plurnk.gbnf, possibly root-substituted by the consumer). Backends that
+    // plurnk.gemma.gbnf or plurnk.qwen.gbnf, possibly root-substituted by the consumer). Backends that
     // support grammar-constrained sampling attach it verbatim; all others
     // ignore it. The provider never chooses or modifies the grammar — whether
     // to constrain and which root variant to send is consumer policy

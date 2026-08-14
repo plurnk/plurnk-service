@@ -14,7 +14,7 @@ is the single code API for those contracts.
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
 | Generated JSON result rendering                                                 | `renderJsonResult`                                  |
-| Local-model rail                                                                | `@plurnk/plurnk-contracts/plurnk.gbnf`              |
+| Local-model rails                                                               | `@plurnk/plurnk-contracts/plurnk.{gemma,qwen}.gbnf` |
 | Model language reference                                                        | `plurnk.md` in the package                          |
 
 §contract-representations JSON Schema is authoritative for shared data shapes. TypeScript types are
@@ -38,7 +38,7 @@ semantics valid.
 ```mermaid
 flowchart LR
     canon["Canonical model teaching<br/>plurnk.md"]
-    rail["Optional raw generation rail<br/>plurnk.gbnf"]
+    rail["Optional raw generation rail<br/>Gemma or Qwen template profile"]
     free["Other admitted input"]
     syntax["ANTLR lexer + parser<br/>syntax and document tier"]
     ast["AstBuilder<br/>typed, serializable AST"]
@@ -55,7 +55,7 @@ flowchart LR
 |--------------------------|-------------------------------------|---------------------------------------------------------------------------------|
 | Stable current law       | `SPEC.md`                           | Owns invariants and boundaries; forge issues retain history                     |
 | Canonical model teaching | `plurnk.md`                         | Teaches the lean spelling and operational model the model should emit           |
-| Constrained generation   | generated `plurnk.gbnf`             | Increases likely ANTLR compliance without reproducing all parser/runtime checks |
+| Constrained generation   | generated `plurnk.*.gbnf`           | Increases likely ANTLR compliance without reproducing all parser/runtime checks |
 | Accepted syntax          | `plurnkLexer.g4`, `plurnkParser.g4` | Recognizes document tiers, heading lanes, slot shape, and section boundaries    |
 | Typed admission          | `AstBuilder`                        | Produces JSON-serializable unions and validates deterministic body/path syntax  |
 | Shared wire data         | `schema/*.json`                     | Defines runtime-neutral data shapes projected into generated TypeScript         |
@@ -126,53 +126,64 @@ and parse diagnostics are separate contracts.
 ## 1.2 GBNF Generation Rail
 
 §gbnf-rail-purpose ANTLR and AstBuilder define accepted PLURNK input. The generated
-`dist/plurnk.gbnf` is an optional local llama.cpp sampling rail: it is kept lean
+`dist/plurnk.{gemma,qwen}.gbnf` are optional local llama.cpp sampling rails kept lean
 to make useful, ANTLR-compliant turns more likely without reproducing every
 parser or semantic validator. Parse compatibility is a design goal balanced
 against rail size and sampling efficiency, not a language-subset guarantee. A
 rail-legal operation can therefore produce a parser or AstBuilder error; consumers
 apply their ordinary admission and bounded-operation recovery contract.
-The complete package build emits the rail; it is not source-controlled. Source and
+The complete package build emits both rails; they are not source-controlled. Source and
 differential tests serialize the owning generator directly, while installation
 coverage verifies the packed export.
 
 
-The shipped raw turn has one shape with optional document framing:
+The rails share one turn shape but begin at their respective sampled-token
+boundaries:
 
 ```ebnf
-root-turn  ::= channel sep framed-turn
+root-gemma ::= channel sep framed-turn
+root-qwen  ::= think-body think-close sep framed-turn
+root-qwen-response ::= think-open root-qwen
 framed-turn ::= turn | fence-open turn fence-close
 turn       ::= plan sep tail-0
 ```
 
-§gbnf-turn-shape `channel` is exactly one Gemma Harmony enclosure at byte zero, beginning
-`<|channel>thought\n` and ending `<channel|>`. Its body may be empty but cannot
-contain another opener or the closer. `sep` is zero through seven whitespace
-characters. No channel is legal after the leading one. The projected PLURNK
-content is either bare or enclosed once in a paired `plurnk` Markdown fence; the
-turn itself begins with `# PLAN0`, and every following operation is a same-lane
-`## OP0` section.
+§gbnf-turn-shape The `gemma` transport root samples one complete
+`<|channel>thought\n … <channel|>` enclosure. A Qwen-style chat template has
+already supplied `<think>\n` when the `qwen` transport root begins, so that root
+samples the body and required `</think>` closer. Each generated artifact declares
+an `@plurnk-response-root`; for `qwen`, that root composes the template opener
+back onto the sampled text so the complete pre-projection response can be graded.
+Either body may be empty and cannot contain its profile's opener or closer.
+`sep` is zero through seven whitespace characters. The projected PLURNK content
+is either bare or enclosed once in a paired `plurnk` Markdown fence; the turn
+begins with `# PLAN0`, and every following operation is a same-lane `## OP0`
+section.
 `tail-0` admits zero through fourteen internal operations followed by exactly
 one terminal SEND under the existing terminal-eligibility rules.
 
 ```mermaid
 flowchart LR
-    raw["Raw constrained decode<br/>channel · sep · optional fence · PLAN0 turn"]
+    sampled["Constrained sampled text<br/>profile reasoning bytes · sep · optional fence · PLAN0 turn"]
+    raw["Pre-projection response<br/>one complete reasoning envelope · PLURNK turn"]
     split["llama.cpp<br/>reasoning_format: auto"]
-    reasoning["reasoning_content<br/>channel body"]
+    reasoning["reasoning_content<br/>envelope body"]
     content["content<br/>bare or fenced PLAN through terminal SEND"]
     parser["ANTLR + AstBuilder<br/>admission and diagnostics"]
+    sampled --> raw
     raw --> split
     split --> reasoning
     split --> content
     content --> parser
 ```
 
-§gbnf-reasoning-boundary GBNF applies to the raw sentence on the left, before projection. The two
-projected fields are not separate GBNF languages and `content` alone is not
-revalidated as though it still contained the required channel. Provider and
-core own the projection evidence and rail-verdict boundary; this package owns
-only the raw language and the parser/AstBuilder result.
+§gbnf-reasoning-boundary GBNF applies from sampled token zero before response
+projection. The declared response root composes any template-provided prefix for
+independent validation of the pre-projection evidence. The two projected fields
+are not separate GBNF languages, and `content` alone is not revalidated as though
+it still contained the required reasoning envelope. Provider and core own the
+projection evidence and rail-verdict boundary; this package owns the sampled and
+response roots plus the parser/AstBuilder result.
 
 §rail-heading-boundaries On the GBNF rail, PLAN and every operation use lane `0`.
 Every reserved PLAN or operation heading stem is structural, regardless of the

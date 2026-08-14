@@ -54,8 +54,12 @@ test("retired PLURNK delimiters never reappear", async () => {
             content: await readFile(file, "utf8"),
         }))),
         {
-            name: "generated:plurnk.gbnf",
-            content: serializeGbnf(buildModel(), "root-turn"),
+            name: "generated:plurnk.gemma.gbnf",
+            content: serializeGbnf(buildModel(), "root-gemma"),
+        },
+        {
+            name: "generated:plurnk.qwen.gbnf",
+            content: serializeGbnf(buildModel(), "root-qwen"),
         },
     ];
     for (const { name, content } of sources) {

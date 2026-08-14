@@ -217,6 +217,31 @@ type SplitProviderResponse = {
     emissionValid: boolean;
 };
 
+type GrammarConstraint = {
+    transport: string;
+    response: string;
+};
+
+// A generated rail may constrain only the sampled continuation while the chat
+// template contributes a prefix that llama-server preserves in its response.
+// The artifact names the alternate root that composes those bytes for evidence
+// grading; arbitrary grammars without the declaration retain their transport root.
+const grammarConstraint = (grammar: string): GrammarConstraint => {
+    const declarations = [...grammar.matchAll(/^# @plurnk-response-root ([A-Za-z][A-Za-z0-9-]*)$/gm)];
+    if (declarations.length === 0) return { transport: grammar, response: grammar };
+    if (declarations.length !== 1) throw new Error("GBNF constraint declares multiple @plurnk-response-root values");
+    const responseRoot = declarations[0]![1]!;
+    if (!grammar.split("\n").some((line) => line.startsWith(`${responseRoot} ::=`))) {
+        throw new Error(`GBNF constraint declares missing response root ${responseRoot}`);
+    }
+    const roots = [...grammar.matchAll(/^root ::= ([A-Za-z][A-Za-z0-9-]*)$/gm)];
+    if (roots.length !== 1) throw new Error("GBNF constraint must declare exactly one simple root");
+    return {
+        transport: grammar,
+        response: grammar.replace(roots[0]![0], `root ::= ${responseRoot}`),
+    };
+};
+
 type EngineTurnResult = {
     turnId: number;
     status: number;
@@ -509,7 +534,7 @@ export default class Engine {
     readonly #workspaceTurnCompleted: WorkspaceTurnCompleted | undefined;
 
     // Configured grammar text is cached by variant after its first load.
-    #gbnfCache = new Map<string, string>();
+    #gbnfCache = new Map<string, GrammarConstraint>();
 
     // {§rail-truth-engine-verdict} — the verify GAP (a configured grammar @plurnk/gbnf can't
     // parse): warn once per message, never per turn; the turn records railsVerdict "unverifiable".
@@ -638,7 +663,7 @@ export default class Engine {
 
     // Supply an explicitly configured local constraint; ANTLR remains the
     // language authority. {§grammar-enforcement-verified-at-boot}
-    async #grammarConstraint(provider: Provider): Promise<string | undefined> {
+    async #grammarConstraint(provider: Provider): Promise<GrammarConstraint | undefined> {
         // Resolve through the registered or active alias; ambiguity and load
         // failures never degrade to unconstrained generation.
         // {§grammar-enforcement-verified-at-boot}
@@ -656,9 +681,10 @@ export default class Engine {
             ? variant
             : fileURLToPath(import.meta.resolve(`@plurnk/plurnk-contracts/${variant}`));
         const text = await readFile(path, "utf8");  // unresolvable/unreadable throws — a configured rail never silently degrades
-        this.#gbnfCache.set(variant, text);
+        const constraint = grammarConstraint(text);
+        this.#gbnfCache.set(variant, constraint);
         process.stderr.write(`plurnk-engine: GBNF constraint: ${alias || "(bare)"} → ${variant} (${text.length} chars)\n`);
-        return text;
+        return constraint;
     }
 
     // A lineage's no-parent root; a root worker resolves to itself. Fail hard
@@ -1559,6 +1585,7 @@ export default class Engine {
         let response: ProviderAttempt | undefined;
         let splitResponse: SplitProviderResponse | undefined;
         let railGrammar: string | undefined;
+        let railResponseGrammar: string | undefined;
         let railEvidence: GrammarEvidence | undefined;
         let emissionAttempts = 0;
         let providerCallInFlight = false;
@@ -1591,7 +1618,9 @@ export default class Engine {
         try {
             // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
             if (!signal?.aborted) this.#notices.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
-            railGrammar = await this.#grammarConstraint(provider);
+            const railConstraint = await this.#grammarConstraint(provider);
+            railGrammar = railConstraint?.transport;
+            railResponseGrammar = railConstraint?.response;
             const attemptLimit = readEmissionAttempts();
             const maxTokens = this.#packets.maxTokensFor(provider) ?? undefined;
             const strikeStreak = this.#strikes.streak(loopId);
@@ -1835,8 +1864,9 @@ export default class Engine {
         let railKeys: { railsAttached: "client" | "withheld"; railsVerdict: string } | undefined;
         if (railGrammar !== undefined) {
             if (railEvidence === undefined) throw new Error("configured GBNF response has no final grammar evidence");
+            if (railResponseGrammar === undefined) throw new Error("configured GBNF has no response grammar");
             let verdict: ReturnType<typeof validateGbnf> | null = null;
-            try { verdict = validateGbnf(railGrammar, railEvidence.input); }
+            try { verdict = validateGbnf(railResponseGrammar, railEvidence.input); }
             catch (cause) { Engine.#warnRailVerdictGapOnce((cause as Error).message); }
             railKeys = {
                 railsAttached: railEvidence.transported ? "client" : "withheld",

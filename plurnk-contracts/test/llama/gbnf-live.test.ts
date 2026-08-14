@@ -9,8 +9,9 @@
  * Sampling notes:
  * - A per-request repeat_penalty > 1.0 is required; greedy decoding under hard
  *   constraint masks degenerates into repetition loops without it.
- * - The grammar constrains the raw decode to exactly one Gemma Harmony reasoning
- *   enclosure, then `sep`, mandatory `# PLAN0`, H2 operations, and terminal SEND.
+ * - The selected grammar constrains sampled token zero through the reasoning
+ *   boundary, then `sep`, mandatory `# PLAN0`, H2 operations, and terminal SEND.
+ *   The Qwen profile composes with the opener already supplied by its template.
  *   llama-server applies `reasoning_format: "auto"` after that constrained decode,
  *   projecting the enclosure body out of `content` into `reasoning_content`.
  * - Projected content may be bare or wrapped once in a paired `plurnk` fence;
@@ -27,7 +28,9 @@ import { buildModel, serializeGbnf } from "../../scriptify/generate-gbnf.ts";
 
 const BASE_URL = process.env.PLURNK_LLAMA_URL ?? "http://127.0.0.1:11435";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const grammar = serializeGbnf(buildModel(), "root-turn");
+const railProfile = process.env.PLURNK_LLAMA_RAIL_PROFILE ?? "qwen";
+if (railProfile !== "gemma" && railProfile !== "qwen") throw new Error("PLURNK_LLAMA_RAIL_PROFILE must be gemma or qwen");
+const grammar = serializeGbnf(buildModel(), `root-${railProfile}`);
 const system = readFileSync(join(repoRoot, "plurnk.md"), "utf8");
 const reasoningAllowance = 64;
 
@@ -63,7 +66,7 @@ const complete = async (userPrompt: string, maxTokens: number): Promise<Completi
     };
 };
 
-test("llama.cpp accepts the generated plurnk.gbnf (size/format check)", async () => {
+test(`llama.cpp accepts the generated plurnk.${railProfile}.gbnf (size/format check)`, async () => {
     const { content } = await complete("Say anything.", 1);
     assert.equal(typeof content, "string");
 });
@@ -76,6 +79,8 @@ test("llama projection separates reasoning and the model completes a PLAN turn",
     );
     assert.equal(content.includes("<|channel>"), false, `reasoning opener leaked into content: ${JSON.stringify(content)}`);
     assert.equal(content.includes("<channel|>"), false, `reasoning closer leaked into content: ${JSON.stringify(content)}`);
+    assert.equal(content.includes("<think>"), false, `reasoning opener leaked into content: ${JSON.stringify(content)}`);
+    assert.equal(content.includes("</think>"), false, `reasoning closer leaked into content: ${JSON.stringify(content)}`);
     assert.equal(typeof reasoning, "string");
     // Feed the projected content directly; parsing begins at the H1 PLAN anchor.
     const result = PlurnkParser.parse(content);

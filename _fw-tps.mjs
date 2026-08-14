@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { instantiateProvider } from "/home/hyzen/repo/plurnk/plurnk-providers/src/index.ts";
 const key = process.env.FIREWORKS_API_KEY;
-const grammar = await fs.readFile("./node_modules/@plurnk/plurnk-contracts/dist/plurnk.gbnf", "utf-8");
+const grammar = await fs.readFile("./node_modules/@plurnk/plurnk-contracts/dist/plurnk.gemma.gbnf", "utf-8");
 const env = { FIREWORKS_API_KEY:key, PLURNK_FETCH_TIMEOUT:"600000", PLURNK_PROVIDERS_REASONING_BUDGET:"0", PLURNK_PROVIDER_RETRY_ATTEMPTS:"3" };
 const PROMPT = "Compute the sum of the first 10 prime numbers. Plan, then send the final answer with a short explanation.";
 const bench = async (label, model) => {

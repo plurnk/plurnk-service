@@ -162,9 +162,15 @@ const sample = (entry: string, random: () => number): string => {
 
 const CHANNEL_OPEN = "<|channel>thought\n";
 const CHANNEL_CLOSE = "<channel|>";
+const THINK_OPEN = "<think>\n";
+const THINK_CLOSE = "</think>";
 const channel = (body = ""): string => `${CHANNEL_OPEN}${body}${CHANNEL_CLOSE}`;
 const derivesTurn = (content: string, reasoning = "", separator = ""): boolean =>
-    derives("root-turn", `${channel(reasoning)}${separator}${content}`);
+    derives("root-gemma", `${channel(reasoning)}${separator}${content}`);
+const think = (body = ""): string => `${THINK_OPEN}${body}${THINK_CLOSE}`;
+const thinkTail = (body = ""): string => `${body}${THINK_CLOSE}`;
+const derivesQwenTurn = (content: string, reasoning = "", separator = ""): boolean =>
+    derives("root-qwen", `${thinkTail(reasoning)}${separator}${content}`);
 
 const plan = (body: string): string => `# PLAN0\n${body}\n\n`;
 const mid = (op: string, slots = "", body?: string): string =>
@@ -210,12 +216,23 @@ test("GBNF root has exactly one leading Harmony reasoning channel", () => {
     assert.equal(derivesTurn(content), true);
     assert.equal(derivesTurn(content, "reason", "\n \t"), true);
     assert.equal(derivesTurn(content, "reason", " ".repeat(7)), true);
-    assert.equal(derives("root-turn", content), false);
-    assert.equal(derives("root-turn", `${channel("first")}${channel("second")}${content}`), false);
+    assert.equal(derives("root-gemma", content), false);
+    assert.equal(derives("root-gemma", `${channel("first")}${channel("second")}${content}`), false);
     assert.equal(derivesTurn(content, "reason", " ".repeat(8)), false);
     assert.equal(derivesTurn(content, "reason", " prose "), false);
-    assert.equal(derives("root-turn", `<think>reasoning</think>${content}`), false);
-    assert.equal(derives("root-turn", channel("reason")), false);
+    assert.equal(derives("root-gemma", `<think>reasoning</think>${content}`), false);
+    assert.equal(derives("root-gemma", channel("reason")), false);
+});
+
+test("each rail constrains the sampled text at its template's generation boundary", () => {
+    const content = turn("intent", [], 200, "answer");
+    assert.equal(derivesQwenTurn(content, "Analyze the task."), true);
+    assert.equal(derivesQwenTurn(content), true);
+    assert.equal(derivesQwenTurn(content, "reason", "\n \t"), true);
+    assert.equal(derives("root-qwen", think("Analyze the task.") + content), false);
+    assert.equal(derives("root-qwen", `${channel("reason")}${content}`), false);
+    assert.equal(derives("root-gemma", `${think("reason")}${content}`), false);
+    assert.equal(derives("root-qwen", `${THINK_OPEN}inner${THINK_CLOSE}${content}`), false);
 });
 
 test("reasoning channel rejects nested channel delimiters and cannot recur after PLAN", () => {
@@ -516,8 +533,8 @@ test("rail-legal malformed matcher remains one bounded AstBuilder error", () => 
 
 test("100 seeded turn derivations preserve the PLAN-through-terminal-SEND frame", () => {
     for (let seed = 1; seed <= 100; seed++) {
-        const generated = sample("root-turn", mulberry32(seed));
-        assert.equal(derives("root-turn", generated), true, `seed ${seed}`);
+        const generated = sample("root-gemma", mulberry32(seed));
+        assert.equal(derives("root-gemma", generated), true, `seed ${seed}`);
         assert.ok(generated.startsWith(CHANNEL_OPEN), `seed ${seed}`);
         assert.ok(generated.includes("# PLAN0\n"), `seed ${seed}`);
         const projected = generated.slice(generated.indexOf(CHANNEL_CLOSE) + CHANNEL_CLOSE.length).trimStart();
@@ -547,8 +564,15 @@ test("300 seeded statement derivations build one statement or one bounded visito
 });
 
 test("serialized GBNF has one root and no undefined references", () => {
-    const serialized = serializeGbnf(model, "root-turn");
-    assert.match(serialized, /^root ::= root-turn$/m);
+    const gemmaRail = serializeGbnf(model, "root-gemma");
+    const qwenRail = serializeGbnf(model, "root-qwen");
+    assert.match(gemmaRail, /^root ::= root-gemma$/m);
+    assert.match(qwenRail, /^root ::= root-qwen$/m);
+    assert.match(gemmaRail, /^# @plurnk-response-root root-gemma$/m);
+    assert.match(qwenRail, /^# @plurnk-response-root root-qwen-response$/m);
+    assert.match(qwenRail, /^root-qwen-response ::= "<think>\\n" root-qwen$/m);
+    assert.doesNotMatch(gemmaRail, /^root-qwen ::=/m);
+    assert.doesNotMatch(qwenRail, /^root-gemma ::=/m);
     const references = new Set<string>();
     for (const alternatives of model.values()) {
         const visit = (item: GItem): void => {

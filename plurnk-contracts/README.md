@@ -23,7 +23,7 @@ Requires Node.js 26 or newer.
 | Shared wire shapes              | `schema/*.json`                                      |
 | JavaScript and TypeScript API   | `@plurnk/plurnk-contracts`                           |
 | Published JSON Schemas          | `@plurnk/plurnk-contracts/schema/*.json`             |
-| Optional local-model rail       | `@plurnk/plurnk-contracts/plurnk.gbnf`               |
+| Optional local-model rails      | `@plurnk/plurnk-contracts/plurnk.{gemma,qwen}.gbnf`  |
 
 JSON Schema owns shared wire shapes, generated TypeScript projects those
 shapes, ANTLR owns accepted model-language syntax, and GBNF is a bounded
@@ -93,13 +93,17 @@ when the result contains an error or unparsed tail.
 
 ```ts
 const railUrl = import.meta.resolve(
-    "@plurnk/plurnk-contracts/plurnk.gbnf",
+    "@plurnk/plurnk-contracts/plurnk.qwen.gbnf",
 );
 ```
 
-The shipped rail constrains one raw reasoning-plus-PLURNK sentence before the
-provider projects reasoning and content. It is not a second parser and does not
-guarantee semantically valid output. See SPEC {§gbnf-turn-shape} and
+Choose `gemma` when the model generates its complete
+`<|channel>thought … <channel|>` enclosure, or `qwen` when the chat template
+supplies `<think>\n` before sampled token zero. The latter artifact is named
+`qwen` because that prefill is Qwen's template protocol, not a general property
+of think tags. Both constrain the same PLURNK
+turn after reasoning. They are not second parsers and do not guarantee
+semantically valid output. See SPEC {§gbnf-turn-shape} and
 {§gbnf-reasoning-boundary}.
 
 ## Development

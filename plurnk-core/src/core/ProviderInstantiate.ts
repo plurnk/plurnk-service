@@ -115,8 +115,15 @@ export default class ProviderInstantiate {
     // Endpoint-owned settings are outside this knob and outside this verification.
     static #VERIFY_TOKEN = "PLURNK-RAILS-LIVE";
     static #VERIFY_REASONING = "verify";
-    static #VERIFY_PREFIX = `<|channel>thought\n${ProviderInstantiate.#VERIFY_REASONING}<channel|>`;
-    static #VERIFY_INPUT = `${ProviderInstantiate.#VERIFY_PREFIX}${ProviderInstantiate.#VERIFY_TOKEN}`;
+    static #verificationSentence(gbnf: string): { sampled: string; response: string } {
+        const normalized = gbnf.replaceAll("\\", "/");
+        if (normalized.endsWith("/plurnk.qwen.gbnf") || normalized === "plurnk.qwen.gbnf") {
+            const sampled = `${ProviderInstantiate.#VERIFY_REASONING}</think>${ProviderInstantiate.#VERIFY_TOKEN}`;
+            return { sampled, response: `<think>\n${sampled}` };
+        }
+        const sampled = `<|channel>thought\n${ProviderInstantiate.#VERIFY_REASONING}<channel|>${ProviderInstantiate.#VERIFY_TOKEN}`;
+        return { sampled, response: sampled };
+    }
     static async verifyGrammarEnforcement(provider: Provider, env: NodeJS.ProcessEnv = process.env): Promise<void> {
         // {§grammar-enforcement-verified-at-boot}: resolve through the provider's registered alias,
         // with the active alias
@@ -145,7 +152,8 @@ export default class ProviderInstantiate {
             && scoped.PLURNK_PROVIDERS_GBNF_DEBUG !== ""
             && scoped.PLURNK_PROVIDERS_GBNF_DEBUG !== "0";
         if (debug) return; // transport is deliberately withheld; real turns own validation and verdict evidence
-        const forcing = `root ::= ${JSON.stringify(ProviderInstantiate.#VERIFY_INPUT)}`;
+        const verifySentence = ProviderInstantiate.#verificationSentence(gbnf);
+        const forcing = `root ::= ${JSON.stringify(verifySentence.sampled)}`;
         let response;
         try {
             response = await provider.generate({
@@ -171,10 +179,10 @@ export default class ProviderInstantiate {
             );
         }
         const input = evidence.input.replace(/(<eos>|<\/s>|<\|eot_id\|>|<\|endoftext\|>|<end_of_turn>)$/, "");
-        if (!evidence.transported || input !== ProviderInstantiate.#VERIFY_INPUT) {
+        if (!evidence.transported || input !== verifySentence.response) {
             throw new Error(
                 `GBNF enforcement failed: PLURNK_PROVIDERS_GBNF=${gbnf} requests constrained sampling, but '${provider.model}' returned unconstrained output to a forcing grammar `
-                + `(expected ${JSON.stringify(ProviderInstantiate.#VERIFY_INPUT)}, got ${JSON.stringify(input.slice(0, 80))}; transported=${evidence.transported}). `
+                + `(expected ${JSON.stringify(verifySentence.response)}, got ${JSON.stringify(input.slice(0, 80))}; transported=${evidence.transported}). `
                 + `Refusing to boot because the configured local constraint was not enforced. `
                 + `Check the llama-server capability or remove the PLURNK_PROVIDERS_GBNF setting.`,
             );

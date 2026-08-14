@@ -458,8 +458,9 @@ GBNF is a local llama-server capability, not a generic provider expectation.
 The consumer chooses whether to supply a grammar. The provider never creates or
 rewrites one.
 
-GBNF defines the accepted raw sampled text; it runs before response reasoning
-is separated from regular content. The shipped PLURNK sentence is owned by
+GBNF defines the accepted sampled text; it runs before response reasoning is
+separated from regular content. A generated rail may declare a response root
+that composes a template-provided prefix for independent evidence grading. The shipped PLURNK sentence is owned by
 `plurnk-contracts` {§gbnf-turn-shape} and {§gbnf-reasoning-boundary}; this package does
 not restate or rewrite it.
 

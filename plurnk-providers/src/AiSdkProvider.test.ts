@@ -1297,6 +1297,22 @@ test("template reasoning returns the exact pre-projection grammar sentence ({§g
     assert.equal(res.meta?.railsVerdict, undefined, "the provider represents evidence but does not grade itself");
 });
 
+test("template reasoning projects a leading think envelope without losing grammar evidence", async () => {
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const input = "<think>\ncon🙂sider</think>x";
+    const calls = installFetch([{ choices: [{ delta: { content: input } }] }]);
+    const res = await p.generate({ workerId: "r", messages: [], grammar: `root ::= ${JSON.stringify(input)}` });
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.equal(body.reasoning_format, "none");
+    assert.equal(res.assistant.reasoning, "con🙂sider");
+    assert.equal(res.assistant.content, "x");
+    assert.deepEqual(res.grammarEvidence, {
+        input,
+        contentStart: [..."<think>\ncon🙂sider</think>"].length,
+        transported: true,
+    });
+});
+
 test("a verbatim template response remains exact evidence when it has no channel envelope", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);

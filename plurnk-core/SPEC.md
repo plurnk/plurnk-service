@@ -755,8 +755,9 @@ plugin discovery is the last protocol-extension seam.
 The ANTLR grammar always defines and validates the PLURNK language. Separately,
 an operator may configure `PLURNK_PROVIDERS_GBNF_<alias>` for a local
 llama-server. The provider must advertise GBNF transport and satisfy a forcing
-probe whose pre-projection sentence is one reasoning enclosure followed by the
-`PLURNK-RAILS-LIVE` sentinel, or boot fails. The setting is resolved
+probe whose sampled sentence and pre-projection response match the selected
+rail's template boundary followed by the `PLURNK-RAILS-LIVE` sentinel, or boot
+fails. The setting is resolved
 per alias and is unset by default. Configuring it on a cloud or endpoint-managed
 provider is an error, not a request for best-effort filtering.
 Alias-scoped `PLURNK_PROVIDERS_GBNF_DEBUG` deliberately withholds transport, so
@@ -767,7 +768,7 @@ the process's active alias. Suffixed rail settings with neither identity fail
 instead of guessing. A configured package variant or explicit path that cannot
 be loaded also fails; it never silently becomes unconstrained.
 
-§gbnf-requires-reasoning The shipped PLURNK rail requires reasoning. The same alias-scoped configuration
+§gbnf-requires-reasoning Both shipped PLURNK rails require reasoning. The same alias-scoped configuration
 must resolve reasoning to `adaptive` or `on`; `off` with GBNF is rejected before
 the probe or any model generation. Reasoning-off remains valid when no GBNF rail
 is configured.
@@ -775,7 +776,8 @@ is configured.
 §rail-truth-engine-verdict **Local constraint truth is independently observed.**
 For a configured local GBNF, the provider returns the pre-projection sentence as
 `grammarEvidence` under `plurnk-providers` {§gbnf-response-observation}. The engine
-requires that evidence, independently validates `grammarEvidence.input`, and
+requires that evidence, independently validates `grammarEvidence.input` with the
+artifact's declared response root, and
 stamps `railsAttached: "client"` when transported or `"withheld"` in debug mode
 plus `railsVerdict`; it never validates projected
 `assistant.content` as though the required reasoning enclosure were still

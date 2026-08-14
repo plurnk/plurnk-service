@@ -239,12 +239,19 @@ const projectTaggedReasoning = (
     ? projectLeadingReasoning(content, structuredReasoning, "<think>", "</think>")
     : { content, reasoning: structuredReasoning, projected: false, contentStart: 0 };
 
-// llama-server's template reasoning parser can project this leading channel out
-// of the OpenAI-compatible response. Grammar evidence needs the sentence before
-// that lossy projection, so constrained template turns request it verbatim and
-// split the observed enclosure here.
-const projectTemplateReasoning = (content: string): TaggedReasoningProjection =>
-    projectLeadingReasoning(content, "", "<|channel>thought\n", "<channel|>");
+// llama-server's template reasoning parser can project either supported leading
+// reasoning envelope out of the OpenAI-compatible response. Grammar evidence
+// needs the sentence before that lossy projection, so constrained template turns
+// request it verbatim and split the observed enclosure here.
+const projectTemplateReasoning = (content: string): TaggedReasoningProjection => {
+    for (const [opening, closing] of [
+        ["<|channel>thought\n", "<channel|>"],
+        ["<think>\n", "</think>"],
+    ] as const) {
+        if (content.startsWith(opening)) return projectLeadingReasoning(content, "", opening, closing);
+    }
+    return { content, reasoning: "", projected: false, contentStart: 0 };
+};
 
 // Shared budget→effort breakpoints (xai and google had identical copies).
 export const effortFromBudget = (budget: number): "low" | "medium" | "high" => {
@@ -956,10 +963,10 @@ export default class AiSdkProvider implements Provider {
                 this.#reasoningResponseStyle,
             );
 
-        // Preserve the exact sentence seen at the grammar boundary. Constrained
-        // template turns request `reasoning_format: "none"`, so even an empty
-        // channel remains observable. An unexpectedly projected response cannot
-        // supply independent pre-projection evidence.
+        // Preserve the exact pre-projection response. Constrained template turns
+        // request `reasoning_format: "none"`, so even an empty channel and any
+        // template-provided opener remain observable. An unexpectedly projected
+        // response cannot supply independent evidence.
         let grammarEvidence: GrammarEvidence | undefined;
         if (wantGrammar) {
             if (preserveGrammarSentence) {
