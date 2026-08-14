@@ -31,7 +31,7 @@ export default class Jsonplurnk {
         let at = from;
         let coordinateLines = 0;
         while (at < block.length) {
-            if (block.startsWith('"}', at)) {
+            if (block[at] === '"' && (block[at + 1] === "}" || block[at + 1] === ",")) {
                 if (coordinateLines === 0) {
                     throw new Error("jsonplurnk: raw multiline body must contain a coordinate line");
                 }

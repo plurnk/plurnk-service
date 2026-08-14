@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import { DEFAULT_MIMETYPES, makeSchemeCtx, readLog } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, logEntries, makeSchemeCtx, readLog } from "./_helpers.ts";
 import { readStmt, urlPath } from "./_dsl.ts";
 
 const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("## SEND0 [200]\ndone", 40)] });
@@ -48,8 +48,11 @@ test("a long prompt renders an honest addressable preview and the section lists 
             const promptSection = (packet.sections ?? []).find((sec) => sec.name === "prompt");
             assert.match(logSection?.content ?? "", /prompt line 1/, "the prompt preview reaches the model");
             assert.doesNotMatch(logSection?.content ?? "", /prompt line 30/, "content beyond the preview is withheld");
-            assert.match(logSection?.content ?? "", /"overflow":"Body content truncated\. Full body: log:\/\/\/1\/1\/\d+\/prompt"/, "the preview names its complete durable body");
-            const bodyTarget = /"overflow":"Body content truncated\. Full body: (log:\/\/\/[^"]+)"/
+            assert.match(logSection?.content ?? "", /"body":"[\s\S]*","chunk":"READing <1,16> of <1,30>"}/, "the preview states its displayed and complete extents after its body");
+            const projectedPrompt = logEntries(packet).find((entry) =>
+                typeof entry.path === "string" && entry.path.endsWith("/prompt"));
+            assert.equal(projectedPrompt?.chunk, "READing <1,16> of <1,30>", "the independent packet parser retains the following member");
+            const bodyTarget = /"path":"(log:\/\/\/1\/1\/\d+\/prompt)"/
                 .exec(logSection?.content ?? "")?.[1];
             assert.ok(bodyTarget, "the emitted canonical-body target is present");
             const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId });
@@ -80,7 +83,7 @@ test("an oversized deliverable renders the universal preview and log recovery ad
     const rendered = PacketWire.renderLog([row], countTokens);
     assert.ok(rendered.includes("deranged output line 1"), "the preview head is visible");
     assert.ok(!rendered.includes("deranged output line 30"), "content beyond the preview is withheld");
-    assert.match(rendered, /"overflow":"Body content truncated\. Full body: log:\/\/\/1\/2\/1\/SEND"/, "the canonical overflow contract names the log body");
+    assert.match(rendered, /"body":"[\s\S]*","chunk":"READing <1,16> of <1,400>"}/, "the chunk states its displayed and complete line extents");
 });
 
 test("a single-line body is constrained by the independent character bound", () => {
@@ -94,7 +97,7 @@ test("a single-line body is constrained by the independent character bound", () 
     const rendered = PacketWire.renderLog([row], countTokens);
     const bodyChars = (rendered.match(/x+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0);
     assert.ok(bodyChars <= Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS), `the character knob bounds the single-line body (longest run ${bodyChars})`);
-    assert.match(rendered, /"overflow":"Body content truncated\. Full body: log:\/\/\/1\/2\/1\/SEND"/, "the cut is explicit and addressable");
+    assert.match(rendered, /"body":"[\s\S]*","chunk":"READing <1,1,1,2561> of <1,1,1,20001>"}/, "the in-line cut is exact and addressable");
 });
 
 test("a small deliverable rides whole — whole-when-small is the common case, untouched", () => {
@@ -106,7 +109,7 @@ test("a small deliverable rides whole — whole-when-small is the common case, u
     };
     const rendered = PacketWire.renderLog([row], countTokens);
     assert.ok(rendered.includes("answer: 42") && rendered.includes("notes: none"), "the whole deliverable rides");
-    assert.ok(!rendered.includes("\"overflow\""), "an in-bounds body has no overflow");
+    assert.ok(!rendered.includes("\"chunk\""), "an in-bounds body has no chunk extent");
 });
 
 test("a single-line prompt cannot bypass the character bound", async () => {
@@ -122,7 +125,15 @@ test("a single-line prompt cannot bypass the character bound", async () => {
             const log = (packet.sections ?? []).find((sec) => sec.name === "log")?.content ?? "";
             const longestHayRun = (log.match(/(?:hay )+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0);
             assert.ok(longestHayRun <= Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS), "the prompt obeys the character bound");
-            assert.match(log, /"overflow":"Body content truncated\. Full body: log:\/\/\/1\/1\/\d+\/prompt"/, "the complete prompt remains explicitly addressable");
+            const chunk = /"chunk":"READing <1,1,1,(\d+)> of <1,1,1,(\d+)>"/.exec(log);
+            assert.deepEqual(
+                chunk?.slice(1),
+                [
+                    String(Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS) + 1),
+                    String(Array.from(bomb).length + 1),
+                ],
+                "the prompt states the exact selected and complete character extents",
+            );
         } finally { ws.close(); }
     });
 });

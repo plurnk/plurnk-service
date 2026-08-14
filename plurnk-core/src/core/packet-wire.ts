@@ -8,6 +8,7 @@
 // supply names and typed content; this projection preserves their ordered evidence.
 
 import { Validator, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
+import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
 import { renderTarget } from "./plurnk-uri.ts";
 import type { GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
@@ -219,7 +220,7 @@ export default class PacketWire {
     static #numberLines(body: string, start = 1): string {
         let line = start;
         return `${line++}:${body.replace(
-            /(\r\n|\r|\n)(?=[\s\S])/g,
+            /(\r\n|\r(?!\n)|\n)(?=[\s\S])/g,
             (separator) => `${separator}${line++}:`,
         )}`;
     }
@@ -287,7 +288,7 @@ export default class PacketWire {
 
     // {§jsonplurnk} One deliberately raw multiline JSON string. The physical
     // newline after the opening quote and every positive numeric or anchored coordinate prefix
-    // make the closing `"}` at column zero unambiguous without an invented
+    // make the closing quote at column zero unambiguous without an invented
     // delimiter for source text to imitate. Already-numbered producer output is
     // checked here too: malformed bodies fail at the one projection boundary.
     static #quoteBody(body: string): string {
@@ -321,30 +322,80 @@ export default class PacketWire {
         return op !== null ? `log:///${coordinate}/${op}` : `log:///${coordinate}`;
     }
 
+    static #offsetAfterCharacters(text: string, count: number): number {
+        let offset = 0;
+        let consumed = 0;
+        while (offset < text.length && consumed < count) {
+            if (text.startsWith("\r\n", offset)) {
+                offset += 2;
+            } else {
+                const codePoint = text.codePointAt(offset);
+                if (codePoint === undefined) break;
+                offset += String.fromCodePoint(codePoint).length;
+            }
+            consumed++;
+        }
+        return offset;
+    }
+
     // One preview function for every bounded model-facing projection. Lines
-    // protect ordinary documents and chars protect a single-line bomb.
-    static #preview(text: string): { text: string; cut: boolean } {
+    // protect ordinary documents and Unicode characters protect a single-line
+    // bomb. Once a physical line is complete, a character cut retreats to that
+    // line boundary rather than exposing a partial coordinate prefix.
+    static #preview(text: string): { text: string; cut: boolean; chunk: string | null } {
         const { lines: maxLines, chars: maxChars } = previewBounds();
-        let lineEnd = text.length;
-        let newline = -1;
-        for (let line = 0; line < maxLines; line++) {
-            newline = text.indexOf("\n", newline + 1);
-            if (newline === -1) break;
-            if (line === maxLines - 1) lineEnd = newline + 1;
+        const coordinates = new TextCoordinates(text);
+        const physicalLines = coordinates.logicalLines();
+        const lineEnd = physicalLines.length > maxLines
+            ? physicalLines[maxLines - 1]!.end
+            : text.length;
+        const characterEnd = PacketWire.#offsetAfterCharacters(text, maxChars);
+        let end = Math.min(lineEnd, characterEnd);
+        if (characterEnd < text.length && characterEnd <= lineEnd) {
+            const completeLine = physicalLines.findLast((line) =>
+                line.separator.length > 0 && line.end <= characterEnd);
+            if (completeLine !== undefined) end = completeLine.end;
         }
-        let end = Math.min(text.length, lineEnd, maxChars);
-        // A character cap still cuts a single-line bomb in place. Once the
-        // preview contains a complete physical line, stop at that boundary so
-        // truncation cannot manufacture a partial next-line prefix (for
-        // example `14` from an already numbered `14:...` body).
-        if (end === maxChars && end < text.length) {
-            const previousBreak = Math.max(
-                text.lastIndexOf("\n", end - 1),
-                text.lastIndexOf("\r", end - 1),
-            );
-            if (previousBreak >= 0) end = previousBreak + 1;
+        const cut = end < text.length;
+        return {
+            text: text.slice(0, end),
+            cut,
+            chunk: cut ? PacketWire.#chunk(coordinates, physicalLines, end, text.length) : null,
+        };
+    }
+
+    static #formatRegion(region: TextRegion): string {
+        return `<${region.startLine},${region.startColumn},${region.endLine},${region.endColumn}>`;
+    }
+
+    static #chunk(
+        coordinates: TextCoordinates,
+        lines: readonly TextLine[],
+        end: number,
+        completeEnd: number,
+    ): string {
+        const finalCompleteLine = lines.findIndex((line) =>
+            line.separator.length > 0 && line.end === end);
+        if (finalCompleteLine !== -1) {
+            const selected = `<1,${finalCompleteLine + 1}>`;
+            const complete = `<1,${lines.length}>`;
+            if (selected === complete) {
+                throw new Error("a bounded body chunk must differ from its complete line extent");
+            }
+            return `READing ${selected} of ${complete}`;
         }
-        return { text: text.slice(0, end), cut: end < text.length };
+
+        const selectedRegion = coordinates.regionFromOffsets(0, end);
+        const completeRegion = coordinates.regionFromOffsets(0, completeEnd);
+        if (selectedRegion === null || completeRegion === null) {
+            throw new Error("a character-bound body chunk must resolve to exact text coordinates");
+        }
+        const selected = PacketWire.#formatRegion(selectedRegion);
+        const complete = PacketWire.#formatRegion(completeRegion);
+        if (selected === complete) {
+            throw new Error("a bounded body chunk must differ from its complete text extent");
+        }
+        return `READing ${selected} of ${complete}`;
     }
 
     static #renderLogEntries(entries: LogEntryView[], countTokens: CountTokens): string {
@@ -526,13 +577,10 @@ export default class PacketWire {
             const emptyFind = op === "FIND" && e.status === 200 && findItems === 0;
             const previewExempt = op === "READ" || op === "FIND";
             const projection = previewExempt
-                ? { text: fullBody.content, cut: false }
+                ? { text: fullBody.content, cut: false, chunk: null }
                 : PacketWire.#preview(fullBody.content);
             if (projection.cut && path === null) {
                 throw new Error("a previewed log body requires an addressable log path");
-            }
-            if (projection.cut) {
-                meta.overflow = `Body content truncated. Full body: ${path}`;
             }
             const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;
             const body = emptyFind || projection.text.length === 0
@@ -560,7 +608,11 @@ export default class PacketWire {
             meta.display = display;
             if (display === "none") meta.body = "";
             const obj = PacketWire.#canonicalJson(meta);
-            return display === "open" ? obj.replace(/\}$/, `,"body":${body}}`) : obj;
+            if (display !== "open") return obj;
+            const chunk = projection.chunk !== null
+                ? `,"chunk":${JSON.stringify(projection.chunk)}`
+                : "";
+            return obj.replace(/\}$/, `,"body":${body}${chunk}}`);
         }).join(",\n");
     }
 

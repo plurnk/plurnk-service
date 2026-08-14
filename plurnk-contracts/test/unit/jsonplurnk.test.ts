@@ -26,6 +26,17 @@ test("jsonplurnk: the open body recovers verbatim, trailing newline included", (
     assert.equal(parsed[1].body, "1:\tImprove ABS module loading so `require()` remains deterministic\n");
 });
 
+test("jsonplurnk: bounded bodies retain a chunk field after the raw multiline value", () => {
+    const block = `[{
+"path":"log:///1/1/1/PLAN","display":"open","body":"
+1:first selected line
+","chunk":"READing <1,1> of <1,2>"}
+]`;
+    const parsed = Jsonplurnk.parse(block) as any[];
+    assert.equal(parsed[0].body, "1:first selected line\n");
+    assert.equal(parsed[0].chunk, "READing <1,1> of <1,2>");
+});
+
 test("jsonplurnk: a no-body block is already valid JSON and passes through untouched", () => {
     const block = `[
 {"kind":"model_emission","path":"log:///1/1/1","status":200,"tokens":109,"display":"folded"},

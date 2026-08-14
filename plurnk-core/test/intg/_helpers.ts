@@ -235,7 +235,7 @@ export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
         let at = contentStart;
         let lines = 0;
         while (at < block.length) {
-            if (block.startsWith('"}', at)) {
+            if (block[at] === '"' && (block[at + 1] === "}" || block[at + 1] === ",")) {
                 if (lines === 0) throw new Error("jsonplurnk test helper found an empty raw multiline body");
                 closeStart = at;
                 break;

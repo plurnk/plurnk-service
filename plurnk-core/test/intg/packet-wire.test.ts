@@ -816,7 +816,7 @@ test("an oversized auto-opened terminal stream READ renders its complete observa
     }], tok);
     assert.match(rendered, /1:stream line 1/, "the terminal output arrives OPEN");
     assert.match(rendered, /40:stream line 40/, "READ observations are never silently projected again");
-    assert.doesNotMatch(rendered, /"overflow"/, "READ owns its selected result bound");
+    assert.doesNotMatch(rendered, /"chunk"/, "READ owns its selected result bound");
 });
 
 test("READ bodies render copyable Base62 line anchors while other numbered bodies remain numeric", () => {
@@ -1021,13 +1021,13 @@ test("every READ/FIND body bypasses the ordinary preview", () => {
         { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: "Tidy context, then read the loader." } },
     ], tok);
     assert.match(shortOut, /Tidy context, then read the loader\./, "a short PLAN renders in full");
-    assert.doesNotMatch(shortOut, /"overflow"/, "no overflow under the bound");
+    assert.doesNotMatch(shortOut, /"chunk"/, "a complete body needs no chunk extent");
 
     // A runaway PLAN (30 lines) renders preview-bounded — the run42 bomb, defused.
     const planOut = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: long } },
     ], tok);
-    assert.match(planOut, /"overflow":"Body content truncated\. Full body: log:\/\/\/1\/1\/1\/PLAN"/, "the PLAN preview names its canonical body");
+    assert.match(planOut, /"body":"[\s\S]*","chunk":"READing <1,16> of <1,30>"}/, "the PLAN preview states its displayed and complete line extents after its body");
     assert.doesNotMatch(planOut, /line 20 of a runaway/, "content past the 16-line preview is cut from the render");
 
     // Mutation receipts are generated results, not deliberate retrievals.
@@ -1036,26 +1036,26 @@ test("every READ/FIND body bypasses the ordinary preview", () => {
         { coordinate: "1/1/2", origin: "model", op: "EDIT", status: 200, target: { scheme: "worker", pathname: "/x" }, rx: { span: numberedSpan } },
     ], tok);
     assert.doesNotMatch(editOut, /span line 30/, "an EDIT receipt cannot bypass the preview");
-    assert.match(editOut, /"overflow":"Body content truncated\. Full body: log:\/\/\/1\/1\/2\/EDIT"/, "the complete receipt remains addressable");
+    assert.match(editOut, /"body":"[\s\S]*","chunk":"READing <1,16> of <1,30>"}/, "the EDIT preview states its displayed and complete line extents after its body");
 
     // READ and FIND deliver RETRIEVED content — full, even when long (the exemption).
     const readOut = PacketWire.renderLog([
         { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, target: { scheme: null, pathname: "/big.txt" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
     ], tok);
     assert.match(readOut, /line 30 of a runaway/, "a long READ delivers full content — retrieval is exempt");
-    assert.doesNotMatch(readOut, /"overflow"/, "no preview cut on READ");
+    assert.doesNotMatch(readOut, /"chunk"/, "no preview cut on READ");
 
     const findOut = PacketWire.renderLog([
         { coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, target: { scheme: null, pathname: "" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
     ], tok);
     assert.match(findOut, /line 30 of a runaway/, "a long FIND renders its full result — retrieval is exempt");
-    assert.doesNotMatch(findOut, /"overflow"/, "no preview cut on FIND");
+    assert.doesNotMatch(findOut, /"chunk"/, "no preview cut on FIND");
 
     const pushedRead = PacketWire.renderLog([
         { coordinate: "1/1/5", origin: "plurnk", op: "READ", status: 200, target: { scheme: "sh", pathname: "/1/1/1" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
     ], tok);
     assert.match(pushedRead, /line 30 of a runaway/, "an engine-observed READ receives the same complete projection");
-    assert.doesNotMatch(pushedRead, /"overflow"/, "provenance does not introduce a hidden READ bound");
+    assert.doesNotMatch(pushedRead, /"chunk"/, "provenance does not introduce a hidden READ bound");
 });
 
 test("every non-retrieval body producer uses the same addressable preview", () => {
@@ -1104,11 +1104,10 @@ test("every non-retrieval body producer uses the same addressable preview", () =
     entries.forEach((entry, index) => {
         const coordinate = `1/2/${index + 1}`;
         const rendered = PacketWire.renderLog([{ coordinate, status: 200, ...entry }], tok);
-        const path = entry.op === null ? `log:///${coordinate}` : `log:///${coordinate}/${entry.op}`;
         assert.doesNotMatch(rendered, /producer line 30/, `${entry.op} cannot bypass the preview`);
         assert.ok(
-            rendered.includes(`"overflow":"Body content truncated. Full body: ${path}"`),
-            `${entry.op} exposes the same neutral canonical-body pointer`,
+            rendered.includes(`"chunk":"READing <1,16> of <1,30>"`),
+            `${entry.op} exposes the same selected and complete line extents`,
         );
     });
 });
@@ -1130,13 +1129,83 @@ test("{§jsonplurnk}: a character preview never cuts a numbered body inside its 
 
         assert.match(rendered, /1:abcdefghijklmnopqrst/, "the complete line before the character boundary remains visible");
         assert.doesNotMatch(rendered, /\n2\n"/, "the preview does not manufacture a dangling line-number prefix");
-        assert.match(rendered, /"overflow":"Body content truncated\. Full body: log:\/\/\/1\/1\/1\/EDIT"/);
+        assert.match(rendered, /"body":"[\s\S]*","chunk":"READing <1,1> of <1,2>"}/);
     } finally {
         if (previousLines === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES;
         else process.env.PLURNK_SERVICE_PREVIEW_LINES = previousLines;
         if (previousChars === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_CHARS;
         else process.env.PLURNK_SERVICE_PREVIEW_CHARS = previousChars;
     }
+});
+
+test("{§jsonplurnk}: a character-bound chunk uses exact Unicode text coordinates", () => {
+    const previousLines = process.env.PLURNK_SERVICE_PREVIEW_LINES;
+    const previousChars = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+    try {
+        process.env.PLURNK_SERVICE_PREVIEW_LINES = "16";
+        process.env.PLURNK_SERVICE_PREVIEW_CHARS = "3";
+        const rendered = PacketWire.renderLog([{
+            coordinate: "1/1/1",
+            origin: "model",
+            op: "PLAN",
+            status: 200,
+            tx: { body: "😀abcdef" },
+        }], tok);
+
+        assert.match(rendered, /1:😀ab\n/, "the character ceiling counts code points and never splits a surrogate pair");
+        assert.doesNotMatch(rendered, /1:😀abc/);
+        assert.match(
+            rendered,
+            /"body":"[\s\S]*","chunk":"READing <1,1,1,4> of <1,1,1,8>"}/,
+            "an in-line cut reports exact start-inclusive, end-exclusive coordinates",
+        );
+    } finally {
+        if (previousLines === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES;
+        else process.env.PLURNK_SERVICE_PREVIEW_LINES = previousLines;
+        if (previousChars === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+        else process.env.PLURNK_SERVICE_PREVIEW_CHARS = previousChars;
+    }
+});
+
+test("{§body-projection}: a character ceiling treats CRLF as one indivisible separator", () => {
+    const previousLines = process.env.PLURNK_SERVICE_PREVIEW_LINES;
+    const previousChars = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+    try {
+        process.env.PLURNK_SERVICE_PREVIEW_LINES = "16";
+        process.env.PLURNK_SERVICE_PREVIEW_CHARS = "3";
+        const rendered = PacketWire.renderLog([{
+            coordinate: "1/1/1",
+            origin: "model",
+            op: "PLAN",
+            status: 200,
+            tx: { body: "ab\r\ncdef" },
+        }], tok);
+
+        assert.match(rendered, /1:ab\r\n/, "the preview retains the complete first physical line");
+        assert.doesNotMatch(rendered, /\r2:\n/, "line numbering cannot split the CRLF pair");
+        assert.doesNotMatch(rendered, /2:cdef/);
+        assert.match(rendered, /"chunk":"READing <1,1> of <1,2>"/);
+    } finally {
+        if (previousLines === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES;
+        else process.env.PLURNK_SERVICE_PREVIEW_LINES = previousLines;
+        if (previousChars === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_CHARS;
+        else process.env.PLURNK_SERVICE_PREVIEW_CHARS = previousChars;
+    }
+});
+
+test("{§jsonplurnk}: a folded bounded body does not claim to display a chunk", () => {
+    const long = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n");
+    const rendered = PacketWire.renderLog([{
+        coordinate: "1/1/1",
+        origin: "model",
+        op: "PLAN",
+        status: 200,
+        folded: true,
+        tx: { body: long },
+    }], tok);
+
+    assert.match(rendered, /"display":"folded"/);
+    assert.doesNotMatch(rendered, /"body"|"chunk"/, "chunk describes a displayed body, not hidden canonical content");
 });
 
 test("preview bounds are exact and reject invalid configuration", () => {
@@ -1154,7 +1223,7 @@ test("preview bounds are exact and reject invalid configuration", () => {
             target: { scheme: "prompt", pathname: "/1/1" },
             rx: { content: sixteenTerminatedLines, mimetype: "text/plain" },
         }], tok);
-        assert.doesNotMatch(exact, /"overflow"/, "a trailing newline does not invent a seventeenth line");
+        assert.doesNotMatch(exact, /"chunk"/, "a trailing newline does not invent a seventeenth line");
 
         process.env.PLURNK_SERVICE_PREVIEW_LINES = "0";
         assert.throws(
