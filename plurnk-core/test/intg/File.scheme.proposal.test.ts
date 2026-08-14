@@ -289,7 +289,7 @@ test("{§edit-result-reviewer-replacement}: reviewer-modified acceptance receipt
     });
 });
 
-test("file.edit: an accept into a NOT-YET-EXISTING subtree creates the parent dirs and lands", async () => {
+test("{§membership-create-parents}: accepted file creation creates missing parent directories", async () => {
     // The fan-out digest's write_failed: applyResolution wrote with no mkdir, so any accepted
     // proposal into a fresh subdir died on ENOENT — the model saw a bare 400 and parked on a
     // worker that never existed. The write-back edge owns its parents now.
