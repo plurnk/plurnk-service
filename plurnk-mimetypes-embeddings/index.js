@@ -202,6 +202,7 @@ export const countTokens = REMOTE
 // internal liveness rail, not an operator throughput target. Cancellation and
 // teardown remain immediate and do not wait for this deadline.
 const WORKER_OPERATION_TIMEOUT_MS = 300_000;
+const WORKER_RELEASE_TIMEOUT_MS = 30_000;
 
 let poolState = null;
 function pool() {
@@ -213,6 +214,7 @@ function pool() {
         queue: [],
         active: new Map(),
         handlers: new Map(),
+        disposable: new Set(),
         starting: new Set(),
         startupCancels: new Map(),
         terminations: new Map(),
@@ -272,7 +274,10 @@ async function startPoolWorker(state) {
             };
             const ready = (message) => settle(() => {
                 if (state.closing) reject(state.closeReason);
-                else if (message?.ready === true) resolve();
+                else if (message?.ready === true) {
+                    if (message.dispose === true) state.disposable.add(worker);
+                    resolve();
+                }
                 else reject(new Error(`embed worker failed to load: ${message?.error ?? "unknown"}`));
             });
             const failed = (error) => settle(() => reject(asError(error, "embed worker startup failed")));
@@ -405,6 +410,7 @@ function retireWorker(state, worker, cause, terminate) {
     const handlers = state.handlers.get(worker);
     if (handlers === undefined) return;
     state.handlers.delete(worker);
+    state.disposable.delete(worker);
     worker.off("message", handlers.message);
     worker.off("error", handlers.error);
     worker.off("exit", handlers.exit);
@@ -584,6 +590,9 @@ export async function embedBatch(texts, { onProgress, signal } = {}) {
 async function disposePool(state) {
     state.closing = true;
     cancelWorkerStarts(state);
+    const disposable = new Set(
+        state.workers.filter((worker) => state.disposable.has(worker) && !state.active.has(worker)),
+    );
     const error = new Error("embedder disposed");
     for (const job of [...state.queue, ...state.active.values()]) {
         settleJob(job, "reject", error);
@@ -598,16 +607,87 @@ async function disposePool(state) {
     }
     state.handlers.clear();
     state.workers.length = 0;
+    state.disposable.clear();
     const starts = [...state.starting];
-    const terminationErrors = await terminateWorkers(state, [...state.owned]);
+    const forced = [...state.owned].filter((worker) => !disposable.has(worker));
+    const [releaseResults, terminationErrors] = await Promise.all([
+        Promise.allSettled([...disposable].map((worker) => releaseWorker(state, worker))),
+        terminateWorkers(state, forced),
+    ]);
     const startErrors = rejectedReasons(await Promise.allSettled(starts))
         .filter((cause) => cause !== state.closeReason);
     const errors = uniqueErrors([
         ...(state.failure === null ? [] : [state.failure]),
+        ...rejectedReasons(releaseResults),
         ...startErrors,
         ...terminationErrors,
     ]);
     if (errors.length > 0) throw new AggregateError(errors, "embed worker pool shutdown failed");
+}
+
+async function releaseWorker(state, worker) {
+    try {
+        await requestWorkerRelease(worker);
+        state.owned.delete(worker);
+    } catch (cause) {
+        try {
+            await terminateWorker(state, worker);
+        } catch (terminationError) {
+            throw new AggregateError([cause, terminationError], "embed worker cooperative release failed");
+        }
+        throw cause;
+    }
+}
+
+function requestWorkerRelease(worker) {
+    return new Promise((resolve, reject) => {
+        let acknowledged = false;
+        let releaseError = null;
+        let settled = false;
+        let deadline;
+        const cleanup = () => {
+            clearTimeout(deadline);
+            worker.off("message", message);
+            worker.off("error", error);
+            worker.off("exit", exit);
+        };
+        const settle = (action) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            action();
+        };
+        const message = (value) => {
+            if (value?.disposed === true) {
+                acknowledged = true;
+            } else if (value?.disposed === false) {
+                acknowledged = true;
+                releaseError = new Error(`embed worker runtime release failed: ${value.error ?? "unknown"}`);
+            }
+        };
+        const error = (cause) => settle(() => reject(asError(cause, "embed worker failed during release")));
+        const exit = (code) => settle(() => {
+            if (!acknowledged) reject(workerExitError(code, " during cooperative release"));
+            else if (releaseError !== null) reject(releaseError);
+            else resolve();
+        });
+        worker.on("message", message);
+        worker.on("error", error);
+        worker.on("exit", exit);
+        deadline = setTimeout(
+            () => settle(() => reject(new DOMException(
+                `embed worker release exceeded ${WORKER_RELEASE_TIMEOUT_MS}ms`,
+                "TimeoutError",
+            ))),
+            WORKER_RELEASE_TIMEOUT_MS,
+        );
+        deadline.unref?.();
+        try {
+            worker.postMessage({ kind: "dispose" });
+        } catch (cause) {
+            settle(() => reject(new Error("embed worker release dispatch failed", { cause })));
+        }
+    });
 }
 
 async function terminateWorker(state, worker) {

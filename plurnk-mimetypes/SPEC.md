@@ -994,7 +994,9 @@ embedding or token-count job exactly once. Cancellation requested through a
 job's `AbortSignal` is terminal. Worker errors, exits, protocol defects, and
 bounded non-response reject the affected job and retire the unhealthy worker
 before queued or later work can use its capacity. Teardown settles queued and
-active work before releasing the execution generation.
+active work before releasing the execution generation. An idle pool worker
+cooperatively releases its embedding runtime before its thread exits; an
+unhealthy or still-active worker is force-terminated after its job settles.
 
 §mimetype-embedding-wire `EmbeddingVector` owns one portable vector wire:
 

@@ -9,6 +9,7 @@
 // asserts); liveLoop is the single loop-driver (always loop-auto, the live/demo
 // stance). Everything funnels through these two so the tier has exactly one path.
 
+import { after } from "node:test";
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import Owner from "../src/core/Owner.ts";
 import { tmpdir } from "node:os";
@@ -22,6 +23,7 @@ import type { Db } from "../src/core/Db.ts";
 import { openMigrated } from "./intg/_helpers.ts";
 import { connect, rpcCall, runLoopToTerminal } from "./intg/_rpc.ts";
 import Digest from "../src/digest/Digest.ts";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 export interface LiveWorkspace {
     db: Db;
@@ -35,6 +37,12 @@ export interface LiveWorkspace {
 // allocates a unique, human-readable directory; nothing counts, reuses, moves,
 // or conditionally sweeps it. DB, workspace label, and digest stay together.
 const BENCHMARKS = process.env.PLURNK_BENCHMARKS ?? resolve(import.meta.dirname, "../../../..", "benchmarks");
+
+// A test-file process owns one plugin generation, matching production's long-lived daemon
+// lifetime without coupling its independent workspace databases. Reconstructing a host-sized
+// local embedding pool for every story retained native high-water memory across generations.
+const mimetypes = new Mimetypes({ defaultMimetype: "text/markdown" });
+after(async () => { await mimetypes.dispose(); });
 
 const claimRunDir = async (workspace: string): Promise<string> => {
     await mkdir(BENCHMARKS, { recursive: true });
@@ -68,7 +76,7 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
     const runDir = await claimRunDir(opts.name);
     const dbPath = join(runDir, "plurnk.db");
     const db = await openMigrated(dbPath);
-    const daemon = new Daemon({ db, provider });
+    const daemon = new Daemon({ db, provider, mimetypes });
     await daemon.start(); // {§rpc} — the harness rides the listenerless seam
     const ws = await connect({ daemon });
     // SANDBOX: every live/demo workspace roots at a fresh empty dir, NEVER the host repo. With
