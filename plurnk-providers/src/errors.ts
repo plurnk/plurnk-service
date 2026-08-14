@@ -6,6 +6,7 @@ import type { ProviderAttempt, ProviderRequestAccounting } from "./types.ts";
 export type ProviderErrorKind =
     | "rate_limit"
     | "network_failure"
+    | "deadline_exceeded"
     | "model_refused"
     | "invalid_response"
     | "unauthorized"
@@ -19,7 +20,39 @@ export interface ClassifiedProviderError {
     retryable?: boolean;
     attempts?: number;
     retryExhausted?: boolean;
+    extensions?: Readonly<Record<string, unknown>>;
 }
+
+export type ProviderTimeoutPhase = "attempt" | "first_content" | "stream_idle" | "operation";
+
+export class ProviderTimeoutError extends Error {
+    readonly phase: ProviderTimeoutPhase;
+    readonly timeoutMs: number;
+
+    constructor(phase: ProviderTimeoutPhase, timeoutMs: number, cause?: unknown) {
+        const labels: Record<ProviderTimeoutPhase, string> = {
+            attempt: "Provider attempt",
+            first_content: "First provider content",
+            stream_idle: "Provider stream idle",
+            operation: "Provider operation",
+        };
+        super(`${labels[phase]} exceeded its ${timeoutMs} ms deadline.`, cause === undefined ? undefined : { cause });
+        this.name = "ProviderTimeoutError";
+        this.phase = phase;
+        this.timeoutMs = timeoutMs;
+    }
+}
+
+export const providerTimeoutOf = (error: unknown): ProviderTimeoutError | null => {
+    const seen = new Set<unknown>();
+    let current = error;
+    while (typeof current === "object" && current !== null && !seen.has(current)) {
+        if (current instanceof ProviderTimeoutError) return current;
+        seen.add(current);
+        current = (current as { cause?: unknown }).cause;
+    }
+    return null;
+};
 
 const defaultStatus = (kind: ProviderErrorKind): number => {
     switch (kind) {
@@ -29,6 +62,7 @@ const defaultStatus = (kind: ProviderErrorKind): number => {
         case "model_refused":
         case "grammar_invalid": return 422;
         case "invalid_response": return 502;
+        case "deadline_exceeded": return 504;
         case "network_failure":
         case "resource_interrupted": return 503;
     }
@@ -39,6 +73,7 @@ const retryable = (kind: ProviderErrorKind): boolean => {
         case "rate_limit":
         case "network_failure":
             return true;
+        case "deadline_exceeded":
         case "invalid_response":
         case "grammar_invalid":
         case "resource_interrupted":
@@ -60,6 +95,7 @@ const buildProblem = (
     const code: Record<ProviderErrorKind, string> = {
         rate_limit: "rate-limit",
         network_failure: "network-failure",
+        deadline_exceeded: "deadline-exceeded",
         model_refused: "model-refused",
         invalid_response: "invalid-response",
         unauthorized: "unauthorized",
@@ -163,6 +199,17 @@ export const classifyProviderError = (
         };
     }
     if (APICallError.isInstance(err)) {
+        const timeout = providerTimeoutOf(err);
+        if (timeout !== null) {
+            return {
+                kind: "network_failure",
+                message: timeout.message,
+                extensions: {
+                    timeoutPhase: timeout.phase,
+                    timeoutMs: timeout.timeoutMs,
+                },
+            };
+        }
         const status = err.statusCode ?? 0;
         const message = err.message.trim().length > 0
             ? preview(err.message, detailLimit)
@@ -170,9 +217,12 @@ export const classifyProviderError = (
         const body = err.responseBody ?? "";
         if (status === 401 || status === 403) return { kind: "unauthorized", message };
         if (status === 402) return { kind: "quota_exceeded", message };
-        if (status === 429) return { kind: "rate_limit", message };
+        if (status === 429) return { kind: "rate_limit", message, retryable: err.isRetryable };
+        if (status === 408 || status === 409) {
+            return { kind: "network_failure", message, retryable: err.isRetryable };
+        }
         if (status === 0 && err.isRetryable) return { kind: "network_failure", message };
-        if (status >= 500) return { kind: "network_failure", message };
+        if (status >= 500) return { kind: "network_failure", message, retryable: err.isRetryable };
         if (status === 422 && wireErrorType(body) === "grammar_invalid") {
             return { kind: "grammar_invalid", message };
         }
@@ -212,6 +262,7 @@ export const toProviderError = (
         cause: err,
         retryable: classified.retryable,
         extensions: {
+            ...(classified.extensions ?? {}),
             ...(classified.attempts === undefined ? {} : { attempts: classified.attempts }),
             ...(classified.retryExhausted === undefined
                 ? {}

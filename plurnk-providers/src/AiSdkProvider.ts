@@ -21,6 +21,7 @@ import type {
     ProviderUsage,
 } from "./types.ts";
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
+import { MAX_PROVIDER_TIMEOUT_MS } from "./env.ts";
 import type { Reasoning, ReasoningResponseStyle, ReserveSpec } from "./env.ts";
 import {
     executeAiSdkModel,
@@ -29,7 +30,7 @@ import {
 } from "./aiSdkTransport.ts";
 import type { LanguageModel } from "ai";
 import { prepareRetries } from "ai/internal";
-import { toProviderError, ProviderError } from "./errors.ts";
+import { toProviderError, ProviderError, ProviderTimeoutError } from "./errors.ts";
 import type { ProviderNotice } from "./notices.ts";
 import { validateGbnf } from "@plurnk/gbnf";
 import { assertPromptTokenMeasurement, estimatePromptTokens } from "./promptTokens.ts";
@@ -54,8 +55,10 @@ export type AiSdkProviderConfig = {
     url?: string;                             // OpenAI-compatible chat-completions URL
     languageModel?: LanguageModel;            // native AI SDK provider model
     attributions?: (context: PluginAttributionContext) => PluginAttribution;
-    fetchTimeoutMs: number;
-    streamIdleTimeoutMs?: number;             // streamed body inter-chunk deadline; zero/unset disables
+    fetchTimeoutMs: number;                    // one physical generation attempt; zero disables
+    operationTimeoutMs: number;                // complete logical call across retries/backoff; zero disables
+    firstContentTimeoutMs: number;             // first semantic streamed content; zero disables
+    streamIdleTimeoutMs?: number;             // semantic streamed-content idle deadline; zero/unset disables
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
     fetch?: ProviderFetch;                    // per-instance request executor; default globalThis.fetch
     contextWindow?: number | null;              // default null; caller resolves-or-fails, narrows to required with the interface
@@ -270,6 +273,8 @@ export default class AiSdkProvider implements Provider {
     #url: string | undefined;
     #languageModel: LanguageModel | undefined;
     #fetchTimeoutMs: number;
+    #operationTimeoutMs: number;
+    #firstContentTimeoutMs: number;
     #streamIdleTimeoutMs: number | undefined;
     #headers: Record<string, string>;
     #fetch: ProviderFetch;
@@ -324,7 +329,19 @@ export default class AiSdkProvider implements Provider {
         if ((this.#url === undefined) === (this.#languageModel === undefined)) {
             throw new Error(`${config.source ?? "provider"}: configure exactly one AI SDK model or OpenAI-compatible URL`);
         }
+        for (const [name, value] of [
+            ["fetchTimeoutMs", config.fetchTimeoutMs],
+            ["operationTimeoutMs", config.operationTimeoutMs],
+            ["firstContentTimeoutMs", config.firstContentTimeoutMs],
+            ["streamIdleTimeoutMs", config.streamIdleTimeoutMs],
+        ] as const) {
+            if (value !== undefined && (!Number.isInteger(value) || value < 0 || value > MAX_PROVIDER_TIMEOUT_MS)) {
+                throw new Error(`${config.source ?? "provider"}: ${name} must be an integer from 0 through ${MAX_PROVIDER_TIMEOUT_MS} milliseconds`);
+            }
+        }
         this.#fetchTimeoutMs = config.fetchTimeoutMs;
+        this.#operationTimeoutMs = config.operationTimeoutMs;
+        this.#firstContentTimeoutMs = config.firstContentTimeoutMs;
         this.#streamIdleTimeoutMs = config.streamIdleTimeoutMs;
         this.#headers = config.headers ?? {};
         this.#fetch = config.fetch ?? ((input, init) => globalThis.fetch(input, init));
@@ -391,7 +408,9 @@ export default class AiSdkProvider implements Provider {
                     method: "POST",
                     headers: { "Content-Type": "application/json", ...this.#headers },
                     body: JSON.stringify({ content: text }),
-                    signal: AbortSignal.timeout(this.#fetchTimeoutMs),
+                    ...(this.#fetchTimeoutMs > 0
+                        ? { signal: AbortSignal.timeout(this.#fetchTimeoutMs) }
+                        : {}),
                 });
                 if (!res.ok) throw new Error(`${this.#source}: tokenize endpoint returned ${res.status}`);
                 const { tokens } = (await res.json()) as { tokens?: unknown };
@@ -436,7 +455,14 @@ export default class AiSdkProvider implements Provider {
 
         signal?.throwIfAborted();
         try {
-            const timeout = AbortSignal.timeout(this.#fetchTimeoutMs);
+            const timeout = this.#fetchTimeoutMs > 0
+                ? AbortSignal.timeout(this.#fetchTimeoutMs)
+                : undefined;
+            const requestSignal = signal === undefined
+                ? timeout
+                : timeout === undefined
+                    ? signal
+                    : AbortSignal.any([signal, timeout]);
             const response = await this.#fetch(this.#promptTokensUrl, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", ...this.#headers },
@@ -445,7 +471,7 @@ export default class AiSdkProvider implements Provider {
                     messages,
                     ...this.#reasoningBody(),
                 }),
-                signal: signal === undefined ? timeout : AbortSignal.any([signal, timeout]),
+                ...(requestSignal === undefined ? {} : { signal: requestSignal }),
             });
             if (!response.ok) {
                 return estimatePromptTokens(
@@ -723,10 +749,14 @@ export default class AiSdkProvider implements Provider {
             ? this.#headers
             : { ...this.#headers, ...metaHeaders };
         const accounting: ProviderRequestAccounting[] = [];
-        const timeout = AbortSignal.timeout(this.#fetchTimeoutMs);
+        const operationTimeout = this.#operationTimeoutMs > 0
+            ? AbortSignal.timeout(this.#operationTimeoutMs)
+            : undefined;
         const operationSignal = signal === undefined
-            ? timeout
-            : AbortSignal.any([signal, timeout]);
+            ? operationTimeout
+            : operationTimeout === undefined
+                ? signal
+                : AbortSignal.any([signal, operationTimeout]);
         const executeRequest = async () => {
             let settle: ProviderRequestSettlement | undefined;
             try {
@@ -790,6 +820,7 @@ export default class AiSdkProvider implements Provider {
                         signal: operationSignal,
                         fetch: this.#fetch,
                         fetchTimeoutMs: this.#fetchTimeoutMs,
+                        firstContentTimeoutMs: this.#firstContentTimeoutMs,
                         streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
                         streaming: this.#streaming,
                         captureRawBody: this.#rawBody,
@@ -800,6 +831,7 @@ export default class AiSdkProvider implements Provider {
                         messages,
                         signal: operationSignal,
                         fetchTimeoutMs: this.#fetchTimeoutMs,
+                        firstContentTimeoutMs: this.#firstContentTimeoutMs,
                         streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
                         streaming: this.#streaming,
                         captureRawBody: this.#rawBody,
@@ -854,6 +886,19 @@ export default class AiSdkProvider implements Provider {
             if (err instanceof ProviderRequestObserverError
                 || err instanceof ProviderRequestAccountingError) throw err.cause;
             if (signal?.aborted) throw err;
+            if (operationTimeout?.aborted) {
+                const timeout = new ProviderTimeoutError("operation", this.#operationTimeoutMs, err);
+                throw new ProviderError(this.#source, "deadline_exceeded", timeout.message, {
+                    status: 504,
+                    cause: timeout,
+                    retryable: false,
+                    extensions: {
+                        timeoutPhase: timeout.phase,
+                        timeoutMs: timeout.timeoutMs,
+                    },
+                    accounting,
+                });
+            }
             const pe = toProviderError(err, this.#source, this.#errorDetailLimit);
             if ((pe.status === 401 || pe.status === 403) && this.#hasApiKey && this.#apiKeyRejectedMessage !== undefined) {
                 throw new ProviderError(this.#source, "unauthorized", this.#apiKeyRejectedMessage, {

@@ -1,9 +1,25 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
-import AiSdkProvider, { effortFromBudget } from "./AiSdkProvider.ts";
+import AiSdkProvider, { effortFromBudget, type AiSdkProviderConfig } from "./AiSdkProvider.ts";
 import { ProviderError } from "./errors.ts";
 import { providerCostNormalizer } from "./accounting.ts";
 import type { LanguageModel } from "ai";
+
+type TestProviderConfig = Omit<AiSdkProviderConfig, "operationTimeoutMs" | "firstContentTimeoutMs">
+    & Partial<Pick<AiSdkProviderConfig, "operationTimeoutMs" | "firstContentTimeoutMs">>;
+
+const testProvider = (config: TestProviderConfig): AiSdkProvider => {
+    const {
+        operationTimeoutMs = config.fetchTimeoutMs,
+        firstContentTimeoutMs = 0,
+        ...rest
+    } = config;
+    return new AiSdkProvider({
+        ...rest,
+        operationTimeoutMs,
+        firstContentTimeoutMs,
+    });
+};
 
 // Build a fake fetch returning a one-chunk SSE stream, capturing the request
 // so tests can assert what the spine sent on the wire.
@@ -115,9 +131,9 @@ test("per-instance fetch owns streaming and buffered requests", async () => {
         }), { status: 200, headers: { "Content-Type": "application/json" } });
     };
 
-    const streamed = await new AiSdkProvider({ ...injectedBase, fetch: streamingFetch, rawBody: true })
+    const streamed = await testProvider({ ...injectedBase, fetch: streamingFetch, rawBody: true })
         .generate({ workerId: "stream", messages: [{ role: "user", content: "hello" }] });
-    const buffered = await new AiSdkProvider({ ...injectedBase, fetch: bufferedFetch, streaming: false })
+    const buffered = await testProvider({ ...injectedBase, fetch: bufferedFetch, streaming: false })
         .generate({ workerId: "buffer", messages: [{ role: "user", content: "hello" }] });
 
     assert.equal(streamed.assistant.content, "streamed");
@@ -141,12 +157,17 @@ test("caller cancellation and provider timeout reach an injected fetch", async (
         });
     };
     const caller = new AbortController();
-    const callerProvider = new AiSdkProvider({ ...injectedBase, fetch: pendingFetch });
+    const callerProvider = testProvider({ ...injectedBase, fetch: pendingFetch });
     const callerRequest = callerProvider.generate({ workerId: "cancel", messages: [], signal: caller.signal });
     caller.abort(new Error("operator cancelled"));
     await assert.rejects(callerRequest, /operator cancelled/);
 
-    const timeoutProvider = new AiSdkProvider({ ...injectedBase, fetch: pendingFetch, fetchTimeoutMs: 1 });
+    const timeoutProvider = testProvider({
+        ...injectedBase,
+        fetch: pendingFetch,
+        fetchTimeoutMs: 1,
+        operationTimeoutMs: 100,
+    });
     await assert.rejects(
         timeoutProvider.generate({ workerId: "timeout", messages: [] }),
         (error: ProviderError) => error.kind === "network_failure",
@@ -168,7 +189,7 @@ test("per-instance fetch owns tokenization and retry attempts", async () => {
             { choices: [], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } },
         ]), { status: 200 });
     };
-    const provider = new AiSdkProvider({
+    const provider = testProvider({
         ...injectedBase,
         fetch: providerFetch,
         retryAttempts: 1,
@@ -187,7 +208,7 @@ test("per-instance fetch owns tokenization and retry attempts", async () => {
 test("request-observer open failures preserve the durability cause and issue no provider I/O", async () => {
     const root = new Error("durable request open failed");
     let calls = 0;
-    const provider = new AiSdkProvider({
+    const provider = testProvider({
         ...injectedBase,
         retryAttempts: 3,
         fetch: async () => {
@@ -214,7 +235,7 @@ test("request-observer open failures preserve the durability cause and issue no 
 test("request-observer settlement failures preserve the durability cause without retrying I/O", async () => {
     const root = new Error("durable request settlement failed");
     let calls = 0;
-    const provider = new AiSdkProvider({
+    const provider = testProvider({
         ...injectedBase,
         retryAttempts: 3,
         fetch: async () => {
@@ -285,8 +306,13 @@ test("effortFromBudget: maps budget to tiers", () => {
 
 test("a 524 Cloudflare edge timeout fails fast - not retried despite retryAttempts", async () => {
     const calls = installFetchScript([{ status: 524, retryAfter: 120 }]);
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 3 });
-    await assert.rejects(p.generate({ workerId: "r", messages: [] }));
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 3 });
+    await assert.rejects(
+        p.generate({ workerId: "r", messages: [] }),
+        (error: ProviderError) => error.kind === "network_failure"
+            && error.status === 524
+            && error.problem.retryable === false,
+    );
     await flush();
     assert.equal(calls.length, 1); // edge code: one attempt, no retry despite retryAttempts: 3
     mock.restoreAll();
@@ -295,7 +321,7 @@ test("a 524 Cloudflare edge timeout fails fast - not retried despite retryAttemp
 test("a 422 grammar_invalid is a failed exchange, not transport replay policy", async () => {
     const body = JSON.stringify({ error: { message: "non-conforming emission rejected: ...", type: "grammar_invalid" } });
     const calls = installFetchScript([{ status: 422, body }]);
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 2 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 2 });
     await assert.rejects(
         p.generate({ workerId: "r", messages: [] }),
         (e: unknown) => e instanceof ProviderError && e.kind === "grammar_invalid",
@@ -310,7 +336,7 @@ test("an SSE error frame is a failed exchange, not an empty completion", async (
         status: 422,
         error: { message: "non-conforming emission rejected", type: "grammar_invalid" },
     }]);
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     await assert.rejects(
         p.generate({ workerId: "r", messages: [] }),
         (e: unknown) => e instanceof ProviderError && e.kind === "grammar_invalid",
@@ -320,7 +346,7 @@ test("an SSE error frame is a failed exchange, not an empty completion", async (
 
 test("a buffered classified error retains normalized usage and settled charge", async () => {
     const calls = installFetchScript([{ status: 422, body: JSON.stringify(billedErrorBody) }]);
-    const p = new AiSdkProvider({
+    const p = testProvider({
         ...injectedBase,
         streaming: false,
         normalizeCost: directCost,
@@ -353,7 +379,7 @@ test("a buffered classified error retains normalized usage and settled charge", 
 
 test("an SSE classified error retains the same normalized usage and settled charge", async () => {
     const calls = installFetch([billedErrorBody]);
-    const p = new AiSdkProvider({
+    const p = testProvider({
         ...injectedBase,
         normalizeCost: directCost,
     });
@@ -385,7 +411,7 @@ test("an SSE classified error retains the same normalized usage and settled char
 
 test("a successful response normalizes direct charge without duplicating it as metadata", async () => {
     installFetchJson({ ...jsonChoice, charge: settledCharge });
-    const p = new AiSdkProvider({
+    const p = testProvider({
         ...injectedBase,
         streaming: false,
         normalizeCost: directCost,
@@ -399,7 +425,7 @@ test("malformed monetary evidence closes the physical request before surfacing t
     const root = new TypeError("direct charge is malformed");
     const settled: unknown[] = [];
     const calls = installFetchJson({ ...jsonChoice, charge: { malformed: true } });
-    const provider = new AiSdkProvider({
+    const provider = testProvider({
         ...injectedBase,
         retryAttempts: 3,
         streaming: false,
@@ -429,27 +455,27 @@ test("malformed monetary evidence closes the physical request before surfacing t
 
 test("a trailing eos_token (--special EOG leak) is stripped from content", async () => {
     installFetchJson({ model: "m", choices: [{ message: { content: "the answer<eos>" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 3, total_tokens: 4 } });
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });
     const res = await p.generate({ workerId: "r", messages: [] });
     assert.equal(res.assistant.content, "the answer"); // trailing <eos> gone; packet + verdict see clean bytes
 });
 
 test("without a probed eos_token the content passes through untouched", async () => {
     installFetchJson({ model: "m", choices: [{ message: { content: "keeps <eos> literally" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 3, total_tokens: 4 } });
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
     const res = await p.generate({ workerId: "r", messages: [] });
     assert.equal(res.assistant.content, "keeps <eos> literally"); // no eosText (a cloud backend) -> no strip
 });
 
 test("only the trailing eos_token is stripped; a quoted one mid-body survives", async () => {
     installFetchJson({ model: "m", choices: [{ message: { content: "quotes <eos> in the body<eos>" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 5, total_tokens: 6 } });
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });
     const res = await p.generate({ workerId: "r", messages: [] });
     assert.equal(res.assistant.content, "quotes <eos> in the body"); // only the tail goes
 });
 
 test("identity getters and default prompt estimate", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     assert.equal(p.model, "m");
     assert.equal(p.contextWindow, null); // default
     assert.deepEqual(
@@ -467,7 +493,7 @@ test("identity getters and default prompt estimate", async () => {
 test("injected prompt measurement preserves provenance and request cost estimation stays internal", async () => {
     const seen: string[] = [];
     installFetchJson(jsonChoice);
-    const p = new AiSdkProvider({
+    const p = testProvider({
         model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
         countPromptTokens: (messages) => {
             seen.push(...messages.map(({ content }) => content));
@@ -494,7 +520,7 @@ test("injected prompt measurement preserves provenance and request cost estimati
 });
 
 test("generate maps a streamed response into ProviderResponse", async () => {
-    const p = new AiSdkProvider({ model: "req-model", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "req-model", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([
         { model: "wire-model", choices: [{ delta: { content: "hel" } }] },
         { choices: [{ delta: { content: "lo" }, finish_reason: "stop" }] },
@@ -570,19 +596,87 @@ test("native SDK accounting metadata becomes a normalized charge in buffered and
     };
 
     await t.test("buffered", async () => {
-        const response = await new AiSdkProvider({ ...config, streaming: false })
+        const response = await testProvider({ ...config, streaming: false })
             .generate({ workerId: "buffered", messages: [] });
         assert.deepEqual(response.accounting[0]?.cost, charge);
     });
     await t.test("streamed", async () => {
-        const response = await new AiSdkProvider(config)
+        const response = await testProvider(config)
             .generate({ workerId: "streamed", messages: [] });
         assert.deepEqual(response.accounting[0]?.cost, charge);
     });
 });
 
+test("native SDK providers share the first-content retry contract", async () => {
+    let calls = 0;
+    const usage = {
+        inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 1, text: 1, reasoning: 0 },
+    };
+    const languageModel = {
+        specificationVersion: "v4",
+        provider: "native.test",
+        modelId: "native-timeout",
+        supportedUrls: {},
+        doGenerate: async () => { throw new Error("buffered generation is not under test"); },
+        doStream: async ({ abortSignal }: { abortSignal?: AbortSignal }) => {
+            calls++;
+            if (calls > 1) {
+                return {
+                    stream: new ReadableStream({
+                        start(controller) {
+                            controller.enqueue({ type: "stream-start", warnings: [] });
+                            controller.enqueue({ type: "response-metadata", id: "native-retry", modelId: "native-timeout" });
+                            controller.enqueue({ type: "text-start", id: "text-1" });
+                            controller.enqueue({ type: "text-delta", id: "text-1", delta: "recovered" });
+                            controller.enqueue({ type: "text-end", id: "text-1" });
+                            controller.enqueue({
+                                type: "finish",
+                                finishReason: { unified: "stop", raw: "completed" },
+                                usage,
+                            });
+                            controller.close();
+                        },
+                    }),
+                    response: {},
+                };
+            }
+            return {
+                stream: new ReadableStream({
+                    start(controller) {
+                        controller.enqueue({ type: "stream-start", warnings: [] });
+                        const timer = setTimeout(() => controller.close(), 100);
+                        abortSignal?.addEventListener("abort", () => {
+                            clearTimeout(timer);
+                            controller.error(abortSignal.reason);
+                        }, { once: true });
+                    },
+                }),
+                response: {},
+            };
+        },
+    } as unknown as LanguageModel;
+    const provider = testProvider({
+        model: "native-timeout",
+        languageModel,
+        fetchTimeoutMs: 5_000,
+        operationTimeoutMs: 5_000,
+        firstContentTimeoutMs: 10,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 1,
+        source: "provider:test-native",
+    });
+
+    const result = await provider.generate({ workerId: "native-retry", messages: [] });
+    assert.equal(result.assistant.content, "recovered");
+    assert.equal(calls, 2);
+    assert.deepEqual(result.accounting.map(({ outcome }) => outcome), ["error", "response"]);
+});
+
 test("compatible xAI wire usage becomes an exact tick charge without raw-body capture", async () => {
-    const p = new AiSdkProvider({
+    const p = testProvider({
         model: "grok-test",
         url: "http://x/v1/chat/completions",
         fetchTimeoutMs: 5_000,
@@ -615,7 +709,7 @@ test("compatible xAI wire usage becomes an exact tick charge without raw-body ca
 });
 
 test("streamed xAI final usage retains its exact tick charge", async () => {
-    const p = new AiSdkProvider({
+    const p = testProvider({
         model: "grok-test",
         url: "http://x/v1/chat/completions",
         fetchTimeoutMs: 5_000,
@@ -654,7 +748,7 @@ test("generate surfaces and normalizes an out-of-set finish_reason", async () =>
             ...(typeof options === "object" && options.code !== undefined ? { code: options.code } : {}),
         });
     });
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "function_call" }] }]);
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.equal(assistant.finishReason, null);
@@ -672,7 +766,7 @@ test("#161: a streamed resource interruption is a failed exchange with complete 
             usage: { prompt_tokens: 7, completion_tokens: 5, total_tokens: 12 },
         },
     ]);
-    const provider = new AiSdkProvider({
+    const provider = testProvider({
         ...injectedBase,
         retryAttempts: 2,
         rawBody: true,
@@ -717,7 +811,7 @@ test("#161: a buffered resource interruption preserves the successful wire respo
         usage: { prompt_tokens: 7, completion_tokens: 5, total_tokens: 12 },
     };
     const calls = installFetchJson(wire);
-    const provider = new AiSdkProvider({
+    const provider = testProvider({
         ...injectedBase,
         streaming: false,
         retryAttempts: 2,
@@ -746,28 +840,28 @@ test("#161: a buffered resource interruption preserves the successful wire respo
 test("generate translates a backend cap synonym to canonical length", async () => {
     // gemini shouts MAX_TOKENS, anthropic says max_tokens -- both must reach core as
     // "length" so its truncation check (=== "length") is a cross-backend invariant.
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "MAX_TOKENS" }] }]);
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.equal(assistant.finishReason, "length");
 });
 
 test("generate translates end_turn to canonical stop", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "end_turn" }] }]);
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.equal(assistant.finishReason, "stop");
 });
 
 test("generate translates xAI completed to canonical stop", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "completed" }] }]);
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.equal(assistant.finishReason, "stop");
 });
 
 test("generate aggregates reasoning deltas under multiple field names", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { reasoning_content: "be", thinking: "cause" } }] }]);
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.equal(assistant.reasoning, "because");
@@ -776,7 +870,7 @@ test("generate aggregates reasoning deltas under multiple field names", async ()
 
 test("{§provider-tagged-reasoning} explicit think-tags project content without estimating token attribution", async () => {
     const config = { ...injectedBase, reasoningResponseStyle: "think-tags" as const, rawBody: true };
-    const p = new AiSdkProvider(config);
+    const p = testProvider(config);
     installFetch([
         { choices: [{ delta: { content: "<thi" } }] },
         { choices: [{ delta: { content: "nk>12345</th" } }] },
@@ -809,7 +903,7 @@ test("{§provider-tagged-reasoning} explicit think-tags projects one buffered le
         usage: { prompt_tokens: 3, completion_tokens: 10, total_tokens: 13 },
     });
     const config = { ...injectedBase, streaming: false, reasoningResponseStyle: "think-tags" as const };
-    const response = await new AiSdkProvider(config).generate({ workerId: "tagged-buffer", messages: [] });
+    const response = await testProvider(config).generate({ workerId: "tagged-buffer", messages: [] });
 
     assert.equal(response.assistant.reasoning, "12345");
     assert.equal(response.assistant.content, "abcde");
@@ -829,7 +923,7 @@ test("{§provider-tagged-reasoning} tagged text does not overwrite itemized reas
         },
     });
     const config = { ...injectedBase, streaming: false, reasoningResponseStyle: "think-tags" as const };
-    const response = await new AiSdkProvider(config).generate({ workerId: "tagged-itemized", messages: [] });
+    const response = await testProvider(config).generate({ workerId: "tagged-itemized", messages: [] });
 
     assert.equal(response.assistant.reasoning, "12345");
     assert.equal(response.assistant.content, "abcde");
@@ -845,7 +939,7 @@ test("{§provider-tagged-reasoning} an unclosed capped envelope is wholly reason
         { choices: [{ delta: { content: "<think>unfinished" }, finish_reason: "length" }] },
         { usage: { prompt_tokens: 3, completion_tokens: 8, total_tokens: 11 } },
     ]);
-    const streamed = await new AiSdkProvider(config).generate({ workerId: "tagged-capped-stream", messages: [] });
+    const streamed = await testProvider(config).generate({ workerId: "tagged-capped-stream", messages: [] });
     assert.equal(streamed.assistant.reasoning, "unfinished");
     assert.equal(streamed.assistant.content, "");
     assert.deepEqual(streamed.accounting[0]?.usage, {
@@ -861,7 +955,7 @@ test("{§provider-tagged-reasoning} an unclosed capped envelope is wholly reason
         usage: { prompt_tokens: 3, completion_tokens: 8, total_tokens: 11 },
     });
     const bufferedConfig = { ...config, streaming: false };
-    const buffered = await new AiSdkProvider(bufferedConfig).generate({ workerId: "tagged-capped-buffer", messages: [] });
+    const buffered = await testProvider(bufferedConfig).generate({ workerId: "tagged-capped-buffer", messages: [] });
     assert.equal(buffered.assistant.reasoning, "unfinished");
     assert.equal(buffered.assistant.content, "");
     assert.equal(buffered.accounting[0]?.usage?.outputTokens, 8);
@@ -874,7 +968,7 @@ test("{§provider-tagged-reasoning} verbatim, non-leading, and structured-reason
         choices: [{ message: { content: "<think>literal</think>answer" }, finish_reason: "stop" }],
         usage: { prompt_tokens: 1, completion_tokens: 4, total_tokens: 5 },
     });
-    const verbatim = await new AiSdkProvider({ ...injectedBase, streaming: false })
+    const verbatim = await testProvider({ ...injectedBase, streaming: false })
         .generate({ workerId: "verbatim", messages: [] });
     assert.equal(verbatim.assistant.content, "<think>literal</think>answer");
     assert.equal(verbatim.assistant.reasoning, null);
@@ -887,7 +981,7 @@ test("{§provider-tagged-reasoning} verbatim, non-leading, and structured-reason
         usage: { prompt_tokens: 1, completion_tokens: 5, total_tokens: 6 },
     });
     const taggedConfig = { ...injectedBase, streaming: false, reasoningResponseStyle: "think-tags" as const };
-    const nonLeading = await new AiSdkProvider(taggedConfig)
+    const nonLeading = await testProvider(taggedConfig)
         .generate({ workerId: "non-leading", messages: [] });
     assert.equal(nonLeading.assistant.content, "show <think>literal</think> exactly");
     assert.equal(nonLeading.assistant.reasoning, null);
@@ -901,7 +995,7 @@ test("{§provider-tagged-reasoning} verbatim, non-leading, and structured-reason
         }, finish_reason: "stop" }],
         usage: { prompt_tokens: 1, completion_tokens: 7, total_tokens: 8 },
     });
-    const structured = await new AiSdkProvider(taggedConfig)
+    const structured = await testProvider(taggedConfig)
         .generate({ workerId: "structured", messages: [] });
     assert.equal(structured.assistant.content, "<think>literal visible bytes</think>");
     assert.equal(structured.assistant.reasoning, "structured reasoning");
@@ -919,7 +1013,7 @@ test("{§provider-tagged-reasoning} grammar evidence retains the exact pre-proje
     };
     installFetch([{ choices: [{ delta: { content }, finish_reason: "stop" }] }]);
 
-    const response = await new AiSdkProvider(config).generate({
+    const response = await testProvider(config).generate({
         workerId: "tagged-grammar",
         messages: [],
         grammar: `root ::= ${JSON.stringify(content)}`,
@@ -943,7 +1037,7 @@ test("encrypted reasoning (non-streamed): encrypted entries normalize and text e
             { type: "reasoning.text", text: "never surfaced here" },
         ],
     }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     // Wire detail ID is preserved; the assistant-message location supports the
     // derived classification but supplies no downstream client entity ID.
@@ -957,7 +1051,7 @@ test("distinct encrypted-reasoning wire ids stay distinct items", async () => {
         { type: "reasoning.encrypted", data: "AAA", format: "openai-responses-v1", id: "rs_1" },
         { type: "reasoning.encrypted", data: "BBB", format: "openai-responses-v1", id: "rs_2" },
     ] }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.equal(assistant.reasoningEncrypted?.length, 2);
     assert.deepEqual(assistant.reasoningEncrypted?.map((i) => i.id), ["rs_1", "rs_2"]);
@@ -967,7 +1061,7 @@ test("assistant-message location classifies encrypted reasoning without inventin
     installFetchJson({ model: "m", choices: [{ message: { content: "ok", reasoning_details: [
         { type: "reasoning.encrypted", data: "OPAQUE", format: "openai-responses-v1", id: null, index: 0 },
     ] }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.deepEqual(assistant.reasoningEncrypted, [{
         id: null,
@@ -977,7 +1071,7 @@ test("assistant-message location classifies encrypted reasoning without inventin
 });
 
 test("encrypted reasoning (streamed): chunked blob concatenates per entry index", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([
         { choices: [{ delta: { reasoning_details: [{ type: "reasoning.encrypted", data: "gAAAA", format: "openai-responses-v1", id: "rs_1", index: 0 }] } }] },
         { choices: [{ delta: { reasoning_details: [{ type: "reasoning.encrypted", data: "BqXYZ", id: "rs_1", index: 0 }] } }] },
@@ -989,20 +1083,20 @@ test("encrypted reasoning (streamed): chunked blob concatenates per entry index"
 });
 
 test("reasoningStyle 'think' gates on budget != 0 (magnitude irrelevant for native)", async () => {
-    const on = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "think" });
+    const on = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "think" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await on.generate({ workerId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).think, true);
 
     mock.restoreAll();
-    const off = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "think" });
+    const off = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "think" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await off.generate({ workerId: "r", messages: [] });
     assert.equal("think" in JSON.parse(calls[0].init.body as string), false);
 });
 
 test("reasoningStyle 'effort' sends a reasoning_effort tier from the budget", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "on", budget: 5000 }, retryAttempts: 0, reasoningStyle: "effort" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "on", budget: 5000 }, retryAttempts: 0, reasoningStyle: "effort" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "high");
@@ -1013,7 +1107,7 @@ test("reasoningStyle 'effort_explicit': off SENDS none, adaptive OMITS, on sends
     // 400s reasoning_effort='adaptive' for non-MiniMax models (wire-verified,
     // Adaptive = the backend's own default posture = omission.
     for (const [reasoning, expected] of [[{ mode: "off", budget: null }, "none"], [{ mode: "adaptive", budget: null }, null], [{ mode: "on", budget: 5000 }, "high"]] as Array<[{ mode: "off" | "adaptive" | "on"; budget: number | null }, string | null]>) {
-        const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning, retryAttempts: 0, reasoningStyle: "effort_explicit" });
+        const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning, retryAttempts: 0, reasoningStyle: "effort_explicit" });
         const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
         await p.generate({ workerId: "r", messages: [] });
         const body = JSON.parse(calls[0].init.body as string);
@@ -1030,7 +1124,7 @@ test("{§deepseek-reasoning-request} #157: thinking_effort maps the complete Dee
         [{ mode: "on", budget: 5000 }, { thinking: { type: "enabled" }, reasoning_effort: "high" }],
     ] as const;
     for (const [reasoning, expected] of cases) {
-        const p = new AiSdkProvider({
+        const p = testProvider({
             model: "m",
             url: "http://x/v1/chat/completions",
             fetchTimeoutMs: 5000,
@@ -1056,7 +1150,7 @@ test("{§deepseek-reasoning-request} #157: thinking_effort maps the complete Dee
 });
 
 test("the family temperature default rides every request; caller sampling overrides it", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.2);
@@ -1075,7 +1169,7 @@ test("the family temperature default rides every request; caller sampling overri
 test("DRY + repeat_last_n ride the llamacpp path when set; unset leaves the box default; never on cloud", async () => {
     const base = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off" as const, budget: null }, retryAttempts: 0 };
     // set + llamacpp -> the loop-breakers ride the wire
-    const p = new AiSdkProvider({ ...base, grammarStyle: "llamacpp", dryMultiplier: 0.8, dryBase: 1.75, dryAllowedLength: 2, repeatLastN: 512 });
+    const p = testProvider({ ...base, grammarStyle: "llamacpp", dryMultiplier: 0.8, dryBase: 1.75, dryAllowedLength: 2, repeatLastN: 512 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [] });
     let body = JSON.parse(calls[0].init.body as string);
@@ -1086,7 +1180,7 @@ test("DRY + repeat_last_n ride the llamacpp path when set; unset leaves the box 
     assert.equal(body.repeat_penalty, 1.15); // repeat_penalty always rides the llamacpp path
     mock.restoreAll();
     // unset -> no dry_*/repeat_last_n on the wire (box keeps its own defaults)
-    const p2 = new AiSdkProvider({ ...base, grammarStyle: "llamacpp" });
+    const p2 = testProvider({ ...base, grammarStyle: "llamacpp" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p2.generate({ workerId: "r", messages: [] });
     body = JSON.parse(calls[0].init.body as string);
@@ -1094,7 +1188,7 @@ test("DRY + repeat_last_n ride the llamacpp path when set; unset leaves the box 
     assert.equal("repeat_last_n" in body, false);
     mock.restoreAll();
     // DRY is a llama.cpp sampler: a cloud ("none") provider never emits it, even if configured
-    const p3 = new AiSdkProvider({ ...base, grammarStyle: "none", dryMultiplier: 0.8, repeatLastN: 512 });
+    const p3 = testProvider({ ...base, grammarStyle: "none", dryMultiplier: 0.8, repeatLastN: 512 });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p3.generate({ workerId: "r", messages: [] });
     body = JSON.parse(calls[0].init.body as string);
@@ -1104,7 +1198,7 @@ test("DRY + repeat_last_n ride the llamacpp path when set; unset leaves the box 
 });
 
 test("llamacpp grammar path: temperature default + the managed repeat-penalty floor", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
@@ -1114,13 +1208,13 @@ test("llamacpp grammar path: temperature default + the managed repeat-penalty fl
 
 test("the repeat penalty rides every request rail-off, keyed per backend", async () => {
     // llama.cpp with NO grammar carries its key too (unconstrained local is guarded)
-    const llama = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
+    const llama = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await llama.generate({ workerId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).repeat_penalty, 1.15);
     mock.restoreAll();
     // A `none`-style cloud backend with a frequency penalty gets frequency_penalty.
-    const cloud = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, frequencyPenalty: 0.4, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const cloud = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, frequencyPenalty: 0.4, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await cloud.generate({ workerId: "r", messages: [] });
     const cloudBody = JSON.parse(calls[0].init.body as string);
@@ -1129,14 +1223,14 @@ test("the repeat penalty rides every request rail-off, keyed per backend", async
     assert.equal("repeat_penalty" in cloudBody, false);
     mock.restoreAll();
     // frequencyPenalty unset (default 0) opts out cleanly - sends nothing (an out-of-date plugin runs unguarded, never breaks)
-    const bare = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const bare = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await bare.generate({ workerId: "r", messages: [] });
     assert.equal("frequency_penalty" in JSON.parse(calls[0].init.body as string), false);
 });
 
 test("sampling passthrough forwards caller params; managed + reserved keys win", async () => {
-    const p = new AiSdkProvider({ model: "managed-model", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "managed-model", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({
         workerId: "r",
@@ -1159,7 +1253,7 @@ test("sampling passthrough forwards caller params; managed + reserved keys win",
 });
 
 test("sampling passthrough guards contract invariants: n/tools/caps stripped, platform knobs pass", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({
         workerId: "r",
@@ -1184,7 +1278,7 @@ test("sampling passthrough guards contract invariants: n/tools/caps stripped, pl
 });
 
 test("template reasoning returns the exact pre-projection grammar sentence ({§gbnf-response-observation})", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const grammarInput = "<|channel>thought\ncon🙂sider<channel|>x";
     const calls = installFetch([{ choices: [{ delta: { content: grammarInput } }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: `root ::= ${JSON.stringify(grammarInput)}` });
@@ -1204,7 +1298,7 @@ test("template reasoning returns the exact pre-projection grammar sentence ({§g
 });
 
 test("a verbatim template response remains exact evidence when it has no channel envelope", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
@@ -1213,7 +1307,7 @@ test("a verbatim template response remains exact evidence when it has no channel
 });
 
 test("a template grammar preserves exact evidence when reasoning is disabled", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
@@ -1223,14 +1317,14 @@ test("a template grammar preserves exact evidence when reasoning is disabled", a
 });
 
 test("an unexpectedly projected template response cannot claim pre-projection evidence", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     installFetch([{ choices: [{ delta: { reasoning_content: "reason", content: "x" } }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     assert.equal(res.grammarEvidence, undefined);
 });
 
 test("template reasoning preserves an empty grammar-required channel as exact evidence", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 }, completionReserve: { tokens: 160 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const input = "<|channel>thought\n<channel|>x";
     const calls = installFetch([{ choices: [{ delta: { content: input } }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: `root ::= ${JSON.stringify(input)}` });
@@ -1261,7 +1355,7 @@ test("channel-escape detector: billed completion tokens vastly beyond visible ch
         }
         return new Response(sseStream(chunks), { status: 200 });
     };
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetch, tokenizeUrl: "http://x/tokenize", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetch, tokenizeUrl: "http://x/tokenize", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     const escape = res.notices?.find((e) => e.message.includes("escaped the grammar"));
     assert.ok(escape, "escape notice attached");
@@ -1270,7 +1364,7 @@ test("channel-escape detector: billed completion tokens vastly beyond visible ch
 });
 
 test("channel-escape state is absent without a transported grammar", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     installFetch([
         { choices: [{ delta: { content: "x" }, finish_reason: "length" }] },
         { usage: { prompt_tokens: 10, completion_tokens: 5000, total_tokens: 5010 } },
@@ -1281,7 +1375,7 @@ test("channel-escape state is absent without a transported grammar", async () =>
 });
 
 test("reasoningStyle 'template' sends llama-server activation, parser, and response-wide allowance", async () => {
-    const on = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { percent: 0.1 }, completionReserve: { percent: 0.25 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template" });
+    const on = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { percent: 0.1 }, completionReserve: { percent: 0.25 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await on.generate({ workerId: "r", messages: [] });
     let body = JSON.parse(calls[0].init.body as string);
@@ -1290,7 +1384,7 @@ test("reasoningStyle 'template' sends llama-server activation, parser, and respo
     assert.equal(body.thinking_budget_tokens, 64);
 
     mock.restoreAll();
-    const off = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { percent: 0.1 }, completionReserve: { percent: 0.25 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "template" });
+    const off = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { percent: 0.1 }, completionReserve: { percent: 0.25 }, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "template" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await off.generate({ workerId: "r", messages: [] });
     body = JSON.parse(calls[0].init.body as string);
@@ -1301,33 +1395,33 @@ test("reasoningStyle 'template' sends llama-server activation, parser, and respo
 
 test("reasoningStyle 'template' explicit budget tightens the reserve and cannot exceed it", async () => {
     const base = { model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, reasoningReserve: { tokens: 64 } as const, completionReserve: { tokens: 160 } as const, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryAttempts: 0, reasoningStyle: "template" as const };
-    const p = new AiSdkProvider({ ...base, reasoning: { mode: "on", budget: 32 } });
+    const p = testProvider({ ...base, reasoning: { mode: "on", budget: 32 } });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], sampling: { thinking_budget_tokens: 999, reasoning_format: "none" } });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal(body.thinking_budget_tokens, 32);
     assert.equal(body.reasoning_format, "auto");
     assert.throws(
-        () => new AiSdkProvider({ ...base, reasoning: { mode: "on", budget: 65 } }),
+        () => testProvider({ ...base, reasoning: { mode: "on", budget: 65 } }),
         /REASONING_BUDGET \(65\) exceeds the resolved PLURNK_PROVIDERS_REASONING_RESERVE \(64\)/,
     );
 });
 
 test("budget 0 suppresses effort and include_reasoning", async () => {
-    const effort = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "effort" });
+    const effort = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "effort" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await effort.generate({ workerId: "r", messages: [] });
     assert.equal("reasoning_effort" in JSON.parse(calls[0].init.body as string), false);
 
     mock.restoreAll();
-    const relay = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "include_reasoning" });
+    const relay = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "include_reasoning" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await relay.generate({ workerId: "r", messages: [] });
     assert.equal("include_reasoning" in JSON.parse(calls[0].init.body as string), false);
 });
 
 test("reasoningStyle 'include_reasoning' sets the relay passthrough toggle", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "include_reasoning" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "include_reasoning" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).include_reasoning, true);
@@ -1336,7 +1430,7 @@ test("reasoningStyle 'include_reasoning' sets the relay passthrough toggle", asy
 // — grammar-constrained sampling —
 
 test("grammar transport 'llamacpp': top-level grammar + the repeat-penalty floor", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
@@ -1346,7 +1440,7 @@ test("grammar transport 'llamacpp': top-level grammar + the repeat-penalty floor
 });
 
 test("grammar transport 'none' (default): the grammar is never sent — no silent unconstrained", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], grammar: "root ::= statement" });
     const body = JSON.parse(calls[0].init.body as string);
@@ -1356,7 +1450,7 @@ test("grammar transport 'none' (default): the grammar is never sent — no silen
 
 // — exact pre-projection grammar evidence ({§gbnf-response-observation}) —
 
-const grammarProvider = () => new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", source: "provider:test" });
+const grammarProvider = () => testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", source: "provider:test" });
 const streamingContent = (content: string) => installFetch([{ choices: [{ delta: { content }, finish_reason: "stop" }] }]);
 
 test("an unsplit grammar response carries the exact observed sentence", async () => {
@@ -1390,7 +1484,7 @@ test("empty unsplit content remains exact grammar evidence", async () => {
 });
 
 test("grammarStyle 'none' produces no grammar observation", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 }); // grammarStyle defaults to "none"
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 }); // grammarStyle defaults to "none"
     streamingContent("anything goes");
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
     assert.equal(res.assistant.content, "anything goes");
@@ -1409,7 +1503,7 @@ test("provider evidence does not depend on the local validator understanding the
 // — PLURNK_PROVIDERS_GBNF_DEBUG: validate the grammar, withhold it, and preserve the observation —
 
 test("gbnfDebug marks an unconstrained observation as not transported", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
     const calls = installFetch([{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
     const body = JSON.parse(calls[0].init.body as string);
@@ -1421,7 +1515,7 @@ test("gbnfDebug marks an unconstrained observation as not transported", async ()
 });
 
 test("gbnfDebug preserves conflicting bytes without a provider verdict", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true, source: "provider:test" });
     const calls = installFetch([{ choices: [{ delta: { content: "xon-conforming output" }, finish_reason: "stop" }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
     assert.equal(res.assistant.content, "xon-conforming output");
@@ -1432,7 +1526,7 @@ test("gbnfDebug preserves conflicting bytes without a provider verdict", async (
 });
 
 test("gbnfDebug: an INVALID grammar throws before any wire call — it never reaches the model", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", gbnfDebug: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await assert.rejects(
         () => p.generate({ workerId: "r", messages: [], grammar: 'foo ::= "a"' }), // no `root` rule → invalid GBNF
@@ -1444,7 +1538,7 @@ test("gbnfDebug: an INVALID grammar throws before any wire call — it never rea
 // — meta bag: verbatim provider metadata —
 
 test("meta: passes backend fields through without reinterpreting monetary values", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
     const balance = { amount: "0.0000042", currency: "XMR" };
     installFetchJson({ ...jsonChoice, balance, system_fingerprint: "fp_abc" });
     const res = await p.generate({ workerId: "r", messages: [] });
@@ -1458,7 +1552,7 @@ const headerVal = (init: RequestInit, name: string): string | undefined =>
     new Headers(init.headers).get(name) ?? undefined;
 
 test("firstPartyMetadata: attributions + client ride as Plurnk-* headers", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], attributions: ["@acme/x@1.2.0", "@foo/y@0.3.1"], client: "plurnk.nvim/1.4.0" });
     assert.equal(headerVal(calls[0].init, "Plurnk-Attribution"), '["@acme/x@1.2.0","@foo/y@0.3.1"]');
@@ -1466,7 +1560,7 @@ test("firstPartyMetadata: attributions + client ride as Plurnk-* headers", async
 });
 
 test("Plurnk-Call-Kind carries the caller's emission or bare output contract under the first-party gate", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "emission", messages: [], callKind: "emission" });
     await p.generate({ workerId: "bare", messages: [], callKind: "bare" });
@@ -1475,7 +1569,7 @@ test("Plurnk-Call-Kind carries the caller's emission or bare output contract und
 });
 
 test("generate rejects an unknown call kind before provider I/O", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await assert.rejects(
         p.generate({ workerId: "invalid", messages: [], callKind: "unknown" as never }),
@@ -1485,7 +1579,7 @@ test("generate rejects an unknown call kind before provider I/O", async () => {
 });
 
 test("Plurnk-Worker-Primary: the lineage root rides under the gate; emitted even when it equals workerId", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "w-child", primaryWorkerId: "w-root", messages: [] });
     assert.equal(headerVal(calls[0].init, "Plurnk-Worker-Primary"), "w-root"); // a descendant: Primary != Worker-Id
@@ -1504,14 +1598,14 @@ test("Plurnk-Worker-Primary: the lineage root rides under the gate; emitted even
 });
 
 test("Plurnk-Worker-Primary is structurally dropped when firstPartyMetadata is off", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "w-child", primaryWorkerId: "w-root", messages: [] });
     assert.equal(headerVal(calls[0].init, "Plurnk-Worker-Primary"), undefined); // never reaches a third-party backend
 });
 
 test("firstPartyMetadata off (default): the headers are structurally dropped even when values are passed", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], attributions: ["@acme/x@1.2.0"], client: "plurnk-cli/2.0.0", callKind: "bare" });
     assert.equal(headerVal(calls[0].init, "Plurnk-Attribution"), undefined);   // never leaks to a non-first-party backend
@@ -1520,7 +1614,7 @@ test("firstPartyMetadata off (default): the headers are structurally dropped eve
 });
 
 test("firstPartyMetadata on but empty values: no header emitted", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], attributions: [], client: "" });
     assert.equal(headerVal(calls[0].init, "Plurnk-Attribution"), undefined);
@@ -1528,7 +1622,7 @@ test("firstPartyMetadata on but empty values: no header emitted", async () => {
 });
 
 test("grammar transport: no grammar passed sends no grammar field, but the penalty rides", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [] });
     const body = JSON.parse(calls[0].init.body as string);
@@ -1537,7 +1631,7 @@ test("grammar transport: no grammar passed sends no grammar field, but the penal
 });
 
 test("maxTokens transports as max_tokens; absent → no wire field (server default)", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], maxTokens: 2048 });
     assert.equal(JSON.parse(calls[0].init.body as string).max_tokens, 2048);
@@ -1549,7 +1643,7 @@ test("maxTokens transports as max_tokens; absent → no wire field (server defau
 });
 
 test("slot affinity is internal: sticky per workerId, distinct workers spread across slots", async () => {
-    const pinning = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
+    const pinning = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await pinning.generate({ workerId: "run-A", messages: [] });
     await pinning.generate({ workerId: "run-B", messages: [] });
@@ -1560,20 +1654,20 @@ test("slot affinity is internal: sticky per workerId, distinct workers spread ac
 });
 
 test("slot affinity: no pinning backend or unknown slotCount → no id_slot ever", async () => {
-    const cloud = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 }); // default: no pinning
+    const cloud = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 }); // default: no pinning
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await cloud.generate({ workerId: "run-A", messages: [] });
     assert.equal("id_slot" in JSON.parse(calls[0].init.body as string), false);
 
     mock.restoreAll();
-    const noCount = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true }); // slotCount null
+    const noCount = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true }); // slotCount null
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await noCount.generate({ workerId: "run-A", messages: [] });
     assert.equal("id_slot" in JSON.parse(calls[0].init.body as string), false);
 });
 
 test("slot affinity: a worker past the LRU window (slotCount*8) loses its pin; recent workers stay sticky", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     const slotOf = (i: number) => JSON.parse(calls[i].init.body as string).id_slot;
     for (let i = 0; i < 16; i++) await p.generate({ workerId: `r${i}`, messages: [] }); // fills the 16-entry window {r0..r15}
@@ -1587,7 +1681,7 @@ test("slot affinity: a worker past the LRU window (slotCount*8) loses its pin; r
 
 test("streaming:false: a non-ok response rejects as a classified ProviderError (covers the non-streamed transport)", async () => {
     const { ProviderError } = await import("./errors.ts");
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, source: "provider:test" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, source: "provider:test" });
     mock.method(globalThis, "fetch", async () => new Response("boom", { status: 500 }));
     await assert.rejects(() => p.generate({ workerId: "r", messages: [] }), (err: unknown) => {
         assert.ok(err instanceof ProviderError, `expected ProviderError, got ${String(err)}`);
@@ -1598,14 +1692,14 @@ test("streaming:false: a non-ok response rejects as a classified ProviderError (
 });
 
 test("generate fail-hards on a missing or empty workerId", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await assert.rejects(() => p.generate({ workerId: "", messages: [] }), /workerId is required/);
     await assert.rejects(() => (p.generate as (a: object) => Promise<unknown>)({ messages: [] }), /workerId is required/);
 });
 
 test("messages pass through verbatim — the provider injects no turn (PLAN lives in the grammar, never a provider prefill)", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "out" } }] }]);
     const input = [{ role: "user" as const, content: "hi" }];
     const res = await p.generate({ workerId: "r", messages: input });
@@ -1615,7 +1709,7 @@ test("messages pass through verbatim — the provider injects no turn (PLAN live
 
 test("generate wraps an HTTP failure as a ProviderError carrying Problem Details", async () => {
     const { ProviderError } = await import("./errors.ts");
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, source: "provider:test" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, source: "provider:test" });
     mock.method(globalThis, "fetch", async () => new Response("rate limited", { status: 429 }));
     await assert.rejects(() => p.generate({ workerId: "r", messages: [] }), (err: unknown) => {
         assert.ok(err instanceof ProviderError, `expected ProviderError, got ${String(err)}`);
@@ -1629,14 +1723,14 @@ test("generate wraps an HTTP failure as a ProviderError carrying Problem Details
 });
 
 test("generate rejects on a pre-aborted external signal", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     const signal = AbortSignal.abort(new Error("nope"));
     await assert.rejects(() => p.generate({ workerId: "r", messages: [], signal }));
 });
 
 test("configured headers and url are sent verbatim", async () => {
-    const p = new AiSdkProvider({
+    const p = testProvider({
         model: "m", url: "http://host/custom/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
         headers: { Authorization: "Bearer secret", "X-Title": "plurnk" },
     });
@@ -1663,14 +1757,16 @@ const stalledStreamResponse = (): Response => new Response(new ReadableStream({
 
 test("retry: a transient failure retries and a later success resolves", async () => {
     const calls = installFetchScript([
+        { status: 408, retryAfter: 0 },
+        { status: 409, retryAfter: 0 },
         { status: 429, retryAfter: 0 },
         { status: 503, retryAfter: 0 },
         { status: 200, chunks: [{ choices: [{ delta: { content: "ok" } }] }] },
     ]);
-    const p = new AiSdkProvider({ ...retryCfg, retryAttempts: 3 });
+    const p = testProvider({ ...retryCfg, retryAttempts: 4 });
     const res = await p.generate({ workerId: "r", messages: [] });
     assert.equal(res.assistant.content, "ok");
-    assert.equal(calls.length, 3); // 429 → 503 → 200
+    assert.equal(calls.length, 5); // 408 → 409 → 429 → 503 → 200
 });
 
 test("streamed-body silence retries and returns the retry's complete output", async () => {
@@ -1687,7 +1783,7 @@ test("streamed-body silence retries and returns the retry's complete output", as
             },
         }), { status: 200 });
     });
-    const p = new AiSdkProvider({
+    const p = testProvider({
         model: "m",
         url: "http://x/v1/chat/completions",
         fetchTimeoutMs: 5000,
@@ -1710,7 +1806,7 @@ test("streamed-body silence does not replay when retries are disabled", async ()
         calls++;
         return stalledStreamResponse();
     });
-    const p = new AiSdkProvider({
+    const p = testProvider({
         model: "m",
         url: "http://x/v1/chat/completions",
         fetchTimeoutMs: 1000,
@@ -1724,7 +1820,8 @@ test("streamed-body silence does not replay when retries are disabled", async ()
     await assert.rejects(
         p.generate({ workerId: "r", messages: [] }),
         (error: ProviderError) => error.kind === "network_failure"
-            && /chunk timeout/i.test(error.message),
+            && error.problem.timeoutPhase === "stream_idle"
+            && error.problem.timeoutMs === 10,
     );
     assert.equal(calls, 1, "zero retries permits exactly one provider request");
     mock.restoreAll();
@@ -1736,7 +1833,7 @@ test("streamed-body silence exhausts the configured retry budget once", async ()
         calls++;
         return stalledStreamResponse();
     });
-    const p = new AiSdkProvider({
+    const p = testProvider({
         model: "m",
         url: "http://x/v1/chat/completions",
         fetchTimeoutMs: 5000,
@@ -1758,6 +1855,116 @@ test("streamed-body silence exhausts the configured retry budget once", async ()
     mock.restoreAll();
 });
 
+test("an attempt timeout retries within the larger operation deadline and settles every physical request", async () => {
+    let calls = 0;
+    mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
+        calls++;
+        if (calls > 1) {
+            return new Response(sseStream([
+                { choices: [{ delta: { content: "recovered" }, finish_reason: "stop" }] },
+            ]), { status: 200 });
+        }
+        return await new Promise<Response>((_resolve, reject) => {
+            const signal = init?.signal;
+            signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+    });
+    const connectivity = { operationTimeoutMs: 5_000 };
+    const settled: Array<{ outcome: string }> = [];
+    const p = testProvider({
+        model: "m",
+        url: "http://x/v1/chat/completions",
+        fetchTimeoutMs: 10,
+        streamIdleTimeoutMs: 0,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 1,
+        source: "provider:test",
+        ...connectivity,
+    });
+    const result = await p.generate({
+        workerId: "r",
+        messages: [],
+        observeRequest: async () => async (accounting) => { settled.push(accounting); },
+    });
+    assert.equal(result.assistant.content, "recovered");
+    assert.equal(calls, 2);
+    assert.deepEqual(settled.map(({ outcome }) => outcome), ["error", "response"]);
+    assert.deepEqual(result.accounting.map(({ outcome }) => outcome), ["error", "response"]);
+    mock.restoreAll();
+});
+
+test("first-content silence retries independently of the stream-idle deadline", async () => {
+    let calls = 0;
+    mock.method(globalThis, "fetch", async () => {
+        calls++;
+        if (calls > 1) {
+            return new Response(sseStream([
+                { choices: [{ delta: { content: "recovered" }, finish_reason: "stop" }] },
+            ]), { status: 200 });
+        }
+        return new Response(new ReadableStream({
+            start(controller) {
+                setTimeout(() => controller.close(), 100);
+            },
+        }), { status: 200 });
+    });
+    const connectivity = { operationTimeoutMs: 5_000, firstContentTimeoutMs: 10 };
+    const p = testProvider({
+        model: "m",
+        url: "http://x/v1/chat/completions",
+        fetchTimeoutMs: 5_000,
+        streamIdleTimeoutMs: 0,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 1,
+        source: "provider:test",
+        ...connectivity,
+    });
+    const result = await p.generate({ workerId: "r", messages: [] });
+    assert.equal(result.assistant.content, "recovered");
+    assert.equal(calls, 2);
+    mock.restoreAll();
+});
+
+test("operation-deadline exhaustion is a distinct non-retryable failure", async () => {
+    let calls = 0;
+    mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
+        calls++;
+        return await new Promise<Response>((_resolve, reject) => {
+            const signal = init?.signal;
+            signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+    });
+    const connectivity = { operationTimeoutMs: 10 };
+    const p = testProvider({
+        model: "m",
+        url: "http://x/v1/chat/completions",
+        fetchTimeoutMs: 50,
+        streamIdleTimeoutMs: 0,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 3,
+        source: "provider:test",
+        ...connectivity,
+    });
+    await assert.rejects(
+        p.generate({ workerId: "r", messages: [] }),
+        (error: ProviderError) => error.kind === "deadline_exceeded"
+            && error.status === 504
+            && error.problem.retryable === false
+            && error.problem.timeoutPhase === "operation"
+            && error.problem.timeoutMs === 10
+            && error.accounting.length === 1
+            && error.accounting[0]?.outcome === "error",
+    );
+    assert.equal(calls, 1);
+    mock.restoreAll();
+});
+
 test("the total generation deadline spans stalled-stream retry scheduling", async () => {
     let calls = 0;
     mock.method(globalThis, "fetch", async () => {
@@ -1774,10 +1981,11 @@ test("the total generation deadline spans stalled-stream retry scheduling", asyn
         }
         return stalledStreamResponse();
     });
-    const p = new AiSdkProvider({
+    const p = testProvider({
         model: "m",
         url: "http://x/v1/chat/completions",
-        fetchTimeoutMs: 50,
+        fetchTimeoutMs: 5000,
+        operationTimeoutMs: 50,
         streamIdleTimeoutMs: 10,
         temperature: 0.2,
         repeatPenalty: 1.15,
@@ -1788,7 +1996,8 @@ test("the total generation deadline spans stalled-stream retry scheduling", asyn
     const started = Date.now();
     await assert.rejects(
         p.generate({ workerId: "r", messages: [] }),
-        (error: ProviderError) => error.kind === "network_failure",
+        (error: ProviderError) => error.kind === "deadline_exceeded"
+            && error.problem.timeoutPhase === "operation",
     );
     assert.ok(Date.now() - started < 500, "the configured total deadline ends retry scheduling");
     assert.equal(calls, 1, "the total deadline expires before another request begins");
@@ -1804,7 +2013,7 @@ test("a zero stream-idle timeout permits a slow inter-chunk pause", async () => 
             controller.close();
         },
     }), { status: 200 }));
-    const p = new AiSdkProvider({
+    const p = testProvider({
         model: "m",
         url: "http://x/v1/chat/completions",
         fetchTimeoutMs: 1000,
@@ -1822,7 +2031,7 @@ test("a zero stream-idle timeout permits a slow inter-chunk pause", async () => 
 test("retry: exhausting the budget surfaces the classified ProviderError", async () => {
     const { ProviderError } = await import("./errors.ts");
     const calls = installFetchScript([{ status: 429, retryAfter: 0 }]); // always rate-limited
-    const p = new AiSdkProvider({ ...retryCfg, retryAttempts: 2 });
+    const p = testProvider({ ...retryCfg, retryAttempts: 2 });
     await assert.rejects(
         () => p.generate({ workerId: "r", messages: [] }),
         (err: unknown) => { assert.ok(err instanceof ProviderError); assert.equal(err.kind, "rate_limit"); return true; },
@@ -1835,7 +2044,7 @@ test("retry: a Retry-After HTTP-date is honored — a past date parses to a 0ms 
         { status: 503, retryAfter: "Wed, 21 Oct 2015 07:28:00 GMT" }, // date form, in the past → max(0, past−now) = 0
         { status: 200, chunks: [{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }] },
     ]);
-    const p = new AiSdkProvider({ ...retryCfg, retryAttempts: 1 });
+    const p = testProvider({ ...retryCfg, retryAttempts: 1 });
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.equal(assistant.content, "ok");
     assert.equal(calls.length, 2); // initial 503 + one retry, no real wall-clock wait
@@ -1843,14 +2052,14 @@ test("retry: a Retry-After HTTP-date is honored — a past date parses to a 0ms 
 
 test("retry: a terminal error (401 unauthorized) is never retried", async () => {
     const calls = installFetchScript([{ status: 401 }]);
-    const p = new AiSdkProvider({ ...retryCfg, retryAttempts: 5 });
+    const p = testProvider({ ...retryCfg, retryAttempts: 5 });
     await assert.rejects(() => p.generate({ workerId: "r", messages: [] }), /401/);
     assert.equal(calls.length, 1); // terminal — no retry despite budget
 });
 
 test("retry: retryAttempts 0 surfaces the first transient failure immediately", async () => {
     const calls = installFetchScript([{ status: 503, retryAfter: 0 }]);
-    const p = new AiSdkProvider({ ...retryCfg, retryAttempts: 0 });
+    const p = testProvider({ ...retryCfg, retryAttempts: 0 });
     await assert.rejects(() => p.generate({ workerId: "r", messages: [] }));
     assert.equal(calls.length, 1); // no retry budget
 });
@@ -1858,7 +2067,7 @@ test("retry: retryAttempts 0 surfaces the first transient failure immediately", 
 test("retry: a caller abort during backoff rejects promptly with no further attempt", async () => {
     const ac = new AbortController();
     const calls = installFetchScript([{ status: 503, retryAfter: 5 }]); // 5s backoff we never wait out
-    const p = new AiSdkProvider({ ...retryCfg, retryAttempts: 3 });
+    const p = testProvider({ ...retryCfg, retryAttempts: 3 });
     const promise = p.generate({ workerId: "r", messages: [], signal: ac.signal });
     await flush(); // attempt 0 fails, enters the backoff sleep
     assert.equal(calls.length, 1);
@@ -1871,21 +2080,21 @@ test("retry: a caller abort during backoff rejects promptly with no further atte
 
 test("reasoningStyle 'anthropic' maps the budget to the thinking param", async () => {
     // N>0 → enabled with budget_tokens
-    const capped = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "on", budget: 4096 }, reasoningStyle: "anthropic" });
+    const capped = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "on", budget: 4096 }, reasoningStyle: "anthropic" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await capped.generate({ workerId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "enabled", budget_tokens: 4096 });
 
     mock.restoreAll();
     // 0 → explicit disabled
-    const off = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, reasoningStyle: "anthropic" });
+    const off = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, reasoningStyle: "anthropic" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await off.generate({ workerId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "disabled" });
 
     mock.restoreAll();
     // -1 adaptive → omit (API default depth)
-    const adaptive = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, reasoningStyle: "anthropic" });
+    const adaptive = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, reasoningStyle: "anthropic" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await adaptive.generate({ workerId: "r", messages: [] });
     assert.equal("thinking" in JSON.parse(calls[0].init.body as string), false);
@@ -1903,7 +2112,7 @@ test("streaming:false posts without stream and parses the single JSON response",
             usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
         }), { status: 200, headers: { "Content-Type": "application/json" } });
     });
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
     const res = await p.generate({ workerId: "r", messages: [] });
     const sent = JSON.parse(calls[0].body);
     assert.equal("stream" in sent, false);                 // no streaming flag
@@ -1919,7 +2128,7 @@ const captureBase = { model: "m", url: "http://x/v1/chat/completions", fetchTime
 
 test("logprobs OFF by default: no wire request, no assistant.logprobs, no rawBody", async () => {
     const calls = installFetch([{ model: "m", choices: [{ delta: { content: "hi" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }]);
-    const p = new AiSdkProvider({ ...captureBase });
+    const p = testProvider({ ...captureBase });
     const res = await p.generate({ workerId: "r", messages: [{ role: "user", content: "q" }] });
     const body = JSON.parse((calls[0].init.body as string));
     assert.equal("logprobs" in body, false);
@@ -1936,7 +2145,7 @@ test("logprobs ON (streamed): requests logprobs+top_logprobs, surfaces raw logpr
         { token: "no", logprob: -0.1, sampling_logprob: -0.1, top_logprobs: [{ token: "no", logprob: -0.1 }] },
     ] } }] };
     const calls = installFetch([chunk]);
-    const p = new AiSdkProvider({ ...captureBase, topLogprobs: 2 });
+    const p = testProvider({ ...captureBase, topLogprobs: 2 });
     const res = await p.generate({ workerId: "r", messages: [{ role: "user", content: "q" }] });
     const body = JSON.parse((calls[0].init.body as string));
     assert.equal(body.logprobs, true);
@@ -1950,7 +2159,7 @@ test("logprobs ON (streamed): requests logprobs+top_logprobs, surfaces raw logpr
 test("rawBody ON (non-streamed): verbatim wire body incl. sampling_logprob preserved", async () => {
     const wire = { model: "m", extra_top_level: "kept", choices: [{ message: { content: "no" }, finish_reason: "stop", logprobs: { content: [{ token: "no", logprob: -0.1, sampling_logprob: -0.1, token_id: 42 }] } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } };
     installFetchJson(wire);
-    const p = new AiSdkProvider({ ...captureBase, streaming: false, topLogprobs: 0, rawBody: true });
+    const p = testProvider({ ...captureBase, streaming: false, topLogprobs: 0, rawBody: true });
     const res = await p.generate({ workerId: "r", messages: [{ role: "user", content: "q" }] });
     assert.deepEqual(res.rawBody, wire); // verbatim
     assert.equal((res.rawBody as typeof wire).choices[0].logprobs.content[0].sampling_logprob, -0.1);
@@ -1961,7 +2170,7 @@ test("rawBody ON (non-streamed): verbatim wire body incl. sampling_logprob prese
 
 test("caller sampling cannot forge logprobs (reserved keys): the env flag is the only control", async () => {
     const calls = installFetch([{ model: "m", choices: [{ delta: { content: "hi" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }]);
-    const p = new AiSdkProvider({ ...captureBase }); // logprobs OFF
+    const p = testProvider({ ...captureBase }); // logprobs OFF
     await p.generate({ workerId: "r", messages: [{ role: "user", content: "q" }], sampling: { logprobs: true, top_logprobs: 5 } });
     const body = JSON.parse((calls[0].init.body as string));
     assert.equal("logprobs" in body, false);   // sampling passthrough stripped it
@@ -1972,7 +2181,7 @@ test("caller sampling cannot forge logprobs (reserved keys): the env flag is the
 // — turn coordinate headers ({§lifecycle-terms}): same gate as every first-party signal —
 
 test("workspaceId/loop/turn ride as Plurnk-Workspace-Id/Loop/Turn under the first-party gate", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], workspaceId: "s-9", loop: 3, turn: 41 });
     const headers = new Headers(calls[0].init.headers);
@@ -1982,7 +2191,7 @@ test("workspaceId/loop/turn ride as Plurnk-Workspace-Id/Loop/Turn under the firs
 });
 
 test("third-party providers structurally DROP the coordinate (gate off by default)", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], workspaceId: "s-9", loop: 3, turn: 41 });
     const headers = new Headers(calls[0].init.headers);
@@ -1992,7 +2201,7 @@ test("third-party providers structurally DROP the coordinate (gate off by defaul
 });
 
 test("coordinates are 1-based — 0/absent/empty emit no header", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, firstPartyMetadata: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], workspaceId: "", loop: 0, turn: 0 });
     const headers = new Headers(calls[0].init.headers);
@@ -2006,18 +2215,18 @@ test("coordinates are 1-based — 0/absent/empty emit no header", async () => {
 
 test("reserves derive from the detected window; absolutes stand alone; null window + percent = no claim", () => {
     const base = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null } as const, retryAttempts: 0 };
-    const derived = new AiSdkProvider({ ...base, contextWindow: 49152, reasoningReserve: { percent: 0.1 }, completionReserve: { percent: 0.25 } });
+    const derived = testProvider({ ...base, contextWindow: 49152, reasoningReserve: { percent: 0.1 }, completionReserve: { percent: 0.25 } });
     assert.equal(derived.reasoningReserve, 4915);   // jennifer/turboderp: 10% of 49152
     assert.equal(derived.completionReserve, 12288); // 25% of 49152
-    const pinned = new AiSdkProvider({ ...base, contextWindow: null, reasoningReserve: { tokens: 4096 }, completionReserve: { percent: 0.25 } });
+    const pinned = testProvider({ ...base, contextWindow: null, reasoningReserve: { tokens: 4096 }, completionReserve: { percent: 0.25 } });
     assert.equal(pinned.reasoningReserve, 4096);    // absolute pin needs no window
     assert.equal(pinned.completionReserve, null);   // percent without a window = underivable
-    const legacy = new AiSdkProvider({ ...base, contextWindow: 49152 });
+    const legacy = testProvider({ ...base, contextWindow: 49152 });
     assert.equal(legacy.reasoningReserve, null);    // out-of-date sibling: no claim
 });
 
 test("router-owned tuning: tuningFloors:false drops the temperature/penalty floors, caller sampling still rides", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, frequencyPenalty: 0.4, reasoning: { mode: "off", budget: null }, retryAttempts: 0, tuningFloors: false });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, frequencyPenalty: 0.4, reasoning: { mode: "off", budget: null }, retryAttempts: 0, tuningFloors: false });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], sampling: { temperature: 0.9 } });
     const body = JSON.parse(calls[0].init.body as string);
@@ -2028,21 +2237,21 @@ test("router-owned tuning: tuningFloors:false drops the temperature/penalty floo
 // -- prompt-cache affinity (workerId -> prompt_cache_key) --
 
 test("promptCacheKey on: body sends prompt_cache_key = workerId (serverless replica affinity)", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, promptCacheKey: true });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, promptCacheKey: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "worker-abc", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).prompt_cache_key, "worker-abc");
 });
 
 test("promptCacheKey off (default): no prompt_cache_key on the wire", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "worker-abc", messages: [] });
     assert.equal("prompt_cache_key" in JSON.parse(calls[0].init.body as string), false);
 });
 
 test("prompt_cache_key is managed: caller sampling cannot forge/override the affinity key", async () => {
-    const p = new AiSdkProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, promptCacheKey: true });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, promptCacheKey: true });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "worker-abc", messages: [], sampling: { prompt_cache_key: "hijack" } });
     assert.equal(JSON.parse(calls[0].init.body as string).prompt_cache_key, "worker-abc"); // managed wins

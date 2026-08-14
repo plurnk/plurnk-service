@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import type { ChatMessage, ProviderAttemptFinishReason, ProviderChargeEvidence, ProviderUsage, TokenLogprob } from "./types.ts";
 import { normalizeUsage, type RawUsage } from "./usage.ts";
 import { emitWarningOnce } from "./warnings.ts";
+import { ProviderTimeoutError, providerTimeoutOf } from "./errors.ts";
 
 const errorSchema = z.object({
     error: z.object({
@@ -14,18 +15,30 @@ const errorSchema = z.object({
     }).passthrough(),
 }).passthrough();
 
+const retryDirective = (
+    status: number | undefined,
+    headers: Headers | Readonly<Record<string, string>>,
+): boolean | null => {
+    const raw = headers instanceof Headers
+        ? headers.get("x-should-retry")
+        : Object.entries(headers).find(([name]) => name.toLowerCase() === "x-should-retry")?.[1];
+    const directive = raw?.trim().toLowerCase();
+    if (directive === "false") return false;
+    if (directive === "true") return true;
+    if (status !== undefined && status >= 520 && status <= 527) return false;
+    return null;
+};
+
 const errorStructure: ProviderErrorStructure<z.infer<typeof errorSchema>> = {
     errorSchema,
     errorToMessage: ({ error }) => error.message,
     isRetryable(response) {
-        const directive = response.headers.get("x-should-retry")?.trim().toLowerCase();
-        if (directive === "false") return false;
-        if (directive === "true") return true;
-        if (response.status >= 520 && response.status <= 527) return false;
-        return response.status === 408
+        return retryDirective(response.status, response.headers) ?? (
+            response.status === 408
             || response.status === 409
             || response.status === 429
-            || response.status >= 500;
+            || response.status >= 500
+        );
     },
 };
 
@@ -140,6 +153,7 @@ export type AiSdkTransportRequest = {
     signal?: AbortSignal;
     fetch?: typeof globalThis.fetch;
     fetchTimeoutMs: number;
+    firstContentTimeoutMs?: number;
     streamIdleTimeoutMs?: number;
     streaming: boolean;
     captureRawBody: boolean;
@@ -178,31 +192,65 @@ export type AiSdkModelRequest = Omit<AiSdkTransportRequest, "url" | "model" | "b
     reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "none" | "provider-default";
 };
 
-const isStreamIdleTimeout = (cause: unknown): cause is Error | DOMException =>
-    typeof cause === "object"
-    && cause !== null
-    && (cause as { name?: string }).name === "TimeoutError"
-    && /chunk timeout/i.test(String((cause as { message?: unknown }).message ?? ""));
+const transportTimeout = (
+    cause: unknown,
+    request: AiSdkModelRequest,
+): ProviderTimeoutError | null => {
+    const owned = providerTimeoutOf(cause);
+    if (owned !== null) return owned;
+
+    const seen = new Set<unknown>();
+    let current = cause;
+    while (typeof current === "object" && current !== null && !seen.has(current)) {
+        if ((current as { name?: string }).name === "TimeoutError") break;
+        seen.add(current);
+        current = (current as { cause?: unknown }).cause;
+    }
+    if (typeof current !== "object" || current === null) return null;
+
+    const message = String((current as { message?: unknown }).message ?? "");
+    if (/first chunk timeout/i.test(message)) {
+        return new ProviderTimeoutError("first_content", request.firstContentTimeoutMs ?? 0, cause);
+    }
+    if (/chunk timeout/i.test(message)) {
+        return new ProviderTimeoutError("stream_idle", request.streamIdleTimeoutMs ?? 0, cause);
+    }
+    return new ProviderTimeoutError("attempt", request.fetchTimeoutMs, cause);
+};
 
 const streamFailureValues = new WeakMap<object, readonly unknown[]>();
+
+const applyRetryDirective = (error: unknown): unknown => {
+    if (!APICallError.isInstance(error)) return error;
+    const directed = retryDirective(error.statusCode, error.responseHeaders ?? {});
+    if (directed === null || directed === error.isRetryable) return error;
+    return new APICallError({
+        message: error.message,
+        url: error.url,
+        requestBodyValues: error.requestBodyValues,
+        statusCode: error.statusCode,
+        responseHeaders: error.responseHeaders,
+        responseBody: error.responseBody,
+        cause: error,
+        isRetryable: directed,
+        data: error.data,
+    });
+};
 
 const executeModel = async (
     request: AiSdkModelRequest,
 ): Promise<AiSdkTransportResponse> => {
-    const timeoutSignal = AbortSignal.timeout(request.fetchTimeoutMs);
-    const operationSignal = request.signal === undefined
-        ? timeoutSignal
-        : AbortSignal.any([request.signal, timeoutSignal]);
     try {
-        return await executeModelOnce({ ...request, signal: operationSignal });
+        return await executeModelOnce(request);
     } catch (cause) {
-        if (operationSignal.aborted) throw operationSignal.reason;
-        if (!isStreamIdleTimeout(cause)) throw cause;
+        if (request.signal?.aborted) throw request.signal.reason;
+        const timeout = transportTimeout(cause, request);
+        if (timeout === null) throw applyRetryDirective(cause);
         throw new APICallError({
-            message: cause.message,
+            message: timeout.message,
             url: "model:generation",
             requestBodyValues: {},
-            cause,
+            cause: timeout,
             isRetryable: true,
         });
     }
@@ -258,8 +306,15 @@ const executeModelOnce = async (
         abortSignal: request.signal,
         headers: request.headers,
         timeout: {
-            totalMs: request.fetchTimeoutMs,
-            ...(request.streamIdleTimeoutMs !== undefined && request.streamIdleTimeoutMs > 0
+            ...(request.fetchTimeoutMs > 0 ? { totalMs: request.fetchTimeoutMs } : {}),
+            ...(request.streaming
+                && request.firstContentTimeoutMs !== undefined
+                && request.firstContentTimeoutMs > 0
+                ? { firstChunkMs: request.firstContentTimeoutMs }
+                : {}),
+            ...(request.streaming
+                && request.streamIdleTimeoutMs !== undefined
+                && request.streamIdleTimeoutMs > 0
                 ? { chunkMs: request.streamIdleTimeoutMs }
                 : {}),
         },
@@ -386,6 +441,7 @@ export const executeOpenAICompatible = async (
         messages: request.messages,
         signal: request.signal,
         fetchTimeoutMs: request.fetchTimeoutMs,
+        firstContentTimeoutMs: request.firstContentTimeoutMs,
         streamIdleTimeoutMs: request.streamIdleTimeoutMs,
         streaming: request.streaming,
         captureRawBody: request.captureRawBody,

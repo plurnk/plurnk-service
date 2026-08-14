@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Mock, ProviderError } from "@plurnk/plurnk-providers";
+import { AiSdkProvider, Mock, ProviderError } from "@plurnk/plurnk-providers";
 import type { MockResponse, ProviderAttempt, ProviderRequestAccounting, ProviderUsage } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -103,6 +103,98 @@ test("provider I/O begins only after its pending attempt row is durable", async 
             loopId,
             messages: [{ role: "user", content: "do the task" }],
         });
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§provider-connectivity}: one model call durably settles a transient request and its successful retry", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        let calls = 0;
+        const provider = new AiSdkProvider({
+            model: "connectivity-witness",
+            url: "https://provider.test/v1/chat/completions",
+            contextWindow: 100_000,
+            fetch: async () => {
+                calls++;
+                if (calls === 1) {
+                    return new Response(
+                        JSON.stringify({ error: { message: "transient upstream failure" } }),
+                        {
+                            status: 503,
+                            headers: {
+                                "content-type": "application/json",
+                                "retry-after": "0",
+                            },
+                        },
+                    );
+                }
+                const content = "# PLAN0\ncomplete the task\n\n## SEND0 [200]\nrecovered";
+                const body = [
+                    `data: ${JSON.stringify({
+                        id: "connectivity-response",
+                        object: "chat.completion.chunk",
+                        created: 1,
+                        model: "connectivity-witness",
+                        choices: [{ index: 0, delta: { content }, finish_reason: "stop" }],
+                    })}`,
+                    `data: ${JSON.stringify({
+                        id: "connectivity-response",
+                        object: "chat.completion.chunk",
+                        created: 2,
+                        model: "connectivity-witness",
+                        choices: [],
+                        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+                    })}`,
+                    "data: [DONE]",
+                ].join("\n\n");
+                return new Response(body, {
+                    status: 200,
+                    headers: { "content-type": "text/event-stream" },
+                });
+            },
+            fetchTimeoutMs: 1_000,
+            operationTimeoutMs: 5_000,
+            firstContentTimeoutMs: 1_000,
+            streamIdleTimeoutMs: 1_000,
+            temperature: 0.2,
+            repeatPenalty: 1.15,
+            reasoning: { mode: "off", budget: null },
+            retryAttempts: 1,
+            source: "provider:connectivity-witness",
+        });
+
+        const result = await engine.runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "do the task" }],
+        });
+
+        assert.equal(result.status, 200);
+        assert.equal(result.emissionAttempts, 1, "transport retry remains one semantic model call");
+        assert.equal(calls, 2);
+        const requests = await db.test_provider_requests.all<{
+            sequence: number;
+            attempt_sequence: number;
+            state: string;
+            outcome: string;
+            status: number | null;
+            usage_input: number | null;
+        }>({ turn_id: result.turnId });
+        assert.deepEqual(requests.map(({ sequence, attempt_sequence, state, outcome, status, usage_input }) => ({
+            sequence,
+            attemptSequence: attempt_sequence,
+            state,
+            outcome,
+            status,
+            inputTokens: usage_input,
+        })), [
+            { sequence: 1, attemptSequence: 1, state: "settled", outcome: "error", status: 503, inputTokens: null },
+            { sequence: 2, attemptSequence: 1, state: "settled", outcome: "response", status: null, inputTokens: 10 },
+        ]);
     } finally {
         await db.close();
     }
