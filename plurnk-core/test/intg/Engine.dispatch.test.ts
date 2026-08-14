@@ -3,7 +3,7 @@ import Owner from "../../src/core/Owner.ts";
 import Envelope from "../../src/server/envelope.ts";
 import assert from "node:assert/strict";
 import { InvalidTagSignalError } from "@plurnk/plurnk-contracts";
-import type { EditLineMarker, EditStatement, ReadStatement, KillStatement, PlanStatement, OpenStatement, FoldStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
+import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, PlanStatement, OpenStatement, FoldStatement, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LineAnchors from "../../src/content/line-anchors.ts";
@@ -16,7 +16,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     pathname, query: null, fragment: null,
 });
 
-const editStmt = (opts: { target: ParsedPath; tags?: string[] | null; body?: string | null; marker?: EditLineMarker | null }): EditStatement => ({
+const editStmt = (opts: { target: ParsedPath; tags?: string[] | null; body?: string | null; marker?: TextLineMarker | null }): EditStatement => ({
     op: "EDIT", suffix: "",
     signal: opts.tags ?? null,
     target: opts.target,
@@ -406,6 +406,42 @@ test("Engine.dispatch: a current READ line anchor lowers to a numeric EDIT preco
         assert.equal(stale.status, 409);
         assert.equal(stale.problem?.type, "https://problems.plurnk.dev/engine/edit/edit-collision");
         assert.equal(stale.problem?.detail, `EDIT collided with another change at ${identity}.`);
+        assert.equal(stale.problem?.anchor, undefined);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: READ accepts a current line anchor and rejects a stale one as a collision", async () => {
+    const { db, engine, env } = await setup();
+    const target = urlPath("worker", "/anchor-read.md");
+    try {
+        assert.equal((await engine.dispatch({
+            statement: editStmt({ target, body: "alpha\nbeta\ngamma" }),
+            ...env, sequence: 1, origin: "model",
+        })).status, 201);
+        const numeric = await engine.dispatch({
+            statement: readStmt({ target, marker: { marks: [2] } }),
+            ...env, sequence: 2, origin: "model",
+        });
+        const anchor = (numeric as { lineAnchors?: readonly string[] }).lineAnchors?.[0];
+        assert.match(anchor ?? "", /^@[0-9A-Za-z]{5}$/);
+
+        const anchored = await engine.dispatch({
+            statement: readStmt({ target, marker: { marks: [anchor!] } }),
+            ...env, sequence: 3, origin: "model",
+        });
+        assert.equal(anchored.status, 200);
+        assert.equal((anchored as { content?: string }).content, "beta");
+
+        assert.equal((await engine.dispatch({
+            statement: editStmt({ target, marker: { marks: [2] }, body: "BETA" }),
+            ...env, sequence: 4, origin: "model",
+        })).status, 200);
+        const stale = await engine.dispatch({
+            statement: readStmt({ target, marker: { marks: [anchor!] } }),
+            ...env, sequence: 5, origin: "model",
+        });
+        assert.equal(stale.status, 409);
+        assert.equal(stale.problem?.type, "https://problems.plurnk.dev/scheme/worker/line-anchor-collision");
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
 });

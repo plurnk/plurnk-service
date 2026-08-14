@@ -38,6 +38,18 @@ test("client: LOOK is read-shaped — tag signal, target, lineMarker, matcher bo
     assert.equal(s.body.dialect, "semantic");
 });
 
+test("client: LOOK accepts line anchors while BUFF result positions remain numeric", () => {
+    const result = PlurnkParser.parseClient("## LOOK0 (worker:///notes.md) <@aZ09b>");
+    const item = result.items.find((candidate) => candidate.kind === "statement");
+    assert.equal(item?.kind, "statement");
+    if (item?.kind !== "statement") return;
+    assert.equal(item.statement.op, "LOOK");
+    assert.deepEqual(item.statement.lineMarker, { marks: ["@aZ09b"] });
+
+    const buff = PlurnkParser.parseClient("## BUFF0 (worker:///notes.md) <@aZ09b>");
+    assert.ok(buff.items.some((candidate) => candidate.kind === "error"));
+});
+
 test("client: BUFF carries a matcher body (filter on the way in)", () => {
     const stmts = clientStatementsOf("## BUFF0 (file://draft.md)\n/TODO/i");
     const s: any = stmts[0].statement;

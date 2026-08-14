@@ -12,6 +12,7 @@ import type {
     PlurnkStatement,
     ReadStatement,
     ResourceSelection,
+    TextLineMarker,
     WorkStatement,
 } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -161,9 +162,8 @@ interface SchemeWithEntryAddress {
     ) => Promise<EntryAddress | CoreEntryAddress | SchemeResult | null>;
 }
 
-type ResolvedResourceSelection = {
+type ResourceAddress = {
     readonly target: ParsedPath;
-    readonly lineMarker: LineMarker | null;
     readonly scheme: string;
     readonly pathname: string;
     readonly identityPathname: string;
@@ -171,10 +171,20 @@ type ResolvedResourceSelection = {
     readonly manifest: SchemeManifest;
 };
 
+type AddressedResourceSelection = ResourceAddress & {
+    readonly lineMarker: TextLineMarker | null;
+};
+
+type ResolvedResourceSelection = ResourceAddress & {
+    readonly lineMarker: LineMarker | null;
+};
+
 type SelectedSource = ResolvedResourceSelection & {
     readonly storageAddress: ResolvedDataEntryAddress;
     readonly content: string;
+    readonly completeContent: string;
     readonly mimetype: string;
+    readonly lineAnchorPrecondition: LineAnchorPrecondition | null;
     readonly scopeNormalizations?: ReadonlyArray<ScopeNormalization>;
 };
 
@@ -185,6 +195,7 @@ type DeferredMoveSource = {
     readonly pathname: string;
     readonly channel: string;
     readonly destination: string;
+    readonly lineAnchorPrecondition: LineAnchorPrecondition | null;
 };
 
 type PendingResourceEffect = Pick<ResourceEffect, "target" | "action">;
@@ -1696,7 +1707,7 @@ export default class Dispatcher {
     }
 
     static #isDispatchResult(
-        value: ResolvedResourceSelection | SelectedSource | DispatchResult,
+        value: AddressedResourceSelection | SelectedSource | DispatchResult,
     ): value is DispatchResult {
         return "status" in value;
     }
@@ -1704,7 +1715,7 @@ export default class Dispatcher {
     async #resolveResourceSelection(
         selection: ResourceSelection,
         ctx: PlurnkSchemeContext,
-    ): Promise<ResolvedResourceSelection | DispatchResult> {
+    ): Promise<AddressedResourceSelection | DispatchResult> {
         const { target, lineMarker } = selection;
         const scheme = schemeNameOf(target);
         if (scheme === null) {
@@ -1805,9 +1816,84 @@ export default class Dispatcher {
         };
     }
 
+    #resolveResourceLineMarker(
+        selection: AddressedResourceSelection,
+        content: string,
+        operation: "COPY" | "MOVE",
+    ): { readonly selection: ResolvedResourceSelection; readonly precondition: LineAnchorPrecondition | null }
+        | { readonly result: DispatchResult } {
+        if (!LineAnchors.hasAnchor(selection.lineMarker)) {
+            return {
+                selection: {
+                    ...selection,
+                    lineMarker: selection.lineMarker as LineMarker | null,
+                },
+                precondition: null,
+            };
+        }
+        const target = this.#resourceAddress(selection);
+        if (selection.manifest.textEditScopes !== true || !selection.manifest.writableBy.includes("model")) {
+            return {
+                result: Dispatcher.#failure(
+                    "line-anchor-unsupported",
+                    400,
+                    `The representation at ${target} does not publish line anchors.`,
+                    {},
+                    {
+                        operation,
+                        target,
+                        recovery: "Use numeric text coordinates.",
+                        retryable: false,
+                    },
+                ),
+            };
+        }
+        const resolution = LineAnchors.resolve(LineAnchors.tokens(target, content), selection.lineMarker);
+        if (!resolution.ok) {
+            if (resolution.failure.kind === "invalid") {
+                return {
+                    result: Dispatcher.#failure(
+                        "line-anchor-invalid",
+                        400,
+                        "A line anchor appeared outside a line-coordinate position.",
+                        {},
+                        {
+                            operation,
+                            target,
+                            recovery: "Use anchors only for L, SL, or EL; columns remain numeric.",
+                            retryable: false,
+                        },
+                    ),
+                };
+            }
+            return {
+                result: Dispatcher.#failure(
+                    "line-anchor-collision",
+                    409,
+                    `${operation} coordinates collided with current content at ${target}.`,
+                    {},
+                    {
+                        operation,
+                        target,
+                        recovery: `READ ${target} again and retry against its current coordinates.`,
+                        retryable: true,
+                    },
+                ),
+            };
+        }
+        return {
+            selection: { ...selection, lineMarker: resolution.marker },
+            precondition: {
+                identity: target,
+                checks: LineAnchors.checks(selection.lineMarker, resolution.marker),
+            },
+        };
+    }
+
     async #selectSource(
-        selection: ResolvedResourceSelection,
+        selection: AddressedResourceSelection,
         ctx: PlurnkSchemeContext,
+        operation: "COPY" | "MOVE",
     ): Promise<SelectedSource | DispatchResult> {
         const handler = this.#schemes.get(selection.scheme) as
             | (SchemeWithEntryAddress & SchemeHandler)
@@ -1874,6 +1960,8 @@ export default class Dispatcher {
                 },
             );
         }
+        const resolvedMarker = this.#resolveResourceLineMarker(selection, selected.content, operation);
+        if ("result" in resolvedMarker) return resolvedMarker.result;
         let content = selected.content;
         let scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined;
         if (await MimetypeBinary.isBinaryMimetype(selected.mimetype, ctx.mimetypes)) {
@@ -1890,8 +1978,8 @@ export default class Dispatcher {
                 },
             );
         }
-        if (selection.lineMarker !== null) {
-            const sliced = LineMarkerOps.sliceLinesRaw(content, selection.lineMarker);
+        if (resolvedMarker.selection.lineMarker !== null) {
+            const sliced = LineMarkerOps.sliceLinesRaw(content, resolvedMarker.selection.lineMarker);
             if (sliced.status !== 200) return Results.assert(sliced) as DispatchResult;
             content = sliced.text ?? "";
             scopeNormalizations = sliced.scopeNormalizations;
@@ -1900,10 +1988,12 @@ export default class Dispatcher {
             return Results.assert(selected.producerResult) as DispatchResult;
         }
         return {
-            ...selection,
+            ...resolvedMarker.selection,
             storageAddress,
             content,
+            completeContent: selected.content,
             mimetype: selected.mimetype,
+            lineAnchorPrecondition: resolvedMarker.precondition,
             ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
         };
     }
@@ -1922,7 +2012,23 @@ export default class Dispatcher {
         });
     }
 
-    #resourceAddress(selection: ResolvedResourceSelection): string {
+    static #mergeLineAnchorPreconditions(
+        ...values: ReadonlyArray<LineAnchorPrecondition | null>
+    ): LineAnchorPrecondition | null {
+        const present = values.filter((value): value is LineAnchorPrecondition => value !== null);
+        if (present.length === 0) return null;
+        const identity = present[0]!.identity;
+        if (present.some((value) => value.identity !== identity)) {
+            throw new TypeError("Line-anchor preconditions for one edit batch must share a resource identity.");
+        }
+        const checks = [...new Map(
+            present.flatMap(({ checks: valueChecks }) => valueChecks)
+                .map((check) => [`${check.anchor}:${check.line}`, check]),
+        ).values()];
+        return { identity, checks };
+    }
+
+    #resourceAddress(selection: ResourceAddress): string {
         const address = renderTarget({
             scheme: selection.scheme === "file" ? null : selection.scheme,
             pathname: selection.scheme === "file"
@@ -1937,7 +2043,7 @@ export default class Dispatcher {
     }
 
     #pendingEffect(
-        selection: ResolvedResourceSelection,
+        selection: ResourceAddress,
         action: ResourceEffectAction,
     ): PendingResourceEffect {
         return {
@@ -2050,7 +2156,7 @@ export default class Dispatcher {
 
     #finalizeEffects(
         result: DispatchResult,
-        selection: ResolvedResourceSelection,
+        selection: ResourceAddress,
         pending: readonly PendingResourceEffect[],
     ): DispatchResult {
         const routed = this.#withProposalRoute(result, selection);
@@ -2183,8 +2289,8 @@ export default class Dispatcher {
     }
 
     #sameChannel(
-        left: ResolvedResourceSelection,
-        right: ResolvedResourceSelection,
+        left: ResourceAddress,
+        right: ResourceAddress,
     ): boolean {
         return left.scheme === right.scheme
             && left.identityPathname === right.identityPathname
@@ -2193,7 +2299,7 @@ export default class Dispatcher {
 
     #withProposalRoute(
         result: DispatchResult,
-        selection: ResolvedResourceSelection,
+        selection: ResourceAddress,
     ): DispatchResult {
         if (result.status !== 202) return result;
         return {
@@ -2217,6 +2323,7 @@ export default class Dispatcher {
             readonly position: EditStatement["position"];
         }>,
         ctx: PlurnkSchemeContext,
+        precondition: LineAnchorPrecondition | null = null,
     ): Promise<DispatchResult> {
         const handler = this.#schemes.get(selection.scheme) as SchemeHandler | undefined;
         if (typeof handler?.editBatch !== "function") {
@@ -2252,6 +2359,10 @@ export default class Dispatcher {
                     addressedScheme,
                     selection.manifest,
                     this.#liveSubscriptions,
+                    {
+                        publishedChannel: selection.channel,
+                        editPrecondition: precondition,
+                    },
                 ),
             ));
             return this.#withProposalRoute(result, selection);
@@ -2278,7 +2389,7 @@ export default class Dispatcher {
     async #writeDestination(
         statement: CopyStatement | MoveStatement,
         source: SelectedSource,
-        destination: ResolvedResourceSelection,
+        destination: AddressedResourceSelection,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
         const existingResult = await this.#readEntry(
@@ -2349,16 +2460,23 @@ export default class Dispatcher {
                     },
                 );
             }
-            const edited = await this.#invokeEditBatch(
+            const resolvedMarker = this.#resolveResourceLineMarker(
                 destination,
+                destinationChannel.content,
+                statement.op,
+            );
+            if ("result" in resolvedMarker) return resolvedMarker.result;
+            const edited = await this.#invokeEditBatch(
+                resolvedMarker.selection,
                 [{
-                    marker: destination.lineMarker,
+                    marker: resolvedMarker.selection.lineMarker!,
                     body: source.content,
                     position: statement.position,
                 }],
                 ctx,
+                resolvedMarker.precondition,
             );
-            return this.#finalizeEffects(edited, destination, [destinationEffect]);
+            return this.#finalizeEffects(edited, resolvedMarker.selection, [destinationEffect]);
         }
 
         if (
@@ -2428,7 +2546,7 @@ export default class Dispatcher {
         if (Dispatcher.#isDispatchResult(resolvedSource)) return resolvedSource;
         const resolvedDestination = await this.#resolveResourceSelection(destination, ctx);
         if (Dispatcher.#isDispatchResult(resolvedDestination)) return resolvedDestination;
-        const selected = await this.#selectSource(resolvedSource, ctx);
+        const selected = await this.#selectSource(resolvedSource, ctx, "COPY");
         if (Dispatcher.#isDispatchResult(selected)) return selected;
         const result = await this.#writeDestination(statement, selected, resolvedDestination, ctx);
         return Dispatcher.#prependScopeNormalizations(result, selected.scopeNormalizations);
@@ -2436,7 +2554,8 @@ export default class Dispatcher {
 
     #deferredMoveSource(
         source: ResolvedResourceSelection,
-        destination: ResolvedResourceSelection,
+        destination: ResourceAddress,
+        lineAnchorPrecondition: LineAnchorPrecondition | null,
     ): DeferredMoveSource {
         return {
             target: source.target,
@@ -2445,6 +2564,7 @@ export default class Dispatcher {
             pathname: source.pathname,
             channel: source.channel,
             destination: this.#resourceAddress(destination),
+            lineAnchorPrecondition,
         };
     }
 
@@ -2480,6 +2600,7 @@ export default class Dispatcher {
         statement: MoveStatement,
         source: ResolvedResourceSelection,
         ctx: PlurnkSchemeContext,
+        lineAnchorPrecondition: LineAnchorPrecondition | null = null,
     ): Promise<DispatchResult> {
         const effect = this.#pendingEffect(
             source,
@@ -2502,6 +2623,7 @@ export default class Dispatcher {
                 position: statement.position,
             }],
             ctx,
+            lineAnchorPrecondition,
         );
         return this.#finalizeEffects(edited, source, [effect]);
     }
@@ -2509,7 +2631,7 @@ export default class Dispatcher {
     async #moveWithinChannel(
         statement: MoveStatement,
         source: SelectedSource,
-        destination: ResolvedResourceSelection,
+        destination: AddressedResourceSelection,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
         if (source.lineMarker === null) {
@@ -2531,11 +2653,21 @@ export default class Dispatcher {
         if (destination.lineMarker === null) {
             return this.#writeDestination(statement, source, destination, ctx);
         }
-        const moved = await this.#invokeEditBatch(
+        const resolvedDestination = this.#resolveResourceLineMarker(
             destination,
+            source.completeContent,
+            "MOVE",
+        );
+        if ("result" in resolvedDestination) return resolvedDestination.result;
+        const precondition = Dispatcher.#mergeLineAnchorPreconditions(
+            source.lineAnchorPrecondition,
+            resolvedDestination.precondition,
+        );
+        const moved = await this.#invokeEditBatch(
+            resolvedDestination.selection,
             [
                 {
-                    marker: destination.lineMarker,
+                    marker: resolvedDestination.selection.lineMarker!,
                     body: source.content,
                     position: statement.position,
                 },
@@ -2546,9 +2678,10 @@ export default class Dispatcher {
                 },
             ],
             ctx,
+            precondition,
         );
-        const effect = this.#pendingEffect(destination, "update");
-        return this.#finalizeEffects(moved, destination, [effect, effect]);
+        const effect = this.#pendingEffect(resolvedDestination.selection, "update");
+        return this.#finalizeEffects(moved, resolvedDestination.selection, [effect, effect]);
     }
 
     async #moveOrchestration({
@@ -2566,7 +2699,7 @@ export default class Dispatcher {
         if (Dispatcher.#isDispatchResult(resolvedSource)) return resolvedSource;
         const resolvedDestination = await this.#resolveResourceSelection(destination, ctx);
         if (Dispatcher.#isDispatchResult(resolvedDestination)) return resolvedDestination;
-        const selected = await this.#selectSource(resolvedSource, ctx);
+        const selected = await this.#selectSource(resolvedSource, ctx, "MOVE");
         if (Dispatcher.#isDispatchResult(selected)) return selected;
 
         if (this.#sameChannel(resolvedSource, resolvedDestination)) {
@@ -2599,8 +2732,9 @@ export default class Dispatcher {
                 attrs: {
                     ...(destinationResult.attrs as Record<string, unknown> | undefined),
                     moveSource: this.#deferredMoveSource(
-                        resolvedSource,
+                        selected,
                         resolvedDestination,
+                        selected.lineAnchorPrecondition,
                     ),
                 },
             };
@@ -2608,8 +2742,9 @@ export default class Dispatcher {
 
         const sourceResult = await this.#removeMoveSource(
             statement,
-            resolvedSource,
+            selected,
             ctx,
+            selected.lineAnchorPrecondition,
         );
         if (sourceResult.status === 202) {
             return {
@@ -2779,7 +2914,15 @@ export default class Dispatcher {
             );
         }
 
-        const removed = await this.#removeMoveSource(statement, resolvedSource, ctx);
+        const removed = await this.#removeMoveSource(
+            statement,
+            {
+                ...resolvedSource,
+                lineMarker: resolvedSource.lineMarker as LineMarker | null,
+            },
+            ctx,
+            deferred.lineAnchorPrecondition,
+        );
         if (removed.status >= 400) {
             return {
                 resolution: settlement.resolution,

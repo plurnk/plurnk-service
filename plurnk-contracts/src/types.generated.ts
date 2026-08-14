@@ -40,9 +40,11 @@ export type TagSignal = (string[] | null)
 
 export type PathOrNull = (ParsedPath | null)
 
-export type LineMarkerOrNull = (LineMarker | null)
+export type TextLineMarkerOrNull = (TextLineMarker | null)
 
 export type MatcherBodyOrNull = (MatcherBody | null)
+
+export type LineMarkerOrNull = (LineMarker | null)
 
 export interface FindStatement {
 op: "FIND"
@@ -158,9 +160,19 @@ op: "READ"
 suffix: string
 signal: (string[] | null)
 target: (ParsedPath | null)
-lineMarker: (LineMarker | null)
+lineMarker: (TextLineMarker | null)
 body: null
 position: Position
+}
+/**
+ * The ordered components parsed from a text-coordinate <scope>. A line position may be numeric or a rendered five-character Base62 line anchor; columns remain numeric. Core resolves anchors against the addressed current text before a numeric scope reaches its operation owner.
+ */
+
+export interface TextLineMarker {
+/**
+ * @minItems 1
+ */
+marks: [(number | string), ...((number | string))[]]
 }
 
 export interface OpenStatement {
@@ -188,19 +200,9 @@ op: "EDIT"
 suffix: string
 signal: (string[] | null)
 target: (ParsedPath | null)
-lineMarker: (EditLineMarker | null)
+lineMarker: (TextLineMarker | null)
 body: (string | null)
 position: Position
-}
-/**
- * The ordered components parsed from an EDIT <scope>. A line coordinate may be either numeric or a rendered five-character Base62 line anchor; columns remain numeric. The runtime resolves anchors against the addressed current text before invoking its scheme owner.
- */
-
-export interface EditLineMarker {
-/**
- * @minItems 1
- */
-marks: [(number | string), ...((number | string))[]]
 }
 
 export interface CopyStatement {
@@ -208,7 +210,7 @@ op: "COPY"
 suffix: string
 signal: (string[] | null)
 target: (ParsedPath | null)
-lineMarker: (LineMarker | null)
+lineMarker: (TextLineMarker | null)
 body: (ResourceSelection | null)
 position: Position
 }
@@ -218,7 +220,7 @@ position: Position
 
 export interface ResourceSelection {
 target: ParsedPath
-lineMarker: (LineMarker | null)
+lineMarker: (TextLineMarker | null)
 }
 
 export interface MoveStatement {
@@ -226,7 +228,7 @@ op: "MOVE"
 suffix: string
 signal: (string[] | null)
 target: (ParsedPath | null)
-lineMarker: (LineMarker | null)
+lineMarker: (TextLineMarker | null)
 body: (ResourceSelection | null)
 position: Position
 }
@@ -314,7 +316,7 @@ op: "LOOK"
 suffix: string
 signal: TagSignal
 target: PathOrNull
-lineMarker: LineMarkerOrNull
+lineMarker: TextLineMarkerOrNull
 body: MatcherBodyOrNull
 position: Position
 }
@@ -483,8 +485,6 @@ returned?: ReturnedRange
 export type AppliedTagSignal = (string[] | null)
 
 export type CurationTagSignal = (string[] | null)
-
-export type EditLineMarkerOrNull = (EditLineMarker | null)
 
 export type ResourceSelectionOrNull = (ResourceSelection | null)
 

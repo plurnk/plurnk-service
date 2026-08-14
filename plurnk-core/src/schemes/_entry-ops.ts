@@ -407,8 +407,15 @@ export default class EntryOps {
         const scheme = EntryCrud.identityScheme(manifest);
 
         const pathname = address.pathname ?? EntryOps.#pathnameOf(statement);
+        const selectedChannel = statement.target.kind === "url"
+            ? statement.target.fragment ?? manifest.defaultChannel
+            : manifest.defaultChannel;
         const identity = statement.target.kind === "url"
-            ? renderTarget({ ...statement.target, pathname })
+            ? renderTarget({
+                ...statement.target,
+                pathname,
+                fragment: selectedChannel === manifest.defaultChannel ? null : selectedChannel,
+            })
             : renderTarget({ scheme: null, pathname });
         if (identity === null) throw new TypeError("READ resolved an unrenderable resource identity.");
         const ownerId = await EntryOps.#ownerOf(address.ownerId, ctx);

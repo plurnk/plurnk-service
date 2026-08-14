@@ -94,14 +94,14 @@ languages are opaque to the PLURNK syntax check.
 
 ## §packet-jsonplurnk-exception Log fence
 
-The Log is a dynamically fenced `jsonplurnk` array owned by {§jsonplurnk}. It is valid GFM but
+The Log is a fixed three-backtick `jsonplurnk` array owned by {§jsonplurnk}. It is valid GFM but
 deliberately not labeled `json`: an open nonempty `body` uses one raw multiline quoted string rather than a JSON-escaped string.
 Every physical body line begins with either a numeric `N:` or anchored
 `@hash:N:` coordinate prefix, and the closing quote immediately precedes the
 object close at column zero.
-The fence is one backtick longer than the longest run in the rendered entries, with a minimum
-length of three {§jsonplurnk-dynamic-fence}. `@plurnk/plurnk-contracts` owns the deterministic
-transform that recovers strict JSON.
+Coordinate prefixes keep source backticks out of the CommonMark closing-fence position, so content
+cannot close the fixed fence. `@plurnk/plurnk-contracts` owns the deterministic transform that
+recovers strict JSON.
 
 ## §packet-atomic-prose Atomic prose
 

@@ -148,7 +148,9 @@ public getOpenHeading(): string { return this.openHeading; }
 
 private isSendOp(): boolean { return this.openOp === "SEND"; }
 private isExecOp(): boolean { return this.openOp === "EXEC"; }
-private isEditOp(): boolean { return this.openOp === "EDIT"; }
+private isTextCoordinateOp(): boolean {
+    return this.openOp === "READ" || this.openOp === "EDIT" || this.openOp === "COPY" || this.openOp === "MOVE" || this.openOp === "LOOK";
+}
 private isKillOp(): boolean { return this.openOp === "KILL"; }
 }
 
@@ -156,8 +158,8 @@ fragment SUFFIX    : [A-Za-z0-9_]+ ;
 fragment NUM       : '-'? [0-9]+ ('.' [0-9]+)? ;
 fragment L_PATTERN : '<' NUM (('-' | ',' ' '?) NUM)* '>' ;
 fragment LINE_ANCHOR : '@' [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] ;
-fragment EDIT_COORD  : NUM | LINE_ANCHOR ;
-fragment EDIT_L_PATTERN : '<' EDIT_COORD (',' ' '? EDIT_COORD)* '>' ;
+fragment TEXT_COORD  : NUM | LINE_ANCHOR ;
+fragment TEXT_L_PATTERN : '<' TEXT_COORD (',' ' '? TEXT_COORD)* '>' ;
 fragment EOL       : '\r'? '\n' ;
 
 // PLAN alone is H1. Protocol and client operations are H2. The first heading
@@ -196,7 +198,7 @@ SLOTS_LB_TAGS  : { this.slotReady && !this.isSendOp() && !this.isExecOp() && !th
 SLOTS_LB_INT   : { this.slotReady && (this.isSendOp() || this.isKillOp()) }? '[' -> type(LBRACKET), mode(SIGNAL_INT) ;
 SLOTS_LB_IDENT : { this.slotReady && this.isExecOp() }? '[' -> type(LBRACKET), mode(SIGNAL_IDENT) ;
 SLOTS_LPAREN   : { this.slotReady }? '(' { this.targetDepth = 0; } -> type(LPAREN), mode(TARGET) ;
-SLOTS_EDIT_L   : { this.slotReady && this.isEditOp() }? EDIT_L_PATTERN -> type(L_MARKER) ;
+SLOTS_TEXT_L   : { this.slotReady && this.isTextCoordinateOp() }? TEXT_L_PATTERN -> type(L_MARKER) ;
 SLOTS_L        : { this.slotReady }? L_PATTERN -> type(L_MARKER) ;
 SLOTS_DIRECT_END : { this.headingAfterDirectEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_BODY_OPEN : EOL { this.beginBody(); } -> type(BODY_OPEN), mode(BODY) ;

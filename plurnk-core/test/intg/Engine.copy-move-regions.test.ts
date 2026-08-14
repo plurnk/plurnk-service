@@ -9,6 +9,7 @@ import type {
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
+import LineAnchors from "../../src/content/line-anchors.ts";
 import type { EntryData } from "../../src/schemes/_entry-crud.ts";
 import {
     makeSchemeCtx,
@@ -18,6 +19,7 @@ import {
 import {
     copyStmt,
     moveStmt,
+    readStmt,
     urlPath,
 } from "./_dsl.ts";
 
@@ -55,6 +57,7 @@ class MultiChannelScheme implements SchemeHandler {
         writableBy: ["model", "client"],
         volatile: false,
         modelVisible: true,
+        textEditScopes: true,
     };
 
     async editBatch(
@@ -171,6 +174,91 @@ test("COPY composes source selection and destination insertion with Unicode code
     }
 });
 
+test("COPY resolves line anchors independently at its source and destination", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        const source = "alpha\nbeta\ngamma";
+        const destination = "one\ntwo\nthree";
+        await seed("/source", {
+            channels: { body: { content: source, mimetype: "text/markdown" } },
+        });
+        await seed("/destination", {
+            channels: { body: { content: destination, mimetype: "text/markdown" } },
+        });
+
+        const result = await dispatch(copyStmt(
+            urlPath("multi", "/source"),
+            urlPath("multi", "/destination"),
+            null,
+            { marks: [LineAnchors.token("multi:///source", 2, source)] },
+            { marks: [LineAnchors.token("multi:///destination", 2, destination)] },
+        ));
+        assert.equal(result.status, 200);
+        assert.equal((await read("/source")).entry?.channels.body?.content, source);
+        assert.equal((await read("/destination")).entry?.channels.body?.content, "one\nbeta\nthree");
+    } finally {
+        await db.close();
+    }
+});
+
+test("COPY treats an explicit default channel as the same line-anchor identity", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        const source = "alpha\nbeta\ngamma";
+        await seed("/source", {
+            channels: { body: { content: source, mimetype: "text/markdown" } },
+        });
+        await seed("/destination", {
+            channels: { body: { content: "one\ntwo\nthree", mimetype: "text/markdown" } },
+        });
+
+        const observed = await dispatch(readStmt(urlPath("multi", "/source", "body"), { marks: [2] }));
+        assert.equal(observed.status, 200);
+        const anchor = (observed as { readonly lineAnchors?: readonly string[] }).lineAnchors?.[0];
+        assert.match(anchor ?? "", /^@[0-9A-Za-z]{5}$/);
+
+        const result = await dispatch(copyStmt(
+            urlPath("multi", "/source", "body"),
+            urlPath("multi", "/destination"),
+            null,
+            { marks: [anchor!] },
+            { marks: [2] },
+        ));
+        assert.equal(result.status, 200);
+        assert.equal((await read("/destination")).entry?.channels.body?.content, "one\nbeta\nthree");
+    } finally {
+        await db.close();
+    }
+});
+
+test("COPY rejects a stale source anchor without changing either resource", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        const original = "alpha\nbeta\ngamma";
+        const stale = LineAnchors.token("multi:///source", 2, original);
+        await seed("/source", {
+            channels: { body: { content: "alpha\nBETA\ngamma", mimetype: "text/markdown" } },
+        });
+        await seed("/destination", {
+            channels: { body: { content: "one\ntwo\nthree", mimetype: "text/markdown" } },
+        });
+
+        const result = await dispatch(copyStmt(
+            urlPath("multi", "/source"),
+            urlPath("multi", "/destination"),
+            null,
+            { marks: [stale] },
+            { marks: [2] },
+        ));
+        assert.equal(result.status, 409);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/line-anchor-collision");
+        assert.equal((await read("/source")).entry?.channels.body?.content, "alpha\nBETA\ngamma");
+        assert.equal((await read("/destination")).entry?.channels.body?.content, "one\ntwo\nthree");
+    } finally {
+        await db.close();
+    }
+});
+
 test("COPY propagates tolerated source and destination scope normalizations in authored order", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
@@ -242,6 +330,33 @@ test("MOVE composes exact source and destination regions across resources", asyn
     }
 });
 
+test("MOVE resolves line anchors at both resources and removes the selected current source", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        const source = "alpha\nbeta\ngamma";
+        const destination = "one\ntwo\nthree";
+        await seed("/source", {
+            channels: { body: { content: source, mimetype: "text/markdown" } },
+        });
+        await seed("/destination", {
+            channels: { body: { content: destination, mimetype: "text/markdown" } },
+        });
+
+        const result = await dispatch(moveStmt(
+            urlPath("multi", "/source"),
+            urlPath("multi", "/destination"),
+            null,
+            { marks: [LineAnchors.token("multi:///source", 2, source)] },
+            { marks: [LineAnchors.token("multi:///destination", 2, destination)] },
+        ));
+        assert.equal(result.status, 200);
+        assert.equal((await read("/source")).entry?.channels.body?.content, "alpha\ngamma");
+        assert.equal((await read("/destination")).entry?.channels.body?.content, "one\nbeta\nthree");
+    } finally {
+        await db.close();
+    }
+});
+
 test("MOVE propagates tolerated source and destination scope normalizations", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
@@ -301,6 +416,31 @@ test("same-channel MOVE applies destination insertion and source deletion to one
             effects.map(({ receipt }) => receipt?.effect.requested),
             ["<1,7,1,7>", "<1,2,1,4>"],
         );
+        assert.equal((await read("/document")).entry?.channels.body?.content, "adefbc");
+    } finally {
+        await db.close();
+    }
+});
+
+test("same-channel MOVE composes source and destination anchors against one snapshot", async () => {
+    const { db, seed, read, dispatch } = await setup();
+    try {
+        const content = "abcdef";
+        const anchor = LineAnchors.token("multi:///document", 1, content);
+        await seed("/document", {
+            channels: {
+                body: { content, mimetype: "text/markdown" },
+            },
+        });
+
+        const result = await dispatch(moveStmt(
+            urlPath("multi", "/document"),
+            urlPath("multi", "/document"),
+            null,
+            { marks: [anchor, 2, anchor, 4] },
+            { marks: [anchor, 7, anchor, 7] },
+        ));
+        assert.equal(result.status, 200);
         assert.equal((await read("/document")).entry?.channels.body?.content, "adefbc");
     } finally {
         await db.close();

@@ -7,7 +7,7 @@
 // Format and omission rules are owned by {§packet-markdown}. Section producers
 // supply names and typed content; this projection preserves their ordered evidence.
 
-import { Validator, type LineMarker, type ProblemDetails, type RangeExtent, type TextRegion } from "@plurnk/plurnk-contracts";
+import { Validator, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
 import { renderTarget } from "./plurnk-uri.ts";
 import type { GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
@@ -184,12 +184,9 @@ export default class PacketWire {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
         if (log.length === 0) return "";
         const items = PacketWire.#renderLogEntries(log, countTokens);
-        // The opening fence is DYNAMIC — one backtick longer than the longest run in the rendered
-        // entries — so a code sample inside a body can never close the block early (CommonMark closes
-        // a fence only on a line of ≥ its own length). {§jsonplurnk-dynamic-fence}
-        const longestTicks = Math.max(0, ...[...items.matchAll(/`+/g)].map((m) => m[0].length));
-        const fence = "`".repeat(Math.max(3, longestTicks + 1));
-        return `${fence}jsonplurnk\n[\n${items}\n]\n${fence}`;
+        // Every source line is coordinate-prefixed, so source backticks never occupy the
+        // CommonMark closing-fence position. The fixed opener keeps the packet prefix cache-stable.
+        return `\`\`\`jsonplurnk\n[\n${items}\n]\n\`\`\``;
     }
 
     // Read one section's content by name off a packet (Engine's or re-parsed).
@@ -591,11 +588,11 @@ export default class PacketWire {
                 : PacketWire.#renderActionTarget(target);
         if (address === null || address.length === 0) return null;
         if (marker === null || marker === undefined) return address;
-        const validation = Validator.validateLineMarker(marker);
+        const validation = Validator.validateTextLineMarker(marker);
         if (!validation.valid) {
-            throw new TypeError("A COPY/MOVE operand contains an invalid line marker.");
+            throw new TypeError("A COPY/MOVE operand contains an invalid text line marker.");
         }
-        return `${address}<${(marker as LineMarker).marks.join(",")}>`;
+        return `${address}<${(marker as TextLineMarker).marks.join(",")}>`;
     }
 
     static #renderGitState(git: GitStatus): string {

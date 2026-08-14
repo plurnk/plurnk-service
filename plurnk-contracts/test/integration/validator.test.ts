@@ -87,12 +87,12 @@ test("Validator: LineMarker rejects a non-number mark", () => {
     assert.equal(valid, false);
 });
 
-test("Validator: EditLineMarker accepts a five-character Base62 anchor", () => {
-    const { valid, errors } = Validator.validateEditLineMarker({ marks: ["@aZ09b"] });
+test("Validator: TextLineMarker accepts a five-character Base62 anchor", () => {
+    const { valid, errors } = Validator.validateTextLineMarker({ marks: ["@aZ09b"] });
     assert.equal(valid, true, JSON.stringify(errors));
 });
 
-test("Validator: ordinary LineMarker rejects an EDIT-only anchor", () => {
+test("Validator: ordinary LineMarker rejects a text-coordinate anchor", () => {
     const { valid } = Validator.validateLineMarker({ marks: ["@aZ09b"] });
     assert.equal(valid, false);
 });

@@ -27,6 +27,12 @@
                 { "type": "null" }
             ]
         },
+        "TextLineMarkerOrNull": {
+            "oneOf": [
+                { "$ref": "https://schemas.plurnk.dev/v0/TextLineMarker.json" },
+                { "type": "null" }
+            ]
+        },
         "MatcherBodyOrNull": {
             "oneOf": [
                 { "$ref": "https://schemas.plurnk.dev/v0/MatcherBody.json" },
@@ -45,7 +51,7 @@
                 "suffix": { "type": "string" },
                 "signal": { "$ref": "#/$defs/TagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
+                "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
                 "body": { "$ref": "#/$defs/MatcherBodyOrNull" },
                 "position": { "$ref": "#/$defs/PositionRef" }
             }

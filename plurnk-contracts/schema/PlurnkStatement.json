@@ -62,9 +62,9 @@
                 { "type": "null" }
             ]
         },
-        "EditLineMarkerOrNull": {
+        "TextLineMarkerOrNull": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.dev/v0/EditLineMarker.json" },
+                { "$ref": "https://schemas.plurnk.dev/v0/TextLineMarker.json" },
                 { "type": "null" }
             ]
         },
@@ -112,7 +112,7 @@
                 "suffix": { "type": "string" },
                 "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
+                "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
                 "body": { "type": "null" },
                 "position": { "$ref": "#/$defs/PositionRef" }
             }
@@ -154,7 +154,7 @@
                 "suffix": { "type": "string" },
                 "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/EditLineMarkerOrNull" },
+                "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
                 "body": { "type": ["string", "null"] },
                 "position": { "$ref": "#/$defs/PositionRef" }
             }
@@ -168,7 +168,7 @@
                 "suffix": { "type": "string" },
                 "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
+                "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
                 "body": { "$ref": "#/$defs/ResourceSelectionOrNull" },
                 "position": { "$ref": "#/$defs/PositionRef" }
             }
@@ -182,7 +182,7 @@
                 "suffix": { "type": "string" },
                 "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },
+                "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
                 "body": { "$ref": "#/$defs/ResourceSelectionOrNull" },
                 "position": { "$ref": "#/$defs/PositionRef" }
             }

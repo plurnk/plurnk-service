@@ -9,7 +9,6 @@ import type {
     ClientOp,
     ClientStatement,
     CopyStatement,
-    EditLineMarker,
     EditStatement,
     ExecStatement,
     FindStatement,
@@ -30,6 +29,7 @@ import type {
     ReadStatement,
     SendBody,
     SendStatement,
+    TextLineMarker,
     OpenStatement,
     UrlPath,
 } from "./types.ts";
@@ -80,7 +80,7 @@ declare module "xpath" {
 type Ctor<T> = new (...args: any[]) => T;
 
 type TagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: LineMarker | null };
-type EditTagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: EditLineMarker | null };
+type TextTagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: TextLineMarker | null };
 type CurationSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: null };
 type IntSlots = { signal: number | null; target: ParsedPath | null };
 type ExecSlots = { signal: string | null; target: ParsedPath | null; lineMarker: LineMarker | null };
@@ -88,6 +88,9 @@ type ExecSlots = { signal: string | null; target: ParsedPath | null; lineMarker:
 export default class AstBuilder {
     static #SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
     static #RESOURCE_SELECTION_TAIL = /(<-?\d+(?:\.\d+)?(?:(?:-|, ?)-?\d+(?:\.\d+)?)*>)(:*)$/;
+    static #ANCHORED_RESOURCE_SELECTION_TAIL = new RegExp(
+        String.raw`(<(?:-?\d+(?:\.\d+)?|@[0-9A-Za-z]{5})(?:, ?(?:-?\d+(?:\.\d+)?|@[0-9A-Za-z]{5}))*>)` + String.raw`(:*)$`,
+    );
     // Compile-only RFC 9535 admission using the runtime's JSONPath engine. {§matcher-prefix-claims}
     static #JSONPATH = new JSONPathEnvironment();
 
@@ -151,7 +154,7 @@ export default class AstBuilder {
     // and parse matcher bodies directly for their client-owned lifecycles.
     static #buildLook(ctx: LookStatementContext): LookStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        const slots = AstBuilder.#extractTextTagSlots(ctx.tagOpModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "LOOK",
@@ -177,7 +180,7 @@ export default class AstBuilder {
 
     static #buildRead(ctx: ReadStatementContext): FindStatement | ReadStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        const slots = AstBuilder.#extractTextTagSlots(ctx.tagOpModifiers(), position);
         AstBuilder.#assertAppliedTags(slots.signal, position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         const targetPath = slots.target?.kind === "url"
@@ -185,10 +188,19 @@ export default class AstBuilder {
             : slots.target?.raw;
         const hasMatcher = raw !== null && raw.trim() !== "";
         if (hasMatcher || (targetPath !== undefined && PathSyntax.hasGlob(targetPath))) {
+            if (slots.lineMarker?.marks.some((mark) => typeof mark === "string") === true) {
+                throw new PlurnkParseError(
+                    position.line,
+                    position.column,
+                    "visitor",
+                    "line anchors require an exact READ target; FIND result positions are numeric",
+                );
+            }
+            const findSlots = slots as TagSlots;
             return {
                 op: "FIND",
                 suffix: AstBuilder.#splitSuffix(ctx.OPEN_READ().getText(), "READ"),
-                ...slots,
+                ...findSlots,
                 body: hasMatcher ? AstBuilder.#parseMatcherBody(raw, position) : null,
                 position,
             };
@@ -248,7 +260,7 @@ export default class AstBuilder {
 
     static #buildEdit(ctx: EditStatementContext): EditStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractEditTagSlots(ctx.tagOpModifiers(), position);
+        const slots = AstBuilder.#extractTextTagSlots(ctx.tagOpModifiers(), position);
         AstBuilder.#assertAppliedTags(slots.signal, position);
         return {
             op: "EDIT",
@@ -261,7 +273,7 @@ export default class AstBuilder {
 
     static #buildCopy(ctx: CopyStatementContext): CopyStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        const slots = AstBuilder.#extractTextTagSlots(ctx.tagOpModifiers(), position);
         AstBuilder.#assertAppliedTags(slots.signal, position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
@@ -275,7 +287,7 @@ export default class AstBuilder {
 
     static #buildMove(ctx: MoveStatementContext): MoveStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
+        const slots = AstBuilder.#extractTextTagSlots(ctx.tagOpModifiers(), position);
         AstBuilder.#assertAppliedTags(slots.signal, position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
@@ -400,11 +412,11 @@ export default class AstBuilder {
         };
     }
 
-    static #extractEditTagSlots(modCtx: TagOpModifiersContext | null, pos: Position): EditTagSlots {
+    static #extractTextTagSlots(modCtx: TagOpModifiersContext | null, pos: Position): TextTagSlots {
         return {
             signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
-            lineMarker: AstBuilder.#editLineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
+            lineMarker: AstBuilder.#textLineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
         };
     }
 
@@ -505,9 +517,13 @@ export default class AstBuilder {
         return AstBuilder.#parseLineMarker(text);
     }
 
-    static #editLineMarkerFromCtx(ctx: LineMarkerContext | null): EditLineMarker | null {
+    static #textLineMarkerFromCtx(ctx: LineMarkerContext | null): TextLineMarker | null {
         if (ctx === null) return null;
         const text = ctx.L_MARKER()?.getText() ?? "";
+        return AstBuilder.#parseTextLineMarker(text);
+    }
+
+    static #parseTextLineMarker(text: string): TextLineMarker {
         if (!text.includes("@")) return AstBuilder.#parseLineMarker(text);
         const marks = text.slice(1, -1).split(/, ?/).map((component) =>
             component.startsWith("@") ? component : Number.parseFloat(component));
@@ -576,7 +592,8 @@ export default class AstBuilder {
         pos: Position = { line: 0, column: 0 },
     ): ResourceSelection | null {
         if (raw.length === 0) return null;
-        const markerMatch = AstBuilder.#RESOURCE_SELECTION_TAIL.exec(raw);
+        const markerMatch = AstBuilder.#ANCHORED_RESOURCE_SELECTION_TAIL.exec(raw)
+            ?? AstBuilder.#RESOURCE_SELECTION_TAIL.exec(raw);
         const markerText = markerMatch?.[1] ?? null;
         if ((markerMatch?.[2].length ?? 0) > 0) {
             throw new PlurnkParseError(
@@ -591,7 +608,7 @@ export default class AstBuilder {
         if (target === null) return null;
         return {
             target,
-            lineMarker: markerText === null ? null : AstBuilder.#parseLineMarker(markerText),
+            lineMarker: markerText === null ? null : AstBuilder.#parseTextLineMarker(markerText),
         };
     }
 

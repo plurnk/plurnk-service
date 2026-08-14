@@ -4,7 +4,7 @@
 import type {
     ReadStatement, SendStatement, OpenStatement, FoldStatement,
     FindStatement, CopyStatement, MoveStatement, ExecStatement,
-    LocalPath, UrlPath, ParsedPath, MatcherBody, LineMarker,
+    LocalPath, UrlPath, ParsedPath, MatcherBody, LineMarker, TextLineMarker,
 } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 
@@ -26,7 +26,7 @@ export const editStmt = (target: ParsedPath | null, body: string | null = null, 
     position: { line: 1, column: 1 },
 });
 
-export const readStmt = (target: ParsedPath | null, lineMarker: LineMarker | null = null): ReadStatement => ({
+export const readStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null): ReadStatement => ({
     op: "READ", suffix: "", signal: null, target, lineMarker, body: null,
     position: { line: 1, column: 1 },
 });
@@ -56,8 +56,8 @@ export const copyStmt = (
     src: ParsedPath,
     dst: ParsedPath,
     tags: string[] | null = null,
-    sourceMarker: LineMarker | null = null,
-    destinationMarker: LineMarker | null = null,
+    sourceMarker: TextLineMarker | null = null,
+    destinationMarker: TextLineMarker | null = null,
 ): CopyStatement => ({
     op: "COPY", suffix: "", signal: tags, target: src, lineMarker: sourceMarker,
     body: { target: dst, lineMarker: destinationMarker },
@@ -68,8 +68,8 @@ export const moveStmt = (
     src: ParsedPath,
     dst: ParsedPath | null,
     tags: string[] | null = null,
-    sourceMarker: LineMarker | null = null,
-    destinationMarker: LineMarker | null = null,
+    sourceMarker: TextLineMarker | null = null,
+    destinationMarker: TextLineMarker | null = null,
 ): MoveStatement => ({
     op: "MOVE", suffix: "", signal: tags, target: src, lineMarker: sourceMarker,
     body: dst === null ? null : { target: dst, lineMarker: destinationMarker },

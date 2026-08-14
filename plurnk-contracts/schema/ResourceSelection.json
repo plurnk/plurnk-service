@@ -12,7 +12,7 @@
         },
         "lineMarker": {
             "oneOf": [
-                { "$ref": "https://schemas.plurnk.dev/v0/LineMarker.json" },
+                { "$ref": "https://schemas.plurnk.dev/v0/TextLineMarker.json" },
                 { "type": "null" }
             ]
         }

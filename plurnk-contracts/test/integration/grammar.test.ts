@@ -465,24 +465,33 @@ test("scope spellings normalize to ordered numeric marks", () => {
     }
 });
 
-test("EDIT alone admits rendered Base62 line anchors in line-coordinate positions", () => {
-    const single = oneStatement(section("EDIT", " (p) <@aZ09b>", "body"));
-    assert.equal(single.op, "EDIT");
-    assert.deepEqual(single.lineMarker, { marks: ["@aZ09b"] });
+test("text-coordinate operations admit Base62 anchors only in line positions", () => {
+    const cases = [
+        [section("READ", " (p) <@aZ09b>"), "READ", ["@aZ09b"]],
+        [section("EDIT", " (p) <@aZ09b,@0Aa9Z>", "body"), "EDIT", ["@aZ09b", "@0Aa9Z"]],
+        [section("COPY", " (p) <@aZ09b,5,@0Aa9Z,12>", "q"), "COPY", ["@aZ09b", 5, "@0Aa9Z", 12]],
+        [section("MOVE", " (p) <@aZ09b>", "q"), "MOVE", ["@aZ09b"]],
+    ] as const;
+    for (const [source, op, marks] of cases) {
+        const statement = oneStatement(source);
+        assert.equal(statement.op, op);
+        assert.deepEqual(statement.lineMarker, { marks: [...marks] });
+    }
 
-    const range = oneStatement(section("EDIT", " (p) <@aZ09b,@0Aa9Z>", "body"));
-    assert.deepEqual(range.lineMarker, { marks: ["@aZ09b", "@0Aa9Z"] });
+    const copyDestination = oneStatement(section("COPY", " (p)", "q<@aZ09b,@0Aa9Z>"));
+    assert.equal(copyDestination.op, "COPY");
+    assert.deepEqual(copyDestination.body?.lineMarker, { marks: ["@aZ09b", "@0Aa9Z"] });
 
-    const region = oneStatement(section("EDIT", " (p) <@aZ09b,5,@0Aa9Z,12>", "body"));
-    assert.deepEqual(region.lineMarker, { marks: ["@aZ09b", 5, "@0Aa9Z", 12] });
+    const moveDestination = oneStatement(section("MOVE", " (p)", "q<@aZ09b,5,@0Aa9Z,12>"));
+    assert.equal(moveDestination.op, "MOVE");
+    assert.deepEqual(moveDestination.body?.lineMarker, { marks: ["@aZ09b", 5, "@0Aa9Z", 12] });
 
     for (const input of [
-        section("READ", " (p) <@aZ09b>"),
         section("FIND", " (p) <@aZ09b>"),
         section("EXEC", " [node] <@aZ09b> (./)", "run"),
-        section("EDIT", " (p) <@aZ09>", "body"),
+        section("READ", " (p) <@aZ09>"),
         section("EDIT", " (p) <@aZ09bQ>", "body"),
-        section("EDIT", " (p) <@aZ-9b>", "body"),
+        section("COPY", " (p) <@aZ-9b>", "q"),
     ]) {
         assert.ok(errorsOf(input).length > 0, input);
     }

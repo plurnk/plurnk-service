@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { EditLineMarker, LineMarker } from "@plurnk/plurnk-contracts";
+import type { LineMarker, TextLineMarker } from "@plurnk/plurnk-contracts";
 import type { EditStatement } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
@@ -42,7 +42,7 @@ export default class LineAnchors {
         return LineAnchors.#PREFIXED_LINE.test(value);
     }
 
-    static hasAnchor(marker: EditLineMarker | null): boolean {
+    static hasAnchor(marker: TextLineMarker | null): marker is TextLineMarker {
         return marker?.marks.some((mark) => typeof mark === "string") ?? false;
     }
 
@@ -68,11 +68,11 @@ export default class LineAnchors {
     }
 
     static #contextLines(): number {
-        const raw = process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES;
+        const raw = process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES;
         const value = Number(raw);
         if (!Number.isSafeInteger(value) || value < 0) {
             throw new RangeError(
-                `PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES must be a non-negative safe integer, got ${JSON.stringify(raw)}`,
+                `PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES must be a non-negative safe integer, got ${JSON.stringify(raw)}`,
             );
         }
         return value;
@@ -169,7 +169,7 @@ export default class LineAnchors {
         }).join("");
     }
 
-    static resolve(anchors: readonly string[], marker: EditLineMarker): LineAnchorResolution {
+    static resolve(anchors: readonly string[], marker: TextLineMarker): LineAnchorResolution {
         const anchorIndexes = marker.marks.flatMap((mark, index) => typeof mark === "string" ? [index] : []);
         if (anchorIndexes.length === 0) {
             return { ok: true, marker: { marks: [...marker.marks] as [number, ...number[]] } };
@@ -215,5 +215,19 @@ export default class LineAnchors {
             ok: true,
             marker: { marks: resolved as [number, ...number[]] },
         };
+    }
+
+    static checks(authored: TextLineMarker, resolved: LineMarker): readonly LineAnchorCheck[] {
+        if (authored.marks.length !== resolved.marks.length) {
+            throw new TypeError("A resolved line marker must preserve its authored arity.");
+        }
+        return authored.marks.flatMap((mark, index) => {
+            if (typeof mark !== "string") return [];
+            const line = resolved.marks[index];
+            if (!LineAnchors.isAnchor(mark) || typeof line !== "number") {
+                throw new TypeError("A line anchor did not lower to a numeric line.");
+            }
+            return [{ anchor: mark, line }];
+        });
     }
 }

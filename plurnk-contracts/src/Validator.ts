@@ -1,7 +1,7 @@
 import { Validator as CfValidator, type OutputUnit, type Schema } from "@cfworker/json-schema";
 import positionSchema from "../schema/Position.json" with { type: "json" };
 import lineMarkerSchema from "../schema/LineMarker.json" with { type: "json" };
-import editLineMarkerSchema from "../schema/EditLineMarker.json" with { type: "json" };
+import textLineMarkerSchema from "../schema/TextLineMarker.json" with { type: "json" };
 import parsedPathSchema from "../schema/ParsedPath.json" with { type: "json" };
 import matcherBodySchema from "../schema/MatcherBody.json" with { type: "json" };
 import sendBodySchema from "../schema/SendBody.json" with { type: "json" };
@@ -35,7 +35,7 @@ export class InvalidClientDisplayCapabilitiesError extends TypeError {}
 export default class Validator {
     static #position = new CfValidator(positionSchema as Schema, "2020-12");
     static #lineMarker = new CfValidator(lineMarkerSchema as Schema, "2020-12");
-    static #editLineMarker = new CfValidator(editLineMarkerSchema as Schema, "2020-12");
+    static #textLineMarker = new CfValidator(textLineMarkerSchema as Schema, "2020-12");
     static #parsedPath = new CfValidator(parsedPathSchema as Schema, "2020-12");
     static #matcherBody = new CfValidator(matcherBodySchema as Schema, "2020-12");
     static #sendBody = new CfValidator(sendBodySchema as Schema, "2020-12");
@@ -44,7 +44,7 @@ export default class Validator {
         [
             positionSchema,
             lineMarkerSchema,
-            editLineMarkerSchema,
+            textLineMarkerSchema,
             parsedPathSchema,
             matcherBodySchema,
             sendBodySchema,
@@ -57,7 +57,7 @@ export default class Validator {
             plurnkStatementSchema,
             positionSchema,
             lineMarkerSchema,
-            editLineMarkerSchema,
+            textLineMarkerSchema,
             parsedPathSchema,
             matcherBodySchema,
             sendBodySchema,
@@ -98,8 +98,8 @@ export default class Validator {
         return Validator.#validate(Validator.#lineMarker, value);
     }
 
-    static validateEditLineMarker(value: unknown): ValidationResult {
-        return Validator.#validate(Validator.#editLineMarker, value);
+    static validateTextLineMarker(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#textLineMarker, value);
     }
 
     static validateParsedPath(value: unknown): ValidationResult {

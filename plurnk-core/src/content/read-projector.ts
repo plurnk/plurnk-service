@@ -1,4 +1,4 @@
-import type { ReadStatement } from "@plurnk/plurnk-contracts";
+import type { LineMarker, ReadStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type {
     EntryReadResult,
@@ -93,10 +93,60 @@ export default class ReadProjector {
             );
         }
 
+        let lineMarker: LineMarker | null;
+        if (LineAnchors.hasAnchor(statement.lineMarker)) {
+            if (manifest.textEditScopes !== true || !manifest.writableBy.includes("model")) {
+                return failure(
+                    "line-anchor-unsupported",
+                    400,
+                    `The representation at ${target} does not publish line anchors.`,
+                    {},
+                    {
+                        target,
+                        recovery: "Use numeric text coordinates.",
+                        retryable: false,
+                    },
+                );
+            }
+            const anchorResolution = LineAnchors.resolve(
+                LineAnchors.tokens(identity, selectedRepresentation.content),
+                statement.lineMarker,
+            );
+            if (!anchorResolution.ok) {
+                if (anchorResolution.failure.kind === "invalid") {
+                    return failure(
+                        "line-anchor-invalid",
+                        400,
+                        "A line anchor appeared outside a line-coordinate position.",
+                        {},
+                        {
+                            target,
+                            recovery: "Use anchors only for L, SL, or EL; columns remain numeric.",
+                            retryable: false,
+                        },
+                    );
+                }
+                return failure(
+                    "line-anchor-collision",
+                    409,
+                    `READ coordinates collided with current content at ${target}.`,
+                    {},
+                    {
+                        target,
+                        recovery: `READ ${target} again with numeric coordinates before reusing its anchors.`,
+                        retryable: true,
+                    },
+                );
+            }
+            lineMarker = anchorResolution.marker;
+        } else {
+            lineMarker = statement.lineMarker as LineMarker | null;
+        }
+
         const resolved = await ReadResolve.resolve({
             content: selectedRepresentation.content,
             mimetype: selectedRepresentation.mimetype,
-            lineMarker: statement.lineMarker,
+            lineMarker,
         });
         if (resolved.status >= 400) {
             if (resolved.problem !== undefined) {

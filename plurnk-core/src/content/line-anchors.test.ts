@@ -20,22 +20,22 @@ test("LineAnchors: tokens are deterministic Base62 handles over identity, ordina
 });
 
 test("LineAnchors: context tuning is hash-domain state and fails hard when missing or malformed", () => {
-    const prior = process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES;
+    const prior = process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES;
     try {
-        process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES = "2";
+        process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES = "2";
         const radiusTwo = LineAnchors.token(identity, 1, "alpha");
-        process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES = "3";
+        process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES = "3";
         assert.notEqual(LineAnchors.token(identity, 1, "alpha"), radiusTwo);
 
-        delete process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES;
-        assert.throws(() => LineAnchors.token(identity, 1, "alpha"), /EDIT_ANCHOR_CONTEXT_LINES/);
+        delete process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES;
+        assert.throws(() => LineAnchors.token(identity, 1, "alpha"), /LINE_ANCHOR_CONTEXT_LINES/);
         for (const malformed of ["-1", "1.5", "not-a-number"]) {
-            process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES = malformed;
-            assert.throws(() => LineAnchors.token(identity, 1, "alpha"), /EDIT_ANCHOR_CONTEXT_LINES/);
+            process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES = malformed;
+            assert.throws(() => LineAnchors.token(identity, 1, "alpha"), /LINE_ANCHOR_CONTEXT_LINES/);
         }
     } finally {
-        if (prior === undefined) delete process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES;
-        else process.env.PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES = prior;
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES;
+        else process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES = prior;
     }
 });
 

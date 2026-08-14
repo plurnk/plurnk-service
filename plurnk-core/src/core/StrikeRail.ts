@@ -1,4 +1,4 @@
-import type { PlurnkStatement, LineMarker } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement, TextLineMarker } from "@plurnk/plurnk-contracts";
 import { renderTarget } from "./plurnk-uri.ts";
 
 // Operation outcome statuses that do not accumulate strikes. Exploratory misses are
@@ -38,7 +38,7 @@ const fingerprintOp = (stmt: PlurnkStatement): string => {
         if (body !== null && typeof body === "object" && typeof body.raw === "string") {
             parts.push(`body:${body.raw.slice(0, 64)}`);
         }
-        const lm = (stmt as { lineMarker?: LineMarker | null }).lineMarker;
+        const lm = (stmt as { lineMarker?: TextLineMarker | null }).lineMarker;
         if (lm !== null && lm !== undefined) parts.push(`L:${lm.marks.join(",")}`);
         return parts.length > 0 ? `|${parts.join("|")}` : "";
     };

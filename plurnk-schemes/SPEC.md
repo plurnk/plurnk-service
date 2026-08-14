@@ -41,7 +41,7 @@ class Notes {
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
 | `folderScopes?` | `true` declares that a trailing slash on FIND is a collection scope. Absent/false means `/` is ordinary resource syntax. |
-| `textEditScopes?` | `true` declares the shared textual EDIT coordinate and collision contract. For model-writable schemes, core's universal READ projector owns line-anchor derivation and resolution; handlers receive only numeric coordinates and route standard entry mutation through `ctx.entries.operations.editBatch`. Absent/false or no model write authority rejects model-facing anchored EDIT before handler invocation. |
+| `textEditScopes?` | `true` declares the shared textual EDIT coordinate and collision contract. For model-writable schemes, core's universal READ projector publishes line anchors and core resolves them for every anchor-bearing text selection; handlers receive only numeric coordinates and route standard entry mutation through `ctx.entries.operations.editBatch`. Absent/false or no model write authority rejects model-facing anchors before handler invocation. |
 | `flags?` | Optional exact `SchemeFlagAffinity`; see {§manifest-flag-affinity}. |
 | `example?` | The scheme's concise **hot-path** operation example set (e.g. `"## READ0 (foo://thing/42)"`) — renders in the live resource catalogue every turn. One or more complete operations may be separated by blank lines; keep semantics in `documentation`. Omit → not advertised. |
 | `documentation?` | The **deep doc** (semantics / channels / edge cases). Consumer materializes it as a pull-able `worker://plurnk/docs/<name>.md` entry READ on demand; never hits the hot path. Mirrors `ExecInfo.documentation`. |
@@ -109,7 +109,7 @@ export interface SchemeHandler {
 
 §resolved-edit-statement `ResolvedEditStatement` is the scheme-facing EDIT
 shape: its `lineMarker` is `LineMarker | null` and therefore contains numbers
-only. Core resolves the model-facing {§edit-line-anchor-syntax} before invoking
+only. Core resolves the model-facing {§text-line-anchor-syntax} before invoking
 `SchemeHandler.editBatch` or `EntryOperationCaps.editBatch`; an unresolved
 anchor crossing that boundary is an internal contract violation. The barrel's
 compatibility export named `EditStatement` aliases this resolved shape, so

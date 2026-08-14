@@ -1233,9 +1233,37 @@ Model uses state to anticipate growth between turns. Clients use state for UI (s
 
 Per-op semantics. AST shapes come from `@plurnk/plurnk-contracts`'s `PlurnkStatement`. Engine dispatches by `op`; scheme implements per author contract ({§scheme}).
 
+### §line-anchors Text line anchors
+
+A scheme declaring `textEditScopes: true` with model write authority publishes
+the contracts-owned {§text-line-anchor-syntax}. For canonical model-facing
+resource identity `R`, one-based line ordinal `L`, configured non-negative
+neighbor count `C`, and ordered content array `W` containing that line and up to
+`C` complete lines on either side (all excluding separators), core hashes the
+JSON tuple `["plurnk-line-anchor-v1",R,L,C,W]` with SHA-256, interprets the
+digest as a big-endian integer modulo `62^5`, and encodes five fixed-width
+characters with alphabet `0-9A-Za-z`. The universal READ projector derives
+anchors from the complete canonical selected channel before applying the
+authored text slice; its durable result retains the canonical derivation
+identity and anchors aligned with returned lines, while packet rendering emits
+only `@xxxxx:L:C`.
+An explicit default-channel fragment and its fragmentless spelling share that
+identity; a selected non-default channel retains its canonical `#channel`.
+
+For READ/LOOK and COPY/MOVE source or destination selection, core resolves every
+anchor against the addressed current complete content before applying the
+ordinary numeric text-coordinate contract. Exactly one current match lowers to
+its numeric line; zero or multiple matches return 409 `line-anchor-collision`,
+and an anchor in a column position returns 400. COPY/MOVE mutation owners retain
+the resolved endpoint neighborhoods as compare-and-swap preconditions. There is
+no revision sidecar or fuzzy relocation. A range authenticates both endpoint
+neighborhoods, so every line of a range up to `2C + 2` lines is covered; a
+longer range retains an unauthenticated interior gap. The shipped `C = 2`
+covers ranges through six lines.
+
 ### §edit EDIT
 
-AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker?: EditLineMarker }`.
+AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker?: TextLineMarker }`.
 
 - Resolves target channel from fragment ({§channel-selection}); unknown channel → 400; undeclared in manifest → engine crash ({§channel-mimetype}).
 - §edit-null-clears Writes the body; `body: null` clears it.
@@ -1243,31 +1271,14 @@ AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker
   `{ status: 200, entryId }` for a content update.
 - §edit-noop-304 A write that changes nothing — identical content — returns `{ status: 304, entryId }`, mirroring OPEN/FOLD's idempotence ({§open-fold}). The operation's log classification remains independent ({§log-item-tags}).
 - §edit-marker-required-on-existing **A markerless EDIT is CREATE-ONLY — there is no easy-clobber path on an existing entry.** A `<L>` marker scopes an EDIT to a range; without one, the body becomes the entry's WHOLE content — legitimate and required for a fresh entry (nothing exists to scope into), but on an EXISTING entry a missing marker is refused **400**, never a silent full replace. A deliberate full rewrite states that intent explicitly: `<1,-1>` resolves through the ordinary marker math to the same whole-content replacement, so the capability is available but cannot be selected by omission.
-- §edit-line-anchors A scheme declaring `textEditScopes: true` with model write
-  authority admits the contracts-owned {§edit-line-anchor-syntax} as a
-  current-line precondition.
-  For canonical model-facing resource identity `R`, one-based line ordinal `L`,
-  configured non-negative neighbor count `C`, and ordered content array `W`
-  containing that line and up to `C` complete lines on either side (all
-  excluding separators), core hashes the JSON tuple
-  `["plurnk-line-anchor-v1",R,L,C,W]` with SHA-256, interprets the digest as a
-  big-endian integer modulo `62^5`, and encodes five fixed-width characters with
-  alphabet `0-9A-Za-z`. The universal READ projector derives anchors from the
-  complete canonical selected channel before applying the authored text slice;
-  its durable result retains that canonical derivation identity and the anchors
-  aligned with returned lines, while packet rendering serializes only
-  `@xxxxx:L:C`. An anchored EDIT reads the
-  current complete target through that same projector without creating another
-  log row. Exactly one current match lowers to an ordinary numeric coordinate
-  before scheme dispatch and rides a core-private endpoint precondition to the
-  mutation owner; otherwise-valid zero/multiple matches and later precondition
-  misses share {§edit-collision}. Malformed positions and schemes without
-  textual EDIT scopes return 400 without invoking the scheme; an upstream
-  current-read failure preserves its status. No revision sidecar or fuzzy
-  relocation exists. A range authenticates both endpoint neighborhoods, so
-  every line of a range up to `2C + 2` lines is covered; a longer range retains
-  an unauthenticated interior gap. The shipped `C = 2` covers ranges through six
-  lines.
+- §edit-line-anchors An anchored EDIT resolves under {§line-anchors} and carries
+  its endpoint checks as a core-private mutation precondition. Otherwise-valid
+  zero/multiple matches and later precondition misses share {§edit-collision};
+  malformed positions and schemes without textual EDIT scopes return 400 before
+  handler invocation, while an upstream current-read failure preserves its
+  status. The model-facing teaching recommends anchors for EDIT because this
+  rejection is deliberate stale-target protection; parser support for anchors
+  on observations does not imply the same recommendation.
 - §edit-collision Every standard entry EDIT lands by compare-and-swap against
   the exact channel content used to calculate it, including numeric-only EDITs.
   A concurrent creator that wins the resource identity or channel, an anchor
@@ -1298,7 +1309,8 @@ selection or fan-out path.
   exact target under {§read-exact-target}. Markerless READ synthesizes
   `<1,16>`; `<1,-1>` explicitly selects all text. Successful positional reads
   carry the compact requested/returned extent and available total
-  ({§range-extent}). An invalid text region is 416.
+  ({§range-extent}). Anchors resolve under {§line-anchors} before selection. An
+  invalid text region is 416.
 
 §log-item-tags **Tags classify durable log items.** Under {§log-tag-signal}, FIND, READ, EDIT, COPY,
 and MOVE strip any leading `+` from every signal term and add the resulting tag
@@ -1324,9 +1336,7 @@ OPEN/FOLD operate on the **log** (`log:///`) - the model's context-curation surf
 
 ### §jsonplurnk The Log's wire format
 
-The `## Log` section renders as a fenced `jsonplurnk` block - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw multiline string. Its opening JSON quote is followed by a physical newline, every content line begins with a numeric `N:` or anchored `@hash:N:` coordinate prefix, and its closing quote appears at column zero immediately before the object close. Source quotes, braces, fences, and headings cannot collide with that boundary because source text never occupies column zero after projection. The carve-out is localized to `body`, so the strip-parser recognizes `"body":"` followed by a newline, consumes one or more coordinate-prefixed lines, and replaces the raw multiline value with an escaped JSON string to recover strict JSON. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":"\n<coordinate>...\n"` with it shown. `path` is the complete model-facing log identity: when a projected operation exists it ends in `/OP`, and no separate `op` field duplicates it. Nonempty `tags` is the row's complete deduplicated, sorted folksonomy; an untagged row omits it. A bounded projection also carries `"overflow":"Body content truncated. Full body: <log path>"`, naming the row's exact canonical body without prescribing an unbounded retrieval. The block is data only - no prose leads the fence. `tokens` is the ruler-weight of the row's ordinary packet body: the room OPEN adds and FOLD saves. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page has a different weight. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/coordinate-prefixed bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
-
-§jsonplurnk-dynamic-fence The opening fence length is **dynamic**: one backtick longer than the longest backtick run in the rendered entries (floor 3). A body can carry arbitrary content — a READ of a doc whose own text opens a column-0 triple-backtick fence before packet numbering — which a fixed opener would let close the block early; a dynamic opener can never be closed by its own body content (CommonMark closes a fence only on a line of at least its own length).
+The `## Log` section renders as a fixed three-backtick `jsonplurnk` fence - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw multiline string. Its opening JSON quote is followed by a physical newline, every content line begins with a numeric `N:` or anchored `@hash:N:` coordinate prefix, and its closing quote appears at column zero immediately before the object close. Source quotes, braces, fences, and headings cannot collide with either boundary because source text never occupies column zero after projection; source backticks therefore cannot form a CommonMark closing fence. The fixed opener keeps the packet prefix stable across content changes. The carve-out is localized to `body`, so the strip-parser recognizes `"body":"` followed by a newline, consumes one or more coordinate-prefixed lines, and replaces the raw multiline value with an escaped JSON string to recover strict JSON. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":"\n<coordinate>...\n"` with it shown. `path` is the complete model-facing log identity: when a projected operation exists it ends in `/OP`, and no separate `op` field duplicates it. Nonempty `tags` is the row's complete deduplicated, sorted folksonomy; an untagged row omits it. A bounded projection also carries `"overflow":"Body content truncated. Full body: <log path>"`, naming the row's exact canonical body without prescribing an unbounded retrieval. The block is data only - no prose leads the fence. `tokens` is the ruler-weight of the row's ordinary packet body: the room OPEN adds and FOLD saves. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page has a different weight. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/coordinate-prefixed bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
 
 ### §retrieval-packet-metadata READ/FIND packet metadata
 
@@ -1388,9 +1398,12 @@ body: ResourceSelection (destination), signal: tags | null }`.
 
 1. §copy-missing-source-404 Resolve source path, channel, and optional text scope; missing resource or
    channel is 404. A binary marker is not a byte channel and returns 415;
-   readable projections are ordinary text sources under {§membership-source-projection}.
+   readable projections are ordinary text sources under
+   {§membership-source-projection}. Source anchors resolve under
+   {§line-anchors}.
 2. Resolve destination path, channel, and optional text scope. Source and
-   destination mimetypes must agree or the result is 415.
+   destination mimetypes must agree or the result is 415. Destination anchors
+   resolve independently under {§line-anchors}.
 3. A scoped destination must already exist and is mutated through the
    destination scheme's `editBatch`.
 4. An unscoped destination writes only its selected channel. Existing other
@@ -1418,7 +1431,8 @@ body: ResourceSelection (destination), signal: tags | null }`.
   channel. Every other source scope remains regional even when it currently
   covers all available text; resource deletion is never inferred from extent.
 - A same-channel regional MOVE applies destination insertion and source
-  deletion in one same-snapshot `editBatch`; overlapping regions are 409.
+  deletion in one same-snapshot `editBatch`; source and destination anchor
+  preconditions compose against that snapshot, and overlapping regions are 409.
 - A cross-resource destination failure leaves the source untouched. A source
   failure after destination success is an explicit partial failure with
   `destinationWritten: true`. Proposal acceptance/rejection follows the same
@@ -1986,7 +2000,7 @@ Model selection: separate alias cascade in `ProviderRegistry` ({§provider-insta
 | `PLURNK_SERVICE_EMISSION_ATTEMPTS`                          | `3` | Completed provider responses allowed beneath one engine turn before an untrustworthy model-turn frame exhausts admission. Bounded interior operation errors are admitted and do not spend this budget. Consecutive exhaustion after the one informed recovery turn terminates independently of strikes. |
 | `PLURNK_SERVICE_PREVIEW_LINES`                              | `16` | Maximum lines in an ordinary bounded log-body projection ({§body-projection}). |
 | `PLURNK_SERVICE_PREVIEW_CHARS`                              | `2560` | Maximum characters in an ordinary bounded log-body projection; independently contains single-line bodies ({§body-projection}). |
-| `PLURNK_SERVICE_EDIT_ANCHOR_CONTEXT_LINES`                  | `2` | Complete neighboring lines hashed on each side of a model-facing EDIT line anchor ({§edit-line-anchors}). |
+| `PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES`                  | `2` | Complete neighboring lines hashed on each side of a model-facing line anchor ({§line-anchors}). |
 | `PLURNK_SERVICE_MIN_CYCLES`                                 | `3` | Min repetitions before cycle detection fires ({§engine-rails}). |
 | `PLURNK_SERVICE_MAX_CYCLE_PERIOD`                           | `4` | Max period length cycle detection examines ({§engine-rails}). |
 | `PLURNK_SERVICE_REQUIEM_MAX_TOKENS`                         | `16384` | Initial forensic witness output allowance ({§digest-requiem}). |
@@ -2242,7 +2256,8 @@ spelling and grammar parsing. It rewrites a valid LOOK statement to READ and
 hands the AST to core's `look`; core owns the full resolver and the no-log
 invariant. The internal closed, rowless observation segment supplies an honest
 numeric loop coordinate for relative `log:///` addressing without leaving
-active lifecycle behind.
+active lifecycle behind. LOOK text anchors resolve through the same
+{§line-anchors} path as READ.
 
 ### §notifications Core events
 
@@ -3170,7 +3185,7 @@ projection, and binary handling. Text scope meaning does not vary by mimetype.
 `startLine` renders with a coordinate prefix on each physical line, independent
 of mimetype. A successful exact READ whose active scheme declares
 `textEditScopes: true` and model write authority supplies `@hash:N:` under
-{§edit-line-anchors}; every other body renders `N:`. JSON, XML, and HTML are therefore just as
+{§line-anchors}; every other body renders `N:`. JSON, XML, and HTML are therefore just as
 line-addressable as markdown and source code. The prefix is a packet
 presentation aid, never part of canonical content; matchers and mutations
 consume canonical bytes before rendering. A producer may set `startLine: null`

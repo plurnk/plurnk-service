@@ -266,6 +266,35 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
     assert.match(unchanged, /"display":"none"/);
 });
 
+test("COPY/MOVE retain authored line anchors in durable operand selections", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/2/10",
+        origin: "model",
+        op: "COPY",
+        status: 200,
+        target: { scheme: "worker", pathname: "/source" },
+        tx: {
+            target: { scheme: "worker", pathname: "/source" },
+            lineMarker: { marks: ["@aZ09b", "@0Aa9Z"] },
+            body: {
+                target: { scheme: "worker", pathname: "/destination" },
+                lineMarker: { marks: ["@10Zyx", 4, "@zY01A", 4] },
+            },
+        },
+        rx: {
+            status: 200,
+            effects: [{
+                target: "worker:///destination",
+                action: "update",
+                receipt: receipt("1:copied content"),
+            }],
+        },
+    }], tok);
+
+    assert.match(out, /"source":"worker:\/\/\/source<@aZ09b,@0Aa9Z>"/);
+    assert.match(out, /"destination":"worker:\/\/\/destination<@10Zyx,4,@zY01A,4>"/);
+});
+
 test("a reviewer-rewritten same-resource MOVE renders one replacement effect and both operands (#172)", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/9",
@@ -973,16 +1002,15 @@ test("the Log renders as a fenced jsonplurnk array that strips to valid JSON —
     assert.equal(arr[2].body, "", "the open row's raw multiline value — the one deviation — strips to a string, recovering valid JSON");
 });
 
-test("the opening fence outgrows any backtick run a body carries — a code sample can't close the block", () => {
-    // A body whose own text opens a triple-backtick fence (a READ of a doc with a code sample). The
-    // jsonplurnk opener must be LONGER, so the body can never close the block early.
+test("the fixed jsonplurnk fence is cache-stable because body coordinates prevent a closing fence", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: "READ", status: 200,
         target: { scheme: null, pathname: "/doc.md" },
-        rx: { content: "```js\nx();\n```", mimetype: "text/markdown", startLine: 1 },
+        rx: { content: "``````js\nx();\n``````", mimetype: "text/markdown", startLine: 1 },
     }], tok);
-    const opener = /(`{3,})jsonplurnk/.exec(out)?.[1] ?? "";
-    assert.ok(opener.length >= 4, `fence opens with ${opener.length} backticks — longer than the body's 3-run, so the body cannot close it`);
+    assert.match(out, /^```jsonplurnk\n/);
+    assert.match(out, /1:``````js/);
+    assert.equal(out.endsWith("\n```"), true);
 });
 
 test("every READ/FIND body bypasses the ordinary preview", () => {

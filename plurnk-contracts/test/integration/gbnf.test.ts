@@ -308,7 +308,7 @@ test("GBNF matcher bodies are one line while content bodies may be multiline", (
     assert.equal(derivesTurn(turn("p", [], 200, "multi\nline")), true);
 });
 
-test("GBNF permits Base62 line anchors only on EDIT", () => {
+test("GBNF permits Base62 line anchors on text-coordinate operation scopes", () => {
     assert.equal(
         derivesTurn(turn("p", [mid("EDIT", " (worker:///x) <@aZ09b>", "replacement")], 102, "done")),
         true,
@@ -319,6 +319,18 @@ test("GBNF permits Base62 line anchors only on EDIT", () => {
     );
     assert.equal(
         derivesTurn(turn("p", [mid("READ", " (worker:///x) <@aZ09b>")], 102, "done")),
+        true,
+    );
+    assert.equal(
+        derivesTurn(turn("p", [mid("COPY", " (worker:///x) <@aZ09b>", "worker:///y")], 102, "done")),
+        true,
+    );
+    assert.equal(
+        derivesTurn(turn("p", [mid("MOVE", " (worker:///x) <@aZ09b>", "worker:///y")], 102, "done")),
+        true,
+    );
+    assert.equal(
+        derivesTurn(turn("p", [mid("FIND", " (worker:///*) <@aZ09b>")], 102, "done")),
         false,
     );
 });

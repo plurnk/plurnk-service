@@ -145,10 +145,10 @@ export const buildModel = (): GModel => {
 
     requiredBodySection(model, "plan", [lit("# PLAN0")]);
     optionalBodySection(model, "find", taggedTargetScope("FIND"), "pattern-body");
-    optionalBodySection(model, "read", taggedTargetScope("READ"), "pattern-body");
-    optionalBodySection(model, "edit", taggedTargetScope("EDIT", "edit-line-slot"), "section-body");
-    requiredBodySection(model, "copy", taggedTargetScope("COPY"));
-    requiredBodySection(model, "move", taggedTargetScope("MOVE"));
+    optionalBodySection(model, "read", taggedTargetScope("READ", "text-line-slot"), "pattern-body");
+    optionalBodySection(model, "edit", taggedTargetScope("EDIT", "text-line-slot"), "section-body");
+    requiredBodySection(model, "copy", taggedTargetScope("COPY", "text-line-slot"));
+    requiredBodySection(model, "move", taggedTargetScope("MOVE", "text-line-slot"));
     optionalBodySection(model, "open", [lit("## OPEN0"), ref("log-selection")], "pattern-body");
     optionalBodySection(model, "fold", [lit("## FOLD0"), ref("log-selection")], "pattern-body");
     optionalBodySection(model, "exec", [
@@ -223,7 +223,7 @@ export const buildModel = (): GModel => {
     model.set("log-target-slot", [[lit(" (log:"), plus(ref("target-atom")), lit(")")]]);
     model.set("target-slot", [[lit(" "), ref("target")]]);
     model.set("line-slot", [[lit(" "), ref("line")]]);
-    model.set("edit-line-slot", [[lit(" "), ref("edit-line")]]);
+    model.set("text-line-slot", [[lit(" "), ref("text-line")]]);
     model.set("exec-slot", [[lit(" "), ref("exec-sig")]]);
     model.set("branch-slot", [[lit(" "), ref("branch")]]);
     model.set("kill-slot", [[lit(" "), ref("kill-sig")]]);
@@ -261,9 +261,9 @@ export const buildModel = (): GModel => {
     model.set("target-escape", [[lit("\\\\")], [lit("\\(")], [lit("\\)")]]);
     model.set("line", [[lit("<"), ref("int"), star(ref("line-rest")), lit(">")]]);
     model.set("line-rest", [[lit(","), ref("int")]]);
-    model.set("edit-line", [[lit("<"), ref("edit-coordinate"), star(ref("edit-line-rest")), lit(">")]]);
-    model.set("edit-line-rest", [[lit(","), ref("edit-coordinate")]]);
-    model.set("edit-coordinate", [[ref("int")], [ref("line-anchor")]]);
+    model.set("text-line", [[lit("<"), ref("text-coordinate"), star(ref("text-line-rest")), lit(">")]]);
+    model.set("text-line-rest", [[lit(","), ref("text-coordinate")]]);
+    model.set("text-coordinate", [[ref("int")], [ref("line-anchor")]]);
     model.set("line-anchor", [[lit("@"), BASE62, BASE62, BASE62, BASE62, BASE62]]);
     model.set("int", [[opt(lit("-")), plus(DIGIT), opt(ref("frac"))]]);
     model.set("frac", [[lit("."), plus(DIGIT)]]);
