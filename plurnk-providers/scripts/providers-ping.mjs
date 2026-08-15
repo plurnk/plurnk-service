@@ -18,8 +18,8 @@ import {
 const PING_INPUT_WEIGHT = 16;
 const PING_MAX_TOKENS = 16;
 const PING_TIMEOUT_MS = 120_000;
-const CREDENTIAL_NAME = /(?:API_KEY|TOKEN|SECRET|ACCESS_KEY_ID|PASSWORD|CREDENTIAL)/;
-const SENSITIVE_NAME = /(?:API_KEY|TOKEN|SECRET|ACCESS_KEY|PASSWORD|CREDENTIAL|ACCOUNT|PROJECT_ID|TENANT|ORGANIZATION|BASE_URL)/;
+const CREDENTIAL_NAME = /(?:^|_)(?:API_KEY|TOKEN|SECRET|ACCESS_KEY|PASSWORD|CREDENTIAL)(?:_|$)/;
+const SENSITIVE_NAME = /(?:^|_)(?:API_KEY|TOKEN|SECRET|ACCESS_KEY|PASSWORD|CREDENTIAL|ACCOUNT|PROJECT_ID|TENANT|ORGANIZATION|BASE_URL)(?:_|$)/;
 
 const envPrefix = (provider) => provider.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase();
 
@@ -144,7 +144,7 @@ export const redactText = (value, sensitiveValues) => {
         .replaceAll(/([?&][^=\s&#]+)=([^&#\s]*)/g, "$1=__redacted__");
 };
 
-const sensitiveValuesFromEnv = (env) => {
+export const sensitiveValuesFromEnv = (env) => {
     const names = new Set(Object.keys(env).filter((name) => SENSITIVE_NAME.test(name)));
     for (const provider of Object.values(providerCatalogSnapshot())) {
         for (const name of provider.env) names.add(name);

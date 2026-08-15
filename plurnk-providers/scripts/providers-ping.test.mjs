@@ -10,6 +10,7 @@ import {
     pingRequest,
     planProviderPings,
     redactText,
+    sensitiveValuesFromEnv,
     responseShape,
     writePingRecord,
 } from "./providers-ping.mjs";
@@ -99,6 +100,19 @@ test("#224: retained diagnostics redact credentials, account identity, and URL a
         assert.equal(redacted.includes(forbidden), false, forbidden);
     }
     assert.match(redacted, /__redacted__/);
+});
+
+test("#242: secret discovery does not mistake token-limit controls for credentials", () => {
+    const env = {
+        PLURNK_SERVICE_REQUIEM_MAX_TOKENS: "16384",
+        OPENAI_API_KEY: "credential-value",
+        CLOUDFLARE_ACCOUNT_ID: "account-value",
+    };
+
+    assert.deepEqual(sensitiveValuesFromEnv(env).toSorted(), [
+        "account-value",
+        "credential-value",
+    ]);
 });
 
 test("#224: each attempted provider leaves one safe JSON record", async () => {
