@@ -1031,13 +1031,13 @@ test("PLAN/READ/FIND bodies bypass the ordinary preview", () => {
     assert.match(planOut, /line 30 of a runaway/, "the model receives its complete PLAN working memory");
     assert.doesNotMatch(planOut, /"chunk"/, "a PLAN never carries an ordinary preview cut");
 
-    // Mutation receipts are generated results, not deliberate retrievals.
+    // System-narrated environment spans have no intrinsic receipt bound.
     const numberedSpan = Array.from({ length: 30 }, (_, i) => `${i + 1}:span line ${i + 1}`).join("\n");
     const editOut = PacketWire.renderLog([
         { coordinate: "1/1/2", origin: "model", op: "EDIT", status: 200, target: { scheme: "worker", pathname: "/x" }, rx: { span: numberedSpan } },
     ], tok);
-    assert.doesNotMatch(editOut, /span line 30/, "an EDIT receipt cannot bypass the preview");
-    assert.match(editOut, /"body":"[\s\S]*","chunk":"READing <1,16> of <1,30>"}/, "the EDIT preview states its displayed and complete line extents after its body");
+    assert.doesNotMatch(editOut, /span line 30/, "an environment-delta EDIT span cannot bypass the preview");
+    assert.match(editOut, /"body":"[\s\S]*","chunk":"showing <1,16> of <1,30>"}/, "the system-narrated EDIT preview states its displayed and complete line extents after its body");
 
     // READ and FIND deliver RETRIEVED content — full, even when long (the exemption).
     const readOut = PacketWire.renderLog([
@@ -1069,6 +1069,45 @@ test("every ordinary bounded body producer uses the same addressable preview", (
         { op: "FORK", origin: "model", target: null, tx: { body: long } },
         { op: "EXEC", origin: "model", target: { scheme: "sh", pathname: "/1/1/1" }, tx: { body: long } },
         { op: "EDIT", origin: "model", target: { scheme: "worker", pathname: "/a" }, rx: { span: numbered } },
+        { op: "extension", origin: "plugin", target: { scheme: "custom", pathname: "/result" }, rx: { content: long, mimetype: "text/plain" } },
+    ];
+
+    entries.forEach((entry, index) => {
+        const coordinate = `1/2/${index + 1}`;
+        const rendered = PacketWire.renderLog([{ coordinate, status: 200, ...entry }], tok);
+        assert.doesNotMatch(rendered, /producer line 30/, `${entry.op} cannot bypass the preview`);
+        assert.ok(
+            rendered.includes(`"chunk":"showing <1,16> of <1,30>"`),
+            `${entry.op} exposes the same selected and complete line extents`,
+        );
+    });
+});
+
+test("structured mutation receipts bypass a second generic preview", () => {
+    const numbered = [
+        ...Array.from({ length: 10 }, (_, i) => i + 1),
+        ...Array.from({ length: 10 }, (_, i) => i + 21),
+    ].map((line) => `${line}:receipt line ${line}`).join("\n");
+    const baseReceipt = receipt(numbered, "<6>");
+    const editReceipt = {
+        ...baseReceipt,
+        before: 11,
+        after: 30,
+        effect: {
+            ...baseReceipt.effect,
+            source: "6",
+            result: "6-25",
+            removed: 1,
+            inserted: 20,
+        },
+    };
+    const entries = [
+        {
+            op: "EDIT",
+            origin: "model",
+            target: { scheme: "worker", pathname: "/a" },
+            rx: { receipt: editReceipt },
+        },
         {
             op: "COPY",
             origin: "model",
@@ -1081,7 +1120,7 @@ test("every ordinary bounded body producer uses the same addressable preview", (
                     lineMarker: { marks: [2] },
                 },
             },
-            rx: { effects: [{ target: "worker:///b", action: "update", receipt: receipt(numbered) }] },
+            rx: { effects: [{ target: "worker:///b", action: "update", receipt: editReceipt }] },
         },
         {
             op: "MOVE",
@@ -1095,19 +1134,19 @@ test("every ordinary bounded body producer uses the same addressable preview", (
                     lineMarker: { marks: [2] },
                 },
             },
-            rx: { effects: [{ target: "worker:///c", action: "update", receipt: receipt(numbered) }] },
+            rx: { effects: [{ target: "worker:///c", action: "update", receipt: editReceipt }] },
         },
-        { op: "extension", origin: "plugin", target: { scheme: "custom", pathname: "/result" }, rx: { content: long, mimetype: "text/plain" } },
     ];
 
     entries.forEach((entry, index) => {
-        const coordinate = `1/2/${index + 1}`;
-        const rendered = PacketWire.renderLog([{ coordinate, status: 200, ...entry }], tok);
-        assert.doesNotMatch(rendered, /producer line 30/, `${entry.op} cannot bypass the preview`);
-        assert.ok(
-            rendered.includes(`"chunk":"READing <1,16> of <1,30>"`),
-            `${entry.op} exposes the same selected and complete line extents`,
-        );
+        const rendered = PacketWire.renderLog([{
+            coordinate: `1/3/${index + 1}`,
+            status: 200,
+            ...entry,
+        }], tok);
+        assert.match(rendered, /30:receipt line 30/, `${entry.op} preserves its complete pre-bounded receipt context`);
+        assert.doesNotMatch(rendered, /11:receipt/, "the source-coordinate jump remains the omission signal");
+        assert.doesNotMatch(rendered, /"chunk"/, `${entry.op} does not describe receipt coordinates as a partial READ`);
     });
 });
 
@@ -1123,7 +1162,7 @@ test("{§prompt-projection}: prompt rows share one explicit projection budget", 
     assert.equal(weights.length, 2);
     assert.ok(weights.every((weight) => weight > 0), "each arriving frame receives a visible share");
     assert.ok(weights.reduce((sum, weight) => sum + weight, 0) <= budget, "the aggregate prompt body weight stays within the shared allowance");
-    assert.equal([...rendered.matchAll(/"chunk":"READing /g)].length, 2, "both partial frames state their exact displayed and complete extents");
+    assert.equal([...rendered.matchAll(/"chunk":"showing /g)].length, 2, "both partial frames state their exact displayed and complete extents");
 });
 
 test("{§jsonplurnk}: a character preview never cuts a numbered body inside its next line prefix", () => {
@@ -1143,7 +1182,7 @@ test("{§jsonplurnk}: a character preview never cuts a numbered body inside its 
 
         assert.match(rendered, /1:abcdefghijklmnopqrst/, "the complete line before the character boundary remains visible");
         assert.doesNotMatch(rendered, /\n2\n"/, "the preview does not manufacture a dangling line-number prefix");
-        assert.match(rendered, /"body":"[\s\S]*","chunk":"READing <1,1> of <1,2>"}/);
+        assert.match(rendered, /"body":"[\s\S]*","chunk":"showing <1,1> of <1,2>"}/);
     } finally {
         if (previousLines === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES;
         else process.env.PLURNK_SERVICE_PREVIEW_LINES = previousLines;
@@ -1170,7 +1209,7 @@ test("{§jsonplurnk}: a character-bound chunk uses exact Unicode text coordinate
         assert.doesNotMatch(rendered, /1:😀abc/);
         assert.match(
             rendered,
-            /"body":"[\s\S]*","chunk":"READing <1,1,1,4> of <1,1,1,8>"}/,
+            /"body":"[\s\S]*","chunk":"showing <1,1,1,4> of <1,1,1,8>"}/,
             "an in-line cut reports exact start-inclusive, end-exclusive coordinates",
         );
     } finally {
@@ -1198,7 +1237,7 @@ test("{§body-projection}: a character ceiling treats CRLF as one indivisible se
         assert.match(rendered, /1:ab\r\n/, "the preview retains the complete first physical line");
         assert.doesNotMatch(rendered, /\r2:\n/, "line numbering cannot split the CRLF pair");
         assert.doesNotMatch(rendered, /2:cdef/);
-        assert.match(rendered, /"chunk":"READing <1,1> of <1,2>"/);
+        assert.match(rendered, /"chunk":"showing <1,1> of <1,2>"/);
     } finally {
         if (previousLines === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES;
         else process.env.PLURNK_SERVICE_PREVIEW_LINES = previousLines;

@@ -385,7 +385,7 @@ export default class PacketWire {
             if (selected === complete) {
                 throw new Error("a bounded body chunk must differ from its complete line extent");
             }
-            return `READing ${selected} of ${complete}`;
+            return `showing ${selected} of ${complete}`;
         }
 
         const selectedRegion = coordinates.regionFromOffsets(0, end);
@@ -398,7 +398,7 @@ export default class PacketWire {
         if (selected === complete) {
             throw new Error("a bounded body chunk must differ from its complete text extent");
         }
-        return `READing ${selected} of ${complete}`;
+        return `showing ${selected} of ${complete}`;
     }
 
     static #promptProjection(
@@ -658,8 +658,10 @@ export default class PacketWire {
             // Mutations expose compact, validated outcome metadata. EDIT owns
             // one receipt; COPY/MOVE own ordered resource effects whose
             // optional receipts describe scoped textual materializations.
+            let structuredMutationReceipt = false;
             if (op === "EDIT" && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "receipt")) {
                 Object.assign(meta, PacketWire.#receiptMeta(rx.receipt));
+                structuredMutationReceipt = true;
             }
             if (
                 (op === "COPY" || op === "MOVE")
@@ -667,22 +669,28 @@ export default class PacketWire {
                 && typeof rx === "object"
                 && Object.hasOwn(rx, "effects")
             ) {
-                meta.effects = assertResourceEffects(rx.effects).map((effect) => ({
+                const effects = assertResourceEffects(rx.effects);
+                meta.effects = effects.map((effect) => ({
                     target: effect.target,
                     action: effect.action,
                     ...(effect.receipt === undefined
                         ? {}
                         : PacketWire.#receiptMeta(effect.receipt)),
                 }));
+                structuredMutationReceipt = effects.some((effect) => effect.receipt !== undefined);
             }
 
             // The canonical full body is shared with log READ, log FIND,
             // and search derivation. READ/FIND own selection bounds, PLAN is
             // persistent working memory, and prompt rows share their packet
-            // allowance; every remaining body uses the ordinary fixed preview.
+            // allowance. Structured mutation receipts own their join bound;
+            // every remaining body uses the ordinary fixed preview.
             const fullBody = bodies[index]!;
             const emptyFind = op === "FIND" && e.status === 200 && findItems === 0;
-            const previewExempt = op === "READ" || op === "FIND" || op === "PLAN";
+            const previewExempt = op === "READ"
+                || op === "FIND"
+                || op === "PLAN"
+                || structuredMutationReceipt;
             const promptBudget = promptBudgets.get(index);
             const projection = promptBudget !== undefined
                 ? PacketWire.#promptProjection(fullBody, promptBudget, countTokens)

@@ -263,6 +263,12 @@ cannot be known. The consumer projects the replacement once on the durable
 proposal-owning row and projects each authored marker's superseded disposition
 on its own row.
 
+`context` is an ordered, source-numbered projection of the landed result. For a
+consumer-selected count `C`, it contains up to `C` surrounding lines and the
+first and last `C` landed lines at each result boundary. Overlapping windows
+coalesce and coordinate jumps expose an omitted middle. A deletion instead
+contains up to `C` lines on each side of its join.
+
 The engine validates that receipt and owns the ordered COPY/MOVE resource
 effects shown to consumers; plugins do not invent a second effect envelope.
 

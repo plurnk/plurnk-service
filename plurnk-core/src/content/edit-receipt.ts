@@ -396,15 +396,29 @@ const addContext = (
     const lines = splitLines(updated);
     const radius = contextRadius();
     return effects.map((effect) => {
-        const first = Math.max(1, effect.resultStartLine - radius);
-        const last = Math.min(
-            lines.length,
-            Math.max(effect.resultStartLine, effect.resultEndLine) + radius,
-        );
-        const context: string[] = [];
-        for (let line = first; line <= last; line += 1) {
-            context.push(`${line}:${lines[line - 1]}`);
+        const selected = new Set<number>();
+        const addRange = (first: number, last: number): void => {
+            for (
+                let line = Math.max(1, first);
+                line <= Math.min(lines.length, last);
+                line += 1
+            ) {
+                selected.add(line);
+            }
+        };
+        const firstChanged = effect.resultStartLine;
+        const lastChanged = Math.max(firstChanged, effect.resultEndLine);
+        addRange(firstChanged - radius, firstChanged - 1);
+        if (effect.inserted > 0) {
+            addRange(firstChanged, firstChanged + radius - 1);
+            addRange(lastChanged - radius + 1, lastChanged);
+            addRange(lastChanged + 1, lastChanged + radius);
+        } else {
+            addRange(firstChanged, firstChanged + radius - 1);
         }
+        const context = [...selected]
+            .sort((left, right) => left - right)
+            .map((line) => `${line}:${lines[line - 1]}`);
         const {
             resultStartLine: _resultStartLine,
             resultEndLine: _resultEndLine,

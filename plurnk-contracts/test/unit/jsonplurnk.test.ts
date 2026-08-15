@@ -30,11 +30,11 @@ test("jsonplurnk: bounded bodies retain a chunk field after the raw multiline va
     const block = `[{
 "path":"log:///1/1/1/PLAN","display":"open","body":"
 1:first selected line
-","chunk":"READing <1,1> of <1,2>"}
+","chunk":"showing <1,1> of <1,2>"}
 ]`;
     const parsed = Jsonplurnk.parse(block) as any[];
     assert.equal(parsed[0].body, "1:first selected line\n");
-    assert.equal(parsed[0].chunk, "READing <1,1> of <1,2>");
+    assert.equal(parsed[0].chunk, "showing <1,1> of <1,2>");
 });
 
 test("jsonplurnk: a no-body block is already valid JSON and passes through untouched", () => {

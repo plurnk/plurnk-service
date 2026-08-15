@@ -29,6 +29,50 @@ test("editReceipt correlates disjoint edits to one bounded resulting revision", 
     assert.doesNotMatch(receipt.effects[0]?.context ?? "", /6:five/);
 });
 
+test("editReceipt shows symmetric boundary evidence without echoing a large landed middle", () => {
+    const prior = process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
+    try {
+        process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES = "2";
+        const original = "before 1\nbefore 2\nold\nafter 1\nafter 2";
+        const replacement = Array.from({ length: 8 }, (_, index) => `change ${index + 1}`).join("\n");
+        const updated = `before 1\nbefore 2\n${replacement}\nafter 1\nafter 2`;
+
+        const changed = editReceipt(
+            original,
+            updated,
+            [{ marker: { marks: [3] }, body: replacement }],
+        );
+        assert.equal(
+            changed.effects[0]?.context,
+            [
+                "1:before 1",
+                "2:before 2",
+                "3:change 1",
+                "4:change 2",
+                "9:change 7",
+                "10:change 8",
+                "11:after 1",
+                "12:after 2",
+            ].join("\n"),
+            "the configured count bounds surrounding and landed evidence at both joins",
+        );
+
+        const deleted = editReceipt(
+            original,
+            "before 1\nbefore 2\nafter 1\nafter 2",
+            [{ marker: { marks: [3] }, body: "" }],
+        );
+        assert.equal(
+            deleted.effects[0]?.context,
+            "1:before 1\n2:before 2\n3:after 1\n4:after 2",
+            "a deletion shows the configured context on both sides of its landed join",
+        );
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
+        else process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES = prior;
+    }
+});
+
 test("editReceipt preserves authored statement correlation while computing snapshot offsets", () => {
     const receipt = editReceipt(
         "one\ntwo\nthree\nfour\n",
