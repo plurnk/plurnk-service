@@ -22,7 +22,7 @@ new reasoning conclusions, open inquiries, unresolved priorities
 body?
 ```
 
-PLAN persists new reasoning conclusions, open inquiries, and unresolved priorities.
+PLAN persists **new** reasoning conclusions, open inquiries, and unresolved priorities.
 PLAN begins the turn as H1. Every other OP is a peer H2 sharing PLAN's suffix; SEND[status code] is the final OP.
 Nested OP headings in body content use a suffix different from the containing turn.
 A single blank line between sections is optional and is not body content; additional blank lines are body content.
