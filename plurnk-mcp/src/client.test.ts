@@ -31,8 +31,8 @@ test("client pins the current MCP revision and exercises tools and resources", a
             catalog.resources.map((resource) => resource.uri),
             ["fixture://document"],
         );
-        assert.equal(connection.currentTools().find((tool) => tool.name === "echo")?.annotations?.readOnlyHint, true);
-        assert.equal(connection.currentTools().find((tool) => tool.name === "fail")?.annotations?.readOnlyHint, undefined);
+        assert.equal(catalog.tools.find((tool) => tool.name === "echo")?.annotations?.readOnlyHint, true);
+        assert.equal(catalog.tools.find((tool) => tool.name === "fail")?.annotations?.readOnlyHint, undefined);
 
         const result = await connection.callTool("echo", {
             message: "hello",

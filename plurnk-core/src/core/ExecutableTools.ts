@@ -1,15 +1,10 @@
-import type { RuntimeInvocationDecl, RuntimeInvocationVariant } from "@plurnk/plurnk-execs";
+import type { RuntimeInvocationDecl } from "@plurnk/plurnk-execs";
+import { PathSyntax } from "@plurnk/plurnk-contracts";
 
 interface ExecutableTool {
     readonly runtime: string;
     readonly invocation: RuntimeInvocationDecl;
-    readonly variants?: readonly RuntimeInvocationVariant[];
-}
-
-interface ExecutableToolRow {
-    readonly runtime: string;
-    readonly invocation: RuntimeInvocationDecl;
-    readonly variant: boolean;
+    readonly exactTarget?: string;
 }
 
 const escapeCell = (value: string): string => value.replaceAll("|", "\\|");
@@ -26,42 +21,42 @@ const code = (value: string): string => {
     return `${fence}${padding}${escapeCell(value)}${padding}${fence}`;
 };
 
-const example = (runtime: string, invocation: RuntimeInvocationDecl): string => {
-    const heading = `## EXEC0 [${runtime}]${invocation.example.target === undefined ? "" : ` (${invocation.example.target})`}`;
-    return [heading, invocation.example.body].filter((line) => line !== undefined).map((line) => code(line)).join("<br>");
-};
+const invocationPresentation = (invocation: RuntimeInvocationDecl): string =>
+    invocation.signature !== undefined
+        ? code(invocation.signature)
+        : invocation.example.body === undefined
+            ? code("bodyless")
+            : code(invocation.example.body);
 
 export default class ExecutableTools {
     static render(tools: readonly ExecutableTool[]): string {
         if (tools.length === 0) return "";
         const rows = tools
-            .toSorted((left, right) => left.runtime.localeCompare(right.runtime))
-            .flatMap<ExecutableToolRow>(({ runtime, invocation, variants }) =>
-                variants === undefined || variants.length === 0
-                    ? [{ runtime, invocation, variant: false }]
-                    : variants.map((item) => ({ runtime, invocation: item, variant: true })))
             .toSorted((left, right) => left.runtime.localeCompare(right.runtime)
-                || (left.invocation.example.target ?? "").localeCompare(right.invocation.example.target ?? ""))
-            .map(({ runtime, invocation, variant }) => {
+                || (left.exactTarget ?? left.invocation.example?.target ?? "")
+                    .localeCompare(right.exactTarget ?? right.invocation.example?.target ?? ""))
+            .map(({ runtime, invocation, exactTarget }) => {
                 const exclusive = invocation.exclusive === true;
+                const targetWitness = exactTarget ?? invocation.example?.target;
                 const target = invocation.target === undefined
                     ? "—"
-                    : variant
-                        ? `${code(`(${invocation.example.target})`)}<br>${bucket(invocation.target.role, true, false)}`
-                        : bucket(
+                    : [
+                        ...(targetWitness === undefined ? [] : [code(`(${PathSyntax.escapeTarget(targetWitness)})`)]),
+                        bucket(
                             `${invocation.target.role}${invocation.target.directory === "cwd" ? " or local directory with body" : ""}`,
                             invocation.target.required,
                             exclusive,
-                        );
+                        ),
+                    ].join("<br>");
                 const body = bucket(invocation.body.role, invocation.body.required, exclusive);
-                return `| \`[${runtime}]\` | ${target} | ${body} | ${example(runtime, invocation)} |`;
+                return `| \`[${runtime}]\` | ${target} | ${body} | ${invocationPresentation(invocation)} |`;
             });
         return [
             "YOU SHOULD use purpose-built Plurnk OPs when possible; use EXEC for scripts only when necessary.",
             "",
             "`?` optional · `↔` choose one · `—` unavailable · `<timeout,poll>` optional",
             "",
-            "| `[executor]` | `(target)` | body | example |",
+            "| `[executor]` | `(target)` | body | Invocation |",
             "| --- | --- | --- | --- |",
             ...rows,
         ].join("\n");

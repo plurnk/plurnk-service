@@ -4,6 +4,7 @@ import {
     ERROR_DETAIL_LIMIT,
     renderJsonResult,
     Results,
+    RuntimeInvocation,
 } from "@plurnk/plurnk-execs";
 import type {
     ChannelDecl,
@@ -12,11 +13,12 @@ import type {
     ExecResult,
     RuntimeAvailability,
     RuntimeDecl,
-    RuntimeInvocationVariant,
+    RuntimeToolRegistry,
 } from "@plurnk/plurnk-execs";
 import ServerConnection from "./client.ts";
+import type { Tool } from "@modelcontextprotocol/client";
 import type { ToolPolicy } from "./config.ts";
-import ToolAddress from "./ToolAddress.ts";
+import { toolRegistry as presentTools } from "./ToolPresentation.ts";
 
 const CHANNEL = "body";
 
@@ -26,21 +28,9 @@ export const runtimeDecl = (name: string): RuntimeDecl => ({
     invocation: {
         body: { role: "JSON arguments", required: false },
         target: { role: "MCP tool", required: true, kind: "literal" },
-        example: { target: "tool_name", body: '{"argument":"value"}' },
+        example: { target: "tool_name" },
     },
-    documentation: `# ${name}
-
-This configured MCP server is available as an executable tool family and an
-addressable resource family.
-
-\`\`\`plurnk
-## FIND0 (${name}://*/)\n\n## READ0 (${name}://tool_name/)\n\n## EXEC0 [${name}] (tool_name)\n{"argument":"value"}
-\`\`\`
-
-FIND surveys tool contracts, READ pulls one exact contract, and the empty-authority
-root retains the complete live server catalog. Tool arguments are one JSON object.
-Tool results are written to the operation's \`body\` channel.
-`,
+    documentation: "",
 });
 
 const message = (error: unknown): string =>
@@ -48,8 +38,9 @@ const message = (error: unknown): string =>
 
 export default class McpExecutor extends BaseExecutor {
     readonly #connection: ServerConnection;
-    readonly #featured: boolean | readonly string[];
+    readonly #tools: readonly string[] | null;
     readonly #read: ReadonlySet<string>;
+    #registry: RuntimeToolRegistry | null = null;
 
     constructor(
         metadata: { runtime: string; glyph: string },
@@ -58,15 +49,14 @@ export default class McpExecutor extends BaseExecutor {
     ) {
         super(metadata);
         this.#connection = connection;
-        this.#featured = policy.featured ?? false;
+        this.#tools = policy.tools ?? null;
         this.#read = new Set(policy.read ?? []);
     }
 
     override get manifest() {
-        const example = `## FIND0 (${this.runtime}://*/)`;
         return {
             ...super.manifest,
-            example,
+            example: `## FIND0 (${this.runtime}:///resources/**)`,
         };
     }
 
@@ -79,41 +69,47 @@ export default class McpExecutor extends BaseExecutor {
     }
 
     override effect(target: string | null): Effect {
-        return target !== null && this.#read.has(target) ? "read" : "host";
+        if (target === null || !this.#enabledTargets().has(target)) {
+            throw new Error(`MCP effect classification received unregistered target '${target ?? ""}' on '${this.runtime}'.`);
+        }
+        return this.#read.has(target) ? "read" : "host";
     }
 
-    #assertConfiguredTools(tools: readonly { readonly name: string }[]): void {
+    #selectTools(tools: readonly Tool[]): readonly Tool[] {
         const available = new Set(tools.map((tool) => tool.name));
-        const configured = [
-            ...(typeof this.#featured === "boolean" ? [] : this.#featured),
-            ...this.#read,
-        ];
+        if (available.size !== tools.length) {
+            throw new Error(`MCP server '${this.runtime}' returned duplicate tool names.`);
+        }
+        const configured = this.#tools ?? [];
         for (const name of configured) {
             if (!available.has(name)) {
                 throw new Error(`Configured MCP tool '${name}' is absent from server '${this.runtime}'.`);
             }
         }
+        const selected = this.#tools === null
+            ? tools
+            : tools.filter((tool) => this.#tools?.includes(tool.name));
+        const enabled = new Set(selected.map((tool) => tool.name));
+        for (const name of this.#read) {
+            if (!enabled.has(name)) {
+                throw new Error(`Read-classified MCP tool '${name}' is not enabled on server '${this.runtime}'.`);
+            }
+        }
+        return selected;
     }
 
-    invocationVariants(): readonly RuntimeInvocationVariant[] {
-        const tools = this.#connection.currentTools();
-        this.#assertConfiguredTools(tools);
-        const featured = this.#featured;
-        const selected = typeof featured === "boolean"
-            ? featured ? tools : []
-            : tools.filter((tool) => featured.includes(tool.name));
-        return selected.map((tool) => {
-            const address = ToolAddress.render(this.runtime, tool.name);
-            return {
-                body: { role: "JSON arguments", required: false },
-                target: {
-                    role: `MCP tool contract ${address}`,
-                    required: true,
-                    kind: "literal",
-                },
-                example: { target: tool.name },
-            };
-        });
+    #enabledTargets(): ReadonlySet<string> {
+        if (this.#registry === null) {
+            throw new Error(`MCP tool registry for '${this.runtime}' was read before availability was established.`);
+        }
+        return new Set(this.#registry.tools.map((tool) => tool.target));
+    }
+
+    toolRegistry(): RuntimeToolRegistry {
+        if (this.#registry === null) {
+            throw new Error(`MCP tool registry for '${this.runtime}' was read before availability was established.`);
+        }
+        return this.#registry;
     }
 
     override async probe(signal?: AbortSignal): Promise<RuntimeAvailability> {
@@ -139,7 +135,12 @@ export default class McpExecutor extends BaseExecutor {
             throw new Error(`${ERROR_DETAIL_LIMIT} must be set to a non-negative integer.`);
         }
         const catalog = await this.#connection.catalog(signal);
-        this.#assertConfiguredTools(catalog.tools);
+        const selected = this.#selectTools(catalog.tools);
+        this.#registry = RuntimeInvocation.assertToolRegistry(
+            presentTools(this.runtime, selected),
+            "@plurnk/plurnk-mcp",
+            this.runtime,
+        );
         return {
             available: true,
             detail: [
@@ -191,7 +192,19 @@ export default class McpExecutor extends BaseExecutor {
                 400,
                 `MCP executor '${runtime}' requires a tool target.`,
                 {
-                    recovery: `FIND ${runtime}://*/ for tool contracts, then target one listed tool.`,
+                    recovery: "Select a target listed for this executor in Registered Tools.",
+                    retryable: false,
+                },
+            );
+        }
+        if (!this.#enabledTargets().has(target)) {
+            return fail(
+                "tool-not-enabled",
+                404,
+                `MCP tool '${target}' is not enabled on '${runtime}'.`,
+                {
+                    tool: target,
+                    recovery: "Select a target listed for this executor in Registered Tools.",
                     retryable: false,
                 },
             );

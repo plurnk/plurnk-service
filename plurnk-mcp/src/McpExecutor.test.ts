@@ -19,7 +19,7 @@ const configured = (): {
         transport: "stdio",
         command: process.execPath,
         args: [fixture],
-        featured: ["echo"],
+        tools: ["echo"],
         read: [],
     }, env);
     return {
@@ -27,7 +27,7 @@ const configured = (): {
         executor: new McpExecutor(
             { runtime: "echo", glyph: "🔌" },
             connection,
-            { featured: ["echo"], read: [] },
+            { tools: ["echo"], read: [] },
         ),
     };
 };
@@ -58,16 +58,17 @@ const harness = (
     };
 };
 
-test("runtime declaration has one catalog face and one tool-call shape", () => {
+test("runtime declaration provides the structural family fallback only", async () => {
     const declaration = runtimeDecl("echo");
     assert.deepEqual(declaration.invocation, {
         body: { role: "JSON arguments", required: false },
         target: { role: "MCP tool", required: true, kind: "literal" },
-        example: { target: "tool_name", body: '{"argument":"value"}' },
+        example: { target: "tool_name" },
     });
-    assert.ok(declaration.documentation?.includes("## FIND0 (echo://*/)"));
-    assert.ok(declaration.documentation?.includes("## READ0 (echo://tool_name/)"));
-    assert.equal(declaration.documentation?.includes("## EXEC0 [echo]\n?"), false);
+    assert.equal(declaration.documentation, "");
+    const { connection, executor } = configured();
+    assert.equal(executor.manifest.example, "## FIND0 (echo:///resources/**)");
+    await connection.close();
 });
 
 test("MCP executor requires a tool target instead of duplicating catalog discovery", async () => {
@@ -84,13 +85,21 @@ test("MCP executor requires a tool target instead of duplicating catalog discove
     }
 });
 
-test("MCP executor features exact tool targets and never trusts remote readOnlyHint for admission", async () => {
+test("MCP executor publishes exact enabled targets and never trusts remote readOnlyHint for effect", async () => {
     const { connection, executor } = configured();
     try {
         await executor.requireAvailable();
         assert.equal(executor.effect("echo"), "host", "unlisted remote hints cannot bypass proposal policy");
-        assert.deepEqual(executor.invocationVariants().map((variant) => variant.example.target), ["echo"]);
-        assert.equal(executor.invocationVariants()[0]?.target.role, "MCP tool contract echo://echo/");
+        const registry = executor.toolRegistry();
+        assert.equal(executor.toolRegistry(), registry, "every consumer receives the same immutable snapshot");
+        assert.deepEqual(registry.tools.map((tool) => tool.target), ["echo"]);
+        assert.deepEqual(registry.tools[0]?.invocation, {
+            body: { role: "JSON arguments", required: true },
+            target: { role: "Echo one message.", required: true, kind: "literal" },
+            signature: '{"message": string}',
+        });
+        assert.match(registry.documentation, /^## echo$/m);
+        assert.doesNotMatch(registry.documentation, /^## fail$/m);
     } finally {
         await connection.close();
     }
@@ -101,13 +110,13 @@ test("only the host-owned read list changes an MCP tool's effect", async () => {
     const executor = new McpExecutor(
         { runtime: "echo", glyph: "🔌" },
         connection,
-        { featured: false, read: ["echo"] },
+        { tools: ["echo"], read: ["echo"] },
     );
     try {
         await executor.requireAvailable();
         assert.equal(executor.effect("echo"), "read");
-        assert.equal(executor.effect("fail"), "host");
-        assert.equal(executor.effect(null), "host");
+        assert.throws(() => executor.effect("fail"), /unregistered target/);
+        assert.throws(() => executor.effect(null), /unregistered target/);
     } finally {
         await connection.close();
     }
@@ -118,7 +127,7 @@ test("configured tool policy fails setup when the server lacks an exact name", a
     const executor = new McpExecutor(
         { runtime: "echo", glyph: "🔌" },
         connection,
-        { featured: ["missing"], read: [] },
+        { tools: ["missing"], read: [] },
     );
     try {
         await assert.rejects(
@@ -130,9 +139,27 @@ test("configured tool policy fails setup when the server lacks an exact name", a
     }
 });
 
+test("read classification must be a subset of enabled exact tools", async () => {
+    const { connection } = configured();
+    const executor = new McpExecutor(
+        { runtime: "echo", glyph: "🔌" },
+        connection,
+        { tools: ["echo"], read: ["fail"] },
+    );
+    try {
+        await assert.rejects(
+            () => executor.requireAvailable(),
+            /Read-classified MCP tool 'fail' is not enabled/,
+        );
+    } finally {
+        await connection.close();
+    }
+});
+
 test("MCP executor calls a current tool and writes its result", async () => {
     const { connection, executor } = configured();
     try {
+        await executor.requireAvailable();
         const h = harness({
             target: "echo",
             body: JSON.stringify({ message: "hello" }),
@@ -145,6 +172,20 @@ test("MCP executor calls a current tool and writes its result", async () => {
                 .content?.[0]?.text,
             "hello",
         );
+    } finally {
+        await connection.close();
+    }
+});
+
+test("MCP executor backstops core admission against disabled targets", async () => {
+    const { connection, executor } = configured();
+    try {
+        await executor.requireAvailable();
+        const h = harness({ target: "fail" });
+        const result = await executor.run(h.args);
+        assert.equal(result.status, 404);
+        assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/tool-not-enabled");
+        assert.deepEqual(h.states, ["errored"]);
     } finally {
         await connection.close();
     }

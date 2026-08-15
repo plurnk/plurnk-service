@@ -4,8 +4,6 @@ import type {
 } from "@plurnk/plurnk-execs";
 import type {
     FindStatement,
-    EntryAddress,
-    ParsedPath,
     RepresentationPreparationRequest,
     RepresentationPreparationResult,
     SchemeCtx,
@@ -17,11 +15,7 @@ import McpExecutor, { runtimeDecl } from "./McpExecutor.ts";
 import McpResources from "./McpResources.ts";
 
 interface RuntimeSchemeFacet {
-    claims(target: ParsedPath): boolean;
-    resolveEntryAddress?(
-        target: ParsedPath,
-        ctx: SchemeCtx,
-    ): Promise<EntryAddress | SchemeResult | null>;
+    claims(pathname: string): boolean;
     prepareRepresentation?(
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,
@@ -99,7 +93,7 @@ export default class Module {
                     },
                     connection,
                     {
-                        featured: config.featured ?? false,
+                        tools: config.tools ?? null,
                         read: config.read ?? [],
                     },
                 );

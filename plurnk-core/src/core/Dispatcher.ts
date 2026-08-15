@@ -1988,14 +1988,11 @@ export default class Dispatcher {
         // `local` (bare path) carries no URL parts — store the raw text as the pathname for the log record, scheme=null.
         if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: PathSyntax.decodeParens(path.raw), query: null, fragment: null }; // {§path-parentheses}
         const scheme = path.scheme === "file" ? null : path.scheme;
-        // {§scheme-address-namespace-fold} {§scheme-address-semantic-authority} —
-        // ordinary namespace authorities fold into the canonical pathname. A scheme-declared
-        // semantic authority and a network host remain distinct through durable diagnostics.
-        const semanticAuthority = scheme === null
-            ? false
-            : this.#schemes.manifestFor(scheme)?.authority === "semantic";
+        // {§scheme-address-namespace-fold} — a registered non-network scheme folds its
+        // namespace authority into the canonical pathname. Network authorities remain hosts;
+        // worker:// is the registered exception because its authority selects the owner.
         const foldNs = scheme !== null
-            && !semanticAuthority
+            && scheme !== "worker"
             && !NetworkAddress.supports(scheme)
             && this.#schemes.has(scheme);
         return {

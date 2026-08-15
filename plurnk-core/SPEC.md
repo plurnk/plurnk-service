@@ -822,8 +822,8 @@ URL supplies canonical decomposition; an entry key is
 `(workspace, owner, scheme, pathname)` ({§entry-identity-no-null}). Handler
 routing and resource identity are separate:
 
-- §scheme-address-namespace-fold A registered non-network scheme without a semantic-authority declaration mechanically folds its authority into the canonical storage pathname (`Dispatcher.#extractTarget` → `foldAuthorityIntoPath`). For an ordinary entry namespace, the authority is therefore a leading path segment rather than a separate identity component.
-- §scheme-address-semantic-authority A scheme declaring `authority: "semantic"` under {§manifest-semantic-authority} owns the complete authority-bearing selector. Core preserves that authority through dispatch and diagnostics; the handler lowers it to the existing `(owner, pathname)` entry identity. `worker` uses it for owner selection. Every executor-output scheme uses it for named-worker streams, and an optional runtime facet may claim an authority-only resource without changing unclaimed coordinate semantics.
+- §scheme-address-namespace-fold A **registered non-network, non-worker scheme** mechanically folds its authority into the canonical storage pathname (`Dispatcher.#extractTarget` → `foldAuthorityIntoPath`). For an entry namespace, the authority is therefore a leading path segment rather than a separate identity component.
+- The **`worker` scheme is the registered exception**: its authority selects an owner ({§worker-authority-carving}) and remains distinct through dispatch; the handler strips it only after resolving the entry owner.
 - §scheme-address-network A **network resource** uses the shared schemes-layer
   normalization contract {§network-address}:
   `https://example.com:8443/page?b=2&a=1` →
@@ -1584,8 +1584,9 @@ the loop continue; repeated offenses terminate through the engine's 500.
 AST: `{ op: "EXEC", target (optional runtime-specific target), body: string | null (runtime-specific input), signal: string | null (runtime tag), lineMarker (timeout/poll) }`.
 
 §exec-target-routing Engine routes unconditionally to the `exec` scheme,
-resolves the runtime first, and enforces that runtime's required
-{§executor-invocation} declaration before effect admission. Core owns target
+resolves the runtime first, selects its static {§executor-invocation} or exact
+{§executor-tool-registry} entry, and enforces that declaration before effect
+admission. Core owns target
 realization; neither filesystem type nor body presence may invent a target role
 the selected runtime did not declare. With no declared directory override,
 `cwd` is the workspace's `project_root`, where the File scheme writes — never
@@ -1615,6 +1616,13 @@ enforced independently; every EXEC requires at least one of them; and an
 its one declared role whether the body is empty or non-empty. Runtime selection,
 target validation, and body/target relation failures therefore occur before
 effect classification or proposal creation.
+
+A runtime with {§executor-tool-registry} admits only the snapshot's exact
+literal targets. An absent target is 400; a target outside that closed enabled
+set is 404; neither reaches effect classification or proposal creation. The
+selected entry's invocation—not the family's structural fallback—owns body
+requiredness and roles. The executor independently rejects an unregistered
+target at its run boundary.
 
 §exec-source-temporary A non-file `resource` target is materialized into one
 core-owned temporary file after acceptance. Core reparses the complete authored
@@ -1652,6 +1660,11 @@ tags are refused 501 with direction to use only the advertised catalogue or
 put a complete command in bare `EXEC`; they are never reinterpreted as shell
 command words. An unavailable runtime is also 501 and carries the probe
 `detail`.
+
+For a family runtime, `ExecutorRegistry.toolRegistry()` validates the one
+executor-owned snapshot used by packet presentation, dispatch admission, and
+pull-document materialization. Core performs no protocol discovery while
+building a packet and has no alternate tool catalogue.
 
 Per-tool programs such as `go`, `cargo`, `make`, and `npm` do not earn executor tags merely because they are executables; they are complete shell commands under `## EXEC0` or `## EXEC0 [sh]`. Registered tags exist only for tools that own a distinct body, target, or output contract. {§exec-registry-resolves}
 
@@ -2182,7 +2195,7 @@ flowchart LR
 
 | Setup function                                                         | Contract |
 |------------------------------------------------------------------------|----------|
-| `registerRuntimes([{ decl, executor, availability, scheme? }, ...])`   | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every executor and optional claimed scheme facet atomically. A facet's `claims(target)` receives the complete parsed URI; claimed addresses may use `resolveEntryAddress`, preparation, and FIND while unclaimed addresses retain executor-output behavior. |
+| `registerRuntimes([{ decl, executor, availability, scheme? }, ...])`   | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every executor and optional claimed scheme facet atomically. |
 | `registerScheme(name, handler)`                                        | Adds one addressable scheme handler; scheme readiness and model-facing capability publication remain core-owned. |
 | §module-action-registration `registerModuleAction(name, handler)`      | Adds a non-empty, extension-unique name and a handler receiving only `Readonly<Record<string, unknown>>`. Core supplies no implicit workspace or transport context. A client-interface module decides whether and how that name becomes public, and owns collisions with its built-ins. |
 
@@ -3031,7 +3044,7 @@ turn.** It cannot execute operations or alter the audited history.
 
 ### §tools user.tools — the capability sheet
 
-§tools-capability-sheet The tools capability sheet renders under `## Registered Tools`, after the policy sections. One generated Markdown table is the closed set of valid executor selectors and states each runtime declaration's model-facing `(target)` role, body role, and exact canonical example. A runtime exposing validated {§executor-invocation-variants} contributes one row per featured exact target instead of its general row; an empty variant set retains the general row. The compact legend leaves required inputs unmarked, marks optional inputs with `?`, pairs mutually exclusive alternatives with `↔`, marks refused buckets with `—`, and locates optional `<timeout,poll>` on the heading. The preface prefers purpose-built Plurnk operations over EXEC scripts. For a declaration with `target.directory: "cwd"`, the target cell distinguishes a local-directory working context from the plugin-authored non-directory target role. Optional non-EXEC operations render separately under `## Enabled Optional Operations` in a `plurnk` fence, so the catalogue remains truthful. `PacketBuilder.#collectTools` assembles both; a prose notice (e.g. the EXEC-disabled line) stays beside the table, and empty sections are omitted.
+§tools-capability-sheet The tools capability sheet renders under `## Registered Tools`, after the policy sections. One generated Markdown table is the closed set of valid executor selectors. Its columns state `[executor]`, the `(target)` role and any concrete target witness, the body role, and `Invocation`: a body example, a schema-derived signature, or `bodyless`. The Invocation cell never repeats the `## EXEC0 [executor] (target)` syntax already defined by the headers and columns. A runtime exposing {§executor-tool-registry} contributes exactly one row per enabled exact target instead of its general row; an empty exact registry contributes no row and has no fallback. The compact legend leaves required inputs unmarked, marks optional inputs with `?`, pairs mutually exclusive alternatives with `↔`, marks refused buckets with `—`, and locates optional `<timeout,poll>` on the heading. The preface prefers purpose-built Plurnk operations over EXEC scripts. For a declaration with `target.directory: "cwd"`, the target cell distinguishes a local-directory working context from the plugin-authored non-directory target role. Optional non-EXEC operations render separately under `## Enabled Optional Operations` in a `plurnk` fence, so the catalogue remains truthful. `PacketBuilder.#collectTools` assembles both; a prose notice (e.g. the EXEC-disabled line) stays beside the table, and empty sections are omitted.
 
 §tools-loop-affinity **The capability sheet describes the current loop.** The
 sheet filters registered capabilities through the same
@@ -3040,7 +3053,7 @@ registered executors exist but EXEC is inactive, their table is replaced by
 an explicit disabled notice rather than silent absence. The dispatch 403 remains
 the backstop and names the non-retryable loop restriction.
 
-**Contributors: the wired executor tags.** Every available executor tag contributes its general {§executor-invocation} row or its finite featured exact-target rows under {§executor-invocation-variants}. Its doc is materialized at `worker://plurnk/docs/<tag>.md` and discovered via the turn-0 `## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, not linked inline. `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's rows and doc. The boot `ExecutorRegistry` probes availability per tag, so the table advertises runnable selectors instead of presuming a particular runtime exists.
+**Contributors: the wired executor tags.** Every available executor tag contributes its general {§executor-invocation} row or the closed rows and documentation from its {§executor-tool-registry} snapshot. Its doc is materialized at `worker://plurnk/docs/<tag>.md` and discovered via the turn-0 `## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, not linked inline. `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's rows and doc. The boot `ExecutorRegistry` probes availability per tag, so the table advertises runnable selectors instead of presuming a particular runtime exists.
 
 ### §schemes user.schemes — the resource directory
 
@@ -3061,7 +3074,7 @@ surfaces with its cause and leaves no apparently initialized home.
 After that bootstrap the file is user-owned: edits and deletion persist, and a
 later boot never refreshes or recreates it.
 
-§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. `SchemeRegistry.teach()` renders the directory, `SchemeRegistry.docs()` resolves corpus-or-manifest documentation, and `docEntries()` materializes the result when core publishes capabilities for a workspace.
+§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. `SchemeRegistry.teach()` renders the directory, `SchemeRegistry.docs()` resolves corpus-or-manifest documentation, and `docEntries()` supplies the current pull-document set when core publishes capabilities for a workspace. Materialization reconciles `worker://plurnk/docs/` exactly: vanished contributions are deleted before current documents are upserted, so an excluded or disabled capability cannot leave a stale model-facing contract.
 
 ### §packet-git-status The Git status section — compact repository state
 

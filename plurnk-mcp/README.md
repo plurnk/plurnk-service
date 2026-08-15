@@ -4,15 +4,11 @@ The current [Model Context Protocol](https://modelcontextprotocol.io/) host
 module for [Plurnk](https://github.com/plurnk/plurnk-service).
 
 Each configured MCP server becomes a model-facing executor and resource
-authority:
+authority. Enabled tools appear directly in Plurnk's Registered Tools table:
 
 ```plurnk
-## FIND0 (github://*/)
-
-## READ0 (github://issue_read/)
-
 ## EXEC0 [github] (issue_read)
-{"owner":"acme","repo":"project","index":42}
+{"owner":"acme","repo":"project","issue_number":42,"method":"get"}
 
 ## FIND0 (github:///resources/**)
 
@@ -33,7 +29,7 @@ Streamable HTTP:
 ```text
 PLURNK_MCP_github=https://example.test/mcp
 PLURNK_MCP_github_BEARER=${GITHUB_TOKEN}
-PLURNK_MCP_github_FEATURED=["issue_read","issue_search"]
+PLURNK_MCP_github_TOOLS=["issue_read","issue_search"]
 PLURNK_MCP_github_READ=["issue_read","issue_search"]
 ```
 
@@ -51,23 +47,25 @@ whitespace. Arguments are a JSON array; the module never parses or invokes a
 shell command. `${NAME}` references read the daemon's inherited environment at
 startup, so secrets do not need to be copied into Plurnk environment files.
 
-`PLURNK_MCP_<server>_FEATURED` is a JSON boolean or exact tool-name array.
-`true` gives every current tool its own Registered Tools row; an array features
-only those tools; absent or `false` retains the generic server row. The full
-catalog is always pullable. `PLURNK_MCP_<server>_READ` is an exact tool-name
-array whose calls use Plurnk's read effect; all other calls conservatively use
-the host effect.
+`PLURNK_MCP_<server>_TOOLS` is an optional JSON array of exact tool names.
+Absent enables all server tools; an array enables exactly those names; `[]`
+enables none. Only enabled tools appear in Registered Tools, their generated
+kernel document, and EXEC admission. `PLURNK_MCP_<server>_READ` is an exact
+enabled-tool subset whose calls use Plurnk's read effect; all other calls
+conservatively use the host effect.
 
 Portable timeout defaults and complete examples live in
 [`.env.defaults`](./.env.defaults).
 
 ## Current surface
 
-- `## FIND0 (server://*/)` surveys current tool contracts.
-- `## READ0 (server://<percent-encoded-tool>/)` pulls one complete tool
-  definition and input schema.
-- `## READ0 (server:///)` returns the complete live server catalog.
+- Registered Tools contains one exact row per enabled tool, including its
+  JSON-shaped invocation signature.
+- `worker://plurnk/docs/<server>.md` contains the enabled tools' exact input
+  and output schemas through the standard kernel documentation surface.
 - `## EXEC0 [server] (tool)` calls a tool with one JSON object in the body.
+- `## READ0 (server:///)` returns the resource catalog only; tools have no
+  parallel FIND/READ discovery surface.
 - `server:///resources` exposes the resource catalog through ordinary Plurnk
   `FIND` and `READ` sections.
 - `server:///resources/<encoded-uri>` reads a concrete MCP resource and stores
@@ -83,6 +81,6 @@ protocol surface is retained as a fallback.
 ## Verification
 
 `npm test` type-checks the module and exercises exact current-version
-negotiation, configuration, exact tool resources, tool calls, resource reads,
-runtime registration, canonical names, exact executable/argument handling, and
-secret references.
+negotiation, configuration, generated tool signatures and docs, closed EXEC
+admission, tool calls, resource reads, runtime registration, canonical names,
+exact executable/argument handling, and secret references.

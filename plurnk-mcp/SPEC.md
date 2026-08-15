@@ -25,7 +25,7 @@ scheme. There is no protocol downgrade or legacy fallback.
 |---|---|---|
 | Base | JSON-RPC 2.0; per-request protocol, identity, and capability metadata; every result has `resultType` | Require the modern envelope and preserve protocol results and errors without reconstructing them |
 | Discovery | Servers implement `server/discover` | Probe before registration; retain identity, instructions, capabilities, versions, and cache hints |
-| Tools | Negotiated server capability: `tools/list`, `tools/call` | Publish exact tool contracts beneath the server authority and route each cataloged tool without renaming it |
+| Tools | Negotiated server capability: `tools/list`, `tools/call` | Build one operator-filtered exact Registry snapshot at setup; route only its enabled names without renaming them |
 | Resources | Negotiated server capability: `resources/list`, `resources/templates/list`, `resources/read` | Publish catalogs, templates, and materialized contents through the server's resource authority |
 | Prompts | Negotiated server capability: `prompts/list`, `prompts/get` | Publish prompt definitions and retrieve prompt messages through the same server authority |
 | Completion | Negotiated server capability: `completion/complete` | Make prompt and resource-template completion available to the host interaction that owns the argument |
@@ -102,8 +102,8 @@ originating distinction in its canonical Problem/result path.
 | `PLURNK_MCP_<server>_ENV` | JSON string map for stdio |
 | `PLURNK_MCP_<server>_BEARER` | HTTP bearer credential; use `${TOKEN}` expansion to retain the authoritative environment value |
 | `PLURNK_MCP_<server>_HEADERS` | JSON string map for supplementary HTTP headers |
-| `PLURNK_MCP_<server>_FEATURED` | JSON boolean or exact string array: `true` features every current tool; an array features those named tools; absent/`false` leaves the generic server row |
-| `PLURNK_MCP_<server>_READ` | JSON string array of exact tool names the operator classifies as read-only; every other tool retains the conservative `host` effect |
+| `PLURNK_MCP_<server>_TOOLS` | Optional JSON array of exact enabled tool names; absent enables all listed server tools, while `[]` enables none |
+| `PLURNK_MCP_<server>_READ` | JSON string array forming an exact subset of enabled tools that the operator classifies as read-only; every other enabled tool retains the conservative `host` effect |
 | `PLURNK_MCP_CONNECT_TIMEOUT` | Positive integer milliseconds |
 | `PLURNK_MCP_REQUEST_TIMEOUT` | Positive integer milliseconds |
 
@@ -118,10 +118,14 @@ in `_HEADERS` are mutually exclusive.
 ## §mcp-setup Atomic lifecycle
 
 Setup parses every configured server, opens and probes every connection,
+lists tools, applies the enabled/effect policy, builds each exact tool Registry,
 validates the complete shared namespace, then publishes all registrations as
-one transaction. Any failure publishes none and closes every acquired
-connection. Materialization and registration inspect the complete owning
-operation result; a non-success preserves its original Problem.
+one transaction. A configured tool absent from the server, a duplicate remote
+name, an enabled name not representable as a Plurnk target, or a `_READ` name
+outside the enabled set fails setup. Any failure
+publishes none and closes every acquired connection. Materialization and
+registration inspect the complete owning operation result; a non-success
+preserves its original Problem.
 
 Shutdown first prevents new work, settles every connection attempt and active
 request/subscription/task, closes every acquired connection, then reports all
@@ -131,30 +135,37 @@ close failures.
 
 | MCP surface | Plurnk surface |
 |---|---|
-| Server | One registered executable tool and matching URI authority |
-| Live catalog | `<server>:///` |
-| Tool search | `## FIND0 (<server>://*/)` |
-| Tool contract | `## READ0 (<server>://<percent-encoded-tool>/)` |
-| Tool call | `## EXEC0 [<server>] (<tool>)` with one JSON object body |
+| Server | One registered executor family and matching resource scheme |
+| Enabled tool | One exact Registered Tools row and `## EXEC0 [<server>] (<tool>)` call |
+| Enabled tool details | `worker://plurnk/docs/<server>.md` through the standard kernel documentation surface |
+| Resource catalog | `<server>:///` and `<server>:///resources` |
 | Resources | `<server>:///resources` and encoded resource-URI descendants |
 | Prompts | `<server>:///prompts` and encoded prompt-name descendants |
 
-One canonical projection owns each remote primitive. The server is the runtime
-and URI scheme; a tool remains the exact literal EXEC target and becomes the
-URI authority of its pullable contract. Standard URI percent-encoding is the
-only representation layer for hostile names. Featured tools refine the
-ordinary Registered Tools table through {§executor-invocation-variants}; the
-complete catalogue remains FIND/READ-able rather than riding every packet.
-The MCP facet claims only authority-root tool contracts and its empty-authority
-catalog, resource, and prompt paths. Unclaimed coordinate paths retain ordinary
-executor-output semantics. Results become ordinary Plurnk entries and channels,
-so slicing, tags, curation, notices, and Problems need no MCP-specific parallel
-mechanism.
+§mcp-tool-presentation One canonical enabled-tool snapshot owns every
+model-facing and executable consequence. Each enabled remote tool becomes one
+exact target in {§executor-tool-registry}. Its Registered Tools row carries the
+remote description, requiredness derived from the input schema, and a
+deterministic one-line JSON-shaped signature: quoted property names, `?` on
+optional properties, primitive type words, and literal unions—never fabricated
+argument data. The snapshot's standard kernel document contains each enabled
+tool's description and exact input/output JSON Schemas. Disabled names appear
+in neither surface, and there is no MCP-specific FIND, READ, authority-root, or
+other model discovery mechanism for tools.
 
-MCP tool annotations remain catalog data, not admission authority. An exact
-operator-owned `READ` list may classify known observations as the executor
-`read` effect; unknown and unlisted tools remain `host` and therefore use the
-ordinary proposal policy.
+Core validates the exact target and the selected tool's invocation before
+effect admission. `McpExecutor.run()` independently rejects a target outside
+the same snapshot before issuing `tools/call`. The server's empty-authority
+scheme is consequently resource-only: its root and `/resources` catalogs
+contain resources and resource templates, never tools. Tool results become
+ordinary Plurnk entries and channels, so slicing, tags, curation, notices, and
+Problems need no MCP-specific parallel mechanism.
+
+MCP tool annotations remain untrusted metadata, not admission authority. The
+operator-owned `_READ` subset classifies enabled observations as the executor
+`read` effect; every other enabled tool remains `host` and therefore uses the
+ordinary proposal policy. Effect classification receiving an unregistered
+target is an internal contract violation rather than a conservative guess.
 
 ## §mcp-conformance Conformance authority
 

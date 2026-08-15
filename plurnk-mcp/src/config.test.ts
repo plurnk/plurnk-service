@@ -18,7 +18,7 @@ test("configuration discovers case-folded server targets and exact stdio argumen
         PLURNK_MCP_ATLAS: "node",
         PLURNK_MCP_ATLAS_ARGS: '["server.mjs","--task","smoke"]',
         PLURNK_MCP_ATLAS_CWD: "/tmp/atlas",
-        PLURNK_MCP_ATLAS_FEATURED: '["filesystem_read_text_file"]',
+        PLURNK_MCP_ATLAS_TOOLS: '["filesystem_read_text_file"]',
         PLURNK_MCP_ATLAS_READ: '["filesystem_read_text_file"]',
     };
     assert.deepEqual(serverNames(env), ["atlas"]);
@@ -28,7 +28,7 @@ test("configuration discovers case-folded server targets and exact stdio argumen
         args: ["server.mjs", "--task", "smoke"],
         cwd: "/tmp/atlas",
         env: undefined,
-        featured: ["filesystem_read_text_file"],
+        tools: ["filesystem_read_text_file"],
         read: ["filesystem_read_text_file"],
     });
 });
@@ -46,7 +46,6 @@ test("HTTP bearer authentication expands its authoritative environment reference
         headers: {
             Authorization: "Bearer secret",
         },
-        featured: false,
         read: [],
     });
 });
@@ -64,7 +63,6 @@ test("supplementary HTTP headers expand environment references and cannot confli
         headers: {
             "X-Tenant": "secret",
         },
-        featured: false,
         read: [],
     });
     assert.throws(
@@ -208,32 +206,39 @@ test("stdio targets preserve whitespace as part of one exact executable", () => 
         args: ["--stdio"],
         cwd: undefined,
         env: undefined,
-        featured: false,
         read: [],
     });
 });
 
-test("tool policy accepts explicit feature-all and rejects ambiguous or duplicate names", () => {
+test("tool policy uses absence for all, an exact array to narrow, and rejects ambiguous or duplicate names", () => {
     assert.deepEqual(serverConfig("atlas", {
         ...floor,
         PLURNK_MCP_ATLAS: "node",
-        PLURNK_MCP_ATLAS_FEATURED: "true",
+        PLURNK_MCP_ATLAS_TOOLS: "[]",
     }), {
         transport: "stdio",
         command: "node",
         args: [],
         cwd: undefined,
         env: undefined,
-        featured: true,
+        tools: [],
         read: [],
     });
     assert.throws(
         () => serverConfig("atlas", {
             ...floor,
             PLURNK_MCP_ATLAS: "node",
-            PLURNK_MCP_ATLAS_FEATURED: '"echo"',
+            PLURNK_MCP_ATLAS_TOOLS: '"echo"',
         }),
-        /FEATURED.*boolean or JSON array of strings/,
+        /TOOLS.*JSON array of strings/,
+    );
+    assert.throws(
+        () => serverConfig("atlas", {
+            ...floor,
+            PLURNK_MCP_ATLAS: "node",
+            PLURNK_MCP_ATLAS_TOOLS: '["echo","echo"]',
+        }),
+        /TOOLS.*duplicate tool name 'echo'/,
     );
     assert.throws(
         () => serverConfig("atlas", {

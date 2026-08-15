@@ -20,7 +20,6 @@ test("manifestFromRuntime: derives a read-only-output manifest from the runtime 
     assert.equal(m.volatile, true);
     assert.equal(m.modelVisible, true);
     assert.equal(m.foldedByDefault, true); // folded off the ranked surface
-    assert.equal(m.authority, "semantic"); // named-worker stream selectors remain authorities
 });
 
 test("manifestFromRuntime: presentation and teaching are independently optional", () => {

@@ -46,7 +46,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
 
     #claimedPath(statement: FindStatement): boolean {
         const target = statement.target;
-        return target !== null && this.#facet?.claims(target) === true;
+        return target?.kind === "url" && this.#facet?.claims(target.pathname ?? "") === true;
     }
 
     #facetContext(ctx: CoreSchemeCallContext): SchemeCtx {
@@ -64,9 +64,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
         ctx: CoreSchemeCallContext,
     ): Promise<EntryAddress | CoreEntryAddress | SchemeResultBase | null> {
         if (target.kind !== "url") return null;
-        if (this.#facet?.claims(target) === true) {
-            const resolved = await this.#facet.resolveEntryAddress?.(target, this.#facetContext(ctx));
-            if (resolved !== undefined) return resolved;
+        if (this.#facet?.claims(target.pathname) === true) {
             return { pathname: target.pathname, owner: "commons" };
         }
         const ownerId = await Owner.resolveStreamOwner(target.hostname, this.coreContext(ctx));
@@ -84,7 +82,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
         request: RepresentationPreparationRequest,
         ctx: CoreSchemeCallContext,
     ): Promise<RepresentationPreparationResult> {
-        if (this.#facet?.claims(request.target) !== true) return { status: 200 };
+        if (this.#facet?.claims(request.pathname) !== true) return { status: 200 };
         return this.#facet.prepareRepresentation?.(request, this.#facetContext(ctx)) ?? { status: 200 };
     }
 

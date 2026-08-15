@@ -6,7 +6,7 @@ import type { GitStatus } from "./git-state.ts";
 import { renderAddress, promptLoopPrefix } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
 import { docsExcludeSet } from "./teaching.ts";
-import { Policy, RuntimeInvocation } from "@plurnk/plurnk-execs";
+import { Policy } from "@plurnk/plurnk-execs";
 import WorkspaceSettings from "./workspace-settings.ts";
 import LoopFlagsReader from "./LoopFlagsReader.ts";
 import { readPacketInject, readSystemPolicy, readProjectPolicy } from "./packet-inject.ts";
@@ -354,7 +354,7 @@ export default class PacketBuilder {
         const executorTools: Array<{
             runtime: string;
             invocation: NonNullable<ReturnType<ExecutorRegistry["entry"]>>["invocation"];
-            variants?: ReturnType<typeof RuntimeInvocation.assertVariants>;
+            exactTarget?: string;
         }> = [];
         const notices: string[] = [];
         // {§send-300-choices} — the one-liner rides ONLY where questions are enabled (allowed +
@@ -378,21 +378,16 @@ export default class PacketBuilder {
                     if (!workspaceEnabled(tag)) continue; // {§operator-config-workspace-execs}
                     const entry = executors.entry(tag);
                     if (entry !== undefined) {
-                        const variants = entry.executor.invocationVariants?.();
-                        executorTools.push({
-                            runtime: tag,
-                            invocation: entry.invocation,
-                            ...(variants === undefined
-                                ? {}
-                                : {
-                                    variants: RuntimeInvocation.assertVariants(
-                                        variants,
-                                        entry.invocation,
-                                        entry.namespaceOwner.name,
-                                        tag,
-                                    ),
-                                }),
-                        });
+                        const registry = executors.toolRegistry(tag);
+                        if (registry === null) {
+                            executorTools.push({ runtime: tag, invocation: entry.invocation });
+                        } else {
+                            executorTools.push(...registry.tools.map((tool) => ({
+                                runtime: tag,
+                                invocation: tool.invocation,
+                                exactTarget: tool.target,
+                            })));
+                        }
                     }
                 }
             }
@@ -422,7 +417,8 @@ export default class PacketBuilder {
             for (const tag of executors.availableRuntimes()) {
                 if (excluded.has(tag)) continue; // {§tools-capability-sheet} — exec docs honor the same exclude
                 if (!workspaceEnabled(tag)) continue;
-                const doc = executors.entry(tag)?.documentation;
+                const entry = executors.entry(tag);
+                const doc = executors.toolRegistry(tag)?.documentation ?? entry?.documentation;
                 if (doc !== undefined && doc.length > 0) out.push({ name: tag, content: doc });
             }
         }

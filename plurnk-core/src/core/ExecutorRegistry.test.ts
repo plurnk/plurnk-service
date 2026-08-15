@@ -4,8 +4,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import ExecutorRegistry from "./ExecutorRegistry.ts";
+import ExecutorRegistry, { type Executor } from "./ExecutorRegistry.ts";
 import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
+import type { SchemeManifest } from "./scheme-types.ts";
 
 const attributionContext = (attempt: number): PluginAttributionContext => ({
     workspaceId: "workspace",
@@ -58,6 +59,61 @@ class AlwaysAvailable {
     }
 }
 const loadAvailable = async () => ({ default: AlwaysAvailable });
+
+test("{§executor-tool-registry} validates and caches one snapshot for every consumer", () => {
+    let reads = 0;
+    const manifest: SchemeManifest = {
+        name: "family",
+        channels: { body: "application/json" },
+        defaultChannel: "body",
+        category: "data",
+        writableBy: ["model"],
+        volatile: true,
+        modelVisible: true,
+    };
+    const executor: Executor = {
+        runtime: "family",
+        glyph: "",
+        manifest,
+        defaultChannel: "body",
+        channels: { body: { mimetype: "application/json" } },
+        run: async () => ({ status: 200 }),
+        probe: async () => ({ available: true }),
+        effect: () => "host",
+        toolRegistry: () => {
+            reads += 1;
+            return {
+                tools: [{
+                    target: "issue_read",
+                    invocation: {
+                        body: { role: "JSON arguments", required: false },
+                        target: { role: "Read an issue", required: true, kind: "literal" },
+                        signature: '{"issue_number": integer}',
+                    },
+                }],
+                documentation: "# family",
+            };
+        },
+    };
+    const registry = new ExecutorRegistry(new Map([["family", {
+        executor,
+        namespaceOwner: { kind: "module", name: "fixture" },
+        glyph: "",
+        invocation: {
+            body: { role: "JSON arguments", required: false },
+            target: { role: "tool", required: true, kind: "literal" },
+            example: { target: "tool_name" },
+        },
+        documentation: "",
+        available: true,
+        detail: undefined,
+    }]]));
+
+    const first = registry.toolRegistry("family");
+    const second = registry.toolRegistry("family");
+    assert.equal(second, first);
+    assert.equal(reads, 1);
+});
 
 // Native Git and the explicit isomorphic-git subset beside a non-Git runtime.
 const gitAndShell = async () => ({

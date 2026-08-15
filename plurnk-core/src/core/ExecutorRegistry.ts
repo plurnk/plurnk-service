@@ -1,4 +1,4 @@
-import { discover } from "@plurnk/plurnk-execs";
+import { discover, RuntimeInvocation } from "@plurnk/plurnk-execs";
 import type {
     ChannelDecl,
     ExecArgs,
@@ -7,7 +7,7 @@ import type {
     RuntimeAvailability,
     ExecutorMetadata,
     RuntimeInvocationDecl,
-    RuntimeInvocationVariant,
+    RuntimeToolRegistry,
 } from "@plurnk/plurnk-execs";
 import Meta, {
     type PackageAttributions,
@@ -33,7 +33,7 @@ export interface Executor {
     // One pure classification of the consumer-canonical logical target
     // ({§executor-effect}); authored body text is never an admission input.
     effect(target: string | null): Effect;
-    invocationVariants?(): readonly RuntimeInvocationVariant[];
+    toolRegistry?(): RuntimeToolRegistry;
 }
 
 export type RuntimeNamespaceOwner =
@@ -71,6 +71,7 @@ export interface RuntimeRegistryRegistration {
 export default class ExecutorRegistry {
     readonly #byTag: Map<string, RegistryEntry>;   // own copy — runtime registration mutates it in place
     readonly #packageAttributions: PackageAttributions;
+    readonly #toolRegistries = new Map<string, RuntimeToolRegistry | null>();
 
     constructor(byTag: ReadonlyMap<string, RegistryEntry>, packageAttributions: PackageAttributions = new Map()) {
         this.#byTag = new Map(byTag);
@@ -99,7 +100,10 @@ export default class ExecutorRegistry {
             this.assertCanRegister(tag, entry.namespaceOwner);
         }
         return () => {
-            for (const { tag, entry } of registrations) this.#byTag.set(tag, entry);
+            for (const { tag, entry } of registrations) {
+                this.#byTag.set(tag, entry);
+                this.#toolRegistries.delete(tag);
+            }
         };
     }
 
@@ -230,6 +234,23 @@ export default class ExecutorRegistry {
 
     entry(tag: string): RegistryEntry | undefined {
         return this.#byTag.get(tag);
+    }
+
+    // A family runtime's exact tools, invocation contracts, and pull document
+    // cross the plugin boundary as one validated snapshot. Absence means the
+    // runtime's static invocation declaration is authoritative.
+    toolRegistry(tag: string): RuntimeToolRegistry | null {
+        const cached = this.#toolRegistries.get(tag);
+        if (cached !== undefined || this.#toolRegistries.has(tag)) return cached ?? null;
+        const entry = this.#byTag.get(tag);
+        if (entry === undefined || entry.executor.toolRegistry === undefined) return null;
+        const registry = RuntimeInvocation.assertToolRegistry(
+            entry.executor.toolRegistry(),
+            entry.namespaceOwner.name,
+            tag,
+        );
+        this.#toolRegistries.set(tag, registry);
+        return registry;
     }
 
     // The actionable set offered to the model — available tags only. Unavailable

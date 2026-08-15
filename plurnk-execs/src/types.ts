@@ -122,21 +122,31 @@ export interface RuntimeInvocationExample {
     readonly target?: string;
 }
 
-export interface RuntimeInvocation {
+interface RuntimeInvocationShape {
     readonly body: RuntimeBodyDecl;
     readonly target?: RuntimeTargetDecl;
     readonly exclusive?: true;
-    readonly example: RuntimeInvocationExample;
 }
 
-export interface RuntimeInvocationVariant extends RuntimeInvocation {
-    readonly target: RuntimeTargetDecl & {
-        readonly required: true;
-        readonly kind: "literal";
-    };
-    readonly example: RuntimeInvocationExample & {
-        readonly target: string;
-    };
+export type RuntimeInvocation = RuntimeInvocationShape & (
+    | {
+        readonly example: RuntimeInvocationExample;
+        readonly signature?: never;
+    }
+    | {
+        readonly example?: never;
+        readonly signature: string;
+    }
+);
+
+export interface RuntimeRegisteredTool {
+    readonly target: string;
+    readonly invocation: RuntimeInvocation;
+}
+
+export interface RuntimeToolRegistry {
+    readonly tools: readonly RuntimeRegisteredTool[];
+    readonly documentation: string;
 }
 
 // One discovered runtime tag and the package that provides it.

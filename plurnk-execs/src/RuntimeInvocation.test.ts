@@ -30,12 +30,22 @@ test("{§executor-invocation} validates and preserves the one runtime invocation
         body: { role: "inline WAT module", required: false },
         target: { role: "WAT module", required: false, kind: "resource" },
         exclusive: true,
-        example: { target: "module.wat" },
+        example: { target: "module(v1).wat" },
     }), {
         body: { role: "inline WAT module", required: false },
         target: { role: "WAT module", required: false, kind: "resource" },
         exclusive: true,
-        example: { target: "module.wat" },
+        example: { target: "module(v1).wat" },
+    });
+
+    assert.deepEqual(assertInvocation({
+        body: { role: "JSON arguments", required: false },
+        target: { role: "Read an issue", required: true, kind: "literal" },
+        signature: '{"owner": string, "repo": string, "issue_number": integer}',
+    }), {
+        body: { role: "JSON arguments", required: false },
+        target: { role: "Read an issue", required: true, kind: "literal" },
+        signature: '{"owner": string, "repo": string, "issue_number": integer}',
     });
 });
 
@@ -51,7 +61,9 @@ test("{§executor-invocation} rejects incomplete, ambiguous, and typo-bearing de
         [{ body: { role: "query", required: true }, target: { role: "input", required: false, kind: "path", mode: "cwd" }, example: { body: "find it" } }, /target has unknown field 'mode'/],
         [{ body: { role: "query", required: true }, example: { body: "find it" }, exclusive: "yes" }, /invocation\.exclusive must be boolean/],
         [{ body: { role: "query", required: true }, example: { body: "find it" }, exclusive: true }, /exclusive invocation must declare a target/],
-        [{ body: { role: "query", required: true } }, /invocation\.example must be an object/],
+        [{ body: { role: "query", required: true } }, /exactly one example or signature/],
+        [{ body: { role: "query", required: true }, example: { body: "find it" }, signature: "string" }, /exactly one example or signature/],
+        [{ body: { role: "query", required: true }, signature: "multi\nline" }, /signature must be one non-empty canonical line/],
         [{ body: { role: "query", required: true }, example: {} }, /must provide a body or target/],
         [{ body: { role: "query", required: true }, example: { target: "input" } }, /required body/],
         [{ body: { role: "query", required: true }, example: { body: " find it" } }, /example\.body must be one non-empty canonical line/],
@@ -67,53 +79,91 @@ test("{§executor-invocation} rejects incomplete, ambiguous, and typo-bearing de
     }
 });
 
-test("{§executor-invocation-variants} validates unique exact literal target refinements", () => {
-    const variants = RuntimeInvocation.assertVariants([
-        {
-            body: { role: "JSON arguments from gitea://issue_read/", required: false },
-            target: { role: "MCP tool contract gitea://issue_read/", required: true, kind: "literal" },
-            example: { target: "issue_read" },
-        },
-        {
-            body: { role: "JSON arguments from gitea://issue_write/", required: false },
-            target: { role: "MCP tool contract gitea://issue_write/", required: true, kind: "literal" },
-            example: { target: "issue_write" },
-        },
-    ], {
-        body: { role: "JSON arguments", required: false },
-        target: { role: "MCP tool", required: true, kind: "literal" },
-        example: { target: "tool_name" },
+test("{§executor-tool-registry} validates one closed set of exact literal targets", () => {
+    const registry = RuntimeInvocation.assertToolRegistry({
+        tools: [
+            {
+                target: "issue_read",
+                invocation: {
+                    body: { role: "JSON arguments", required: false },
+                    target: { role: "Read an issue", required: true, kind: "literal" },
+                    signature: '{"owner": string, "repo": string}',
+                },
+            },
+            {
+                target: "issue_write",
+                invocation: {
+                    body: { role: "JSON arguments", required: true },
+                    target: { role: "Write an issue", required: true, kind: "literal" },
+                    example: { target: "issue_write", body: "{}" },
+                },
+            },
+        ],
+        documentation: "# gitea\n\nExact schemas.",
     }, "@plurnk/plurnk-mcp", "gitea");
 
-    assert.deepEqual(variants.map((variant) => variant.example.target), ["issue_read", "issue_write"]);
+    assert.deepEqual(registry.tools.map((tool) => tool.target), ["issue_read", "issue_write"]);
+    assert.equal(registry.documentation, "# gitea\n\nExact schemas.");
     assert.throws(
-        () => RuntimeInvocation.assertVariants([variants[0]!, variants[0]!], {
-            body: { role: "JSON arguments", required: false },
-            target: { role: "MCP tool", required: true, kind: "literal" },
-            example: { target: "tool_name" },
+        () => RuntimeInvocation.assertToolRegistry({
+            ...registry,
+            tools: [registry.tools[0], registry.tools[0]],
         }, "@plurnk/plurnk-mcp", "gitea"),
         /duplicate exact target 'issue_read'/,
     );
     assert.throws(
-        () => RuntimeInvocation.assertVariants([{
-            body: { role: "query", required: true },
-            example: { body: "find it" },
-        }], {
-            body: { role: "query", required: true },
-            example: { body: "find it" },
+        () => RuntimeInvocation.assertToolRegistry({
+            tools: [{
+                target: "search",
+                invocation: {
+                    body: { role: "query", required: true },
+                    example: { body: "find it" },
+                },
+            }],
+            documentation: "",
         }, "fixture", "search"),
-        /variant.*required literal target/,
+        /must declare a required literal target/,
     );
     assert.throws(
-        () => RuntimeInvocation.assertVariants([{
-            body: { role: "JSON arguments", required: true },
-            target: { role: "MCP tool", required: true, kind: "literal" },
-            example: { target: "issue_read", body: "{}" },
-        }], {
-            body: { role: "JSON arguments", required: false },
-            target: { role: "MCP tool", required: true, kind: "literal" },
-            example: { target: "tool_name" },
+        () => RuntimeInvocation.assertToolRegistry({
+            tools: [{
+                target: "issue_read",
+                invocation: {
+                    body: { role: "JSON arguments", required: true },
+                    target: { role: "MCP tool", required: true, kind: "literal" },
+                    example: { target: "different", body: "{}" },
+                },
+            }],
+            documentation: "",
         }, "@plurnk/plurnk-mcp", "gitea"),
-        /may refine only roles and example values/,
+        /conflicts with invocation\.example\.target 'different'/,
+    );
+    assert.deepEqual(
+        RuntimeInvocation.assertToolRegistry({
+            tools: [{
+                target: "issue)read",
+                invocation: {
+                    body: { role: "JSON arguments", required: false },
+                    target: { role: "MCP tool", required: true, kind: "literal" },
+                    signature: "{}",
+                },
+            }],
+            documentation: "",
+        }, "@plurnk/plurnk-mcp", "gitea").tools.map((tool) => tool.target),
+        ["issue)read"],
+    );
+    assert.throws(
+        () => RuntimeInvocation.assertToolRegistry({
+            tools: [{
+                target: "issue<read",
+                invocation: {
+                    body: { role: "JSON arguments", required: false },
+                    target: { role: "MCP tool", required: true, kind: "literal" },
+                    signature: "{}",
+                },
+            }],
+            documentation: "",
+        }, "@plurnk/plurnk-mcp", "gitea"),
+        /target 'issue<read' must render one valid EXEC section/,
     );
 });

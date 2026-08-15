@@ -96,7 +96,6 @@ export default class ServerConnection {
     readonly #config: ServerConfig;
     readonly #environ: NodeJS.ProcessEnv;
     #client: Promise<Client> | undefined;
-    #currentTools: readonly Tool[] = [];
 
     constructor(config: ServerConfig, environ: NodeJS.ProcessEnv = process.env) {
         this.#config = config;
@@ -113,14 +112,9 @@ export default class ServerConnection {
         return pending;
     }
 
-    currentTools(): readonly Tool[] {
-        return this.#currentTools;
-    }
-
     async tools(signal?: AbortSignal): Promise<Tool[]> {
         const client = await this.connect();
         const { tools } = await client.listTools(undefined, this.#requestOptions(signal));
-        this.#currentTools = tools;
         return tools;
     }
 
@@ -201,7 +195,6 @@ export default class ServerConnection {
     async close(): Promise<void> {
         const client = this.#client;
         this.#client = undefined;
-        this.#currentTools = [];
         if (client !== undefined) await (await client).close();
     }
 }

@@ -28,9 +28,6 @@ export interface SchemeManifest {
     readonly writableBy: ReadonlyArray<WriterTier>;
     readonly volatile: boolean;
     readonly modelVisible: boolean;
-    // A nonempty URI authority remains a scheme-owned selector instead of
-    // folding into the pathname ({§manifest-semantic-authority}).
-    readonly authority?: "semantic";
     // A trailing slash on FIND or READ denotes a collection scope only when declared.
     // Explicit globs and matcher bodies remain queries everywhere. Absent/false
     // means `/` is ordinary resource syntax and dispatches directly.

@@ -265,6 +265,7 @@ export class SqlRiteSync {
 	log_derivation_rows: SqlRiteSyncPreparedStatements;
 	log_set_deep_hash: SqlRiteSyncPreparedStatements;
 	log_entry_by_id: SqlRiteSyncPreparedStatements;
+	loop_docs_materialized: SqlRiteSyncPreparedStatements;
 	lifecycle_park_loop: SqlRiteSyncPreparedStatements;
 	lifecycle_wake_loop: SqlRiteSyncPreparedStatements;
 	lifecycle_finish_loop: SqlRiteSyncPreparedStatements;
@@ -736,6 +737,7 @@ export default class SqlRite {
 	log_derivation_rows: SqlRitePreparedStatements;
 	log_set_deep_hash: SqlRitePreparedStatements;
 	log_entry_by_id: SqlRitePreparedStatements;
+	loop_docs_materialized: SqlRitePreparedStatements;
 	lifecycle_park_loop: SqlRitePreparedStatements;
 	lifecycle_wake_loop: SqlRitePreparedStatements;
 	lifecycle_finish_loop: SqlRitePreparedStatements;

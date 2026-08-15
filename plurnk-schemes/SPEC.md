@@ -40,7 +40,6 @@ class Notes {
 | `writableBy` | Subset of `["model", "client", "plurnk", "plugin"]`; empty declares an immutable scheme. Consumer returns 403 for outside-set writes. |
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
-| §manifest-semantic-authority `authority?` | Optional `"semantic"`: a nonempty URI authority remains a distinct scheme-owned selector through dispatch and diagnostics. The handler resolves it through `resolveEntryAddress`; absent means a non-network authority folds into the canonical pathname. |
 | `folderScopes?` | `true` declares that a trailing slash on FIND is a collection scope. Absent/false means `/` is ordinary resource syntax. |
 | `textEditScopes?` | `true` declares the shared textual EDIT coordinate and collision contract. For model-writable schemes, core's universal READ projector publishes line anchors and core resolves them for every anchor-bearing text selection; handlers receive only numeric coordinates and route standard entry mutation through `ctx.entries.operations.editBatch`. Absent/false or no model write authority rejects model-facing anchors before handler invocation. |
 | `flags?` | Optional exact `SchemeFlagAffinity`; see {§manifest-flag-affinity}. |
@@ -53,16 +52,6 @@ class Notes {
 The manifest is closed: unknown top-level fields fail admission. Entry
 visibility is not manifest metadata; the consumer resolves it through the
 entry owner's identity.
-
-{§manifest-semantic-authority} separates URI syntax from storage identity. A
-semantic authority is not another persistence column: the scheme converts the
-complete address to its canonical `(owner, pathname)` through
-`resolveEntryAddress`; consumer admission rejects the declaration when that
-hook is absent. Executor output schemes use it for named-worker stream
-selection, while a runtime scheme facet may claim another authority-only
-resource. Unclaimed executor coordinates retain the standard stream meaning.
-The consumer preserves a semantic authority in operation records instead of
-silently rewriting `scheme://name/path` as `scheme:///name/path`.
 
 §manifest-flag-affinity `flags` is a closed environmental-authority declaration.
 Unknown flag fields fail manifest admission; absent fields are false. Only registered
@@ -172,11 +161,10 @@ non-`200` content remains eligible for transfer.
 
 §entry-address-resolution `resolveEntryAddress?` gives a client observation the
 same address law as model-facing operations without creating a second CRUD
-protocol. Core supplies the complete parsed address, including a semantic
-authority declared by {§manifest-semantic-authority}, after removing the
-channel fragment and target-slot pathname aliases {§path-parentheses}; query
-and other identity components remain exact. The hook returns the canonical
-stored `pathname` and a semantic owner:
+protocol. Core removes the channel fragment and target-slot pathname aliases
+{§path-parentheses} before invocation; query and other identity components
+remain exact. The hook returns the canonical stored `pathname` and a semantic
+owner:
 
 | Return                                  | Meaning                                           |
 |-----------------------------------------|---------------------------------------------------|

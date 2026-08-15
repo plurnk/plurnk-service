@@ -334,7 +334,31 @@ export default class Exec extends CoreSchemeAdapterBase {
             ) as ExecResult;
         }
 
-        const invocation = resolved.invocation;
+        const registry = core.executors.toolRegistry(runtime);
+        const exactTarget = statement.target?.raw ?? null;
+        const registeredTool = registry?.tools.find((tool) => tool.target === exactTarget);
+        if (registry !== null && registeredTool === undefined) {
+            const availableTargets = registry.tools.map((tool) => tool.target);
+            return Results.failure(
+                "scheme:exec",
+                exactTarget === null ? "target-required" : "target-not-registered",
+                exactTarget === null ? 400 : 404,
+                exactTarget === null
+                    ? `Executable tool family '${runtime}' requires one registered tool target.`
+                    : `Executable tool family '${runtime}' has no registered target '${exactTarget}'.`,
+                {},
+                {
+                    runtime,
+                    availableTargets,
+                    recovery: availableTargets.length > 0
+                        ? `Select one registered target: ${availableTargets.join(", ")}.`
+                        : `Continue without executing '${runtime}'; it has no enabled targets.`,
+                    retryable: false,
+                },
+            ) as ExecResult;
+        }
+
+        const invocation = registeredTool?.invocation ?? resolved.invocation;
         const hasBody = body.length > 0;
         const hasTarget = statement.target !== null;
         const refuse = (

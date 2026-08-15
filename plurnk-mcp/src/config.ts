@@ -5,7 +5,7 @@ const COMPANION_SUFFIXES = [
     "_cwd",
     "_env",
     "_headers",
-    "_featured",
+    "_tools",
     "_read",
 ] as const;
 const CONTROL_KEYS = new Map([
@@ -28,7 +28,7 @@ export interface StdioServerConfig {
     readonly args: string[];
     readonly cwd?: string;
     readonly env?: Record<string, string>;
-    readonly featured?: boolean | readonly string[];
+    readonly tools?: readonly string[];
     readonly read?: readonly string[];
 }
 
@@ -36,14 +36,14 @@ export interface HttpServerConfig {
     readonly transport: "http";
     readonly url: string;
     readonly headers?: Record<string, string>;
-    readonly featured?: boolean | readonly string[];
+    readonly tools?: readonly string[];
     readonly read?: readonly string[];
 }
 
 export type ServerConfig = StdioServerConfig | HttpServerConfig;
 
 export interface ToolPolicy {
-    readonly featured: boolean | readonly string[];
+    readonly tools: readonly string[] | null;
     readonly read: readonly string[];
 }
 
@@ -158,28 +158,6 @@ const toolNames = (
     environ: NodeJS.ProcessEnv,
 ): string[] => uniqueToolNames(jsonStrings(raw, field, environ), field);
 
-const featuredTools = (
-    raw: string | undefined,
-    field: string,
-    environ: NodeJS.ProcessEnv,
-): boolean | string[] => {
-    if (raw === undefined || raw.length === 0) return false;
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(raw);
-    } catch (cause) {
-        throw new Error(`${field} must be a JSON boolean or JSON array of strings.`, { cause });
-    }
-    if (typeof parsed === "boolean") return parsed;
-    if (!Array.isArray(parsed) || !parsed.every((value) => typeof value === "string")) {
-        throw new Error(`${field} must be a JSON boolean or JSON array of strings.`);
-    }
-    return uniqueToolNames(
-        parsed.map((value) => expandReferences(value, environ, field)),
-        field,
-    );
-};
-
 const jsonRecord = (
     raw: string | undefined,
     field: string,
@@ -247,12 +225,11 @@ export const serverConfig = (
     const fields = companions.get(folded);
     const fieldName = (suffix: CompanionSuffix): string =>
         fields?.get(suffix)?.key ?? `${PREFIX}${folded.toUpperCase()}${suffix.toUpperCase()}`;
-    const policy: ToolPolicy = {
-        featured: featuredTools(
-            fields?.get("_featured")?.value,
-            fieldName("_featured"),
-            environ,
-        ),
+    const configuredTools = fields?.get("_tools");
+    const policy = {
+        ...(configuredTools === undefined
+            ? {}
+            : { tools: toolNames(configuredTools.value, configuredTools.key, environ) }),
         read: toolNames(fields?.get("_read")?.value, fieldName("_read"), environ),
     };
     if (/^https?:\/\//i.test(target.value)) {
@@ -260,7 +237,7 @@ export const serverConfig = (
             .flatMap((suffix) => fields?.get(suffix)?.key ?? []);
         if (invalid.length > 0) {
             throw new Error(
-                `${invalid.join(", ")} cannot accompany HTTP MCP server target ${target.key}; transport-neutral _FEATURED/_READ and HTTP _HEADERS are valid.`,
+                `${invalid.join(", ")} cannot accompany HTTP MCP server target ${target.key}; transport-neutral _TOOLS/_READ and HTTP _HEADERS are valid.`,
             );
         }
         const headers = jsonRecord(
