@@ -65,7 +65,7 @@ const seed = async (db: Awaited<ReturnType<typeof openMigrated>>, opts: { fail?:
     const loopId = await insertLoop(db, workerId, 1, "search things");
     const turnId = await insertTurn(db, loopId, 1, 102);
     // The daemon's wake hook, minimally: settle the gate on stream conclusions (promote 200 /
-    // drop failure) — production Daemon.#handleWakeWorker line one.
+    // drop failure) — production DrainSupervisor.handleWakeWorker line one.
     const notifyRef: { fn: (p: { target: string; result: { status: number } }) => void } = { fn: () => {} };
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, wakeWorkerNotify: (p) => notifyRef.fn(p) });
     notifyRef.fn = (p) => engine.searchGate.settle(p.target.replace(/^[a-z+.-]+:\/\//, "/").replace(/^\/+/, "/"), p.result.status);

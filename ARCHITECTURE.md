@@ -130,5 +130,6 @@ and daemon authority are not interchangeable.
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | Workspaces, workers, loops, turns, logs | SQLite through core's tagged lifecycle and persistence contracts.                                     |
 | Project bytes and Git membership        | The project filesystem and repository; database entries are the agent-visible projection.             |
-| Active drains, provider calls, teardown | Process-local core state reconciled against durable state; see `{§worker-loop-lifecycle}`.            |
+| Active worker drains, wakes, cancellation | Process-local `DrainSupervisor` state reconciled against durable state; see `{§worker-loop-lifecycle}`. |
+| Provider calls and process teardown       | `Engine` owns provider-call state; `Daemon` owns reverse-order process teardown.                       |
 | Client binding and presentation         | The client-interface package and client process; neither becomes persisted daemon truth by accident.  |

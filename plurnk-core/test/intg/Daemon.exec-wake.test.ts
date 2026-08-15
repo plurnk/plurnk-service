@@ -1,5 +1,5 @@
 // Wake-on-completion daemon decision tree ({§worker-lifecycle-wake-liveness}). When an exec
-// spawn concludes (an OPEN stream-status transition), Daemon.#handleWakeWorker picks one of:
+// spawn concludes (an OPEN stream-status transition), DrainSupervisor.handleWakeWorker picks one of:
 //   - "no-op-active-loop" — the worker has a live drain; the conclusion folds into its next turn
 //   - "resumed-loop" — the worker is parked at a slept (202) loop; that SAME loop resumes in place
 //   - "skipped-aborted" — result.status=499 (deliberate cancel) — no resume

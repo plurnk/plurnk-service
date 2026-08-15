@@ -459,7 +459,7 @@ export default class File extends CoreSchemeAdapterBase {
 
     // COPY/MOVE INTO file:/// — the dest write. Same {§membership} gate as edit, same 202
     // proposal + applyResolution path: a copy onto disk is a disk write and earns
-    // the identical human review. Dispatcher.#copyOrchestration propagates this 202;
+    // the identical human review. ResourceMutations.#copyOrchestration propagates this 202;
     // ProposalLifecycle.workerApply routes the accept back here via the dest scheme;
     // applyResolution() writes the file + registers the entry. The copied content
     // is the source's body channel (full replacement — files are body-only).

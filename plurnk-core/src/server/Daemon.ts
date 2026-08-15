@@ -3,23 +3,25 @@
 
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 import type { Db } from "../core/Db.ts";
-import { execPollBackoffMs } from "./exec-poll-backoff.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
-import ChannelWrite, { type StreamEventPayload, type WakeWorkerPayload } from "../core/ChannelWrite.ts";
+import type { StreamEventPayload } from "../core/ChannelWrite.ts";
 import Paths from "../Paths.ts";
-import Engine, { type LoopUsage } from "../core/Engine.ts";
+import Engine from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
-import { aggregateProviderAccounting, type Provider, type ProviderAlias } from "@plurnk/plurnk-providers";
+import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 // {§notifications-envelope-carries-workspaceid}: "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
-// One drained loop's terminal shape — the drain's return currency.
-export interface DrainLoopResult { loopId: number; result: SchemeResult; hitMaxTurns: boolean; turnIds: number[]; action?: string; usage?: LoopUsage; attributions?: string[] }
+import DrainSupervisor, {
+    type DrainInjectionArgs,
+    type DrainInjectionResult,
+    type TurnCeilingSelection,
+} from "./DrainSupervisor.ts";
+export type { DrainLoopResult } from "./DrainSupervisor.ts";
 import {
     parsePath,
     Validator,
@@ -48,13 +50,11 @@ import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import { resolveLoopAlias } from "./loop-model.ts";
-import { DEFAULT_LOOP_FLAGS } from "../core/scheme-types.ts";
 import type { LoopFlags } from "../core/types.ts";
 import LoopFlagsReader from "../core/LoopFlagsReader.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import BranchBatches from "./BranchBatches.ts";
-import ErrorDetail from "../core/ErrorDetail.ts";
 import type {
     DaemonModule,
     ModuleActionHandler,
@@ -63,14 +63,6 @@ import type {
     StartedModule,
 } from "./DaemonModule.ts";
 import { observed, observedSync } from "../observe/spans.ts";
-import { LOOP_TERMINALS, recordCounter } from "../observe/metrics.ts";
-import { readOptimisticSettlementMs } from "../core/optimistic-settlement.ts";
-
-interface CompletionWakeGate {
-    conclusions: number;
-    poke: PromiseWithResolvers<void>;
-    promise: Promise<void>;
-}
 
 const clientActionFailure = (error: unknown): SchemeResult => {
     if (error instanceof OperationFailureError) return error.result;
@@ -99,11 +91,6 @@ const daemonFailure = (
 );
 
 type ChannelRow = { name: string } & ClientEntryChannel;
-type TurnCeilingSelection = Readonly<{
-    effective: number;
-    source: "implicit" | "explicit";
-}>;
-
 const entryReadResult = (result: unknown): EntryReadResult =>
     Validator.assertEntryReadResult(result as EntryReadResult);
 
@@ -113,6 +100,7 @@ export default class Daemon {
     #workspaceGate: WorkspaceGate;
     #branchBatches: BranchBatches;
     #lifecycle: LoopLifecycle;
+    #drains: DrainSupervisor;
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
     readonly #ownsMimetypes: boolean;
@@ -128,41 +116,6 @@ export default class Daemon {
     // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never owns
     // client transport or connection state.
     #eventSubscribers = new Set<(workspaceId: number | null, method: string, params: unknown) => void>();
-
-    // Worker-level drain registry. At most one drain per worker. The stored object
-    // is the drain's identity handle: start/exit compare it by reference so a
-    // drain exiting never clobbers a successor that raced in, and a loop
-    // enqueued during teardown is never stranded. A drain is a pure queue
-    // consumer (claim → run → exit on empty queue); streams live independently
-    // (subscriptions + Exec.idle), and a concluding stream routes through
-    // inject() like any other loop source.
-    #activeDrains = new Map<number, { controller: AbortController; promise: Promise<unknown> }>();
-    #drainExitTasks = new Set<Promise<void>>();
-    // Per-worker cancellation scope. Loops AND the streams they spawn (execs)
-    // share this signal, so loop.cancel / shutdown abort it once and every
-    // in-flight subscription tears down — even a spawn that registers AFTER the
-    // cancel self-aborts against the already-aborted signal (no race). Outlives
-    // any single (ephemeral) drain; replaced with a fresh controller once
-    // aborted so a later runLoop request isn't born cancelled.
-    #workerAborts = new Map<number, AbortController>();
-    // grammar 0.74.20 EXEC `<T,P>` — per-worker hibernation poll-wake timer. When a loop parks at
-    // a park with a polled stream, a timer fires every P seconds to resume it ({§exec-poll}). One
-    // per worker (the tightest cadence); cleared/replaced on each park and on cancel.
-    #parkTimers: Map<number, NodeJS.Timeout> = new Map();
-    #pollTimers = new Map<number, ReturnType<typeof setTimeout>>();
-    #pollBackoff = new Map<number, number>(); // {§exec-poll} — backoff step per worker
-    // Per-worker drain-transition lock — see #withDrainLock (R4 / {§worker-lifecycle-single-drain}).
-    #drainLocks = new Map<number, Promise<unknown>>();
-    // {§worker-lifecycle-child-wake} — workers owed a wake: a child/stream conclusion fired while the worker was
-    // mid-turn (not yet slept), so #wakeParkedWorker could not resume it. A child-worker conclusion is a
-    // BOUNDED, lossless wake (a worker always concludes), so a hibernation awaiting one MUST return —
-    // never deadlock. The drain honors the owed wake at the worker's next park, closing the conclude-
-    // before-park race. (Only a live exec stream, unbounded absent a timeout, may hold a park open.)
-    #owedWakes = new Set<number>();
-    // {§worker-optimistic-settlement} — one non-sliding completion-wake batch
-    // per worker. Durable conclusions and client events land before this gate;
-    // only the parked loop's provider-dispatch requeue waits.
-    #completionWakeGates = new Map<number, CompletionWakeGate>();
 
     constructor({
         db, schemes, mimetypes, provider, nodeModulesPath,
@@ -218,7 +171,7 @@ export default class Daemon {
                         origin,
                     }))?.id;
                 if (workerId === undefined) throw new Error("Branch worker insert returned no row");
-                const loopId = await this.#enqueueFreshLoop({
+                const loopId = await this.#drains.enqueueFreshLoop({
                     workerId,
                     prompt,
                     providerSpec,
@@ -229,7 +182,7 @@ export default class Daemon {
             },
             startChild: async (workspaceId, workerId, loopId) => {
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-                const started = await this.#ensureDrain({ workspaceId, workerId, systemPrompt });
+                const started = await this.#drains.ensureDrain({ workspaceId, workerId, systemPrompt });
                 if (started === null) throw new Error(`Branch worker ${workerId} already has a live drain`);
                 const result = await started.firstLoopPromise;
                 if (result.loopId !== loopId) {
@@ -239,7 +192,7 @@ export default class Daemon {
             },
             wakeParent: async (workspaceId, workerId) => {
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-                await this.#settleCompletionWake(workspaceId, workerId, systemPrompt, false);
+                await this.#drains.settleCompletionWake(workspaceId, workerId, systemPrompt, false);
             },
             notify: (workspaceId, payload) => {
                 this.#broadcast({ workspaceId }, "workspace/branch-batch", payload);
@@ -253,7 +206,7 @@ export default class Daemon {
             // lives only at the packet-materialization fit-gate.
             tokenize: rulerCount,
             streamEventNotify: (workspaceId, event) => this.notifyStreamEvent(workspaceId, event),
-            wakeWorkerNotify: (payload) => { void this.#handleWakeWorker(payload); },
+            wakeWorkerNotify: (payload) => { void this.#drains.handleWakeWorker(payload); },
             // worker:// loop-start primitive — spawn/fork/irc deliver through
             // Daemon.inject (active sister → fold; idle → enqueue + drain). The
             // daemon owns provider + the law-file system prompt; the worker scheme
@@ -285,9 +238,76 @@ export default class Daemon {
             workspaceTurnCompleted: async ({ turnId }) => this.#branchBatches.sealTurn(turnId),
             // worker:// KILL (terminate) — cancel the addressed worker subtree and
             // tear down its held streams before the operation completes.
-            cancelWorker: async (workerId, reason) => this.#cancelWorkerTree(workerId, reason),
-            cancelDescendants: async (workerId, reason) => this.#cancelTree(workerId, reason, false),
+            cancelWorker: async (workerId, reason) => this.#drains.cancelWorkerTree(workerId, reason),
+            cancelDescendants: async (workerId, reason) => this.#drains.cancelDescendants(workerId, reason),
             noticeNotify: (workspaceId, payload) => this.notifyNotice(workspaceId, payload),
+        });
+        this.#drains = new DrainSupervisor({
+            db,
+            lifecycle: this.#lifecycle,
+            injectPrompt: (workerId, prompt, openPaths) => this.#engine.inject(workerId, prompt, openPaths),
+            assertInjectionCompatibility: async ({
+                workerId,
+                loopId,
+                providerSpec,
+                childProviderSpec,
+                turnCeiling,
+                flags,
+            }) => {
+                await this.#assertFoldPosture(workerId, flags, loopId);
+                await this.#assertLoopProvider(loopId, providerSpec);
+                if (childProviderSpec !== undefined) {
+                    await this.#assertLoopChildProvider(loopId, childProviderSpec);
+                }
+                await this.#assertLoopMaxTurns(
+                    loopId,
+                    turnCeiling?.source === "explicit" ? turnCeiling.effective : undefined,
+                );
+            },
+            reconcilePrompts: (workerId, endedLoopId) => this.#reconcileOrphanedPrompts(workerId, endedLoopId),
+            runLoop: async ({
+                workspaceId,
+                workerId,
+                loopId,
+                maxTurns,
+                prompt,
+                systemPrompt,
+                signal,
+                onDispatch,
+            }) => {
+                const { provider, childProvider } = await this.#providersForLoop(loopId);
+                return this.#engine.runLoop({
+                    provider,
+                    childProvider,
+                    workspaceId,
+                    workerId,
+                    loopId,
+                    maxTurns,
+                    messages: [
+                        { role: "system", content: systemPrompt },
+                        { role: "user", content: prompt },
+                    ],
+                    origin: "model",
+                    signal,
+                    onDispatch,
+                });
+            },
+            loopUsage: (loopId) => this.#engine.loopUsage(loopId),
+            loopAttributions: (loopId) => this.#engine.loopAttributions(loopId),
+            takeParkDeadline: (loopId) => {
+                const deadline = this.#engine.parkDeadlines.get(loopId);
+                this.#engine.parkDeadlines.delete(loopId);
+                return deadline;
+            },
+            settleSearch: (target, status) => this.#engine.searchGate.settle(target, status),
+            cancelSubscription: (subscriptionId) => this.#engine.cancelSubscription(subscriptionId),
+            hasActiveStreams: (workerId) => this.#workerHasActiveStreams(workerId),
+            readSystemPrompt: () => readFile(Paths.instructionsSystem, "utf8"),
+            emitLogEntry: async (workspaceId, logEntryId) => {
+                const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
+                this.#broadcast({ workspaceId }, "log/entry", { entry });
+            },
+            emit: (workspaceId, method, params) => this.#broadcast({ workspaceId }, method, params),
         });
         // Wire proposal-pending events to the loop/proposal WS notification.
         // Sessionid scopes the broadcast to clients on the same workspace.
@@ -1260,6 +1280,7 @@ export default class Daemon {
     async start(): Promise<void> {
         if (this.#started) throw new Error("daemon already started");
         this.#started = true;
+        this.#drains.start();
 
         // Mimetypes owns its own discovery scan over @plurnk/plurnk-mimetypes-*
         // packages; pre-warm it so first index render doesn't pay the cost.
@@ -1322,7 +1343,7 @@ export default class Daemon {
             worker_id: number;
         }>({});
         for (const source of orphanSources) {
-            await this.#reconcileOrphanedPrompts(source.worker_id, source.loop_id);
+            await this.#drains.reconcileOrphanedPrompts(source.worker_id, source.loop_id);
         }
 
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
@@ -1331,7 +1352,7 @@ export default class Daemon {
             workspace_id: number;
         }>({});
         for (const row of queued) {
-            const started = await this.#ensureDrain({
+            const started = await this.#drains.ensureDrain({
                 workspaceId: row.workspace_id,
                 workerId: row.worker_id,
                 systemPrompt,
@@ -1346,7 +1367,7 @@ export default class Daemon {
             workspace_id: number;
         }>({});
         for (const row of parked) {
-            await this.#schedulePollWake(
+            await this.#drains.schedulePollWake(
                 row.workspace_id,
                 row.worker_id,
                 systemPrompt,
@@ -1368,8 +1389,8 @@ export default class Daemon {
         );
         this.#moduleClosers = [];
 
-        // Drain order: (1) abort in-flight loops via #activeDrains so
-        // strike paths don't keep going, (2) await each drain's promise
+        // Drain order: (1) tell the supervisor to abort worker scopes so
+        // strike paths don't keep going, (2) await its active drains
         // to completion, (3) drain streaming schemes' background work
         // (exec spawn cleanup, channel writes). Only THEN close the DB
         // upstream — drain queries hit the DB right up until they exit.
@@ -1384,19 +1405,9 @@ export default class Daemon {
         this.#engine.cancelAllProposals("daemon_stopping");
         this.#engine.cancelDerivations(derivationAbort);
         this.#branchBatches.beginStop();
-        for (const scope of this.#workerAborts.values()) { if (!scope.signal.aborted) scope.abort("daemon_stopping"); }
-        for (const t of this.#pollTimers.values()) clearTimeout(t); // drop pending hibernation poll-wakes
-        this.#pollBackoff.clear();
-        this.#pollTimers.clear();
-        // Cancel park-deadline timers before DB close; otherwise a late #wakeParkedWorker would run after
-        // stop/db-close if left pending — an unhandled rejection (SqlRite closed) that abnormally
-        // exits the worker under load. Symmetric with the poll-wakes above; both must be reaped.
-        for (const t of this.#parkTimers.values()) clearTimeout(t);
-        this.#parkTimers.clear();
+        this.#drains.beginStop("daemon_stopping");
         await this.#branchBatches.idle();
-        const drainPromises = [...this.#activeDrains.values()].map((d) => d.promise);
-        await Promise.allSettled(drainPromises);
-        await Promise.allSettled([...this.#drainExitTasks]);
+        await this.#drains.idle();
         const closeResults = await moduleClose;
         const [streamingResult] = await Promise.allSettled([this.#drainStreamingSchemes()]);
         const [derivationResult] = await Promise.allSettled([
@@ -1439,18 +1450,6 @@ export default class Daemon {
         this.#broadcast({ workspaceId }, "notice/event", payload);
     }
 
-    /**
-     * Inject a prompt into a worker. Two paths:
-     *   - Active drain: writes the next prompt:///<loop>/<N> entry via
-     *     Engine.inject. The current loop publishes it at its next
-     *     turn. Returns immediately with {action: "injected_next_turn"}.
-     *   - No active drain: enqueues a fresh loop with the prompt at
-     *     status=100, starts a drain. Returns the drain promise so the
-     *     caller can await full completion.
-     *
-     * Both `runLoop` and wake-on-completion go through this method
-     * ({§actor-boundary-passive-wake}).
-     */
     // {§methods-loop-run-fold-consistency} — a folded prompt cannot reconfigure its loop.
     async #assertFoldPosture(workerId: number, flags: Partial<LoopFlags> | undefined, loopId: number): Promise<void> {
         if (flags === undefined || Object.keys(flags).length === 0) return;
@@ -1477,910 +1476,67 @@ export default class Daemon {
         }
     }
 
-    async inject(args: {
-        workspaceId: number; workerId: number; prompt: string;
-        providerSpec: ProviderAlias; systemPrompt: string;
-        childProviderSpec?: ProviderAlias | null;
-        turnCeiling?: TurnCeilingSelection; flags?: Partial<LoopFlags>; openPaths?: string[];
-    }): Promise<{
-        action: "injected_next_turn" | "enqueued_new_loop";
-        loopId: number;
-        turnSeq?: number;
-        firstLoopPromise?: Promise<DrainLoopResult>;
-        drainPromise?: Promise<unknown>;
-    }> {
-        const { workspaceId, workerId, prompt } = args;
-        // Active loop (status=102)? Fold the wake/prompt into its next turn.
-        // engine.inject returns null when no loop is currently executing, so
-        // we enqueue a fresh loop below and ensure a drain claims it.
-        if (this.#activeDrains.has(workerId)) {
-            const active = await this.#db.drain_current_loop_for_worker.get<{ id: number }>({ worker_id: workerId });
-            if (active !== undefined) {
-                await this.#assertFoldPosture(workerId, args.flags, active.id); // compare with the exact durable loop
-                await this.#assertLoopProvider(active.id, args.providerSpec);
-                if (args.childProviderSpec !== undefined) await this.#assertLoopChildProvider(active.id, args.childProviderSpec);
-                await this.#assertLoopMaxTurns(
-                    active.id,
-                    args.turnCeiling?.source === "explicit" ? args.turnCeiling.effective : undefined,
-                );
-            }
-            const result = await this.#engine.inject(workerId, prompt, args.openPaths ?? []);
-            if (result !== null) {
-                return { action: "injected_next_turn", loopId: result.loopId, turnSeq: result.turnSeq };
-            }
-        }
-
-        // {§worker-lifecycle-wake-requeue-not-terminal} — a worker parked at 202 resumes that loop in place:
-        // is a wake edge like a stream/child conclusion, not a fresh loop that orphans the parked one
-        // (which would leave the worker non-quiescent forever). engine.inject writes the message as the
-        // slept loop's next-turn prompt (the directed message — distinct from the env door, which
-        // resumes promptless); then re-queue + drain it. {§worker-lifecycle-wake-liveness}.
-        if (!this.#activeDrains.has(workerId)) {
-            const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
-            if (slept !== undefined) {
-                await this.#assertFoldPosture(workerId, args.flags, slept.id); // resume drops nothing silently
-                await this.#assertLoopProvider(slept.id, args.providerSpec);
-                if (args.childProviderSpec !== undefined) await this.#assertLoopChildProvider(slept.id, args.childProviderSpec);
-                await this.#assertLoopMaxTurns(
-                    slept.id,
-                    args.turnCeiling?.source === "explicit" ? args.turnCeiling.effective : undefined,
-                );
-                const injected = await this.#engine.inject(workerId, prompt, args.openPaths ?? []);
-                await this.#lifecycle.wake(slept.id);
-                const started = await this.#ensureDrain({
-                    workspaceId, workerId, systemPrompt: args.systemPrompt,
-                });
-                return { action: "injected_next_turn", loopId: slept.id, ...(injected?.turnSeq !== undefined ? { turnSeq: injected.turnSeq } : {}), ...(started ?? {}) };
-            }
-        }
-
-        const loopId = await this.#enqueueFreshLoop({
-            workerId,
-            prompt,
-            providerSpec: args.providerSpec,
-            childProviderSpec: args.childProviderSpec ?? null,
-            maxTurns: args.turnCeiling?.effective,
-            flags: args.flags,
-            openPaths: args.openPaths,
-        });
-
-        // Guarantee a drain claims the loop we just enqueued. #ensureDrain runs its
-        // check-and-start UNDER the per-worker drain lock ({§worker-lifecycle-single-drain}),
-        // serialized against a draining sibling's teardown relinquish so the two can't
-        // both register a drain (R4). A live drain re-claims the loop in its own
-        // iteration or its lock-held exit re-claim, so it's never stranded.
-        // firstLoopPromise is present only when THIS call started the drain — runLoop
-        // keys its fast-path response on that.
-        const started = await this.#ensureDrain({
-            workspaceId, workerId, systemPrompt: args.systemPrompt,
-        });
-        return { action: "enqueued_new_loop", loopId, ...(started ?? {}) };
+    inject(args: DrainInjectionArgs): Promise<DrainInjectionResult> {
+        return this.#drains.inject(args);
     }
 
-    async #enqueueFreshLoop(args: {
-        workerId: number;
-        prompt: string;
-        providerSpec: ProviderAlias;
-        childProviderSpec: ProviderAlias | null;
-        maxTurns?: number;
-        flags?: Partial<LoopFlags>;
-        openPaths?: string[];
-    }): Promise<number> {
-        // {§worker-lifecycle-single-drain}: sequence allocation and insertion
-        // are one queue mutation; another accepted prompt cannot claim the gap.
-        return this.#withDrainLock(args.workerId, async () => {
-            const seqRow = await this.#db.loop_run_next_sequence.get<{ next: number }>({
-                worker_id: args.workerId,
-            });
-            if (seqRow === undefined) throw new Error("enqueueFreshLoop: next-sequence query returned no row");
-            const loopRow = await this.#db.drain_enqueue_loop.get<{ id: number }>({
-                worker_id: args.workerId,
-                sequence: seqRow.next,
-                prompt: args.prompt,
-                provider_spec: JSON.stringify(args.providerSpec),
-                child_provider_spec: JSON.stringify(args.childProviderSpec),
-                max_turns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
-            });
-            if (loopRow === undefined) throw new Error("enqueueFreshLoop: loop enqueue returned no row");
-            if (args.flags !== undefined) {
-                await this.#db.engine_set_loop_flags.run({
-                    loop_id: loopRow.id,
-                    flags: JSON.stringify({ ...DEFAULT_LOOP_FLAGS, ...args.flags }),
-                });
-            }
-            if (args.openPaths !== undefined && args.openPaths.length > 0) {
-                await this.#db.engine_set_loop_open_paths.run({
-                    loop_id: loopRow.id,
-                    open_paths: JSON.stringify(args.openPaths),
-                });
-            }
-            return loopRow.id;
-        });
-    }
-
-    /**
-     * Start a drain for the given worker. The drain claims queued loops via
-     * drain_claim_next_loop (atomic 100→102 flip), executes each via
-     * Engine.runLoop, and re-checks. Stream-aware: when the queue is empty
-     * but the worker has active subscriptions, the drain parks on a
-     * #drainPokes signal — wake-on-completion → inject() wakes it. Drain
-     * exits when queue is empty AND no active subscriptions remain.
-     *
-     * Returns both `firstLoopPromise` (resolves once the first loop the
-     * drain processes completes — used by runLoop to give the caller a
-     * fast response containing their loop's result) and `drainPromise`
-     * (resolves only when the whole drain finishes, queue+subs settled).
-     */
-    #startDrain(opts: {
-        workspaceId: number; workerId: number;
-        systemPrompt: string;
-    }): {
-        firstLoopPromise: Promise<DrainLoopResult>;
-        drainPromise: Promise<{ loopsDrained: number; lastResult: DrainLoopResult | null }>;
-    } {
-        const { workspaceId, workerId, systemPrompt } = opts;
-        // The drain runs under the worker's cancellation scope (shared with the
-        // execs its loops spawn), so loop.cancel/shutdown abort it as a unit.
-        const controller = this.#workerSignal(workerId);
-        const handle: { controller: AbortController; promise: Promise<unknown> } = {
-            controller, promise: Promise.resolve(),
-        };
-
-        let resolveFirst: (v: DrainLoopResult) => void = () => {};
-        let rejectFirst: (e: unknown) => void = () => {};
-        const firstLoopPromise = new Promise<DrainLoopResult>((res, rej) => {
-            resolveFirst = res; rejectFirst = rej;
-        });
-        let firstSettled = false;
-
-        const claim = () => this.#db.drain_claim_next_loop.get<{
-            id: number; sequence: number; prompt: string; max_turns: number;
-        }>({ worker_id: workerId });
-
-        const drainPromise = (async () => {
-            let loopsDrained = 0;
-            let lastResult: DrainLoopResult | null = null;
-            let currentLoopId: number | null = null; // the loop being drained — for abort→499 settlement
-            try {
-                while (true) {
-                    controller.signal.throwIfAborted();
-                    let loopRow = await claim();
-                    if (loopRow === undefined) {
-                        // Queue empty → teardown UNDER the per-worker drain lock (R4 / I1),
-                        // serialized against #ensureDrain so a concurrent inject can't
-                        // start a 2nd drain in the gap. Re-claim while holding the lock;
-                        // relinquish the registry slot only if it's empty too. A loop
-                        // that raced in is returned and run — we stay registered, so
-                        // there's no transient delete for #ensureDrain to catch.
-                        loopRow = await this.#withDrainLock(workerId, async () => {
-                            const claimed = await claim();
-                            if (claimed === undefined && this.#activeDrains.get(workerId) === handle) {
-                                this.#activeDrains.delete(workerId);
-                            }
-                            return claimed;
-                        });
-                        if (loopRow === undefined) break;
-                    }
-                    currentLoopId = loopRow.id;
-                    // {§methods-loop-run-model} — provider identity belongs to the claimed loop, not the
-                    // drain that happened to claim it. A drain can consume multiple
-                    // queued loops; resolve each durable selection at this boundary.
-                    const { provider, childProvider } = await this.#providersForLoop(loopRow.id);
-                    const onDispatch = (logEntryId: number): void => {
-                        // {§methods-event-subscribe} — a log-broadcast failure must never crash the drain.
-                        void (async () => {
-                            const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
-                            this.#broadcast({ workspaceId }, "log/entry", { entry });
-                        })().catch((e: unknown) => console.error("log/entry broadcast failed:", e instanceof Error ? e.message : String(e)));
-                    };
-                    const result = await observed( // {§observability-boundary}
-                        "loop.run",
-                        { workspaceId, workerId, "loop.id": loopRow.id },
-                        async (span) => {
-                            const loopResult = await this.#engine.runLoop({
-                                provider, childProvider, workspaceId, workerId, loopId: loopRow.id, maxTurns: loopRow.max_turns,
-                                messages: [
-                                    { role: "system", content: systemPrompt },
-                                    { role: "user", content: loopRow.prompt },
-                                ],
-                                origin: "model",
-                                onDispatch,
-                                signal: controller.signal,
-                            });
-                            span.setAttribute("status", loopResult.result.status);
-                            recordCounter(LOOP_TERMINALS, { status: loopResult.result.status });
-                            return loopResult;
-                        },
-                    );
-                    if (result.result.status === 202) {
-                        // The loop slept via SEND signal 202 — suspended, not terminated. Leave it at 202
-                        // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
-                        // (#handleWakeWorker) re-queues it; and if it holds a polled stream, a poll timer
-                        // wakes it every P to inspect ({§exec-poll}). {§worker-lifecycle-wake-liveness}.
-                        void this.#schedulePollWake(workspaceId, workerId, systemPrompt).catch((err: unknown) => console.error("poll-wake scheduling failed:", err instanceof Error ? err.message : String(err)));
-                        // {§send-premature-terminate}/scoped SEND signal 202 — the park deadline:
-                        // dispatcher recorded the marker's seconds; a bounded park is woken at T
-                        // regardless of arrivals, so a park always has a next turn. -1 (indefinite:
-                        // the butler, a [300] ask) schedules nothing — irc/inject/conclusions wake it.
-                        // In-memory: a daemon restart drops pending deadlines.
-                        if (currentLoopId !== null) {
-                            const deadline = this.#engine.parkDeadlines.get(currentLoopId);
-                            this.#engine.parkDeadlines.delete(currentLoopId);
-                            const prior = this.#parkTimers.get(workerId);
-                            if (prior !== undefined) { clearTimeout(prior); this.#parkTimers.delete(workerId); }
-                            if (deadline !== undefined && deadline > 0) {
-                                const t = setTimeout(() => {
-                                    this.#parkTimers.delete(workerId);
-                                    void this.#wakeParkedWorker(workspaceId, workerId, systemPrompt).catch((err: unknown) => console.error("park-deadline wake failed:", err instanceof Error ? err.message : String(err)));
-                                }, deadline * 1000);
-                                t.unref();
-                                this.#parkTimers.set(workerId, t);
-                            }
-                        }
-                        // Honor an OWED wake ({§worker-lifecycle-child-wake}): a child/stream concluded while
-                        // this worker was mid-turn, before it slept — resume in place rather than park blind,
-                        // so a worker hibernation always returns. The loop is 202 here; reset to
-                        // claimable and the drain re-runs it on the next claim below.
-                        if (this.#owedWakes.delete(workerId)) {
-                            await this.#lifecycle.wake(loopRow.id);
-                            currentLoopId = null;
-                            continue;
-                        }
-                        // The loop is blocked at 202 on a live obligation ({§wait-obligation-matrix});
-                        // that obligation's conclusion is its wake edge (the owed-wake above covers the
-                        // conclude-before-block race). An idle wait never reaches here — it concluded at dispatch.
-                        currentLoopId = null;
-                        continue;
-                    }
-                    this.#owedWakes.delete(workerId); // the loop concluded (non-202) — no park to honor a held wake at
-                    const [usage, attributions, turnIds] = await Promise.all([
-                        this.#engine.loopUsage(loopRow.id),
-                        this.#engine.loopAttributions(loopRow.id),
-                        this.#lifecycle.turnIds(loopRow.id),
-                    ]);
-                    this.#broadcast({ workspaceId }, "loop/terminated", {
-                        workerId,
-                        loopId: loopRow.id,
-                        result: result.result,
-                        hitMaxTurns: result.hitMaxTurns,
-                        turnIds,
-                        usage,
-                        attributions,
-                    });
-                    loopsDrained++;
-                    const loopResult: DrainLoopResult = {
-                        loopId: loopRow.id,
-                        turnIds,
-                        result: result.result,
-                        hitMaxTurns: result.hitMaxTurns,
-                        usage,
-                        attributions,
-                    };
-                    lastResult = loopResult;
-                    if (!firstSettled) {
-                        firstSettled = true;
-                        resolveFirst(loopResult);
-                    }
-                    // A next-turn prompt this loop ended before consuming (a
-                    // wake conclusion or a runLoop-while-active prompt) is promoted to
-                    // a fresh queued loop so it's never silently dropped.
-                    await this.#reconcileOrphanedPrompts(workerId, loopRow.id);
-                    currentLoopId = null;
-                }
-            } catch (err) {
-                if (controller.signal.aborted) {
-                    // {§methods-loop-cancel} — loop.cancel / shutdown aborted the live drain. A cancellation
-                    // is the loop's TERMINAL state (499), delivered via loop/terminated (runLoop no
-                    // longer blocks to return it). A genuine error rejects firstLoopPromise.
-                    let usage: LoopUsage = {
-                        accounting: aggregateProviderAccounting([]),
-                        contextTokens: null,
-                        promptBudget: null,
-                        meta: {},
-                    };
-                    let attributions: string[] = [];
-                    const message = ErrorDetail.preview(controller.signal.reason ?? "user_cancelled")
-                        || "no reason was supplied";
-                    if (currentLoopId !== null) {
-                        // {§methods-loop-cancel}/{§worker-lifecycle-terminal-result} —
-                        // persist the exact 499 cancellation result before broadcasting it.
-                        const cancelled = await this.#lifecycle.finish(
-                            currentLoopId,
-                            Results.failure(
-                                "lifecycle:cancel",
-                                "loop-cancelled",
-                                499,
-                                `The loop was cancelled: ${message}.`,
-                                {},
-                                {
-                                    reason: message,
-                                    stage: "loop",
-                                    retryable: false,
-                                },
-                            ),
-                            { terminatedBy: "cancel" },
-                        );
-                        [usage, attributions] = await Promise.all([
-                            this.#engine.loopUsage(currentLoopId),
-                            this.#engine.loopAttributions(currentLoopId),
-                        ]);
-                        if (cancelled !== null) {
-                            this.#broadcast({ workspaceId }, "loop/terminated", {
-                                workerId,
-                                loopId: currentLoopId,
-                                result: cancelled,
-                                hitMaxTurns: false,
-                                turnIds: await this.#lifecycle.turnIds(currentLoopId),
-                                usage,
-                                attributions,
-                            });
-                        }
-                    }
-                    if (!firstSettled) {
-                        firstSettled = true;
-                        resolveFirst({
-                            loopId: currentLoopId ?? 0,
-                            turnIds: [],
-                            result: currentLoopId === null
-                                ? Results.failure(
-                                    "lifecycle:cancel",
-                                    "loop-cancelled",
-                                    499,
-                                    `The loop was cancelled: ${message}.`,
-                                    {},
-                                    {
-                                        reason: message,
-                                        stage: "loop",
-                                        retryable: false,
-                                    },
-                                )
-                                : await this.#lifecycle.result(currentLoopId)
-                                    ?? Results.failure(
-                                        "lifecycle:cancel",
-                                        "loop-cancelled",
-                                        499,
-                                        `The loop was cancelled: ${message}.`,
-                                        {},
-                                        {
-                                            reason: message,
-                                            stage: "loop",
-                                            retryable: false,
-                                        },
-                                    ),
-                            hitMaxTurns: false,
-                            usage,
-                        });
-                    }
-                } else {
-                    // {§worker-lifecycle-terminal-result} — a non-abort drain
-                    // failure becomes an exact durable 500 and terminal notification;
-                    // daemon diagnostics retain the complete caught error.
-                    console.error(`drain error (workspace ${workspaceId}, worker ${workerId}, loop ${currentLoopId ?? "?"}):`, err);
-                    if (currentLoopId !== null) {
-                        const failure = err instanceof OperationFailureError
-                            ? err.result
-                            : Results.failure(
-                                "daemon:drain",
-                                "loop-threw",
-                                500,
-                                "The loop failed outside its operation result contract.",
-                                {},
-                                {
-                                    stage: "loop",
-                                    retryable: false,
-                                },
-                            );
-                        const settled = await this.#lifecycle.finish(currentLoopId, failure)
-                            ?? await this.#lifecycle.result(currentLoopId);
-                        if (settled === null) {
-                            throw new Error(`drain could not settle loop ${currentLoopId}`, { cause: err });
-                        }
-                        const [usage, attributions] = await Promise.all([
-                            this.#engine.loopUsage(currentLoopId),
-                            this.#engine.loopAttributions(currentLoopId),
-                        ]);
-                        this.#broadcast({ workspaceId }, "loop/terminated", {
-                            workerId,
-                            loopId: currentLoopId,
-                            result: settled,
-                            hitMaxTurns: false,
-                            turnIds: await this.#lifecycle.turnIds(currentLoopId),
-                            usage,
-                            attributions,
-                        });
-                    }
-                    if (!firstSettled) {
-                        firstSettled = true;
-                        rejectFirst(err);
-                    }
-                }
-                throw err;
-            } finally {
-                if (!firstSettled) {
-                    firstSettled = true;
-                    rejectFirst(new Error("drain exited without producing a result"));
-                }
-                if (this.#activeDrains.get(workerId) === handle) this.#activeDrains.delete(workerId);
-            }
-            return { loopsDrained, lastResult };
-        })();
-
-        handle.promise = drainPromise;
-        this.#activeDrains.set(workerId, handle);
-        // Topology join ({§worker-loop-lifecycle}): when this drain exits having CONCLUDED the worker, wake its parent
-        // if parked. Runs after the drain fully tears down (settled promise) so the quiescence check sees
-        // final state; speculative (#onDrainExit no-ops unless the worker concluded AND the parent is parked).
-        const drainExitTask = drainPromise.then(
-            () => this.#onDrainExit(workspaceId, workerId, systemPrompt),
-            () => this.#onDrainExit(workspaceId, workerId, systemPrompt),
-        );
-        this.#drainExitTasks.add(drainExitTask);
-        void drainExitTask.catch((err: unknown) => {
-            console.error(`parent wake after worker ${workerId} settlement failed:`, err);
-        }).finally(() => {
-            this.#drainExitTasks.delete(drainExitTask);
-        });
-        // Swallow unhandled rejections (drain aborts with no awaiter); the
-        // error already surfaced via firstLoopPromise or was logged inside.
-        drainPromise.catch(() => {});
-        firstLoopPromise.catch(() => {});
-        return { firstLoopPromise, drainPromise };
-    }
-
-    // Per-worker drain-transition lock (R4 / {§worker-lifecycle-single-drain}). #ensureDrain's
-    // start and a drain's teardown relinquish both run under it, serialized, so the two
-    // can't interleave and register two drains for one worker. The critical section is the
-    // registry decision only (never a loop's work) — a sub-ms hop at drain boundaries.
-    // A promise-chain mutex: each caller awaits the prior holder; the tail self-prunes
-    // when idle so the Map stays bounded to workers mid-transition.
-    #withDrainLock<T>(workerId: number, fn: () => Promise<T>): Promise<T> {
-        const prev = this.#drainLocks.get(workerId) ?? Promise.resolve();
-        const run = prev.then(fn, fn);
-        const tail = run.catch(() => {});
-        this.#drainLocks.set(workerId, tail);
-        void tail.then(() => { if (this.#drainLocks.get(workerId) === tail) this.#drainLocks.delete(workerId); });
-        return run;
-    }
-
-    // The drain guarantee, serialized per worker via #withDrainLock so it can't race a
-    // sibling drain's teardown relinquish into a double-drain (R4). A live drain
-    // (registered, NOT aborting) will claim the just-enqueued loop in its own iteration
-    // or its lock-held exit re-claim → return null. A registered-but-ABORTING drain is
-    // in teardown and won't claim, so we don't defer to it — start fresh, or the loop
-    // strands on a cancel/resume race (I6 no-lost-loop). Otherwise start one.
-    #ensureDrain(opts: {
-        workspaceId: number; workerId: number;
-        systemPrompt: string;
-    }): Promise<{
-        firstLoopPromise: Promise<DrainLoopResult>;
-        drainPromise: Promise<{ loopsDrained: number; lastResult: DrainLoopResult | null }>;
-    } | null> {
-        return this.#withDrainLock(opts.workerId, async () => {
-            const existing = this.#activeDrains.get(opts.workerId);
-            if (existing !== undefined && !existing.controller.signal.aborted) return null;
-            return this.#startDrain(opts);
-        });
-    }
-
-    // After a loop terminates, promote every next-turn frame it never consumed
-    // into one source-keyed queued loop. The first frame occupies the loop seed;
-    // later frames retain separate prompt entries and publish in the same turn.
-    // Re-entry and boot recovery complete that same queued identity.
+    // Durable prompt promotion remains daemon policy; DrainSupervisor invokes
+    // it under the same worker lock as enqueue and drain teardown.
     async #reconcileOrphanedPrompts(workerId: number, endedLoopId: number): Promise<void> {
-        await this.#withDrainLock(workerId, async () => {
-            const endedSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: endedLoopId }))?.sequence ?? endedLoopId;
-            const prefix = promptLoopPrefix(endedSeq);
-            const frames = await this.#db.drain_orphaned_prompts_for_loop.all<{
-                body: string;
-                flags: string;
-                provider_spec: string;
-                child_provider_spec: string;
-                max_turns: number;
-                open_paths: string | null;
-            }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
-            const first = frames[0];
-            if (first === undefined) return;
-            const seqRow = await this.#db.loop_run_next_sequence.get<{ next: number }>({ worker_id: workerId });
-            if (seqRow === undefined) throw new Error("reconcileOrphanedPrompts: next-sequence query returned no row");
-            const recovery = await this.#db.drain_enqueue_orphan_recovery_loop.get<{
-                id: number;
-                sequence: number;
-                status: number;
-            }>({
-                worker_id: workerId,
-                sequence: seqRow.next,
-                prompt: first.body,
-                flags: first.flags,
-                provider_spec: first.provider_spec,
-                child_provider_spec: first.child_provider_spec,
-                max_turns: first.max_turns,
-                open_paths: first.open_paths ?? "[]",
-                orphan_source_loop_id: endedLoopId,
-            });
-            if (recovery === undefined) throw new Error("reconcileOrphanedPrompts: enqueue returned no row");
-            if (recovery.status !== 100) return;
-            const moved = await this.#db.drain_rehome_orphaned_prompt_frames.all<{ id: number; pathname: string }>({
-                owner_id: workerId,
-                source_loop_id: endedLoopId,
-                source_pattern: `${prefix}%`,
-                source_prefix_len: prefix.length,
-                target_prefix: promptLoopPrefix(recovery.sequence),
-            });
-            if (moved.length !== frames.length) {
-                throw new Error(`reconcileOrphanedPrompts: expected to re-home ${frames.length} frames, moved ${moved.length}`);
-            }
+        const endedSeq = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: endedLoopId }))?.sequence ?? endedLoopId;
+        const prefix = promptLoopPrefix(endedSeq);
+        const frames = await this.#db.drain_orphaned_prompts_for_loop.all<{
+            body: string;
+            flags: string;
+            provider_spec: string;
+            child_provider_spec: string;
+            max_turns: number;
+            open_paths: string | null;
+        }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
+        const first = frames[0];
+        if (first === undefined) return;
+        const seqRow = await this.#db.loop_run_next_sequence.get<{ next: number }>({ worker_id: workerId });
+        if (seqRow === undefined) throw new Error("reconcileOrphanedPrompts: next-sequence query returned no row");
+        const recovery = await this.#db.drain_enqueue_orphan_recovery_loop.get<{
+            id: number;
+            sequence: number;
+            status: number;
+        }>({
+            worker_id: workerId,
+            sequence: seqRow.next,
+            prompt: first.body,
+            flags: first.flags,
+            provider_spec: first.provider_spec,
+            child_provider_spec: first.child_provider_spec,
+            max_turns: first.max_turns,
+            open_paths: first.open_paths ?? "[]",
+            orphan_source_loop_id: endedLoopId,
         });
-    }
-
-    // The worker's cancellation scope — lazily created, and replaced once aborted
-    // so a later runLoop gets a live signal. The drain and the execs its loops
-    // spawn all run under it.
-    #workerSignal(workerId: number): AbortController {
-        const existing = this.#workerAborts.get(workerId);
-        if (existing !== undefined && !existing.signal.aborted) return existing;
-        const fresh = new AbortController();
-        this.#workerAborts.set(workerId, fresh);
-        return fresh;
-    }
-
-    async #cancelTree(workerId: number, reason: string, includeRoot: boolean): Promise<void> {
-        const cancelled = await this.#lifecycle.cancelTree(workerId, reason, includeRoot);
-        for (const targetWorkerId of cancelled.workerIds) {
-            const pollTimer = this.#pollTimers.get(targetWorkerId);
-            if (pollTimer !== undefined) { clearTimeout(pollTimer); this.#pollTimers.delete(targetWorkerId); }
-            const parkTimer = this.#parkTimers.get(targetWorkerId);
-            if (parkTimer !== undefined) { clearTimeout(parkTimer); this.#parkTimers.delete(targetWorkerId); }
-            this.#pollBackoff.delete(targetWorkerId);
-            this.#owedWakes.delete(targetWorkerId);
-            const scope = this.#workerAborts.get(targetWorkerId);
-            if (scope !== undefined && !scope.signal.aborted) scope.abort(reason);
-        }
-        await Promise.all(cancelled.workerIds.map(async (targetWorkerId) => this.#reapWorkerStreams(targetWorkerId)));
-        for (const { loopId, workerId: targetWorkerId, result } of cancelled.loops) {
-            const row = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: targetWorkerId });
-            if (row === undefined) continue;
-            const [usage, attributions] = await Promise.all([
-                this.#engine.loopUsage(loopId),
-                this.#engine.loopAttributions(loopId),
-            ]);
-            this.#broadcast({ workspaceId: row.workspace_id }, "loop/terminated", {
-                workerId: targetWorkerId,
-                loopId,
-                result,
-                hitMaxTurns: false,
-                turnIds: await this.#lifecycle.turnIds(loopId),
-                usage,
-                attributions,
-            });
+        if (recovery === undefined) throw new Error("reconcileOrphanedPrompts: enqueue returned no row");
+        if (recovery.status !== 100) return;
+        const moved = await this.#db.drain_rehome_orphaned_prompt_frames.all<{ id: number; pathname: string }>({
+            owner_id: workerId,
+            source_loop_id: endedLoopId,
+            source_pattern: `${prefix}%`,
+            source_prefix_len: prefix.length,
+            target_prefix: promptLoopPrefix(recovery.sequence),
+        });
+        if (moved.length !== frames.length) {
+            throw new Error(`reconcileOrphanedPrompts: expected to re-home ${frames.length} frames, moved ${moved.length}`);
         }
     }
 
-    async #cancelWorkerTree(workerId: number, reason: string): Promise<void> {
-        await this.#cancelTree(workerId, reason, true);
-    }
-
-    /**
-     * Cancel the worker's in-flight work (loop.cancel). One abort, one scope: the
-     * worker signal stops the running loop's turn generation AND tears down every
-     * stream linked to it — a background exec that outlived its loop, or even a
-     * spawn that registers after this abort (it self-aborts against the aborted
-     * signal). Returns cancelled iff there was process-local work; durable
-     * unresolved loops in the worker tree are terminalized independently.
-     */
     cancelDrain(workerId: number, reason: string = "user_cancelled"): boolean {
-        const hadDrain = this.#activeDrains.has(workerId);
-        const hadWork = hadDrain || this.#workerHasActiveStreams(workerId);
-        // A cancel is deliberate — kill any pending hibernation poll-wake so it can't resurrect the worker.
-        const pollTimer = this.#pollTimers.get(workerId);
-        if (pollTimer !== undefined) { clearTimeout(pollTimer); this.#pollTimers.delete(workerId); }
-        // Stop the active drain's turn-generation (its loop closes 499). The worker
-        // signal is the optimization path — the fast, listener-driven reap.
-        // Durable structured cancellation: one recursive transition claims the
-        // worker and every unresolved descendant, then reaps each process-local scope.
-        void this.#cancelWorkerTree(workerId, reason).catch((err: unknown) => {
-            console.error(`cancelTree(${workerId}) failed:`, err);
-        });
-        return hadWork;
+        return this.#drains.cancel(workerId, reason);
     }
 
-    // Does the worker have an in-flight stream (a background exec)? Used only for
-    // loop.cancel's cancelled=true/false answer; the teardown itself rides the
-    // worker signal. Duck-typed like #drainStreamingSchemes.
+    // Process-local stream activity is supplied to the drain owner through the
+    // scheme registry rather than exposing that registry across the boundary.
     #workerHasActiveStreams(workerId: number): boolean {
-        const exec = this.#schemes.get("exec") as { hasActiveSpawns?: (workerId: number) => boolean } | undefined;
+        const exec = this.#schemes.get("exec") as {
+            hasActiveSpawns?: (workerId: number) => boolean;
+        } | undefined;
         return exec?.hasActiveSpawns?.(workerId) ?? false;
-    }
-
-    // The contract-routed reap ({§worker-lifecycle-total-reap}): durable rows enumerate
-    // every open subscription; the live registry invokes its exact callable owner.
-    // The worker signal is only the fast path. An exec mid-spawn or a background exec
-    // from a past loop is caught regardless of listener timing. Idempotent — a stream
-    // the signal already reaped shares the same registry cancellation.
-    async #reapWorkerStreams(workerId: number): Promise<void> {
-        const open = await ChannelWrite.findOpenSubscriptionsForWorker(this.#db, workerId);
-        await Promise.all(open.map(({ id }) => this.#engine.cancelSubscription(id)));
-    }
-
-    /**
-     * Wake-on-completion handler. Streaming schemes call this when a
-     * subscription closes. A parked loop resumes in place; an active loop
-     * observes the channel transition at its next turn boundary. No synthetic
-     * prompt or replacement loop is created.
-     *
-     * Skipped on result.status=499 (aborted): the model already knows about
-     * its own SEND signal 499, and a forcefully-cancelled loop's spawn-abort must
-     * not resurrect the worker.
-     */
-    async #handleWakeWorker(payload: WakeWorkerPayload): Promise<void> {
-        const { entryOwnerId, ...wake } = payload;
-        const conclusion = { ...wake, workerId: entryOwnerId };
-        // {§search-gate} — settle the dedup registration: promote on a 200 conclusion, drop on
-        // failure (a dead search must never serve as a duplicate). No-op for non-search streams.
-        this.#engine.searchGate.settle(payload.target.replace(/^[a-z+.-]+:\/\//, "/").replace(/^\/+/, "/"), payload.result.status);
-        // Aborted streams don't wake — the abort was deliberate.
-        if (payload.result.status === 499) {
-            this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
-                ...conclusion, wakeAction: "skipped-aborted",
-            });
-            return;
-        }
-
-        // No resurrection ({§worker-lifecycle-no-resurrection}): a non-499 completion whose
-        // worker was cancelled (idle + its scope aborted) must not start a fresh drain —
-        // the cancel was deliberate. The deliverable is already in the channel/log and
-        // surfaces as a `collect` environment delta ({§env-delta}) if the worker is read or
-        // resumed; we just don't inject a turn. (An active worker folds the wake into its
-        // next turn via inject below; a resumed worker is active, never aborted, so it is
-        // unaffected.)
-        const scope = this.#workerAborts.get(payload.workerId);
-        if (scope?.signal.aborted === true && !this.#activeDrains.has(payload.workerId)) {
-            this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
-                ...conclusion, wakeAction: "skipped-cancelled",
-            });
-            return;
-        }
-
-        try {
-            const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
-
-            // A slept (202) loop means the worker parked via SEND signal 202 → resume it in place: re-queue
-            // it (202→100) so the drain re-claims and CONTINUES it (seq>1 → no re-foist). Checked
-            // FIRST: the slept status is the worker's true disposition regardless of a draining
-            // sibling mid-teardown (the #ensureDrain lock serializes the re-claim). No fresh loop,
-            // no summary-as-prompt — the resumed loop reads the concluded stream's own state from
-            // the manifest. {§worker-lifecycle-wake-liveness}.
-            const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: payload.workerId });
-            if (slept !== undefined) {
-                // {§worker-optimistic-settlement} — publish this conclusion now,
-                // then let the worker-local gate coalesce only the provider
-                // dispatch. Concurrent stream/child callbacks join that one gate.
-                void this.#settleCompletionWake(
-                    payload.workspaceId,
-                    payload.workerId,
-                    systemPrompt,
-                    false,
-                ).catch((err: unknown) => {
-                    console.error("completion wake settlement failed:", err instanceof Error ? err.message : String(err));
-                });
-                this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
-                    ...conclusion, wakeAction: "resumed-loop", wakeLoopId: slept.id,
-                });
-                return;
-            }
-
-            // No slept loop. A live loop surfaces the concluded stream ambiently via the
-            // environment-observation injector ({§exec-stream}) on its next turn — there is no prompt
-            // to inject and NO task to overwrite. The obsolete "automated environment update"
-            // synthesis (which clobbered the model's actual goal) is retired; just tell the client.
-            if (this.#activeDrains.has(payload.workerId)) {
-                this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
-                    ...conclusion, wakeAction: "no-op-active-loop",
-                });
-                return;
-            }
-
-            // No slept loop, no active drain — nothing to resume (e.g. a SEND-200-done worker whose
-            // streams were swept). Surface the conclusion without opening a loop.
-            this.#broadcast({ workspaceId: payload.workspaceId }, "stream/concluded", {
-                ...conclusion, wakeAction: "no-loop",
-            });
-        } catch (err) {
-            console.error("wake-on-completion setup failed:", err instanceof Error ? err.message : String(err));
-        }
-    }
-
-    /**
-     * grammar 0.74.20 EXEC `<T,P>` — schedule a hibernation poll-wake. Called when a loop parks at
-     * a park; if the worker holds an open polled stream, arm a timer for its tightest cadence P that
-     * resumes the slept loop so the model inspects progress. While the loop is ACTIVE there is no
-     * poll work — ambient folded stream deltas already surface progress ({§exec-stream}); the wake
-     * matters only across hibernation. A wake-edge-less 202 (no polled stream) gets no timer. {§exec-poll}
-     */
-    async #schedulePollWake(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
-        const existing = this.#pollTimers.get(workerId);
-        if (existing !== undefined) { clearTimeout(existing); this.#pollTimers.delete(workerId); }
-        const row = await this.#db.drain_worker_min_poll.get<{ open_count: number; poll_seconds: number | null }>({ worker_id: workerId });
-        if ((row?.open_count ?? 0) === 0) {
-            this.#pollBackoff.delete(workerId);
-            return;
-        }
-        const pollSec = row?.poll_seconds ?? null;
-        // {§exec-poll} — a positive explicit cadence wins, zero opts out,
-        // and an absent cadence uses the worker's exponential-backoff step.
-        let delayMs: number;
-        if (pollSec !== null && pollSec > 0) {
-            this.#pollBackoff.delete(workerId);
-            delayMs = pollSec * 1000;
-        } else if (pollSec === 0) {
-            this.#pollBackoff.delete(workerId);
-            return; // explicit opt-out
-        } else {
-            // An open stream without an explicit cadence uses the stream polling floor.
-            // Child joins never enter this branch: durable child settlement is their only wake edge.
-            const base = Number(process.env.PLURNK_SERVICE_EXEC_POLL_SEC ?? "60");
-            const turns = Number(process.env.PLURNK_SERVICE_EXEC_POLL_TURNS ?? "8");
-            const step = this.#pollBackoff.get(workerId) ?? 0;
-            delayMs = execPollBackoffMs(step, base, turns);
-            this.#pollBackoff.set(workerId, step + 1);
-        }
-        // Floored by the optimistic settlement cap so a `<…,1>` cannot wake a
-        // parked loop faster than the preceding turn's settlement scale.
-        const optimisticWaitMs = readOptimisticSettlementMs();
-        const timer = setTimeout(() => {
-            this.#pollTimers.delete(workerId);
-            void this.#wakeParkedWorker(workspaceId, workerId, systemPrompt);
-        }, Math.max(delayMs, optimisticWaitMs));
-        timer.unref();
-        this.#pollTimers.set(workerId, timer);
-    }
-
-    /** Resume `workerId`'s slept (202) loop in place — the same 202→100 resume #handleWakeWorker uses, minus a
-     *  wake payload. The shared wake primitive: a poll cadence ({§exec-poll}), a watched stream concluding,
-     *  or a child worker finishing ({§worker-loop-lifecycle} topology join) all call this. A no-op if the worker was
-     *  cancelled or isn't actually parked (no slept loop) — so calling it speculatively is safe. */
-    async #wakeParkedWorker(workspaceId: number, workerId: number, systemPrompt: string, oweIfActive = true): Promise<void> {
-        if (!this.#started) return;
-        const scope = this.#workerAborts.get(workerId);
-        if (scope?.signal.aborted === true && !this.#activeDrains.has(workerId)) return; // cancelled — no resurrection
-        const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
-        if (slept === undefined) {
-            // Not parked. If a drain is still ACTIVE, the worker is mid-turn and about to park — the
-            // conclusion that fired this wake arrived before the 202 committed (the conclude-before-park
-            // race). Owe the wake: the drain honors it at park so a worker hibernation never deadlocks.
-            // (No active drain → already concluded/running; nothing to wake.)
-            if (this.#activeDrains.has(workerId)) {
-                if (oweIfActive) this.#owedWakes.add(workerId);
-            }
-            return;
-        }
-        const woke = await this.#lifecycle.wake(slept.id);
-        if (!woke) return;
-        const started = await this.#ensureDrain({
-            workspaceId, workerId, systemPrompt,
-        });
-        started?.drainPromise?.catch((err: unknown) => {
-            if (this.#started) {
-                console.error("wake-parked resume drain failed:", err instanceof Error ? err.message : String(err));
-            }
-        });
-    }
-
-    async #workerHasLiveObligation(workerId: number): Promise<boolean> {
-        const [openSubscriptions, liveChild] = await Promise.all([
-            this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId }),
-            this.#db.engine_worker_has_live_child.get<{ live: number }>({ worker_id: workerId }),
-        ]);
-        return openSubscriptions.length > 0 || liveChild !== undefined;
-    }
-
-    #settleCompletionWake(
-        workspaceId: number,
-        workerId: number,
-        systemPrompt: string,
-        oweIfActive = true,
-    ): Promise<void> {
-        const existing = this.#completionWakeGates.get(workerId);
-        if (existing !== undefined) {
-            existing.conclusions++;
-            existing.poke.resolve();
-            return existing.promise;
-        }
-
-        const completed = Promise.withResolvers<void>();
-        const gate: CompletionWakeGate = {
-            conclusions: 1,
-            poke: Promise.withResolvers<void>(),
-            promise: completed.promise,
-        };
-        this.#completionWakeGates.set(workerId, gate);
-        void this.#runCompletionWake(
-            workspaceId,
-            workerId,
-            systemPrompt,
-            oweIfActive,
-            gate,
-        ).then(completed.resolve, completed.reject).finally(() => {
-            if (this.#completionWakeGates.get(workerId) === gate) {
-                this.#completionWakeGates.delete(workerId);
-            }
-        });
-        return gate.promise;
-    }
-
-    async #runCompletionWake(
-        workspaceId: number,
-        workerId: number,
-        systemPrompt: string,
-        oweIfActive: boolean,
-        gate: CompletionWakeGate,
-    ): Promise<void> {
-        const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
-        if (slept === undefined) {
-            this.#releaseCompletionWake(workerId, gate);
-            return this.#wakeParkedWorker(workspaceId, workerId, systemPrompt, oweIfActive);
-        }
-
-        const timeoutMs = readOptimisticSettlementMs();
-        if (timeoutMs === 0 || !(await this.#workerHasLiveObligation(workerId))) {
-            this.#releaseCompletionWake(workerId, gate);
-            return this.#wakeParkedWorker(workspaceId, workerId, systemPrompt, false);
-        }
-
-        return observed(
-            "worker.wake.settlement",
-            { "window.ms": timeoutMs },
-            async (span) => {
-                const startedAt = performance.now();
-                const signal = this.#workerAborts.get(workerId)?.signal;
-                const deadline = delay(timeoutMs, "deadline" as const, { signal, ref: false })
-                    .catch((cause: unknown) => {
-                        if (signal?.aborted === true) return "cancelled" as const;
-                        throw cause;
-                    });
-                let release: "quiescent" | "deadline" | "cancelled" = "quiescent";
-                while (await this.#workerHasLiveObligation(workerId)) {
-                    const poke = gate.poke;
-                    const outcome = await Promise.race([
-                        poke.promise.then(() => "arrival" as const),
-                        deadline,
-                    ]);
-                    if (outcome === "arrival") {
-                        if (gate.poke === poke) gate.poke = Promise.withResolvers<void>();
-                        continue;
-                    }
-                    release = outcome;
-                    break;
-                }
-                span.setAttribute("release", release);
-                span.setAttribute("conclusions", gate.conclusions);
-                span.setAttribute("elapsed.ms", Math.round(performance.now() - startedAt));
-                this.#releaseCompletionWake(workerId, gate);
-                if (release === "cancelled") return;
-                return this.#wakeParkedWorker(workspaceId, workerId, systemPrompt, false);
-            },
-        );
-    }
-
-    #releaseCompletionWake(workerId: number, gate: CompletionWakeGate): void {
-        if (this.#completionWakeGates.get(workerId) === gate) {
-            this.#completionWakeGates.delete(workerId);
-        }
-    }
-
-    /** A worker's drain exited. If the worker truly CONCLUDED — no 202-blocked loop, no open stream — then
-     *  wake its PARENT in place if the parent is blocked on the join (the structured-concurrency join — a
-     *  child finishing is the wake edge for a parent that waited on it, {§worker-lifecycle-child-wake}). A worker
-     *  blocked at 202, or still holding a stream, is NOT concluded — its own wake edges drive it, not this.
-     *  The parent reads the child's deliverable from its own log (the {§worker-scheme-collect} delta) on
-     *  resume — control edge here, never an injected prompt. Recurses up via the parent's own drain-exit. */
-    async #onDrainExit(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
-        const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
-        if (slept !== undefined) return; // parked at 202 — not concluded, the worker is still alive
-        const openSubs = await this.#db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
-        if (openSubs.length > 0) return; // a stream still runs — its conclusion re-evaluates, not this exit
-        const parent = await this.#db.worker_parent_id.get<{ parent_worker_id: number | null }>({ worker_id: workerId });
-        if (parent?.parent_worker_id == null) return; // a root worker — nobody to wake
-        await this.#settleCompletionWake(workspaceId, parent.parent_worker_id, systemPrompt);
     }
 
     // {§methods-event-subscribe} — subscriber failures are transport-local:

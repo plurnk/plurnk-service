@@ -1031,7 +1031,7 @@ export default class Dispatcher {
     }
 
     // Worker control is FORK/WORK (grammar 0.74.55), not COPY — its body
-    // is the new worker's seed prompt, not a destination path. The COPY gates and #handleCopy
+    // is the new worker's seed prompt, not a destination path. The COPY gates and ResourceMutations.handleCopy
     // branch on this so they never parse the prompt as a dst path.
     #isWorkerControl(statement: PlurnkStatement): boolean {
         return statement.op === "FORK" || statement.op === "WORK"; // worker control targets worker://<name> (grammar 0.74.55)
