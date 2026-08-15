@@ -11,7 +11,7 @@ detected mimetype plus exactly the requested projections.
 
 ## Install
 
-```
+```sh
 npm install @plurnk/plurnk-mimetypes
 ```
 
@@ -23,7 +23,7 @@ the default `@plurnk/plurnk-service` installation declares its standard set.
 Tree-sitter language grammars remain independent WASM leaves. Install only the
 languages you need; discovery already carries their detection metadata.
 
-```
+```sh
 npm install @plurnk/plurnk-mimetypes-grammar-python   # one language
 ```
 
@@ -191,7 +191,7 @@ runtime entry point. Only the root and declared subpaths are public
 
 ## CLI
 
-```
+```sh
 npx plurnk-mimetypes-compile    # compile grammar/ → src/generated/ via antlr-ng, rewrite .js imports to .ts
 ```
 
@@ -199,7 +199,7 @@ Run from a handler package's root.
 
 ## Development
 
-```
+```sh
 npm install && npm run build && npm test
 ```
 

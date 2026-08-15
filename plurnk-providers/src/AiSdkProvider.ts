@@ -15,7 +15,6 @@ import type {
     ProviderCallKind,
     ProviderGenerateArgs,
     ProviderRequestAccounting,
-    ProviderRequestObserver,
     ProviderRequestSettlement,
     ProviderResponse,
     ProviderUsage,

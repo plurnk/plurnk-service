@@ -146,7 +146,7 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
                 constructions += 1;
             }
 
-            async dispose(): Promise<void> {
+            override async dispose(): Promise<void> {
                 disposals += 1;
             }
         }
@@ -174,7 +174,7 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
         const tokenizerFailure = new Error("tokenizer dispose failed");
         const handlerFailure = new Error("handler dispose failed");
         class Handler extends BaseHandler {
-            async dispose(): Promise<void> {
+            override async dispose(): Promise<void> {
                 throw handlerFailure;
             }
         }

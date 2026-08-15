@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
-import { urlPath, editStmt, readStmt, openStmt, foldStmt } from "./_dsl.ts";
+import { urlPath, editStmt, readStmt } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();

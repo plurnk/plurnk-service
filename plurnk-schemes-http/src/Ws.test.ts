@@ -595,7 +595,7 @@ test("READ: terminal cleanup exposes the existing canonical representation until
     const secondCtx = makeCtx();
     const ws = new Ws(() => sockets[connects++]!);
     const target = wss(PUB, "/feed");
-    const firstRead = prepareRepresentation(ws, readStmt(target), firstCtx.ctx);
+    void prepareRepresentation(ws, readStmt(target), firstCtx.ctx);
     await flush();
     sockets[0].emit("open");
     await flush();

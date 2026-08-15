@@ -24,7 +24,6 @@ const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => r
 
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
 const TINY = 2;          // absolute wall far below any real packet → forces overflow
-const WIDE = 1_000_000;  // absolute wall capped to the window → never overflows
 const OVERFLOW_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling. Newest log items were automatically FOLDed to fit within token budget. Curate the log and/or perform more conservatively scoped or chunked retrieval operations to recover.";
 
 // {§tokenomics-window-partition} — the envelope is provider-owned, so the policy ceiling pins via reserves against the
@@ -51,16 +50,6 @@ const pinSafety = (n: number): (() => void) => {
     process.env.PLURNK_SERVICE_SAFETY = String(n);
     return () => { process.env.PLURNK_SERVICE_SAFETY = p ?? "0"; };
 };
-// Null reserves (no envelope claimed) exercise {§tokenomics-window-unpollable-deliberate};
-// provider capacity alone bounds the request.
-const mockNoEnvelope = (window: number, responses: MockResponse[]): Mock => {
-    const prev = RESERVE_KEYS.map((k) => process.env[k]);
-    RESERVE_KEYS.forEach((k) => delete process.env[k]);
-    const m = new Mock({ contextWindow: window, responses });
-    RESERVE_KEYS.forEach((k, i) => { if (prev[i] === undefined) delete process.env[k]; else process.env[k] = prev[i]; });
-    return m;
-};
-
 const envelope = async (db: Db): Promise<{ workspaceId: number; workerId: number; loopId: number }> => {
     const workspaceId = await insertWorkspace(db, `ge-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);

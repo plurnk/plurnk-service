@@ -492,7 +492,6 @@ The consumer validates `grammarEvidence.input` outside the enforcer's failure
 domain. `PLURNK_PROVIDERS_GBNF_DEBUG` still validates grammar syntax before the
 call and sets `transported: false` for the unconstrained comparison.
 
-
 ## §11 Evidence and metadata
 
 §provider-evidence `assistantRaw` is an opaque normalized transport record.

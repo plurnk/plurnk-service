@@ -10,7 +10,7 @@ export default abstract class AntlrExtractor extends BaseHandler {
     protected abstract parseTree(content: string): unknown;
     protected abstract createVisitor(): ExtractionVisitor;
 
-    extractRaw(content: string): MimeSymbol[] {
+    override extractRaw(content: string): MimeSymbol[] {
         const tree = this.parseTree(content);
         if (tree === null || tree === undefined) return [];
 

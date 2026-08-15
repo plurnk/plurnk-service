@@ -1,14 +1,13 @@
 import { mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import Namespace from "../core/namespace.ts";
 import Owner from "../core/Owner.ts";
-import { dirname, relative, isAbsolute, join, matchesGlob, sep } from "node:path";
+import { dirname, relative, isAbsolute, join, matchesGlob } from "node:path";
 import { createPatch } from "diff";
 import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import GitMembership from "../core/git-membership.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
-import EntryOps from "./_entry-ops.ts";
 import EntryFind from "./_entry-find.ts";
 import type { FindResult } from "./_entry-find.ts";
 import EntryCrud from "./_entry-crud.ts";

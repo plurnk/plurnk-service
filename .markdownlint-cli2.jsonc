@@ -1,0 +1,28 @@
+{
+    "$schema": "./node_modules/markdownlint-cli2/markdownlint-cli2-config-schema.json",
+    "globs": [
+        "**/*.md"
+    ],
+    "ignores": [
+        "**/.tmp/**",
+        "**/dist/**",
+        "**/node_modules/**",
+        "**/test/**",
+        "**/vendor/**",
+        "plurnk-contracts/plurnk.md",
+        "plurnk-meta/PLURNK_PERSONALITY.md",
+        "plurnk-meta/docs/**",
+        "plurnk-meta/requirements.md",
+        "scripts/fixtures/**"
+    ],
+    "noProgress": true,
+    "config": {
+        "MD013": false,
+        "MD033": {
+            "allowed_elements": [
+                "br"
+            ]
+        },
+        "MD060": false
+    }
+}

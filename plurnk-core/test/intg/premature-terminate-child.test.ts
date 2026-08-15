@@ -426,7 +426,7 @@ test("a FAILED op row carries its failure message on its META LINE — the recor
         });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId }))!.packet) as { sections?: Array<{ name: string; content?: string }> };
         const log = packet.sections?.find((x) => x.name === "log")?.content ?? "";
-        const metaLine = log.split("\n").find((l) => /"path":"log:\/\/\/[^\"]+\/SEND"/.test(l) && l.includes('"status":409'));
+        const metaLine = log.split("\n").find((l) => /"path":"log:\/\/\/[^"]+\/SEND"/.test(l) && l.includes('"status":409'));
         assert.ok(metaLine !== undefined, "the refused SEND row renders");
         assert.match(metaLine!, /"problem":\{[^}]*"detail":"Last turn both performed retrieval operations and attempted to terminate\./, "the exact Problem rides the META LINE - visible in every packet, never folded away");
         // And NO minted action_failure item exists — the row is the one record.

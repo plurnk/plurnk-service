@@ -25,7 +25,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
-const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, ""); // the host sets FORCE_COLOR; node colorizes
+// The host sets FORCE_COLOR; ANSI control bytes are the subject of this sanitizer.
+// oxlint-disable-next-line eslint/no-control-regex
+const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
 const execStmt = (runtime: string, cwd: string | null, body: string): ExecStatement => ({
     op: "EXEC", suffix: "", signal: runtime,

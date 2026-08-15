@@ -1,0 +1,42 @@
+{
+    "$schema": "./node_modules/oxlint/configuration_schema.json",
+    "categories": {
+        "correctness": "error"
+    },
+    "plugins": [
+        "import"
+    ],
+    "ignorePatterns": [
+        "**/.tmp/**",
+        "**/dist/**",
+        "**/generated/**",
+        "**/node_modules/**",
+        "**/vendor/**"
+    ],
+    "rules": {
+        "eslint/no-unused-private-class-members": "error",
+        "eslint/no-unused-vars": [
+            "error",
+            {
+                "args": "none",
+                "caughtErrors": "none",
+                "ignoreRestSiblings": true
+            }
+        ],
+        "import/no-cycle": "error",
+        "typescript/no-floating-promises": "error"
+    },
+    "overrides": [
+        {
+            "files": [
+                "**/*.test.js",
+                "**/*.test.mjs",
+                "**/*.test.ts",
+                "**/test/**"
+            ],
+            "rules": {
+                "typescript/no-floating-promises": "off"
+            }
+        }
+    ]
+}

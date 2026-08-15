@@ -4,7 +4,7 @@ Operator guide. Put machine-specific choices in `~/.plurnk/.env`. Each installed
 
 ## Install
 
-```
+```sh
 npm install -g @plurnk/plurnk-service
 plurnk-service migrate        # apply the disposable version-1 schema baseline
 plurnk-service start

@@ -1,6 +1,5 @@
 import { treeSitterSpan } from "../ParserCoordinates.ts";
 import type { TreeSitterSymbolProjection } from "../ParserCoordinates.ts";
-import type { SymbolKind } from "../types.ts";
 import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 
 // Python symbol mapping ({§mimetype-symbol}). Tree-sitter-python produces a `module` root whose

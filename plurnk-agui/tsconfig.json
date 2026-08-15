@@ -1,19 +1,8 @@
 {
+    "extends": "../tsconfig.base.json",
     "compilerOptions": {
-        "target": "es2024",
-        "module": "nodenext",
-        "moduleResolution": "nodenext",
-        "allowImportingTsExtensions": true,
         "verbatimModuleSyntax": true,
-        "strict": true,
-        "noEmit": true,
-        "skipLibCheck": true,
-        "types": [
-            "node"
-        ],
-        "customConditions": [
-            "plurnk-dev"
-        ]
+        "skipLibCheck": true
     },
     "include": [
         "src/**/*.ts",

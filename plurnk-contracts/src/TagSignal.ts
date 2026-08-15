@@ -16,7 +16,7 @@ const canonicalName = (term: string, prefix: "" | "+" | "-"): string => {
         name.length === 0
         || name.startsWith("+")
         || name.startsWith("-")
-        || /[\[\],\s\p{Cc}]/u.test(name)
+        || /[[\],\s\p{Cc}]/u.test(name)
     ) {
         throw new InvalidTagSignalError(`invalid log tag term '${term}'`);
     }

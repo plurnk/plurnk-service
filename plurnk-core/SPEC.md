@@ -36,7 +36,7 @@ flowchart LR
 | **AG-UI Run**     | AG-UI protocol        | A client request/stream envelope identified by the client's `runId`. A message or resume AG-UI Run binds to one core loop; a management-action AG-UI Run may complete without creating a core loop. |
 | **AG-UI thread**  | AG-UI protocol        | Conversation identity. Within an explicitly selected workspace, `threadId` resolves to one conversation worker. |
 | **`--run`**       | Client compatibility  | A compatibility-sensitive client spelling, not an internal entity. |
-| **session**       | Retired/unqualified   | Not a PLURNK lifecycle noun. Use the actual core noun; a third-party standard may use only its explicitly qualified protocol term. | <!-- lexicon-allow: this row defines the retired noun -->
+| **session**       | Retired/unqualified   | Not a PLURNK lifecycle noun. Use the actual core noun; a third-party standard may use only its explicitly qualified protocol term. <!-- lexicon-allow: this row defines the retired noun --> |
 
 ### §storage-terms Storage terms
 
@@ -549,7 +549,6 @@ their exact `status` and derive `closed` (status below 400), `killed` (499), or
 `failed` (other failure status). An entry with no subscription has no `stream`
 member. This is historical state, not merely a live-process hint.
 
-
 ```mermaid
 stateDiagram-v2
     [*] --> Open: executor registers subscription
@@ -630,7 +629,6 @@ and other 4xx/5xx statuses project to `500`; exact `202` is forbidden because
 it is the parked lifecycle state, not a terminal. No product surface may infer or
 reconstruct a result from that projection. Active rows have no terminal result;
 terminal rows must have one, and database triggers enforce both directions.
-
 
 ```mermaid
 flowchart TD
@@ -721,7 +719,7 @@ an assistant or a zero-valued observation.
 A plugin may declare opaque attribution tags statically or at runtime under the
 shared contract {§plugin-attribution}:
 
-```
+```jsonc
 { "plurnk": { "attribution": "@acme/widgets" } }   // always-on string or string[]
 ```
 
@@ -787,7 +785,7 @@ inside the projected reasoning prefix has no false content pointer. With no
 local GBNF, core adds no rail state and makes no claim about endpoint-owned
 settings.
 
-```
+```dotenv
 PLURNK_MODEL_gemma=openai/macher.gguf
 PLURNK_MODEL_opus=openrouter/anthropic/claude-opus-latest
 PLURNK_MODEL=gemma
@@ -1717,6 +1715,7 @@ The runtime scheme participates in the durable lookup; a completed `sh:///`
 stream cannot fall through an internal `exec`-only query. {§stream-control}
 
 §exec-env-scoped **Scoped environment.** An EXEC subprocess inherits the *project's* environment — its `.env`, the standard shell vars — so the model's commands run as the project expects; but never plurnk's own secrets: the provider API keys and `PLURNK_*` config are stripped before the spawn, so a model-executed command can't `printenv` the engine's keys. The service owns the scoping policy (the denylist); the executor spawns with the env it is handed.
+
 - §exec-hold-until-concluded **The turn-hold exception** — for runtimes in `PLURNK_SERVICE_EXEC_HOLD` (a decision-table env, shipped listing the search family), an in-flight stream **pauses the cycle**: the next packet does not assemble until the stream concludes, so the model never burns a turn asking "are we there yet" about a result the engine controls end-to-end. This exception is limited to seconds-bounded runtimes whose final result the engine controls end-to-end. Bounded by `PLURNK_SERVICE_EXEC_HOLD_MS` and **fail-open**: at the cap the standard cycle resumes untouched (waits, wakes, polls). Zero grammar or teaching surface — the model emits EXEC followed by SEND signal `102` as ever; the wake-shaped world simply arrives one packet sooner. It extends selected runtimes beyond the ordinary {§worker-optimistic-settlement} cap before the next packet assembles. A bare entry holds ALL of a runtime's spawns; a `<runtime>:<effect>` suffix (`github:read`) holds only that effect-class — an MCP server is one runtime whose tools split (a `read` `get_issue` is instant; a `host` `run_migration` is a slow mutation), so an operator opts the known-fast read-class in without parking on the mutation. Conservative stays default: an arbitrary third-party server's latency never parks the engine unless a suffix opts a class in.
 - §exec-entry-sink **The entry() sink** — an executor may *request* entry materialization (execs SPEC §2.6: every sink is a consumer-implemented callback; the executor owns zero substrate). The service implements it in exec dispatch: `entry(path, content: string | null, {tags, mimetype?})` upserts the entry, then journals ONE typed `EDIT` row in the reserved `plurnk` worker's log — the fs-fiction pattern, `source` = the calling worker, `tokens` = the content's count, and `attrs.kind="entry_materialized"`. The requested tags classify that journal row under {§log-item-tags}; they never become resource metadata or duplicate into attrs. Durable replay and clients retain that exact creation event. The model packet projects the typed event as a folded system `READ` of the resulting ordinary resource: its relevant truth is readable state now available in the environment, not an agent-authored mutation. **The executor owns no fetcher:** a `content: null` is a *declaration* — the service acquires the page through schemes-http's checked WebFetcher and accepts its model-facing body and available source/evidence channels {§html-materialization}. Generic public HTML follows the same origin-Markdown, configured Tavily, and local-projection routes as exact HTTP acquisition. A failed acquisition, body-production failure, materialization exception, or absent final projection rejects the sink and produces no HTTP entry, but does not invalidate a search runtime's upstream discovery row; materialization exceptions retain their cause in daemon diagnostics. A non-null `content` is the materialize-given-body path (the caller already holds the bytes and states their mimetype) and grants no provider authority. **No page body ever rides a packet**; the announcement is the folded row's path, weight, and log classifications, and the model READs/~queries what it chooses. Parallel `entry()` calls serialize on a per-spawn chain; a rejected call leaves the chain healthy. The spawn tail settles that complete chain before unregistering, so executor idleness and shutdown are barriers over its materialization writes. The narration context (one plurnk-worker turn) is lazy per spawn, not per entry.
 
@@ -1850,6 +1849,7 @@ No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, ex
 ### §sql-ts-boundary SQL/TS responsibility boundary
 
 **Lives in SQL:**
+
 - Render queries — log assembly + the manifest catalog.
 - Cross-scope path collision (CHECK/trigger → 409).
 - Logical model-call identity plus cardinal physical provider-request lifecycle and immutable settlement constraints.
@@ -1857,6 +1857,7 @@ No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, ex
 - Entry-vs-log integrity.
 
 **Lives in TS:**
+
 - Status-bubble rules (`turn.status` → `loop.status` → `worker.status` → `workspace.status`). Engine UPDATEs explicitly; CHECK constraints enforce; triggers fight branching state machines.
 - Tokenization (provider-bound; hot-swap re-tokenizes per {§tokenomics}).
 - Provider dispatch, request-accounting validation, and exact-decimal aggregate projection through the shared contracts-owned path.
@@ -2019,6 +2020,7 @@ Model selection: separate alias cascade in `ProviderRegistry` ({§provider-insta
 Every core knob listed is enforced at its owning read site; `.env.defaults` is the authoritative default ({§operator-config-env-defaults}). Provider, scheme, executor, mimetype, and client-interface knobs are documented by their owning packages and appear in the assembled catalog.
 
 **Two override semantics — ceiling vs default.** Which kind a var is determines what "override" means across the cascade:
+
 - **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-workspace constraint, not a per-call seam argument. `PLURNK_SERVICE_GIT_ALLOWED` ({§operator-config-git-ceiling}), `PLURNK_SERVICE_MAX_COMMANDS`, `PLURNK_SERVICE_MAX_STRIKES`, and `PLURNK_SERVICE_MAX_TURNS` (`-1` ships it off; a positive value caps the per-call request). The sandbox/cost guarantee: the operator caps it; no client widens it.
 - **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `runLoop({alias})` request overrides it) and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
 
@@ -2087,10 +2089,12 @@ The composition families remain distinct so one setting's semantics never
 leak into another.
 
 *Defaults — explicit-wins (the client replaces/merges freely):*
+
 - §operator-config-workspace-files-items `settings.filesItems` (number) **replaces** `PLURNK_SERVICE_FILES_ITEMS` for the workspace: a one-shot opens clean (`0`, no preview), with ordinary markerless pages (`-1`), or with the file list explicitly capped (`N`, other surveys remain markerless). A single scalar — the client value wins outright.
 - §operator-config-workspace-md-docs `settings.mdDocs` (`[{alias, content}]`) **unions** with the server's `PLURNK_SERVICE_MD_*` docs, keyed by alias — a client adds its own repo docs atop the operator's systemwide policy doc. On alias collision the client wins before I/O (a deliberate shadow), so the unselected operator path is not read; every selected non-empty operator path is required, and absence or another read failure rejects materialization with its cause. The client sends content (it owns the file), not a path.
 
 *Ceilings — most-restrictive-wins (the client may only narrow, never widen):*
+
 - §operator-config-workspace-max-commands `settings.maxCommands` (number)
   **min()s** the `PLURNK_SERVICE_MAX_COMMANDS` per-emission cap for the
   workspace: a client tightens the runaway-op guard and never raises it past
@@ -2517,6 +2521,7 @@ materialization verdicts and folded ambient rows for every acquired page.
 - §membership-create-parents **Parent-complete creation.** An accepted File creation—whether authored as EDIT or as a COPY/MOVE destination—recursively creates missing parent directories before writing and registering the new member.
 
 **The overlay — `pick | view | hide`, removed by `drop`.** A `workspace_constraints` table is the client's supersede over Git. Resolved membership is `(project repository files ∪ pick) − hide`, with `view` enforced at the edit gate.
+
 - §membership-auto-add **Auto-add** — the project repository's membership is its tracked `ls-files` plus untracked-but-not-ignored files (`git ls-files --others --exclude-standard`), with `git` origin. A model-created file is a member the moment it exists—no `git add`—while `.gitignore` still filters it.
 - §membership-overlay-pick **`pick`** — admit an untracked file git misses: a targeted client-dictated `node:fs` glob scan over untracked matches (files only), 'constraint' origin, reconciled like git members. Enumerated, so the manifest stays exhaustive. git-absent, `pick` is the *sole* membership source.
 - §membership-overlay-hide **`hide`** — exclude a tracked file: resolution drops matches (`node:path.matchesGlob`) and reconciles so the entry set *equals* the member set. The lever to exclude a committed-but-sensitive tracked file; `entries.membership_origin` keeps reconciliation off model-created members.
@@ -3117,7 +3122,6 @@ container identity.
 §matcher-dispatch-203-soft-fallback On parse failure, 203 returns raw content as the text primitive with `reason`
 so the model can use ordinary text retrieval or repair the source.
 
-
 `Matcher.matchCandidates` searches heterogeneous resource sets. A candidate
 whose handler returns 415 is omitted when another candidate supports the
 dialect; if every candidate is unsupported, the first exact 415 Problem is the
@@ -3192,7 +3196,6 @@ scope shape. A follow-up `## READ0 (resource) <SL,SC,EL,EC>` retrieves that exac
 region. JSONPath/XPath remain locators and matchers; they do not introduce a
 second structural scope or structural EDIT language.
 
-
 ### §ext-mimetype Path-extension declares mimetype
 
 `resolveEntryMimetype` (exported from `@plurnk/plurnk-schemes`): pathname extension → `Mimetypes.detect({ ext })` (with `text/plain` normalized to `text/markdown` per the text-primitive rule {§markdown-primitive}); falls back to scheme manifest channel default when no extension.
@@ -3205,7 +3208,6 @@ second structural scope or structural EDIT language.
 §ext-mimetype-extension-mimetype The same rule applies to every entry-bearing scheme. Effective
 mimetype is stored in `entry_channels.mimetype` on write and drives matcher,
 projection, and binary handling. Text scope meaning does not vary by mimetype.
-
 
 ### §render-rule Render rule
 

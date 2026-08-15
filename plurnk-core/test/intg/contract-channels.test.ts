@@ -7,11 +7,10 @@ import assert from "node:assert/strict";
 import Worker from "../../src/schemes/Worker.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import type { Db } from "../../src/core/Db.ts";
-import PacketWire from "../../src/core/packet-wire.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { lookThroughScheme, openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, seedEntryWithChannel, testExecutors } from "./_helpers.ts";
-import { urlPath, editStmt, readStmt, foldStmt } from "./_dsl.ts";
+import { urlPath, editStmt, readStmt } from "./_dsl.ts";
 
 const setup = async () => {
     const db = await openMigrated();
@@ -179,8 +178,6 @@ test("channel state does not gate reads — errored/closed channels still return
             workspaceId, scheme: "worker", pathname: "/partial", channel: "body",
             content: "partial-but-readable", mimetype: "text/markdown", state: "errored",
         });
-        const k = new Worker();
-
         // READ returns the accumulated content regardless of the errored state —
         // state is metadata, not an engine gate.
         const r = await lookThroughScheme("worker", null, readStmt(urlPath("worker", "/partial")), makeSchemeCtx({ db, workspaceId, workerId }));

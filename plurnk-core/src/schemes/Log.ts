@@ -11,7 +11,7 @@ import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.t
 import Matcher from "../content/matcher.ts";
 import type { SourceCandidateMatch } from "../content/matcher.ts";
 import { emptyFindFields, projectFindResult } from "./_entry-find.ts";
-import type { FindResult, Match, CatalogScope, CatalogMatch, FindProjectionResource } from "./_entry-find.ts";
+import type { FindResult, Match, CatalogScope, FindProjectionResource } from "./_entry-find.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type {
     CoreRepresentationProvider,

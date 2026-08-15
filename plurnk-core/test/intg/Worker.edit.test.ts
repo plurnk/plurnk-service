@@ -1,13 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { LineMarker, LocalPath, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
+import type { LineMarker, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx, seedStaticChannel } from "./_helpers.ts";
 import { urlPath, fullReplace } from "./_dsl.ts";
-
-const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
 
 const editStatement = (opts: {
     target?: ParsedPath | null; tags?: string[] | null; body?: string | null;

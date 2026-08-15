@@ -136,7 +136,6 @@ The complete package build emits both rails; they are not source-controlled. Sou
 differential tests serialize the owning generator directly, while installation
 coverage verifies the packed export.
 
-
 The rails share one turn shape but begin at their respective sampled-token
 boundaries:
 
@@ -401,7 +400,6 @@ each landed textual create or update carries the same bounded receipt used by
 EDIT. Whole-channel transfers remain bodyless structural effects; runtime
 owners reject binary markers rather than treating a text field as a byte lane.
 
-
 Every operation returns the runtime-neutral `OperationResult` defined by
 {§operation-result}. Its `status` belongs to the result envelope and is not a
 SEND signal. Durable operation observations are projected into a later packet;
@@ -590,7 +588,7 @@ Suffix rules:
 
 Example — a lane-0 turn stored inside a lane-2 EDIT body:
 
-```
+```plurnk
 # PLAN2
 Store the quoted turn.
 
@@ -1008,8 +1006,8 @@ turn-shape imperatives (begin with `# PLAN0`, end with a terminal
 - §signal-scope-redirect **EXEC scope in the signal slot.** When EXEC's
   `[signal]` slot (executor-ident mode) hits a leading `-` or digit —
   mark-shaped `<timeout, poll>` scope content mistyped into the brackets — the
-  lexer message becomes `timeout/poll ride the \`<scope>\` slot; try
-  \`## EXEC0 <-1,300>\`` instead of a raw `unrecognized character`. The redirect is
+  lexer message becomes “timeout/poll ride the `<scope>` slot; try
+  `## EXEC0 <-1,300>`” instead of a raw `unrecognized character`. The redirect is
   EXEC-scoped because its signal mode is exclusive; SEND/KILL are untouched.
 - §matcher-body-redirect **Matcher body in the slot region.** When the
   post-target header region begins with `$`, `~`, or `@`, the lexer redirects

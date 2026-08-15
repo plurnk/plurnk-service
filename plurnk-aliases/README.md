@@ -12,7 +12,7 @@ the same surface, so it stays the single source of truth.
 
 ## Install
 
-```
+```sh
 npm install @plurnk/plurnk-aliases
 ```
 

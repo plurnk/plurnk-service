@@ -11,7 +11,7 @@ import type { Discovery, HandlerInfo, HandlerMetadata, Registry } from "./types.
 let configuration = "configuration-a";
 
 class ConfigurableHandler extends BaseHandler {
-    projectionConfiguration(): string {
+    override projectionConfiguration(): string {
         return configuration;
     }
 }

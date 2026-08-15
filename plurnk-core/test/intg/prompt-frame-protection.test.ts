@@ -86,7 +86,7 @@ test("KILL of the prompt remains deliberate curation", async () => {
 test("the grinder never folds the prompt frame, even on overflow", async () => {
     const db = await openMigrated();
     try {
-        const { workspaceId, workerId, loopId } = await seedPromptWorker(db);
+        const { workerId, loopId } = await seedPromptWorker(db);
         // Fire the grinder's fold directly (as enforceBudget does on overflow) against turn 1.
         const t1 = await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: loopId, sequence: 1 });
         const before = await db.engine_render_log.all<{

@@ -11,7 +11,6 @@ import { InvalidLoopFlagsError, parsePath } from "@plurnk/plurnk-contracts";
 import type {
     ParsedPath,
     PlurnkStatement,
-    CopyStatement,
     WorkStatement,
     ForkStatement,
     KillStatement,
@@ -439,8 +438,6 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
         const workspaceId = await insertWorkspace(db, `worker-collect-${crypto.randomUUID()}`);
         const reader = await insertWorker(db, workspaceId); // the sister doing the collection
         const ctx = makeSchemeCtx({ db, workspaceId, workerId: reader });
-        const workerScheme = new Worker();
-
         // No such worker → 404 (not a bare 400 the model can't read).
         const missing = await lookThroughScheme("worker", null, readStmt(workerPath("ghost")), ctx);
         assert.equal(missing.status, 404, "a name with no worker is 404");

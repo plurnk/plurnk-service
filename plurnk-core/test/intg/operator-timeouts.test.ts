@@ -4,27 +4,16 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
-import { setTimeout as delay } from "node:timers/promises";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import type { Db } from "../../src/core/Db.ts";
 import { sendStmt } from "./_dsl.ts";
-
-// A ws stand-in: EventEmitter for "message", captured sends. The registered
-// handlers never touch ctx, so db/engine/daemon are inert casts.
-const waitForReply = async (replies: object[]): Promise<{ id: number; result?: unknown; error?: { code: number; message: string } }> => {
-    for (let i = 0; i < 200 && replies.length === 0; i++) await delay(10);
-    assert.ok(replies.length > 0, "the rpc answered");
-    return replies[0] as never;
-};
 
 class AbortBlockingMock extends Mock {
     readonly entered = Promise.withResolvers<void>();
 
-    async generate(args: Parameters<Mock["generate"]>[0]): Promise<never> {
+    override async generate(args: Parameters<Mock["generate"]>[0]): Promise<never> {
         args.signal?.throwIfAborted();
         if (args.signal === undefined) throw new Error("AbortBlockingMock requires the engine's loop signal");
         this.entered.resolve();

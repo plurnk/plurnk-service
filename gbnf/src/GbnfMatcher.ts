@@ -5,7 +5,7 @@
 // pointer identity (the resulting stack *set* — hence the accept/incomplete/reject
 // verdict — is identical regardless of visit order).
 
-import { GRETYPE, type GrammarRule, type Stack, type StackRef } from "./types.ts";
+import { GRETYPE, type GrammarRule, type Stack } from "./types.ts";
 
 export default class GbnfMatcher {
     #rules: GrammarRule[];

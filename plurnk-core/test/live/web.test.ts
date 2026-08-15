@@ -20,7 +20,6 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
-import Http from "@plurnk/plurnk-schemes-http";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "../intg/_helpers.ts";
 
 // A stable NON-HTML URL: text/plain uses raw fetch (an HTML target routes through the

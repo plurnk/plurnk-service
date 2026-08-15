@@ -7,7 +7,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 // A Mock that records the grammar handed to generate().
 class GrammarCapturingMock extends Mock {
     lastGrammar: string | undefined = undefined;
-    async generate(args: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string }) {
+    override async generate(args: { messages: ChatMessage[]; signal?: AbortSignal; grammar?: string }) {
         this.lastGrammar = args.grammar;
         return super.generate(args);
     }

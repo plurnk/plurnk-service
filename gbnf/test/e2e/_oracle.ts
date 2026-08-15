@@ -23,6 +23,8 @@ export type Verdict =
     | { status: "incomplete"; pos: number }
     | { status: "reject"; pos: number; char: string };
 
+// llama.cpp diagnostics intentionally contain ANSI control bytes.
+// oxlint-disable-next-line eslint/no-control-regex
 const ANSI = /\x1b\[[0-9;]*m/g;
 
 const parse = (out: string): Verdict => {

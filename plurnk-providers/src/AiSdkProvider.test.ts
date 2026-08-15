@@ -791,7 +791,7 @@ test("#161: a streamed resource interruption is a failed exchange with complete 
                 totalTokens: 12,
             });
             assert.equal(
-                (error.attempt?.assistantRaw as { rawFinishReason?: string }).rawFinishReason,
+                (error.attempt?.assistantRaw as { rawFinishReason?: string } | undefined)?.rawFinishReason,
                 "insufficient_system_resource",
             );
             assert.ok(Array.isArray(error.attempt?.rawBody));
@@ -828,7 +828,7 @@ test("#161: a buffered resource interruption preserves the successful wire respo
             assert.equal(error.attempt?.assistant.finishReason, "resource_interrupted");
             assert.deepEqual(error.attempt?.rawBody, wire);
             assert.equal(
-                (error.attempt?.assistantRaw as { rawFinishReason?: string }).rawFinishReason,
+                (error.attempt?.assistantRaw as { rawFinishReason?: string } | undefined)?.rawFinishReason,
                 "insufficient_system_resource",
             );
             return true;

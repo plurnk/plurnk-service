@@ -103,7 +103,7 @@ test("module runtime registration preserves one-name-one-owner atomicity", async
 
         assert.throws(
             () => engine.registerRuntime("Alias_Tool", fakeEntry("Alias_Tool")),
-            /runtime declaration invalid: module runtime name 'Alias_Tool' must match \[a-z\]\[a-z0-9\+\.\-\]\*/,
+            /runtime declaration invalid: module runtime name 'Alias_Tool' must match \[a-z\]\[a-z0-9\+\.-\]\*/,
             "module-owned declarations use the same canonical tag admission as installed declarations",
         );
         assert.equal(executors.entry("Alias_Tool"), undefined, "invalid admission leaves the executor registry untouched");

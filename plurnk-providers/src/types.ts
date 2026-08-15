@@ -10,10 +10,8 @@ import type {
     PluginAttributionSource,
 } from "@plurnk/plurnk-meta";
 import type {
-    ProviderAccounting,
     ProviderCost,
     ProviderRequestAccounting,
-    ProviderUsage,
 } from "@plurnk/plurnk-contracts";
 
 export type {

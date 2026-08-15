@@ -8,7 +8,7 @@ import type { Db } from "../core/Db.ts";
 import { execPollBackoffMs } from "./exec-poll-backoff.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 import ChannelWrite, { type StreamEventPayload, type WakeWorkerPayload } from "../core/ChannelWrite.ts";
-import { Paths } from "../index.ts";
+import Paths from "../Paths.ts";
 import Engine, { type LoopUsage } from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";

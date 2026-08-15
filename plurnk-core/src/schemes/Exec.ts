@@ -13,7 +13,6 @@ import WorkspaceSettings from "../core/workspace-settings.ts";
 import EffectPolicy from "./EffectPolicy.ts";
 import type { Effect } from "@plurnk/plurnk-execs";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
-import EntryOps from "./_entry-ops.ts";
 import EntryCrud from "./_entry-crud.ts";
 import Owner from "../core/Owner.ts";
 import EntryFind from "./_entry-find.ts";

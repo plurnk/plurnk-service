@@ -65,7 +65,7 @@ describe("BaseHandler", () => {
 
     it("exposes extractRaw output as the structured symbols surface", async () => {
         class TestHandler extends BaseHandler {
-            extractRaw(_content: string): MimeSymbol[] {
+            override extractRaw(_content: string): MimeSymbol[] {
                 return [
                     { name: "A", kind: "class", line: 1, endLine: 5 },
                     { name: "B", kind: "class", line: 10, endLine: 15 },

@@ -50,11 +50,14 @@
     "scripts": {
         "prepare": "git config core.hooksPath .githooks && npm run build",
         "start": "npm start -w @plurnk/plurnk-service",
+        "source:check": "oxlint --type-aware --report-unused-disable-directives .",
+        "docs:check": "markdownlint-cli2",
+        "packages:publint": "node scripts/package-publint.mjs",
         "metadata:write": "node scripts/package-provenance.mjs --write",
         "metadata:check": "node scripts/package-provenance.mjs",
         "lifecycle:check": "node scripts/package-lifecycle-policy.mjs",
         "pretest:lint": "npm run lifecycle:check",
-        "test:lint": "npm run metadata:check && node scripts/dependency-policy.mjs && node scripts/package-build-policy.mjs && node scripts/spec-references.mjs && npm run test:lint --workspaces --if-present",
+        "test:lint": "npm run metadata:check && node scripts/dependency-policy.mjs && node scripts/package-build-policy.mjs && node scripts/spec-references.mjs && npm run source:check && npm run docs:check && npm run test:lint --workspaces --if-present",
         "pretest:unit": "npm run lifecycle:check",
         "test:unit": "node --test 'scripts/*.test.*' && npm run test:unit --workspaces --if-present",
         "pretest:intg": "npm run lifecycle:check",
@@ -80,6 +83,10 @@
     },
     "devDependencies": {
         "@types/node": "^26.1.1",
+        "markdownlint-cli2": "^0.23.2",
+        "oxlint": "^1.78.0",
+        "oxlint-tsgolint": "^7.0.2001",
+        "publint": "^0.3.23",
         "typescript": "^7.0.2"
     }
 }

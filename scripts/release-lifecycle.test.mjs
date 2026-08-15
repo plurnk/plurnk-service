@@ -52,10 +52,14 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
     const gateSweep = await readFile(new URL("./release-gates.mjs", import.meta.url), "utf8");
     assert.doesNotMatch(gateSweep, /prepublishOnly/);
     assert.match(gateSweep, /\["audit", "--audit-level=moderate"\]/);
+    assert.match(gateSweep, /\["scripts\/package-publint\.mjs"\]/);
     assert.match(gateSweep, /pkg\.scripts\?\.\["release:check"\]/);
     const buildPolicy = gateSweep.indexOf('["scripts/package-build-policy.mjs"]');
     const packedCandidates = gateSweep.indexOf('["scripts/package-provenance.mjs", "--pack"]');
+    const packageShape = gateSweep.indexOf('["scripts/package-publint.mjs"]');
+    const dependencyAudit = gateSweep.indexOf('["audit", "--audit-level=moderate"]');
     assert.ok(buildPolicy >= 0 && buildPolicy < packedCandidates);
+    assert.ok(packedCandidates < packageShape && packageShape < dependencyAudit);
     assert.match(
         gateSweep,
         /\["scripts\/package-provenance\.mjs", "--pack"\]/,

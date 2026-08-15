@@ -349,7 +349,7 @@ export default class Ws implements SchemeHandler {
                     }
                 });
                 persistenceTail = persistence;
-                track(persistence);
+                void track(persistence);
             });
             socket.addEventListener("error", (event) => {
                 console.error("WebSocket transport failed", { url, message: event.message });

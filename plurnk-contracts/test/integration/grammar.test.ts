@@ -19,9 +19,6 @@ const section = (op: Op, slots = "", body?: string, suffix = "0"): string => {
 
 const sections = (...values: string[]): string => values.join("\n\n");
 
-const statementsOf = (input: string) =>
-    PlurnkParser.parseStatements(input).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-
 const errorsOf = (input: string) =>
     PlurnkParser.parseStatements(input).items.flatMap((item) => item.kind === "error" ? [item.error] : []);
 

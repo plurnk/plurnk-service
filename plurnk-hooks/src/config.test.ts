@@ -13,7 +13,7 @@ test("hook configuration is absent until an exact command and event selection ar
         /PLURNK_HOOKS_EVENTS must select at least one event/,
     );
     assert.throws(
-        () => hookConfig({ ...floor, PLURNK_HOOKS_EVENTS: "loop\/terminated" }),
+        () => hookConfig({ ...floor, PLURNK_HOOKS_EVENTS: "loop/terminated" }),
         /has companions but no PLURNK_HOOKS_COMMAND/,
     );
 });
@@ -61,7 +61,7 @@ test("hook configuration rejects shell text, malformed argv, unknown events, dup
         /unknown core event 'turn\/started'/,
     );
     assert.throws(
-        () => hookConfig({ ...configured, PLURNK_HOOKS_COMMAND: "node", PLURNK_HOOKS_EVENTS: "notice\/event,notice\/event" }),
+        () => hookConfig({ ...configured, PLURNK_HOOKS_COMMAND: "node", PLURNK_HOOKS_EVENTS: "notice/event,notice/event" }),
         /selects 'notice\/event' more than once/,
     );
     assert.throws(

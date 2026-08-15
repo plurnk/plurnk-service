@@ -200,7 +200,7 @@ test("entry() materializes an https resource and classifies each plurnk narratio
         }];
         const countTokens = (t: string): number => Math.ceil(t.length / 4);
         const foldedLine = PacketWire.renderLog(view(true), countTokens);
-        assert.match(foldedLine, /"path":"log:\/\/\/[^\"]+\/READ"/, "machine acquisition presents the resulting readable resource, not an authored EDIT");
+        assert.match(foldedLine, /"path":"log:\/\/\/[^"]+\/READ"/, "machine acquisition presents the resulting readable resource, not an authored EDIT");
         assert.match(foldedLine, /"path":"log:\/\/\/1\/1\/2\/READ"/, "the model-facing log handle agrees with the projected operation");
         assert.doesNotMatch(foldedLine, /\/EDIT"/, "the internal storage operation does not leak into model reasoning");
         assert.match(foldedLine, /"display":"folded"/, "a sink resource row is folded by default — display:folded, OPENable");

@@ -9,7 +9,6 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Results from "../../src/core/results.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
-import type Exec from "../../src/schemes/Exec.ts";
 import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
 import { execStmt, sendStmt } from "./_dsl.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
@@ -48,7 +47,7 @@ const wire = async (run: Executor["run"]) => {
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1, "honesty test");
     const turnId = await insertTurn(db, loopId, 1, 102);
-    return { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag, wakes, notices };
+    return { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes, notices };
 };
 
 test("a rejecting driver still concludes its stream with an exact Problem, never an open corpse", async () => {
@@ -160,7 +159,7 @@ test("{§notice-level} a runtime-JavaScript notice without severity fails at the
 });
 
 test("a driver resolving 200 under abort is replaced by a 499 Problem — service truth outranks the claim", async () => {
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire((args) => new Promise((res) => {
+    const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire((args) => new Promise((res) => {
         // The 0.3.3-class liar: hangs until aborted, then claims success.
         args.signal.addEventListener("abort", () => res({ status: 200, exitCode: 0 }), { once: true });
     }));

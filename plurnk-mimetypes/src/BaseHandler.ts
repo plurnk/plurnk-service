@@ -2,7 +2,7 @@ import { buildJsonOutline } from "./buildJsonOutline.ts";
 import { format } from "./format.ts";
 import { projectDeepXml } from "./projectDeepXml.ts";
 import { queryGlob, queryJsonpathObject, queryRegex, queryXpathString } from "./query.ts";
-import { InvalidExpressionError, UnsupportedDialectError } from "./QueryError.ts";
+import { UnsupportedDialectError } from "./QueryError.ts";
 import type {
     HandlerMetadata,
     MimeRef,

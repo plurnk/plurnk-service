@@ -33,11 +33,6 @@ const findStmt = (target: UrlPath, body: MatcherBody | null, lineMarker: LineMar
     position: { line: 1, column: 1 },
 });
 
-const readStmt = (target: UrlPath): ReadStatement => ({
-    op: "READ", suffix: "", signal: null, target, lineMarker: null, body: null,
-    position: { line: 1, column: 1 },
-});
-
 const glob = (raw: string): MatcherBody => ({ dialect: "glob", raw });
 const regex = (pattern: string, flags = ""): MatcherBody =>
     ({ dialect: "regex", raw: flags ? `/${pattern}/${flags}` : `/${pattern}/`, pattern, flags });

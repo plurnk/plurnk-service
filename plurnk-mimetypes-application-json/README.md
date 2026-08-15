@@ -4,7 +4,7 @@
 
 ## install
 
-```
+```sh
 npm install @plurnk/plurnk-mimetypes-application-json
 ```
 
@@ -18,7 +18,7 @@ plurnk-service discovers this handler automatically via its `plurnk.kind: "mimet
 
 ## development
 
-```
+```sh
 npm install
 npm run build
 npm test

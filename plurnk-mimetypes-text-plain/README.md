@@ -4,7 +4,7 @@
 
 ## install
 
-```
+```sh
 npm install @plurnk/plurnk-mimetypes-text-plain
 ```
 
@@ -16,7 +16,7 @@ Nothing structural. text/plain has no symbols to extract — [`BaseHandler`](htt
 
 ## development
 
-```
+```sh
 npm install
 npm run build
 npm test

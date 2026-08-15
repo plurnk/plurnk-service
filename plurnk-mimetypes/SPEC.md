@@ -249,6 +249,7 @@ The family follows a single resolution order. Authors of new handlers MUST consu
 ```
 
 **Do not:**
+
 - Use `text/{lang}` without the `x-` prefix unless the format is IANA-registered (`text/markdown`, `text/csv`, `text/javascript` are fine — they're registered; `text/python` is not registered, so use `text/x-python`).
 - Append `-sql`, `-cli`, `-script`, etc. to differentiate dialects. The bare dialect name is the convention: `text/x-sqlite`, `text/x-pgsql`, `text/x-redis` — not `text/x-sqlite-sql`, `text/x-redis-cli`.
 - Retain a superseded pre-registration alias past the next semver-major boundary.
@@ -313,16 +314,19 @@ Omit `params` entirely when the language doesn't expose named parameters.
 The framework owns outline rendering. Handlers produce structured `MimeSymbol[]`; `format(symbols)` turns it into a string. `BaseHandler.symbolsRaw` is the default `format(extractRaw(content))` composition.
 
 **Tree hierarchy:**
+
 - Heading symbols: nested by `level` field (1–6).
 - Other symbols: nested by line-range containment. A symbol whose `[line, endLine]` is fully inside another's is its child.
 
 **Line rendering:**
+
 - Heading: `<indent># Name [line]` (hash count = level, indent = tree depth).
 - Other: `<indent>kind name(params)? [line-endLine]` (kind prefix, params if present, range collapses to `[N]` when single-line).
 - Indent unit: two spaces per depth level.
 
 Example:
-```
+
+```text
 class Parser [5-47]
   method parse(source) [10-20]
   method load(dir) [22-45]
@@ -456,6 +460,7 @@ portability contract:
 | 4        | Focused hand-written extractor | No maintained grammar is viable and the syntax is simple enough for a small, reviewable scanner.   | Separate zero-dependency handler package.             |
 
 **Forbidden backends (apply across all tiers):**
+
 - Native `tree-sitter` (node-gyp-based). Requires Python + C compiler at install time — fails on Alpine, on bare Lambda, on Cloudflare Workers, on minimal containers. Not portable.
 - Any package requiring native FFI bindings or platform-specific binaries at install.
 - Pushing emscripten/toolchain requirements onto the consumer at install time. Tier 2's emscripten dependency lives in the handler package's CI / publish pipeline; what ships to npm is pre-built `.wasm`.
@@ -475,9 +480,11 @@ For ANTLR-backed handlers (existing pattern, still supported):
 
 1. Vendor `.g4` files in `grammar/` at the handler repo root.
 2. Add the compiler to your own devDependencies (the `antlr4ng` runtime ships with the framework as a direct dependency; the `antlr-ng` compiler is the framework's only optional peer):
-   ```
+
+   ```sh
    npm install --save-dev antlr-ng@^1.0.10
    ```
+
 3. Run `npx plurnk-mimetypes-compile` — invokes `antlr-ng -D language=TypeScript -o src/generated --generate-visitor true --generate-listener false grammar/*.g4` and post-processes the output to rewrite `.js` import extensions to `.ts` (so Node's native TS strip works without a separate build pass). Invoke via `npx` so node_modules/.bin/ is on PATH when the spawn happens.
 4. Extend `AntlrExtractor` instead of `BaseHandler`.
 5. Implement `parseTree(content)` (return a parser rule context) and `createVisitor()` (return an `ExtractionVisitor`).
@@ -750,7 +757,7 @@ The deep channels are **never model-visible**. They are consumed exclusively by 
 
 Each Tree-sitter grammar lives in a PLURNK package that ships only its pre-built WASM:
 
-```
+```text
 @plurnk/plurnk-mimetypes                          (framework: floor handlers + loaders)
 @plurnk/plurnk-mimetypes-grammar-{slug}           (per-grammar, one each)
 ```

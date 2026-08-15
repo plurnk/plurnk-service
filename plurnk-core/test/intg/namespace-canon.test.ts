@@ -155,7 +155,7 @@ test("the six-row write matrix — grantor-keyed mounts, O_EXCL create, the blin
 });
 
 test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty survey", async () => {
-    const { root, db, workspaceId, ctx } = await setup();
+    const { root, db, ctx } = await setup();
     try {
         await writeFile(join(root, "real.md"), "content\n");
         await EntryCrud.writeEntry("real.md", { channels: { body: { content: "content\n", mimetype: "text/markdown" } } }, ctx, "file");
@@ -211,7 +211,6 @@ test("an in-root file no grantor admits DOES NOT EXIST; a client pick brings it 
     try {
         // A real file, physically in the root — non-git root, no pick: NO grantor admits it.
         await writeFile(join(root, "ungran.md"), "present on disk, absent in the world\n");
-        const file = new File();
         const invisible = await readFileScheme(readStmt("ungran.md"), ctx);
         assert.equal(invisible.status, 404, "no grantor → the file does not exist for the model (counterintuitive on purpose — the sandbox's center)");
 

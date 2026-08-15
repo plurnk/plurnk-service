@@ -130,13 +130,14 @@ test("budget headline shows usage as a percent of the ceiling", async () => {
 
 test("a hard context-envelope rejection preserves negative curation debt and over-100% pressure in its stored evidence", async () => {
     const db = await openMigrated();
+    const partitionKeys = ["PLURNK_PROVIDERS_REASONING_RESERVE", "PLURNK_PROVIDERS_COMPLETION_RESERVE", "PLURNK_SERVICE_SAFETY"] as const;
+    const previousPartition = partitionKeys.map((key) => process.env[key]);
     try {
         const workspaceId = await insertWorkspace(db, `tok-over-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
         // {§tokenomics-window-partition} — the envelope rides the provider: an 11-token window with the 1+1 reserve floor
         // and SAFETY 0 → promptBudget 9, same arithmetic as the retired env pin.
-        const prevPart = ["PLURNK_PROVIDERS_REASONING_RESERVE", "PLURNK_PROVIDERS_COMPLETION_RESERVE", "PLURNK_SERVICE_SAFETY"].map((k) => process.env[k]);
         process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "1";
         process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE = "1";
         process.env.PLURNK_SERVICE_SAFETY = "0";
@@ -163,7 +164,14 @@ test("a hard context-envelope rejection preserves negative curation debt and ove
             1,
             "negative debt carries exactly one transient curation instruction",
         );
-    } finally { await db.close(); }
+    } finally {
+        partitionKeys.forEach((key, index) => {
+            const previous = previousPartition[index];
+            if (previous === undefined) delete process.env[key];
+            else process.env[key] = previous;
+        });
+        await db.close();
+    }
 });
 
 test("content_hash is a stable per-content identity — identical content, identical hash; no per-model keying", async () => {

@@ -20,7 +20,7 @@ import type { SourceCandidateMatch } from "../content/matcher.ts";
 import { entryPathnameOf } from "../core/plurnk-uri.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntryCrud from "./_entry-crud.ts";
-import EntryManifest, { type CatalogChannel, type CatalogDefaultChannel, type CatalogEntry } from "./_entry-manifest.ts";
+import EntryManifest, { type CatalogChannel, type CatalogDefaultChannel } from "./_entry-manifest.ts";
 import Owner from "../core/Owner.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
@@ -199,13 +199,6 @@ export default class EntryFind {
         // CRUD. Both namespace authorities and network hosts are part of that
         // identity and must survive the exact-entry lookup.
         return entryPathnameOf(path);
-    }
-
-    static #unique(xs: string[]): string[] {
-        const seen = new Set<string>();
-        const out: string[] = [];
-        for (const x of xs) if (!seen.has(x)) { seen.add(x); out.push(x); }
-        return out;
     }
 
     // Resolve a FIND to its matched workspace resources — entry-level, unique, in result

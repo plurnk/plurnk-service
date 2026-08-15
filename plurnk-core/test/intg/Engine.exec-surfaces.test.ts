@@ -156,7 +156,7 @@ test("a failed EXEC reaches the model as the executor's exact Problem on its ter
             const packet = JSON.parse(packetRow?.packet ?? "{}");
             const rendered = packetSection(packet, "log");
             assert.match(rendered, /'sh' exited with code 3\./, "the model-facing packet states the executor's diagnostic");
-            assert.match(rendered, /\"status\":500/, "the model-facing row remains a failure");
+            assert.match(rendered, /"status":500/, "the model-facing row remains a failure");
             assert.match(rendered, /compile diagnostic/, "stderr remains visible on the failed terminal READ");
             assert.match(rendered, /partial output/, "stdout remains visible on the failed terminal READ");
         } finally { ws.close(); }

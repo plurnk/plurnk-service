@@ -246,7 +246,7 @@ export default class SchemeRegistry {
     teach(): string {
         const examples: string[] = [];
         const excluded = docsExcludeSet();
-        for (const [name, handler] of this.#handlers) {
+        for (const name of this.#handlers.keys()) {
             if (this.#runtimeSchemes.has(name)) continue; // {§exec} — runtime aliases route, but exec is taught once
             if (excluded.has(name)) continue; // {§schemes-directory} — exclude drops the example and doc
             const manifest = this.manifestFor(name);
@@ -272,7 +272,7 @@ export default class SchemeRegistry {
         const schemeDocs = await this.#requiredSchemeDocs();
         const out: Array<{ name: string; content: string }> = [];
         const excluded = docsExcludeSet();
-        for (const [name, handler] of this.#handlers) {
+        for (const name of this.#handlers.keys()) {
             if (this.#runtimeSchemes.has(name)) continue; // {§exec} — runtime aliases share exec's doc, not their own
             if (excluded.has(name)) continue; // {§schemes-directory} — exclude drops the doc
             const inline = this.manifestFor(name)?.documentation;

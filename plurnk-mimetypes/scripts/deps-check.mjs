@@ -235,7 +235,7 @@ if (runAudit) {
     // chosen. --package-lock-only audits that fresh resolution (no install, no
     // committed lockfile required, no repo mutation).
     const RUNTIME = ["dependencies", "optionalDependencies"];
-    for (const { dir, slug, pj } of pkgs) {
+    for (const { slug, pj } of pkgs) {
         const thirdParty = RUNTIME.some((f) => Object.keys(pj[f] || {}).some((k) => !k.startsWith("@plurnk/")));
         if (!thirdParty) continue; // grammars / -all carry no third-party runtime surface
         auditable += 1;

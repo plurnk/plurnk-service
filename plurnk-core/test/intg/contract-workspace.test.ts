@@ -25,7 +25,7 @@ import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import {
     openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn,
-    seedEnvelope, DEFAULT_MIMETYPES, logEntries, rootWorkspace, lookThroughScheme,
+    DEFAULT_MIMETYPES, logEntries, rootWorkspace, lookThroughScheme,
 } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);

@@ -7,7 +7,7 @@ math.
 
 ## install
 
-```
+```sh
 npm i @plurnk/plurnk-mimetypes-tokenizers
 ```
 

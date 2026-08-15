@@ -1,7 +1,5 @@
-import EntrySemantic from "./_entry-semantic.ts";
 import EntryCrud from "./_entry-crud.ts";
 import type { RangeExtent, ReadStatement, TextRegion } from "@plurnk/plurnk-contracts";
-import type { Db } from "../core/Db.ts";
 import { entryPathnameOf, renderTarget } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Owner from "../core/Owner.ts";

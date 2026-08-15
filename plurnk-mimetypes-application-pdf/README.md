@@ -4,7 +4,7 @@
 
 ## install
 
-```
+```sh
 npm i @plurnk/plurnk-mimetypes-application-pdf
 ```
 

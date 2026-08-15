@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type {
-    EditStatement, MatcherBody, ParsedPath, ReadStatement, SendStatement,
+    MatcherBody, ReadStatement, SendStatement,
 } from "@plurnk/plurnk-contracts";
 import {
     BaseHandler,
@@ -29,13 +29,11 @@ import {
 } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import PacketWire from "../../src/core/packet-wire.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import File from "../../src/schemes/File.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import {
     openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn,

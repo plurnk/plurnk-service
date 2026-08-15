@@ -37,7 +37,7 @@ class EntryBackedScheme implements SchemeHandler {
 }
 
 class PublicCrudTrapScheme extends EntryBackedScheme {
-    static manifest: SchemeManifest = {
+    static override manifest: SchemeManifest = {
         ...EntryBackedScheme.manifest,
         name: "public-crud-trap",
     };

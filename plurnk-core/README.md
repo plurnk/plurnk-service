@@ -28,7 +28,7 @@ a second client transport.
 
 ## Start
 
-```
+```sh
 npm install -g @plurnk/plurnk-service
 plurnk-service migrate    # apply the disposable version-1 schema baseline
 plurnk-service start      # daemon

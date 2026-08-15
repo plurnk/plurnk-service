@@ -18,6 +18,9 @@ await run("node", ["scripts/package-build-policy.mjs"]);
 const provenanceArgs = ["scripts/package-provenance.mjs", "--pack"];
 if (values.only !== undefined) provenanceArgs.push("--only", values.only);
 await run("node", provenanceArgs, { maxBuffer: 64 * 1024 * 1024 });
+const publintArgs = ["scripts/package-publint.mjs"];
+if (values.only !== undefined) publintArgs.push("--only", values.only);
+await run("node", publintArgs, { maxBuffer: 64 * 1024 * 1024 });
 await run("npm", ["audit", "--audit-level=moderate"], { maxBuffer: 64 * 1024 * 1024 });
 
 let gated = 0;
@@ -28,4 +31,4 @@ for (const dir of dirs) {
     await run("npm", ["run", "release:check", "-w", pkg.name], { maxBuffer: 64 * 1024 * 1024 });
     gated++;
 }
-console.log(`release-gates GREEN: dependency audit, packed projection, ${gated} package-specific check(s)`);
+console.log(`release-gates GREEN: dependency audit, package shape, packed projection, ${gated} package-specific check(s)`);

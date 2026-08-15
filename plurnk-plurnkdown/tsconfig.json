@@ -1,19 +1,12 @@
 {
+    "extends": "../tsconfig.base.json",
     "compilerOptions": {
-        "target": "ES2024",
-        "module": "NodeNext",
-        "moduleResolution": "NodeNext",
-        "strict": true,
         "esModuleInterop": true,
         "skipLibCheck": true,
-        "noEmit": true,
-        "allowImportingTsExtensions": true,
         "resolveJsonModule": true,
         "isolatedModules": true,
         "verbatimModuleSyntax": false,
-        "types": ["node"],
-        "lib": ["ES2024"],
-        "customConditions": ["plurnk-dev"]
+        "lib": ["ES2024"]
     },
     "include": ["src/**/*.ts", "bin/**/*.ts"],
     "exclude": ["node_modules", "dist"]

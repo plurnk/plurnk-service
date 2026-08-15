@@ -213,7 +213,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
                 `${target} begins its own universally numbered FIND row`,
             );
         }
-        assert.match(log, /"path":"log:\/\/\/[^\"]+\/FIND"/, "the catalog foist appears as a FIND op in the log address");
+        assert.match(log, /"path":"log:\/\/\/[^"]+\/FIND"/, "the catalog foist appears as a FIND op in the log address");
         assert.match(
             log,
             /13:## SEND0 \[102\]\n14:Next, address the prompt\./,

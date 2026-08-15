@@ -4,7 +4,7 @@
 
 ## install
 
-```
+```sh
 npm i @plurnk/plurnk-mimetypes-text-markdown
 ```
 
@@ -23,7 +23,7 @@ Everything else (paragraphs, lists, links, inline code, blockquotes, tables) is 
 
 ## development
 
-```
+```sh
 npm install
 npm run build
 npm test

@@ -237,7 +237,7 @@ test("{§executor-runtime-declaration} #105: dynamic runtime tags use canonical 
     );
     await assert.rejects(
         Discover.scan({ packageDirs: [invalid] }),
-        /runtime declaration invalid: @plurnk\/plurnk-execs-dynamic-fixture name 'Alias_Tool' must match \[a-z\]\[a-z0-9\+\.\-\]\*/,
+        /runtime declaration invalid: @plurnk\/plurnk-execs-dynamic-fixture name 'Alias_Tool' must match \[a-z\]\[a-z0-9\+\.-\]\*/,
     );
 
     const reserved = await makeDynamicPkg(
@@ -345,7 +345,7 @@ test("{§executor-runtime-declaration} #105: static runtime tags are canonical, 
         });
         await assert.rejects(
             Discover.scan({ packageDirs: [invalid] }),
-            /runtime declaration invalid: @acme\/acme-execs-invalid .*must match \[a-z\]\[a-z0-9\+\.\-\]\*/,
+            /runtime declaration invalid: @acme\/acme-execs-invalid .*must match \[a-z\]\[a-z0-9\+\.-\]\*/,
             `invalid runtime name ${JSON.stringify(name)} must fail at discovery`,
         );
     }
@@ -458,9 +458,15 @@ test('trust gate OFF ("0"): every installed package loads, nothing skipped', asy
 // EVERY plugin's tags — a disabled tag is absent, not "Available-off".
 const withEnv = async (kv: Record<string, string | undefined>, fn: () => Promise<void>): Promise<void> => {
     const prev = Object.fromEntries(Object.keys(kv).map((k) => [k, process.env[k]]));
-    for (const [k, v] of Object.entries(kv)) v === undefined ? delete process.env[k] : (process.env[k] = v);
+    for (const [k, v] of Object.entries(kv)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+    }
     try { await fn(); } finally {
-        for (const [k, v] of Object.entries(prev)) v === undefined ? delete process.env[k] : (process.env[k] = v);
+        for (const [k, v] of Object.entries(prev)) {
+            if (v === undefined) delete process.env[k];
+            else process.env[k] = v;
+        }
     }
 };
 
