@@ -100,7 +100,7 @@ Continue next turn when the matcher results are visible, then compare them and i
 ### `(path)`
 
 * READ with a path glob or body pattern becomes FIND; otherwise READ addresses one exact target.
-* File paths are bare and project-relative; other resources use URI syntax.
+* Each OP's `(path)` slot takes one bare project-relative path or resource URI.
 * Log item paths are nested: `log:///1/2/3` is loop/turn/item.
 * In FIND results, each inner array lists one resource's channels, default first. Append `#channel` to override the default.
 * A file or entry extension declares its mimetype.
