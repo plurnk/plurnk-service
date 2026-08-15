@@ -33,6 +33,7 @@ export default class OutputScheme {
             writableBy: ["plugin"],
             volatile: true,
             modelVisible: true,
+            authority: "semantic",
             folderScopes: true,
             foldedByDefault: true,
             glyph: decl.glyph,

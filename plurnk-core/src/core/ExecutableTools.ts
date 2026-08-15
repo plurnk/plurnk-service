@@ -1,8 +1,15 @@
-import type { RuntimeInvocationDecl } from "@plurnk/plurnk-execs";
+import type { RuntimeInvocationDecl, RuntimeInvocationVariant } from "@plurnk/plurnk-execs";
 
 interface ExecutableTool {
     readonly runtime: string;
     readonly invocation: RuntimeInvocationDecl;
+    readonly variants?: readonly RuntimeInvocationVariant[];
+}
+
+interface ExecutableToolRow {
+    readonly runtime: string;
+    readonly invocation: RuntimeInvocationDecl;
+    readonly variant: boolean;
 }
 
 const escapeCell = (value: string): string => value.replaceAll("|", "\\|");
@@ -29,15 +36,23 @@ export default class ExecutableTools {
         if (tools.length === 0) return "";
         const rows = tools
             .toSorted((left, right) => left.runtime.localeCompare(right.runtime))
-            .map(({ runtime, invocation }) => {
+            .flatMap<ExecutableToolRow>(({ runtime, invocation, variants }) =>
+                variants === undefined || variants.length === 0
+                    ? [{ runtime, invocation, variant: false }]
+                    : variants.map((item) => ({ runtime, invocation: item, variant: true })))
+            .toSorted((left, right) => left.runtime.localeCompare(right.runtime)
+                || (left.invocation.example.target ?? "").localeCompare(right.invocation.example.target ?? ""))
+            .map(({ runtime, invocation, variant }) => {
                 const exclusive = invocation.exclusive === true;
                 const target = invocation.target === undefined
                     ? "—"
-                    : bucket(
-                        `${invocation.target.role}${invocation.target.directory === "cwd" ? " or local directory with body" : ""}`,
-                        invocation.target.required,
-                        exclusive,
-                    );
+                    : variant
+                        ? `${code(`(${invocation.example.target})`)}<br>${bucket(invocation.target.role, true, false)}`
+                        : bucket(
+                            `${invocation.target.role}${invocation.target.directory === "cwd" ? " or local directory with body" : ""}`,
+                            invocation.target.required,
+                            exclusive,
+                        );
                 const body = bucket(invocation.body.role, invocation.body.required, exclusive);
                 return `| \`[${runtime}]\` | ${target} | ${body} | ${example(runtime, invocation)} |`;
             });

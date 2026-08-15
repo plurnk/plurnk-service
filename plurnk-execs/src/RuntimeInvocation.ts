@@ -3,6 +3,7 @@ import type {
     RuntimeBodyDecl,
     RuntimeInvocationExample,
     RuntimeInvocation as RuntimeInvocationDecl,
+    RuntimeInvocationVariant,
     RuntimeTargetDecl,
     RuntimeTargetKind,
 } from "./types.ts";
@@ -136,5 +137,44 @@ export default class RuntimeInvocation {
             ...(exclusive ? { exclusive: true } : {}),
             example,
         };
+    }
+
+    static assertVariants(
+        values: readonly unknown[],
+        base: RuntimeInvocationDecl,
+        packageName: string,
+        runtime: string,
+    ): readonly RuntimeInvocationVariant[] {
+        const variants = values.map((value) => RuntimeInvocation.assert(value, packageName, runtime));
+        const targets = new Set<string>();
+        return variants.map((variant): RuntimeInvocationVariant => {
+            if (
+                variant.target?.required !== true
+                || variant.target.kind !== "literal"
+                || variant.example.target === undefined
+            ) {
+                throw new Error(
+                    `runtime declaration invalid: ${packageName} '${runtime}' invocation variant must declare a required literal target and exact target example`,
+                );
+            }
+            if (
+                base.target?.required !== variant.target.required
+                || base.target.kind !== variant.target.kind
+                || base.target.directory !== variant.target.directory
+                || base.body.required !== variant.body.required
+                || base.exclusive !== variant.exclusive
+            ) {
+                throw new Error(
+                    `runtime declaration invalid: ${packageName} '${runtime}' invocation variant may refine only roles and example values`,
+                );
+            }
+            if (targets.has(variant.example.target)) {
+                throw new Error(
+                    `runtime declaration invalid: ${packageName} '${runtime}' invocation variants contain duplicate exact target '${variant.example.target}'`,
+                );
+            }
+            targets.add(variant.example.target);
+            return variant as RuntimeInvocationVariant;
+        });
     }
 }

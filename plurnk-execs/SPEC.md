@@ -42,6 +42,7 @@ abstract class BaseExecutor {
     abstract run(args: ExecArgs): Promise<ExecResult>;
     probe(signal?: AbortSignal): Promise<RuntimeAvailability>;
     effect(target: string | null): Effect;
+    invocationVariants?(): readonly RuntimeInvocationVariant[];
 }
 
 interface ChannelDecl {
@@ -278,7 +279,9 @@ at boot; changing package membership or configuration requires a restart.
 The framework carries invocation metadata and documentation content unchanged
 after validating the invocation. The consumer derives its complete always-on
 tools directory, including one concise invocation example per selector, from
-that metadata; detailed instruction remains in on-demand documentation. A
+that metadata. An executor may refine a finite current set of exact literal
+targets through {§executor-invocation-variants}; detailed instruction remains
+in on-demand documentation. A
 multi-tag package appears at most once in `Discovery.packageAttributions`, and
 only when at least one of its tags survives discovery policy. An instantiated
 executor may add attempt-time tags through the shared runtime hook
@@ -316,6 +319,17 @@ registration. Static, dynamic-hook, and module-owned runtimes use this same
 validation path. The enclosing runtime declaration is closed to `name`,
 `glyph`, `invocation`, and `documentation`; unknown or mistyped metadata is a
 contract violation rather than silently ignored teaching.
+
+§executor-invocation-variants A runtime with a finite target catalogue may
+implement `invocationVariants()` to refine its one structural invocation
+contract into exact model-facing choices. Every variant is itself a validated
+`RuntimeInvocation`, must retain a required `literal` target, and names its
+exact target through `example.target`; duplicate exact targets fail the
+boundary. Variants may refine model-facing roles and examples but never change
+dispatch grammar, runtime identity, target realization, or admission. An empty
+set falls back to the runtime's general row. The method is synchronous and
+side-effect-free; a protocol executor refreshes its cached catalogue at its own
+I/O boundaries rather than making packet assembly perform network discovery.
 
 Runtime-name admission is one identity contract:
 

@@ -25,7 +25,7 @@ scheme. There is no protocol downgrade or legacy fallback.
 |---|---|---|
 | Base | JSON-RPC 2.0; per-request protocol, identity, and capability metadata; every result has `resultType` | Require the modern envelope and preserve protocol results and errors without reconstructing them |
 | Discovery | Servers implement `server/discover` | Probe before registration; retain identity, instructions, capabilities, versions, and cache hints |
-| Tools | Negotiated server capability: `tools/list`, `tools/call` | Publish the complete catalog and route each cataloged tool without renaming the remote tool |
+| Tools | Negotiated server capability: `tools/list`, `tools/call` | Publish exact tool contracts beneath the server authority and route each cataloged tool without renaming it |
 | Resources | Negotiated server capability: `resources/list`, `resources/templates/list`, `resources/read` | Publish catalogs, templates, and materialized contents through the server's resource authority |
 | Prompts | Negotiated server capability: `prompts/list`, `prompts/get` | Publish prompt definitions and retrieve prompt messages through the same server authority |
 | Completion | Negotiated server capability: `completion/complete` | Make prompt and resource-template completion available to the host interaction that owns the argument |
@@ -100,7 +100,10 @@ originating distinction in its canonical Problem/result path.
 | `PLURNK_MCP_<server>_ARGS` | JSON string array for stdio |
 | `PLURNK_MCP_<server>_CWD` | Working directory for stdio |
 | `PLURNK_MCP_<server>_ENV` | JSON string map for stdio |
+| `PLURNK_MCP_<server>_BEARER` | HTTP bearer credential; use `${TOKEN}` expansion to retain the authoritative environment value |
 | `PLURNK_MCP_<server>_HEADERS` | JSON string map for supplementary HTTP headers |
+| `PLURNK_MCP_<server>_FEATURED` | JSON boolean or exact string array: `true` features every current tool; an array features those named tools; absent/`false` leaves the generic server row |
+| `PLURNK_MCP_<server>_READ` | JSON string array of exact tool names the operator classifies as read-only; every other tool retains the conservative `host` effect |
 | `PLURNK_MCP_CONNECT_TIMEOUT` | Positive integer milliseconds |
 | `PLURNK_MCP_REQUEST_TIMEOUT` | Positive integer milliseconds |
 
@@ -109,7 +112,8 @@ the executor and URI-authority namespace. Duplicate names, reserved-name
 collisions, orphan companions, wrong-transport companions, missing environment
 references, and invalid JSON fail startup. A stdio target is one exact
 executable string even when its path contains whitespace; arguments never hide
-inside it.
+inside it. Bearer authentication and a case-insensitive `Authorization` entry
+in `_HEADERS` are mutually exclusive.
 
 ## §mcp-setup Atomic lifecycle
 
@@ -129,15 +133,28 @@ close failures.
 |---|---|
 | Server | One registered executable tool and matching URI authority |
 | Live catalog | `<server>:///` |
+| Tool search | `## FIND0 (<server>://*/)` |
+| Tool contract | `## READ0 (<server>://<percent-encoded-tool>/)` |
 | Tool call | `## EXEC0 [<server>] (<tool>)` with one JSON object body |
 | Resources | `<server>:///resources` and encoded resource-URI descendants |
 | Prompts | `<server>:///prompts` and encoded prompt-name descendants |
 
-One canonical projection owns each remote primitive. The executor manifest
-owns ordinary execution coordinates; the MCP scheme claims only catalog,
-resource, and prompt paths. Results become ordinary Plurnk entries and
-channels, so slicing, tags, curation, notices, and Problems need no MCP-specific
-parallel mechanism.
+One canonical projection owns each remote primitive. The server is the runtime
+and URI scheme; a tool remains the exact literal EXEC target and becomes the
+URI authority of its pullable contract. Standard URI percent-encoding is the
+only representation layer for hostile names. Featured tools refine the
+ordinary Registered Tools table through {§executor-invocation-variants}; the
+complete catalogue remains FIND/READ-able rather than riding every packet.
+The MCP facet claims only authority-root tool contracts and its empty-authority
+catalog, resource, and prompt paths. Unclaimed coordinate paths retain ordinary
+executor-output semantics. Results become ordinary Plurnk entries and channels,
+so slicing, tags, curation, notices, and Problems need no MCP-specific parallel
+mechanism.
+
+MCP tool annotations remain catalog data, not admission authority. An exact
+operator-owned `READ` list may classify known observations as the executor
+`read` effect; unknown and unlisted tools remain `host` and therefore use the
+ordinary proposal policy.
 
 ## §mcp-conformance Conformance authority
 

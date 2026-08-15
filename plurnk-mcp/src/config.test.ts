@@ -18,6 +18,8 @@ test("configuration discovers case-folded server targets and exact stdio argumen
         PLURNK_MCP_ATLAS: "node",
         PLURNK_MCP_ATLAS_ARGS: '["server.mjs","--task","smoke"]',
         PLURNK_MCP_ATLAS_CWD: "/tmp/atlas",
+        PLURNK_MCP_ATLAS_FEATURED: '["filesystem_read_text_file"]',
+        PLURNK_MCP_ATLAS_READ: '["filesystem_read_text_file"]',
     };
     assert.deepEqual(serverNames(env), ["atlas"]);
     assert.deepEqual(serverConfig("ATLAS", env), {
@@ -26,15 +28,17 @@ test("configuration discovers case-folded server targets and exact stdio argumen
         args: ["server.mjs", "--task", "smoke"],
         cwd: "/tmp/atlas",
         env: undefined,
+        featured: ["filesystem_read_text_file"],
+        read: ["filesystem_read_text_file"],
     });
 });
 
-test("configuration expands process environment references without copying secrets into config", () => {
+test("HTTP bearer authentication expands its authoritative environment reference", () => {
     const env = {
         ...floor,
         TOKEN: "secret",
         PLURNK_MCP_GITHUB: "https://example.test/mcp",
-        PLURNK_MCP_GITHUB_HEADERS: '{"Authorization":"Bearer ${TOKEN}"}',
+        PLURNK_MCP_GITHUB_BEARER: "${TOKEN}",
     };
     assert.deepEqual(serverConfig("github", env), {
         transport: "http",
@@ -42,7 +46,57 @@ test("configuration expands process environment references without copying secre
         headers: {
             Authorization: "Bearer secret",
         },
+        featured: false,
+        read: [],
     });
+});
+
+test("supplementary HTTP headers expand environment references and cannot conflict with bearer auth", () => {
+    const env = {
+        ...floor,
+        TOKEN: "secret",
+        PLURNK_MCP_GITHUB: "https://example.test/mcp",
+        PLURNK_MCP_GITHUB_HEADERS: '{"X-Tenant":"${TOKEN}"}',
+    };
+    assert.deepEqual(serverConfig("github", env), {
+        transport: "http",
+        url: "https://example.test/mcp",
+        headers: {
+            "X-Tenant": "secret",
+        },
+        featured: false,
+        read: [],
+    });
+    assert.throws(
+        () => serverConfig("github", {
+            ...env,
+            PLURNK_MCP_GITHUB_BEARER: "${TOKEN}",
+            PLURNK_MCP_GITHUB_HEADERS: '{"authorization":"custom"}',
+        }),
+        /BEARER.*conflicts with Authorization.*_HEADERS/,
+    );
+});
+
+test("bearer authentication rejects absent and empty environment references", () => {
+    const env = {
+        ...floor,
+        PLURNK_MCP_GITHUB: "https://example.test/mcp",
+    };
+    assert.throws(
+        () => serverConfig("github", {
+            ...env,
+            PLURNK_MCP_GITHUB_BEARER: "${TOKEN}",
+        }),
+        /BEARER.*missing environment variable TOKEN/,
+    );
+    assert.throws(
+        () => serverConfig("github", {
+            ...env,
+            TOKEN: "",
+            PLURNK_MCP_GITHUB_BEARER: "${TOKEN}",
+        }),
+        /BEARER.*resolve to a non-empty token/,
+    );
 });
 
 test("configuration rejects empty targets, orphan companions, and transport-specific companions", () => {
@@ -75,6 +129,15 @@ test("configuration rejects empty targets, orphan companions, and transport-spec
             PLURNK_MCP_ATLAS_HEADERS: "{}",
         }),
         /PLURNK_MCP_ATLAS_HEADERS.*PLURNK_MCP_ATLAS/,
+    );
+    assert.throws(
+        () => serverConfig("atlas", {
+            ...floor,
+            TOKEN: "secret",
+            PLURNK_MCP_ATLAS: "node",
+            PLURNK_MCP_ATLAS_BEARER: "${TOKEN}",
+        }),
+        /PLURNK_MCP_ATLAS_BEARER.*PLURNK_MCP_ATLAS/,
     );
 });
 
@@ -145,7 +208,41 @@ test("stdio targets preserve whitespace as part of one exact executable", () => 
         args: ["--stdio"],
         cwd: undefined,
         env: undefined,
+        featured: false,
+        read: [],
     });
+});
+
+test("tool policy accepts explicit feature-all and rejects ambiguous or duplicate names", () => {
+    assert.deepEqual(serverConfig("atlas", {
+        ...floor,
+        PLURNK_MCP_ATLAS: "node",
+        PLURNK_MCP_ATLAS_FEATURED: "true",
+    }), {
+        transport: "stdio",
+        command: "node",
+        args: [],
+        cwd: undefined,
+        env: undefined,
+        featured: true,
+        read: [],
+    });
+    assert.throws(
+        () => serverConfig("atlas", {
+            ...floor,
+            PLURNK_MCP_ATLAS: "node",
+            PLURNK_MCP_ATLAS_FEATURED: '"echo"',
+        }),
+        /FEATURED.*boolean or JSON array of strings/,
+    );
+    assert.throws(
+        () => serverConfig("atlas", {
+            ...floor,
+            PLURNK_MCP_ATLAS: "node",
+            PLURNK_MCP_ATLAS_READ: '["echo","echo"]',
+        }),
+        /READ.*duplicate tool name 'echo'/,
+    );
 });
 
 test("timeouts are required positive integers owned by .env.defaults", () => {

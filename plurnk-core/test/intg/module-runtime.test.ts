@@ -26,6 +26,7 @@ const fakeEntry = (tag: string, namespaceOwner = `test module '${tag}'`): Regist
                 writableBy: ["plugin"],
                 volatile: true,
                 modelVisible: true,
+                authority: "semantic",
             } as never;
         },
         get defaultChannel() { return "results"; },
@@ -50,17 +51,17 @@ const wire = (db: Awaited<ReturnType<typeof openMigrated>>) => {
     return { schemes, executors, engine };
 };
 
-const readStatement = (pathname: string): ReadStatement => ({
+const readStatement = (pathname: string, hostname: string | null = null): ReadStatement => ({
     op: "READ",
     suffix: "",
     signal: null,
     target: {
         kind: "url",
-        raw: `myserver://${pathname}`,
+        raw: hostname === null ? `myserver://${pathname}` : `myserver://${hostname}${pathname}`,
         scheme: "myserver",
         username: null,
         password: null,
-        hostname: null,
+        hostname,
         port: null,
         pathname,
         query: null,
@@ -143,14 +144,19 @@ test("a runtime resource facet claims only its subtree and preserves output-stre
         const { schemes, engine } = wire(db);
         let calls = 0;
         engine.registerRuntime("myserver", fakeEntry("myserver"), {
-            claims: (pathname) => pathname.startsWith("/resources/"),
+            claims: (target) => target.kind === "url"
+                && (target.pathname.startsWith("/resources/")
+                    || (target.hostname === "contract" && target.pathname === "/")),
+            resolveEntryAddress: async (target) => target.kind === "url" && target.hostname === "contract"
+                ? { pathname: "/tools/contract", owner: "commons" }
+                : { pathname: target.kind === "url" ? target.pathname : target.raw, owner: "commons" },
             prepareRepresentation: async (request, ctx) => {
                 calls++;
-                assert.equal(request.pathname, "/resources/item");
+                assert.ok(request.pathname === "/resources/item" || request.pathname === "/tools/contract");
                 const written = await ctx.entries.write(request.pathname, {
                     channels: {
                         results: {
-                            content: "remote resource",
+                            content: request.pathname === "/tools/contract" ? "tool contract" : "remote resource",
                             mimetype: "text/plain",
                         },
                     },
@@ -174,9 +180,13 @@ test("a runtime resource facet claims only its subtree and preserves output-stre
         assert.equal(remote.content, "remote resource");
         assert.equal(calls, 1);
 
+        const contract = await read(readStatement("/", "contract"));
+        assert.equal(contract.content, "tool contract");
+        assert.equal(calls, 2);
+
         const output = await read(readStatement("/1/1/1"));
         assert.equal(output.status, 404, "an unclaimed output coordinate uses the standard stream reader");
-        assert.equal(calls, 1, "the resource facet never intercepts output coordinates");
+        assert.equal(calls, 2, "the resource facet never intercepts output coordinates");
     } finally {
         await db.close();
     }

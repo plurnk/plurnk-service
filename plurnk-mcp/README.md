@@ -7,10 +7,12 @@ Each configured MCP server becomes a model-facing executor and resource
 authority:
 
 ```plurnk
-## READ0 (github:///)
+## FIND0 (github://*/)
 
-## EXEC0 [github] (create_issue)
-{"title":"Bug"}
+## READ0 (github://issue_read/)
+
+## EXEC0 [github] (issue_read)
+{"owner":"acme","repo":"project","index":42}
 
 ## FIND0 (github:///resources/**)
 
@@ -30,7 +32,9 @@ Streamable HTTP:
 
 ```text
 PLURNK_MCP_github=https://example.test/mcp
-PLURNK_MCP_github_HEADERS={"Authorization":"Bearer ${GITHUB_TOKEN}"}
+PLURNK_MCP_github_BEARER=${GITHUB_TOKEN}
+PLURNK_MCP_github_FEATURED=["issue_read","issue_search"]
+PLURNK_MCP_github_READ=["issue_read","issue_search"]
 ```
 
 Stdio:
@@ -47,20 +51,29 @@ whitespace. Arguments are a JSON array; the module never parses or invokes a
 shell command. `${NAME}` references read the daemon's inherited environment at
 startup, so secrets do not need to be copied into Plurnk environment files.
 
+`PLURNK_MCP_<server>_FEATURED` is a JSON boolean or exact tool-name array.
+`true` gives every current tool its own Registered Tools row; an array features
+only those tools; absent or `false` retains the generic server row. The full
+catalog is always pullable. `PLURNK_MCP_<server>_READ` is an exact tool-name
+array whose calls use Plurnk's read effect; all other calls conservatively use
+the host effect.
+
 Portable timeout defaults and complete examples live in
 [`.env.defaults`](./.env.defaults).
 
 ## Current surface
 
-- `## READ0 (server:///)` returns the live tools, resources, resource templates, and
-  prompts catalog.
+- `## FIND0 (server://*/)` surveys current tool contracts.
+- `## READ0 (server://<percent-encoded-tool>/)` pulls one complete tool
+  definition and input schema.
+- `## READ0 (server:///)` returns the complete live server catalog.
 - `## EXEC0 [server] (tool)` calls a tool with one JSON object in the body.
 - `server:///resources` exposes the resource catalog through ordinary Plurnk
   `FIND` and `READ` sections.
 - `server:///resources/<encoded-uri>` reads a concrete MCP resource and stores
   it as an ordinary entry, after which normal projection and slicing apply.
-- A tool's `readOnlyHint` selects Plurnk's read effect. Unknown or mutating
-  tools retain the host effect.
+- Remote annotations remain catalog data and never grant effect authority.
+  Only the operator-owned `_READ` list selects Plurnk's read effect.
 
 Prompt retrieval, resource subscriptions, current multi-round-trip input,
 current task methods, and OAuth/OIDC authorization are not part of this
@@ -70,5 +83,6 @@ protocol surface is retained as a fallback.
 ## Verification
 
 `npm test` type-checks the module and exercises exact current-version
-negotiation, configuration, tool calls, resource reads, runtime registration,
-canonical names, exact executable/argument handling, and secret references.
+negotiation, configuration, exact tool resources, tool calls, resource reads,
+runtime registration, canonical names, exact executable/argument handling, and
+secret references.

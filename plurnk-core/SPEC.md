@@ -822,8 +822,8 @@ URL supplies canonical decomposition; an entry key is
 `(workspace, owner, scheme, pathname)` ({§entry-identity-no-null}). Handler
 routing and resource identity are separate:
 
-- §scheme-address-namespace-fold A **registered non-network, non-worker scheme** mechanically folds its authority into the canonical storage pathname (`Dispatcher.#extractTarget` → `foldAuthorityIntoPath`). For an entry namespace, the authority is therefore a leading path segment rather than a separate identity component.
-- The **`worker` scheme is the registered exception**: its authority selects an owner ({§worker-authority-carving}) and remains distinct through dispatch; the handler strips it only after resolving the entry owner.
+- §scheme-address-namespace-fold A registered non-network scheme without a semantic-authority declaration mechanically folds its authority into the canonical storage pathname (`Dispatcher.#extractTarget` → `foldAuthorityIntoPath`). For an ordinary entry namespace, the authority is therefore a leading path segment rather than a separate identity component.
+- §scheme-address-semantic-authority A scheme declaring `authority: "semantic"` under {§manifest-semantic-authority} owns the complete authority-bearing selector. Core preserves that authority through dispatch and diagnostics; the handler lowers it to the existing `(owner, pathname)` entry identity. `worker` uses it for owner selection. Every executor-output scheme uses it for named-worker streams, and an optional runtime facet may claim an authority-only resource without changing unclaimed coordinate semantics.
 - §scheme-address-network A **network resource** uses the shared schemes-layer
   normalization contract {§network-address}:
   `https://example.com:8443/page?b=2&a=1` →
@@ -2182,7 +2182,7 @@ flowchart LR
 
 | Setup function                                                         | Contract |
 |------------------------------------------------------------------------|----------|
-| `registerRuntimes([{ decl, executor, availability, scheme? }, ...])`   | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every executor and optional claimed scheme facet atomically. |
+| `registerRuntimes([{ decl, executor, availability, scheme? }, ...])`   | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every executor and optional claimed scheme facet atomically. A facet's `claims(target)` receives the complete parsed URI; claimed addresses may use `resolveEntryAddress`, preparation, and FIND while unclaimed addresses retain executor-output behavior. |
 | `registerScheme(name, handler)`                                        | Adds one addressable scheme handler; scheme readiness and model-facing capability publication remain core-owned. |
 | §module-action-registration `registerModuleAction(name, handler)`      | Adds a non-empty, extension-unique name and a handler receiving only `Readonly<Record<string, unknown>>`. Core supplies no implicit workspace or transport context. A client-interface module decides whether and how that name becomes public, and owns collisions with its built-ins. |
 
@@ -3031,7 +3031,7 @@ turn.** It cannot execute operations or alter the audited history.
 
 ### §tools user.tools — the capability sheet
 
-§tools-capability-sheet The tools capability sheet renders under `## Registered Tools`, after the policy sections. One generated Markdown table is the closed set of valid executor selectors and states each runtime declaration's model-facing `(target)` role, body role, and exact canonical example. The compact legend leaves required inputs unmarked, marks optional inputs with `?`, pairs mutually exclusive alternatives with `↔`, marks refused buckets with `—`, and locates optional `<timeout,poll>` on the heading. The preface prefers purpose-built Plurnk operations over EXEC scripts. For a declaration with `target.directory: "cwd"`, the target cell distinguishes a local-directory working context from the plugin-authored non-directory target role. Optional non-EXEC operations render separately under `## Enabled Optional Operations` in a `plurnk` fence, so the catalogue remains truthful. `PacketBuilder.#collectTools` assembles both; a prose notice (e.g. the EXEC-disabled line) stays beside the table, and empty sections are omitted.
+§tools-capability-sheet The tools capability sheet renders under `## Registered Tools`, after the policy sections. One generated Markdown table is the closed set of valid executor selectors and states each runtime declaration's model-facing `(target)` role, body role, and exact canonical example. A runtime exposing validated {§executor-invocation-variants} contributes one row per featured exact target instead of its general row; an empty variant set retains the general row. The compact legend leaves required inputs unmarked, marks optional inputs with `?`, pairs mutually exclusive alternatives with `↔`, marks refused buckets with `—`, and locates optional `<timeout,poll>` on the heading. The preface prefers purpose-built Plurnk operations over EXEC scripts. For a declaration with `target.directory: "cwd"`, the target cell distinguishes a local-directory working context from the plugin-authored non-directory target role. Optional non-EXEC operations render separately under `## Enabled Optional Operations` in a `plurnk` fence, so the catalogue remains truthful. `PacketBuilder.#collectTools` assembles both; a prose notice (e.g. the EXEC-disabled line) stays beside the table, and empty sections are omitted.
 
 §tools-loop-affinity **The capability sheet describes the current loop.** The
 sheet filters registered capabilities through the same
@@ -3040,7 +3040,7 @@ registered executors exist but EXEC is inactive, their table is replaced by
 an explicit disabled notice rather than silent absence. The dispatch 403 remains
 the backstop and names the non-retryable loop restriction.
 
-**Contributors: the wired executor tags.** Every available executor tag contributes exactly one row derived from its required {§executor-invocation} declaration. Its doc is materialized at `worker://plurnk/docs/<tag>.md` and discovered via the turn-0 `## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, not linked inline. `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's row and doc. The boot `ExecutorRegistry` probes availability per tag, so the table advertises runnable selectors instead of presuming a particular runtime exists.
+**Contributors: the wired executor tags.** Every available executor tag contributes its general {§executor-invocation} row or its finite featured exact-target rows under {§executor-invocation-variants}. Its doc is materialized at `worker://plurnk/docs/<tag>.md` and discovered via the turn-0 `## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, not linked inline. `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's rows and doc. The boot `ExecutorRegistry` probes availability per tag, so the table advertises runnable selectors instead of presuming a particular runtime exists.
 
 ### §schemes user.schemes — the resource directory
 

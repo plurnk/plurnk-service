@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import type { RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
+import { parsePath } from "@plurnk/plurnk-contracts";
 import type McpExecutor from "./McpExecutor.ts";
 import type McpResources from "./McpResources.ts";
 import Module, { closeConnections } from "./Module.ts";
@@ -51,8 +52,10 @@ test("module registers every configured current MCP server as one executor and r
         assert.equal(registrations[0]?.decl.name, "echo");
         assert.equal(registrations[0]?.availability.available, true);
         assert.match(registrations[0]?.availability.detail ?? "", /MCP 2026-07-28/);
-        assert.equal(registrations[0]?.scheme?.claims("/resources/item"), true);
-        assert.equal(registrations[0]?.scheme?.claims("/1/1/1"), false);
+        assert.equal(registrations[0]?.scheme?.claims(parsePath("echo:///resources/item")!), true);
+        assert.equal(registrations[0]?.scheme?.claims(parsePath("echo://echo/")!), true);
+        assert.equal(registrations[0]?.scheme?.claims(parsePath("echo:///1/1/1")!), false);
+        assert.equal(registrations[0]?.scheme?.claims(parsePath("echo://sibling/1/1/1")!), false);
     } finally {
         await module.close();
     }

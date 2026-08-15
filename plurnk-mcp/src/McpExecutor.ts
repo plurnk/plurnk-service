@@ -12,8 +12,11 @@ import type {
     ExecResult,
     RuntimeAvailability,
     RuntimeDecl,
+    RuntimeInvocationVariant,
 } from "@plurnk/plurnk-execs";
 import ServerConnection from "./client.ts";
+import type { ToolPolicy } from "./config.ts";
+import ToolAddress from "./ToolAddress.ts";
 
 const CHANNEL = "body";
 
@@ -31,11 +34,12 @@ This configured MCP server is available as an executable tool family and an
 addressable resource family.
 
 \`\`\`plurnk
-## READ0 (${name}:///)\n\n## EXEC0 [${name}] (tool_name)\n{"argument":"value"}
+## FIND0 (${name}://*/)\n\n## READ0 (${name}://tool_name/)\n\n## EXEC0 [${name}] (tool_name)\n{"argument":"value"}
 \`\`\`
 
-READ returns the live catalog. Tool arguments are one JSON object. Tool results
-are written to the operation's \`body\` channel.
+FIND surveys tool contracts, READ pulls one exact contract, and the empty-authority
+root retains the complete live server catalog. Tool arguments are one JSON object.
+Tool results are written to the operation's \`body\` channel.
 `,
 });
 
@@ -44,13 +48,26 @@ const message = (error: unknown): string =>
 
 export default class McpExecutor extends BaseExecutor {
     readonly #connection: ServerConnection;
+    readonly #featured: boolean | readonly string[];
+    readonly #read: ReadonlySet<string>;
 
     constructor(
         metadata: { runtime: string; glyph: string },
         connection: ServerConnection,
+        policy: Partial<ToolPolicy> = {},
     ) {
         super(metadata);
         this.#connection = connection;
+        this.#featured = policy.featured ?? false;
+        this.#read = new Set(policy.read ?? []);
+    }
+
+    override get manifest() {
+        const example = `## FIND0 (${this.runtime}://*/)`;
+        return {
+            ...super.manifest,
+            example,
+        };
     }
 
     get channels(): Readonly<Record<string, ChannelDecl>> {
@@ -62,8 +79,41 @@ export default class McpExecutor extends BaseExecutor {
     }
 
     override effect(target: string | null): Effect {
-        if (target === null || target.length === 0) return "read";
-        return this.#connection.readOnly(target) ? "read" : "host";
+        return target !== null && this.#read.has(target) ? "read" : "host";
+    }
+
+    #assertConfiguredTools(tools: readonly { readonly name: string }[]): void {
+        const available = new Set(tools.map((tool) => tool.name));
+        const configured = [
+            ...(typeof this.#featured === "boolean" ? [] : this.#featured),
+            ...this.#read,
+        ];
+        for (const name of configured) {
+            if (!available.has(name)) {
+                throw new Error(`Configured MCP tool '${name}' is absent from server '${this.runtime}'.`);
+            }
+        }
+    }
+
+    invocationVariants(): readonly RuntimeInvocationVariant[] {
+        const tools = this.#connection.currentTools();
+        this.#assertConfiguredTools(tools);
+        const featured = this.#featured;
+        const selected = typeof featured === "boolean"
+            ? featured ? tools : []
+            : tools.filter((tool) => featured.includes(tool.name));
+        return selected.map((tool) => {
+            const address = ToolAddress.render(this.runtime, tool.name);
+            return {
+                body: { role: "JSON arguments", required: false },
+                target: {
+                    role: `MCP tool contract ${address}`,
+                    required: true,
+                    kind: "literal",
+                },
+                example: { target: tool.name },
+            };
+        });
     }
 
     override async probe(signal?: AbortSignal): Promise<RuntimeAvailability> {
@@ -89,6 +139,7 @@ export default class McpExecutor extends BaseExecutor {
             throw new Error(`${ERROR_DETAIL_LIMIT} must be set to a non-negative integer.`);
         }
         const catalog = await this.#connection.catalog(signal);
+        this.#assertConfiguredTools(catalog.tools);
         return {
             available: true,
             detail: [
@@ -140,7 +191,7 @@ export default class McpExecutor extends BaseExecutor {
                 400,
                 `MCP executor '${runtime}' requires a tool target.`,
                 {
-                    recovery: `READ ${runtime}:/// for the live catalog, then target one listed tool.`,
+                    recovery: `FIND ${runtime}://*/ for tool contracts, then target one listed tool.`,
                     retryable: false,
                 },
             );

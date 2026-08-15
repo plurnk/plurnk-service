@@ -1,6 +1,7 @@
 import type { RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
-import type { FindStatement } from "@plurnk/plurnk-contracts";
+import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type {
+    EntryAddress,
     RepresentationPreparationRequest,
     RepresentationPreparationResult,
     SchemeCtx,
@@ -13,10 +14,14 @@ export type ModuleActionHandler = (
 ) => unknown | Promise<unknown>;
 
 // A module-owned executor may expose protocol resources under the same scheme
-// name as its output streams. The facet claims only its own path subtree;
+// name as its output streams. The facet claims only its own parsed selectors;
 // unclaimed coordinates retain the standard executor-output behavior.
 export interface RuntimeSchemeFacet {
-    claims(pathname: string): boolean;
+    claims(target: ParsedPath): boolean;
+    resolveEntryAddress?(
+        target: ParsedPath,
+        ctx: SchemeCtx,
+    ): Promise<EntryAddress | SchemeResult | null>;
     prepareRepresentation?(
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,

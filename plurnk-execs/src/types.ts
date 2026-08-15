@@ -129,6 +129,16 @@ export interface RuntimeInvocation {
     readonly example: RuntimeInvocationExample;
 }
 
+export interface RuntimeInvocationVariant extends RuntimeInvocation {
+    readonly target: RuntimeTargetDecl & {
+        readonly required: true;
+        readonly kind: "literal";
+    };
+    readonly example: RuntimeInvocationExample & {
+        readonly target: string;
+    };
+}
+
 // One discovered runtime tag and the package that provides it.
 export interface ExecInfo {
     runtime: string;

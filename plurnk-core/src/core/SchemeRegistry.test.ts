@@ -95,6 +95,19 @@ test("registerRuntimeSchemes: a non-reserved executor tag registers its own per-
     assert.ok(registry.has("sh"), "the sh per-tag face is registered under its tag");
 });
 
+test("{§manifest-semantic-authority}: semantic authorities require one address resolver", () => {
+    const registry = new SchemeRegistry();
+    const semantic = { ...manifest("semantic"), authority: "semantic" as const };
+    assert.throws(
+        () => registry.register("semantic", { manifest: semantic }),
+        /semantic authority without resolveEntryAddress/,
+    );
+    assert.doesNotThrow(() => registry.register("resolved", {
+        manifest: { ...semantic, name: "resolved" },
+        resolveEntryAddress: async () => ({ pathname: "/", owner: "commons" }),
+    }));
+});
+
 test("registerRuntimeSchemes: a tag colliding with an already-claimed scheme fails hard — one name, one owner", () => {
     const registry = new SchemeRegistry();
     registry.register("figma", handler("figma")); // an external scheme sibling claims the name first

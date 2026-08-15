@@ -19,10 +19,16 @@ const configured = (): {
         transport: "stdio",
         command: process.execPath,
         args: [fixture],
+        featured: ["echo"],
+        read: [],
     }, env);
     return {
         connection,
-        executor: new McpExecutor({ runtime: "echo", glyph: "🔌" }, connection),
+        executor: new McpExecutor(
+            { runtime: "echo", glyph: "🔌" },
+            connection,
+            { featured: ["echo"], read: [] },
+        ),
     };
 };
 
@@ -59,7 +65,8 @@ test("runtime declaration has one catalog face and one tool-call shape", () => {
         target: { role: "MCP tool", required: true, kind: "literal" },
         example: { target: "tool_name", body: '{"argument":"value"}' },
     });
-    assert.ok(declaration.documentation?.includes("## READ0 (echo:///)"));
+    assert.ok(declaration.documentation?.includes("## FIND0 (echo://*/)"));
+    assert.ok(declaration.documentation?.includes("## READ0 (echo://tool_name/)"));
     assert.equal(declaration.documentation?.includes("## EXEC0 [echo]\n?"), false);
 });
 
@@ -72,6 +79,52 @@ test("MCP executor requires a tool target instead of duplicating catalog discove
         assert.equal(result.problem?.type, "https://problems.plurnk.dev/executor/mcp/tool-required");
         assert.deepEqual(h.states, ["errored"]);
         assert.deepEqual(h.writes, []);
+    } finally {
+        await connection.close();
+    }
+});
+
+test("MCP executor features exact tool targets and never trusts remote readOnlyHint for admission", async () => {
+    const { connection, executor } = configured();
+    try {
+        await executor.requireAvailable();
+        assert.equal(executor.effect("echo"), "host", "unlisted remote hints cannot bypass proposal policy");
+        assert.deepEqual(executor.invocationVariants().map((variant) => variant.example.target), ["echo"]);
+        assert.equal(executor.invocationVariants()[0]?.target.role, "MCP tool contract echo://echo/");
+    } finally {
+        await connection.close();
+    }
+});
+
+test("only the host-owned read list changes an MCP tool's effect", async () => {
+    const { connection } = configured();
+    const executor = new McpExecutor(
+        { runtime: "echo", glyph: "🔌" },
+        connection,
+        { featured: false, read: ["echo"] },
+    );
+    try {
+        await executor.requireAvailable();
+        assert.equal(executor.effect("echo"), "read");
+        assert.equal(executor.effect("fail"), "host");
+        assert.equal(executor.effect(null), "host");
+    } finally {
+        await connection.close();
+    }
+});
+
+test("configured tool policy fails setup when the server lacks an exact name", async () => {
+    const { connection } = configured();
+    const executor = new McpExecutor(
+        { runtime: "echo", glyph: "🔌" },
+        connection,
+        { featured: ["missing"], read: [] },
+    );
+    try {
+        await assert.rejects(
+            () => executor.requireAvailable(),
+            /Configured MCP tool 'missing' is absent from server 'echo'/,
+        );
     } finally {
         await connection.close();
     }

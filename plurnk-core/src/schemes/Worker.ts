@@ -44,6 +44,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         writableBy: ["model", "client", "plurnk"], // the kernel authors worker://plurnk/ (docs); write-scoping still gates principals
         volatile: false,
         modelVisible: true,
+        authority: "semantic",
         folderScopes: true,
         textEditScopes: true,
         example: "## EDIT0 (worker:///notes.md)\nInvestigation notes.",

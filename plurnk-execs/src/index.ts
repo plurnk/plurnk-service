@@ -44,6 +44,7 @@ export type {
     RuntimeTargetDecl,
     RuntimeInvocationExample,
     RuntimeInvocation as RuntimeInvocationDecl,
+    RuntimeInvocationVariant,
     RuntimeDecl,
     RuntimesHook,
     ExecInfo,

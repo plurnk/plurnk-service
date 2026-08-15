@@ -10,6 +10,7 @@ const MANIFEST_FIELD_NAMES = new Set<string>(Object.keys({
     writableBy: true,
     volatile: true,
     modelVisible: true,
+    authority: true,
     folderScopes: true,
     textEditScopes: true,
     foldedByDefault: true,
@@ -64,6 +65,9 @@ export default class Manifest {
         }
         Manifest.#boolean(manifest, "volatile");
         Manifest.#boolean(manifest, "modelVisible");
+        if (manifest.authority !== undefined && manifest.authority !== "semantic") {
+            throw new Error(`scheme '${name}' manifest.authority must be semantic when present`);
+        }
         for (const field of ["folderScopes", "textEditScopes", "foldedByDefault"] as const) Manifest.#optionalBoolean(manifest, field);
         for (const field of ["example", "documentation", "storedScheme"] as const) Manifest.#optionalString(manifest, field);
         Manifest.#optionalNonemptyString(manifest, "glyph");

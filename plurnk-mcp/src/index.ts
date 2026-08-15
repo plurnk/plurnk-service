@@ -16,4 +16,5 @@ export type {
     HttpServerConfig,
     ServerConfig,
     StdioServerConfig,
+    ToolPolicy,
 } from "./config.ts";

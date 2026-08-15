@@ -26,6 +26,18 @@ test("{§tools-capability-sheet} renders every registered selector from its invo
                 target: { role: "MCP tool", required: true, kind: "literal" },
                 example: { target: "get_issue", body: "{}" },
             },
+            variants: [
+                {
+                    body: { role: "JSON arguments from mcpserver://issue_read/", required: false },
+                    target: { role: "MCP tool contract mcpserver://issue_read/", required: true, kind: "literal" },
+                    example: { target: "issue_read" },
+                },
+                {
+                    body: { role: "JSON arguments from mcpserver://issue_write/", required: false },
+                    target: { role: "MCP tool contract mcpserver://issue_write/", required: true, kind: "literal" },
+                    example: { target: "issue_write" },
+                },
+            ],
         },
         {
             runtime: "wat",
@@ -42,7 +54,9 @@ test("{§tools-capability-sheet} renders every registered selector from its invo
     assert.match(rendered, /^`\?` optional · `↔` choose one · `—` unavailable · `<timeout,poll>` optional$/m);
     assert.match(rendered, /^\| `\[executor\]` \| `\(target\)` \| body \| example \|$/m);
     assert.match(rendered, /\| `\[bash\]` \| script file or local directory with body \? \| Bash program; stdin with a targeted script file \? \| `## EXEC0 \[bash\]`<br>`npm test` \|/);
-    assert.match(rendered, /\| `\[mcpserver\]` \| MCP tool \| JSON arguments \? \| `## EXEC0 \[mcpserver\] \(get_issue\)`<br>`\{\}` \|/);
+    assert.doesNotMatch(rendered, /\(get_issue\)/, "featured exact targets replace the generic row");
+    assert.match(rendered, /\| `\[mcpserver\]` \| `\(issue_read\)`<br>MCP tool contract mcpserver:\/\/issue_read\/ \| JSON arguments from mcpserver:\/\/issue_read\/ \? \| `## EXEC0 \[mcpserver\] \(issue_read\)` \|/);
+    assert.match(rendered, /\| `\[mcpserver\]` \| `\(issue_write\)`<br>MCP tool contract mcpserver:\/\/issue_write\/ \| JSON arguments from mcpserver:\/\/issue_write\/ \? \| `## EXEC0 \[mcpserver\] \(issue_write\)` \|/);
     assert.match(rendered, /\| `\[search\]` \| — \| search query \| `## EXEC0 \[search\]`<br>`Plurnk agent protocol` \|/);
     assert.match(rendered, /\| `\[wat\]` \| WAT module ↔ \| inline WAT module ↔ \| `## EXEC0 \[wat\] \(module\.wat\)` \|/);
 });

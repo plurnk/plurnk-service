@@ -66,6 +66,14 @@ test("Manifest.of admits only declared top-level fields", () => {
         Manifest.of({ manifest: { ...ownerManifest, textEditScopes: true } }, "owner").textEditScopes,
         true,
     );
+    assert.equal(
+        Manifest.of({ manifest: { ...ownerManifest, authority: "semantic" } }, "owner").authority,
+        "semantic",
+    );
+    assert.throws(
+        () => Manifest.of({ manifest: { ...ownerManifest, authority: "host" } }, "owner"),
+        /authority.*semantic/,
+    );
     assert.throws(
         () => Manifest.of({ manifest: { ...ownerManifest, textEditScopes: "yes" } }, "owner"),
         /textEditScopes.*boolean/,

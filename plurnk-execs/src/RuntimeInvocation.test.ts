@@ -66,3 +66,54 @@ test("{§executor-invocation} rejects incomplete, ambiguous, and typo-bearing de
         assert.throws(() => assertInvocation(value), expected);
     }
 });
+
+test("{§executor-invocation-variants} validates unique exact literal target refinements", () => {
+    const variants = RuntimeInvocation.assertVariants([
+        {
+            body: { role: "JSON arguments from gitea://issue_read/", required: false },
+            target: { role: "MCP tool contract gitea://issue_read/", required: true, kind: "literal" },
+            example: { target: "issue_read" },
+        },
+        {
+            body: { role: "JSON arguments from gitea://issue_write/", required: false },
+            target: { role: "MCP tool contract gitea://issue_write/", required: true, kind: "literal" },
+            example: { target: "issue_write" },
+        },
+    ], {
+        body: { role: "JSON arguments", required: false },
+        target: { role: "MCP tool", required: true, kind: "literal" },
+        example: { target: "tool_name" },
+    }, "@plurnk/plurnk-mcp", "gitea");
+
+    assert.deepEqual(variants.map((variant) => variant.example.target), ["issue_read", "issue_write"]);
+    assert.throws(
+        () => RuntimeInvocation.assertVariants([variants[0]!, variants[0]!], {
+            body: { role: "JSON arguments", required: false },
+            target: { role: "MCP tool", required: true, kind: "literal" },
+            example: { target: "tool_name" },
+        }, "@plurnk/plurnk-mcp", "gitea"),
+        /duplicate exact target 'issue_read'/,
+    );
+    assert.throws(
+        () => RuntimeInvocation.assertVariants([{
+            body: { role: "query", required: true },
+            example: { body: "find it" },
+        }], {
+            body: { role: "query", required: true },
+            example: { body: "find it" },
+        }, "fixture", "search"),
+        /variant.*required literal target/,
+    );
+    assert.throws(
+        () => RuntimeInvocation.assertVariants([{
+            body: { role: "JSON arguments", required: true },
+            target: { role: "MCP tool", required: true, kind: "literal" },
+            example: { target: "issue_read", body: "{}" },
+        }], {
+            body: { role: "JSON arguments", required: false },
+            target: { role: "MCP tool", required: true, kind: "literal" },
+            example: { target: "tool_name" },
+        }, "@plurnk/plurnk-mcp", "gitea"),
+        /may refine only roles and example values/,
+    );
+});

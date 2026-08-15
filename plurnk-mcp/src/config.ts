@@ -1,5 +1,13 @@
 const PREFIX = "PLURNK_MCP_";
-const COMPANION_SUFFIXES = ["_args", "_cwd", "_env", "_headers"] as const;
+const COMPANION_SUFFIXES = [
+    "_bearer",
+    "_args",
+    "_cwd",
+    "_env",
+    "_headers",
+    "_featured",
+    "_read",
+] as const;
 const CONTROL_KEYS = new Map([
     ["connect_timeout", `${PREFIX}CONNECT_TIMEOUT`],
     ["request_timeout", `${PREFIX}REQUEST_TIMEOUT`],
@@ -20,15 +28,24 @@ export interface StdioServerConfig {
     readonly args: string[];
     readonly cwd?: string;
     readonly env?: Record<string, string>;
+    readonly featured?: boolean | readonly string[];
+    readonly read?: readonly string[];
 }
 
 export interface HttpServerConfig {
     readonly transport: "http";
     readonly url: string;
     readonly headers?: Record<string, string>;
+    readonly featured?: boolean | readonly string[];
+    readonly read?: readonly string[];
 }
 
 export type ServerConfig = StdioServerConfig | HttpServerConfig;
+
+export interface ToolPolicy {
+    readonly featured: boolean | readonly string[];
+    readonly read: readonly string[];
+}
 
 interface ParsedEnvironment {
     readonly targets: Map<string, EnvironmentVariable>;
@@ -125,6 +142,44 @@ const jsonStrings = (
     return parsed.map((value) => expandReferences(value, environ, field));
 };
 
+const uniqueToolNames = (values: readonly string[], field: string): string[] => {
+    const unique = new Set<string>();
+    for (const value of values) {
+        if (value.length === 0) throw new Error(`${field} contains an empty tool name.`);
+        if (unique.has(value)) throw new Error(`${field} contains duplicate tool name '${value}'.`);
+        unique.add(value);
+    }
+    return [...unique];
+};
+
+const toolNames = (
+    raw: string | undefined,
+    field: string,
+    environ: NodeJS.ProcessEnv,
+): string[] => uniqueToolNames(jsonStrings(raw, field, environ), field);
+
+const featuredTools = (
+    raw: string | undefined,
+    field: string,
+    environ: NodeJS.ProcessEnv,
+): boolean | string[] => {
+    if (raw === undefined || raw.length === 0) return false;
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch (cause) {
+        throw new Error(`${field} must be a JSON boolean or JSON array of strings.`, { cause });
+    }
+    if (typeof parsed === "boolean") return parsed;
+    if (!Array.isArray(parsed) || !parsed.every((value) => typeof value === "string")) {
+        throw new Error(`${field} must be a JSON boolean or JSON array of strings.`);
+    }
+    return uniqueToolNames(
+        parsed.map((value) => expandReferences(value, environ, field)),
+        field,
+    );
+};
+
 const jsonRecord = (
     raw: string | undefined,
     field: string,
@@ -153,6 +208,30 @@ const jsonRecord = (
     );
 };
 
+const httpHeaders = (
+    headers: Record<string, string> | undefined,
+    bearer: EnvironmentVariable | undefined,
+    environ: NodeJS.ProcessEnv,
+): Record<string, string> | undefined => {
+    if (bearer === undefined) return headers;
+    const token = expandReferences(bearer.value, environ, bearer.key);
+    if (token.length === 0) {
+        throw new Error(`${bearer.key} must resolve to a non-empty token.`);
+    }
+    const authorization = Object.keys(headers ?? {}).find(
+        (key) => key.toLowerCase() === "authorization",
+    );
+    if (authorization !== undefined) {
+        throw new Error(
+            `${bearer.key} conflicts with Authorization in the server's _HEADERS map.`,
+        );
+    }
+    return {
+        ...headers,
+        Authorization: `Bearer ${token}`,
+    };
+};
+
 export const serverNames = (environ: NodeJS.ProcessEnv = process.env): string[] =>
     [...parseEnvironment(environ).targets.keys()].toSorted();
 
@@ -168,24 +247,39 @@ export const serverConfig = (
     const fields = companions.get(folded);
     const fieldName = (suffix: CompanionSuffix): string =>
         fields?.get(suffix)?.key ?? `${PREFIX}${folded.toUpperCase()}${suffix.toUpperCase()}`;
+    const policy: ToolPolicy = {
+        featured: featuredTools(
+            fields?.get("_featured")?.value,
+            fieldName("_featured"),
+            environ,
+        ),
+        read: toolNames(fields?.get("_read")?.value, fieldName("_read"), environ),
+    };
     if (/^https?:\/\//i.test(target.value)) {
         const invalid = (["_args", "_cwd", "_env"] as const)
             .flatMap((suffix) => fields?.get(suffix)?.key ?? []);
         if (invalid.length > 0) {
             throw new Error(
-                `${invalid.join(", ")} cannot accompany HTTP MCP server target ${target.key}; only _HEADERS is valid.`,
+                `${invalid.join(", ")} cannot accompany HTTP MCP server target ${target.key}; transport-neutral _FEATURED/_READ and HTTP _HEADERS are valid.`,
             );
         }
+        const headers = jsonRecord(
+            fields?.get("_headers")?.value,
+            fieldName("_headers"),
+            environ,
+        );
         return {
             transport: "http",
             url: target.value,
-            headers: jsonRecord(fields?.get("_headers")?.value, fieldName("_headers"), environ),
+            headers: httpHeaders(headers, fields?.get("_bearer"), environ),
+            ...policy,
         };
     }
-    const headers = fields?.get("_headers");
-    if (headers !== undefined) {
+    const httpOnly = (["_headers", "_bearer"] as const)
+        .flatMap((suffix) => fields?.get(suffix)?.key ?? []);
+    if (httpOnly.length > 0) {
         throw new Error(
-            `${headers.key} cannot accompany stdio MCP server target ${target.key}.`,
+            `${httpOnly.join(", ")} cannot accompany stdio MCP server target ${target.key}.`,
         );
     }
     return {
@@ -196,6 +290,7 @@ export const serverConfig = (
             ? expandReferences(fields.get("_cwd")!.value, environ, fieldName("_cwd"))
             : undefined,
         env: jsonRecord(fields?.get("_env")?.value, fieldName("_env"), environ),
+        ...policy,
     };
 };
 

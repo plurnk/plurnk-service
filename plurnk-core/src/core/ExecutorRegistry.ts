@@ -7,6 +7,7 @@ import type {
     RuntimeAvailability,
     ExecutorMetadata,
     RuntimeInvocationDecl,
+    RuntimeInvocationVariant,
 } from "@plurnk/plurnk-execs";
 import Meta, {
     type PackageAttributions,
@@ -32,6 +33,7 @@ export interface Executor {
     // One pure classification of the consumer-canonical logical target
     // ({§executor-effect}); authored body text is never an admission input.
     effect(target: string | null): Effect;
+    invocationVariants?(): readonly RuntimeInvocationVariant[];
 }
 
 export type RuntimeNamespaceOwner =

@@ -93,12 +93,25 @@ export default class SchemeRegistry {
 
     #registerClaimed(name: string, handler: object, claim: NamespaceClaim, sameOwnerRescan = false): boolean {
         if (this.#assertClaim(name, claim, sameOwnerRescan) === "same") return false;
-        Manifest.of(handler, name);
+        SchemeRegistry.#assertHandlerContract(name, handler);
         const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
         if (this.#coreServices !== undefined && typeof bindCore === "function") bindCore.call(handler, this.#coreServices);
         this.#handlers.set(name, handler);
         this.#claims.set(name, claim);
         return true;
+    }
+
+    static #assertHandlerContract(name: string, handler: object): SchemeManifest {
+        const manifest = Manifest.of(handler, name);
+        if (
+            manifest.authority === "semantic"
+            && typeof (handler as Partial<SchemeHandler>).resolveEntryAddress !== "function"
+        ) {
+            throw new Error(
+                `scheme '${name}' declares a semantic authority without resolveEntryAddress`,
+            );
+        }
+        return manifest;
     }
 
     #assertClaim(name: string, incoming: NamespaceClaim, sameOwnerRescan: boolean): "new" | "same" {
@@ -203,7 +216,7 @@ export default class SchemeRegistry {
             const claim = SchemeRegistry.#runtimeClaim(owner);
             if (this.#assertClaim(tag, claim, sameOwnerRescan) === "same") continue;
             const handler = new ExecOutputScheme(executor, exec, facet);
-            Manifest.of(handler, tag);
+            SchemeRegistry.#assertHandlerContract(tag, handler);
             const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
             if (this.#coreServices !== undefined && typeof bindCore === "function") {
                 bindCore.call(handler, this.#coreServices);
