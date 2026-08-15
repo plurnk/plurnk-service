@@ -50,7 +50,7 @@ test("assembled packet: editable READ lines carry copyable anchors without chang
             && typeof entry.path === "string"
             && entry.path.endsWith("/READ"));
         assert.equal(read?.target, "worker:///anchored.md");
-        assert.match(String(read?.body), /^@[0-9A-Za-z]{5}:1:alpha\n@[0-9A-Za-z]{5}:2:beta\n$/);
+        assert.match(String(read?.body), /^@[0-9A-Za-z]{5} 1:alpha\n@[0-9A-Za-z]{5} 2:beta\n$/);
     } finally { await db.close(); }
 });
 

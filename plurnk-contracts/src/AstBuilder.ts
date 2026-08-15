@@ -33,6 +33,7 @@ import type {
     OpenStatement,
     UrlPath,
 } from "./types.ts";
+import { COMBINED_ANCHOR_LINE_DIAGNOSTIC } from "./PlurnkErrorStrategy.ts";
 import type {
     BuffStatementContext,
     BareStatementContext,
@@ -91,6 +92,11 @@ export default class AstBuilder {
     static #ANCHORED_RESOURCE_SELECTION_TAIL = new RegExp(
         String.raw`(<(?:-?\d+(?:\.\d+)?|@[0-9A-Za-z]{5})(?:, ?(?:-?\d+(?:\.\d+)?|@[0-9A-Za-z]{5}))*>)` + String.raw`(:*)$`,
     );
+    static #COMBINED_RESOURCE_SELECTION_TAIL = new RegExp(
+        String.raw`(<(?:-?\d+(?:\.\d+)?|@[0-9A-Za-z]{5}|@[0-9A-Za-z]{5}(?::| )[1-9]\d*)`
+        + String.raw`(?:, ?(?:-?\d+(?:\.\d+)?|@[0-9A-Za-z]{5}|@[0-9A-Za-z]{5}(?::| )[1-9]\d*))*>)$`,
+    );
+    static #COMBINED_LINE_COORD = /@[0-9A-Za-z]{5}(?::| )[1-9]\d*/;
     // Compile-only RFC 9535 admission using the runtime's JSONPath engine. {§matcher-prefix-claims}
     static #JSONPATH = new JSONPathEnvironment();
 
@@ -592,6 +598,15 @@ export default class AstBuilder {
         pos: Position = { line: 0, column: 0 },
     ): ResourceSelection | null {
         if (raw.length === 0) return null;
+        const combinedMarker = AstBuilder.#COMBINED_RESOURCE_SELECTION_TAIL.exec(raw)?.[1];
+        if (combinedMarker !== undefined && AstBuilder.#COMBINED_LINE_COORD.test(combinedMarker)) {
+            throw new PlurnkParseError(
+                pos.line,
+                pos.column,
+                "visitor",
+                COMBINED_ANCHOR_LINE_DIAGNOSTIC,
+            );
+        }
         const markerMatch = AstBuilder.#ANCHORED_RESOURCE_SELECTION_TAIL.exec(raw)
             ?? AstBuilder.#RESOURCE_SELECTION_TAIL.exec(raw);
         const markerText = markerMatch?.[1] ?? null;

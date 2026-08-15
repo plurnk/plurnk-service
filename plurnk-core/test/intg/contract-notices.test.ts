@@ -168,7 +168,7 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
 
         assert.match(
             packetSection(packet, "log"),
-            /"body":"\n@[0-9A-Za-z]{5}:2:beta\n@[0-9A-Za-z]{5}:3:gamma\n"\}/,
+            /"body":"\n@[0-9A-Za-z]{5} 2:beta\n@[0-9A-Za-z]{5} 3:gamma\n"\}/,
         );
         assert.equal(
             packetSection(packet, "notices"),

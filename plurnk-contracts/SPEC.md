@@ -1016,6 +1016,12 @@ turn-shape imperatives (begin with `# PLAN0`, end with a terminal
   the unambiguous matcher to the first body line instead of returning the
   generic slot list. Slash-led regex and XPath are excluded because `/` can be
   target data.
+- §combined-anchor-line-redirect **Combined anchor and line number in a scope.**
+  A text-coordinate scope containing `@hash:L` or `@hash L` is one bounded hard
+  error: `a scope position accepts one line coordinate; use the \`@hash\` anchor
+  without its displayed line number`. A malformed header scope is consumed as
+  one token, while a COPY/MOVE destination selection fails at its visitor
+  boundary; neither produces a punctuation cascade.
 - §misplaced-target-advisory **Mutation target in the signal slot.** When a
   mutating op (EDIT/COPY/MOVE) parses with a null `(target)` and a path-shaped
   `[signal]` element (a `/` or a dotted extension), the message redirects the

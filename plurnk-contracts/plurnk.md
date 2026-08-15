@@ -155,7 +155,7 @@ Continue next turn by inspecting each result and reading the changed destination
 ```
 
 * Unscoped FIND returns items 1-16; unscoped READ returns lines 1–16. Use `<1,-1>` for all.
-* Rendered `@hash:L:` prefixes are coordinates, not content.
+* Rendered exact READ lines begin with a per-line `@hash` anchor and `L:` line number; neither is content.
 
 YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale targets.
 

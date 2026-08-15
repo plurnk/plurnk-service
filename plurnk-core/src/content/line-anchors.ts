@@ -32,7 +32,7 @@ export default class LineAnchors {
     static readonly #LENGTH = 5;
     static readonly #MODULUS = BigInt(LineAnchors.#ALPHABET.length) ** BigInt(LineAnchors.#LENGTH);
     static readonly #TOKEN = /^@[0-9A-Za-z]{5}$/;
-    static readonly #PREFIXED_LINE = /^@[0-9A-Za-z]{5}:[1-9]\d*:/;
+    static readonly #PREFIXED_LINE = /^@[0-9A-Za-z]{5} [1-9]\d*:/;
 
     static isAnchor(value: unknown): value is string {
         return typeof value === "string" && LineAnchors.#TOKEN.test(value);
@@ -165,7 +165,7 @@ export default class LineAnchors {
         return lines.map((line, index) => {
             const lineNumber = startLine + index;
             const body = content.slice(line.start, line.contentEnd);
-            return `${anchors[index]}:${lineNumber}:${body}${line.separator}`;
+            return `${anchors[index]} ${lineNumber}:${body}${line.separator}`;
         }).join("");
     }
 

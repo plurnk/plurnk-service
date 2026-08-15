@@ -346,6 +346,13 @@ test("GBNF permits Base62 line anchors on text-coordinate operation scopes", () 
         derivesTurn(turn("p", [mid("MOVE", " (worker:///x) <@aZ09b>", "worker:///y")], 102, "done")),
         true,
     );
+    for (const combined of ["<@aZ09b:42,@0Aa9Z:43>", "<@aZ09b 42,@0Aa9Z 43>"]) {
+        assert.equal(
+            derivesTurn(turn("p", [mid("EDIT", ` (worker:///x) ${combined}`, "replacement")], 102, "done")),
+            false,
+            combined,
+        );
+    }
     assert.equal(
         derivesTurn(turn("p", [mid("FIND", " (worker:///*) <@aZ09b>")], 102, "done")),
         false,

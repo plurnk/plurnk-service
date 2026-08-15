@@ -9,6 +9,9 @@ import {
 import { plurnkParser } from "./generated/plurnkParser.ts";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 
+export const COMBINED_ANCHOR_LINE_DIAGNOSTIC =
+    "a scope position accepts one line coordinate; use the `@hash` anchor without its displayed line number";
+
 export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
     static #OFFENDING_CHAR_RE = /at: '([^']*)'$/;
 
@@ -107,9 +110,22 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         return `${names.slice(0, -1).join(", ")}, or ${names[names.length - 1]}`;
     }
 
+    // {§combined-anchor-line-redirect} The rejected token is a complete bounded
+    // scope, so its one canonical correction is known without interpreting intent.
+    static #targetedMessage(tok: Token | null): string | null {
+        if (tok?.type !== plurnkParser.COMBINED_L_MARKER) return null;
+        return COMBINED_ANCHOR_LINE_DIAGNOSTIC;
+    }
+
     public override reportError(recognizer: Parser, e: RecognitionException): void {
         if (this.inErrorRecoveryMode(recognizer)) return;
         this.beginErrorCondition(recognizer);
+
+        const targeted = PlurnkErrorStrategy.#targetedMessage(e.offendingToken);
+        if (targeted !== null) {
+            recognizer.notifyErrorListeners(targeted, e.offendingToken, e);
+            return;
+        }
 
         const got = PlurnkErrorStrategy.#describeToken(e.offendingToken);
         const expected = PlurnkErrorStrategy.#describeExpected(e);
@@ -147,6 +163,11 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         if (this.inErrorRecoveryMode(recognizer)) return;
         this.beginErrorCondition(recognizer);
         const tok = recognizer.getCurrentToken();
+        const targeted = PlurnkErrorStrategy.#targetedMessage(tok);
+        if (targeted !== null) {
+            recognizer.notifyErrorListeners(targeted, tok, null);
+            return;
+        }
         const got = PlurnkErrorStrategy.#describeToken(tok);
         const expectedTokens = this.getExpectedTokens(recognizer);
         const expectedNames = [...new Set(

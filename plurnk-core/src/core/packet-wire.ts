@@ -229,7 +229,7 @@ export default class PacketWire {
     }
 
     // The single content-body renderer EVERY output-emitting op routes through.
-    // Exact READ content receives `@hash:N:`; other textual bodies receive `N:`.
+    // Exact READ content receives `@hash N:`; other textual bodies receive `N:`.
     // Matchers consume canonical content before this presentation projection.
     // Empty content produces no body.
     static #renderContentBody(

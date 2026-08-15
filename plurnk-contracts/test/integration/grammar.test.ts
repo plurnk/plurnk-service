@@ -520,6 +520,23 @@ test("text-coordinate operations admit Base62 anchors only in line positions", (
     }
 });
 
+// {§combined-anchor-line-redirect}
+test("a combined anchor and displayed line number gets one canonical correction", () => {
+    for (const input of [
+        section("EDIT", " (p) <@aZ09b:42,@0Aa9Z:43>", "body"),
+        section("EDIT", " (p) <@aZ09b 42,@0Aa9Z 43>", "body"),
+        section("COPY", " (p)", "q<@aZ09b 42,@0Aa9Z 43>"),
+    ]) {
+        const errors = errorsOf(input);
+        assert.equal(errors.length, 1, input);
+        assert.equal(
+            errors[0]?.message,
+            "a scope position accepts one line coordinate; use the `@hash` anchor without its displayed line number",
+            input,
+        );
+    }
+});
+
 test("SEND terminal scope is retained while mid SEND rejects it; EXEC admits timeout and poll", () => {
     const terminal = oneStatement(section("SEND", " [102] <30>", "polling"));
     assert.deepEqual(terminal.lineMarker, { marks: [30] });

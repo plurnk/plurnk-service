@@ -830,8 +830,8 @@ test("READ bodies render copyable Base62 line anchors while other numbered bodie
         folded: false,
         lineAnchors: ["@aZ09b", "@Q1w2E"],
     }], tok);
-    assert.match(read, /@aZ09b:7:alpha/);
-    assert.match(read, /@Q1w2E:8:beta/);
+    assert.match(read, /@aZ09b 7:alpha/);
+    assert.match(read, /@Q1w2E 8:beta/);
 
     const find = PacketWire.renderLog([{
         coordinate: "1/2/2",
@@ -843,7 +843,7 @@ test("READ bodies render copyable Base62 line anchors while other numbered bodie
         folded: false,
     }], tok);
     assert.match(find, /\n1:\["one"\]\n/);
-    assert.doesNotMatch(find, /@[0-9A-Za-z]{5}:1:/);
+    assert.doesNotMatch(find, /@[0-9A-Za-z]{5} 1:/);
 });
 
 test("READ rendering fails hard when persisted anchors do not align with the projected snapshot", () => {

@@ -1,7 +1,7 @@
 lexer grammar plurnkLexer;
 
 tokens {
-    LBRACKET, RBRACKET, LPAREN, RPAREN, L_MARKER, BODY_OPEN, SECTION_END, COMMA,
+    LBRACKET, RBRACKET, LPAREN, RPAREN, L_MARKER, COMBINED_L_MARKER, BODY_OPEN, SECTION_END, COMMA,
     INT, DISPOSITION, IDENT, TAG,
     TARGET_TEXT, BODY_TEXT, TEXT
 }
@@ -160,6 +160,9 @@ fragment L_PATTERN : '<' NUM (('-' | ',' ' '?) NUM)* '>' ;
 fragment LINE_ANCHOR : '@' [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] ;
 fragment TEXT_COORD  : NUM | LINE_ANCHOR ;
 fragment TEXT_L_PATTERN : '<' TEXT_COORD (',' ' '? TEXT_COORD)* '>' ;
+fragment COMBINED_LINE_COORD : LINE_ANCHOR (':' | ' ') [1-9] [0-9]* ;
+fragment COMBINED_TEXT_COORD : TEXT_COORD | COMBINED_LINE_COORD ;
+fragment COMBINED_TEXT_L_PATTERN : '<' COMBINED_TEXT_COORD (',' ' '? COMBINED_TEXT_COORD)* '>' ;
 fragment EOL       : '\r'? '\n' ;
 
 // PLAN alone is H1. Protocol and client operations are H2. The first heading
@@ -200,6 +203,7 @@ SLOTS_LB_IDENT : { this.slotReady && this.isExecOp() }? '[' -> type(LBRACKET), m
 SLOTS_LPAREN   : { this.slotReady }? '(' { this.targetDepth = 0; } -> type(LPAREN), mode(TARGET) ;
 SLOTS_TEXT_L   : { this.slotReady && this.isTextCoordinateOp() }? TEXT_L_PATTERN -> type(L_MARKER) ;
 SLOTS_L        : { this.slotReady }? L_PATTERN -> type(L_MARKER) ;
+SLOTS_COMBINED_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? COMBINED_TEXT_L_PATTERN -> type(COMBINED_L_MARKER) ;
 SLOTS_DIRECT_END : { this.headingAfterDirectEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_BODY_OPEN : EOL { this.beginBody(); } -> type(BODY_OPEN), mode(BODY) ;
 
