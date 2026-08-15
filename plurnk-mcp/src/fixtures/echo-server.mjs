@@ -3,6 +3,12 @@ import {
     fromJsonSchema,
 } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
+import { writeFileSync } from "node:fs";
+
+const closeMarker = process.env.PLURNK_MCP_TEST_CLOSE_MARKER;
+if (closeMarker !== undefined) {
+    process.on("exit", () => writeFileSync(closeMarker, "closed\n"));
+}
 
 const factory = () => {
     const server = new McpServer({

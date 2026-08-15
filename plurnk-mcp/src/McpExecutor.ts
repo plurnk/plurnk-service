@@ -75,22 +75,29 @@ export default class McpExecutor extends BaseExecutor {
             };
         }
         try {
-            const catalog = await this.#connection.catalog(signal);
-            return {
-                available: true,
-                detail: [
-                    `MCP ${catalog.protocolVersion}`,
-                    `${catalog.tools.length} tools`,
-                    `${catalog.resources.length} resources`,
-                    `${catalog.prompts.length} prompts`,
-                ].join("; "),
-            };
+            return await this.requireAvailable(signal);
         } catch (error) {
             return {
                 available: false,
                 detail: ErrorDetail.preview(message(error), detailLimit),
             };
         }
+    }
+
+    async requireAvailable(signal?: AbortSignal): Promise<RuntimeAvailability> {
+        if (ErrorDetail.configuredLimit() === null) {
+            throw new Error(`${ERROR_DETAIL_LIMIT} must be set to a non-negative integer.`);
+        }
+        const catalog = await this.#connection.catalog(signal);
+        return {
+            available: true,
+            detail: [
+                `MCP ${catalog.protocolVersion}`,
+                `${catalog.tools.length} tools`,
+                `${catalog.resources.length} resources`,
+                `${catalog.prompts.length} prompts`,
+            ].join("; "),
+        };
     }
 
     async run({

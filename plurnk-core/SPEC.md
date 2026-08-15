@@ -2182,7 +2182,7 @@ flowchart LR
 
 | Setup function                                                         | Contract |
 |------------------------------------------------------------------------|----------|
-| `registerRuntime({ decl, executor, availability, scheme? })`           | Admits one canonical tag under {§executor-runtime-declaration}, then adds its executor and optional claimed scheme facet atomically. |
+| `registerRuntimes([{ decl, executor, availability, scheme? }, ...])`   | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every executor and optional claimed scheme facet atomically. |
 | `registerScheme(name, handler)`                                        | Adds one addressable scheme handler; scheme readiness and model-facing capability publication remain core-owned. |
 | §module-action-registration `registerModuleAction(name, handler)`      | Adds a non-empty, extension-unique name and a handler receiving only `Readonly<Record<string, unknown>>`. Core supplies no implicit workspace or transport context. A client-interface module decides whether and how that name becomes public, and owns collisions with its built-ins. |
 

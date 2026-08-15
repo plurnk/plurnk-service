@@ -33,7 +33,7 @@ export interface RuntimeRegistration {
 }
 
 export interface ModuleSetupSeam {
-    registerRuntime(registration: RuntimeRegistration): Promise<void>;
+    registerRuntimes(registrations: readonly RuntimeRegistration[]): Promise<void>;
     registerScheme(name: string, handler: object): Promise<void>;
     registerModuleAction(name: string, handler: ModuleActionHandler): void;
 }

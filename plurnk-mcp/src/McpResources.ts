@@ -2,10 +2,13 @@ import {
     Results,
     type EntryData,
     type EntryFindResult,
+    type EntryStorageReadResult,
+    type EntryStorageWriteResult,
     type FindStatement,
     type RepresentationPreparationRequest,
     type RepresentationPreparationResult,
     type SchemeCtx,
+    type SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import type { ReadResourceResult } from "@modelcontextprotocol/client";
 import ServerConnection from "./client.ts";
@@ -17,6 +20,25 @@ const RESOURCE_KIND = "mcp-resource";
 const CATALOG_KIND = "mcp-resource-catalog";
 
 class ResourceAddressError extends Error {}
+
+class EntryOperationFailure extends Error {
+    readonly result: SchemeResult;
+
+    constructor(result: SchemeResult) {
+        super(result.problem?.detail ?? `Entry operation failed with status ${result.status}.`, {
+            cause: result.problem,
+        });
+        this.result = result;
+    }
+}
+
+const requireEntrySuccess = <T extends EntryStorageReadResult | EntryStorageWriteResult>(
+    result: T,
+): T => {
+    const exact = Results.assert(result);
+    if (Results.isErrorStatus(exact.status)) throw new EntryOperationFailure(exact);
+    return exact;
+};
 
 const resourcePath = (uri: string): string =>
     `${RESOURCE_PREFIX}${encodeURIComponent(uri)}`;
@@ -67,6 +89,27 @@ const findFailure = (
     },
 ) as EntryFindResult;
 
+const preparationEntryFailure = (
+    failure: EntryOperationFailure,
+): RepresentationPreparationResult => Results.assertRepresentationPreparation({
+    status: failure.result.status,
+    problem: failure.result.problem,
+});
+
+const findEntryFailure = (
+    failure: EntryOperationFailure,
+): EntryFindResult => Results.assert({
+    status: failure.result.status,
+    problem: failure.result.problem,
+    content: null,
+    mimetype: null,
+    results: [],
+    itemsWeightTotal: 0,
+    returnedItemsWeightTotal: 0,
+    matchingPathCount: 0,
+    matchLocationCount: 0,
+});
+
 const resourceBody = (result: ReadResourceResult): {
     content: string;
     mimetype: string;
@@ -111,7 +154,7 @@ export default class McpResources {
 
     async #materializeCatalog(ctx: SchemeCtx): Promise<void> {
         const catalog = await this.#connection.catalog(ctx.signal);
-        await ctx.entries.write(
+        requireEntrySuccess(await ctx.entries.write(
             ROOT,
             catalogEntry(JSON.stringify({
                 ...catalog,
@@ -120,8 +163,8 @@ export default class McpResources {
                     address: `${this.#server}://${resourcePath(resource.uri)}`,
                 })),
             }), "mcp-catalog"),
-        );
-        await ctx.entries.write(
+        ));
+        requireEntrySuccess(await ctx.entries.write(
             RESOURCES,
             catalogEntry(JSON.stringify({
                 resources: catalog.resources.map((resource) => ({
@@ -130,12 +173,12 @@ export default class McpResources {
                 })),
                 resourceTemplates: catalog.resourceTemplates,
             }), "mcp-resource-index"),
-        );
+        ));
         await Promise.all(catalog.resources.map(async (resource) => {
             const pathname = resourcePath(resource.uri);
-            const existing = await ctx.entries.read(pathname);
+            const existing = requireEntrySuccess(await ctx.entries.read(pathname));
             if (existing.entry?.attributes?.kind === RESOURCE_KIND) return;
-            await ctx.entries.write(
+            requireEntrySuccess(await ctx.entries.write(
                 pathname,
                 catalogEntry(
                     JSON.stringify({
@@ -144,7 +187,7 @@ export default class McpResources {
                     }),
                     CATALOG_KIND,
                 ),
-            );
+            ));
         }));
     }
 
@@ -160,7 +203,7 @@ export default class McpResources {
             throw new ResourceAddressError(`Invalid encoded MCP resource address '${pathname}'.`, { cause });
         }
         const body = resourceBody(await this.#connection.readResource(uri, ctx.signal));
-        await ctx.entries.write(pathname, {
+        requireEntrySuccess(await ctx.entries.write(pathname, {
             channels: {
                 body: {
                     content: body.content,
@@ -168,7 +211,7 @@ export default class McpResources {
                 },
             },
             attributes: { kind: RESOURCE_KIND },
-        });
+        }));
     }
 
     async prepareRepresentation(
@@ -186,6 +229,9 @@ export default class McpResources {
             }
             return { status: 200 };
         } catch (error) {
+            if (error instanceof EntryOperationFailure) {
+                return preparationEntryFailure(error);
+            }
             const invalidAddress = error instanceof ResourceAddressError;
             return preparationFailure(
                 this.#server,
@@ -207,6 +253,7 @@ export default class McpResources {
             await this.#materializeCatalog(ctx);
             return await ctx.entries.operations.find(statement);
         } catch (error) {
+            if (error instanceof EntryOperationFailure) return findEntryFailure(error);
             return findFailure(
                 this.#server,
                 "resource-find-failed",

@@ -34,6 +34,13 @@ interface NamespaceClaim {
     readonly reserved: boolean;
 }
 
+interface RuntimeSchemeRegistration {
+    readonly tag: string;
+    readonly executor: Executor;
+    readonly owner: RuntimeNamespaceOwner;
+    readonly facet?: RuntimeSchemeFacet;
+}
+
 export default class SchemeRegistry {
     // Handler store. Dispatcher supplies one context implementation to bundled
     // and discovered schemes alike.
@@ -165,16 +172,51 @@ export default class SchemeRegistry {
         facet?: RuntimeSchemeFacet,
         sameOwnerRescan = false,
     ): void {
-        const exec = this.#handlers.get("exec");
-        if (!(exec instanceof Exec)) throw new Error("registerRuntimeScheme: the exec handler is not registered");
-        const claim = SchemeRegistry.#runtimeClaim(owner);
-        if (this.#assertClaim(tag, claim, sameOwnerRescan) === "same") return;
-        this.#registerClaimed(tag, new ExecOutputScheme(executor, exec, facet), claim, sameOwnerRescan);
-        this.#runtimeSchemes.add(tag);
+        this.prepareRuntimeSchemes([{
+            tag,
+            executor,
+            owner,
+            facet,
+        }], sameOwnerRescan)();
     }
 
-    assertRuntimeClaim(tag: string, owner: RuntimeNamespaceOwner): void {
-        this.#assertClaim(tag, SchemeRegistry.#runtimeClaim(owner), false);
+    // Validate and construct a complete set before exposing any scheme name.
+    // Returned commit mutates maps and sets only; all fallible manifest and
+    // core-binding work has already completed.
+    prepareRuntimeSchemes(
+        registrations: readonly RuntimeSchemeRegistration[],
+        sameOwnerRescan = false,
+    ): () => void {
+        const exec = this.#handlers.get("exec");
+        if (!(exec instanceof Exec)) throw new Error("registerRuntimeScheme: the exec handler is not registered");
+        const tags = new Set<string>();
+        const prepared: Array<{
+            tag: string;
+            handler: ExecOutputScheme;
+            claim: NamespaceClaim;
+        }> = [];
+        for (const { tag, executor, owner, facet } of registrations) {
+            if (tags.has(tag)) {
+                throw new Error(`scheme name '${tag}' occurs more than once in one registration batch`);
+            }
+            tags.add(tag);
+            const claim = SchemeRegistry.#runtimeClaim(owner);
+            if (this.#assertClaim(tag, claim, sameOwnerRescan) === "same") continue;
+            const handler = new ExecOutputScheme(executor, exec, facet);
+            Manifest.of(handler, tag);
+            const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
+            if (this.#coreServices !== undefined && typeof bindCore === "function") {
+                bindCore.call(handler, this.#coreServices);
+            }
+            prepared.push({ tag, handler, claim });
+        }
+        return () => {
+            for (const { tag, handler, claim } of prepared) {
+                this.#handlers.set(tag, handler);
+                this.#claims.set(tag, claim);
+                this.#runtimeSchemes.add(tag);
+            }
+        };
     }
 
     get(name: string): object | undefined { return this.#handlers.get(name); }

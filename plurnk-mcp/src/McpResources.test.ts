@@ -3,9 +3,11 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import type {
     EntryData,
+    EntryStorageWriteResult,
     RepresentationPreparationRequest,
     SchemeCtx,
 } from "@plurnk/plurnk-schemes";
+import { Results } from "@plurnk/plurnk-schemes";
 import type McpResources from "./McpResources.ts";
 import Module from "./Module.ts";
 
@@ -65,8 +67,8 @@ test("resource facet materializes current MCP resources as ordinary entries", as
     let resources: McpResources | undefined;
     try {
         await module.setup({
-            registerRuntime: async (registration) => {
-                resources = registration.scheme as McpResources;
+            registerRuntimes: async ([registration]) => {
+                resources = registration?.scheme as McpResources;
             },
         });
         if (resources === undefined) throw new Error("MCP resource facet was not registered.");
@@ -94,8 +96,8 @@ test("resource facet rejects malformed encoded addresses as non-retryable client
     let resources: McpResources | undefined;
     try {
         await module.setup({
-            registerRuntime: async (registration) => {
-                resources = registration.scheme as McpResources;
+            registerRuntimes: async ([registration]) => {
+                resources = registration?.scheme as McpResources;
             },
         });
         if (resources === undefined) throw new Error("MCP resource facet was not registered.");
@@ -106,6 +108,45 @@ test("resource facet rejects malformed encoded addresses as non-retryable client
         assert.equal(result.status, 400);
         assert.equal(result.problem?.type, "https://problems.plurnk.dev/scheme/mcp/resource-address-invalid");
         assert.equal(result.problem?.retryable, false);
+    } finally {
+        await module.close();
+    }
+});
+
+test("resource materialization preserves a failed entry write's original Problem", async () => {
+    const module = Module.init({
+        env: {
+            PLURNK_MCP_CONNECT_TIMEOUT: "30000",
+            PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+            PLURNK_MCP_ECHO: process.execPath,
+            PLURNK_MCP_ECHO_ARGS: JSON.stringify([fixture]),
+        },
+    });
+    let resources: McpResources | undefined;
+    try {
+        await module.setup({
+            registerRuntimes: async ([registration]) => {
+                resources = registration?.scheme as McpResources;
+            },
+        });
+        if (resources === undefined) throw new Error("MCP resource facet was not registered.");
+        const failedWrite = Results.failure(
+            "scheme:test-storage",
+            "write-denied",
+            409,
+            "The canonical entry write was rejected.",
+            { created: false, entryId: null },
+        ) as EntryStorageWriteResult;
+        const { ctx } = context();
+        ctx.entries.write = async () => failedWrite;
+
+        const result = await resources.prepareRepresentation(
+            preparationRequest("/resources/fixture%3A%2F%2Fdocument"),
+            ctx,
+        );
+
+        assert.equal(result.status, 409);
+        assert.equal(result.problem, failedWrite.problem);
     } finally {
         await module.close();
     }

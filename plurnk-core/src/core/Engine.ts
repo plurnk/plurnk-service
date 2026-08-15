@@ -10,7 +10,7 @@ import SearchIndex from "../schemes/_search-index.ts";
 import GitMembership from "./git-membership.ts";
 import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
-import type { RegistryEntry } from "./ExecutorRegistry.ts";
+import type { RegistryEntry, RuntimeRegistryRegistration } from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, BranchWorkerNotify, BranchCompletionGate, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
 import { promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
@@ -390,22 +390,43 @@ export default class Engine {
         this.#executors = executors;
     }
 
-    // Register a module-owned runtime on the same two registries as boot discovery.
-    // An optional same-name scheme handler lets one capability own both execution
-    // and addressable state without teaching core its protocol.
+    // Register a complete module-owned runtime set on the same two registries
+    // as boot discovery. Both owners prepare the complete set before either
+    // publishes a name. {§plugin-namespace-arbitration}
+    registerRuntimes(registrations: readonly {
+        readonly tag: string;
+        readonly entry: RegistryEntry;
+        readonly scheme?: RuntimeSchemeFacet;
+    }[]): void {
+        if (this.#executors === undefined) throw new Error("registerRuntimes: executor registry not wired yet");
+        const normalized = registrations.map(({ tag, entry, scheme }) => {
+            RuntimeTag.assert(tag, "module runtime");
+            return {
+                tag,
+                entry: {
+                    ...entry,
+                    invocation: RuntimeInvocation.assert(entry.invocation, entry.namespaceOwner.name, tag),
+                } satisfies RegistryEntry,
+                scheme,
+            };
+        });
+        const commitExecutors = this.#executors.prepareRegistrations(
+            normalized satisfies readonly RuntimeRegistryRegistration[],
+        );
+        const commitSchemes = this.#schemes.prepareRuntimeSchemes(
+            normalized.map(({ tag, entry, scheme }) => ({
+                tag,
+                executor: entry.executor,
+                owner: entry.namespaceOwner,
+                facet: scheme,
+            })),
+        );
+        commitSchemes();
+        commitExecutors();
+    }
+
     registerRuntime(tag: string, entry: RegistryEntry, scheme?: RuntimeSchemeFacet): void {
-        if (this.#executors === undefined) throw new Error("registerRuntime: executor registry not wired yet");
-        RuntimeTag.assert(tag, "module runtime");
-        const normalized = {
-            ...entry,
-            invocation: RuntimeInvocation.assert(entry.invocation, entry.namespaceOwner.name, tag),
-        } satisfies RegistryEntry;
-        // Preflight both owners before either write; synchronous registration
-        // then cannot leave a half-claimed namespace. {§plugin-namespace-arbitration}
-        this.#executors.assertCanRegister(tag, normalized.namespaceOwner);
-        this.#schemes.assertRuntimeClaim(tag, normalized.namespaceOwner);
-        this.#schemes.registerRuntimeScheme(tag, normalized.executor, normalized.namespaceOwner, scheme);
-        this.#executors.register(tag, normalized);
+        this.registerRuntimes([{ tag, entry, scheme }]);
     }
 
     // A lineage's no-parent root; a root worker resolves to itself. Fail hard

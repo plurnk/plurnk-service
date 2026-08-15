@@ -1218,25 +1218,36 @@ export default class Daemon {
         return { workerId: branchWorkerId, workerName: branch?.name ?? null, parentWorkerId: workerId };
     }
 
-    async registerRuntime({ namespaceOwner, decl, executor, availability, scheme }: RuntimeRegistration): Promise<void> {
-        if (typeof namespaceOwner !== "string" || namespaceOwner.trim().length === 0) {
-            throw new Error("registerRuntime: namespaceOwner must be a non-empty string");
-        }
-        const runtime = RuntimeDeclaration.assert(decl, namespaceOwner);
-        this.#engine.registerRuntime(runtime.name, {
-            executor,
-            namespaceOwner: { kind: "module", name: namespaceOwner },
-            glyph: runtime.glyph ?? "",
-            invocation: runtime.invocation,
-            documentation: runtime.documentation ?? "",
-            available: availability.available,
-            detail: availability.detail,
-        } satisfies RegistryEntry, scheme);
+    async registerRuntimes(registrations: readonly RuntimeRegistration[]): Promise<void> {
+        const normalized = registrations.map(({ namespaceOwner, decl, executor, availability, scheme }) => {
+            if (typeof namespaceOwner !== "string" || namespaceOwner.trim().length === 0) {
+                throw new Error("registerRuntimes: namespaceOwner must be a non-empty string");
+            }
+            const runtime = RuntimeDeclaration.assert(decl, namespaceOwner);
+            return {
+                tag: runtime.name,
+                entry: {
+                    executor,
+                    namespaceOwner: { kind: "module", name: namespaceOwner },
+                    glyph: runtime.glyph ?? "",
+                    invocation: runtime.invocation,
+                    documentation: runtime.documentation ?? "",
+                    available: availability.available,
+                    detail: availability.detail,
+                } satisfies RegistryEntry,
+                scheme,
+            };
+        });
+        this.#engine.registerRuntimes(normalized);
         if (this.#capabilitiesPublished) {
             for (const workspace of await Envelope.listWorkspaces(this.#db)) {
                 await LoopDocs.materialize(this.#engine, this.#db, workspace.id);
             }
         }
+    }
+
+    async registerRuntime(registration: RuntimeRegistration): Promise<void> {
+        await this.registerRuntimes([registration]);
     }
 
     async registerScheme(name: string, handler: object): Promise<void> {

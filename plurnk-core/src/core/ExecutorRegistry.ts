@@ -53,6 +53,11 @@ export interface RegistryEntry {
     readonly detail: string | undefined;
 }
 
+export interface RuntimeRegistryRegistration {
+    readonly tag: string;
+    readonly entry: RegistryEntry;
+}
+
 // Boot-time runtime registry. Discovers installed @plurnk/plurnk-execs-*
 // siblings (plurnk.kind:"exec") and probes each runtime TAG independently —
 // one executor instance per tag (this.runtime = the tag), so a multi-tag
@@ -76,8 +81,24 @@ export default class ExecutorRegistry {
     // separately (registerRuntimeScheme), keeping the reserved/cross-family arbitration one-owned there.
     // Fail hard on a tag already registered: one name, one owner ({§plugin-namespace-arbitration}).
     register(tag: string, entry: RegistryEntry): void {
-        this.assertCanRegister(tag, entry.namespaceOwner);
-        this.#byTag.set(tag, entry);
+        this.prepareRegistrations([{ tag, entry }])();
+    }
+
+    // Validate a complete late-registration set and return its no-fail commit.
+    // The engine prepares the corresponding scheme set before invoking either
+    // registry's commit, so cross-registry publication is atomic.
+    prepareRegistrations(registrations: readonly RuntimeRegistryRegistration[]): () => void {
+        const tags = new Set<string>();
+        for (const { tag, entry } of registrations) {
+            if (tags.has(tag)) {
+                throw new Error(`executor tag '${tag}' occurs more than once in one registration batch`);
+            }
+            tags.add(tag);
+            this.assertCanRegister(tag, entry.namespaceOwner);
+        }
+        return () => {
+            for (const { tag, entry } of registrations) this.#byTag.set(tag, entry);
+        };
     }
 
     assertCanRegister(tag: string, incoming: RuntimeNamespaceOwner): void {
