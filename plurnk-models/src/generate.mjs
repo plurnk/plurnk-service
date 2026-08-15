@@ -17,6 +17,7 @@ const SOURCE = "https://models.dev/api.json";
 const SUPPORTED_NPM = new Set([
     "@ai-sdk/amazon-bedrock",
     "@ai-sdk/anthropic",
+    "@ai-sdk/cerebras",
     "@ai-sdk/deepinfra",
     "@ai-sdk/google",
     "@ai-sdk/groq",

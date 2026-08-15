@@ -1,5 +1,6 @@
 import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createCerebras } from "@ai-sdk/cerebras";
 import { createDeepInfra } from "@ai-sdk/deepinfra";
 import { createGoogle } from "@ai-sdk/google";
 import { createGroq } from "@ai-sdk/groq";
@@ -126,6 +127,11 @@ export const createSdkModel = (
         case "@ai-sdk/groq":
             return {
                 languageModel: createGroq({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).languageModel(model),
+                catalog,
+            };
+        case "@ai-sdk/cerebras":
+            return {
+                languageModel: createCerebras({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).languageModel(model),
                 catalog,
             };
         case "@ai-sdk/mistral":

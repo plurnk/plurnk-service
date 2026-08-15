@@ -49,6 +49,18 @@ test("provider catalog carries Models.dev's AI SDK construction facts", () => {
     assert.equal(lookupProvider("cloudflare")?.id, "cloudflare-workers-ai");
 });
 
+test("provider catalog carries Cerebras and Gemma 4 facts", () => {
+    assert.deepEqual(lookupProvider("cerebras"), {
+        id: "cerebras",
+        npm: "@ai-sdk/cerebras",
+        env: ["CEREBRAS_API_KEY"],
+    });
+    const model = lookup("cerebras", "gemma-4-31b");
+    assert.ok(model !== null);
+    assert.ok(model.contextWindow > 0);
+    assert.ok((model.maxOutput ?? 0) > 0);
+});
+
 test("provider credential names exclude non-secret endpoint coordinates", () => {
     const names = providerCredentialEnvNames();
     assert.ok(names.includes("OPENAI_API_KEY"));

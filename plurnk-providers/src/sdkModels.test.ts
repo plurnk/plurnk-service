@@ -28,6 +28,16 @@ test("createSdkModel uses Models.dev provider facts and operator credentials", (
     assert.notEqual(sdk?.normalizeCost, undefined);
 });
 
+test("createSdkModel constructs Cerebras from Models.dev facts", () => {
+    const sdk = createSdkModel("cerebras", "gemma-4-31b", {
+        CEREBRAS_API_KEY: "test-key",
+    });
+    assert.notEqual(sdk, null);
+    assert.equal(sdk?.catalog?.npm, "@ai-sdk/cerebras");
+    assert.notEqual(sdk?.languageModel, undefined);
+    assert.equal(sdk?.compatible, undefined);
+});
+
 test("createSdkModel attaches DeepInfra's documented response-cost normalizer", () => {
     const sdk = createSdkModel("deepinfra", "zai-org/GLM-5.2", {
         DEEPINFRA_API_KEY: "test-key",

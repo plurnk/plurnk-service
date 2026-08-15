@@ -61,6 +61,7 @@
     "dependencies": {
         "@ai-sdk/amazon-bedrock": "^5.0.0",
         "@ai-sdk/anthropic": "^4.0.0",
+        "@ai-sdk/cerebras": "^3.0.0",
         "@ai-sdk/deepinfra": "^3.0.0",
         "@ai-sdk/google": "^4.0.0",
         "@ai-sdk/groq": "^4.0.0",
