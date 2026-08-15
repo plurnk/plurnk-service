@@ -44,11 +44,13 @@ import {
     editReceipt,
     projectEditReceipt,
     reviewerReplacementReceipt,
+    withEditReceiptParseIssues,
 } from "../content/index.ts";
 import type { EditBatchReceipt } from "../content/index.ts";
+import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 
 type EditResult = SchemeResultBase & { body?: string; attrs?: object; editReceipt?: EditBatchReceipt };
-type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; editReceipt?: EditBatchReceipt; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
+type ApplyArgs = { attrs: { path?: string; canonical?: string; patched?: string; mimetype?: string; editReceipt?: EditBatchReceipt; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
 type ApplyResult = ProposalApplyResult;
 
 // Workspace root for file ops is sourced from `workspaces.project_root`,
@@ -448,7 +450,7 @@ export default class File extends CoreSchemeAdapterBase {
             body: patch,
             editReceipt: batchReceipt,
             ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
-            attrs: { path: rel, canonical, patch, patched, editReceipt: batchReceipt, baseSig, existed: fileExists, ...(admittedBy !== undefined ? { admittedBy } : {}) },
+            attrs: { path: rel, canonical, patch, patched, mimetype, editReceipt: batchReceipt, baseSig, existed: fileExists, ...(admittedBy !== undefined ? { admittedBy } : {}) },
         };
     }
 
@@ -489,10 +491,10 @@ export default class File extends CoreSchemeAdapterBase {
                 target.extensions,
             ) as WriteEntryResult;
         }
-        const { canonical, rel, fileExists, original, baseSig, admittedBy } = target;
+        const { canonical, rel, fileExists, original, mimetype, baseSig, admittedBy } = target;
         const patched = bodyChannel.content;
         const patch = createPatch(rel, original, patched, "current", "proposed");
-        return { status: 202, created: !fileExists, entryId: null, body: patch, attrs: { path: rel, canonical, patch, patched, baseSig, existed: fileExists, ...(admittedBy !== undefined ? { admittedBy } : {}) } };
+        return { status: 202, created: !fileExists, entryId: null, body: patch, attrs: { path: rel, canonical, patch, patched, mimetype, baseSig, existed: fileExists, ...(admittedBy !== undefined ? { admittedBy } : {}) } };
     }
 
     // applyResolution — called by Engine.dispatch after a proposed log
@@ -532,6 +534,7 @@ export default class File extends CoreSchemeAdapterBase {
         const canonical = attrs.canonical;
         const relPath = attrs.path;
         const patched = body ?? attrs.patched;
+        const mimetype = attrs.mimetype;
         if (typeof canonical !== "string" || canonical.length === 0) {
             throw new InvalidOperationResultError("The accepted file proposal is missing attrs.canonical.");
         }
@@ -540,6 +543,9 @@ export default class File extends CoreSchemeAdapterBase {
         }
         if (typeof patched !== "string") {
             throw new InvalidOperationResultError("The accepted file proposal is missing patched content.");
+        }
+        if (typeof mimetype !== "string" || mimetype.length === 0) {
+            throw new InvalidOperationResultError("The accepted file proposal is missing attrs.mimetype.");
         }
         // CAS — the write-side twin of #materializeMember's read-gate (synced_sig === sig). The
         // proposal was computed against the snapshot (body + baseSig); if disk drifted out-of-band
@@ -599,10 +605,8 @@ export default class File extends CoreSchemeAdapterBase {
                 },
             ) as ApplyResult;
         }
-        // Register the file as an entry so it appears in the manifest
-        // under file:///<relPath> and is READ-able. mimetype is best-effort
-        // by file extension; .md → text/markdown, anything else → text/plain.
-        const mimetype = relPath.endsWith(".md") ? "text/markdown" : "text/plain";
+        // Register the exact mimetype resolved at proposal time so the durable
+        // entry and the reviewed filesystem mutation share one classification.
         try {
             // {§entry-identity-no-null} — file members persist under the reserved
             // `file` identity; bare-path rendering is a projection of that row.
@@ -643,6 +647,8 @@ export default class File extends CoreSchemeAdapterBase {
             ) as ApplyResult;
         }
         if (receipt === undefined) return { status: 200 };
+        const parseIssues = await new DbProjectionCaps(core).parseIssues(patched, mimetype);
+        receipt = withEditReceiptParseIssues(receipt, parseIssues);
         return {
             status: 200,
             editReceipt: receipt,

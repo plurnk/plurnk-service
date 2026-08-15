@@ -55,6 +55,38 @@ test("assembled packet: editable READ lines carry copyable anchors without chang
     } finally { await db.close(); }
 });
 
+test("assembled packet: landed EDIT receipts expose only positive parser-recovery evidence", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `pkt-edit-parse-issues-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "edit Go sources");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const brokenTarget = urlPath("worker", "/broken.go");
+        const cleanTarget = urlPath("worker", "/clean.go");
+        const provider = new Mock({
+            contextWindow: 100000,
+            responses: [
+                { assistant: { content: "", reasoning: null, ops: [
+                    editStmt(brokenTarget, "package sample\nfunc broken("),
+                    editStmt(cleanTarget, "package sample\nfunc valid() {}"),
+                    sendStmt(102),
+                ] } },
+                { assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } },
+            ],
+        });
+
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const edits = logEntries(await getPacket(db, second.turnId)).filter((entry) =>
+            typeof entry.path === "string" && entry.path.endsWith("/EDIT"));
+        const broken = edits.find((entry) => entry.target === "worker:///broken.go");
+        const clean = edits.find((entry) => entry.target === "worker:///clean.go");
+        assert.ok(Number.isSafeInteger(broken?.parseIssues) && Number(broken?.parseIssues) > 0);
+        assert.equal(clean !== undefined && "parseIssues" in clean, false);
+    } finally { await db.close(); }
+});
+
 test("packet assembly surfaces contract-invalid persisted loop flags at the same owner (#169)", async () => {
     const db = await openMigrated();
     try {

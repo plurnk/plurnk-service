@@ -388,7 +388,7 @@ describe("Mimetypes — process: metadata + error paths", () => {
 });
 
 describe("Mimetypes — process: channel selection ({§mimetype-channel-selection})", () => {
-    it("{§mimetype-parse-issues} projects only positive parser-recovery counts with structural work", async () => {
+    it("{§mimetype-parse-issues} projects only positive parser-recovery counts when requested", async () => {
         let issues = 3;
         class IssueReportingHandler extends FakePlainHandler {
             override parseIssues(): number {
@@ -419,6 +419,12 @@ describe("Mimetypes — process: channel selection ({§mimetype-channel-selectio
             { channels: [] },
         );
         assert.equal("parseIssues" in metadataOnly, false, "metadata-only processing performs no parse");
+
+        const inspectedOnly = await m.process(
+            { path: "foo.txt", content: "broken" },
+            { channels: [], parseIssues: true },
+        );
+        assert.equal(inspectedOnly.parseIssues, 3, "inspection does not require a structural projection");
     });
 
     it("default selects every structural channel", async () => {

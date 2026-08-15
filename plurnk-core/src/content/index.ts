@@ -34,6 +34,7 @@ export {
     editReceipt,
     projectEditReceipt,
     reviewerReplacementReceipt,
+    withEditReceiptParseIssues,
 } from "./edit-receipt.ts";
 export type {
     AppliedEditBatchReceipt,

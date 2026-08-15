@@ -52,6 +52,7 @@ import {
     type ResourceEffect,
     type ResourceEffectAction,
 } from "../content/index.ts";
+import DbProjectionCaps from "./caps/DbProjectionCaps.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryOps from "../schemes/_entry-ops.ts";
@@ -2510,6 +2511,9 @@ export default class Dispatcher {
             ctx,
         );
         const exactWritten = Results.assert(written);
+        const parseIssues = exactWritten.status === 200 || exactWritten.status === 201
+            ? await new DbProjectionCaps(ctx).parseIssues(source.content, source.mimetype)
+            : undefined;
         const materialized = source.lineMarker === null
             || (exactWritten.status !== 200 && exactWritten.status !== 201 && exactWritten.status !== 202)
             ? exactWritten
@@ -2522,6 +2526,7 @@ export default class Dispatcher {
                         marker: { marks: [1, -1] },
                         body: source.content,
                     }],
+                    parseIssues,
                 ),
             );
         return this.#finalizeEffects(

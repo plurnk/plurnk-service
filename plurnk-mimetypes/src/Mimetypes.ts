@@ -92,6 +92,9 @@ export interface ProcessOptions {
     // Channels to materialize on this call ({§mimetype-channel-selection}).
     // Absent fields are not requested; `[]` performs no projection parse.
     channels?: readonly Channel[];
+    // Request parser-recovery evidence independently of structural channel
+    // materialization ({§mimetype-parse-issues}).
+    parseIssues?: boolean;
     // A missing grammar normally returns explicit empty structural channels;
     // strict mode throws instead ({§mimetype-error-policy}).
     strict?: boolean;
@@ -105,7 +108,7 @@ export interface ProcessResult {
     totalLines: number;
     // Missing grammar package for a non-strict structural degradation.
     grammarMissing?: string;
-    // Positive parser-recovery count from requested structural work.
+    // Positive parser-recovery count from requested inspection.
     parseIssues?: number;
 
     // Projection fields are present iff requested.
@@ -465,7 +468,8 @@ export default class Mimetypes {
         const usesDefaultDeepXml = channels.has("deepXml")
             && handler.deepXml === BaseHandler.prototype.deepXml;
         const needsDeepJson = channels.has("deepJson") || usesDefaultDeepXml;
-        const needsParseIssues = channels.has("symbols")
+        const needsParseIssues = options.parseIssues === true
+            || channels.has("symbols")
             || channels.has("deepJson")
             || channels.has("deepXml")
             || channels.has("references");

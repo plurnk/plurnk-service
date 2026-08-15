@@ -230,6 +230,7 @@ interface AppliedEditBatchReceipt {
     readonly unit: EditReceiptUnit;
     readonly before: number;
     readonly after: number;
+    readonly parseIssues?: number;
     readonly effects: readonly EditEffectReceipt[];
 }
 
@@ -238,6 +239,7 @@ interface ReviewerReplacementEditBatchReceipt {
     readonly unit: EditReceiptUnit;
     readonly before: number;
     readonly after: number;
+    readonly parseIssues?: number;
     readonly disposition: "reviewer-replaced";
     readonly superseded: readonly string[];
     readonly replacement: EditEffectReceipt;
@@ -271,6 +273,9 @@ contains up to `C` lines on each side of its join.
 
 The engine validates that receipt and owns the ordered COPY/MOVE resource
 effects shown to consumers; plugins do not invent a second effect envelope.
+`parseIssues`, when present, is the positive parser-recovery count for the
+complete resulting revision. Zero and unavailable evidence are omitted. The
+hint is advisory: inspection failure does not reverse a landed mutation.
 
 ## §3 Helpers exported by this repo
 
@@ -339,12 +344,15 @@ entry channels beyond Unicode text.
 | `readableBytes(chunks, mimetype)` | Project one async byte source under the mimetype family's bounded-input policy.                       |
 | `identity(mimetype)`              | Return the opaque identity of configured projection behavior for cache and materialization freshness. |
 | `isBinary(mimetype)`              | Classify through the configured registry; installed handler declarations remain authoritative.        |
+| `parseIssues(content, mimetype)`  | Return positive parser-recovery evidence, or omit unavailable/clean evidence, under {§mimetype-parse-issues}. |
 | `ProjectedText`                   | Derived Unicode plus its output mimetype, source mimetype, and opaque projection identity.            |
 
 A returned object is present even when its `content` is `""`; only `null`
 denotes absence. Consumers must not infer projection presence from content
-length. A thrown projection call is an execution failure whose cause
-propagates; it must never be converted to `null`.
+length. Thrown readable, identity, and classification calls are execution
+failures whose causes propagate; they must never be converted to `null`.
+Parser-recovery inspection is deliberately non-gating: its implementation
+surfaces tooling failure as a Notice and returns `undefined`.
 `ProjectionInputLimitError` is the projection boundary's exported name for the
 configured mimetype family's typed bounded-input failure.
 

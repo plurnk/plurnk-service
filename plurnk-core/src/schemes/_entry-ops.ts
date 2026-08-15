@@ -11,6 +11,7 @@ import type { EditBatchReceipt, LineAnchorPrecondition } from "../content/index.
 import Results, { type SchemeResultBase } from "../core/results.ts";
 import type { ResolvedEditStatement, ScopeNormalization } from "@plurnk/plurnk-schemes";
 import { contentHash } from "../core/content-hash.ts";
+import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 
 // Shared static-method helpers for owner-addressed entry-bearing schemes.
 // Each scheme passes its manifest; helpers extract scheme name, channels,
@@ -333,11 +334,12 @@ export default class EntryOps {
         const receiptEdits = !channelExists
             ? [{ marker: { marks: [1, -1] as [number, number] }, body: newContent }]
             : statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }));
+        const parseIssues = await new DbProjectionCaps(ctx).parseIssues(newContent, effectiveMimetype);
         return {
             status: createdNow ? 201 : 200,
             entryId,
             channel: targetChannel,
-            editReceipt: editReceipt(originalContent, newContent, receiptEdits),
+            editReceipt: editReceipt(originalContent, newContent, receiptEdits, parseIssues),
             ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
         };  // {§edit-status-201-200}
     }

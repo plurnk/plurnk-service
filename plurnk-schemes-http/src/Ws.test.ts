@@ -144,6 +144,7 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
         async readableBytes() { return null; },
         async identity(mimetype) { return `test:${mimetype}`; },
         async isBinary() { return false; },
+        async parseIssues() { return undefined; },
     };
     let current: StreamSubscription | null = null;
     const notifyChunk: StreamSubscription["notifyChunk"] = async (channel, chunk, mimetype) => {

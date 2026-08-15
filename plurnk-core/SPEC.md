@@ -2734,6 +2734,7 @@ the aggregate remains dispatch coordination state.
 | -------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Full `revision`                        | `rev` abbreviated to `PLURNK_SERVICE_EDIT_RECEIPT_REVISION_CHARS` | SHA-256 identity of the complete landed channel body; display correlation only, never a lookup or compare-and-swap token. |
 | `unit`, `before`, `after`              | `extent`                                                          | Whole-line batches use line counts. A batch containing any exact four-coordinate edit uses Unicode code-point counts.     |
+| `parseIssues`                           | `parseIssues`                                                     | Positive parser-recovery count for the complete landed revision; clean, unsupported, and unavailable evidence is omitted. |
 | `effect.requested`, `source`, `result` | `range`                                                           | The admitted marker and its normalized mapping from the common source snapshot into the landed body.                      |
 | `effect.removed`, `inserted`           | `change`                                                          | Removed and inserted counts in the receipt unit.                                                                          |
 | `effect.context`                       | Canonical row body                                                | Numbered physical lines at each landed boundary, bounded symmetrically by `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES`.   |
@@ -2741,7 +2742,8 @@ the aggregate remains dispatch coordination state.
 | `replacement`                          | `replacement`, `change`, canonical proposal-owner body           | The one whole-resource effect actually applied by the reviewer replacement; never duplicated across authored rows.        |
 
 §edit-result-receipt-truth **Receipts describe committed state.** Every row in
-one resource-channel EDIT batch carries the same landed revision and extent.
+one resource-channel EDIT batch carries the same landed revision, extent, and
+optional positive `parseIssues` count for that complete revision.
 When the proposed batch lands unchanged, each row also carries its own requested
 marker, source/result mapping, counts, and context. For configured count `C`,
 the context contains up to `C` surrounding lines and the first and last `C`
@@ -2793,7 +2795,10 @@ landed.
 | `304`, rejection, or cancellation with no landed mutation                     | `effects` omitted.                                                                                        |
 | Cross-selection MOVE source failure after destination success                 | The failure retains every destination effect that landed.                                                 |
 
-Core validates the complete ordered array before exposing it.
+Core validates the complete ordered array before exposing it. Parser-recovery
+inspection is advisory and occurs against complete resulting text after
+successful application. A handler or parser failure emits a Notice, omits
+`parseIssues`, and never changes the mutation outcome.
 
 ### §proposal-ownership Loop auto and client YOLO
 

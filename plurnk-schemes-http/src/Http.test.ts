@@ -73,6 +73,7 @@ const projectionCaps = (overrides: Partial<ProjectionCaps> = {}): ProjectionCaps
     async identity(mimetype) { return `test:${mimetype}`; },
     async isBinary(mimetype) { return MimetypeClassifier.isBinary(mimetype); },
     ...overrides,
+    parseIssues: overrides.parseIssues ?? (async () => undefined),
 });
 
 // ── conformant ctx + recorder ─────────────────────────────────────────────

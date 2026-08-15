@@ -18,7 +18,7 @@ import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, seedStaticChannel } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, seedStaticChannel } from "./_helpers.ts";
 
 // {§edit-marker-required-on-existing}: a marker is required on an existing
 // file; `fullReplace` (marks:[1,-1]) states a deliberate whole-content rewrite
@@ -64,7 +64,7 @@ const withWorkspaceRoot = async <T>(fn: (root: string, ctx: { db: Db; engine: En
     const root = await mkdtemp(join(tmpdir(), "plurnk-file-test-"));
     const db = await openMigrated();
     try {
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, `file-${crypto.randomUUID()}`);
         await db.test_set_workspace_project_root.run({ id: workspaceId, project_root: root });
         // {§fs-write-surface} — a non-git root grants nothing; the fixture is the CLIENT granting creates.
@@ -129,6 +129,41 @@ test("file.edit: writes file on accept via applyResolution", async () => {
         };
         assert.match(appliedRx.receipt?.revision ?? "", /^[a-f0-9]{64}$/);
         assert.match(appliedRx.receipt?.effect?.context ?? "", /1:hello world/, "applied EDIT rx shows bounded landed context");
+    });
+});
+
+test("file.edit: a landed source receipt reports parser recovery against its preserved mimetype", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        const target = "broken.go";
+        const id = deferred<number>();
+        const dispatched = ctx.engine.dispatch({
+            statement: fileEditStmt(target, "package sample\nfunc broken("),
+            workspaceId: ctx.workspaceId,
+            workerId: ctx.workerId,
+            loopId: ctx.loopId,
+            turnId: ctx.turnId,
+            sequence: 1,
+            origin: "model",
+            onDispatch: (logEntryId) => id.resolve(logEntryId),
+        });
+        const logEntryId = await id.promise;
+        ctx.engine.resolveProposal(logEntryId, { decision: "accept" });
+        const result = await dispatched;
+        assert.equal(result.status, 200);
+
+        const row = await ctx.db.test_get_log_entry_by_id.get<{ rx: string }>({ id: logEntryId });
+        const rx = JSON.parse(row?.rx ?? "{}") as { receipt?: { parseIssues?: number } };
+        assert.ok(
+            Number.isSafeInteger(rx.receipt?.parseIssues) && Number(rx.receipt?.parseIssues) > 0,
+            JSON.stringify(rx),
+        );
+        const channel = await ctx.db.test_get_channel_by_pathname_scheme.get<{ mimetype: string }>({
+            pathname: target,
+            scheme: "file",
+            name: "body",
+        });
+        assert.equal(channel?.mimetype, "text/x-go");
+        assert.equal(await readFile(join(root, target), "utf8"), "package sample\nfunc broken(");
     });
 });
 

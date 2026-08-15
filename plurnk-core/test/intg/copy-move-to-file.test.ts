@@ -164,6 +164,34 @@ test("a scoped COPY into a new file reports the accepted creation receipt", asyn
     });
 });
 
+test("a scoped COPY receipt reports parser recovery for the complete landed file", async () => {
+    await withWorkspace(async (root, ctx) => {
+        await seedWorker(ctx, "broken.go", "package sample\nfunc broken(\n");
+        const result = await proposeAndResolve(
+            ctx,
+            copyStmt(
+                urlPath("worker", "/broken.go"),
+                urlPath("file", "/copied.go"),
+                null,
+                { marks: [1, 2] },
+            ),
+            "accept",
+        );
+        assert.equal(result.status, 200);
+        const effect = (result.effects as Array<{
+            receipt?: { parseIssues?: number };
+        }> | undefined)?.[0];
+        assert.ok(Number.isSafeInteger(effect?.receipt?.parseIssues) && Number(effect?.receipt?.parseIssues) > 0);
+        assert.equal(await readFile(join(root, "copied.go"), "utf8"), "package sample\nfunc broken(\n");
+        const entry = await fileMember(ctx, "copied.go");
+        const channel = await ctx.db.test_get_channel.get<{ mimetype: string }>({
+            entry_id: entry?.id,
+            name: "body",
+        });
+        assert.equal(channel?.mimetype, "text/x-go");
+    });
+});
+
 test("{§proposal-reject-fails}: a rejected COPY into file:/// never touches disk", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedWorker(ctx, "note", "nope\n");

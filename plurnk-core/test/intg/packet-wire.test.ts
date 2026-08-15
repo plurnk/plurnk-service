@@ -167,7 +167,10 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
             effects: [{
                 target: "worker:///draft",
                 action: "update",
-                receipt: receipt("1:before\n2:copied content"),
+                receipt: {
+                    ...receipt("1:before\n2:copied content"),
+                    parseIssues: 3,
+                },
             }],
         },
     }], tok);
@@ -176,7 +179,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
     assert.doesNotMatch(out, /"target":"worker:\/\/\/source"/);
     assert.match(
         out,
-        /"effects":\[\{"target":"worker:\/\/\/draft","action":"update","rev":"abcdef01","extent":"lines 4->5","change":"-1 \+2","range":"<2> 2->2-3"\}\]/,
+        /"effects":\[\{"target":"worker:\/\/\/draft","action":"update","rev":"abcdef01","extent":"lines 4->5","parseIssues":3,"change":"-1 \+2","range":"<2> 2->2-3"\}\]/,
     );
     assert.match(
         out,

@@ -331,7 +331,7 @@ function topLevel(a, b) [50-60]
 
 ## §mimetype-channel-selection 5. Channel selection
 
-`Mimetypes.process(input, { channels? })` materializes exactly the requested channels:
+`Mimetypes.process(input, { channels?, parseIssues? })` materializes exactly the requested channels and inspection evidence:
 
 ```ts
 type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "embedding";
@@ -339,7 +339,7 @@ type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "
 
 - **Default set: `symbols`, `deepJson`, `deepXml`, `references`, `content`** (five). `content` performs no model inference ({§mimetype-content}); `embedding` does and must be requested explicitly ({§mimetype-embedding}).
 - **Unrequested channels are not computed and their fields are absent** from `ProcessResult`. A channel an entry legitimately lacks (flat text has no deep tree) comes back *present but empty* (`[]` / `null` / `""`) — absence means "not asked," emptiness means "asked, nothing there."
-- **`channels: []` is valid** — metadata only (`mimetype`, `ok`, `totalLines`), with no projection parse.
+- **`channels: []` is valid** — metadata only (`mimetype`, `ok`, `totalLines`), with no projection parse unless `parseIssues: true` independently requests parser-recovery evidence.
 - The default deep-xml projection consumes one deep-json result, then lazily falls back to one symbol outline. Already-requested dependency results are reused; dependencies computed only for `deepXml` remain unexposed.
 
 Current plurnk-service consumers:
@@ -347,6 +347,7 @@ Current plurnk-service consumers:
 | Consumer                           | Framework call / selection                              |
 |------------------------------------|---------------------------------------------------------|
 | Entry extent                       | `process(..., { channels: [] })`                        |
+| Landed mutation inspection         | `process(..., { channels: [], parseIssues: true })`     |
 | Readable content projection        | `process(..., { channels: ["content"] })`               |
 | Search-index structural derivation | `process(..., { channels: ["symbols", "references"] })` |
 | Content matcher                    | `query(...)`; not a `process()` channel request         |
@@ -357,9 +358,9 @@ The framework performs no packet budgeting and renders no preview. `format()`
 is the unbudgeted human/diagnostic renderer for structured symbols.
 
 §mimetype-parse-issues **Parser recovery is advisory.** When `process()`
-materializes any structural channel, it also awaits the handler's
-`parseIssues(content)`. A positive safe-integer result appears as
-`ProcessResult.parseIssues`; zero is omitted, and a metadata-only or
+materializes any structural channel or receives `parseIssues: true`, it awaits
+the handler's `parseIssues(content)`. A positive safe-integer result appears as
+`ProcessResult.parseIssues`; zero is omitted, and an otherwise metadata-only or
 non-structural request performs no issue parse. The count describes parser
 recovery sites relative to the installed grammar. It is not a compiler,
 linter, type-system, or decisive source-validity verdict and does not suppress

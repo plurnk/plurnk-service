@@ -16,6 +16,7 @@ interface EditReceiptHead {
     readonly unit: EditReceiptUnit;
     readonly before: number;
     readonly after: number;
+    readonly parseIssues?: number;
 }
 
 export interface AppliedEditBatchReceipt extends EditReceiptHead {

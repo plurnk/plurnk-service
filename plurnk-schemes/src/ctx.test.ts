@@ -155,6 +155,9 @@ const makeCtx = () => {
         async isBinary(mimetype) {
             return mimetype === "application/pdf";
         },
+        async parseIssues() {
+            return undefined;
+        },
     };
 
     let current: StreamSubscription | null = null;

@@ -7,6 +7,7 @@ import {
     editReceipt,
     projectEditReceipt,
     reviewerReplacementReceipt,
+    withEditReceiptParseIssues,
 } from "./edit-receipt.ts";
 
 test("editReceipt correlates disjoint edits to one bounded resulting revision", () => {
@@ -258,6 +259,10 @@ test("receipt and resource-effect validators reject malformed plugin results", (
         /lowercase SHA-256/,
     );
     assert.throws(
+        () => assertEditReceipt({ ...receipt, parseIssues: 0 }),
+        /parseIssues must be a positive safe integer/,
+    );
+    assert.throws(
         () => assertEditBatchReceipt({ ...batch, effects: [] }),
         /non-empty array/,
     );
@@ -289,4 +294,28 @@ test("receipt and resource-effect validators reject malformed plugin results", (
         }]),
         /created resource effect receipt.*before extent of zero/,
     );
+});
+
+test("parser-recovery evidence follows the complete landed revision through row projection", () => {
+    const batch = editReceipt(
+        "one\ntwo",
+        "one\nbroken(",
+        [{ marker: { marks: [2] }, body: "broken(" }],
+        3,
+    );
+    assert.equal(batch.parseIssues, 3);
+    assert.equal(projectEditReceipt(batch, 0).parseIssues, 3);
+
+    const clean = withEditReceiptParseIssues(batch, undefined);
+    assert.equal("parseIssues" in clean, false);
+    assert.equal(withEditReceiptParseIssues(clean, 2).parseIssues, 2);
+
+    const replaced = reviewerReplacementReceipt(
+        "one\ntwo",
+        "func broken(",
+        batch,
+        1,
+    );
+    assert.equal(replaced.parseIssues, 1);
+    assert.equal(projectEditReceipt(replaced, 0).parseIssues, 1);
 });

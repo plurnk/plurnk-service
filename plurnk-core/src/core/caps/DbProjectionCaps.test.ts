@@ -26,6 +26,9 @@ const context = (content: string | undefined): PlurnkSchemeContext => ({
         async classify(mimetype: string) {
             return { binary: mimetype === "text/x-binary", source: "handler" };
         },
+        async process() {
+            return { mimetype: "text/x-go", ok: true, totalLines: 2, parseIssues: 3 };
+        },
     },
 } as unknown as PlurnkSchemeContext);
 
@@ -71,6 +74,37 @@ test("binary classification delegates to installed handler declarations", async 
     const projection = new DbProjectionCaps(context(""));
     assert.equal(await projection.isBinary("text/x-binary"), true);
     assert.equal(await projection.isBinary("application/json"), false);
+});
+
+test("parser-recovery inspection requests metadata without structural channels", async () => {
+    let options: unknown;
+    const ctx = {
+        mimetypes: {
+            async process(_input: unknown, value: unknown) {
+                options = value;
+                return { mimetype: "text/x-go", ok: true, totalLines: 2, parseIssues: 3 };
+            },
+        },
+    } as unknown as PlurnkSchemeContext;
+    assert.equal(await new DbProjectionCaps(ctx).parseIssues("package p\nfunc broken(", "text/x-go"), 3);
+    assert.deepEqual(options, { channels: [], parseIssues: true });
+});
+
+test("parser-recovery inspection surfaces tooling failure without failing the mutation path", async () => {
+    const notices: unknown[] = [];
+    const ctx = {
+        mimetypes: {
+            async process() { throw new Error("parser exploded"); },
+        },
+        pushNotice(notice: unknown) { notices.push(notice); },
+    } as unknown as PlurnkSchemeContext;
+    assert.equal(await new DbProjectionCaps(ctx).parseIssues("broken", "text/x-go"), undefined);
+    assert.deepEqual(notices, [{
+        source: "engine:mimetype",
+        kind: "parse_issues_unavailable",
+        level: "warn",
+        message: "Parser recovery evidence unavailable for text/x-go: parser exploded",
+    }]);
 });
 
 test("a typed mimetype input ceiling failure crosses the capability unchanged", async () => {

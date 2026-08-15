@@ -73,6 +73,26 @@ const assertExtent = (value: unknown, field: string): void => {
     }
 };
 
+const assertParseIssues = (value: unknown): void => {
+    if (!Number.isSafeInteger(value) || (value as number) <= 0) {
+        throw new InvalidOperationResultError(
+            "EDIT receipt parseIssues must be a positive safe integer.",
+        );
+    }
+};
+
+const receiptFields = (
+    receipt: Record<string, unknown>,
+    tail: readonly string[],
+): string[] => [
+    "revision",
+    "unit",
+    "before",
+    "after",
+    ...(Object.hasOwn(receipt, "parseIssues") ? ["parseIssues"] : []),
+    ...tail,
+];
+
 const assertEffectReceipt = (value: unknown): EditEffectReceipt => {
     const effect = receiptRecord(value, "EDIT effect receipt");
     exactFields(
@@ -104,6 +124,7 @@ const assertReceiptHead = (
     }
     assertExtent(receipt.before, "before");
     assertExtent(receipt.after, "after");
+    if (Object.hasOwn(receipt, "parseIssues")) assertParseIssues(receipt.parseIssues);
 };
 
 export const assertEditReceipt = (value: unknown): EditReceipt => {
@@ -112,8 +133,8 @@ export const assertEditReceipt = (value: unknown): EditReceipt => {
         exactFields(
             receipt,
             Object.hasOwn(receipt, "replacement")
-                ? ["revision", "unit", "before", "after", "disposition", "requested", "replacement"]
-                : ["revision", "unit", "before", "after", "disposition", "requested"],
+                ? receiptFields(receipt, ["disposition", "requested", "replacement"])
+                : receiptFields(receipt, ["disposition", "requested"]),
             "EDIT receipt",
         );
         assertReceiptHead(receipt, "EDIT receipt");
@@ -125,7 +146,7 @@ export const assertEditReceipt = (value: unknown): EditReceipt => {
         if (Object.hasOwn(receipt, "replacement")) assertEffectReceipt(receipt.replacement);
         return value as EditReceipt;
     }
-    exactFields(receipt, ["revision", "unit", "before", "after", "effect"], "EDIT receipt");
+    exactFields(receipt, receiptFields(receipt, ["effect"]), "EDIT receipt");
     assertReceiptHead(receipt, "EDIT receipt");
     assertEffectReceipt(receipt.effect);
     return value as EditReceipt;
@@ -136,7 +157,7 @@ export const assertEditBatchReceipt = (value: unknown): EditBatchReceipt => {
     if (receipt.disposition === "reviewer-replaced") {
         exactFields(
             receipt,
-            ["revision", "unit", "before", "after", "disposition", "superseded", "replacement"],
+            receiptFields(receipt, ["disposition", "superseded", "replacement"]),
             "EDIT batch receipt",
         );
         assertReceiptHead(receipt, "EDIT batch receipt");
@@ -152,7 +173,7 @@ export const assertEditBatchReceipt = (value: unknown): EditBatchReceipt => {
         assertEffectReceipt(receipt.replacement);
         return value as unknown as EditBatchReceipt;
     }
-    exactFields(receipt, ["revision", "unit", "before", "after", "effects"], "EDIT batch receipt");
+    exactFields(receipt, receiptFields(receipt, ["effects"]), "EDIT batch receipt");
     assertReceiptHead(receipt, "EDIT batch receipt");
     if (!Array.isArray(receipt.effects) || receipt.effects.length === 0) {
         throw new InvalidOperationResultError("EDIT batch receipt effects must be a non-empty array.");
@@ -210,6 +231,7 @@ export const projectEditReceipt = (receipt: EditBatchReceipt, index: number): Ed
             unit: exact.unit,
             before: exact.before,
             after: exact.after,
+            ...(exact.parseIssues === undefined ? {} : { parseIssues: exact.parseIssues }),
             disposition: "superseded",
             requested,
             ...(index === 0 ? { replacement: exact.replacement } : {}),
@@ -222,6 +244,7 @@ export const projectEditReceipt = (receipt: EditBatchReceipt, index: number): Ed
         unit: exact.unit,
         before: exact.before,
         after: exact.after,
+        ...(exact.parseIssues === undefined ? {} : { parseIssues: exact.parseIssues }),
         effect,
     };
 };
@@ -435,7 +458,9 @@ export const editReceipt = (
     original: string,
     updated: string,
     edits: readonly ReceiptEdit[],
+    parseIssues?: number,
 ): AppliedEditBatchReceipt => {
+    if (parseIssues !== undefined) assertParseIssues(parseIssues);
     const unit: EditReceiptUnit = edits.some(({ marker }) => marker.marks.length === 4)
         ? "codePoints"
         : "lines";
@@ -451,14 +476,29 @@ export const editReceipt = (
         after: unit === "codePoints"
             ? codePointCount(updated)
             : splitLines(updated).length,
+        ...(parseIssues === undefined ? {} : { parseIssues }),
         effects: addContext(effects, updated),
     };
+};
+
+export const withEditReceiptParseIssues = (
+    receipt: EditBatchReceipt,
+    parseIssues: number | undefined,
+): EditBatchReceipt => {
+    if (parseIssues !== undefined) assertParseIssues(parseIssues);
+    const exact = assertEditBatchReceipt(receipt);
+    const { parseIssues: _prior, ...withoutPrior } = exact;
+    return assertEditBatchReceipt({
+        ...withoutPrior,
+        ...(parseIssues === undefined ? {} : { parseIssues }),
+    });
 };
 
 export const reviewerReplacementReceipt = (
     original: string,
     updated: string,
     authored: EditBatchReceipt,
+    parseIssues?: number,
 ): ReviewerReplacementEditBatchReceipt => {
     const exact = assertEditBatchReceipt(authored);
     if ("disposition" in exact) {
@@ -470,6 +510,7 @@ export const reviewerReplacementReceipt = (
         original,
         updated,
         [{ marker: { marks: [1, -1] }, body: updated }],
+        parseIssues,
     );
     const replacement = landed.effects[0];
     if (replacement === undefined) {
@@ -480,6 +521,7 @@ export const reviewerReplacementReceipt = (
         unit: landed.unit,
         before: landed.before,
         after: landed.after,
+        ...(landed.parseIssues === undefined ? {} : { parseIssues: landed.parseIssues }),
         disposition: "reviewer-replaced",
         superseded: exact.effects.map(({ requested }) => requested),
         replacement,

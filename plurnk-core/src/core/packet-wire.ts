@@ -265,11 +265,12 @@ export default class PacketWire {
         return JSON.stringify(sorted);
     }
 
-    static #receiptMeta(value: unknown): Record<string, string> {
+    static #receiptMeta(value: unknown): Record<string, string | number> {
         const receipt: EditReceipt = assertEditReceipt(value);
         const head = {
             rev: receipt.revision.slice(0, editReceiptRevisionChars()),
             extent: `${receipt.unit} ${receipt.before}->${receipt.after}`,
+            ...(receipt.parseIssues === undefined ? {} : { parseIssues: receipt.parseIssues }),
         };
         if ("effect" in receipt) {
             return {
