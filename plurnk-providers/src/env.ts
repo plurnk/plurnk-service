@@ -166,8 +166,8 @@ export const resolveEnvelopeFromEnv = (env: NodeJS.ProcessEnv, window: number | 
 // {§provider-configuration} The side-channel reasoning knobs — activation and budget
 // are separate vars, so a numeric budget can never silently flip wire flags:
 //   PLURNK_PROVIDERS_REASONING           off | adaptive | on   (REQUIRED, fail-hard)
-//   PLURNK_PROVIDERS_REASONING_BUDGET  positive int, REQUIRED iff REASONING=on —
-//     the magnitude for tier/budget mapping. On llama-server it is the explicit
+//   PLURNK_PROVIDERS_REASONING_BUDGET  optional positive int when REASONING=on —
+//     an explicit magnitude for tier/budget mapping. On llama-server it is the
 //     request-scoped allowance and cannot exceed the physical reasoning reserve.
 // The provider maps intent to the backend's mechanism; the consumer states
 // intent, never mechanism. PLAN is a separate public intended-goals record.
@@ -199,7 +199,7 @@ export const reasoningFromEnv = (env: NodeJS.ProcessEnv, label: string): Reasoni
     if (raw !== "on") return { mode: raw, budget: null };
     const capName = "PLURNK_PROVIDERS_REASONING_BUDGET";
     const capRaw = env[capName];
-    if (capRaw === undefined || capRaw.length === 0) throw new Error(`${label} provider: ${capName} must be set when ${name}=on`);
+    if (capRaw === undefined || capRaw.length === 0) return { mode: "on", budget: null };
     const n = Number(capRaw);
     if (!Number.isInteger(n) || n <= 0) throw new Error(`${label} provider: ${capName} must be a positive integer (got "${capRaw}")`);
     return { mode: "on", budget: n };

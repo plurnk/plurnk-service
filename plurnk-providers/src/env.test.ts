@@ -47,13 +47,13 @@ test("parseOptionalInt: rejects fractional and negative values", () => {
     assert.throws(() => parseOptionalInt("-8", "PLURNK_PROVIDERS_CONTEXT_WINDOW", "openai"), /must be a non-negative integer/);
 });
 
-test("reasoningFromEnv: activation modes parse; budget required IFF on; fail-hard on everything else", () => {
+test("reasoningFromEnv: activation is independent from an optional explicit budget", () => {
     assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "off" }, "openai"), { mode: "off", budget: null });
     assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "adaptive" }, "openai"), { mode: "adaptive", budget: null });
+    assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on" }, "openai"), { mode: "on", budget: null });
     assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "4096" }, "openai"), { mode: "on", budget: 4096 });
     assert.throws(() => reasoningFromEnv({}, "openai"), /PLURNK_PROVIDERS_REASONING must be set/);
     assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "8192" }, "openai"), /must be one of "off", "adaptive", "on"/); // the old numeric habit fails loudly
-    assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on" }, "openai"), /PLURNK_PROVIDERS_REASONING_BUDGET must be set when/);
     assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "0" }, "openai"), /positive integer/);
     assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "1.5" }, "openai"), /positive integer/);
 });
@@ -224,11 +224,11 @@ test("still-set old THINKING names fail hard with the rename pointer", () => {
     );
 });
 
-test("the shipped floor activates reasoning by default (adaptive)", async () => {
+test("the shipped floor defers reasoning posture to the provider by default (adaptive)", async () => {
     const { readFileSync } = await import("node:fs");
     const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
     assert.ok(defaults.includes("PLURNK_PROVIDERS_REASONING=adaptive"), "floor must ship REASONING=adaptive");
-    assert.ok(!defaults.match(/^PLURNK_PROVIDERS_REASONING_BUDGET=/m), "no shipped magnitude — budget is on-mode only");
+    assert.ok(!defaults.match(/^PLURNK_PROVIDERS_REASONING_BUDGET=/m), "no shipped magnitude — an explicit on-mode budget is optional");
 });
 
 test("the shipped DRY floor is off and claims no universally safe shape", async () => {

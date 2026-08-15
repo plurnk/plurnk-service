@@ -181,10 +181,15 @@ PLURNK maps its generic settings to AI SDK call settings:
 - presence and frequency penalties;
 - stop sequences and seed;
 - output-token ceiling;
-- `off`, `adaptive`, or budget-derived reasoning intent.
+- `off`, provider-default `adaptive`, or explicit `on` reasoning intent, with
+  an optional operator budget.
 
 Provider-specific options are permitted only where they preserve a documented
 PLURNK product contract the generic SDK surface cannot express.
+
+The portable SDK surface has no boolean-enabled reasoning value. An unqualified
+`on` therefore projects to its conventional `medium` enabled posture. This is a
+wire activation value, not a reasoning reserve or output-token ceiling.
 
 §provider-cache-affinity **Cache affinity is route-owned request projection.**
 When a provider documents a semantics-preserving conversation, session, or
@@ -206,11 +211,12 @@ implicit transport choice.
 §deepseek-reasoning-request The direct DeepSeek catalog path maps the common
 reasoning intent to its OpenAI-compatible controls:
 
-| PLURNK mode | `thinking`            | `reasoning_effort`   |
-| ----------- | --------------------- | -------------------- |
-| `off`       | `{ type: disabled }`  | omitted              |
-| `adaptive`  | omitted               | omitted              |
-| `on`        | `{ type: enabled }`   | budget-derived tier  |
+| PLURNK posture | `thinking`            | `reasoning_effort`   |
+| --------------- | --------------------- | -------------------- |
+| `off`           | `{ type: disabled }`  | omitted              |
+| `adaptive`      | omitted               | omitted              |
+| `on`            | `{ type: enabled }`   | omitted              |
+| `on` + budget   | `{ type: enabled }`   | budget-derived tier  |
 
 The compatible transport is deliberately retained for:
 
@@ -357,11 +363,12 @@ OpenAI-compatible generation endpoint through the SDK adapter.
 For a detected llama-server, PLURNK sends the complete reasoning contract on
 every request:
 
-| Mode | Template activation | `thinking_budget_tokens` |
+| Posture | Template activation | `thinking_budget_tokens` |
 |---|---:|---:|
 | `off` | false | `0` |
 | `adaptive` | true | resolved reasoning reserve |
-| `on` | true | explicit reasoning budget |
+| `on` | true | resolved reasoning reserve |
+| `on` + budget | true | explicit reasoning budget |
 
 The explicit budget may tighten but MUST NOT exceed the resolved reasoning
 reserve. Template calls normally use `reasoning_format: "auto"` for a separate

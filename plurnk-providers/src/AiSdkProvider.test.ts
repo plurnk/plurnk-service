@@ -1082,7 +1082,7 @@ test("encrypted reasoning (streamed): chunked blob concatenates per entry index"
     assert.equal(assistant.content, "4");
 });
 
-test("reasoningStyle 'think' gates on budget != 0 (magnitude irrelevant for native)", async () => {
+test("reasoningStyle 'think' follows activation (magnitude is irrelevant to the boolean wire control)", async () => {
     const on = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "think" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await on.generate({ workerId: "r", messages: [] });
@@ -1095,18 +1095,21 @@ test("reasoningStyle 'think' gates on budget != 0 (magnitude irrelevant for nati
     assert.equal("think" in JSON.parse(calls[0].init.body as string), false);
 });
 
-test("reasoningStyle 'effort' sends a reasoning_effort tier from the budget", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "on", budget: 5000 }, retryAttempts: 0, reasoningStyle: "effort" });
-    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [] });
-    assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "high");
+test("reasoningStyle 'effort' enables at the portable default without inventing a budget", async () => {
+    for (const [budget, expected] of [[null, "medium"], [5000, "high"]] as const) {
+        const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "on", budget }, retryAttempts: 0, reasoningStyle: "effort" });
+        const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+        await p.generate({ workerId: "r", messages: [] });
+        assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, expected);
+        mock.restoreAll();
+    }
 });
 
 test("reasoningStyle 'effort_explicit': off SENDS none, adaptive OMITS, on sends the tier", async () => {
     // expected === null → the field must be ABSENT from the wire body. Fireworks
     // 400s reasoning_effort='adaptive' for non-MiniMax models (wire-verified,
     // Adaptive = the backend's own default posture = omission.
-    for (const [reasoning, expected] of [[{ mode: "off", budget: null }, "none"], [{ mode: "adaptive", budget: null }, null], [{ mode: "on", budget: 5000 }, "high"]] as Array<[{ mode: "off" | "adaptive" | "on"; budget: number | null }, string | null]>) {
+    for (const [reasoning, expected] of [[{ mode: "off", budget: null }, "none"], [{ mode: "adaptive", budget: null }, null], [{ mode: "on", budget: null }, "medium"], [{ mode: "on", budget: 5000 }, "high"]] as Array<[{ mode: "off" | "adaptive" | "on"; budget: number | null }, string | null]>) {
         const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning, retryAttempts: 0, reasoningStyle: "effort_explicit" });
         const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
         await p.generate({ workerId: "r", messages: [] });
@@ -1121,6 +1124,7 @@ test("{§deepseek-reasoning-request} #157: thinking_effort maps the complete Dee
     const cases = [
         [{ mode: "off", budget: null }, { thinking: { type: "disabled" } }],
         [{ mode: "adaptive", budget: null }, {}],
+        [{ mode: "on", budget: null }, { thinking: { type: "enabled" } }],
         [{ mode: "on", budget: 5000 }, { thinking: { type: "enabled" }, reasoning_effort: "high" }],
     ] as const;
     for (const [reasoning, expected] of cases) {
@@ -1423,7 +1427,28 @@ test("reasoningStyle 'template' explicit budget tightens the reserve and cannot 
     );
 });
 
-test("budget 0 suppresses effort and include_reasoning", async () => {
+test("reasoningStyle 'template' explicit activation without a budget uses the resolved reserve", async () => {
+    const p = testProvider({
+        model: "m",
+        url: "http://x/v1/chat/completions",
+        contextWindow: 640,
+        reasoningReserve: { tokens: 64 },
+        completionReserve: { tokens: 160 },
+        fetchTimeoutMs: 5000,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "on", budget: null },
+        retryAttempts: 0,
+        reasoningStyle: "template",
+    });
+    const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await p.generate({ workerId: "r", messages: [] });
+    const body = JSON.parse(calls[0].init.body as string);
+    assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true });
+    assert.equal(body.thinking_budget_tokens, 64);
+});
+
+test("reasoning off suppresses effort and include_reasoning controls", async () => {
     const effort = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "effort" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await effort.generate({ workerId: "r", messages: [] });
@@ -2094,12 +2119,18 @@ test("retry: a caller abort during backoff rejects promptly with no further atte
 
 // — Anthropic reasoning style (wire `thinking` parameter) —
 
-test("reasoningStyle 'anthropic' maps the budget to the thinking param", async () => {
+test("reasoningStyle 'anthropic' maps an optional budget or the resolved reserve to the thinking param", async () => {
     // N>0 → enabled with budget_tokens
     const capped = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "on", budget: 4096 }, reasoningStyle: "anthropic" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await capped.generate({ workerId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "enabled", budget_tokens: 4096 });
+
+    mock.restoreAll();
+    const unbudgeted = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 8192, reasoningReserve: { tokens: 2048 }, fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "on", budget: null }, reasoningStyle: "anthropic" });
+    calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
+    await unbudgeted.generate({ workerId: "r", messages: [] });
+    assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "enabled", budget_tokens: 2048 });
 
     mock.restoreAll();
     // 0 → explicit disabled
@@ -2352,4 +2383,42 @@ test("native cache projections carry affinity at call level and cache control on
         },
         { role: "user", content: [{ type: "text", text: "changing packet" }], providerOptions: undefined },
     ]);
+});
+
+test("native AI SDK reasoning turns on without an operator token budget", async () => {
+    let request: Record<string, unknown> | undefined;
+    const languageModel = {
+        specificationVersion: "v4",
+        provider: "native.test",
+        modelId: "native-reasoning",
+        supportedUrls: {},
+        doGenerate: async (options: Record<string, unknown>) => {
+            request = options;
+            return {
+                content: [{ type: "reasoning", text: "consider" }, { type: "text", text: "ok" }],
+                finishReason: { unified: "stop", raw: "stop" },
+                usage: {
+                    inputTokens: { total: 2, noCache: 2, cacheRead: 0, cacheWrite: 0 },
+                    outputTokens: { total: 2, text: 1, reasoning: 1 },
+                },
+                response: { id: "response", modelId: "native-reasoning" },
+                warnings: [],
+            };
+        },
+        doStream: async () => { throw new Error("streaming is not under test"); },
+    } as unknown as LanguageModel;
+    const p = testProvider({
+        model: "native-reasoning",
+        languageModel,
+        fetchTimeoutMs: 5000,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "on", budget: null },
+        retryAttempts: 0,
+        streaming: false,
+    });
+    const response = await p.generate({ workerId: "worker-native", messages: [{ role: "user", content: "hello" }] });
+
+    assert.equal(request?.reasoning, "medium");
+    assert.equal(response.assistant.reasoning, "consider");
 });

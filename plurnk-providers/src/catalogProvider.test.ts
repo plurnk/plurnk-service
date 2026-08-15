@@ -109,6 +109,58 @@ test("official AI SDK provider owns the native request while PLURNK owns call se
     assert.equal(calls[0]?.body.prompt_cache_key, "worker", "the official OpenAI SDK projects the documented affinity key");
 });
 
+test("Cerebras explicit reasoning activation needs no operator effort or token budget", async () => {
+    let body: Record<string, unknown> | undefined;
+    mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
+        body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response([
+            `data: ${JSON.stringify({
+                id: "chatcmpl-cerebras",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "gemma-4-31b",
+                choices: [{ index: 0, delta: { reasoning: "consider" }, finish_reason: null }],
+            })}`,
+            `data: ${JSON.stringify({
+                id: "chatcmpl-cerebras",
+                object: "chat.completion.chunk",
+                created: 2,
+                model: "gemma-4-31b",
+                choices: [{ index: 0, delta: { content: "done" }, finish_reason: "stop" }],
+            })}`,
+            `data: ${JSON.stringify({
+                id: "chatcmpl-cerebras",
+                object: "chat.completion.chunk",
+                created: 3,
+                model: "gemma-4-31b",
+                choices: [],
+                usage: {
+                    prompt_tokens: 2,
+                    completion_tokens: 2,
+                    total_tokens: 4,
+                    completion_tokens_details: { reasoning_tokens: 1 },
+                },
+            })}`,
+            "data: [DONE]",
+        ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
+    });
+
+    const provider = catalogProviderFromEnv("cerebras", {
+        ...env,
+        CEREBRAS_API_KEY: "test-key",
+        PLURNK_PROVIDERS_REASONING: "on",
+    }, "gemma-4-31b");
+    const result = await provider?.generate({
+        workerId: "worker",
+        messages: [{ role: "user", content: "hello" }],
+    });
+
+    assert.equal(body?.reasoning_effort, "medium", "the native SDK projects unqualified on to its enabled posture");
+    assert.equal("thinking_budget_tokens" in (body ?? {}), false, "activation does not invent a token budget");
+    assert.equal(result?.assistant.reasoning, "consider");
+    assert.equal(result?.accounting[0]?.usage?.outputTokenDetails?.reasoningTokens, 1);
+});
+
 test("native provider routes project their documented cache controls through the actual SDK request", async (t) => {
     const calls: Array<{ url: string; headers: Headers; body: Record<string, unknown> }> = [];
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {

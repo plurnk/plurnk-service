@@ -111,9 +111,9 @@ export type AiSdkProviderConfig = {
     requiresMaxTokens?: boolean;
     // The side-channel reasoning intent — REQUIRED, no in-code default
     // (PLURNK_PROVIDERS_REASONING + _BUDGET, read via reasoningFromEnv):
-    // { mode: off|adaptive|on, budget: iff on }. The provider maps it to the
-    // backend's mechanism via reasoningStyle; budget is only ever a magnitude,
-    // never a hidden activation flag.
+    // { mode: off|adaptive|on, budget: optional when on }. The provider maps it
+    // to the backend's mechanism via reasoningStyle; budget is only ever an
+    // explicit magnitude, never a hidden activation flag.
     reasoning: Reasoning;
     // Decode tuning: no in-code defaults; the canonical measured values (0.2 /
     // 1.15) ship as the floor in .env.defaults (alias-scopable). `temperature` is the
@@ -259,6 +259,13 @@ export const effortFromBudget = (budget: number): "low" | "medium" | "high" => {
     if (budget <= 4000) return "medium";
     return "high";
 };
+
+// AI SDK's portable reasoning control has no boolean-enabled value. `medium`
+// is the neutral activation projection for an explicit, unqualified `on`; it
+// changes no PLURNK token reserve. An operator budget, when present, remains
+// the only input to the existing magnitude-to-tier projection.
+const effortFromReasoning = (reasoning: Reasoning): "low" | "medium" | "high" =>
+    reasoning.budget === null ? "medium" : effortFromBudget(reasoning.budget);
 
 // Body keys the provider owns — a caller's `sampling` passthrough may not set
 // these. Two families:
@@ -422,9 +429,16 @@ export default class AiSdkProvider implements Provider {
         const reasoningReserve = this.reasoningReserve;
         if (this.#reasoningStyle === "template"
             && this.#reasoning.mode === "on"
+            && this.#reasoning.budget !== null
             && reasoningReserve !== null
-            && this.#reasoning.budget! > reasoningReserve) {
+            && this.#reasoning.budget > reasoningReserve) {
             throw new Error(`${this.#source}: PLURNK_PROVIDERS_REASONING_BUDGET (${this.#reasoning.budget}) exceeds the resolved PLURNK_PROVIDERS_REASONING_RESERVE (${reasoningReserve})`);
+        }
+        if (this.#reasoningStyle === "anthropic"
+            && this.#reasoning.mode === "on"
+            && this.#reasoning.budget === null
+            && reasoningReserve === null) {
+            throw new Error(`${this.#source}: explicit Anthropic reasoning requires a resolved reasoning reserve or PLURNK_PROVIDERS_REASONING_BUDGET`);
         }
         const { tokenizeUrl } = config;
         if (tokenizeUrl !== undefined) {
@@ -534,7 +548,7 @@ export default class AiSdkProvider implements Provider {
             case "template": {
                 const allowance = mode === "off"
                     ? 0
-                    : mode === "on" ? budget : this.reasoningReserve;
+                    : mode === "on" && budget !== null ? budget : this.reasoningReserve;
                 return {
                     chat_template_kwargs: { enable_thinking: on },
                     reasoning_format: preserveGrammarSentence ? "none" : "auto",
@@ -543,9 +557,9 @@ export default class AiSdkProvider implements Provider {
             }
             case "think": return on ? { think: true } : {};
             case "include_reasoning": return on ? { include_reasoning: true } : {};
-            // effort tiers from the budget; off/adaptive omit the field (the
-            // API's default depth is its adaptive).
-            case "effort": return mode === "on" ? { reasoning_effort: effortFromBudget(budget!) } : {};
+            // Explicit on uses the portable enabled posture or a tier derived
+            // from an explicit budget; off/adaptive omit the field.
+            case "effort": return mode === "on" ? { reasoning_effort: effortFromReasoning(this.#reasoning) } : {};
             // Fireworks enum: OFF is sent EXPLICITLY ("none") — omission leaves a
             // reason-by-default model (DeepSeek V4: default 'high') reasoning.
             // ADAPTIVE omits the field: the backend's own default posture IS the
@@ -555,19 +569,25 @@ export default class AiSdkProvider implements Provider {
             // efforts 400.
             case "effort_explicit": return mode === "off"
                 ? { reasoning_effort: "none" }
-                : mode === "on" ? { reasoning_effort: effortFromBudget(budget!) } : {};
+                : mode === "on" ? { reasoning_effort: effortFromReasoning(this.#reasoning) } : {};
             // {§deepseek-reasoning-request}
             case "thinking_effort": return mode === "off"
                 ? { thinking: { type: "disabled" } }
                 : mode === "on" ? {
                     thinking: { type: "enabled" },
-                    reasoning_effort: effortFromBudget(budget!),
+                    ...(budget === null ? {} : { reasoning_effort: effortFromBudget(budget) }),
                 } : {};
             // Anthropic compat: explicit thinking object. off → disabled; on →
-            // enabled with budget_tokens; adaptive → omit (the API default).
+            // enabled with the explicit budget or resolved reserve; adaptive →
+            // omit (the API default).
             case "anthropic": return mode === "off"
                 ? { thinking: { type: "disabled" } }
-                : mode === "on" ? { thinking: { type: "enabled", budget_tokens: budget } } : {};
+                : mode === "on" ? {
+                    thinking: {
+                        type: "enabled",
+                        budget_tokens: budget ?? this.reasoningReserve!,
+                    },
+                } : {};
             case "none": return {};
         }
     }
@@ -890,7 +910,7 @@ export default class AiSdkProvider implements Provider {
                             ? "none"
                             : this.#reasoning.mode === "adaptive"
                                 ? "provider-default"
-                                : effortFromBudget(this.#reasoning.budget!),
+                                : effortFromReasoning(this.#reasoning),
                     });
             } catch (error) {
                 const failure = transportFailureEvidence(error);
