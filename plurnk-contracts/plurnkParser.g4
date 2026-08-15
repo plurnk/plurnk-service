@@ -6,7 +6,7 @@ options { tokenVocab = plurnkLexer; }
 // operations, and one disposition-coded terminal H2 SEND. {§turn-shape}
 document
     : turnContent EOF
-    | FENCE_OPEN turn FENCE_CLOSE EOF
+    | FENCE_OPEN turn FENCE_CLOSE? EOF
     ;
 
 // H1 PLAN is already the turn boundary, so a log is a direct sequence of turns.

@@ -746,18 +746,19 @@ cannot recur mid-turn. Tolerated TEXT may appear only before PLAN; after PLAN,
 nonstructural text is section body content. Missing either anchor or placing a
 same-lane operation after the terminal SEND is an error.
 
-§document-fence `PlurnkParser.parse` additionally admits one paired outer
-Markdown code fence whose opening line is exactly ```` ```plurnk ```` and whose
-closing line is ```` ``` ````. The fence encloses the complete PLAN-through-SEND
-turn and projects neither text nor body content into the AST. Its opener commits
-the document to its closer. This is document framing, not another statement
-grammar, and no other parser tier admits it.
+§document-fence `PlurnkParser.parse` additionally admits one outer Markdown code
+fence whose opening line is exactly ```` ```plurnk ```` and whose closing line,
+when present, is ```` ``` ````. The fence encloses the complete
+PLAN-through-SEND turn and projects neither text nor body content into the AST.
+Its opener commits the document to either that closer or EOF immediately after
+the complete turn. This is document framing, not another statement grammar, and
+no other parser tier admits it. GBNF continues to shape the paired form.
 
 §tier-entrypoints Each parser entry point owns one document tier:
 
 | Entry point                    | Accepted document                                              | Result statement type |
 |--------------------------------|----------------------------------------------------------------|-----------------------|
-| `PlurnkParser.parse`           | One PLAN turn: bare with optional TEXT, or paired `plurnk` fence | `PlurnkStatement`     |
+| `PlurnkParser.parse`           | One PLAN turn: bare with optional TEXT, or outer `plurnk` fence ending at its closer or EOF | `PlurnkStatement`     |
 | `PlurnkParser.parseStatements` | Zero or more protocol statements and hidden whitespace         | `PlurnkStatement`     |
 | `PlurnkParser.parseLog`        | One or more consecutive same-lane PLAN-anchored turns           | `PlurnkStatement`     |
 | `PlurnkParser.parseClient`     | H2 protocol statements plus read-shaped LOOK/BUFF commands      | `ClientStatement`     |

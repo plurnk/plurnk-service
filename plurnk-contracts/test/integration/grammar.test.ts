@@ -254,14 +254,37 @@ test("a paired outer plurnk fence is document framing, not turn content", () => 
     if (last?.op === "SEND") assert.equal(last.body?.raw, "done");
 });
 
-test("an opening plurnk fence commits the document to a closing fence", () => {
+test("EOF terminates an outer plurnk fence after a complete turn", () => {
     const result = PlurnkParser.parse([
         "```plurnk",
         section("PLAN", "", "inspect"),
         "",
         section("SEND", " [200]", "done"),
     ].join("\n"));
-    assert.ok(result.items.some((item) => item.kind === "error") || result.unparsedTail !== undefined);
+    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+    assert.equal(result.unparsedTail, undefined);
+    assert.deepEqual(
+        result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []),
+        ["PLAN", "SEND"],
+    );
+});
+
+test("EOF fence tolerance does not admit an incomplete or post-SEND turn", () => {
+    const incomplete = PlurnkParser.parse([
+        "```plurnk",
+        section("PLAN", "", "inspect"),
+    ].join("\n"));
+    assert.ok(incomplete.items.some((item) => item.kind === "error") || incomplete.unparsedTail !== undefined);
+
+    const trailing = PlurnkParser.parse([
+        "```plurnk",
+        section("PLAN", "", "inspect"),
+        "",
+        section("SEND", " [200]", "done"),
+        "",
+        section("READ", " (late.md)"),
+    ].join("\n"));
+    assert.ok(trailing.items.some((item) => item.kind === "error") || trailing.unparsedTail !== undefined);
 });
 
 test("a disposition SEND terminates the turn", () => {
