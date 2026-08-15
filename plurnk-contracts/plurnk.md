@@ -162,7 +162,8 @@ YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale t
 ### The Log
 
 * The log is your Curated Context. Optimize and folksonomize it for relevance.
-* `+tag` adds, `-tag` removes; FOLD/OPEN select by unsigned `tag`.
+* `[+tag]` adds, `[-tag]` removes; FOLD/OPEN select by unsigned `[tag]`.
+* `## FOLD0 [+stale] (log:///1/2/3/READ)` tags and folds one log item.
 * Log item addresses contain their loop, turn, and item, followed by their OP when present: `log:///{loop}/{turn}/{item}/{OP}`.
 
 YOU SHOULD FOLD superseded PLANs, stale READs, and irrelevant log items.
