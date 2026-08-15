@@ -82,6 +82,9 @@ export type AiSdkProviderConfig = {
     // {§provider-cache-write-policy} Already policy-gated by provider construction.
     // The transport attaches it to only the final leading system instruction.
     systemCacheProviderOptions?: AiSdkProviderOptions;
+    // {§provider-readable-reasoning} Route-owned native option needed to expose
+    // readable reasoning. Applied only when the effective posture is not off.
+    reasoningResponseProviderOptions?: AiSdkProviderOptions;
     // Optional provider-configured service tier. Unlike caller sampling, this is
     // a fixed deployment choice and therefore wins on every request.
     serviceTier?: string;
@@ -321,6 +324,7 @@ export default class AiSdkProvider implements Provider {
     #grammarStyle: GrammarStyle;
     #cacheAffinity: CacheAffinity | undefined;
     #systemCacheProviderOptions: AiSdkProviderOptions | undefined;
+    #reasoningResponseProviderOptions: AiSdkProviderOptions | undefined;
     #serviceTier: string | undefined;
     #gbnfDebug: boolean;
     #streaming: boolean;
@@ -401,6 +405,7 @@ export default class AiSdkProvider implements Provider {
         this.#grammarStyle = config.grammarStyle ?? "none";
         this.#cacheAffinity = config.cacheAffinity;
         this.#systemCacheProviderOptions = config.systemCacheProviderOptions;
+        this.#reasoningResponseProviderOptions = config.reasoningResponseProviderOptions;
         if (this.#languageModel === undefined && this.#cacheAffinity?.target === "provider-option") {
             throw new Error(`${this.#source}: native provider-option cache affinity requires an AI SDK model`);
         }
@@ -409,6 +414,16 @@ export default class AiSdkProvider implements Provider {
         }
         if (this.#languageModel === undefined && this.#systemCacheProviderOptions !== undefined) {
             throw new Error(`${this.#source}: system cache provider options require an AI SDK model`);
+        }
+        if (this.#languageModel === undefined && this.#reasoningResponseProviderOptions !== undefined) {
+            throw new Error(`${this.#source}: reasoning response provider options require an AI SDK model`);
+        }
+        if (this.#cacheAffinity?.target === "provider-option"
+            && Object.hasOwn(
+                this.#reasoningResponseProviderOptions?.[this.#cacheAffinity.provider] ?? {},
+                this.#cacheAffinity.name,
+            )) {
+            throw new Error(`${this.#source}: reasoning response options conflict with cache-affinity option ${this.#cacheAffinity.provider}.${this.#cacheAffinity.name}`);
         }
         this.#serviceTier = config.serviceTier;
         this.#gbnfDebug = config.gbnfDebug ?? false;
@@ -727,6 +742,21 @@ export default class AiSdkProvider implements Provider {
         return out;
     }
 
+    #requestProviderOptions(workerId: string): AiSdkProviderOptions | undefined {
+        const reasoningOptions = this.#reasoning.mode === "off"
+            ? undefined
+            : this.#reasoningResponseProviderOptions;
+        if (this.#cacheAffinity?.target !== "provider-option") return reasoningOptions;
+        const { provider, name } = this.#cacheAffinity;
+        return {
+            ...reasoningOptions,
+            [provider]: {
+                ...reasoningOptions?.[provider],
+                [name]: workerId,
+            },
+        };
+    }
+
     #accounting(
         outcome: ProviderRequestAccounting["outcome"],
         usage: ProviderUsage | undefined,
@@ -875,13 +905,7 @@ export default class AiSdkProvider implements Provider {
                     : await executeAiSdkModel({
                         languageModel: this.#languageModel,
                         headers: requestHeaders,
-                        providerOptions: this.#cacheAffinity?.target === "provider-option"
-                            ? {
-                                [this.#cacheAffinity.provider]: {
-                                    [this.#cacheAffinity.name]: workerId,
-                                },
-                            }
-                            : undefined,
+                        providerOptions: this.#requestProviderOptions(workerId),
                         systemProviderOptions: this.#systemCacheProviderOptions,
                         messages,
                         signal: operationSignal,

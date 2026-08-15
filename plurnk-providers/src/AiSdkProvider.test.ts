@@ -2325,7 +2325,7 @@ test("a compatible route's declared header affinity composes with static headers
     assert.equal(headers.get("x-grok-conv-id"), "worker-abc");
 });
 
-test("native cache projections carry affinity at call level and cache control only on the final system instruction", async () => {
+test("native request projections compose reasoning visibility, affinity, and system cache control", async () => {
     let request: Record<string, unknown> | undefined;
     const usage = {
         inputTokens: { total: 2, noCache: 2, cacheRead: 0, cacheWrite: 0 },
@@ -2354,10 +2354,13 @@ test("native cache projections carry affinity at call level and cache control on
         fetchTimeoutMs: 5000,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        reasoning: { mode: "adaptive", budget: null },
         retryAttempts: 0,
         streaming: false,
         cacheAffinity: { target: "provider-option", provider: "openai", name: "promptCacheKey" },
+        reasoningResponseProviderOptions: {
+            google: { thinkingConfig: { includeThoughts: true } },
+        },
         systemCacheProviderOptions: {
             anthropic: { cacheControl: { type: "ephemeral" } },
         },
@@ -2372,6 +2375,7 @@ test("native cache projections carry affinity at call level and cache control on
     });
 
     assert.deepEqual(request?.providerOptions, {
+        google: { thinkingConfig: { includeThoughts: true } },
         openai: { promptCacheKey: "worker-native" },
     });
     assert.deepEqual(request?.prompt, [

@@ -54,6 +54,7 @@ export const providerFromSdkModel = ({
     attributions,
     cacheAffinity,
     systemCacheProviderOptions,
+    reasoningResponseProviderOptions,
 }: {
     name: string;
     env: NodeJS.ProcessEnv;
@@ -67,6 +68,7 @@ export const providerFromSdkModel = ({
     attributions?: (context: PluginAttributionContext) => PluginAttribution;
     cacheAffinity?: CacheAffinity;
     systemCacheProviderOptions?: AiSdkProviderOptions;
+    reasoningResponseProviderOptions?: AiSdkProviderOptions;
 }): Provider => {
     emitWarningOnce(
         `${name} provider: request-level prompt counting is a chars/2 estimate; hard context-envelope admission fails closed without exact or bounded evidence`,
@@ -131,6 +133,9 @@ export const providerFromSdkModel = ({
         ...(cacheWritePolicy === "stable-system" && systemCacheProviderOptions !== undefined
             ? { systemCacheProviderOptions }
             : {}),
+        ...(reasoningResponseProviderOptions === undefined
+            ? {}
+            : { reasoningResponseProviderOptions }),
         serviceTier: env.PLURNK_PROVIDERS_SERVICE_TIER,
         estimateCost,
         source: providerSource(name),
@@ -177,6 +182,7 @@ export const catalogProviderFromEnv = (
         headers: sdk.compatible?.headers,
         cacheAffinity: sdk.cacheAffinity,
         systemCacheProviderOptions: sdk.systemCacheProviderOptions,
+        reasoningResponseProviderOptions: sdk.reasoningResponseProviderOptions,
         contextWindow,
         info,
     });

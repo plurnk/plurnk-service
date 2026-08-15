@@ -161,6 +161,68 @@ test("Cerebras explicit reasoning activation needs no operator effort or token b
     assert.equal(result?.accounting[0]?.usage?.outputTokenDetails?.reasoningTokens, 1);
 });
 
+test("Google adaptive reasoning requests and preserves readable thought summaries", async () => {
+    const bodies: Array<{
+        generationConfig?: { thinkingConfig?: { includeThoughts?: boolean } };
+    }> = [];
+    mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)) as typeof bodies[number]);
+        return new Response(`data: ${JSON.stringify({
+            responseId: "response-gemini",
+            candidates: [{
+                content: {
+                    role: "model",
+                    parts: [
+                        { text: "consider", thought: true },
+                        { text: "done" },
+                    ],
+                },
+                finishReason: "STOP",
+            }],
+            usageMetadata: {
+                promptTokenCount: 2,
+                candidatesTokenCount: 1,
+                thoughtsTokenCount: 1,
+                totalTokenCount: 4,
+            },
+        })}\n\n`, {
+            headers: { "content-type": "text/event-stream" },
+        });
+    });
+
+    const provider = catalogProviderFromEnv("google", {
+        ...env,
+        GEMINI_API_KEY: "test-key",
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+    }, "gemini-3.7-flash");
+    const result = await provider?.generate({
+        workerId: "worker",
+        messages: [{ role: "user", content: "hello" }],
+    });
+
+    assert.deepEqual(bodies[0]?.generationConfig?.thinkingConfig, {
+        includeThoughts: true,
+    }, "adaptive leaves thinking depth to Google while requesting its readable summary");
+    assert.equal(result?.assistant.reasoning, "consider");
+    assert.equal(result?.assistant.content, "done");
+    assert.equal(result?.accounting[0]?.usage?.outputTokenDetails?.reasoningTokens, 1);
+
+    const disabled = catalogProviderFromEnv("google", {
+        ...env,
+        GEMINI_API_KEY: "test-key",
+        PLURNK_PROVIDERS_REASONING: "off",
+    }, "gemini-3.7-flash");
+    await disabled?.generate({
+        workerId: "worker",
+        messages: [{ role: "user", content: "hello" }],
+    });
+    assert.equal(
+        bodies[1]?.generationConfig?.thinkingConfig?.includeThoughts,
+        undefined,
+        "off does not request readable thoughts",
+    );
+});
+
 test("native provider routes project their documented cache controls through the actual SDK request", async (t) => {
     const calls: Array<{ url: string; headers: Headers; body: Record<string, unknown> }> = [];
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {

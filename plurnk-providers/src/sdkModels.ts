@@ -23,6 +23,7 @@ export type SdkModel = {
     };
     readonly cacheAffinity?: CacheAffinity;
     readonly systemCacheProviderOptions?: AiSdkProviderOptions;
+    readonly reasoningResponseProviderOptions?: AiSdkProviderOptions;
     readonly catalog: ProviderInfo | null;
 };
 
@@ -156,6 +157,9 @@ export const createSdkModel = (
         case "@ai-sdk/google":
             return {
                 languageModel: createGoogle({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).languageModel(model),
+                reasoningResponseProviderOptions: {
+                    google: { thinkingConfig: { includeThoughts: true } },
+                },
                 catalog,
             };
         case "@ai-sdk/xai": {

@@ -38,6 +38,17 @@ test("createSdkModel constructs Cerebras from Models.dev facts", () => {
     assert.equal(sdk?.compatible, undefined);
 });
 
+test("the Google SDK adapter owns its readable-reasoning response projection", () => {
+    assert.deepEqual(
+        createSdkModel("google", "gemini-3.7-flash", { GEMINI_API_KEY: "test-key" })?.reasoningResponseProviderOptions,
+        { google: { thinkingConfig: { includeThoughts: true } } },
+    );
+    assert.equal(
+        createSdkModel("cerebras", "gemma-4-31b", { CEREBRAS_API_KEY: "test-key" })?.reasoningResponseProviderOptions,
+        undefined,
+    );
+});
+
 test("createSdkModel attaches DeepInfra's documented response-cost normalizer", () => {
     const sdk = createSdkModel("deepinfra", "zai-org/GLM-5.2", {
         DEEPINFRA_API_KEY: "test-key",

@@ -187,6 +187,12 @@ PLURNK maps its generic settings to AI SDK call settings:
 Provider-specific options are permitted only where they preserve a documented
 PLURNK product contract the generic SDK surface cannot express.
 
+§provider-readable-reasoning When the effective reasoning posture is not
+`off`, a native adapter MUST request readable reasoning summaries if its
+provider requires a separate response-visibility option. That option neither
+activates reasoning nor selects its depth. The exact wire projection belongs to
+the provider adapter; Models.dev's reasoning bit remains capability metadata.
+
 The portable SDK surface has no boolean-enabled reasoning value. An unqualified
 `on` therefore projects to its conventional `medium` enabled posture. This is a
 wire activation value, not a reasoning reserve or output-token ceiling.
