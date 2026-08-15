@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -162,4 +162,64 @@ test("connection shutdown attempts all connections and aggregates every failure"
         },
     );
     assert.equal(successfulClose, true);
+});
+
+test("a whitespace-bearing executable path completes ordinary configured setup", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk mcp executable "));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const command = join(root, "node with spaces");
+    await symlink(process.execPath, command);
+    const module = Module.init({
+        env: {
+            PLURNK_MCP_CONNECT_TIMEOUT: "30000",
+            PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+            PLURNK_MCP_SPACED: command,
+            PLURNK_MCP_SPACED_ARGS: JSON.stringify([fixture]),
+        },
+    });
+    let names: string[] = [];
+    try {
+        await module.setup({
+            registerRuntimes: async (registrations) => {
+                names = registrations.map(({ decl }) => decl.name);
+            },
+        });
+        assert.deepEqual(names, ["spaced"]);
+    } finally {
+        await module.close();
+    }
+});
+
+test("a mistaken multiword executable fails as one exact configured command", async () => {
+    const command = `${process.execPath} ${fixture}`;
+    const module = Module.init({
+        env: {
+            PLURNK_MCP_CONNECT_TIMEOUT: "30000",
+            PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+            PLURNK_MCP_BROKEN: command,
+        },
+    });
+    let publications = 0;
+
+    await assert.rejects(
+        () => module.setup({
+            registerRuntimes: async () => {
+                publications += 1;
+            },
+        }),
+        (error) => {
+            assert.ok(error instanceof Error);
+            assert.match(error.message, /Configured MCP server 'broken' is unavailable/);
+            const messages: string[] = [];
+            let current: unknown = error;
+            while (current instanceof Error) {
+                messages.push(current.message);
+                current = current.cause;
+            }
+            assert.ok(messages.some((message) => message.includes(command)));
+            return true;
+        },
+    );
+    assert.equal(publications, 0);
+    await module.close();
 });

@@ -23,7 +23,8 @@ fall back to a legacy revision.
 ## Configuration
 
 Configuration is daemon-owned. One `PLURNK_MCP_<server>` variable declares
-each server; the suffix case-folds to the executor and URI authority name.
+each server; its suffix case-folds to an `[a-z][a-z0-9-]*` executor and URI
+authority name.
 
 Streamable HTTP:
 
@@ -41,10 +42,10 @@ PLURNK_MCP_local_CWD=/absolute/working/directory
 PLURNK_MCP_local_ENV={"TOKEN":"${LOCAL_TOKEN}"}
 ```
 
-The stdio target is exactly one executable. Arguments are a JSON array; the
-module never parses or invokes a shell command. `${NAME}` references read the
-daemon's inherited environment at startup, so secrets do not need to be copied
-into Plurnk environment files.
+The stdio target is exactly one executable path or name, including any literal
+whitespace. Arguments are a JSON array; the module never parses or invokes a
+shell command. `${NAME}` references read the daemon's inherited environment at
+startup, so secrets do not need to be copied into Plurnk environment files.
 
 Portable timeout defaults and complete examples live in
 [`.env.defaults`](./.env.defaults).
@@ -70,4 +71,4 @@ protocol surface is retained as a fallback.
 
 `npm test` type-checks the module and exercises exact current-version
 negotiation, configuration, tool calls, resource reads, runtime registration,
-and rejection of ambiguous shell and secret configuration.
+canonical names, exact executable/argument handling, and secret references.

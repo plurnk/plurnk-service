@@ -45,7 +45,7 @@ test("configuration expands process environment references without copying secre
     });
 });
 
-test("configuration rejects ambiguous shell text, orphan companions, and transport-specific companions", () => {
+test("configuration rejects empty targets, orphan companions, and transport-specific companions", () => {
     assert.throws(
         () => serverConfig("atlas", {
             ...floor,
@@ -54,18 +54,11 @@ test("configuration rejects ambiguous shell text, orphan companions, and transpo
         /must not be empty/,
     );
     assert.throws(
-        () => serverConfig("atlas", {
-            ...floor,
-            PLURNK_MCP_ATLAS: "node server.mjs",
-        }),
-        /one executable/,
-    );
-    assert.throws(
         () => serverNames({
             ...floor,
             PLURNK_MCP_ATLAS_ARGS: '["server.mjs"]',
         }),
-        /has no .* target/,
+        /PLURNK_MCP_ATLAS_ARGS.*PLURNK_MCP_ATLAS/,
     );
     assert.throws(
         () => serverConfig("github", {
@@ -73,8 +66,86 @@ test("configuration rejects ambiguous shell text, orphan companions, and transpo
             PLURNK_MCP_GITHUB: "https://example.test/mcp",
             PLURNK_MCP_GITHUB_ENV: "{}",
         }),
-        /only a _HEADERS/,
+        /PLURNK_MCP_GITHUB_ENV.*PLURNK_MCP_GITHUB/,
     );
+    assert.throws(
+        () => serverConfig("atlas", {
+            ...floor,
+            PLURNK_MCP_ATLAS: "node",
+            PLURNK_MCP_ATLAS_HEADERS: "{}",
+        }),
+        /PLURNK_MCP_ATLAS_HEADERS.*PLURNK_MCP_ATLAS/,
+    );
+});
+
+test("configured names use the safe executor and URI intersection", () => {
+    assert.throws(
+        () => serverNames({
+            ...floor,
+            PLURNK_MCP_BAD_NAME: "node",
+        }),
+        /PLURNK_MCP_BAD_NAME.*bad_name.*\[a-z\]\[a-z0-9-\]\*/,
+    );
+    assert.throws(
+        () => serverNames({
+            ...floor,
+            PLURNK_MCP_9ATLAS: "node",
+        }),
+        /PLURNK_MCP_9ATLAS.*9atlas.*\[a-z\]\[a-z0-9-\]\*/,
+    );
+    assert.deepEqual(serverNames({
+        ...floor,
+        "PLURNK_MCP_ATLAS-NEXT": "node",
+    }), ["atlas-next"]);
+});
+
+test("case-fold collisions and reserved global/suffix ambiguity name exact variables", () => {
+    assert.throws(
+        () => serverNames({
+            ...floor,
+            PLURNK_MCP_ATLAS: "node",
+            PLURNK_MCP_atlas: "other-node",
+        }),
+        /PLURNK_MCP_ATLAS.*PLURNK_MCP_atlas.*atlas/,
+    );
+    assert.throws(
+        () => serverNames({
+            ...floor,
+            PLURNK_MCP_ATLAS: "node",
+            PLURNK_MCP_ATLAS_ARGS: "[]",
+            PLURNK_MCP_atlas_args: "[]",
+        }),
+        /PLURNK_MCP_ATLAS_ARGS.*PLURNK_MCP_atlas_args/,
+    );
+    assert.throws(
+        () => serverNames({
+            ...floor,
+            PLURNK_MCP_CONNECT_TIMEOUT_ARGS: "[]",
+        }),
+        /PLURNK_MCP_CONNECT_TIMEOUT_ARGS.*PLURNK_MCP_CONNECT_TIMEOUT.*reserved global/,
+    );
+    assert.throws(
+        () => serverNames({
+            ...floor,
+            PLURNK_MCP_connect_timeout: "30000",
+        }),
+        /PLURNK_MCP_connect_timeout.*PLURNK_MCP_CONNECT_TIMEOUT.*reserved global/,
+    );
+});
+
+test("stdio targets preserve whitespace as part of one exact executable", () => {
+    const target = "/opt/MCP Servers/atlas";
+    assert.deepEqual(serverConfig("atlas", {
+        ...floor,
+        PLURNK_MCP_ATLAS: target,
+        PLURNK_MCP_ATLAS_ARGS: '["--stdio"]',
+    }), {
+        transport: "stdio",
+        command: target,
+        args: ["--stdio"],
+        cwd: undefined,
+        env: undefined,
+    });
 });
 
 test("timeouts are required positive integers owned by .env.defaults", () => {
