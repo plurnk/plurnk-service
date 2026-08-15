@@ -22,6 +22,14 @@ model prefix, context window, price, or vendor request shape into a PLURNK
 table. A missing or wrong catalog fact is fixed upstream, overridden through a
 provider declaration, or left explicitly unknown.
 
+§provider-runtime-neutral-accounting The public
+`@plurnk/plurnk-providers/accounting` subpath exposes provider-request
+aggregation and Models.dev cost estimation, plus their wire types, without
+evaluating Node-only provider discovery, filesystem defaults, or runtime
+construction. It re-exports the package's sole accounting implementation. The
+package root remains the Node provider-runtime composition surface and is not a
+Worker entrypoint.
+
 ## §2 Provider interface
 
 §provider-interface `Provider` exposes immutable model facts and one generation

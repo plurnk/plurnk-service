@@ -21,6 +21,21 @@ reasoning activation, and estimated prices resolve independently
 ({§model-fact-resolution}). PLURNK does not fetch live per-token prices, and the
 local estimate is not an authoritative relay-settled charge.
 
+## Runtime-neutral accounting
+
+Browser and edge Workers import the accounting contract through its dedicated
+runtime-neutral subpath ({§provider-runtime-neutral-accounting}):
+
+```js
+import {
+  aggregateProviderAccounting,
+  estimateProviderCost,
+} from "@plurnk/plurnk-providers/accounting";
+```
+
+The package root composes the complete Node provider runtime, including plugin
+discovery and environment-file defaults.
+
 ## Configure a model
 
 Declare an alias, then select it:
