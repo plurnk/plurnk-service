@@ -22,7 +22,7 @@ new reasoning conclusions, open inquiries, unresolved priorities
 body?
 ```
 
-PLAN persists **new** reasoning conclusions, open inquiries, and unresolved priorities.
+Each PLAN updates the running state with new or revised reasoning conclusions, open inquiries, and unresolved priorities.
 PLAN begins the turn as H1. Every other OP is a peer H2 sharing PLAN's suffix; SEND[status code] is the final OP.
 Nested OP headings in body content use a suffix different from the containing turn.
 A single blank line between sections is optional and is not body content; additional blank lines are body content.
@@ -32,7 +32,7 @@ Body content is character-perfect, including whitespace.
 
 | OP   | purpose                        | `[signal]`   | `(path)`                   | `<scope>`      | `body`                      |
 |------|--------------------------------|--------------|----------------------------|----------------|-----------------------------|
-| PLAN | persist working-state deltas    | -            | -                          | -              | conclusions, inquiries, priorities |
+| PLAN | persist working-state deltas    | -            | -                          | -              | new conclusions, inquiries, priorities |
 | FIND | list matching targets          | add log tags?    | target or glob             | result range?  | pattern?                    |
 | READ | retrieve target content        | add log tags?    | target                     | text region?   | -                           |
 | EDIT | create or edit scoped content  | add log tags?    | file or entry              | text region?   | literal text                |
