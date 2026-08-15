@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,7 @@ const cleanEnv = Object.fromEntries(
 );
 const packageDir = fileURLToPath(new URL("..", import.meta.url));
 const consumerDir = await mkdtemp(join(tmpdir(), "plurnk-provider-worker-"));
+const installedPackage = join(consumerDir, "node_modules", "@plurnk", "plurnk-providers");
 let tarballPath;
 
 try {
@@ -28,10 +29,13 @@ try {
         private: true,
         type: "module",
     }, null, 2)}\n`);
+    // The pre-publication gate cannot install this lockstep candidate from npm.
+    // Extract its exact artifact; bundling fails if {§provider-runtime-neutral-accounting} gains a runtime dependency.
+    await mkdir(installedPackage, { recursive: true });
     await run(
-        "npm",
-        ["install", "--no-package-lock", "--no-audit", "--no-fund", "--silent", tarballPath],
-        { cwd: consumerDir, env: cleanEnv, maxBuffer: 64 * 1024 * 1024 },
+        "tar",
+        ["-xzf", tarballPath, "--strip-components=1", "-C", installedPackage],
+        { maxBuffer: 64 * 1024 * 1024 },
     );
     await exerciseAccountingWorker({ absWorkingDir: consumerDir });
     process.stdout.write("[smoke] packed accounting subpath bundled and initialized in a browser Worker\n");
