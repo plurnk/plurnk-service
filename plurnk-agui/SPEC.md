@@ -66,7 +66,7 @@ same log identity and verbatim goals:
 
 - **An op row IS a tool call** — its `coordinate` is the `toolCallId`, its tx the args (one
   delta: a dispatched plurnk op is atomic), its rx the result. The log-shaped richness the
-  core vocabulary can't hold (fold state, tags, tokens) stays on the row inside
+  core vocabulary can't hold (fold state, tags, curation weight) stays on the row inside
   `plurnk.ambient`/`TOOL_CALL_RESULT` payloads.
 - §agui-encrypted-reasoning **Encrypted reasoning projects only onto an entity
   AG-UI actually created.** Core supplies the exact normalized provider-detail
@@ -98,9 +98,12 @@ state paths that could be mistaken for standard AG-UI fields.
 
 | AG-UI state location                        | Daemon source                            | Meaning |
 |:--------------------------------------------|:-----------------------------------------|:--------|
-| `snapshot.plurnk.providers[*].promptBudget` | `providers.list.aliases[*]`              | Each provider alias's effective model-facing prompt ceiling, or `null` when unknown. |
-| `STATE_DELTA /budget/contextTokens`         | `loop/terminated.usage.contextTokens`    | Latest settled physical request's input occupancy on the latest turn, or `null` when absent or unknown. |
-| `STATE_DELTA /budget/promptBudget`          | `loop/terminated.usage.promptBudget`     | Latest turn's effective model-facing prompt ceiling, or `null` when unknown. |
+| `snapshot.plurnk.providers[*].inputCapacity` | `providers.list.aliases[*]`                | Each provider alias's derived physical input capacity, or `null` when unknown. |
+| `snapshot.budget`                            | Run initialization                         | Creates all four gauge fields as `null`, so subsequent RFC 6902 `replace` operations always address existing values. |
+| `STATE_DELTA /budget/curationWeight`         | `loop/terminated.usage.curationWeight`    | Latest assembled packet's model-independent curation weight, or `null` when no packet exists. |
+| `STATE_DELTA /budget/curationBudget`         | `loop/terminated.usage.curationBudget`    | Latest turn's provider-derived curation calibration, or `null` when capacity is unknown. |
+| `STATE_DELTA /budget/contextTokens`          | `loop/terminated.usage.contextTokens`     | Latest emission call's last physical request input occupancy, or `null` when that call issued none or reported none. |
+| `STATE_DELTA /budget/contextCapacity`        | `loop/terminated.usage.contextCapacity`   | That same latest emission call's request-shaped physical input capacity, or `null` when unknown. |
 
 §agui-cost-evidence AG-UI defines lifecycle, messages, tools, state transport,
 `RAW`, and `CUSTOM`, but no standard token-usage or monetary-accounting event.
@@ -113,12 +116,12 @@ ignore the extension; PLURNK clients consume the same contracts-owned shape as
 every other daemon surface.
 
 - §agui-row-channel **The row channel** — every log row ALSO rides `CUSTOM plurnk.row`
-  carrying the full wire entry (fold state, durable tags, tokens, coordinate) alongside its
+  carrying the full wire entry (fold state, durable tags, curation weight, coordinate) alongside its
   core projection. Rich clients (TUI/nvim) render plurnk-native fidelity from `plurnk.row`;
   generic clients never see the difference. This is the metadata channel the exclusive-portal
   migration stands on.
 - **The gauge starts true** — `RUN_STARTED` is followed by a `STATE_SNAPSHOT` carrying the
-  daemon's `providers.list` truth (the effective prompt budget, the active model), then
+  daemon's `providers.list` truth (the effective input capacity, the active model), then
   `STATE_DELTA`s. A dropped SSE stream cancels the loop (`loop.cancel`) — the frontend hanging
   up IS the abort signal; no worker is orphaned unwatched.
 

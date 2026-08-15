@@ -79,7 +79,7 @@ const withWorkspaceRoot = async (fn: (root: string, ctx: PlurnkSchemeContext, db
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
             db, workspaceId, workerId, loopId, turnId,
-            writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES, tokenize: (t: string) => Math.ceil(t.length / 4),
+            writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4),
         };
         await fn(root, ctx, db);
     } finally {
@@ -99,7 +99,7 @@ const withHeadlessWorkspace = async (fn: (ctx: PlurnkSchemeContext, db: Db) => P
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
             db, workspaceId, workerId, loopId, turnId,
-            writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES, tokenize: (t: string) => Math.ceil(t.length / 4),
+            writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4),
         };
         await fn(ctx, db);
     } finally { await db.close(); }

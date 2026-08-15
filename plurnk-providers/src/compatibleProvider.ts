@@ -3,7 +3,7 @@ import {
     contextWindowFromEnv,
     effectiveContextWindow,
     dataCaptureFromEnv,
-    envelopeFromEnv,
+    generationEnvelopeFromEnv,
     parseOptionalFloat,
     parseOptionalInt,
     parseRequiredFloat,
@@ -176,21 +176,26 @@ export const compatibleProviderFromEnv = async (
 
     if (!llamaServer) {
         emitWarningOnce(
-            `${provider} provider: request-level prompt counting is a chars/2 estimate; hard context-envelope admission fails closed without exact or bounded evidence`,
+            `${provider} provider: request-level prompt counting is a chars/2 estimate; capacity is deferred to the provider`,
             "PLURNK_PROMPT_COUNT_ESTIMATE",
         );
     }
-    const { reasoningReserve, completionReserve } = envelopeFromEnv(env, provider);
+    const envelope = generationEnvelopeFromEnv(env, provider, contextWindow, null);
+    const reasoning = reasoningFromEnv(env, provider, envelope.reasoningBudget);
     return new AiSdkProvider({
         model,
         url,
         headers,
         contextWindow,
+        maxInputTokens: null,
+        maxOutputTokens: null,
+        outputBudget: envelope.outputBudget,
+        reasoningBudget: reasoning.budget,
         fetchTimeoutMs: timeout,
         operationTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "PLURNK_PROVIDERS_OPERATION_TIMEOUT", provider),
         firstContentTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT", provider),
         streamIdleTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT, "PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT", provider),
-        reasoning: reasoningFromEnv(env, provider),
+        reasoning,
         reasoningResponseStyle: reasoningResponseStyleFromEnv(env, provider),
         reasoningStyle,
         temperature: parseRequiredFloat(env.PLURNK_PROVIDERS_TEMPERATURE, "PLURNK_PROVIDERS_TEMPERATURE", provider, 0),
@@ -200,8 +205,6 @@ export const compatibleProviderFromEnv = async (
         dryBase: parseOptionalFloat(env.PLURNK_PROVIDERS_DRY_BASE, "PLURNK_PROVIDERS_DRY_BASE", provider, 0) ?? undefined,
         dryAllowedLength: parseOptionalInt(env.PLURNK_PROVIDERS_DRY_ALLOWED_LENGTH, "PLURNK_PROVIDERS_DRY_ALLOWED_LENGTH", provider) ?? undefined,
         repeatLastN: parseOptionalInt(env.PLURNK_PROVIDERS_REPEAT_LAST_N, "PLURNK_PROVIDERS_REPEAT_LAST_N", provider) ?? undefined,
-        reasoningReserve,
-        completionReserve,
         tuningFloors: provider !== "plurnk",
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", provider),
         errorDetailLimit: parseRequiredInt(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT", provider),
@@ -222,6 +225,6 @@ export const compatibleProviderFromEnv = async (
         tokenizeUrl,
         promptTokensUrl,
         servedModel: probe.servedModel ?? undefined,
-        requiresMaxTokens: llamaServer || undefined,
+        requiresOutputBudget: llamaServer || undefined,
     });
 };

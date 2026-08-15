@@ -87,7 +87,7 @@ test("#224: the bounded probe carries the complete first-party turn identity", (
 
     assert.equal(request.workerId, "providers-ping-plurnk");
     assert.equal(request.primaryWorkerId, request.workerId);
-    assert.equal(request.maxTokens, 16);
+    assert.equal(request.maxOutputTokens, 16);
 });
 
 test("#224: retained diagnostics redact credentials, account identity, and URL authority", () => {

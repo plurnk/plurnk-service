@@ -103,8 +103,8 @@ export default class EntryCrud {
     }
 
     static async writeEntry(pathname: string, entry: EntryData, ctx: PlurnkSchemeContext, scheme: string, ownerId?: number): Promise<WriteEntryResult> {
-        const { db, workspaceId, tokenize } = ctx;
-        if (tokenize === undefined) throw new Error("writeEntry: ctx.tokenize is required for token accounting");
+        const { db, workspaceId, weigh } = ctx;
+        if (weigh === undefined) throw new Error("writeEntry: ctx.weigh is required for curation-weight accounting");
         const owner_id = ownerId ?? await Owner.commonsId(db, workspaceId);
         const existing = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id, scheme, pathname });
 
@@ -145,7 +145,7 @@ export default class EntryCrud {
                 : JSON.stringify(Results.assertChannelProducerResult(channelData.producerResult));
             await db.crud_write_channel.run({
                 entry_id: entryId, name: channelName, content: channelData.content, mimetype: channelData.mimetype,
-                tokens: tokenize(channelData.content), // the model-agnostic ruler stamp ({§tokenomics-agnostic-ruler}, {§tokenomics-tokens-stored-at-write})
+                weight: weigh(channelData.content), // stable curation weight ({§tokenomics-agnostic-ruler}, {§tokenomics-weight-stored-at-write})
                 content_hash: contentHash(channelData.content),
                 state: channelData.state ?? "static",
                 producer_result: producerResult,

@@ -39,13 +39,14 @@ import BranchReceipt from "./BranchReceipt.ts";
 import TerminalResult from "./TerminalResult.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
 import JournalTurn from "./JournalTurn.ts";
+import LogBody from "./LogBody.ts";
 
 // TurnRunner owns one durable model turn; Engine retains the surrounding loop
 // lifecycle and public facade.
 import NoticeChannel from "./NoticeChannel.ts";
 import ProblemLog from "./ProblemLog.ts";
 import StrikeRail, { type StrikeOutcome } from "./StrikeRail.ts";
-import PacketBuilder, { type ChatMessage, type ContextEnvelopeAdmission, type TokenBudgetOverflow } from "./PacketBuilder.ts";
+import PacketBuilder, { type ChatMessage, type CurationOverflow } from "./PacketBuilder.ts";
 import StoredPacket, { type PacketAssistant } from "./StoredPacket.ts";
 import Dispatcher from "./Dispatcher.ts";
 import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
@@ -202,12 +203,12 @@ type EngineTurnResult = {
     status: number;
     outcomes: StrikeOutcome[];
     fingerprint: string;
-    budgetHardStop: boolean;
+    capacityHardStop: boolean;
     steerStruck: boolean;
     emissionAttempts: number;
     emissionExhausted: boolean;
     rejectedModelEntryId?: number;
-    budgetFailure?: SchemeResult;
+    capacityFailure?: SchemeResult;
 };
 
 type BareBatchResult = {
@@ -216,48 +217,18 @@ type BareBatchResult = {
     readonly result: DispatchResult;
 };
 
-type BudgetPressure = {
-    readonly usage: number;
-    readonly ceiling: number;
-    readonly deficit: number;
-};
-
 const TOKEN_BUDGET_OVERFLOW_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling. Newest log items were automatically FOLDed to fit within token budget. Curate the log and/or perform more conservatively scoped or chunked retrieval operations to recover.";
 
-const tokenBudgetOverflowFailure = (pressure: TokenBudgetOverflow): SchemeResult => Results.failure(
+const curationOverflowFailure = (pressure: CurationOverflow): SchemeResult => Results.failure(
     "engine:context",
     "token-budget-overflow",
     413,
     TOKEN_BUDGET_OVERFLOW_DETAIL,
     {},
-    { ...pressure },
-);
-
-const budgetPressure = (usage: number, ceiling: number): BudgetPressure => {
-    if (usage <= ceiling) throw new Error("context-envelope admission requires positive ruler debt");
-    return { usage, ceiling, deficit: usage - ceiling };
-};
-
-const contextEnvelopeFailure = (
-    pressure: BudgetPressure,
-    admission: Extract<ContextEnvelopeAdmission, { admitted: false }>,
-): SchemeResult => Results.failure(
-    "engine:context",
-    "context-envelope-admission-failed",
-    413,
-    `The configured context envelope cannot admit this request: ${admission.detail}.`,
-    {},
     {
-        ...pressure,
-        stage: "context-envelope-admission",
-        contextAdmission: admission.reason,
-        contextCapacity: admission.capacity,
-        ...(admission.measurement === undefined ? {} : {
-            promptTokens: admission.measurement.tokens,
-            tokenKind: admission.measurement.kind,
-            tokenSource: admission.measurement.source,
-        }),
-        retryable: false,
+        usage: pressure.weight,
+        ceiling: pressure.budget,
+        deficit: pressure.excess,
     },
 );
 
@@ -290,7 +261,7 @@ export default class TurnRunner {
     readonly #db: Db;
     readonly #schemes: SchemeRegistry;
     readonly #mimetypes: Mimetypes;
-    readonly #tokenize: (text: string) => number;
+    readonly #weighContent: (text: string) => number;
     readonly #notices: NoticeChannel;
     readonly #problems: ProblemLog;
     readonly #strikes: StrikeRail;
@@ -313,7 +284,7 @@ export default class TurnRunner {
         db,
         schemes,
         mimetypes,
-        tokenize,
+        weigh,
         notices,
         problems,
         strikes,
@@ -331,7 +302,7 @@ export default class TurnRunner {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
-        tokenize: (text: string) => number;
+        weigh: (text: string) => number;
         notices: NoticeChannel;
         problems: ProblemLog;
         strikes: StrikeRail;
@@ -352,7 +323,7 @@ export default class TurnRunner {
         this.#db = db;
         this.#schemes = schemes;
         this.#mimetypes = mimetypes;
-        this.#tokenize = tokenize;
+        this.#weighContent = weigh;
         this.#notices = notices;
         this.#problems = problems;
         this.#strikes = strikes;
@@ -519,7 +490,6 @@ export default class TurnRunner {
             prepared.push({ statement, modelCall, attributions, providerWorkerId });
         }
 
-        const maxTokens = this.#packets.maxTokensFor(provider) ?? undefined;
         const settlements = await Promise.allSettled(prepared.map(async ({ statement, modelCall, attributions, providerWorkerId }) => {
             try {
                 const response = await observed(
@@ -532,7 +502,6 @@ export default class TurnRunner {
                                 workerId: providerWorkerId,
                                 primaryWorkerId,
                                 signal,
-                                maxTokens,
                                 attributions: attributions.length > 0 ? attributions : undefined,
                                 workspaceId: String(workspaceId),
                                 loop: loopSequence,
@@ -670,7 +639,7 @@ export default class TurnRunner {
             signal: this.#loopSignal(loopId),
             streamEventNotify: this.#streamEventNotify,
             wakeWorkerNotify: this.#wakeWorkerNotify,
-            tokenize: this.#tokenize,
+            weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
             pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
@@ -917,10 +886,22 @@ export default class TurnRunner {
         // Build the model request packet ({§packet-stored-shape}). The log build
         // queries log_entries scoped to the worker — the prompt entry just
         // written (if turn 1) is part of that query result.
-        let requestPacket = await this.#packets.buildRequestPacket({
-            initialMessages: messages, requirements, workspaceId, workerId, loopId,
-            currentTurnSeq: seq, provider, gitStatus, notices, transientOpenLogEntryId,
-        });
+        let promptProjection: "automatic" | "withheld" = "automatic";
+        const buildPacket = (): Promise<Awaited<ReturnType<PacketBuilder["buildRequestPacket"]>>> =>
+            this.#packets.buildRequestPacket({
+                initialMessages: messages,
+                requirements,
+                workspaceId,
+                workerId,
+                loopId,
+                currentTurnSeq: seq,
+                provider,
+                gitStatus,
+                notices,
+                transientOpenLogEntryId,
+                promptProjection,
+            });
+        let requestPacket = await buildPacket();
         // SPEC {§grinder} — budget grinder, pre-LLM: reclaim window on actual overflow.
         const enforced = await this.#packets.enforceBudget({
             packet: requestPacket, provider, loopId, turnId,
@@ -932,72 +913,16 @@ export default class TurnRunner {
                     sequence: nextActionIndex++,
                     origin: "plurnk",
                     source: "engine",
-                    result: tokenBudgetOverflowFailure(pressure),
+                    result: curationOverflowFailure(pressure),
                 });
             },
-            rebuild: () => this.#packets.buildRequestPacket({
-                initialMessages: messages, requirements, workspaceId, workerId, loopId,
-                currentTurnSeq: seq, provider, gitStatus, notices, transientOpenLogEntryId,
-            }),
+            rebuild: buildPacket,
         });
         requestPacket = enforced.packet;
-        if (!enforced.fit) {
-            // {§tokenomics-context-envelope-admission}: the overflow Problem is
-            // already durable. Remaining ruler debt may still be admitted; only
-            // the effective total context envelope can terminally reject the turn.
-            const contextAdmission = await this.#packets.contextEnvelopeAdmission(
-                requestPacket,
-                provider,
-                this.#loopSignal(loopId),
-            );
-            if (!contextAdmission.admitted) {
-                const ceiling = this.#packets.ceilingFor(provider);
-                if (ceiling === null) {
-                    throw new Error("an unbounded prompt budget cannot enter context-envelope admission");
-                }
-                const failure = contextEnvelopeFailure(
-                    budgetPressure(requestPacket.tokens, ceiling),
-                    contextAdmission,
-                );
-                await this.#problems.record({
-                    workerId,
-                    loopId,
-                    turnId,
-                    sequence: nextActionIndex++,
-                    origin: "plurnk",
-                    source: "engine",
-                    result: failure,
-                });
-                // Preserve the exact terminal evidence in the stored request. It is
-                // never sent because admission has already failed.
-                requestPacket = await this.#packets.buildRequestPacket({
-                    initialMessages: messages, requirements, workspaceId, workerId, loopId,
-                    currentTurnSeq: seq, provider, gitStatus, notices, transientOpenLogEntryId,
-                });
-                await this.#db.engine_close_turn.run({
-                    id: turnId, status: 413, packet: StoredPacket.stringify(requestPacket),
-                    // The attempted turn retains its effective allowance even
-                    // when no provider exchange completed. {§tokenomics-client-gauge}
-                    usage_prompt_budget: this.#packets.promptBudgetFor(provider),
-                    finish_reason: "budget_hard_stop", model: provider.model, meta: "{}",
-                });
-                return {
-                    turnId,
-                    status: 413,
-                    outcomes: [],
-                    fingerprint: "",
-                    budgetHardStop: true,
-                    steerStruck: false,
-                    emissionAttempts: 0,
-                    emissionExhausted: false,
-                    budgetFailure: failure,
-                };
-            }
-        }
-        const modelMessages = PacketWire.packetToWireMessages(requestPacket) as ChatMessage[];
-        // Packet pressure and provider generation are independent. The grinder governs
-        // only the request packet; maxTokens comes only from the provider envelope and
-        // never shrinks as the virtual prompt budget fills.
+        let boundaryRolledBack = enforced.boundaryRolledBack;
+        let modelMessages = PacketWire.packetToWireMessages(requestPacket) as ChatMessage[];
+        // Curation pressure and provider generation are independent. The
+        // provider owns its configured total output envelope.
         let response: ProviderAttempt | undefined;
         let splitResponse: SplitProviderResponse | undefined;
         let railGrammar: string | undefined;
@@ -1005,7 +930,8 @@ export default class TurnRunner {
         let railEvidence: GrammarEvidence | undefined;
         let emissionAttempts = 0;
         let providerCallInFlight = false;
-        let providerAttemptSequence = 0;
+        let modelCallSequence = 0;
+        let currentEmissionAttempt = 0;
         let providerAttemptId: number | null = null;
         let providerModelCall: ModelCall | null = null;
         let providerAttemptAttributions: string[] = [];
@@ -1018,7 +944,7 @@ export default class TurnRunner {
         const classifyProviderAttempt = async (
             id: number,
             attemptSplit: SplitProviderResponse,
-            sequence: number,
+            emissionAttempt: number,
             accepted: boolean,
         ): Promise<void> => {
             const result = await this.#db.engine_classify_turn_attempt_response.run({
@@ -1029,7 +955,33 @@ export default class TurnRunner {
             if (result.changes !== 1) {
                 throw new Error(`emission attempt ${id} was not awaiting classification`);
             }
-            emissionAttempts = sequence;
+            emissionAttempts = emissionAttempt;
+        };
+        const recoverCapacityPacket = async (): Promise<boolean> => {
+            let baselineMessages = modelMessages;
+            if (promptProjection === "automatic") {
+                promptProjection = "withheld";
+                const candidate = await buildPacket();
+                const candidateMessages = PacketWire.packetToWireMessages(candidate) as ChatMessage[];
+                if (JSON.stringify(candidateMessages) !== JSON.stringify(baselineMessages)) {
+                    requestPacket = candidate;
+                    modelMessages = candidateMessages;
+                    return true;
+                }
+                baselineMessages = candidateMessages;
+            }
+            if (!boundaryRolledBack) {
+                await this.#packets.rollbackNewestBoundary(loopId, turnId);
+                boundaryRolledBack = true;
+                const candidate = await buildPacket();
+                const candidateMessages = PacketWire.packetToWireMessages(candidate) as ChatMessage[];
+                if (JSON.stringify(candidateMessages) !== JSON.stringify(baselineMessages)) {
+                    requestPacket = candidate;
+                    modelMessages = candidateMessages;
+                    return true;
+                }
+            }
+            return false;
         };
         try {
             // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
@@ -1038,27 +990,26 @@ export default class TurnRunner {
             railGrammar = railConstraint?.transport;
             railResponseGrammar = railConstraint?.response;
             const attemptLimit = readEmissionAttempts();
-            const maxTokens = this.#packets.maxTokensFor(provider) ?? undefined;
             const strikeStreak = this.#strikes.streak(loopId);
-            for (let attempt = 1; attempt <= attemptLimit; attempt++) {
-                // Every attempt carries the exact same model packet, coordinates,
-                // limits, and engine-strike state. Plugin-authored tags are pulled
-                // for the attempt and do not alter the model messages. No failed
-                // emission is appended and no new engine turn opens between calls.
-                providerAttemptSequence = attempt;
+            for (let attempt = 1; attempt <= attemptLimit;) {
+                // Capacity recovery may rebuild and resend the request without
+                // consuming a grammar-emission attempt. Every logical provider
+                // call still receives its own durable sequence and accounting.
+                currentEmissionAttempt = attempt;
+                modelCallSequence++;
                 const attributionContext: PluginAttributionContext = Object.freeze({
                     workspaceId: String(workspaceId),
                     workerId: providerWorkerId,
                     primaryWorkerId,
                     loop: loopSeq,
                     turn: seq,
-                    attempt,
+                    attempt: modelCallSequence,
                 });
                 providerAttemptAttributions = await this.#attemptAttributions(provider, attributionContext);
                 requestPacket = { ...requestPacket, attributions: providerAttemptAttributions };
                 providerModelCall = await ModelCall.open(this.#db, {
                     turnId,
-                    sequence: attempt,
+                    sequence: modelCallSequence,
                     kind: "emission",
                     attributions: providerAttemptAttributions,
                     model: provider.model,
@@ -1067,51 +1018,77 @@ export default class TurnRunner {
                     model_call_id: providerModelCall.id,
                 });
                 if (attemptRow === undefined) {
-                    throw new Error(`Engine.runTurn: provider attempt ${attempt} did not open`);
+                    throw new Error(`Engine.runTurn: provider call ${modelCallSequence} did not open`);
                 }
                 providerAttemptId = attemptRow.id;
                 providerCallInFlight = true;
                 const currentModelCall = providerModelCall;
-                const completedResponse = await observed( // {§observability-boundary}
-                    "provider.generate",
-                    { model: provider.model, attempt },
-                    async (span) => {
-                        try {
-                            const generated = await provider.generate({
-                                messages: modelMessages,
-                                workerId: providerWorkerId,
-                                primaryWorkerId,
-                                signal: providerSignal,
-                                grammar: railGrammar,
-                                maxTokens,
-                                strikes: strikeStreak,
-                                attributions: providerAttemptAttributions.length > 0
-                                    ? providerAttemptAttributions
-                                    : undefined,
-                                client: client ?? undefined,
-                                workspaceId: String(workspaceId),
-                                loop: loopSeq,
-                                turn: seq,
-                                observeRequest: currentModelCall.observeRequest,
-                                callKind: "emission",
-                            }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
-                            currentModelCall.assertAccounting(generated.accounting);
-                            providerCallInFlight = false;
-                            recordCounter(PROVIDER_CALLS, {
-                                model: provider.model,
-                                attempt,
-                                status: "resolved",
-                            });
-                            span.setAttribute("status", "resolved");
-                            return generated;
-                        } catch (error) {
-                            if (error instanceof ProviderError) {
-                                currentModelCall.assertAccounting(error.accounting);
+                let completedResponse: ProviderResponse;
+                try {
+                    completedResponse = await observed( // {§observability-boundary}
+                        "provider.generate",
+                        { model: provider.model, attempt: modelCallSequence },
+                        async (span) => {
+                            try {
+                                const generated = await provider.generate({
+                                    messages: modelMessages,
+                                    workerId: providerWorkerId,
+                                    primaryWorkerId,
+                                    signal: providerSignal,
+                                    grammar: railGrammar,
+                                    strikes: strikeStreak,
+                                    attributions: providerAttemptAttributions.length > 0
+                                        ? providerAttemptAttributions
+                                        : undefined,
+                                    client: client ?? undefined,
+                                    workspaceId: String(workspaceId),
+                                    loop: loopSeq,
+                                    turn: seq,
+                                    observeRequest: currentModelCall.observeRequest,
+                                    callKind: "emission",
+                                }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution} {§client-metadata}
+                                currentModelCall.assertAccounting(generated.accounting);
+                                providerCallInFlight = false;
+                                recordCounter(PROVIDER_CALLS, {
+                                    model: provider.model,
+                                    attempt: modelCallSequence,
+                                    status: "resolved",
+                                });
+                                span.setAttribute("status", "resolved");
+                                return generated;
+                            } catch (error) {
+                                if (error instanceof ProviderError) {
+                                    currentModelCall.assertAccounting(error.accounting);
+                                }
+                                throw error;
                             }
-                            throw error;
-                        }
-                    },
-                );
+                        },
+                    );
+                } catch (error) {
+                    if (!(error instanceof ProviderError)
+                        || error.kind !== "capacity_exceeded"
+                        || providerSignal?.aborted === true
+                        || !await recoverCapacityPacket()) {
+                        throw error;
+                    }
+                    const failure = TurnRunner.#providerFailure(error, providerSignal);
+                    await currentModelCall.fail(failure, error.capacity ?? null);
+                    providerCallInFlight = false;
+                    await this.#problems.record({
+                        workerId,
+                        loopId,
+                        turnId,
+                        sequence: nextActionIndex++,
+                        origin: "plurnk",
+                        source: "provider",
+                        result: failure,
+                    });
+                    // Include the durable recovery signal in the replacement
+                    // request while preserving the selected recovery posture.
+                    requestPacket = await buildPacket();
+                    modelMessages = PacketWire.packetToWireMessages(requestPacket) as ChatMessage[];
+                    continue;
+                }
                 response = completedResponse;
                 await currentModelCall.observeResponse(completedResponse);
                 railEvidence = railGrammar === undefined
@@ -1125,6 +1102,7 @@ export default class TurnRunner {
                     splitResponse.emissionValid,
                 );
                 if (splitResponse.emissionValid) break;
+                attempt++;
             }
             if (!signal?.aborted) this.#notices.push(workspaceId, loopId, { source: "engine:turn", kind: "turn_generated", level: "info", message: "parsing model response" });
         } catch (err) {
@@ -1137,6 +1115,7 @@ export default class TurnRunner {
                 throw new Error("provider call failed without durable model-call and attempt identities", { cause: err });
             }
             const failure = TurnRunner.#providerFailure(err, providerSignal);
+            const capacityFailure = err instanceof ProviderError && err.kind === "capacity_exceeded";
             // {§provider-interrupted-attempt} — a provider-declared interruption
             // carries response evidence without becoming a completed exchange.
             // Persist it as an unaccepted attempt before settling the failure.
@@ -1147,12 +1126,15 @@ export default class TurnRunner {
                 await classifyProviderAttempt(
                     providerAttemptId,
                     splitResponse,
-                    providerAttemptSequence,
+                    currentEmissionAttempt,
                     false,
                 );
             } else {
-                await providerModelCall.fail(failure);
-                emissionAttempts = providerAttemptSequence;
+                await providerModelCall.fail(
+                    failure,
+                    err instanceof ProviderError ? err.capacity ?? null : null,
+                );
+                if (!capacityFailure) emissionAttempts = currentEmissionAttempt;
             }
             // {§turn-never-blank} — a ProviderError means no completed exchange exists.
             // Persist its exact RFC 9457 result before propagating it. Grammar evidence
@@ -1166,7 +1148,7 @@ export default class TurnRunner {
                     id: turnId,
                     status: providerSignal.reason === LOOP_TIMEOUT_REASON ? 504 : 499,
                     packet: StoredPacket.stringify(requestPacket),
-                    usage_prompt_budget: this.#packets.promptBudgetFor(provider),
+                    usage_curation_budget: this.#packets.curationBudgetFor(provider),
                     finish_reason: splitResponse?.callMetadata.finishReason ?? null,
                     model: splitResponse?.callMetadata.model ?? provider.model,
                     meta: JSON.stringify(response?.meta ?? {}),
@@ -1189,11 +1171,24 @@ export default class TurnRunner {
                 id: turnId,
                 status: recorded.result.status,
                 packet: StoredPacket.stringify(requestPacket),
-                usage_prompt_budget: this.#packets.promptBudgetFor(provider),
+                usage_curation_budget: this.#packets.curationBudgetFor(provider),
                 finish_reason: splitResponse?.callMetadata.finishReason ?? null,
                 model: splitResponse?.callMetadata.model ?? provider.model,
                 meta: JSON.stringify(response?.meta ?? {}),
             });
+            if (capacityFailure) {
+                return {
+                    turnId,
+                    status: recorded.result.status,
+                    outcomes: [],
+                    fingerprint: "",
+                    capacityHardStop: true,
+                    capacityFailure: recorded.result,
+                    steerStruck: false,
+                    emissionAttempts,
+                    emissionExhausted: false,
+                };
+            }
             throw new OperationFailureError(recorded.result, { cause: err });
         }
 
@@ -1227,7 +1222,7 @@ export default class TurnRunner {
                 id: turnId,
                 status: allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500,
                 packet: StoredPacket.stringify(requestPacket),
-                usage_prompt_budget: this.#packets.promptBudgetFor(provider),
+                usage_curation_budget: this.#packets.curationBudgetFor(provider),
                 finish_reason: splitResponse.callMetadata.finishReason,
                 model: splitResponse.callMetadata.model,
                 meta: JSON.stringify(response.meta ?? {}),
@@ -1237,7 +1232,7 @@ export default class TurnRunner {
                 status: allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500,
                 outcomes: [],
                 fingerprint: "",
-                budgetHardStop: false,
+                capacityHardStop: false,
                 steerStruck: false,
                 emissionAttempts,
                 emissionExhausted: true,
@@ -1353,7 +1348,7 @@ export default class TurnRunner {
             id: turnId,
             status: turnStatus,
             packet: StoredPacket.stringify(packet),
-            usage_prompt_budget: this.#packets.promptBudgetFor(provider), // {§tokenomics-client-gauge}
+            usage_curation_budget: this.#packets.curationBudgetFor(provider), // {§tokenomics-client-gauge}
             finish_reason: callMetadata.finishReason,
             model: callMetadata.model,
             // Opaque provider metadata plus engine-authored rail keys.
@@ -1473,7 +1468,7 @@ export default class TurnRunner {
                                 statements: bareStatements,
                                 provider: childProvider,
                                 turnId,
-                                modelCallSequenceStart: providerAttemptSequence + 1,
+                                modelCallSequenceStart: modelCallSequence + 1,
                                 workspaceId,
                                 workerId,
                                 primaryWorkerId,
@@ -1616,7 +1611,7 @@ export default class TurnRunner {
             status: turnStatus,
             outcomes,
             fingerprint: StrikeRail.fingerprintTurn(packetAssistant.ops),
-            budgetHardStop: false,
+            capacityHardStop: false,
             steerStruck,
             emissionAttempts,
             emissionExhausted: false,
@@ -1803,6 +1798,14 @@ export default class TurnRunner {
                 rx: r.rx,
                 mimetype_rx: "application/json",
                 status: r.status_rx,
+                weight: LogBody.weight({
+                    op: r.op,
+                    attrs,
+                    tx: "",
+                    rx: r.rx,
+                    mimetypeTx: "text/plain",
+                    mimetypeRx: "application/json",
+                }, this.#weighContent),
                 expanded: terminal !== null && terminal.status >= 200 && terminal.status < 300 ? 1 : 0,
                 attrs,
             });
@@ -1903,13 +1906,22 @@ export default class TurnRunner {
                     const content = baseMimetype(ch.mimetype).startsWith("text/")
                         ? `[ stream closed (${ch.close_status ?? 200}) - ${pointer} ]`
                         : "";
+                    const rx = JSON.stringify(await terminalResult({
+                        content,
+                        mimetype: ch.mimetype,
+                    }, sequence));
                     await this.#db.engine_insert_stream_delta.run({
                         worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                         scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
-                        rx: JSON.stringify(await terminalResult({
-                            content,
-                            mimetype: ch.mimetype,
-                        }, sequence)),
+                        rx,
+                        weight: LogBody.weight({
+                            op: "READ",
+                            attrs: {},
+                            tx: "",
+                            rx,
+                            mimetypeTx: "text/plain",
+                            mimetypeRx: "application/json",
+                        }, this.#weighContent),
                         status: terminal?.status ?? 200,
                         attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: true }),
                         expanded: 1,
@@ -1928,10 +1940,19 @@ export default class TurnRunner {
             const result = terminalDelivery
                 ? await terminalResult(fields, sequence)
                 : { status: 200, ...fields };
+            const rx = JSON.stringify(result);
             await this.#db.engine_insert_stream_delta.run({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 scheme: ch.runtime, pathname: ch.coord, fragment: visibleFragment,
-                rx: JSON.stringify(result),
+                rx,
+                weight: LogBody.weight({
+                    op: "READ",
+                    attrs: {},
+                    tx: "",
+                    rx,
+                    mimetypeTx: "text/plain",
+                    mimetypeRx: "application/json",
+                }, this.#weighContent),
                 status: result.status,
                 attrs: JSON.stringify({ streamEnd: publishEnd, terminal: terminalDelivery }),
                 expanded: terminalDelivery ? 1 : 0,  // {§exec-stream} — terminal observation auto-OPENs; ongoing folds
@@ -1959,6 +1980,10 @@ export default class TurnRunner {
         let sequence = 1;
         for (const d of divergences) {
             const span = editedSpan(d.before, d.after);
+            const rx = JSON.stringify({ status: 200, entryId: d.entryId, channel: d.channel, span });
+            const attrs = gitByPath.has(d.pathname)
+                ? JSON.stringify({ git: gitByPath.get(d.pathname) })
+                : "{}";
             await this.#db.engine_insert_log_entry.get({
                 worker_id: worker.id, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
                 origin: "plurnk", source: "file", model_call_id: null,
@@ -1968,11 +1993,18 @@ export default class TurnRunner {
                 scheme: null, username: null, password: null, hostname: null, port: null,
                 pathname: d.pathname, query: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain",
-                rx: JSON.stringify({ status: 200, entryId: d.entryId, channel: d.channel, span }), mimetype_rx: "application/json",
-                status_rx: 200, tokens: 0, state: "resolved", outcome: null,
-                attrs: gitByPath.has(d.pathname)
-                    ? JSON.stringify({ git: gitByPath.get(d.pathname) })
-                    : "{}",
+                rx, mimetype_rx: "application/json",
+                status_rx: 200,
+                weight: LogBody.weight({
+                    op: "EDIT",
+                    attrs,
+                    tx: "",
+                    rx,
+                    mimetypeTx: "text/plain",
+                    mimetypeRx: "application/json",
+                }, this.#weighContent),
+                state: "resolved", outcome: null,
+                attrs,
             });
         }
     }
@@ -1993,6 +2025,7 @@ export default class TurnRunner {
         target: UrlPath;
         content: string;
     }): Promise<number> {
+        const rx = JSON.stringify({ content, mimetype: "text/markdown" });
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId,
             loop_id: loopId,
@@ -2015,10 +2048,17 @@ export default class TurnRunner {
             lineMarker: null,
             tx: "",
             mimetype_tx: "text/plain",
-            rx: JSON.stringify({ content, mimetype: "text/markdown" }),
+            rx,
             mimetype_rx: "application/json",
             status_rx: 200,
-            tokens: this.#tokenize(content),
+            weight: LogBody.weight({
+                op: "prompt",
+                attrs: {},
+                tx: "",
+                rx,
+                mimetypeTx: "text/plain",
+                mimetypeRx: "application/json",
+            }, this.#weighContent),
             state: "resolved",
             outcome: null,
             attrs: "{}",

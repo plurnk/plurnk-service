@@ -16,6 +16,7 @@ import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Log from "../../src/schemes/Log.ts";
 import Owner from "../../src/core/Owner.ts";
+import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { SendStatement, EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
@@ -349,7 +350,7 @@ test("a proposed shared EDIT publishes only on successful resolution", async () 
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname, query: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain", rx: JSON.stringify({ status: 202 }),
-                mimetype_rx: "application/json", status_rx: 202, tokens: 0,
+                mimetype_rx: "application/json", status_rx: 202, weight: 0,
                 state: "proposed", outcome: null, attrs: "{}",
             });
             if (row === undefined) throw new Error("proposal fixture was not persisted");
@@ -360,10 +361,12 @@ test("a proposed shared EDIT publishes only on successful resolution", async () 
         await db.engine_resolve_log_entry.run({
             id: accepted, state: "resolved", outcome: "accepted", status_rx: 201,
             rx: JSON.stringify({ status: 201, span: "1:accepted" }),
+            weight: contentWeight("1:accepted"),
         });
         await db.engine_resolve_log_entry.run({
             id: rejected, state: "failed", outcome: "rejected", status_rx: 403,
             rx: JSON.stringify({ status: 403 }),
+            weight: 0,
         });
 
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
@@ -575,7 +578,7 @@ test("an environment delta preserves typed source attributes for model-facing pr
             pathname: "/page", query: null, fragment: null, lineMarker: null,
             tx: JSON.stringify({ op: "EDIT", body: "page" }), mimetype_tx: "application/json",
             rx: JSON.stringify({ status: 201, span: "1:page" }), mimetype_rx: "application/json",
-            status_rx: 201, tokens: 1, state: "resolved", outcome: null,
+            status_rx: 201, weight: 1, state: "resolved", outcome: null,
             attrs: JSON.stringify({ kind: "entry_materialized" }),
         });
         assert.ok(inserted !== undefined);
@@ -609,11 +612,10 @@ test("exactly two cross-worker channels — state via the env-delta, a message v
         // ENVIRONMENT DOOR — *state*: B's edit to a shared entry crosses to A as a FOLDED delta, not a message.
         await eng.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null }>({ worker_id: workerA });
-        assert.ok(
-            rows.some((r) => r.op === "EDIT" && r.origin === "plurnk" && r.pathname === "/shared.md" && r.source === "worker://sibling"),
-            "environment door: B's shared-entry edit crossed to A as a delta (state, ambient)",
-        );
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; weight: number }>({ worker_id: workerA });
+        const ambient = rows.find((r) => r.op === "EDIT" && r.origin === "plurnk" && r.pathname === "/shared.md" && r.source === "worker://sibling");
+        assert.ok(ambient, "environment door: B's shared-entry edit crossed to A as a delta (state, ambient)");
+        assert.ok(ambient.weight > 0, "the ambient copy retains the source event's canonical body weight");
 
         // VOICE DOOR — *message*: an inject delivers a directed message onto A's own loop's next turn.
         await db.test_set_loop_status.run({ id: loopA, status: 102, terminal_result: null }); // A is the active loop
@@ -652,12 +654,14 @@ test("an out-of-band disk change surfaces as a source=file delta narrated by the
 
         // Turn 2 — the plurnk worker logs the divergence as a source=file EDIT; A pulls it.
         const turn2 = await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; expanded: number; attrs: string }>({ worker_id: workerA });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; expanded: number; attrs: string; weight: number }>({ worker_id: workerA });
         const delta = rows.find((r) => r.origin === "plurnk" && r.op === "EDIT" && r.source === "file");
         assert.ok(delta, "the out-of-band disk change surfaced as a source=file delta");
         assert.equal(delta!.pathname, "notes.md", "the delta names the diverged file");
         assert.equal(delta!.expanded, 0, "the fs delta lands folded");
-        assert.match(JSON.parse(delta!.rx).span as string, /line3-external/, "the delta carries the changed span ({§env-delta-filesystem-narration})");
+        const span = JSON.parse(delta!.rx).span as string;
+        assert.match(span, /line3-external/, "the delta carries the changed span ({§env-delta-filesystem-narration})");
+        assert.equal(delta!.weight, contentWeight(span), "the fs delta stores the weight of its canonical changed span");
         assert.equal((JSON.parse(delta!.attrs) as { git?: string }).git, " M", "the event preserves Git's exact unstaged coordinate");
         const packet = await db.test_get_packet.get<{ packet: string }>({ id: turn2.turnId });
         const log = (JSON.parse(packet!.packet) as { sections: Array<{ name: string; content: string }> }).sections.find(({ name }) => name === "log")!.content;

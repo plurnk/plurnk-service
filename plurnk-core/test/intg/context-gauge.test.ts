@@ -13,13 +13,23 @@ const recordRequest = async (
     db: Awaited<ReturnType<typeof openMigrated>>,
     turnId: number,
     input: number,
-    options: { kind?: "emission" | "bare"; sequence?: number } = {},
+    options: { kind?: "emission" | "bare"; sequence?: number; capacity?: number } = {},
 ): Promise<void> => {
     const kind = options.kind ?? "emission";
     const modelCall = await db.test_context_insert_model_call.get<{ id: number }>({
         turn_id: turnId,
         sequence: options.sequence ?? 1,
         kind,
+        capacity: JSON.stringify({
+            decision: "admit",
+            contextWindow: (options.capacity ?? 1000) + 1,
+            maxInputTokens: null,
+            maxOutputTokens: null,
+            outputBudget: 1,
+            reasoningBudget: null,
+            inputCapacity: options.capacity ?? 1000,
+            prompt: { kind: "exact", tokens: input, source: "context-gauge-fixture" },
+        }),
     });
     if (kind === "emission") {
         await db.test_context_insert_attempt.run({ model_call_id: modelCall!.id });
@@ -37,12 +47,14 @@ test("loopUsage.contextTokens is the latest turn's prompt, not the summed total"
         const first = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 1,
-            prompt_budget: null,
+            curation_budget: null,
+            curation_weight: 10,
         });
         const second = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 2,
-            prompt_budget: null,
+            curation_budget: null,
+            curation_weight: 20,
         });
         await recordRequest(db, first!.id, 100);
         await recordRequest(db, second!.id, 250);
@@ -62,7 +74,8 @@ test("loopUsage.contextTokens ignores later BARE calls while accounting remains 
         const turn = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 1,
-            prompt_budget: 8192,
+            curation_budget: 8192,
+            curation_weight: 20,
         });
         await recordRequest(db, turn!.id, 250);
         await recordRequest(db, turn!.id, 1, { kind: "bare", sequence: 2 });
@@ -74,7 +87,7 @@ test("loopUsage.contextTokens ignores later BARE calls while accounting remains 
     } finally { await db.close(); }
 });
 
-test("loopUsage.promptBudget follows the latest turn across a model switch", async () => {
+test("loopUsage keeps latest-turn curation and physical pairs together across a model switch", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-size-${crypto.randomUUID()}`);
@@ -84,38 +97,43 @@ test("loopUsage.promptBudget follows the latest turn across a model switch", asy
         const first = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 1,
-            prompt_budget: 49152,
+            curation_budget: 49152,
+            curation_weight: 100,
         });
         const second = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 2,
-            prompt_budget: 200000,
+            curation_budget: 200000,
+            curation_weight: 300,
         });
-        await recordRequest(db, first!.id, 100);
-        await recordRequest(db, second!.id, 250);
+        await recordRequest(db, first!.id, 100, { capacity: 48_000 });
+        await recordRequest(db, second!.id, 250, { capacity: 180_000 });
 
         const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);
-        assert.equal(usage.promptBudget, 200000, "promptBudget is the LAST turn's effective ceiling — the switched-to model's policy, not the stale default");
-        assert.equal(usage.contextTokens, 250, "numerator + denominator come from the same (last) turn/model");
+        assert.equal(usage.curationWeight, 300);
+        assert.equal(usage.curationBudget, 200000);
+        assert.equal(usage.contextTokens, 250);
+        assert.equal(usage.contextCapacity, 180_000, "physical occupancy and capacity come from the same latest emission call");
     } finally { await db.close(); }
 });
 
-test("loopUsage.promptBudget is null when the provider reports no window", async () => {
+test("loopUsage.curationBudget is null when provider input capacity is unknown", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-null-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
-        // A windowless provider — usage_prompt set, usage_prompt_budget left NULL.
+        // A provider with unknown input capacity leaves the curation denominator NULL.
         const turn = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 1,
-            prompt_budget: null,
+            curation_budget: null,
+            curation_weight: 10,
         });
         await recordRequest(db, turn!.id, 100);
 
         const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);
-        assert.equal(usage.promptBudget, null, "no window → null (the client omits the gauge)");
+        assert.equal(usage.curationBudget, null);
     } finally { await db.close(); }
 });
 
@@ -128,24 +146,63 @@ test("loopUsage does not reuse an earlier turn's context when the latest provide
         const completed = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 1,
-            prompt_budget: 49152,
+            curation_budget: 49152,
+            curation_weight: 100,
         });
         await recordRequest(db, completed!.id, 100);
         await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 2,
-            prompt_budget: 200000,
+            curation_budget: 200000,
+            curation_weight: 200,
         });
 
         const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);
         assert.equal(usage.contextTokens, null, "an absent latest exchange remains unknown rather than fabricated zero");
-        assert.equal(usage.promptBudget, 200000, "the denominator still describes the latest attempted turn");
+        assert.equal(usage.curationWeight, 200);
+        assert.equal(usage.curationBudget, 200000, "curation still describes the latest assembled request");
+        assert.equal(usage.contextCapacity, null, "physical capacity does not fall back to an earlier turn");
     } finally { await db.close(); }
 });
 
-test("runTurn stores the effective prompt budget, not the raw context window", async () => {
-    // Mock-bootstrap partition: REASONING=256 COMPLETION=1024 SAFETY=64. A 8192-window model's stored
-    // denominator = 8192 - 1344 = 6848 — the room the packet actually lives under.
+test("loopUsage binds physical usage and capacity to the same latest emission call", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `ctx-preflight-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        const turn = await db.test_context_insert_turn.get<{ id: number }>({
+            loop_id: loopId,
+            sequence: 1,
+            curation_budget: 1000,
+            curation_weight: 100,
+        });
+        await recordRequest(db, turn!.id, 80, { sequence: 1, capacity: 900 });
+        const failedCapacity = JSON.stringify({
+            decision: "reject",
+            contextWindow: 801,
+            maxInputTokens: null,
+            maxOutputTokens: null,
+            outputBudget: 1,
+            reasoningBudget: null,
+            inputCapacity: 800,
+            prompt: { kind: "exact", tokens: 801, source: "context-gauge-fixture" },
+        });
+        const failed = await db.test_context_insert_failed_model_call.get<{ id: number }>({
+            turn_id: turn!.id,
+            sequence: 2,
+            capacity: failedCapacity,
+        });
+        await db.engine_open_turn_attempt.get({ model_call_id: failed!.id });
+
+        const usage = await new Engine({ db, schemes: new SchemeRegistry() }).loopUsage(loopId);
+        assert.equal(usage.contextTokens, null, "a preflight rejection issued no physical request and does not borrow the prior call's usage");
+        assert.equal(usage.contextCapacity, 800, "capacity comes from that same latest rejected call");
+        assert.equal(usage.accounting.usage?.inputTokens, 80, "cardinal accounting still retains the earlier physical request");
+    } finally { await db.close(); }
+});
+
+test("runTurn stores provider-derived curation and request-shaped physical capacity", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-budget-${crypto.randomUUID()}`);
@@ -155,12 +212,14 @@ test("runTurn stores the effective prompt budget, not the raw context window", a
         const provider = new Mock({ contextWindow: 8192, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200, null, "done")] } }] });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "S" }, { role: "user", content: "go" }] });
         const usage = await engine.loopUsage(loopId);
-        const expected = 8192 - Number(process.env.PLURNK_PROVIDERS_REASONING_RESERVE) - Number(process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE) - Number(process.env.PLURNK_SERVICE_SAFETY);
-        assert.equal(usage.promptBudget, expected, `the stored denominator is the partitioned budget (${expected}), never the raw 8192`);
+        const expected = 8192 - Number(process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET);
+        assert.equal(usage.curationBudget, expected);
+        assert.equal(usage.contextCapacity, expected);
+        assert.ok((usage.curationWeight ?? 0) > 0);
     } finally { await db.close(); }
 });
 
-test("providers.list advertises the effective prompt budget", async () => {
+test("providers.list advertises resolved physical input capacity", async () => {
     const { rpcCall, connect, withDaemon, makeMockResponse } = await import("./_rpc.ts");
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -168,10 +227,10 @@ test("providers.list advertises the effective prompt budget", async () => {
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "gauge-345" });
             const resp = await rpcCall(ws, 2, "providers.list");
-            const result = resp.result as { aliases: Array<{ active: boolean; promptBudget: number | null }> };
+            const result = resp.result as { aliases: Array<{ active: boolean; inputCapacity: number | null }> };
             const active = result.aliases.find((a) => a.active);
-            const expected = 8192 - Number(process.env.PLURNK_PROVIDERS_REASONING_RESERVE) - Number(process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE) - Number(process.env.PLURNK_SERVICE_SAFETY);
-            assert.equal(active?.promptBudget, expected, `the gauge denominator is the effective budget (${expected}), not the raw window (8192)`);
+            const expected = 8192 - Number(process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET);
+            assert.equal(active?.inputCapacity, expected);
         } finally { ws.close(); }
     });
 });

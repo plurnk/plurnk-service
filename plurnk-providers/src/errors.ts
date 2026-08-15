@@ -1,7 +1,7 @@
 import { Problems, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { APICallError, RetryError } from "ai";
 import { providerSource } from "./notices.ts";
-import type { ProviderAttempt, ProviderRequestAccounting } from "./types.ts";
+import type { ProviderAttempt, ProviderRequestAccounting, ProviderRequestCapacity } from "./types.ts";
 
 export type ProviderErrorKind =
     | "rate_limit"
@@ -12,6 +12,7 @@ export type ProviderErrorKind =
     | "unauthorized"
     | "quota_exceeded"
     | "grammar_invalid"
+    | "capacity_exceeded"
     | "resource_interrupted";
 
 export interface ClassifiedProviderError {
@@ -58,6 +59,7 @@ const defaultStatus = (kind: ProviderErrorKind): number => {
     switch (kind) {
         case "unauthorized": return 401;
         case "quota_exceeded": return 402;
+        case "capacity_exceeded": return 413;
         case "rate_limit": return 429;
         case "model_refused":
         case "grammar_invalid": return 422;
@@ -76,6 +78,7 @@ const retryable = (kind: ProviderErrorKind): boolean => {
         case "deadline_exceeded":
         case "invalid_response":
         case "grammar_invalid":
+        case "capacity_exceeded":
         case "resource_interrupted":
         case "model_refused":
         case "unauthorized":
@@ -101,6 +104,7 @@ const buildProblem = (
         unauthorized: "unauthorized",
         quota_exceeded: "quota-exceeded",
         grammar_invalid: "grammar-invalid",
+        capacity_exceeded: "capacity-exceeded",
         resource_interrupted: "resource-interrupted",
     };
     return Problems.create(source, code[kind], status, message, {
@@ -120,6 +124,7 @@ export class ProviderError extends Error {
     readonly kind: ProviderErrorKind;
     readonly problem: ProblemDetails;
     readonly attempt?: ProviderAttempt;
+    readonly capacity?: ProviderRequestCapacity;
     #accounting: ProviderRequestAccounting[];
 
     constructor(
@@ -133,6 +138,7 @@ export class ProviderError extends Error {
             extensions?: Readonly<Record<string, unknown>>;
             attempt?: ProviderAttempt;
             accounting?: readonly ProviderRequestAccounting[];
+            capacity?: ProviderRequestCapacity;
         } = {},
     ) {
         super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
@@ -140,6 +146,7 @@ export class ProviderError extends Error {
         this.source = providerSource(source);
         this.kind = kind;
         this.attempt = options.attempt;
+        this.capacity = options.capacity ?? options.attempt?.capacity;
         this.#accounting = [...(options.accounting ?? options.attempt?.accounting ?? [])];
         const status = options.status !== null && options.status !== undefined
             && Number.isInteger(options.status) && options.status >= 400 && options.status <= 599
@@ -170,14 +177,22 @@ export class ProviderError extends Error {
     }
 }
 
-const wireErrorType = (body: string): string | null => {
+const wireError = (body: string): { type: string | null; code: string | null; message: string | null } => {
     try {
         const { error } = JSON.parse(body) as { error?: { type?: unknown } };
-        return typeof error?.type === "string" ? error.type : null;
+        const record = error as { type?: unknown; code?: unknown; message?: unknown } | undefined;
+        return {
+            type: typeof record?.type === "string" ? record.type : null,
+            code: typeof record?.code === "string" || typeof record?.code === "number" ? String(record.code) : null,
+            message: typeof record?.message === "string" ? record.message : null,
+        };
     } catch {
-        return null;
+        return { type: null, code: null, message: null };
     }
 };
+
+const CAPACITY_CODE = /^(?:context_length_exceeded|context_window_exceeded|input_too_long|prompt_too_long|request_too_large|token_limit_exceeded|max_tokens_exceeded)$/i;
+const CAPACITY_MESSAGE = /(?:maximum context length|context (?:length|window).*(?:exceed|too (?:large|long)|maximum)|(?:input|prompt|request).*(?:token|length|size).*(?:exceed|too (?:large|long)|maximum))/i;
 
 const preview = (value: unknown, limit: number | undefined): string => {
     const text = value instanceof Error ? value.message : String(value);
@@ -215,6 +230,7 @@ export const classifyProviderError = (
             ? preview(err.message, detailLimit)
             : "The provider request failed without a diagnostic message.";
         const body = err.responseBody ?? "";
+        const wire = wireError(body);
         if (status === 401 || status === 403) return { kind: "unauthorized", message };
         if (status === 402) return { kind: "quota_exceeded", message };
         if (status === 429) return { kind: "rate_limit", message, retryable: err.isRetryable };
@@ -223,7 +239,21 @@ export const classifyProviderError = (
         }
         if (status === 0 && err.isRetryable) return { kind: "network_failure", message };
         if (status >= 500) return { kind: "network_failure", message, retryable: err.isRetryable };
-        if (status === 422 && wireErrorType(body) === "grammar_invalid") {
+        if (status === 413 || (
+            (status === 400 || status === 422)
+            && (
+                (wire.code !== null && CAPACITY_CODE.test(wire.code))
+                || (wire.type !== null && CAPACITY_CODE.test(wire.type))
+                || CAPACITY_MESSAGE.test(wire.message ?? message)
+            )
+        )) {
+            return {
+                kind: "capacity_exceeded",
+                message,
+                extensions: status === 413 ? undefined : { providerStatus: status },
+            };
+        }
+        if (status === 422 && wire.type === "grammar_invalid") {
             return { kind: "grammar_invalid", message };
         }
         return { kind: "invalid_response", message };
@@ -251,22 +281,27 @@ export const toProviderError = (
     err: unknown,
     source: string,
     detailLimit?: number,
+    capacity?: ProviderRequestCapacity,
 ): ProviderError => {
     if (err instanceof ProviderError) return err;
     const underlying = RetryError.isInstance(err) ? err.lastError : err;
     const classified = classifyProviderError(err, detailLimit);
     const { kind, message } = classified;
-    const status = APICallError.isInstance(underlying) ? underlying.statusCode ?? null : null;
+    const upstreamStatus = APICallError.isInstance(underlying) ? underlying.statusCode ?? null : null;
+    const status = kind === "capacity_exceeded" ? 413 : upstreamStatus;
     return new ProviderError(source, kind, message, {
         status,
         cause: err,
         retryable: classified.retryable,
         extensions: {
             ...(classified.extensions ?? {}),
+            ...(kind === "capacity_exceeded" ? { capacityStage: "upstream" } : {}),
+            ...(capacity === undefined ? {} : { capacity }),
             ...(classified.attempts === undefined ? {} : { attempts: classified.attempts }),
             ...(classified.retryExhausted === undefined
                 ? {}
                 : { retryExhausted: classified.retryExhausted }),
         },
+        capacity,
     });
 };

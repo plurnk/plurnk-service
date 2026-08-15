@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import BudgetReadout from "./BudgetReadout.ts";
-import { rulerCount } from "./token-ruler.ts";
+import { contentWeight } from "./content-weight.ts";
 
 const resolve = (ceiling: number, baseWeight: number): { content: string; usage: number } => {
     const prefix = "x".repeat(baseWeight * 2);
-    const measure = (content: string): number => rulerCount(prefix + content);
+    const measure = (content: string): number => contentWeight(prefix + content);
     const content = BudgetReadout.resolve(BudgetReadout.draft(ceiling), ceiling, measure);
     return { content, usage: measure(content) };
 };

@@ -48,8 +48,10 @@ export interface TerminatedNotification {
     attributions: string[];
     usage: {
         accounting: ProviderAccounting;
+        curationWeight: number | null;
+        curationBudget: number | null;
         contextTokens: number | null;
-        promptBudget: number | null;
+        contextCapacity: number | null;
         meta: Record<string, unknown>;
     };
 }

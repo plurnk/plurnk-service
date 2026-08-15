@@ -146,7 +146,7 @@ test("turn boundaries are STEPs; termination closes the step and flags the outco
     assert.equal(first[1]?.type, "STEP_STARTED");
     const second = tr.logEntry(entry({ op: "PLAN", turn_id: 2, tx: "{}" }));
     assert.deepEqual(second.slice(1, 3).map((e) => e.type), ["STEP_FINISHED", "STEP_STARTED"]);
-    const term: TerminatedNotification = { workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2], attributions: [], usage: loopUsage({ inputTokens: 10, outputTokens: 5, promptBudget: 6848 }) };
+    const term: TerminatedNotification = { workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2], attributions: [], usage: loopUsage({ inputTokens: 10, outputTokens: 5, curationBudget: 6848 }) };
     const done = tr.terminated(term);
     assert.deepEqual(done.map((e) => e.type), ["STEP_FINISHED", "STATE_DELTA", "CUSTOM", "RUN_FINISHED"]);
 });
@@ -166,7 +166,7 @@ test("plurnk.terminated carries the full terminal truth, including attribution o
             reasoningTokens: 2,
             cacheReadTokens: 3,
             cost: { kind: "unknown", reason: "no provider rate" },
-            promptBudget: 6848,
+            curationBudget: 6848,
             meta: { balance: { amount: "0.99", currency: "XMR" } },
         }),
     };
@@ -185,11 +185,18 @@ test("plurnk.terminated carries the full terminal truth, including attribution o
 
 test("the budget STATE_DELTA carries the daemon's numbers verbatim", () => {
     const tr = t();
-    const term: TerminatedNotification = { workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2, 3, 4], attributions: [], usage: loopUsage({ inputTokens: 4321, outputTokens: 99, promptBudget: 35840 }) };
+    const term: TerminatedNotification = { workerId: 2, loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1, 2, 3, 4], attributions: [], usage: loopUsage({ curationWeight: 7654, curationBudget: 40000, inputTokens: 4321, outputTokens: 99, contextCapacity: 35840 }) };
     const delta = tr.terminated(term).find((e) => e.type === "STATE_DELTA") as { delta: Array<{ path: string; value?: unknown }> };
-    assert.equal(delta.delta.find((d) => d.path === "/budget/promptBudget")?.value, 35840, "the effective prompt budget is never recomputed");
+    assert.equal(delta.delta.find((d) => d.path === "/budget/curationWeight")?.value, 7654);
+    assert.equal(delta.delta.find((d) => d.path === "/budget/curationBudget")?.value, 40000);
     assert.equal(delta.delta.find((d) => d.path === "/budget/contextTokens")?.value, 4321);
-    assert.deepEqual(delta.delta.map(({ path }) => path), ["/budget/contextTokens", "/budget/promptBudget"], "AG-UI state carries the gauge, not invented standard accounting fields");
+    assert.equal(delta.delta.find((d) => d.path === "/budget/contextCapacity")?.value, 35840);
+    assert.deepEqual(delta.delta.map(({ path }) => path), [
+        "/budget/curationWeight",
+        "/budget/curationBudget",
+        "/budget/contextTokens",
+        "/budget/contextCapacity",
+    ], "AG-UI keeps curation and physical occupancy as separate pairs");
 });
 
 test("a failed termination preserves its Problem and maps it to RUN_ERROR", () => {

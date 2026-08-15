@@ -25,7 +25,7 @@ import Worker from "../../src/schemes/Worker.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, makeSchemeCtx } from "./_helpers.ts";
 
-const tokenize = (text: string): number => Math.ceil(text.length / 4);
+const weigh = (text: string): number => Math.ceil(text.length / 4);
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
@@ -45,7 +45,7 @@ test("{§derivation-exhaustive}: workspace warming derives deep channels without
     try {
         const notices: Array<{ workspaceId: number; loopId: number; notice: Notice }> = [];
         const engine = new Engine({
-            db, schemes: new SchemeRegistry(), tokenize,
+            db, schemes: new SchemeRegistry(), weigh,
             noticeNotify: (workspaceId, { loopId, notice }) => notices.push({ workspaceId, loopId, notice: notice as Notice }),
         });
         const workspaceId = await insertWorkspace(db, `warm-${crypto.randomUUID()}`);
@@ -90,7 +90,7 @@ test("{§derivation-exhaustive}: workspace warm materializes a fresh repository 
         let requestedRescan = false;
         let workspaceId = 0;
         const engine = new Engine({
-            db, schemes: new SchemeRegistry(), tokenize,
+            db, schemes: new SchemeRegistry(), weigh,
             noticeNotify: (_workspaceId, payload) => {
                 const notice = payload.notice as Notice;
                 notices.push({ notice });
@@ -150,7 +150,7 @@ test("a model turn joins an in-flight startup warm before calling its provider",
             return originalProcess(...args);
         };
 
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), tokenize, mimetypes });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh, mimetypes });
         const response: MockResponse = {
             assistant: {
                 content: "",

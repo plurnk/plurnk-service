@@ -4,7 +4,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { GitStatus } from "./git-state.ts";
 import { renderAddress, promptLoopPrefix } from "./plurnk-uri.ts";
-import { rulerCount } from "./token-ruler.ts";
+import { contentWeight } from "./content-weight.ts";
 import { docsExcludeSet } from "./teaching.ts";
 import { Policy } from "@plurnk/plurnk-execs";
 import WorkspaceSettings from "./workspace-settings.ts";
@@ -22,8 +22,8 @@ import LogEntryProjection from "./LogEntryProjection.ts";
 import type { RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
-import type { ChatMessage, PromptTokenMeasurement, Provider } from "@plurnk/plurnk-providers";
-import { assertPromptTokenMeasurement, scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
+import type { ChatMessage, Provider } from "@plurnk/plurnk-providers";
+import { scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import BudgetReadout from "./BudgetReadout.ts";
 import ExecutableTools from "./ExecutableTools.ts";
@@ -99,24 +99,8 @@ const compactDefinitionTables = (markdown: string): string => {
     }).join("\n");
 };
 
-// {§tokenomics-window-partition} — the four partition numbers. REQUIRED (fail-hard, the
-// providers-env convention): the ceiling is DERIVED from these, never set directly
-// (PLURNK_BUDGET_CEILING is retired — a second settable ceiling contradicted the owning envelopes).
-const readPartitionIntFrom = (env: NodeJS.ProcessEnv, name: string, min: number): number => {
-    const raw = env[name];
-    const n = Number.parseInt(raw ?? "", 10);
-    if (!Number.isFinite(n) || n < min) throw new Error(`${name} must be an integer >= ${min}; got ${raw}`);
-    return n;
-};
-
-const readOptionalPositiveIntFrom = (env: NodeJS.ProcessEnv, name: string): number | null => {
-    const raw = env[name];
-    if (raw === undefined || raw.length === 0) return null;
-    const n = Number(raw);
-    if (!Number.isInteger(n) || n <= 0) throw new Error(`${name} must be a positive integer; got ${raw}`);
-    return n;
-};
-
+// {§tokenomics-prompt-projection-share} — the required alias-scoped share of
+// provider-derived input capacity used only for automatic prompt projection.
 const readRequiredPercentFrom = (env: NodeJS.ProcessEnv, name: string): number => {
     const raw = env[name];
     const match = /^([0-9]+(?:\.[0-9]+)?)%$/.exec(raw ?? "");
@@ -129,24 +113,10 @@ const readRequiredPercentFrom = (env: NodeJS.ProcessEnv, name: string): number =
 
 export type { ChatMessage } from "@plurnk/plurnk-providers";
 
-export type ContextEnvelopeAdmission =
-    | {
-        readonly admitted: true;
-        readonly capacity: number;
-        readonly measurement: PromptTokenMeasurement;
-    }
-    | {
-        readonly admitted: false;
-        readonly reason: "unknown_context_window" | "unknown_output_envelope" | "estimate" | "over_capacity";
-        readonly detail: string;
-        readonly capacity: number | null;
-        readonly measurement?: PromptTokenMeasurement;
-    };
-
-export interface TokenBudgetOverflow {
-    readonly usage: number;
-    readonly ceiling: number;
-    readonly deficit: number;
+export interface CurationOverflow {
+    readonly weight: number;
+    readonly budget: number;
+    readonly excess: number;
 }
 
 // Packet assembly (SPEC {§packet-assembly}) + the budget grinder ({§grinder}):
@@ -158,8 +128,8 @@ export default class PacketBuilder {
     // Boot-discovered runtime executors, late-injected on Engine after daemon
     // start() — read through a thunk so the post-construction set is visible.
     #executors: () => ExecutorRegistry | undefined;
-    // {§tokenomics-window-partition} — the partition is PER-ALIAS, resolved per provider in
-    // #partitionFor and cached by alias; no boot-time global read.
+    // {§tokenomics-prompt-projection-share} — prompt projection is alias-scoped
+    // through the same environment contract as provider configuration.
 
     constructor({ db, schemes, executors }: {
         db: Db;
@@ -169,45 +139,36 @@ export default class PacketBuilder {
         this.#db = db;
         this.#schemes = schemes;
         this.#executors = executors;
-        // {§tokenomics-window-partition} — the envelope rides the provider; construction only runs the retired-knob shed
-        // so a stale operator .env fails at BOOT, not first use.
+        // Retired capacity knobs fail at boot rather than silently becoming inert.
         const bootAlias = resolveActiveAlias(process.env)?.alias ?? "";
-        this.#safetyFor(bootAlias);
-        this.#promptBudgetCapFor(bootAlias);
+        this.#shedRetiredCapacityKnobs();
         this.#promptProjectionFor(bootAlias);
     }
 
-    // {§tokenomics-window-partition} — provider generation settings and core packet policy both resolve per alias.
-    // scopeEnvToAlias resolves PLURNK_SERVICE_*_<alias> over the bare fallback with providers' own
-    // battle-tested suffix parser. Cached per alias; the boot-global case falls back to the active
-    // alias when a provider carries no side-table entry (a test Mock).
-    // Provider context and response reserves remain provider-owned. Core owns only its virtual
-    // prompt budget and the ruler's packing-safety margin.
-    static #KNOBS = ["PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_SAFETY"] as const;
-    #shedChecked = false;
+    // Prompt projection is Core policy, scoped through the same alias contract as providers.
+    static #KNOBS = ["PLURNK_SERVICE_PROMPT_PROJECTION"] as const;
 
-    #safetyFor(alias: string): number {
-        // {§tokenomics-window-partition} hard shed: the three misprefixed partition knobs moved to the
-        // provider tier; a stale operator .env must never silently lose its envelope to the move.
-        if (!this.#shedChecked) {
-            this.#shedChecked = true;
-            const MOVED: Record<string, string> = {
-                CTX: "PLURNK_PROVIDERS_CONTEXT_WINDOW", CONTEXT_WINDOW: "PLURNK_PROVIDERS_CONTEXT_WINDOW",
-                REASONING: "PLURNK_PROVIDERS_REASONING_RESERVE",
-                ASSISTANT: "PLURNK_PROVIDERS_COMPLETION_RESERVE", COMPLETION: "PLURNK_PROVIDERS_COMPLETION_RESERVE",
-            };
-            for (const k of Object.keys(process.env)) {
-                const m = /^PLURNK_SERVICE_(CTX|CONTEXT_WINDOW|REASONING|ASSISTANT|COMPLETION)(_.*)?$/.exec(k);
-                if (m !== null) throw new Error(`${k} is retired: the envelope is provider-owned — the knob is ${MOVED[m[1]]}${m[2] ?? ""}.`);
-            }
+    #shedRetiredCapacityKnobs(): void {
+        const retired: Record<string, string> = {
+            PLURNK_SERVICE_PROMPT_BUDGET: "provider input capacity is derived from context and output budgets",
+            PLURNK_SERVICE_SAFETY: "provider request-shaped capacity admission owns physical headroom",
+        };
+        for (const key of Object.keys(process.env)) {
+            const match = /^(PLURNK_SERVICE_PROMPT_BUDGET|PLURNK_SERVICE_SAFETY)(?:_.*)?$/u.exec(key);
+            const reason = match === null ? undefined : retired[match[1]!];
+            if (reason !== undefined) throw new Error(`${key} is retired: ${reason}.`);
         }
-        const view = scopeEnvToAlias(process.env, alias, PacketBuilder.#KNOBS);
-        return readPartitionIntFrom(view, "PLURNK_SERVICE_SAFETY", 0);
-    }
-
-    #promptBudgetCapFor(alias: string): number | null {
-        const view = scopeEnvToAlias(process.env, alias, PacketBuilder.#KNOBS);
-        return readOptionalPositiveIntFrom(view, "PLURNK_SERVICE_PROMPT_BUDGET");
+        const moved: Record<string, string> = {
+            CTX: "PLURNK_PROVIDERS_CONTEXT_WINDOW",
+            CONTEXT_WINDOW: "PLURNK_PROVIDERS_CONTEXT_WINDOW",
+            REASONING: "PLURNK_PROVIDERS_REASONING_BUDGET",
+            ASSISTANT: "PLURNK_PROVIDERS_OUTPUT_BUDGET",
+            COMPLETION: "PLURNK_PROVIDERS_OUTPUT_BUDGET",
+        };
+        for (const key of Object.keys(process.env)) {
+            const match = /^PLURNK_SERVICE_(CTX|CONTEXT_WINDOW|REASONING|ASSISTANT|COMPLETION)(_.*)?$/u.exec(key);
+            if (match !== null) throw new Error(`${key} is retired: the provider-owned knob is ${moved[match[1]!]}${match[2] ?? ""}.`);
+        }
     }
 
     #promptProjectionFor(alias: string): number {
@@ -215,49 +176,8 @@ export default class PacketBuilder {
         return readRequiredPercentFrom(view, "PLURNK_SERVICE_PROMPT_PROJECTION");
     }
 
-    #partitionFor(provider: Provider): { reasoning: number | null; completion: number | null; safety: number } {
-        const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
-        return { reasoning: provider.reasoningReserve ?? null, completion: provider.completionReserve ?? null, safety: this.#safetyFor(alias) };
-    }
-
-    // The generation envelope — REASONING + COMPLETION, one undifferentiated pool, passed on
-    // every generate({maxTokens}): no decode is unbounded ({§tokenomics-window-partition}). Per
-    // alias: gemma's measured envelope; a cloud alias's generous default the backend clamps.
-    maxTokensFor(provider: Provider): number | null {
-        const { reasoning, completion } = this.#partitionFor(provider);
-        if (reasoning === null || completion === null) return null; // {§tokenomics-window-unpollable-deliberate}: unknown envelope, no cap; the backend clamps
-        return reasoning + completion;
-    }
-
-    // {§tokenomics-window-partition} — the natural prompt ceiling is the provider's
-    // effective context window minus its response reserves and the service's ruler
-    // safety. An optional service prompt budget may only tighten that result. It is
-    // model-facing grinder policy, never hard capacity or a generation setting.
-    // The client-facing gauge, grinder ceiling, and persisted promptBudget use this one value.
-    promptBudgetFor(provider: Provider): number | null {
-        return this.ceilingFor(provider); // ONE derivation — the gauge denominator IS the grinder ceiling
-    }
-
-    // {§tokenomics-agnostic-ruler} — the ceiling is the real window partition (window − reserves),
-    // NO calibration ratio: the model-facing measure is the chars/2 ruler (an over-count for
-    // typical text), so comparing ruler-weight to the real-token ceiling is itself the conservative
-    // bias - the packet reports less room than the provider usually has; authoritative
-    // provider request evidence guards the pathological tail at hard admission.
-    ceilingFor(provider: Provider): number | null {
-        const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
-        const operatorCap = this.#promptBudgetCapFor(alias);
-        // Unknown provider capacity stays unknown; an explicit virtual ceiling still gauges
-        // PLURNK's packet without pretending to describe the backend.
-        if (provider.contextWindow === null) return operatorCap;
-        const { reasoning, completion, safety } = this.#partitionFor(provider);
-        if (reasoning === null || completion === null) return operatorCap;
-        const naturalBudget = provider.contextWindow - reasoning - completion - safety;
-        if (naturalBudget <= 0) {
-            // {§tokenomics-window-partition} — this contradiction has one cause: pinned absolute reserves
-            // exceeding the window the provider detected (percent reserves derive and cannot contradict).
-            throw new Error(`window partition contradiction for alias '${alias}': window ${provider.contextWindow} <= reserves ${reasoning}+${completion}+${safety}. Pinned PLURNK_PROVIDERS_{REASONING,COMPLETION}_RESERVE absolutes exceed the detected window — repin them under it, or use percent reserves, which derive from the window.`);
-        }
-        return operatorCap === null ? naturalBudget : Math.min(operatorCap, naturalBudget);
+    curationBudgetFor(provider: Provider): number | null {
+        return provider.inputCapacity;
     }
 
     // {§packet-stored-shape} — assemble the system/user request before the
@@ -265,6 +185,7 @@ export default class PacketBuilder {
     async buildRequestPacket({
         initialMessages, requirements = "", workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
         transientOpenLogEntryId = null,
+        promptProjection = "automatic",
     }: {
         initialMessages: ChatMessage[];
         // A non-empty caller value overrides the default Recap source.
@@ -281,6 +202,9 @@ export default class PacketBuilder {
         // One packet may project a durably folded row OPEN without mutating its
         // curation state ({§invalid-emission-attempts}).
         transientOpenLogEntryId?: number | null;
+        // Capacity recovery may withhold automatic prompt bodies while keeping
+        // their complete prompt:/// entries addressable.
+        promptProjection?: "automatic" | "withheld";
     }): Promise<RequestPacket> {
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
@@ -317,16 +241,18 @@ export default class PacketBuilder {
         // {§emission-admission}: the definition remains the complete language authority.
         const log = await this.#buildLog(workerId, transientOpenLogEntryId);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
-        const countTokens = rulerCount; // {§tokenomics-agnostic-ruler} — the ONE model-facing ruler (chars/2), not the provider
+        const weighContent = contentWeight;
         // {§tools-loop-affinity}: teaching and dispatch resolve the same loop flags.
         const activeSchemes = this.#schemes.resolveForLoop(await LoopFlagsReader.read(this.#db, loopId));
         const tools = this.#collectTools(await this.#workspaceEnabled(workspaceId), await WorkspaceSettings.questionsEnabled(this.#db, workspaceId), activeSchemes);
-        const ceiling = this.ceilingFor(provider);
+        const curationBudget = this.curationBudgetFor(provider);
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
-        const promptProjectionBudget = ceiling === null
-            ? null
-            : Math.floor(ceiling * this.#promptProjectionFor(alias));
-        const budgetReadout = BudgetReadout.draft(ceiling);
+        const promptProjectionWeight = promptProjection === "withheld"
+            ? 0
+            : curationBudget === null
+                ? null
+                : Math.floor(curationBudget * this.#promptProjectionFor(alias));
+        const budgetReadout = BudgetReadout.draft(curationBudget);
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
@@ -366,8 +292,8 @@ export default class PacketBuilder {
                 header: "Log",
                 content: PacketWire.renderLog(
                     log,
-                    countTokens,
-                    promptProjectionBudget === null ? {} : { promptProjectionBudget },
+                    weighContent,
+                    promptProjectionWeight === null ? {} : { promptProjectionWeight },
                 ),
             },
             // The per-turn status clump follows the log ({§packet-cache-monotone}).
@@ -378,7 +304,8 @@ export default class PacketBuilder {
             { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures) },
             { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices) },
             { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus, branchAssignment?.branch ?? null) },
-            // budget — LAW (a hard ceiling the model must obey).
+            // Familiar token language is a deliberate final model projection;
+            // internally this is curation weight, never provider admission.
             { name: "budget", slot: "user", header: "Budget", content: budgetReadout },
             // The prompts section closes the status clump as a paths-only list;
             // bodies arrive through first-class prompt rows.
@@ -389,22 +316,22 @@ export default class PacketBuilder {
         // default list — add, remove, reorder — in-process, before measurement.
         let drafts = await this.#schemes.transformSections(defaults);
         const budgetSection = drafts.find((section) => section.name === "budget");
-        if (budgetSection !== undefined && ceiling !== null) {
-            const content = BudgetReadout.resolve(budgetSection.content, ceiling, (candidate) => {
+        if (budgetSection !== undefined && curationBudget !== null) {
+            const content = BudgetReadout.resolve(budgetSection.content, curationBudget, (candidate) => {
                 const candidateDrafts = drafts.map((section) =>
                     section === budgetSection ? { ...section, content: candidate } : section);
-                return countTokens(PacketWire.renderSlot(candidateDrafts, "system"))
-                    + countTokens(PacketWire.renderSlot(candidateDrafts, "user"));
+                return weighContent(PacketWire.renderSlot(candidateDrafts, "system"))
+                    + weighContent(PacketWire.renderSlot(candidateDrafts, "user"));
             });
             drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
         }
         // Core alone turns validated drafts into measured durable sections.
         const sections = drafts.map((section): StoredPacketSection => ({
             ...section,
-            tokens: countTokens(PacketWire.renderSection(section)),
+            weight: weighContent(PacketWire.renderSection(section)),
         }));
-        const packetTokens = countTokens(PacketWire.renderSlot(sections, "system")) + countTokens(PacketWire.renderSlot(sections, "user"));
-        return { tokens: packetTokens, sections, attributions: [] };
+        const renderWeight = weighContent(PacketWire.renderSlot(sections, "system")) + weighContent(PacketWire.renderSlot(sections, "user"));
+        return { weight: renderWeight, sections, attributions: [] };
     }
 
     // {§operator-config-workspace-execs} — the capability sheet and executor
@@ -461,7 +388,7 @@ export default class PacketBuilder {
 
     // #note12 — the plugin-provided reference docs (schemes' + execs' `documentation`),
     // materialized at worker://plurnk/docs/<name>.md by LoopDocs (like operator
-    // docs) so the catalog can expose each doc's token weight.
+    // docs) so the catalog can expose each doc's curation weight.
     async docEntries(workspaceId: number): Promise<Array<{ name: string; content: string }>> {
         const out = await this.#schemes.docs(); // scheme docs already drop PLURNK_SERVICE_DOCS_EXCLUDE names
         // {§send-300-choices} {§teaching-corpus} — the conditional teaching: questions.md
@@ -486,7 +413,8 @@ export default class PacketBuilder {
     }
 
     // SPEC {§grinder} — the budget grinder. Runs pre-LLM (in runTurn, after the packet
-    // is built, before provider.generate); fires only on actual ruler overflow. One
+    // is built, before provider.generate); fires only when curation weight exceeds
+    // the provider-derived curation budget. One
     // reversible rule: roll back context introduced by the NEWEST turn boundary —
     // rows born there plus exact older rows it transitioned folded→open — then
     // rebuild and re-measure.
@@ -494,79 +422,28 @@ export default class PacketBuilder {
     async enforceBudget({ packet, provider, loopId, turnId, recordOverflow, rebuild }: {
         packet: RequestPacket; provider: Provider;
         loopId: number; turnId: number;
-        recordOverflow: (overflow: TokenBudgetOverflow) => Promise<void>;
+        recordOverflow: (overflow: CurationOverflow) => Promise<void>;
         rebuild: () => Promise<RequestPacket>;
-    }): Promise<{ packet: RequestPacket; fit: boolean }> {
-        const ceiling = this.ceilingFor(provider);
-        const measure = (p: RequestPacket): number => p.tokens;
-        // {§tokenomics-window-unpollable-deliberate} — a null policy ceiling never triggers grinding.
-        if (ceiling === null || measure(packet) <= ceiling) {
-            return { packet, fit: true };
+    }): Promise<{ packet: RequestPacket; fit: boolean; boundaryRolledBack: boolean }> {
+        const budget = this.curationBudgetFor(provider);
+        const measure = (p: RequestPacket): number => p.weight;
+        if (budget === null || measure(packet) <= budget) {
+            return { packet, fit: true, boundaryRolledBack: false };
         }
 
-        const usage = measure(packet);
-        await recordOverflow({ usage, ceiling, deficit: usage - ceiling });
+        const weight = measure(packet);
+        await recordOverflow({ weight, budget, excess: weight - budget });
 
         // ONE rule, every turn ({§grinder-layer1-rollback}): atomically fold/tag
         // context introduced by the newest boundary. Other older history remains
-        // model-owned; remaining ruler debt is neither failure nor strike.
+        // model-owned; remaining curation debt is neither failure nor strike.
         await this.#db.engine_grinder_fold_newest_turn({ loop_id: loopId, turn_id: turnId });
         const current = await rebuild();
-        return { packet: current, fit: measure(current) <= ceiling };
+        return { packet: current, fit: measure(current) <= budget, boundaryRolledBack: true };
     }
 
-    // {§tokenomics-context-envelope-admission}: one request-shaped predicate against
-    // the effective total context envelope. Provider.contextWindow already includes
-    // any stricter operator cap; exact or proven-bounded request evidence is required.
-    async contextEnvelopeAdmission(
-        packet: RequestPacket,
-        provider: Provider,
-        signal?: AbortSignal,
-    ): Promise<ContextEnvelopeAdmission> {
-        if (provider.contextWindow === null) {
-            return {
-                admitted: false,
-                reason: "unknown_context_window",
-                detail: `provider ${JSON.stringify(provider.model)} reports no effective context envelope`,
-                capacity: null,
-            };
-        }
-        const maxTokens = this.maxTokensFor(provider);
-        if (maxTokens === null) {
-            return {
-                admitted: false,
-                reason: "unknown_output_envelope",
-                detail: `provider ${JSON.stringify(provider.model)} reports no resolved generation envelope`,
-                capacity: null,
-            };
-        }
-        const capacity = provider.contextWindow - maxTokens;
-        const measurement = assertPromptTokenMeasurement(
-            await provider.countPromptTokens(
-                PacketWire.packetToWireMessages(packet) as ChatMessage[],
-                signal,
-            ),
-            `provider ${JSON.stringify(provider.model)}`,
-        );
-        if (measurement.kind === "estimate") {
-            return {
-                admitted: false,
-                reason: "estimate",
-                detail: `${measurement.source} is an empirical estimate and cannot verify the effective context envelope: ${measurement.detail}`,
-                capacity,
-                measurement,
-            };
-        }
-        if (measurement.tokens > capacity) {
-            return {
-                admitted: false,
-                reason: "over_capacity",
-                detail: `${measurement.kind} prompt measurement ${measurement.tokens} exceeds effective prompt capacity ${capacity}`,
-                capacity,
-                measurement,
-            };
-        }
-        return { admitted: true, capacity, measurement };
+    async rollbackNewestBoundary(loopId: number, turnId: number): Promise<void> {
+        await this.#db.engine_grinder_fold_newest_turn({ loop_id: loopId, turn_id: turnId });
     }
 
     // Every prior-turn operation failure is durable before packet assembly.

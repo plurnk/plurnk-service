@@ -158,7 +158,7 @@ export default class Service {
                 dir: [resolve(Service.#projectRoot, "migrations"), Service.#codeDir],
                 functions: [
                     resolve(Service.#codeDir, `schemes/cosine${Service.#ext}`),
-                    resolve(Service.#codeDir, `core/ruler_count${Service.#ext}`),
+                    resolve(Service.#codeDir, `core/content_weight${Service.#ext}`),
                 ],
                 ...tuning,
             });

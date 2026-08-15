@@ -10,7 +10,7 @@ import { promisify } from "node:util";
 import type { ProviderAccounting, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import type { Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, testDeferredProviderCapacity } from "./_helpers.ts";
 
 const execFileP = promisify(execFile);
 
@@ -94,6 +94,7 @@ const seedWorkerEvidence = async (
         id: modelCall.id,
         response: JSON.stringify({ assistant: { reasoning: `reason-${marker}` } }),
         failure: null,
+        capacity: JSON.stringify(testDeferredProviderCapacity("digest:fixture")),
         finish_reason: "stop",
         model: `model-${marker}`,
     });
@@ -127,7 +128,7 @@ const seedWorkerEvidence = async (
         rx: JSON.stringify({ status: 200, content: marker }),
         mimetype_rx: "application/json",
         status_rx: 200,
-        tokens: 1,
+        weight: 1,
         state: "resolved",
         outcome: null,
         attrs: "{}",
@@ -176,6 +177,7 @@ const seedBareEvidence = async (
         id: modelCall.id,
         response: JSON.stringify({ assistant: { content: "Berlin", reasoning: null } }),
         failure: null,
+        capacity: JSON.stringify(testDeferredProviderCapacity("digest:bare-fixture")),
         finish_reason: "stop",
         model: accounting.model,
     });
@@ -204,7 +206,7 @@ const seedBareEvidence = async (
         rx: JSON.stringify({ status: 200, content: "Berlin", mimetype: "text/plain" }),
         mimetype_rx: "application/json",
         status_rx: 200,
-        tokens: 1,
+        weight: 1,
         state: "resolved",
         outcome: null,
         attrs: "{}",

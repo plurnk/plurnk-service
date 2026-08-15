@@ -5,7 +5,7 @@ import { Mock, ProviderError, validateProviderRequestAccounting } from "@plurnk/
 import type { Provider, ProviderRequestAccounting, ProviderResponse } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, testProviderCapacity } from "./_helpers.ts";
 
 const mainResponse = (operations: string): ConstructorParameters<typeof Mock>[0]["responses"][number] => ({
     assistant: {
@@ -18,6 +18,11 @@ type GenerateArgs = Parameters<Provider["generate"]>[0];
 
 class BareWitness implements Provider {
     readonly contextWindow = 16_384;
+    readonly maxInputTokens = null;
+    readonly maxOutputTokens = null;
+    readonly outputBudget = 1;
+    readonly reasoningBudget = null;
+    readonly inputCapacity = this.contextWindow - this.outputBudget;
     readonly model = "bare-witness";
     readonly calls: GenerateArgs[] = [];
     readonly completions: string[] = [];
@@ -43,6 +48,10 @@ class BareWitness implements Provider {
         };
     }
 
+    async assessRequestCapacity(messages: Parameters<Provider["assessRequestCapacity"]>[0]) {
+        return testProviderCapacity(messages, this.contextWindow, this.outputBudget);
+    }
+
     attributions() {
         return ["provider:bare-witness"];
     }
@@ -50,6 +59,7 @@ class BareWitness implements Provider {
     async generate(args: GenerateArgs): Promise<ProviderResponse> {
         this.calls.push(args);
         const prompt = args.messages[0]?.content ?? "";
+        const capacity = await this.assessRequestCapacity(args.messages);
         const settle = await args.observeRequest?.({ provider: "provider:bare-witness", model: this.model });
         this.#active++;
         this.maxActive = Math.max(this.maxActive, this.#active);
@@ -75,6 +85,7 @@ class BareWitness implements Provider {
             throw new ProviderError("bare-witness", "network_failure", `could not answer ${prompt}`, {
                 status: 503,
                 accounting: [accounting],
+                capacity,
             });
         }
         return {
@@ -86,12 +97,18 @@ class BareWitness implements Provider {
             },
             assistantRaw: null,
             accounting: [accounting],
+            capacity,
         };
     }
 }
 
 class CancellingBareWitness implements Provider {
     readonly contextWindow = 16_384;
+    readonly maxInputTokens = null;
+    readonly maxOutputTokens = null;
+    readonly outputBudget = 1;
+    readonly reasoningBudget = null;
+    readonly inputCapacity = this.contextWindow - this.outputBudget;
     readonly model = "cancelling-bare-witness";
     readonly aborted: string[] = [];
     readonly started: Promise<void>;
@@ -108,8 +125,13 @@ class CancellingBareWitness implements Provider {
         return { kind: "exact" as const, tokens: 1, source: "cancelling-bare-witness" };
     }
 
+    async assessRequestCapacity(messages: Parameters<Provider["assessRequestCapacity"]>[0]) {
+        return testProviderCapacity(messages, this.contextWindow, this.outputBudget);
+    }
+
     async generate(args: GenerateArgs): Promise<ProviderResponse> {
         const prompt = args.messages[0]?.content ?? "";
+        const capacity = await this.assessRequestCapacity(args.messages);
         const settle = await args.observeRequest?.({ provider: "provider:cancelling-bare-witness", model: this.model });
         this.#startedCount++;
         if (this.#startedCount === this.expectedCalls) this.#allStarted();
@@ -131,6 +153,7 @@ class CancellingBareWitness implements Provider {
             throw new ProviderError("cancelling-bare-witness", "resource_interrupted", "cancelled", {
                 status: 499,
                 accounting: [accounting],
+                capacity,
                 cause,
             });
         }

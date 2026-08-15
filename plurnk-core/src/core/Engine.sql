@@ -66,7 +66,7 @@ LIMIT 1;
 -- PREP: engine_list_owner_entries
 -- {§entry-owner} — one principal's entries (catalogRowsFor source for an owner-scoped FIND/foist):
 -- the commons, a worker's own space, or a named space — exactly one owner's rows, its perspective.
-SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens AS tokens, e.deep_hash,
+SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.weight AS weight, e.deep_hash,
     d.parse_issues,
     s.id AS subscription_id,
     CASE WHEN s.closed_at IS NULL
@@ -92,30 +92,37 @@ SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_i
 
 -- PREP: engine_loop_usage
 -- Latest-turn gauge ({§tokenomics-client-gauge}), surfaced beside the derived
--- accounting projection on {§notifications-loop-terminated}. `context` is the
--- latest settled physical request on the latest turn; an absent input count is
--- unknown and does not fall back to older evidence.
+-- accounting projection on {§notifications-loop-terminated}. Physical usage
+-- and capacity bind to the same latest completed emission call. A preflight
+-- rejection has capacity evidence but no physical input usage; neither fact
+-- falls back to an earlier call or turn.
+WITH latest_turn AS (
+    SELECT id, packet, usage_curation_budget, meta
+      FROM turns
+     WHERE loop_id = $loop_id
+     ORDER BY sequence DESC
+     LIMIT 1
+), latest_emission AS (
+    SELECT mc.id, mc.capacity
+      FROM model_calls mc
+      JOIN latest_turn turn ON turn.id = mc.turn_id
+     WHERE mc.kind = 'emission' AND mc.state != 'pending'
+     ORDER BY mc.sequence DESC
+     LIMIT 1
+)
 SELECT (
            SELECT pr.usage_input
-           FROM provider_requests pr
-           JOIN model_calls mc ON mc.id = pr.model_call_id
-           WHERE mc.turn_id = (
-               SELECT latest.id
-               FROM turns latest
-               WHERE latest.loop_id = $loop_id
-               ORDER BY latest.sequence DESC
-               LIMIT 1
-           )
-           AND mc.kind = 'emission'
-           AND pr.state = 'settled'
-           ORDER BY mc.sequence DESC, pr.sequence DESC
-           LIMIT 1
-       ) AS context,
-       -- Latest turn's effective packet allowance; NULL when uncapped or unknown.
-       -- {§tokenomics-client-gauge}
-       (SELECT usage_prompt_budget FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS context_size,
+             FROM provider_requests pr
+            WHERE pr.model_call_id = (SELECT id FROM latest_emission)
+              AND pr.state = 'settled'
+            ORDER BY pr.sequence DESC
+            LIMIT 1
+       ) AS context_tokens,
+       (SELECT json_extract(packet, '$.weight') FROM latest_turn) AS curation_weight,
+       (SELECT usage_curation_budget FROM latest_turn) AS curation_budget,
+       (SELECT json_extract(capacity, '$.inputCapacity') FROM latest_emission) AS context_capacity,
        -- Latest turn's opaque provider metadata. {§meta-passthrough}
-       (SELECT meta FROM turns WHERE loop_id = $loop_id ORDER BY sequence DESC LIMIT 1) AS meta
+       (SELECT meta FROM latest_turn) AS meta
 FROM loops
 WHERE id = $loop_id;
 
@@ -177,7 +184,7 @@ RETURNING id;
 UPDATE turns SET
     status = $status,
     packet = $packet,
-    usage_prompt_budget = $usage_prompt_budget,
+    usage_curation_budget = $usage_curation_budget,
     finish_reason = $finish_reason,
     model = $model,
     meta = $meta
@@ -196,6 +203,7 @@ UPDATE model_calls SET
     state = 'response',
     response = $response,
     failure = $failure,
+    capacity = $capacity,
     finish_reason = $finish_reason,
     model = $model,
     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -205,6 +213,7 @@ WHERE id = $id AND state = 'pending';
 UPDATE model_calls SET
     state = 'error',
     failure = $failure,
+    capacity = $capacity,
     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = $id AND state = 'pending';
 
@@ -254,7 +263,7 @@ WHERE id = $id AND state = 'pending';
 -- The latest subscription carries stream lifecycle into the catalog. `seconds`
 -- is the live age of an open stream; close_status is the exact terminal status
 -- of a closed one. Entries with no subscription remain ordinary static entries.
-SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.tokens AS tokens, e.deep_hash,
+SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.weight AS weight, e.deep_hash,
     s.id AS subscription_id,
     CASE WHEN s.closed_at IS NULL
         THEN CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER)
@@ -339,11 +348,11 @@ ORDER BY ae.id;
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source, ambient_event_id,
     op, scheme, hostname, pathname, tx, mimetype_tx,
-    rx, mimetype_rx, status_rx, expanded, attrs
+    rx, mimetype_rx, status_rx, weight, expanded, attrs
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', $source, $event_id,
     $op, $scheme, $hostname, $pathname, '', 'text/plain',
-    $rx, $mimetype_rx, $status, $expanded, $attrs
+    $rx, $mimetype_rx, $status, $weight, $expanded, $attrs
 )
 ON CONFLICT(worker_id, ambient_event_id) WHERE ambient_event_id IS NOT NULL DO NOTHING
 RETURNING id;
@@ -395,10 +404,10 @@ ORDER BY id DESC LIMIT 1;
 -- observation, 0 for an ongoing observation. {§exec-stream}
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
-    op, scheme, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, attrs, expanded
+    op, scheme, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs, expanded
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', NULL, NULL,
-    'READ', $scheme, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $attrs, $expanded
+    'READ', $scheme, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $weight, $attrs, $expanded
 );
 
 -- PREP: engine_child_workers_live
@@ -513,7 +522,7 @@ SELECT
     le.query, le.fragment,
     le.status_rx, le.rx, le.mimetype_rx,
     le.tx, le.mimetype_tx,
-    le.state, le.outcome, le.expanded, le.source, le.attrs,
+    le.state, le.outcome, le.expanded, le.source, le.weight, le.attrs,
     COALESCE((
         SELECT json_group_array(ordered.tag)
         FROM (
@@ -545,14 +554,14 @@ INSERT INTO log_entries (
     op, suffix, signal,
     scheme, username, password, hostname, port,
     pathname, query, fragment, lineMarker,
-    tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens,
+    tx, mimetype_tx, rx, mimetype_rx, status_rx, weight,
     state, outcome, attrs
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, $origin, $source, $model_call_id,
     $op, $suffix, $signal,
     $scheme, $username, $password, $hostname, $port,
     $pathname, $query, $fragment, $lineMarker,
-    $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens,
+    $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight,
     $state, $outcome, $attrs
 )
 RETURNING id;
@@ -566,6 +575,7 @@ UPDATE log_entries
        outcome = $outcome,
        status_rx = $status_rx,
        rx = $rx,
+       weight = $weight,
        deep_hash = NULL
  WHERE id = $id
    AND state = 'proposed';
@@ -577,7 +587,11 @@ UPDATE log_entries
 SELECT l.sequence AS loop_seq,
        t.sequence AS turn_seq,
        le.sequence AS sequence,
-       le.op AS op
+       le.op AS op,
+       le.attrs AS attrs,
+       le.tx AS tx,
+       le.mimetype_tx AS mimetype_tx,
+       le.mimetype_rx AS mimetype_rx
   FROM log_entries le
   JOIN turns t ON t.id = le.turn_id
   JOIN loops l ON l.id = le.loop_id

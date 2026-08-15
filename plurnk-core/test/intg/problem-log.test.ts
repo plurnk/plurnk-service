@@ -19,7 +19,7 @@ test("ProblemLog persists one self-identifying RFC 9457 operation failure", asyn
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 3, "test");
         const turnId = await insertTurn(db, loopId, 4, 102);
-        const minted = await new ProblemLog(db).record({
+        const minted = await new ProblemLog(db, (text) => Math.ceil(text.length / 2)).record({
             workerId,
             loopId,
             turnId,
@@ -48,8 +48,9 @@ test("ProblemLog persists one self-identifying RFC 9457 operation failure", asyn
                 instance: "log:///3/4/5/error",
             },
         });
-        const [row] = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
+        const [row] = await db.test_error_rows_for_worker.all<{ rx: string; weight: number }>({ worker_id: workerId });
         assert.deepEqual(JSON.parse(row!.rx), minted.result, "the returned and durable failure are identical");
+        assert.equal(row!.weight, 0, "the metadata-only Problem has no canonical body weight");
         Digest.run({ dbPath, digestDir });
         const digest = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
             log_entries: Array<{ problem?: unknown }>;

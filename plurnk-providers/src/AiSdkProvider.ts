@@ -11,10 +11,12 @@ import type {
     GrammarEvidence,
     PromptTokenMeasurement,
     Provider,
+    ProviderAttempt,
     ProviderCostNormalizer,
     ProviderCallKind,
     ProviderGenerateArgs,
     ProviderRequestAccounting,
+    ProviderRequestCapacity,
     ProviderRequestSettlement,
     ProviderResponse,
     ProviderUsage,
@@ -22,7 +24,7 @@ import type {
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
 import type { JSONValue } from "ai";
 import { MAX_PROVIDER_TIMEOUT_MS } from "./env.ts";
-import type { Reasoning, ReasoningResponseStyle, ReserveSpec } from "./env.ts";
+import type { Reasoning, ReasoningResponseStyle } from "./env.ts";
 import {
     executeAiSdkModel,
     executeOpenAICompatible,
@@ -39,6 +41,7 @@ import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk
 import { resolveProviderCost } from "./cost.ts";
 import { validateProviderRequestAccounting } from "./accounting.ts";
 import { validateProviderUsage } from "./usage.ts";
+import { assessRequestCapacity, effectiveInputCapacity, effectiveOutputBudget, effectiveReasoningBudget } from "./capacity.ts";
 
 export type ProviderFetch = typeof globalThis.fetch;
 
@@ -68,6 +71,15 @@ export type AiSdkProviderConfig = {
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
     fetch?: ProviderFetch;                    // per-instance request executor; default globalThis.fetch
     contextWindow?: number | null;              // default null; caller resolves-or-fails, narrows to required with the interface
+    maxInputTokens?: number | null;
+    maxOutputTokens?: number | null;
+    outputBudget?: number | null;
+    reasoningBudget?: number | null;
+    // Native Anthropic and Bedrock SDKs interpret generic maxOutputTokens as
+    // visible output and add an explicit provider reasoning budget. This marker lets the
+    // adapter subtract that subset so the resulting wire cap remains PLURNK's
+    // one total output budget.
+    additiveReasoningProvider?: "anthropic" | "bedrock";
     reasoningStyle?: ReasoningStyle;          // default "none"
     reasoningResponseStyle?: ReasoningResponseStyle; // {§provider-tagged-reasoning}; default "verbatim"
     countPromptTokens?: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
@@ -108,9 +120,9 @@ export type AiSdkProviderConfig = {
     // when no probe ran or it read no row.
     servedModel?: string;
     // Backend decodes unbounded without a caller cap (llama-server n_predict
-    // to the wall) — surfaced as Provider.requiresMaxTokens so consumers can
+    // to the wall) — surfaced as Provider.requiresOutputBudget so consumers can
     // boot-refuse an envelope-less local alias. Default unset (no claim).
-    requiresMaxTokens?: boolean;
+    requiresOutputBudget?: boolean;
     // The side-channel reasoning intent — REQUIRED, no in-code default
     // (PLURNK_PROVIDERS_REASONING + _BUDGET, read via reasoningFromEnv):
     // { mode: off|adaptive|on, budget: optional when on }. The provider maps it
@@ -156,14 +168,12 @@ export type AiSdkProviderConfig = {
     // gated per-alias.
     topLogprobs?: number | null;
     rawBody?: boolean;
-    // {§provider-generation-envelope} The generation-envelope reserves, env-read via
-    // envelopeFromEnv — a percentage of the DETECTED window or an absolute token
+    // {§provider-generation-envelope} The generation budgets, env-read via the
+    // common envelope parser — a percentage of the detected window or an absolute token
     // count. Optional so an out-of-date sibling keeps constructing (no claim);
     // the standard factory always supplies them. Resolved against contextWindow
     // at read time (getters), so a probe that lands after config assembly still
     // derives correctly.
-    reasoningReserve?: ReserveSpec;
-    completionReserve?: ReserveSpec;
     // The plurnk.ai router owns tuning — false suppresses the
     // client-side temperature/penalty FLOORS on this provider (caller `sampling`
     // still passes through verbatim). Default true (floors ride).
@@ -264,7 +274,7 @@ export const effortFromBudget = (budget: number): "low" | "medium" | "high" => {
 
 // AI SDK's portable reasoning control has no boolean-enabled value. `medium`
 // is the neutral activation projection for an explicit, unqualified `on`; it
-// changes no PLURNK token reserve. An operator budget, when present, remains
+// changes no PLURNK output budget. An operator reasoning subset, when present, remains
 // the only input to the existing magnitude-to-tier projection.
 const effortFromReasoning = (reasoning: Reasoning): "low" | "medium" | "high" =>
     reasoning.budget === null ? "medium" : effortFromBudget(reasoning.budget);
@@ -277,7 +287,7 @@ const effortFromReasoning = (reasoning: Reasoning): "low" | "medium" | "high" =>
 //     response; n>1 = paid, dropped output), the tool-calling family (tools-in-
 //     body doctrine, §2: native tool_calls return null content = a broken turn),
 //     modalities/audio (text-only contract), prediction (decode semantics, not
-//     sampling), and the token caps (the envelope is the managed maxTokens —
+//     sampling), and the token caps (the envelope is the managed maxOutputTokens —
 //     sampling must not bypass the consumer's cap).
 // Sampling intent (temperature, top_p, penalties, stop, seed, logit_bias) and
 // platform knobs (user, service_tier, prompt_cache_*, safety_identifier,
@@ -305,6 +315,11 @@ export default class AiSdkProvider implements Provider {
     #apiKeyRejectedMessage: string | undefined;
     #eosText: string | undefined;
     #contextWindow: number | null;
+    #maxInputTokens: number | null;
+    #maxOutputTokens: number | null;
+    #outputBudget: number | null;
+    #reasoningBudget: number | null;
+    #additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
     #reasoning: Reasoning;
     #temperature: number;
     #repeatPenalty: number;
@@ -333,12 +348,10 @@ export default class AiSdkProvider implements Provider {
     #retryAttempts: number;
     #errorDetailLimit: number | undefined;
     #topLogprobs: number | null;
-    #reasoningReserve: ReserveSpec | undefined;
-    #completionReserve: ReserveSpec | undefined;
     #tuningFloors: boolean;
     #rawBody: boolean;
     #servedModel: string | undefined;
-    #requiresMaxTokens: boolean | undefined;
+    #requiresOutputBudget: boolean | undefined;
     readonly attributions?: (context: PluginAttributionContext) => PluginAttribution;
 
     // Optional capability ({§provider-local-capabilities}): exact tokenization served by the backend's
@@ -371,6 +384,11 @@ export default class AiSdkProvider implements Provider {
         this.#headers = config.headers ?? {};
         this.#fetch = config.fetch ?? ((input, init) => globalThis.fetch(input, init));
         this.#contextWindow = config.contextWindow ?? null;
+        this.#maxInputTokens = config.maxInputTokens ?? null;
+        this.#maxOutputTokens = config.maxOutputTokens ?? null;
+        this.#outputBudget = config.outputBudget ?? null;
+        this.#reasoningBudget = config.reasoningBudget ?? null;
+        this.#additiveReasoningProvider = config.additiveReasoningProvider;
         this.#reasoning = config.reasoning;
         // Loud guard: an out-of-date consumer (stale plugin dist) omitting the
         // required tuning fields must fail at construction, not silently send
@@ -434,25 +452,42 @@ export default class AiSdkProvider implements Provider {
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
         this.#topLogprobs = config.topLogprobs ?? null;
-        this.#reasoningReserve = config.reasoningReserve;
-        this.#completionReserve = config.completionReserve;
         this.#tuningFloors = config.tuningFloors ?? true;
         this.#rawBody = config.rawBody ?? false;
         this.#servedModel = config.servedModel;
-        this.#requiresMaxTokens = config.requiresMaxTokens;
-        const reasoningReserve = this.reasoningReserve;
-        if (this.#reasoningStyle === "template"
-            && this.#reasoning.mode === "on"
-            && this.#reasoning.budget !== null
-            && reasoningReserve !== null
-            && this.#reasoning.budget > reasoningReserve) {
-            throw new Error(`${this.#source}: PLURNK_PROVIDERS_REASONING_BUDGET (${this.#reasoning.budget}) exceeds the resolved PLURNK_PROVIDERS_REASONING_RESERVE (${reasoningReserve})`);
+        this.#requiresOutputBudget = config.requiresOutputBudget;
+        for (const [name, value] of [
+            ["contextWindow", this.#contextWindow],
+            ["maxInputTokens", this.#maxInputTokens],
+            ["maxOutputTokens", this.#maxOutputTokens],
+            ["outputBudget", this.#outputBudget],
+            ["reasoningBudget", this.#reasoningBudget],
+        ] as const) {
+            if (value !== null && (!Number.isSafeInteger(value) || value <= 0)) {
+                throw new Error(`${this.#source}: ${name} must be a positive safe integer or null`);
+            }
+        }
+        if (this.#reasoningBudget !== null
+            && this.#outputBudget !== null
+            && this.#reasoningBudget >= this.#outputBudget) {
+            throw new Error(`${this.#source}: reasoningBudget must be smaller than the total outputBudget`);
+        }
+        if (this.#reasoning.budget !== this.#reasoningBudget) {
+            throw new Error(`${this.#source}: reasoning intent and generation envelope disagree on reasoningBudget`);
         }
         if (this.#reasoningStyle === "anthropic"
             && this.#reasoning.mode === "on"
             && this.#reasoning.budget === null
-            && reasoningReserve === null) {
-            throw new Error(`${this.#source}: explicit Anthropic reasoning requires a resolved reasoning reserve or PLURNK_PROVIDERS_REASONING_BUDGET`);
+            && this.#reasoningBudget === null) {
+            throw new Error(`${this.#source}: explicit Anthropic reasoning requires PLURNK_PROVIDERS_REASONING_BUDGET`);
+        }
+        if (this.#additiveReasoningProvider !== undefined
+            && this.#reasoning.mode === "on"
+            && this.#reasoningBudget === null) {
+            throw new Error(`${this.#source}: explicit ${this.#additiveReasoningProvider} reasoning requires PLURNK_PROVIDERS_REASONING_BUDGET so the total output budget remains bounded`);
+        }
+        if (this.#requiresOutputBudget === true && this.#outputBudget === null) {
+            throw new Error(`${this.#source}: this backend requires a resolved PLURNK_PROVIDERS_OUTPUT_BUDGET`);
         }
         const { tokenizeUrl } = config;
         if (tokenizeUrl !== undefined) {
@@ -476,20 +511,22 @@ export default class AiSdkProvider implements Provider {
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
-    // {§provider-generation-envelope} Envelope reserves — absolute pins stand alone; percentages need the
-    // detected window; null = underivable (no claim for core's no-cap path).
-    #resolveReserve(spec: ReserveSpec | undefined): number | null {
-        if (spec === undefined) return null;
-        if ("tokens" in spec) return spec.tokens;
-        return this.#contextWindow === null ? null : Math.round(spec.percent * this.#contextWindow);
+    get maxInputTokens(): number | null { return this.#maxInputTokens; }
+    get maxOutputTokens(): number | null { return this.#maxOutputTokens; }
+    get outputBudget(): number | null { return this.#outputBudget; }
+    get reasoningBudget(): number | null { return this.#reasoningBudget; }
+    get inputCapacity(): number | null {
+        return effectiveInputCapacity({
+            contextWindow: this.#contextWindow,
+            maxInputTokens: this.#maxInputTokens,
+            outputBudget: this.#outputBudget,
+        });
     }
-    get reasoningReserve(): number | null { return this.#resolveReserve(this.#reasoningReserve); }
-    get completionReserve(): number | null { return this.#resolveReserve(this.#completionReserve); }
     get model(): string { return this.#model; }
     // Backend's self-reported served id; undefined when unprobed/unknown.
     get servedModel(): string | undefined { return this.#servedModel; }
     // Resolved "decodes unbounded without a cap" fact; undefined = no claim.
-    get requiresMaxTokens(): boolean | undefined { return this.#requiresMaxTokens; }
+    get requiresOutputBudget(): boolean | undefined { return this.#requiresOutputBudget; }
     // Resolved capability: will a transported grammar actually constrain
     // this backend's decode? Introspectable so a consumer can verify the rails
     // are LIVE without spending a generation on a forcing-grammar probe.
@@ -552,17 +589,46 @@ export default class AiSdkProvider implements Provider {
             );
         }
     }
+
+    async assessRequestCapacity(
+        messages: readonly ChatMessage[],
+        maxOutputTokens?: number,
+        signal?: AbortSignal,
+    ): Promise<ProviderRequestCapacity> {
+        const outputBudget = effectiveOutputBudget({
+            requested: maxOutputTokens,
+            configured: this.#outputBudget,
+            maxOutputTokens: this.#maxOutputTokens,
+            contextWindow: this.#contextWindow,
+        });
+        const reasoningBudget = effectiveReasoningBudget({
+            configured: this.#reasoningBudget,
+            outputBudget,
+        });
+        return assessRequestCapacity({
+            contextWindow: this.#contextWindow,
+            maxInputTokens: this.#maxInputTokens,
+            maxOutputTokens: this.#maxOutputTokens,
+            outputBudget,
+            reasoningBudget,
+            measurement: await this.countPromptTokens(messages, signal),
+        });
+    }
     // Reasoning activation and allowance are independent of grammar transport;
     // only the response representation becomes lossless when evidence is needed.
     // The llama-server template mapping is owned by {§llama-reasoning-request}.
-    #reasoningBody(preserveGrammarSentence = false): Record<string, unknown> {
-        const { mode, budget } = this.#reasoning;
+    #reasoningBody(
+        preserveGrammarSentence = false,
+        reasoningBudget = this.#reasoningBudget,
+    ): Record<string, unknown> {
+        const { mode } = this.#reasoning;
+        const budget = reasoningBudget;
         const on = mode !== "off";
         switch (this.#reasoningStyle) {
             case "template": {
                 const allowance = mode === "off"
                     ? 0
-                    : mode === "on" && budget !== null ? budget : this.reasoningReserve;
+                    : mode === "on" && budget !== null ? budget : this.#reasoningBudget;
                 return {
                     chat_template_kwargs: { enable_thinking: on },
                     reasoning_format: preserveGrammarSentence ? "none" : "auto",
@@ -573,7 +639,7 @@ export default class AiSdkProvider implements Provider {
             case "include_reasoning": return on ? { include_reasoning: true } : {};
             // Explicit on uses the portable enabled posture or a tier derived
             // from an explicit budget; off/adaptive omit the field.
-            case "effort": return mode === "on" ? { reasoning_effort: effortFromReasoning(this.#reasoning) } : {};
+            case "effort": return mode === "on" ? { reasoning_effort: effortFromReasoning({ mode, budget }) } : {};
             // Fireworks enum: OFF is sent EXPLICITLY ("none") — omission leaves a
             // reason-by-default model (DeepSeek V4: default 'high') reasoning.
             // ADAPTIVE omits the field: the backend's own default posture IS the
@@ -583,7 +649,7 @@ export default class AiSdkProvider implements Provider {
             // efforts 400.
             case "effort_explicit": return mode === "off"
                 ? { reasoning_effort: "none" }
-                : mode === "on" ? { reasoning_effort: effortFromReasoning(this.#reasoning) } : {};
+                : mode === "on" ? { reasoning_effort: effortFromReasoning({ mode, budget }) } : {};
             // {§deepseek-reasoning-request}
             case "thinking_effort": return mode === "off"
                 ? { thinking: { type: "disabled" } }
@@ -592,14 +658,14 @@ export default class AiSdkProvider implements Provider {
                     ...(budget === null ? {} : { reasoning_effort: effortFromBudget(budget) }),
                 } : {};
             // Anthropic compat: explicit thinking object. off → disabled; on →
-            // enabled with the explicit budget or resolved reserve; adaptive →
+            // enabled with the explicit reasoning subset; adaptive →
             // omit (the API default).
             case "anthropic": return mode === "off"
                 ? { thinking: { type: "disabled" } }
                 : mode === "on" ? {
                     thinking: {
                         type: "enabled",
-                        budget_tokens: budget ?? this.reasoningReserve!,
+                        budget_tokens: budget!,
                     },
                 } : {};
             case "none": return {};
@@ -741,19 +807,43 @@ export default class AiSdkProvider implements Provider {
         return out;
     }
 
-    #requestProviderOptions(workerId: string): AiSdkProviderOptions | undefined {
-        const reasoningOptions = this.#reasoning.mode === "off"
+    #requestProviderOptions(
+        workerId: string,
+        reasoningBudget: number | null,
+    ): AiSdkProviderOptions | undefined {
+        const responseOptions = this.#reasoning.mode === "off"
             ? undefined
             : this.#reasoningResponseProviderOptions;
-        if (this.#cacheAffinity?.target !== "provider-option") return reasoningOptions;
-        const { provider, name } = this.#cacheAffinity;
-        return {
-            ...reasoningOptions,
-            [provider]: {
-                ...reasoningOptions?.[provider],
-                [name]: workerId,
-            },
-        };
+        const nativeReasoning = this.#reasoning.mode === "on" && reasoningBudget !== null
+            ? this.#additiveReasoningProvider === "anthropic"
+                ? { anthropic: { thinking: { type: "enabled", budgetTokens: reasoningBudget } } }
+                : this.#additiveReasoningProvider === "bedrock"
+                    ? { bedrock: { reasoningConfig: { type: "enabled", budgetTokens: reasoningBudget } } }
+                    : undefined
+            : undefined;
+        const options: AiSdkProviderOptions = {};
+        for (const part of [responseOptions, nativeReasoning]) {
+            for (const [provider, values] of Object.entries(part ?? {})) {
+                options[provider] = { ...options[provider], ...values };
+            }
+        }
+        if (this.#cacheAffinity?.target === "provider-option") {
+            const { provider, name } = this.#cacheAffinity;
+            options[provider] = { ...options[provider], [name]: workerId };
+        }
+        return Object.keys(options).length === 0 ? undefined : options;
+    }
+
+    #nativeMaxOutputTokens(
+        outputBudget: number | null,
+        reasoningBudget: number | null,
+    ): number | undefined {
+        if (outputBudget === null) return undefined;
+        return this.#additiveReasoningProvider !== undefined
+            && this.#reasoning.mode === "on"
+            && reasoningBudget !== null
+            ? outputBudget - reasoningBudget
+            : outputBudget;
     }
 
     #accounting(
@@ -774,7 +864,7 @@ export default class AiSdkProvider implements Provider {
         });
     }
 
-    async generate({ messages, workerId, primaryWorkerId, signal, grammar, maxTokens, attributions, client, strikes, workspaceId, loop, turn, sampling, observeRequest, callKind }: ProviderGenerateArgs): Promise<ProviderResponse> {
+    async generate({ messages, workerId, primaryWorkerId, signal, grammar, maxOutputTokens, attributions, client, strikes, workspaceId, loop, turn, sampling, observeRequest, callKind }: ProviderGenerateArgs): Promise<ProviderResponse> {
         // {§provider-interface} The worker identity is required.
         if (workerId === undefined || workerId.length === 0) throw new Error("generate: workerId is required — the worker's stable, opaque identity");
         if (callKind !== undefined && callKind !== "emission" && callKind !== "bare") {
@@ -792,6 +882,20 @@ export default class AiSdkProvider implements Provider {
         const preserveGrammarSentence = wantGrammar
             && this.#reasoningStyle === "template";
 
+        const capacity = await this.assessRequestCapacity(messages, maxOutputTokens, signal);
+        if (capacity.decision === "reject") {
+            if (capacity.prompt.kind !== "exact") {
+                throw new TypeError(`${this.#source}: only an exact prompt measurement may reject capacity`);
+            }
+            throw new ProviderError(
+                this.#source,
+                "capacity_exceeded",
+                `The exact provider request uses ${capacity.prompt.tokens} input tokens, exceeding its ${capacity.inputCapacity} token input capacity.`,
+                { capacity, extensions: { capacityStage: "preflight", capacity } },
+            );
+        }
+        const effectiveMaxOutputTokens = capacity.outputBudget ?? undefined;
+
         // Assembly order = precedence: the family's sampling DEFAULTS
         // (PLURNK_PROVIDERS_TEMPERATURE — universal, measured on grammar
         // paths and the name promises every request) < the caller's `sampling`
@@ -804,9 +908,9 @@ export default class AiSdkProvider implements Provider {
             ...(this.#serviceTier !== undefined ? { service_tier: this.#serviceTier } : {}),
             model: this.#model,
             messages,
-            ...this.#reasoningBody(preserveGrammarSentence),
+            ...this.#reasoningBody(preserveGrammarSentence, capacity.reasoningBudget),
             ...this.#grammarBody(sendGrammar),
-            ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
+            ...(effectiveMaxOutputTokens !== undefined ? { max_tokens: effectiveMaxOutputTokens } : {}),
             // Request per-token logprobs only when enabled (managed field —
             // reserved from caller sampling; the env flag is the single control).
             ...(this.#topLogprobs !== null ? { logprobs: true, top_logprobs: this.#topLogprobs } : {}),
@@ -904,7 +1008,7 @@ export default class AiSdkProvider implements Provider {
                     : await executeAiSdkModel({
                         languageModel: this.#languageModel,
                         headers: requestHeaders,
-                        providerOptions: this.#requestProviderOptions(workerId),
+                        providerOptions: this.#requestProviderOptions(workerId, capacity.reasoningBudget),
                         systemProviderOptions: this.#systemCacheProviderOptions,
                         messages,
                         signal: operationSignal,
@@ -928,12 +1032,17 @@ export default class AiSdkProvider implements Provider {
                                 ? sampling.stop
                                 : undefined,
                         seed: typeof sampling?.seed === "number" ? sampling.seed : undefined,
-                        maxOutputTokens: maxTokens,
+                        maxOutputTokens: this.#nativeMaxOutputTokens(capacity.outputBudget, capacity.reasoningBudget),
                         reasoning: this.#reasoning.mode === "off"
                             ? "none"
                             : this.#reasoning.mode === "adaptive"
                                 ? "provider-default"
-                                : effortFromReasoning(this.#reasoning),
+                                : this.#additiveReasoningProvider !== undefined && capacity.reasoningBudget !== null
+                                    ? "provider-default"
+                                    : effortFromReasoning({
+                                        mode: this.#reasoning.mode,
+                                        budget: capacity.reasoningBudget,
+                                    }),
                     });
             } catch (error) {
                 const failure = transportFailureEvidence(error);
@@ -975,14 +1084,16 @@ export default class AiSdkProvider implements Provider {
                         timeoutMs: timeout.timeoutMs,
                     },
                     accounting,
+                    capacity,
                 });
             }
-            const pe = toProviderError(err, this.#source, this.#errorDetailLimit);
+            const pe = toProviderError(err, this.#source, this.#errorDetailLimit, capacity);
             if ((pe.status === 401 || pe.status === 403) && this.#hasApiKey && this.#apiKeyRejectedMessage !== undefined) {
                 throw new ProviderError(this.#source, "unauthorized", this.#apiKeyRejectedMessage, {
                     status: pe.status,
                     cause: err,
                     accounting,
+                    capacity,
                 });
             }
             pe.prependAccounting(accounting);
@@ -1090,11 +1201,34 @@ export default class AiSdkProvider implements Provider {
         const evidence = {
             assistantRaw: raw,
             accounting,
+            capacity,
             ...(grammarEvidence !== undefined ? { grammarEvidence } : {}),
             ...(raw.rawBody !== undefined ? { rawBody: raw.rawBody } : {}),
             ...(meta !== undefined ? { meta } : {}),
             ...(notices !== undefined ? { notices } : {}),
         };
+        if (capacity.outputBudget !== null
+            && usage?.outputTokens !== undefined
+            && usage.outputTokens > capacity.outputBudget) {
+            const attempt: ProviderAttempt = {
+                assistant: { ...assistant, finishReason: raw.finishReason },
+                ...evidence,
+            };
+            throw new ProviderError(
+                this.#source,
+                "invalid_response",
+                `The provider reported ${usage.outputTokens} output tokens after receiving a total output budget of ${capacity.outputBudget}.`,
+                {
+                    attempt,
+                    accounting,
+                    extensions: {
+                        stage: "provider-response",
+                        outputBudget: capacity.outputBudget,
+                        reportedOutputTokens: usage.outputTokens,
+                    },
+                },
+            );
+        }
         if (raw.finishReason === "resource_interrupted") {
             const attempt: ProviderResponse<"resource_interrupted"> = {
                 assistant: { ...assistant, finishReason: raw.finishReason },

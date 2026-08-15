@@ -1,6 +1,6 @@
 // Budget pressure as a meta-scenario: rerun ordinary storylines with a tight
-// virtual prompt gauge. The integration tier pins exact grinder mechanics; these
-// demos assert that a real model still delivers the requested outcome.
+// provider-derived input capacity. The integration tier pins exact grinder
+// mechanics; these demos assert that a real model still delivers the outcome.
 //
 // The marquee (owner): a JUMBO prompt — SPEC.md itself, ~42k tokens — under a tight
 // gauge. A whole-read drives the gauge deeply negative, so on the next turn the grinder auto-folds
@@ -18,7 +18,7 @@ import { writeFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Db } from "../../src/core/Db.ts";
-import { liveWorkspace, liveLoop, pinAliasBudget } from "../_live-harness.ts";
+import { liveWorkspace, liveLoop, pinAliasInputCapacity } from "../_live-harness.ts";
 import { measureFloor } from "./_floor-probe.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 import { initializeDemoRepository } from "./_git.ts";
@@ -46,17 +46,17 @@ const runUnderPressure = async (opts: { label: string; prompt: string; factor?: 
     const fixture = opts.projectRoot === undefined ? await seedDemoFixture(opts.label) : null;
     const root = opts.projectRoot ?? fixture!.workspace;
     const floor = await measureFloor({ label: opts.label, projectRoot: root, prompt: opts.prompt });
-    const gauge = Math.round(floor * (opts.factor ?? TIGHT_FACTOR));
-    const restore = pinAliasBudget({ PROMPT_BUDGET: String(gauge) });
+    const gauge = Math.round(floor.weight * (opts.factor ?? TIGHT_FACTOR));
+    const restore = pinAliasInputCapacity({ inputCapacity: gauge, outputBudget: floor.outputBudget });
     try {
         const s = await liveWorkspace({ name: `demo-budget-${opts.label}-${crypto.randomUUID()}`, projectRoot: root });
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: opts.prompt }, { timeoutMs: TIMEOUT });
         const perTurn: number[] = [];
         for (const tid of turnIds) {
             const r = await s.db.test_get_turn.get<{ packet: string }>({ id: tid });
-            perTurn.push((JSON.parse(r?.packet ?? "{}") as { tokens?: number }).tokens ?? 0);
+            perTurn.push((JSON.parse(r?.packet ?? "{}") as { weight?: number }).weight ?? 0);
         }
-        console.error(`[budget-meta:${opts.label}] floor=${floor} gauge=${gauge} turns=${turnIds.length} finalStatus=${finalStatus} turn1=${perTurn[0]} peak=${Math.max(0, ...perTurn)} perTurn=[${perTurn.join(",")}]`);
+        console.error(`[budget-meta:${opts.label}] floor=${floor.weight} requestedCapacity=${gauge} effectiveCapacity=${s.provider.inputCapacity} outputBudget=${s.provider.outputBudget} turns=${turnIds.length} finalStatus=${finalStatus} turn1=${perTurn[0]} peak=${Math.max(0, ...perTurn)} perTurn=[${perTurn.join(",")}]`);
         const dump = async (): Promise<void> => {
             for (const turnId of turnIds) {
                 const row = await s.db.test_get_turn.get<{ packet: string; status: number }>({ id: turnId });

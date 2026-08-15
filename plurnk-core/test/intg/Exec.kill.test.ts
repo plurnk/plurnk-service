@@ -103,7 +103,7 @@ test("{§stream-control}: a KILL error answers in the model's runtime-tag scheme
     try {
         const workspaceId = await insertWorkspace(db, `exec-kill-canon-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const ctx = { db, workspaceId, workerId, loopId: 0, turnId: 0, writer: "model" as const, signal: undefined, mimetypes: undefined, tokenize: (t: string) => t.length };
+        const ctx = { db, workspaceId, workerId, loopId: 0, turnId: 0, writer: "model" as const, signal: undefined, mimetypes: undefined, weigh: (t: string) => t.length };
         const exec = new Exec();
         // The model addresses a stream by its RUNTIME TAG; kill() must render the error in the
         // scheme it was CALLED with (the dispatcher passes the model's schemeName), never the
@@ -123,7 +123,7 @@ test("KILL rejects streams whose terminal state is already durable", async () =>
     try {
         const workspaceId = await insertWorkspace(db, `exec-kill-terminal-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const ctx = { db, workspaceId, workerId, loopId: 0, turnId: 0, writer: "model" as const, signal: undefined, mimetypes: undefined, tokenize: (t: string) => t.length };
+        const ctx = { db, workspaceId, workerId, loopId: 0, turnId: 0, writer: "model" as const, signal: undefined, mimetypes: undefined, weigh: (t: string) => t.length };
         const exec = new Exec();
         const close = async (pathname: string, result: { status: number; problem?: never } | ReturnType<typeof Results.failure>): Promise<void> => {
             const entryId = await seedEntryWithChannel(db, {

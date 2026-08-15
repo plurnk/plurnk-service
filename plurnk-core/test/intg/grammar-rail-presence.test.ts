@@ -12,7 +12,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { Provider, ProviderResponse } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, testProviderCapacity } from "./_helpers.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "SD" }, { role: "user" as const, content: "go" }];
 const usage = {
@@ -22,11 +22,16 @@ const usage = {
     outputTokenDetails: { textTokens: 1, reasoningTokens: 1 },
 };
 
-const staticProvider = (response: Omit<ProviderResponse, "accounting">): Provider => ({
+const staticProvider = (response: Omit<ProviderResponse, "accounting" | "capacity">): Provider => ({
     model: "fake",
     contextWindow: 100000,
+    maxInputTokens: null,
+    maxOutputTokens: null,
+    outputBudget: 1,
+    reasoningBudget: null,
+    inputCapacity: 99999,
     constrainsOutput: true,
-    generate: async ({ observeRequest }) => {
+    generate: async ({ messages, observeRequest }) => {
         const accounting = {
             provider: "provider:fake",
             model: "fake",
@@ -36,10 +41,11 @@ const staticProvider = (response: Omit<ProviderResponse, "accounting">): Provide
         } as const;
         const settle = await observeRequest?.({ provider: accounting.provider, model: accounting.model });
         await settle?.(accounting);
-        return { ...response, accounting: [accounting] };
+        return { ...response, accounting: [accounting], capacity: testProviderCapacity(messages, 100000) };
     },
     countPromptTokens: async () => ({ kind: "exact", tokens: 1, source: "test:exact" }),
-}) as Provider;
+    assessRequestCapacity: async (messages) => testProviderCapacity(messages, 100000),
+});
 
 // A Mock that RECORDS what generate receives — the end of the chain, observed directly.
 const recordingProvider = (): { provider: Provider; calls: Array<{ grammar?: string }> } => {
@@ -50,8 +56,14 @@ const recordingProvider = (): { provider: Provider; calls: Array<{ grammar?: str
     // plain delegation — a Proxy breaks Mock's private-field getters (#contextWindow via Reflect)
     const provider = {
         get contextWindow() { return base.contextWindow; },
+        get maxInputTokens() { return base.maxInputTokens; },
+        get maxOutputTokens() { return base.maxOutputTokens; },
+        get outputBudget() { return base.outputBudget; },
+        get reasoningBudget() { return base.reasoningBudget; },
+        get inputCapacity() { return base.inputCapacity; },
         get model() { return base.model; },
         countPromptTokens: (...args: Parameters<Mock["countPromptTokens"]>) => base.countPromptTokens(...args),
+        assessRequestCapacity: (...args: Parameters<Mock["assessRequestCapacity"]>) => base.assessRequestCapacity(...args),
         generate: (args: { grammar?: string }) => { calls.push({ grammar: args.grammar }); return base.generate(args as never); },
     } as unknown as Provider;
     return { provider, calls };
@@ -270,7 +282,7 @@ test("raw rail positions map only from content, and debug evidence is stamped wi
                 broadcasts.push(payload as { notice: Record<string, unknown> });
             },
         });
-        const response = (transported: boolean): Omit<ProviderResponse, "accounting"> => ({
+        const response = (transported: boolean): Omit<ProviderResponse, "accounting" | "capacity"> => ({
             assistant: { content, reasoning: "🙂", finishReason: "stop", model: "fake" },
             assistantRaw: null,
             grammarEvidence: { input, contentStart: [...prefix].length, transported },

@@ -304,13 +304,13 @@ export default class EntryOps {
             createdNow = false;
         }
 
-        if (ctx.tokenize === undefined) throw new Error("editWorkspaceEntry: ctx.tokenize is required for token accounting");
+        if (ctx.weigh === undefined) throw new Error("editWorkspaceEntry: ctx.weigh is required for token accounting");
         const write = {
             entry_id: entryId,
             name: targetChannel,
             content: newContent,
             mimetype: effectiveMimetype,
-            tokens: ctx.tokenize(newContent),
+            weight: ctx.weigh(newContent),
             content_hash: contentHash(newContent),
         };
         const landed = channel === undefined

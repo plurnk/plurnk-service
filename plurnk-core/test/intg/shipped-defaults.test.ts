@@ -40,19 +40,15 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_HOST$|PLURNK_PORT$|PLURNK_QUESTIONS$|PLURNK_PLUGINS_)/;
     const foreign = [...env.keys()].filter((k) => !SERVICE_OWNED.test(k));
     assert.deepEqual(foreign, [], `the template declares only service-owned knobs; foreign: ${foreign.join(", ")}`);
-    // Provider physics ship elsewhere. Core's only active default is SAFETY;
-    // virtual PROMPT_BUDGET is optional and therefore absent from the parsed floor.
-    const safety = Number(env.get("PLURNK_SERVICE_SAFETY"));
-    assert.ok(Number.isFinite(safety) && safety > 0, "SAFETY ships as a positive int — core's one partition knob");
+    // Provider physics and generation policy ship in the provider package.
+    // Core has no parallel token budget or packing-margin contract.
+    assert.equal(env.get("PLURNK_SERVICE_PROMPT_BUDGET"), undefined);
+    assert.equal(env.get("PLURNK_SERVICE_SAFETY"), undefined);
     const previewLines = Number(env.get("PLURNK_SERVICE_PREVIEW_LINES"));
     const previewChars = Number(env.get("PLURNK_SERVICE_PREVIEW_CHARS"));
     assert.equal(previewLines, 16, "the shipped ordinary preview retains sixteen lines");
     assert.equal(previewChars, 2560, "the independent single-line allowance ships at 2560 characters");
-    assert.equal(env.get("PLURNK_SERVICE_PROMPT_PROJECTION"), "25%", "prompt initialization ships at one quarter of the stable packet budget");
-    // {§tokenomics-window-partition} — the bare partition is cloud-generous:
-    // 163840 − 16384 − 49152 − 1024 = 97280 prompt
-    // budget with a 65536 decode envelope the backend self-clamps (the local per-alias template
-    // is the 64Ki-prompt gemma envelope). Prompt budget stays well above the decode envelope.
+    assert.equal(env.get("PLURNK_SERVICE_PROMPT_PROJECTION"), "25%", "prompt initialization ships at one quarter of the derived curation budget");
 });
 
 test("under the shipped policy wiring, the personality renders in the packet exactly once", async () => {

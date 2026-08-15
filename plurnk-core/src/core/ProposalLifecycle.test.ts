@@ -14,7 +14,7 @@ const lifecycleWithDb = (db: Db): ProposalLifecycle => new ProposalLifecycle({
     db,
     schemes: new SchemeRegistry(),
     notices: { push() {} } as unknown as NoticeChannel,
-    tokenize: (text) => text.length,
+    weigh: (text) => text.length,
     executors: () => undefined,
     loopSignal: () => undefined,
     liveSubscriptions: new LiveSubscriptions(),
@@ -102,7 +102,7 @@ test("workerApply invokes a discovered scheme through the public proposal contex
         db: {} as Db,
         schemes,
         notices: { push() {} } as unknown as NoticeChannel,
-        tokenize: (text) => text.length,
+        weigh: (text) => text.length,
         executors: () => undefined as ExecutorRegistry | undefined,
         loopSignal: () => undefined,
         liveSubscriptions: new LiveSubscriptions(),
@@ -157,10 +157,20 @@ test("applyResolution preserves an accepted scheme's failed result and durable o
         outcome: string | null;
         status_rx: number;
         rx: string;
+        weight: number;
     } | undefined;
     const db = {
         engine_log_entry_coordinate: {
-            get: async () => ({ loop_seq: 2, turn_seq: 3, sequence: 4, op: "EDIT" }),
+            get: async () => ({
+                loop_seq: 2,
+                turn_seq: 3,
+                sequence: 4,
+                op: "EDIT",
+                attrs: "{}",
+                tx: JSON.stringify({ op: "EDIT", body: "stale proposal body" }),
+                mimetype_tx: "application/json",
+                mimetype_rx: "application/json",
+            }),
         },
         engine_resolve_log_entry: {
             run: async (input: typeof persisted) => {
@@ -191,6 +201,7 @@ test("applyResolution preserves an accepted scheme's failed result and durable o
     assert.equal(persisted?.status_rx, 409);
     assert.equal(persisted?.state, "failed");
     assert.equal(persisted?.outcome, "edit_collision");
+    assert.equal(persisted?.weight, 0, "the bodyless collision replaces any proposed-body weight");
     assert.deepEqual(JSON.parse(persisted!.rx), result);
 });
 

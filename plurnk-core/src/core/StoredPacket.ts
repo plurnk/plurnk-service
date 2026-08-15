@@ -2,7 +2,7 @@ import { Validator, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
 
 export interface StoredPacketSection extends PacketSectionDraft {
-    readonly tokens: number;
+    readonly weight: number;
 }
 
 export type PacketAssistant = {
@@ -12,7 +12,7 @@ export type PacketAssistant = {
 };
 
 export type RequestPacket = {
-    tokens: number;
+    weight: number;
     sections: StoredPacketSection[];
     attributions: string[];
 };
@@ -70,11 +70,11 @@ export default class StoredPacket {
         const packet = StoredPacket.#record(value, subject);
         StoredPacket.#keys(
             packet,
-            ["tokens", "sections", "attributions"],
-            ["tokens", "sections", "attributions", "assistant", "assistantRaw"],
+            ["weight", "sections", "attributions"],
+            ["weight", "sections", "attributions", "assistant", "assistantRaw"],
             subject,
         );
-        StoredPacket.#nonnegativeInteger(packet.tokens, `${subject}.tokens`);
+        StoredPacket.#nonnegativeInteger(packet.weight, `${subject}.weight`);
         if (!Array.isArray(packet.sections)) throw new TypeError(`${subject}.sections must be an array`);
 
         const sections = packet.sections.map((section, index) => StoredPacket.#section(section, `${subject}.sections[${index}]`));
@@ -84,11 +84,11 @@ export default class StoredPacket {
         if (hasAssistant !== hasAssistantRaw) {
             throw new TypeError(`${subject}.assistant and ${subject}.assistantRaw must be present together`);
         }
-        if (!hasAssistant) return { tokens: packet.tokens as number, sections, attributions };
+        if (!hasAssistant) return { weight: packet.weight as number, sections, attributions };
         if (packet.assistantRaw === undefined) throw new TypeError(`${subject}.assistantRaw must be a JSON value`);
 
         return {
-            tokens: packet.tokens as number,
+            weight: packet.weight as number,
             sections,
             attributions,
             assistant: StoredPacket.#assistant(packet.assistant, `${subject}.assistant`),
@@ -116,7 +116,7 @@ export default class StoredPacket {
 
     static #section(value: unknown, subject: string): StoredPacketSection {
         const section = StoredPacket.#record(value, subject);
-        StoredPacket.#keys(section, ["name", "slot", "header", "content", "tokens"], ["name", "slot", "header", "content", "tokens"], subject);
+        StoredPacket.#keys(section, ["name", "slot", "header", "content", "weight"], ["name", "slot", "header", "content", "weight"], subject);
         if (typeof section.name !== "string" || section.name.length === 0) {
             throw new TypeError(`${subject}.name must be a non-empty string`);
         }
@@ -127,13 +127,13 @@ export default class StoredPacket {
             throw new TypeError(`${subject}.header must be a string or null`);
         }
         if (typeof section.content !== "string") throw new TypeError(`${subject}.content must be a string`);
-        StoredPacket.#nonnegativeInteger(section.tokens, `${subject}.tokens`);
+        StoredPacket.#nonnegativeInteger(section.weight, `${subject}.weight`);
         return {
             name: section.name,
             slot: section.slot,
             header: section.header,
             content: section.content,
-            tokens: section.tokens as number,
+            weight: section.weight as number,
         };
     }
 

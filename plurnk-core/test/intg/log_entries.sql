@@ -5,11 +5,11 @@ SELECT sql FROM sqlite_master WHERE name = 'log_entries';
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source, op, suffix, signal,
     scheme, pathname, port, query,
-    lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens, attrs
+    lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, $origin, $source, $op, $suffix, $signal,
     $scheme, $pathname, $port, $query,
-    $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens, $attrs
+    $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight, $attrs
 ) RETURNING id;
 
 -- PREP: test_log_entries_get_by_id

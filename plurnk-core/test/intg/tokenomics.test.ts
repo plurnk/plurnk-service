@@ -6,6 +6,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, packetSection } from "./_helpers.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { sendStmt } from "./_dsl.ts";
+import { contentWeight } from "../../src/core/content-weight.ts";
 
 // {§tokenomics}: entry and log content-depth is stamped at write time in the
 // model-independent ruler used by production: ceil(chars/2). Provider-reported
@@ -33,7 +34,7 @@ const setup = async () => {
     return { db, engine, workspaceId, workerId, loopId, turnId };
 };
 
-test("EDIT stores entry_channels.tokens from the model-agnostic ruler", async () => {
+test("EDIT stores entry_channels.weight from the model-agnostic ruler", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const content = "alpha beta gamma delta";
@@ -43,14 +44,14 @@ test("EDIT stores entry_channels.tokens from the model-agnostic ruler", async ()
         }) as { status: number; entryId: number | null };
         assert.equal(result.status, 201);
         assert.ok(result.entryId !== null);
-        const ch = await db.tok_channel_tokens.get<{ tokens: number }>({ entry_id: result.entryId, name: "body" });
+        const ch = await db.tok_channel_weight.get<{ weight: number }>({ entry_id: result.entryId, name: "body" });
         // The write-time stamp is the model-agnostic ruler ({§tokenomics-agnostic-ruler}): ceil(len/2).
-        assert.equal(ch?.tokens, Math.ceil(content.length / 2));
-        assert.ok((ch?.tokens ?? 0) > 0, "tokens populated at write, not the old hardcoded 0");
+        assert.equal(ch?.weight, Math.ceil(content.length / 2));
+        assert.ok((ch?.weight ?? 0) > 0, "weight is populated at write, not left at the old hardcoded 0");
     } finally { await db.close(); }
 });
 
-test("dispatched op stores log_entries.tokens from tx+rx", async () => {
+test("dispatched op stores log_entries.weight from its complete canonical log body", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         let logEntryId = 0;
@@ -60,26 +61,33 @@ test("dispatched op stores log_entries.tokens from tx+rx", async () => {
             onDispatch: (id: number) => { logEntryId = id; },
         });
         assert.ok(logEntryId > 0, "a log entry was written");
-        const row = await db.tok_log_tokens.get<{ tokens: number }>({ id: logEntryId });
-        assert.ok((row?.tokens ?? 0) > 0, "log row tokens populated from tx+rx, not 0");
+        const row = await db.tok_log_weight.get<{ rx: string; weight: number }>({ id: logEntryId });
+        const result = JSON.parse(row?.rx ?? "null") as { receipt?: { effect?: { context?: unknown } } };
+        const context = result.receipt?.effect?.context;
+        assert.equal(typeof context, "string", "the successful EDIT retains its canonical receipt context");
+        assert.equal(row?.weight, contentWeight(context as string));
     } finally { await db.close(); }
 });
 
-test("entry_channels.tokens honors an injected ruler override (test seam)", async () => {
+test("entry_channels.weight honors an injected ruler override (test seam)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-prov-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
         const turnId = await insertTurn(db, loopId, 1, 200);
-        // Inject a distinctive tokenizer (constant 100) — unmistakably not ceil(len/4).
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, tokenize: () => 100 });
+        // Inject a distinctive weight (constant 100) — unmistakably not ceil(len/4).
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, weigh: () => 100 });
+        let logEntryId = 0;
         const result = await engine.dispatch({
             statement: editStmt("/notes", "alpha beta gamma"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            onDispatch: (id: number) => { logEntryId = id; },
         }) as { status: number; entryId: number | null };
-        const ch = await db.tok_channel_tokens.get<{ tokens: number }>({ entry_id: result.entryId, name: "body" });
-        assert.equal(ch?.tokens, 100, "the write stamp honors the injected tokenize (test seam); production injects the chars/2 ruler");
+        const ch = await db.tok_channel_weight.get<{ weight: number }>({ entry_id: result.entryId, name: "body" });
+        assert.equal(ch?.weight, 100, "the write stamp honors the injected weight (test seam); production injects the chars/2 ruler");
+        const log = await db.tok_log_weight.get<{ weight: number }>({ id: logEntryId });
+        assert.equal(log?.weight, 100, "the same injected ruler weighs canonical log content once");
     } finally { await db.close(); }
 });
 
@@ -93,14 +101,14 @@ test("budget headline carries a populated ceiling/usage/free ledger", async () =
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
-        const packet = JSON.parse(row!.packet) as { tokens: number };
+        const packet = JSON.parse(row!.packet) as { weight: number };
         const budget = packetSection(packet, "budget");
         const m = budget.match(/Token Ceiling (\d+) · Token Usage\s+(\d+) \(\s*(?:<1|\d+)%\) · Tokens Free\s+(\d+)/);
         assert.ok(m, `budget headline carries ceiling/usage/free; got: ${budget}`);
         assert.equal(budget.split("\n").length, 1, "the model-facing budget is one line");
         const ceiling = Number(m![1]); const usage = Number(m![2]); const free = Number(m![3]);
         assert.ok(usage > 0, "usage is populated, not zero or a leftover placeholder");
-        assert.equal(usage, packet.tokens, "displayed usage is the exact persisted request render-weight");
+        assert.equal(usage, packet.weight, "displayed usage is the exact persisted request render-weight");
         assert.equal(usage + free, ceiling, "usage + free = ceiling (the accounting closes)");
     } finally { await db.close(); }
 });
@@ -130,19 +138,18 @@ test("budget headline shows usage as a percent of the ceiling", async () => {
 
 test("a hard context-envelope rejection preserves negative curation debt and over-100% pressure in its stored evidence", async () => {
     const db = await openMigrated();
-    const partitionKeys = ["PLURNK_PROVIDERS_REASONING_RESERVE", "PLURNK_PROVIDERS_COMPLETION_RESERVE", "PLURNK_SERVICE_SAFETY"] as const;
+    const partitionKeys = ["PLURNK_PROVIDERS_OUTPUT_BUDGET", "PLURNK_PROVIDERS_REASONING_BUDGET"] as const;
     const previousPartition = partitionKeys.map((key) => process.env[key]);
     try {
         const workspaceId = await insertWorkspace(db, `tok-over-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "p");
-        // {§tokenomics-window-partition} — the envelope rides the provider: an 11-token window with the 1+1 reserve floor
-        // and SAFETY 0 → promptBudget 9, same arithmetic as the retired env pin.
-        process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "1";
-        process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE = "1";
-        process.env.PLURNK_SERVICE_SAFETY = "0";
+        // {§tokenomics-window-partition} — the envelope rides the provider: an
+        // 11-token context and a two-token total output budget leave nine input tokens.
+        process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "2";
+        delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        // An 11-token provider window − 1 − 1 reserves → promptBudget 9; the packet's own
+        // An 11-token provider context − 2 output tokens → input capacity 9; the packet's own
         // scaffolding alone blows past it and CANNOT fold under
         // (turn 1, nothing to roll back) → the un-foldable corner case. The loop hard-413s rather than
         // DELIVER an over-budget packet; the stored record below is engine forensics, NOT a packet the

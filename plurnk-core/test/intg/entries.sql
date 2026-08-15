@@ -37,15 +37,15 @@ INSERT INTO entry_channels (entry_id, name, content, mimetype) VALUES ($entry_id
 -- PREP: test_entry_channels_insert_with_state
 INSERT INTO entry_channels (entry_id, name, content, mimetype, state) VALUES ($entry_id, $name, $content, $mimetype, $state);
 
--- PREP: test_entry_channels_insert_with_tokens
-INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens) VALUES ($entry_id, $name, $content, $mimetype, $tokens);
+-- PREP: test_entry_channels_insert_with_weight
+INSERT INTO entry_channels (entry_id, name, content, mimetype, weight) VALUES ($entry_id, $name, $content, $mimetype, $weight);
 
 -- PREP: test_entry_channels_insert_with_producer_result
 INSERT INTO entry_channels (entry_id, name, content, mimetype, producer_result)
 VALUES ($entry_id, $name, $content, $mimetype, $producer_result);
 
 -- PREP: test_entry_channels_get_first
-SELECT entry_id, name, content, mimetype, tokens, state, producer_result FROM entry_channels WHERE entry_id = $entry_id LIMIT 1;
+SELECT entry_id, name, content, mimetype, weight, state, producer_result FROM entry_channels WHERE entry_id = $entry_id LIMIT 1;
 
 -- PREP: test_entry_channels_count_all
 SELECT COUNT(*) AS n FROM entry_channels;

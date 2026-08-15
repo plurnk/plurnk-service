@@ -20,9 +20,17 @@ class MetaProvider implements Provider {
         this.#meta = meta;
     }
     get contextWindow(): number | null { return this.#base.contextWindow; }
+    get maxInputTokens(): number | null { return this.#base.maxInputTokens; }
+    get maxOutputTokens(): number | null { return this.#base.maxOutputTokens; }
+    get outputBudget(): number | null { return this.#base.outputBudget; }
+    get reasoningBudget(): number | null { return this.#base.reasoningBudget; }
+    get inputCapacity(): number | null { return this.#base.inputCapacity; }
     get model(): string { return this.#base.model; }
     countPromptTokens(...args: Parameters<Mock["countPromptTokens"]>): ReturnType<Mock["countPromptTokens"]> {
         return this.#base.countPromptTokens(...args);
+    }
+    assessRequestCapacity(...args: Parameters<Mock["assessRequestCapacity"]>): ReturnType<Mock["assessRequestCapacity"]> {
+        return this.#base.assessRequestCapacity(...args);
     }
     async generate(args: Parameters<Mock["generate"]>[0]): Promise<ProviderResponse> {
         return { ...(await this.#base.generate(args)), meta: this.#meta };

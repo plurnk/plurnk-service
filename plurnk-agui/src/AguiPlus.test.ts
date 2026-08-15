@@ -63,14 +63,25 @@ test("resolutionFromResume: standard cancellation and strict payload validation"
     assert.equal(resolutionFromResume({ interruptId: "prop:5", status: "resolved", payload: { decision: "maybe" } }), null, "an invalid decision is rejected, not coerced");
 });
 
-test("reads → STATE: snapshot nests under plurnk; delta passes patches through", () => {
+test("reads → STATE: snapshot owns plurnk state and initializes replaceable budget facts", () => {
     const snap = stateSnapshot({
-        providers: [{ alias: "opus", model: "anthropic/claude-opus", active: true, promptBudget: 200000 }],
+        providers: [{ alias: "opus", model: "anthropic/claude-opus", active: true, inputCapacity: 200000 }],
         workspace: { id: 1, name: "agui-tui", projectRoot: "/w", budget: 200000 },
     });
     assert.equal(snap.type, "STATE_SNAPSHOT");
-    const snapshot = (snap as { snapshot: { plurnk: { providers: Array<{ active: boolean }> } } }).snapshot;
+    const snapshot = (snap as {
+        snapshot: {
+            plurnk: { providers: Array<{ active: boolean }> };
+            budget: Record<string, number | null>;
+        };
+    }).snapshot;
     assert.equal(snapshot.plurnk.providers[0].active, true);
+    assert.deepEqual(snapshot.budget, {
+        curationWeight: null,
+        curationBudget: null,
+        contextTokens: null,
+        contextCapacity: null,
+    });
     const delta = stateDelta([{ op: "replace", path: "/plurnk/providers/0/active", value: false }]);
     assert.equal(delta.type, "STATE_DELTA");
     assert.equal((delta as { delta: Array<{ path: string }> }).delta[0].path, "/plurnk/providers/0/active");

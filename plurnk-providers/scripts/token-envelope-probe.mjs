@@ -36,21 +36,18 @@ export const selectProbeAliases = (env, names) => {
     });
 };
 
-export const resolveProbeMaxTokens = (mode, provider) => {
-    if (mode === "current") {
-        const reasoning = provider.reasoningReserve ?? null;
-        const completion = provider.completionReserve ?? null;
-        if (reasoning === null || completion === null) {
-            throw new Error("current max-token mode requires resolved reasoning and completion reserves");
-        }
-        return reasoning + completion;
+export const resolveProbeMaxOutputTokens = (mode, provider) => {
+    if (mode === "configured") {
+        const output = provider.outputBudget ?? null;
+        if (output === null) throw new Error("configured mode requires a resolved output budget");
+        return output;
     }
-    if (mode === "completion") {
-        const completion = provider.completionReserve ?? null;
-        if (completion === null) throw new Error("completion max-token mode requires a resolved completion reserve");
-        return completion;
+    if (mode === "model") {
+        const output = provider.maxOutputTokens ?? null;
+        if (output === null) throw new Error("model mode requires a known model output limit");
+        return output;
     }
-    return positiveInteger(mode, "--max-tokens");
+    return positiveInteger(mode, "--max-output-tokens");
 };
 
 export const buildProbePrompt = (chars, fill = "x") => {
@@ -88,7 +85,7 @@ const failureEvidence = (cause, sensitiveValues) => ({
 export const probeRoute = async ({
     route,
     env,
-    maxTokensMode,
+    maxOutputTokensMode,
     prompt,
     reasoning,
     timeoutMs,
@@ -105,17 +102,18 @@ export const probeRoute = async ({
         route.baseUrl,
         route.alias,
     );
-    const maxTokens = resolveProbeMaxTokens(maxTokensMode, provider);
+    const maxOutputTokens = resolveProbeMaxOutputTokens(maxOutputTokensMode, provider);
     const catalog = resolveModel(route.provider, route.model)?.info ?? null;
     const base = {
         alias: route.alias,
         provider: route.provider,
         model: route.model,
         contextWindow: provider.contextWindow,
-        modelsDevMaxOutput: catalog?.maxOutput ?? null,
-        reasoningReserve: provider.reasoningReserve ?? null,
-        completionReserve: provider.completionReserve ?? null,
-        requestedMaxTokens: maxTokens,
+        modelsDevMaxInputTokens: catalog?.maxInputTokens ?? null,
+        modelsDevMaxOutputTokens: catalog?.maxOutputTokens ?? null,
+        outputBudget: provider.outputBudget ?? null,
+        reasoningBudget: provider.reasoningBudget ?? null,
+        requestedMaxOutputTokens: maxOutputTokens,
         promptCharacters: prompt.length,
         reasoningMode: reasoning ?? "configured",
     };
@@ -142,7 +140,7 @@ export const probeRoute = async ({
             messages: [{ role: "user", content: prompt }],
             workerId: `token-envelope-probe-${crypto.randomUUID()}`,
             signal: AbortSignal.timeout(timeoutMs),
-            maxTokens,
+            maxOutputTokens,
             callKind: "bare",
         });
         return {
@@ -184,7 +182,7 @@ const main = async () => {
     const { values } = parseArgs({
         options: {
             alias: { type: "string", multiple: true },
-            "max-tokens": { type: "string", default: "current" },
+            "max-output-tokens": { type: "string", default: "configured" },
             "prompt-chars": { type: "string", default: "0" },
             fill: { type: "string", default: "x" },
             reasoning: { type: "string" },
@@ -213,11 +211,11 @@ const main = async () => {
     const records = [];
 
     for (const route of routes) {
-        process.stdout.write(`${values["dry-run"] ? "INSPECT" : "CALL"} ${route.provider}/${route.model} (alias ${route.alias}; max ${values["max-tokens"]})\n`);
+        process.stdout.write(`${values["dry-run"] ? "INSPECT" : "CALL"} ${route.provider}/${route.model} (alias ${route.alias}; max ${values["max-output-tokens"]})\n`);
         const record = await probeRoute({
             route,
             env: process.env,
-            maxTokensMode: values["max-tokens"],
+            maxOutputTokensMode: values["max-output-tokens"],
             prompt,
             reasoning: values.reasoning,
             timeoutMs,
@@ -231,7 +229,7 @@ const main = async () => {
 
     const encoded = `${JSON.stringify({
         createdAt: new Date().toISOString(),
-        maxTokensMode: values["max-tokens"],
+        maxOutputTokensMode: values["max-output-tokens"],
         promptCharacters: prompt.length,
         records,
     }, null, 2)}\n`;

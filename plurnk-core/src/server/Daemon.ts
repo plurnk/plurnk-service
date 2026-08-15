@@ -45,7 +45,7 @@ import Fork from "../core/fork.ts";
 import WorkerName from "../core/WorkerName.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import { promptLoopPrefix } from "../core/plurnk-uri.ts";
-import { rulerCount } from "../core/token-ruler.ts";
+import { contentWeight } from "../core/content-weight.ts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
@@ -200,11 +200,10 @@ export default class Daemon {
         });
         this.#engine = new Engine({
             db, schemes: this.#schemes, mimetypes: this.#mimetypes,
-            // {§tokenomics-agnostic-ruler} — the ONE model-facing token ruler (chars/2), NOT the
-            // boot provider: token accounting is workspace-wide across many concurrent models, so
-            // the write-time + catalog counts must be model-independent. Exact per-model counting
-            // lives only at the packet-materialization fit-gate.
-            tokenize: rulerCount,
+            // {§tokenomics-agnostic-ruler} — stored and catalog curation weights
+            // are workspace-wide across concurrent models, so they remain
+            // model-independent. Request-shaped token facts stay provider-owned.
+            weigh: contentWeight,
             streamEventNotify: (workspaceId, event) => this.notifyStreamEvent(workspaceId, event),
             wakeWorkerNotify: (payload) => { void this.#drains.handleWakeWorker(payload); },
             // worker:// loop-start primitive — spawn/fork/irc deliver through
@@ -792,16 +791,14 @@ export default class Daemon {
 
     // {§methods} — the module's render surface beyond the journal. Thin delegations
     // into core's envelope / membership / provider machinery; the module fans the results into its own views.
-    listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; promptBudget: number | null }> } {
+    listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; inputCapacity: number | null }> } {
         const active = resolveActiveAlias();
         return {
             aliases: parseAliasesFromEnv().map((a) => {
                 const isActive = active !== null && active.alias === a.alias;
                 return {
                     alias: a.alias, provider: a.provider, model: a.model, active: isActive,
-                    // The same effective model-facing budget loop usage reports, including
-                    // optional virtual pressure; known for the active alias, null elsewhere.
-                    promptBudget: isActive && this.#provider !== null ? this.#engine.promptBudgetFor(this.#provider) : null,
+                    inputCapacity: isActive && this.#provider !== null ? this.#provider.inputCapacity : null,
                 };
             }),
         };
@@ -1126,7 +1123,7 @@ export default class Daemon {
                     contentOffset: c.contentOffset,
                     contentLength: c.contentLength,
                     mimetype: c.mimetype,
-                    tokens: c.tokens,
+                    weight: c.weight,
                     state: c.state,
                 };
             }

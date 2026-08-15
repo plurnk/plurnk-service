@@ -71,7 +71,7 @@ const recordingInjectWorker = () => {
     return { calls, injectWorker };
 };
 
-const tokenize = (text: string): number => Math.ceil(text.length / 4);
+const weigh = (text: string): number => Math.ceil(text.length / 4);
 
 // FIND in one owner's space: worker://<owner>/<glob>.
 const findEntry = (owner: string, glob: string): FindStatement => ({
@@ -155,7 +155,7 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
         const workspaceId = await insertWorkspace(db, `worker-spawn-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
@@ -186,7 +186,7 @@ test("worker control rejects every non-authority URI component before spawning (
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
         const workspaceId = await insertWorkspace(db, `worker-control-shape-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
@@ -243,7 +243,7 @@ test("the exact worker control address is enforced before every operation path (
             schemes: new SchemeRegistry(),
             injectWorker,
             cancelWorker: async (workerId: number): Promise<void> => { killed.push(workerId); },
-            tokenize,
+            weigh,
         });
         const workspaceId = await insertWorkspace(db, `worker-control-ops-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
@@ -293,7 +293,7 @@ test("~ is the sole current-worker sigil; self is an ordinary worker name", asyn
             schemes: new SchemeRegistry(),
             injectWorker,
             cancelWorker: async (workerId: number): Promise<void> => { killed.push(workerId); },
-            tokenize,
+            weigh,
         });
         const workspaceId = await insertWorkspace(db, `worker-self-address-${crypto.randomUUID()}`);
         const actorId = await insertWorker(db, workspaceId, null, "actor");
@@ -343,7 +343,7 @@ test("WORK-spawning a name a LIVE sister holds is refused 409 — legible, never
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
         const workspaceId = await insertWorkspace(db, `worker-spawn-live-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
@@ -366,7 +366,7 @@ test("WORK and FORK reject non-mintable worker authorities before creating or st
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
         const workspaceId = await insertWorkspace(db, `worker-name-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
@@ -404,7 +404,7 @@ test("a TERMINATED sister's name is reclaimed — spawn succeeds, newest wins", 
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
         const workspaceId = await insertWorkspace(db, `worker-spawn-reclaim-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
@@ -505,7 +505,7 @@ test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400,
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
         const workspaceId = await insertWorkspace(db, `worker-edit-entity-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
@@ -532,7 +532,7 @@ test("SEND(worker://name):msg delivers to a sister; a missing sister is 404", as
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
         const workspaceId = await insertWorkspace(db, `worker-irc-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
@@ -592,7 +592,7 @@ test("entry KILL: a child naming upward is 404; an ancestor sees but cannot writ
     const db = await openMigrated();
     try {
         const { injectWorker } = recordingInjectWorker();
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
         const workspaceId = await insertWorkspace(db, `worker-kill-entry-${crypto.randomUUID()}`);
         const alpha = await insertWorker(db, workspaceId, null, "alpha");
         const beta = await insertWorker(db, workspaceId, alpha, "beta"); // beta is alpha's child
@@ -626,7 +626,7 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
         const workspaceId = await insertWorkspace(db, `worker-fork-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId, null, "explorer");
         const loopId = await insertLoop(db, workerId, 1, "go");
@@ -655,7 +655,7 @@ test("spawn AND fork past PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE fail hard 
     process.env.PLURNK_SERVICE_WORKSPACE_WORKERS_MAX_ACTIVE = "1"; // ceiling of one active worker
     try {
         const { calls, injectWorker } = recordingInjectWorker();
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, tokenize });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
         const workspaceId = await insertWorkspace(db, `worker-cap-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);        // the acting worker, its loop 102 = 1 active = the ceiling
         const loopId = await insertLoop(db, workerId, 1, "go");
@@ -687,7 +687,7 @@ test("KILL(worker://name) aborts a sister by address; a missing sister is 404", 
     try {
         const killed: number[] = [];
         const cancelWorker = async (workerId: number): Promise<void> => { killed.push(workerId); };
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelWorker, tokenize });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelWorker, weigh });
         const workspaceId = await insertWorkspace(db, `worker-kill-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
@@ -709,7 +709,7 @@ test("KILL(worker://name) aborts a sister by address; a missing sister is 404", 
 test("own-space EDIT lands owner-keyed; an ancestor READs the child's space; every named authority refuses model writes (403)", async () => {
     const db = await openMigrated();
     try {
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), tokenize });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh });
         const workspaceId = await insertWorkspace(db, `worker-store-${crypto.randomUUID()}`);
         const meId = await insertWorker(db, workspaceId, null, "me");
         const childId = await insertWorker(db, workspaceId, meId, "child"); // me's child: me may read down into it
@@ -743,7 +743,7 @@ test("the kernel's published surface worker://plurnk/ refuses model writes (403)
     // worker://plurnk/docs edits were all origin=plurnk (the kernel publishing), never the model.
     const db = await openMigrated();
     try {
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), tokenize });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh });
         const workspaceId = await insertWorkspace(db, `plurnk-ro-${crypto.randomUUID()}`);
         await insertWorker(db, workspaceId, null, "plurnk"); // the kernel principal must resolve by name
         const meId = await insertWorker(db, workspaceId, null, "me");

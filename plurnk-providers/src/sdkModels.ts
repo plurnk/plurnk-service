@@ -7,6 +7,7 @@ import { createGroq } from "@ai-sdk/groq";
 import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createTogetherAI } from "@ai-sdk/togetherai";
+import { createXai } from "@ai-sdk/xai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { lookupProvider, type ProviderInfo } from "@plurnk/plurnk-models";
 import type { LanguageModel } from "ai";
@@ -24,6 +25,7 @@ export type SdkModel = {
     readonly cacheAffinity?: CacheAffinity;
     readonly systemCacheProviderOptions?: AiSdkProviderOptions;
     readonly reasoningResponseProviderOptions?: AiSdkProviderOptions;
+    readonly additiveReasoningProvider?: "anthropic" | "bedrock";
     readonly catalog: ProviderInfo | null;
 };
 
@@ -162,24 +164,19 @@ export const createSdkModel = (
                 },
                 catalog,
             };
-        case "@ai-sdk/xai": {
-            const key = requireApiKey(provider, env, catalog);
-            const compatibleBase = url ?? "https://api.x.ai/v1";
+        case "@ai-sdk/xai":
             return {
-                compatible: {
-                    url: `${compatibleBase}/chat/completions`,
-                    headers: { Authorization: `Bearer ${key}` },
-                },
+                languageModel: createXai({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).chat(model),
                 ...(catalog.id === "xai"
                     ? { cacheAffinity: { target: "header" as const, name: "x-grok-conv-id" } }
                     : {}),
                 ...(normalizeCost === undefined ? {} : { normalizeCost }),
                 catalog,
             };
-        }
         case "@ai-sdk/anthropic":
             return {
                 languageModel: createAnthropic({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).languageModel(model),
+                additiveReasoningProvider: "anthropic",
                 ...(catalog.id === "anthropic"
                     ? { systemCacheProviderOptions: { anthropic: { cacheControl } } }
                     : {}),
@@ -195,6 +192,7 @@ export const createSdkModel = (
                     apiKey: env.AWS_BEARER_TOKEN_BEDROCK,
                     baseURL: url,
                 }).languageModel(model),
+                additiveReasoningProvider: "bedrock",
                 catalog,
             };
         case "@openrouter/ai-sdk-provider":

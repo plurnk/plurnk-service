@@ -40,7 +40,7 @@ test("the active alias's GBNF setting wins over the bare fallback", async () => 
     try {
         process.env.PLURNK_PROVIDERS_GBNF = "";  // bare unset
         process.env[suffixKey] = "plurnk.gemma.gbnf";  // the active alias opts IN
-        // Keep the incidental context window above the configured output reserves
+        // Keep the incidental context window above the configured output envelope
         // so this specimen reaches generation and isolates grammar resolution.
         const on = new GrammarCapturingMock({ contextWindow: 1_000_000, responses: [makeMockResponse(dsl, 10)] });
         await runOneTurn(on, "gbnf-on");

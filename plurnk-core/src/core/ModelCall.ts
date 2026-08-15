@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import type {
     ProviderAttempt,
     ProviderRequestAccounting,
+    ProviderRequestCapacity,
     ProviderRequestObserver,
 } from "@plurnk/plurnk-providers";
 import { validateProviderRequestAccounting } from "@plurnk/plurnk-providers";
@@ -137,12 +138,13 @@ export default class ModelCall {
     }
 
     async observeResponse(response: ProviderAttempt, failure: SchemeResult | null = null): Promise<void> {
-        const { accounting: _accounting, ...evidence } = response;
+        const { accounting: _accounting, capacity, ...evidence } = response;
         try {
             const result = await this.#db.engine_observe_model_call_response.run({
                 id: this.id,
                 response: JSON.stringify(evidence),
                 failure: failure === null ? null : JSON.stringify(failure),
+                capacity: JSON.stringify(capacity),
                 finish_reason: response.assistant.finishReason,
                 model: response.assistant.model,
             });
@@ -155,11 +157,12 @@ export default class ModelCall {
         }
     }
 
-    async fail(failure: SchemeResult): Promise<void> {
+    async fail(failure: SchemeResult, capacity: ProviderRequestCapacity | null = null): Promise<void> {
         try {
             const result = await this.#db.engine_fail_model_call.run({
                 id: this.id,
                 failure: JSON.stringify(failure),
+                capacity: capacity === null ? null : JSON.stringify(capacity),
             });
             if (result.changes !== 1) throw new Error(`model call ${this.id} was not pending`);
         } catch (cause) {

@@ -54,6 +54,37 @@ test("a distinct cache rate requires the applicable token category", () => {
     );
 });
 
+test("a distinct reasoning rate prices reasoning as a subset of output", () => {
+    const withReasoning: ProviderUsage = {
+        inputTokens: 100,
+        outputTokens: 50,
+        totalTokens: 150,
+        outputTokenDetails: { reasoningTokens: 20 },
+    };
+    assert.deepEqual(
+        estimateProviderCost(withReasoning, {
+            input: 1,
+            output: 2,
+            reasoning: 5,
+        }, "Models.dev"),
+        {
+            kind: "estimated",
+            amount: { amount: "0.00026", currency: "USD" },
+            source: "Models.dev",
+        },
+    );
+});
+
+test("a distinct reasoning rate requires reported reasoning usage", () => {
+    assert.deepEqual(
+        estimateProviderCost(usage, { input: 1, output: 2, reasoning: 5 }, "Models.dev"),
+        {
+            kind: "unknown",
+            reason: "the provider response omitted a token category with a distinct Models.dev rate",
+        },
+    );
+});
+
 test("decimal aggregation is exact and becomes unknown if any request is unknown", () => {
     assert.equal(addDecimals(["0.1", "0.02", "3"]), "3.12");
     assert.equal(sumProviderCostsUsd([

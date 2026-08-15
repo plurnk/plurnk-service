@@ -58,6 +58,7 @@ import type { ProviderEncryptedReasoningItem } from "@plurnk/plurnk-providers";
 import DurableStatement from "./DurableStatement.ts";
 import type { LogCurationOutcome, LogCurationPlan } from "../schemes/Log.ts";
 import ResourceMutations from "./ResourceMutations.ts";
+import LogBody from "./LogBody.ts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
@@ -152,7 +153,7 @@ export default class Dispatcher {
     #db: Db;
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
-    #tokenize: (text: string) => number;
+    #weighContent: (text: string) => number;
     #notices: NoticeChannel;
     #proposals: ProposalLifecycle;
     // Boot-discovered runtime executors, late-injected on Engine — thunked.
@@ -176,11 +177,11 @@ export default class Dispatcher {
     #lifecycle: LoopLifecycle;
     #resourceMutations: ResourceMutations;
 
-    constructor({ db, schemes, mimetypes, tokenize, notices, proposals, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, searchGate, parkDeadlines, joinTargets, liveSubscriptions }: {
+    constructor({ db, schemes, mimetypes, weigh, notices, proposals, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, searchGate, parkDeadlines, joinTargets, liveSubscriptions }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
-        tokenize: (text: string) => number;
+        weigh: (text: string) => number;
         notices: NoticeChannel;
         proposals: ProposalLifecycle;
         executors: () => ExecutorRegistry | undefined;
@@ -200,7 +201,7 @@ export default class Dispatcher {
         this.#db = db;
         this.#schemes = schemes;
         this.#mimetypes = mimetypes;
-        this.#tokenize = tokenize;
+        this.#weighContent = weigh;
         this.#notices = notices;
         this.#proposals = proposals;
         this.#executors = executors;
@@ -836,7 +837,7 @@ export default class Dispatcher {
             wakeWorkerNotify: this.#wakeWorkerNotify,
             injectWorker: this.#injectWorker,
             mimetypes: this.#mimetypes,
-            tokenize: this.#tokenize,
+            weigh: this.#weighContent,
             pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
             executors: this.#executors(),
         };
@@ -1211,6 +1212,8 @@ export default class Dispatcher {
         modelCallId?: number | null;
         attrs?: Readonly<Record<string, unknown>>;
     }): Promise<number> {
+        const durableAttrs = { ...attrs, kind };
+        const rx = JSON.stringify({ content: verbatim, mimetype: "text/vnd.plurnk" });
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
             origin, source: null, model_call_id: modelCallId,
@@ -1218,10 +1221,19 @@ export default class Dispatcher {
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/vnd.plurnk",
-            rx: JSON.stringify({ content: verbatim, mimetype: "text/vnd.plurnk" }),
+            rx,
             mimetype_rx: "application/json",
-            status_rx: 200, tokens: this.#tokenize(verbatim), state: "resolved", outcome: null,
-            attrs: JSON.stringify({ ...attrs, kind }),
+            status_rx: 200,
+            weight: LogBody.weight({
+                op: null,
+                attrs: durableAttrs,
+                tx: "",
+                rx,
+                mimetypeTx: "text/vnd.plurnk",
+                mimetypeRx: "application/json",
+            }, this.#weighContent),
+            state: "resolved", outcome: null,
+            attrs: JSON.stringify(durableAttrs),
         });
         if (row === undefined) throw new Error("Dispatcher.#writeActionlessEntry: insert returned no row");
         if (folded) await this.#db.engine_fold_log_entry.run({ id: row.id });
@@ -1588,8 +1600,8 @@ export default class Dispatcher {
                         content: null,
                         mimetype: null,
                         results: [],
-                        itemsTokenTotal: 0,
-                        returnedItemsTokenTotal: 0,
+                        itemsWeightTotal: 0,
+                        returnedItemsWeightTotal: 0,
                         matchingPathCount: 0,
                         matchLocationCount: 0,
                     }
@@ -1775,8 +1787,8 @@ export default class Dispatcher {
                         content: null,
                         mimetype: null,
                         results: [],
-                        itemsTokenTotal: 0,
-                        returnedItemsTokenTotal: 0,
+                        itemsWeightTotal: 0,
+                        returnedItemsWeightTotal: 0,
                         matchingPathCount: 0,
                         matchLocationCount: 0,
                     },
@@ -1947,7 +1959,14 @@ export default class Dispatcher {
             rx: rxJson,
             mimetype_rx: "application/json",
             status_rx: result.status,
-            tokens: this.#tokenize(txJson) + this.#tokenize(rxJson),
+            weight: LogBody.weight({
+                op: durableStatement.op,
+                attrs,
+                tx: txJson,
+                rx: rxJson,
+                mimetypeTx: "application/json",
+                mimetypeRx: "application/json",
+            }, this.#weighContent),
             state: isProposed ? "proposed" : "resolved",
             outcome: null,
             attrs,

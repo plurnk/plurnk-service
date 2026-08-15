@@ -161,14 +161,14 @@ test("entry() materializes an https resource and classifies each plurnk narratio
         assert.ok(entry !== undefined, "the https entry materialized (authority folded into the pathname)");
         assert.equal(entry.scheme, "https");
         // The ambience: the reserved plurnk worker carries ONE narration row per write (2 here), the
-        // fs-fiction shape — origin plurnk, source = the calling worker, tokens on the meta line.
+        // fs-fiction shape — origin plurnk, source = the calling worker, weight on the meta line.
         const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
         assert.ok(plurnkWorker !== undefined, "the reserved plurnk worker exists");
-        const rows = await db.test_log_entries_by_worker_op.all<{ pathname: string; source: string; tokens: number; attrs: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
+        const rows = await db.test_log_entries_by_worker_op.all<{ pathname: string; source: string; weight: number; attrs: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         const narrations = rows.filter((r) => r.pathname === "/example.org/turkeys");
         assert.equal(narrations.length, 2, "one narration row per entry() write");
         assert.equal(narrations[0]?.source, "worker://researcher", "source uses the calling worker's control identity");
-        assert.ok((narrations[0]?.tokens ?? 0) > 0, "the row carries the write's real token weight");
+        assert.ok((narrations[0]?.weight ?? 0) > 0, "the row carries the write's real curation weight");
         assert.equal(JSON.parse(narrations[0]?.attrs ?? "{}").kind, "entry_materialized", "machine acquisition is typed so live clients compact it without erasing durable history");
         assert.deepEqual(
             await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: plurnkWorker.id }),

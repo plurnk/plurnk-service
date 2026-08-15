@@ -199,6 +199,7 @@ export const normalizeUsage = (raw: RawUsage | null | undefined): ProviderUsage 
 export type TokenRates = {
     input: number;
     output: number;
+    reasoning?: number;
     cacheRead?: number;
     cacheWrite?: number;
 };
@@ -235,17 +236,21 @@ export const calculateCostUsdDecimal = (
 
     const cacheReadRate = rates.cacheRead ?? rates.input;
     const cacheWriteRate = rates.cacheWrite ?? rates.input;
+    const reasoningRate = rates.reasoning ?? rates.output;
     const cacheReadTokens = usage.inputTokenDetails?.cacheReadTokens;
     const cacheWriteTokens = usage.inputTokenDetails?.cacheWriteTokens;
+    const reasoningTokens = usage.outputTokenDetails?.reasoningTokens;
     if (cacheReadRate !== rates.input && cacheReadTokens === undefined) return null;
     if (cacheWriteRate !== rates.input && cacheWriteTokens === undefined) return null;
+    if (reasoningRate !== rates.output && reasoningTokens === undefined) return null;
 
-    const parts = [rates.input, rates.output, cacheReadRate, cacheWriteRate].map(decimalParts);
+    const parts = [rates.input, rates.output, reasoningRate, cacheReadRate, cacheWriteRate].map(decimalParts);
     const rateScale = Math.max(...parts.map(({ scale }) => scale));
-    const [input, output, cacheRead, cacheWrite] = parts.map(({ coefficient, scale }) =>
+    const [input, output, reasoning, cacheRead, cacheWrite] = parts.map(({ coefficient, scale }) =>
         coefficient * 10n ** BigInt(rateScale - scale));
     const coefficient = BigInt(usage.inputTokens) * input!
         + BigInt(usage.outputTokens) * output!
+        + BigInt(reasoningTokens ?? 0) * (reasoning! - output!)
         + BigInt(cacheReadTokens ?? 0) * (cacheRead! - input!)
         + BigInt(cacheWriteTokens ?? 0) * (cacheWrite! - input!);
     if (coefficient < 0n) throw new TypeError("provider token-rate details produced a negative estimate");

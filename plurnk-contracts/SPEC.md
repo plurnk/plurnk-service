@@ -870,7 +870,7 @@ scope, or other persistence columns.
 | `contentOffset` | Actual Unicode-code-point offset of `content`; zero for a full read and capped at `contentLength`              |
 | `contentLength` | Unicode-code-point length of the complete stored channel                                                      |
 | `mimetype`      | Stored channel mimetype                                                                                        |
-| `tokens`        | Stored token count for the complete channel                                                                   |
+| `weight`        | Stored model-independent curation weight for the complete channel                                            |
 | `state`         | `static`, `active`, `closed`, or `errored`                                                                     |
 
 For every returned channel,

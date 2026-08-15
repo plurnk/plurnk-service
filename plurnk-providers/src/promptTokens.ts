@@ -4,6 +4,7 @@ const KINDS = new Set<PromptTokenMeasurement["kind"]>([
     "exact",
     "upper_bound",
     "estimate",
+    "unavailable",
 ]);
 
 export const assertPromptTokenMeasurement = (
@@ -13,19 +14,21 @@ export const assertPromptTokenMeasurement = (
     if (typeof value !== "object" || value === null) {
         throw new TypeError(`${owner}: prompt token measurement must be an object`);
     }
-    const candidate = value as Partial<PromptTokenMeasurement>;
-    if (!KINDS.has(candidate.kind as PromptTokenMeasurement["kind"])) {
+    const candidate = value as Record<string, unknown>;
+    const kind = candidate.kind as PromptTokenMeasurement["kind"];
+    if (!KINDS.has(kind)) {
         throw new TypeError(`${owner}: prompt token measurement has invalid kind ${JSON.stringify(candidate.kind)}`);
     }
-    if (!Number.isInteger(candidate.tokens) || candidate.tokens! < 0) {
+    if (kind !== "unavailable"
+        && (!Number.isInteger(candidate.tokens) || (candidate.tokens as number) < 0)) {
         throw new TypeError(`${owner}: prompt token measurement tokens must be a non-negative integer`);
     }
     if (typeof candidate.source !== "string" || candidate.source.length === 0) {
         throw new TypeError(`${owner}: prompt token measurement source must be a non-empty string`);
     }
-    if (candidate.kind === "estimate"
+    if ((kind === "estimate" || kind === "unavailable")
         && (typeof candidate.detail !== "string" || candidate.detail.length === 0)) {
-        throw new TypeError(`${owner}: estimated prompt token measurement requires detail`);
+        throw new TypeError(`${owner}: ${kind} prompt token measurement requires detail`);
     }
     return value as PromptTokenMeasurement;
 };

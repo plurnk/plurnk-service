@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { liveWorkspace, liveLoop, pinAliasBudget } from "../_live-harness.ts";
+import { liveWorkspace, liveLoop, pinAliasInputCapacity } from "../_live-harness.ts";
 import { measureFloor } from "./_floor-probe.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 
@@ -16,13 +16,13 @@ test("demo: complete a multi-source briefing under tight context pressure", asyn
     // the briefing a retrieval task rather than a guess at the package name.
     const userPromptText = "Brief me on this project — the codename recorded in notes.md, the database host it connects to, and the one outstanding TODO in the app code.";
     const floor = await measureFloor({ label: "grind", projectRoot: fixture.workspace, prompt: userPromptText });
-    const gauge = Math.round(floor * GAUGE_FACTOR);
-    const restore = pinAliasBudget({ PROMPT_BUDGET: String(gauge) });
+    const gauge = Math.round(floor.weight * GAUGE_FACTOR);
+    const restore = pinAliasInputCapacity({ inputCapacity: gauge, outputBudget: floor.outputBudget });
     try {
         const s = await liveWorkspace({ name: `demo-budget-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
         try {
             const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPromptText }, { timeoutMs: 240_000 });
-            console.error(`[budget-grind] floor=${floor} gauge=${gauge} turns=${turnIds.length} finalStatus=${finalStatus}`);
+            console.error(`[budget-grind] floor=${floor.weight} requestedCapacity=${gauge} effectiveCapacity=${s.provider.inputCapacity} outputBudget=${s.provider.outputBudget} turns=${turnIds.length} finalStatus=${finalStatus}`);
 
             assert.equal(finalStatus, 200, "model completes the briefing under the communicated pressure gauge");
             assert.match(lastContent, /phoenix/i, "briefing reports the project codename");

@@ -2,11 +2,12 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import { lookup, lookupProvider, resolveModel, catalogSnapshot, providerCatalogSnapshot, providerCredentialEnvNames } from "./index.ts";
 
-test("lookup: a known cloud model exposes the four snapshot model fact groups", () => {
-    const info = lookup("openrouter", "anthropic/claude-sonnet-4");
+test("lookup: a known cloud model exposes the independent limits and rate groups", () => {
+    const info = lookup("openai", "gpt-5.4");
     assert.ok(info !== null, "expected a snapshot entry for a well-known relay model");
     assert.ok(info.contextWindow > 0);
-    assert.ok((info.maxOutput ?? 0) > 0);
+    assert.ok((info.maxInputTokens ?? 0) > 0);
+    assert.ok((info.maxOutputTokens ?? 0) > 0);
     assert.equal(info.reasoning, true);
     assert.equal(typeof info.cost?.inputPer1M, "number");
     assert.equal(typeof info.cost?.outputPer1M, "number");
@@ -58,7 +59,16 @@ test("provider catalog carries Cerebras and Gemma 4 facts", () => {
     const model = lookup("cerebras", "gemma-4-31b");
     assert.ok(model !== null);
     assert.ok(model.contextWindow > 0);
-    assert.ok((model.maxOutput ?? 0) > 0);
+    assert.ok((model.maxOutputTokens ?? 0) > 0);
+});
+
+test("lookup: reasoning rates remain distinct from ordinary output rates", () => {
+    const snap = catalogSnapshot();
+    const model = Object.values(snap)
+        .flatMap((models) => Object.values(models))
+        .find((candidate) => candidate.cost?.reasoningPer1M !== undefined
+            && candidate.cost.reasoningPer1M !== candidate.cost.outputPer1M);
+    assert.ok(model !== undefined, "expected Models.dev to contain a distinct reasoning rate");
 });
 
 test("provider credential names exclude non-secret endpoint coordinates", () => {

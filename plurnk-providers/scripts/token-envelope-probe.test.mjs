@@ -3,7 +3,7 @@ import test from "node:test";
 
 import {
     buildProbePrompt,
-    resolveProbeMaxTokens,
+    resolveProbeMaxOutputTokens,
     selectProbeAliases,
 } from "./token-envelope-probe.mjs";
 
@@ -24,14 +24,14 @@ test("#242: token probe selects only explicit aliases", () => {
     );
 });
 
-test("#242: max-token modes keep the current additive request and its completion-only control distinct", () => {
-    const provider = { reasoningReserve: 100, completionReserve: 250 };
+test("#242: output-token modes distinguish configured policy from model physics", () => {
+    const provider = { outputBudget: 350, maxOutputTokens: 500 };
 
-    assert.equal(resolveProbeMaxTokens("current", provider), 350);
-    assert.equal(resolveProbeMaxTokens("completion", provider), 250);
-    assert.equal(resolveProbeMaxTokens("42", provider), 42);
-    assert.throws(() => resolveProbeMaxTokens("current", {}), /requires resolved reasoning and completion reserves/);
-    assert.throws(() => resolveProbeMaxTokens("0", provider), /safe integer >= 1/);
+    assert.equal(resolveProbeMaxOutputTokens("configured", provider), 350);
+    assert.equal(resolveProbeMaxOutputTokens("model", provider), 500);
+    assert.equal(resolveProbeMaxOutputTokens("42", provider), 42);
+    assert.throws(() => resolveProbeMaxOutputTokens("configured", {}), /requires a resolved output budget/);
+    assert.throws(() => resolveProbeMaxOutputTokens("0", provider), /safe integer >= 1/);
 });
 
 test("#242: prompt construction records an exact controlled payload size", () => {

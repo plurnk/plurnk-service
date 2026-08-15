@@ -116,8 +116,8 @@ test("{§range-extent}: a graph matcher selecting no resources returns 204 with 
             content: null,
             mimetype: null,
             results: [],
-            itemsTokenTotal: 0,
-            returnedItemsTokenTotal: 0,
+            itemsWeightTotal: 0,
+            returnedItemsWeightTotal: 0,
             matchingPathCount: 0,
             matchLocationCount: 0,
             range: {

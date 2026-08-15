@@ -26,7 +26,7 @@ import { lookup } from "@plurnk/plurnk-models";
 const info = lookup("openrouter", "anthropic/claude-sonnet-4");
 // → {
 //     contextWindow: 1_000_000,
-//     maxOutput: 64_000,
+//     maxOutputTokens: 64_000,
 //     reasoning: true,
 //     cost: {
 //       inputPer1M: 3,

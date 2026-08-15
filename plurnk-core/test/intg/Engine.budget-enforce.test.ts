@@ -6,8 +6,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { Mock } from "@plurnk/plurnk-providers";
-import type { MockResponse } from "@plurnk/plurnk-providers";
+import { Mock, ProviderError, validateProviderRequestAccounting } from "@plurnk/plurnk-providers";
+import type { ChatMessage, MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, packetSection, seedEntryWithChannel } from "./_helpers.ts";
@@ -26,29 +26,76 @@ const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { r
 const TINY = 2;          // absolute wall far below any real packet → forces overflow
 const OVERFLOW_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling. Newest log items were automatically FOLDed to fit within token budget. Curate the log and/or perform more conservatively scoped or chunked retrieval operations to recover.";
 
-// {§tokenomics-window-partition} — the envelope is provider-owned, so the policy ceiling pins via reserves against the
-// provider's own window: promptBudget = window − reserves. parseReserve rejects
-// 0, so the pin is rr=1 + cr = window − ceiling − 1; a full-window ceiling is window − 2 (immaterial
-// to overflow tests). SAFETY (core's one knob) is zeroed file-wide below.
-process.env.PLURNK_SERVICE_SAFETY = "0";
 const plainEngine = (db: Db): Engine => new Engine({ db, schemes: new SchemeRegistry() });
-const RESERVE_KEYS = ["PLURNK_PROVIDERS_REASONING_RESERVE", "PLURNK_PROVIDERS_COMPLETION_RESERVE"] as const;
-const mockAt = (ceiling: number, responses: MockResponse[], window = 4096): Mock => {
-    const prev = RESERVE_KEYS.map((k) => process.env[k]);
-    const cr = Math.max(1, window - ceiling - 1);
-    process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "1";
-    process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE = String(cr);
-    const m = new Mock({ contextWindow: window, responses });
-    RESERVE_KEYS.forEach((k, i) => { if (prev[i] === undefined) delete process.env[k]; else process.env[k] = prev[i]; });
-    return m;
-};
-// {§tokenomics-window-partition} — the negative-ruler-but-admissible state is the SAFETY gap:
-// budget = window − reserves − safety, while hard prompt capacity is window − reserves.
-// Pin safety high to isolate soft curation pressure. Restore via the returned fn.
-const pinSafety = (n: number): (() => void) => {
-    const p = process.env.PLURNK_SERVICE_SAFETY;
-    process.env.PLURNK_SERVICE_SAFETY = String(n);
-    return () => { process.env.PLURNK_SERVICE_SAFETY = p ?? "0"; };
+class DeferredCapacityMock extends Mock {
+    override async countPromptTokens() {
+        return {
+            kind: "estimate" as const,
+            tokens: 1,
+            source: "test:deferred-capacity",
+            detail: "fixture deliberately leaves physical admission to the upstream mock",
+        };
+    }
+}
+
+const PROMPT_CAPACITY_SENTINEL = "prompt-capacity-recovery-witness";
+class UpstreamPromptCapacityMock extends Mock {
+    readonly requests: ChatMessage[][] = [];
+
+    override async countPromptTokens(messages: readonly ChatMessage[]) {
+        return {
+            kind: "estimate" as const,
+            tokens: messages.reduce((sum, { content }) => sum + Math.ceil(content.length / 2), 0),
+            source: "test:upstream-capacity-oracle",
+            detail: "fixture leaves final capacity judgment to the upstream provider",
+        };
+    }
+
+    override async generate(args: Parameters<Mock["generate"]>[0]): ReturnType<Mock["generate"]> {
+        this.requests.push(args.messages.map((message) => ({ ...message })));
+        if (args.messages.some(({ content }) => content.includes(PROMPT_CAPACITY_SENTINEL))) {
+            const capacity = await this.assessRequestCapacity(args.messages, args.maxOutputTokens);
+            const accounting = validateProviderRequestAccounting({
+                provider: "provider:mock",
+                model: this.model,
+                outcome: "error",
+                status: 413,
+                cost: { kind: "unknown", reason: "upstream rejected the request before generation" },
+            });
+            const settle = await args.observeRequest?.({ provider: "provider:mock", model: this.model });
+            await settle?.(accounting);
+            throw new ProviderError(
+                "mock",
+                "capacity_exceeded",
+                "Upstream rejected the projected prompt body as too large.",
+                {
+                    accounting: [accounting],
+                    capacity,
+                    extensions: { capacityStage: "upstream" },
+                },
+            );
+        }
+        return super.generate(args);
+    }
+}
+
+const mockAt = (
+    capacity: number,
+    responses: MockResponse[],
+    window = 4096,
+    deferPhysicalAdmission = false,
+): Mock => {
+    const keys = ["PLURNK_PROVIDERS_OUTPUT_BUDGET", "PLURNK_PROVIDERS_REASONING_BUDGET"] as const;
+    const previous = keys.map((key) => process.env[key]);
+    process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = String(Math.max(1, window - Math.min(capacity, window - 1)));
+    delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+    const ProviderClass = deferPhysicalAdmission ? DeferredCapacityMock : Mock;
+    const provider = new ProviderClass({ contextWindow: window, responses });
+    keys.forEach((key, index) => {
+        if (previous[index] === undefined) delete process.env[key];
+        else process.env[key] = previous[index];
+    });
+    return provider;
 };
 const envelope = async (db: Db): Promise<{ workspaceId: number; workerId: number; loopId: number }> => {
     const workspaceId = await insertWorkspace(db, `ge-${crypto.randomUUID()}`);
@@ -82,7 +129,7 @@ test("on overflow the prior turn's log entries are folded to their coordinate", 
         // grinder folds turn 1's open log.
         const engine = plainEngine(db);
         const wideP = mockAt(4096, okSends(1));
-        const tinyP = mockAt(TINY, okSends(2));
+        const tinyP = mockAt(TINY, okSends(2), 4096, true);
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const before = await db.engine_render_log.all<{ turn_seq: number; expanded: number }>({ worker_id: workerId });
         assert.ok(before.some((r) => r.turn_seq === 1 && r.expanded === 1), "turn 1 left an open (expanded=1) log entry");
@@ -104,7 +151,7 @@ test("a PLAN row at the newest boundary survives the overflow fold", async () =>
         const planStmt = { op: "PLAN", suffix: "", signal: null, target: null, lineMarker: null, body: "1. read the doc\n2. answer", position: { line: 1, column: 1 } } as PlurnkStatement;
         const engine = plainEngine(db);
         const wideP = mockAt(4096, [response([planStmt, sendStmt(200, "ok")])]);
-        const tinyP = mockAt(TINY, okSends(1));
+        const tinyP = mockAt(TINY, okSends(1), 4096, true);
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const before = await db.engine_render_log.all<{ turn_seq: number; op: string; expanded: number }>({ worker_id: workerId });
         assert.ok(before.some((r) => r.turn_seq === 1 && r.op === "PLAN" && r.expanded === 1), "turn 1's PLAN landed open");
@@ -128,7 +175,7 @@ test("the grinder never folds older history - the model owns its visibility", as
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
         const wideP = mockAt(4096, okSends(2));
-        const tinyP = mockAt(TINY, okSends(2));
+        const tinyP = mockAt(TINY, okSends(2), 4096, true);
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const openT1before = (await db.engine_render_log.all<{ turn_seq: number; expanded: number }>({ worker_id: workerId }))
@@ -156,7 +203,7 @@ test("{§grinder-layer1-rollback}: overflow rolls back only the exact older rows
                 pathname: `/old-${sequence}`, query: null, fragment: null, lineMarker: null,
                 tx: JSON.stringify({ op }), mimetype_tx: "application/json",
                 rx: JSON.stringify({ status: 200, content, mimetype: "text/plain", startLine: 1 }),
-                mimetype_rx: "application/json", status_rx: 200, tokens: 0,
+                mimetype_rx: "application/json", status_rx: 200, weight: 0,
                 state: "resolved", outcome: null, attrs: "{}",
             });
             if (row === undefined) throw new Error("old log fixture insert returned no row");
@@ -204,7 +251,7 @@ test("{§grinder-layer1-rollback}: overflow rolls back only the exact older rows
         const wideProbe = mockAt(999_998, [], 1_000_000);
         const args = { initialMessages: MESSAGES, workspaceId, workerId, loopId: curationLoopId, currentTurnSeq: 2, provider: wideProbe, gitStatus: null };
         const openPacket = await builder.buildRequestPacket(args);
-        const provider = mockAt(openPacket.tokens - 50, [], 1_000_000);
+        const provider = mockAt(openPacket.weight - 50, [], 1_000_000);
         args.provider = provider;
         let overflowCalls = 0;
         const result = await builder.enforceBudget({
@@ -242,7 +289,7 @@ test("{§grinder-layer1-rollback}: a reopened target folded again before grindin
             pathname: "/old", query: null, fragment: null, lineMarker: null,
             tx: "{}", mimetype_tx: "application/json",
             rx: JSON.stringify({ status: 200, content: "old body", mimetype: "text/plain", startLine: 1 }),
-            mimetype_rx: "application/json", status_rx: 200, tokens: 0,
+            mimetype_rx: "application/json", status_rx: 200, weight: 0,
             state: "resolved", outcome: null, attrs: "{}",
         });
         if (target === undefined) throw new Error("old log fixture insert returned no row");
@@ -273,7 +320,7 @@ test("{§grinder-layer1-rollback}: a reopened target folded again before grindin
     } finally { await db.close(); }
 });
 
-test("repeated negative ruler pressure remains soft while the effective context envelope admits the request", async () => {
+test("repeated negative curation pressure remains soft when physical admission defers upstream", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -284,18 +331,12 @@ test("repeated negative ruler pressure remains soft while the effective context 
             pathname: "/pressure-evidence",
             content: "ordinary retrieval evidence",
         });
-        const restore = pinSafety(199_990);
-        const provider = mockAt(199_998, [
+        const provider = mockAt(TINY, [
             response([readStmt(urlPath("worker", "pressure-evidence")), sendStmt(102, "carrying on")]),
             response([readStmt(urlPath("worker", "pressure-evidence")), sendStmt(102, "still carrying on")]),
             response([sendStmt(200, "done")]),
-        ], 200_000);
-        let result: Awaited<ReturnType<Engine["runLoop"]>>;
-        try {
-            result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5, maxStrikes: 1, minCycles: 4 });
-        } finally {
-            restore();
-        }
+        ], 200_000, true);
+        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5, maxStrikes: 1, minCycles: 4 });
         assert.equal(result.result.status, 200, "ruler debt never becomes a one-turn quota or strike");
         assert.equal(result.reason, "external", "the ordinary terminal disposition remains authoritative");
         assert.equal(provider.remaining, 0, "all three admitted turns reached the provider");
@@ -317,11 +358,8 @@ test("negative ruler pressure may conclude cleanly at 200", async () => {
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
-        const restore = pinSafety(4092); // budget = 4096−2−4092 = TINY; sendable to 4094
-        try {
-            const result = await engine.runLoop({ provider: mockAt(4094, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
-            assert.equal(result.result.status, 200, "curation pressure does not prevent an admitted conclusion");
-        } finally { restore(); }
+        const result = await engine.runLoop({ provider: mockAt(TINY, okSends(1), 4096, true), workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
+        assert.equal(result.result.status, 200, "curation pressure does not prevent a provider-deferred conclusion");
     } finally { await db.close(); }
 });
 
@@ -331,13 +369,7 @@ test("automatic pressure folding is visible through overflow tags and its nonter
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
         await engine.runTurn({ provider: mockAt(4096, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const restore = pinSafety(199_990);
-        let t2: Awaited<ReturnType<Engine["runTurn"]>>;
-        try {
-            t2 = await engine.runTurn({ provider: mockAt(199_998, okSends(1), 200_000), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        } finally {
-            restore();
-        }
+        const t2 = await engine.runTurn({ provider: mockAt(TINY, okSends(1), 200_000, true), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t2.status, 200);
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row!.packet);
@@ -364,17 +396,17 @@ test("{§grinder-layer1-rollback}: a huge current-turn engine row folds with the
             pathname: "/1/1/7", query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
             rx: JSON.stringify({ status: 200, content: "R".repeat(8000) }), mimetype_rx: "application/json",
-            status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
+            status_rx: 200, weight: 0, state: "resolved", outcome: null, attrs: "{}",
         });
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
-        // {§tokenomics-window-partition} — one builder; the ceiling pins on the provider (window − reserves): a wide probe
+        // {§tokenomics-window-partition} — one builder; the ceiling pins on the provider's derived input capacity: a wide probe
         // measures the open packet, then a provider pinned just under it forces the stage-2 fold.
         const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
         const wideProbe = mockAt(999_998, [], 1_000_000);
         const args = { initialMessages: MESSAGES, workspaceId, workerId, loopId, currentTurnSeq: 2, provider: wideProbe, gitStatus: null };
         const open = await builder.buildRequestPacket(args);
         // Pin the ceiling just under the open packet: only folding the 8KB current-turn row can save it.
-        const provider = mockAt(open.tokens - 50, [], 1_000_000);
+        const provider = mockAt(open.weight - 50, [], 1_000_000);
         args.provider = provider;
         const packet = await builder.buildRequestPacket(args);
         let overflowCalls = 0;
@@ -394,129 +426,111 @@ test("{§grinder-layer1-rollback}: a huge current-turn engine row folds with the
     } finally { await db.close(); }
 });
 
-test("the ceiling is the real window partition (window − reserves), no calibration ratio", async () => {
+test("the curation ceiling reuses provider-derived input capacity without a calibration ratio", async () => {
     const db = await openMigrated();
     try {
         const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
         const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
-        // {§tokenomics-window-partition} — the provider window drives; reserves 1+1
-        // (parseReserve floor) → ceiling 9998.
+        // {§tokenomics-window-partition} — the provider's resolved input
+        // capacity is 9998 under this request envelope.
         // No ratio: the model-facing measure is the chars/2 ruler, and comparing ruler-weight to
         // this real-token ceiling is the conservative bias ({§tokenomics-agnostic-ruler}).
         const provider = mockAt(9998, [], 10_000);
-        assert.equal(b.ceilingFor(provider), 9998, "ceiling = provider window − reserves, verbatim");
+        assert.equal(b.curationBudgetFor(provider), 9998, "curation reuses the provider's derived input capacity verbatim");
     } finally { await db.close(); }
 });
 
-test("a failed effective context-envelope admission records the exact 413 evidence", async () => {
+test("an exact physical overflow exhausts bounded recovery and preserves provider 413 evidence", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
-        const wideP = mockAt(4096, okSends(2));
         const tinyP = mockAt(TINY, okSends(2));
-        await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const t2 = await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
-        const packet = JSON.parse(row!.packet);
-        assert.match(packetSection(packet, "errors"), /^\* 413 log:\/\/\/.+\/error$/m, "the overflow pointer surfaced (terse LogCoordinate)");
+        const result = await engine.runLoop({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
+        assert.equal(result.result.status, 413);
+        assert.equal(tinyP.remaining, 2, "preflight rejection issued no physical generation request");
+        const turnId = result.turnIds[0]!;
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
+        const packet = JSON.parse(row!.packet) as Record<string, unknown>;
+        assert.equal("assistant" in packet, false, "terminal capacity failure preserves only the attempted request");
         const errRow = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         const failure = errRow
             .map((row) => JSON.parse(row.rx) as {
                 problem?: {
                     type?: string;
-                    title?: string;
                     status?: number;
                     detail?: string;
-                    usage?: number;
-                    ceiling?: number;
-                    deficit?: number;
-                    stage?: string;
+                    capacityStage?: string;
+                    capacity?: {
+                        decision?: string;
+                        inputCapacity?: number;
+                        prompt?: { kind?: string; tokens?: number; source?: string };
+                    };
                     retryable?: boolean;
-                    contextAdmission?: string;
-                    contextCapacity?: number;
-                    promptTokens?: number;
-                    tokenKind?: string;
-                    tokenSource?: string;
                 };
             })
-            .find((row) => row.problem?.type === "https://problems.plurnk.dev/engine/context/context-envelope-admission-failed")
+            .findLast((row) => row.problem?.type?.endsWith("/capacity-exceeded") === true)
             ?.problem;
         assert.ok(failure !== undefined);
-        assert.equal(failure.title, "Context envelope admission failed");
         assert.equal(failure.status, 413);
-        assert.equal(failure.ceiling, TINY);
-        assert.ok((failure.usage ?? 0) > TINY);
-        assert.equal(failure.deficit, (failure.usage ?? 0) - TINY);
-        assert.equal(failure.stage, "context-envelope-admission");
         assert.equal(failure.retryable, false);
-        assert.equal(failure.contextAdmission, "over_capacity");
-        assert.equal(failure.contextCapacity, TINY);
-        assert.ok((failure.promptTokens ?? 0) > TINY);
-        assert.equal(failure.tokenKind, "exact");
-        assert.equal(failure.tokenSource, "mock:chars2");
-        assert.equal(
-            failure.detail,
-            `The configured context envelope cannot admit this request: exact prompt measurement ${failure.promptTokens} exceeds effective prompt capacity ${failure.contextCapacity}.`,
+        assert.equal(failure.capacityStage, "preflight");
+        assert.equal(failure.capacity?.decision, "reject");
+        assert.equal(failure.capacity?.inputCapacity, TINY);
+        assert.equal(failure.capacity?.prompt?.kind, "exact");
+        assert.ok((failure.capacity?.prompt?.tokens ?? 0) > TINY);
+        assert.equal(failure.capacity?.prompt?.source, "mock:chars2");
+        assert.match(failure.detail ?? "", /exceeds its exact input capacity/);
+        const calls = await db.test_model_calls.all<{ capacity: string | null }>({ turn_id: turnId });
+        assert.ok(calls.length >= 1 && calls.every(({ capacity }) => capacity !== null), "every failed logical request retains its request-shaped capacity evidence");
+    } finally { await db.close(); }
+});
+
+test("an upstream 413 withholds the automatic prompt body and retries without spending an emission attempt", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `prompt-capacity-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(
+            db,
+            workerId,
+            1,
+            `${PROMPT_CAPACITY_SENTINEL}\n${"large prompt body\n".repeat(10_000)}`,
         );
-    } finally { await db.close(); }
-});
+        const provider = new UpstreamPromptCapacityMock({
+            contextWindow: 100_000,
+            responses: [response([sendStmt(200, "recovered")])],
+        });
+        const result = await plainEngine(db).runTurn({
+            provider,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: MESSAGES,
+            turnNumber: 1,
+        });
 
-test("SAFETY resolves per alias — the suffix wins over the bare fallback", async () => {
-    // Provider capacity resolves in the provider tier. Core's safety margin also resolves per
-    // alias. Driven through the REAL alias resolution: a Mock carries no provider→alias
-    // side-table entry, so #partitionFor falls back to resolveActiveAlias(process.env).alias.
-    const db = await openMigrated();
-    try {
-        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
-        const keys = ["PLURNK_MODEL", "PLURNK_MODEL_rig", "PLURNK_SERVICE_SAFETY", "PLURNK_SERVICE_SAFETY_rig"];
-        const prev = keys.map((k) => process.env[k]);
-        try {
-            process.env.PLURNK_SERVICE_SAFETY = "1024";
-            delete process.env.PLURNK_MODEL; delete process.env.PLURNK_MODEL_rig; delete process.env.PLURNK_SERVICE_SAFETY_rig;
-            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
-            const p1 = mockAt(8192 - 2, [], 8192); // rr=1, cr=1
-            assert.equal(bare.promptBudgetFor(p1), 8192 - 1 - 1 - 1024, "no alias → the bare SAFETY margin applies");
-            process.env.PLURNK_MODEL = "rig"; process.env.PLURNK_MODEL_rig = "openai/local.gguf";
-            process.env.PLURNK_SERVICE_SAFETY_rig = "64";
-            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
-            const p2 = mockAt(8192 - 2, [], 8192);
-            assert.equal(rig.promptBudgetFor(p2), 8192 - 1 - 1 - 64, "the active alias's suffixed SAFETY wins over bare");
-        } finally {
-            keys.forEach((k, i) => { if (prev[i] === undefined) delete process.env[k]; else process.env[k] = prev[i]; });
-        }
-    } finally { await db.close(); }
-});
+        assert.equal(result.status, 200);
+        assert.equal(result.emissionAttempts, 1, "only the completed response consumes a grammar-emission attempt");
+        assert.equal(provider.remaining, 0, "capacity recovery consumes the one queued model response exactly once");
+        assert.equal(provider.requests.length, 2, "one rejected physical request is followed by one changed request");
+        assert.ok(provider.requests[0]?.some(({ content }) => content.includes(PROMPT_CAPACITY_SENTINEL)));
+        assert.ok(provider.requests[1]?.every(({ content }) => !content.includes(PROMPT_CAPACITY_SENTINEL)), "the retry withholds only the automatic prompt body");
 
-test("virtual PROMPT_BUDGET resolves per alias without changing the provider envelope", async () => {
-    const db = await openMigrated();
-    try {
-        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
-        const keys = ["PLURNK_MODEL", "PLURNK_MODEL_rig", "PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_PROMPT_BUDGET_rig", "PLURNK_SERVICE_SAFETY"];
-        const prev = keys.map((key) => process.env[key]);
-        try {
-            process.env.PLURNK_SERVICE_SAFETY = "0";
-            process.env.PLURNK_SERVICE_PROMPT_BUDGET = "7000";
-            delete process.env.PLURNK_MODEL;
-            delete process.env.PLURNK_MODEL_rig;
-            delete process.env.PLURNK_SERVICE_PROMPT_BUDGET_rig;
-            const provider = mockAt(8192 - 2, [], 8192);
-            const bare = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
-            assert.equal(bare.promptBudgetFor(provider), 7000);
-            assert.equal(bare.maxTokensFor(provider), 2);
+        const calls = await db.test_model_calls.all<{ state: string; capacity: string | null }>({ turn_id: result.turnId });
+        assert.deepEqual(calls.map(({ state }) => state), ["error", "response"]);
+        assert.ok(calls.every(({ capacity }) => capacity !== null), "both logical requests retain request-shaped capacity evidence");
+        const attempts = await db.test_turn_attempts.all<{ accepted: number | null }>({ turn_id: result.turnId });
+        assert.deepEqual(
+            attempts.map(({ accepted }) => accepted),
+            [null, 1],
+            "the response-less call remains unclassified and only the completed exchange is admitted",
+        );
+        const requests = await db.test_provider_requests.all<{ outcome: string }>({ turn_id: result.turnId });
+        assert.deepEqual(requests.map(({ outcome }) => outcome), ["error", "response"], "both physical requests remain cardinal accounting facts");
 
-            process.env.PLURNK_MODEL = "rig";
-            process.env.PLURNK_MODEL_rig = "openai/local.gguf";
-            process.env.PLURNK_SERVICE_PROMPT_BUDGET_rig = "4000";
-            const rig = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
-            assert.equal(rig.promptBudgetFor(provider), 4000);
-            assert.equal(rig.maxTokensFor(provider), 2, "virtual pressure never changes provider generation");
-        } finally {
-            keys.forEach((key, i) => {
-                if (prev[i] === undefined) delete process.env[key];
-                else process.env[key] = prev[i];
-            });
-        }
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
+        assert.match(packetSection(packet, "errors"), /^\* 413 log:\/\/\/.+\/error$/m, "the recovered rejection remains visible to the model");
     } finally {
         await db.close();
     }
@@ -553,23 +567,19 @@ test("negative ruler pressure preserves the ordinary operation contract", async 
             body: null,
             position: { line: 1, column: 1 },
         };
-        const restore = pinSafety(199_990);
-        try {
-            await engine.runTurn({
-                provider: mockAt(
-                    199_998,
-                    [response([read, sendStmt(200, "done")])],
-                    200_000,
-                ),
-                workspaceId,
-                workerId,
-                loopId,
-                messages: MESSAGES,
-                turnNumber: 2,
-            });
-        } finally {
-            restore();
-        }
+        await engine.runTurn({
+            provider: mockAt(
+                TINY,
+                [response([read, sendStmt(200, "done")])],
+                200_000,
+                true,
+            ),
+            workspaceId,
+            workerId,
+            loopId,
+            messages: MESSAGES,
+            turnNumber: 2,
+        });
         const rows = await db.test_log_entries_by_worker_op_full.all<{
             rx: string;
             status_rx: number;
@@ -593,7 +603,7 @@ test("negative ruler pressure preserves the ordinary operation contract", async 
     } finally { await db.close(); }
 });
 
-test("a request outside the effective context envelope returns 413 before generation", async () => {
+test("a request outside exact provider input capacity returns 413 before physical generation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -612,7 +622,7 @@ test("a request outside the effective context envelope returns 413 before genera
     } finally { await db.close(); }
 });
 
-test("an estimate cannot authorize hard context-envelope admission", async () => {
+test("an estimate defers physical admission to the upstream provider", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -630,41 +640,22 @@ test("an estimate cannot authorize hard context-envelope admission", async () =>
                 };
             },
         });
-        const restore = pinSafety(199_990);
-        let result: Awaited<ReturnType<Engine["runLoop"]>>;
-        try {
-            result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages, maxTurns: 5 });
-        } finally {
-            restore();
-        }
-        assert.equal(result.result.status, 413);
-        assert.equal(mock.remaining, 3, "an empirical estimate cannot authorize generation against a hard envelope");
+        const result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages, maxTurns: 5 });
+        assert.equal(result.result.status, 200);
+        assert.equal(mock.remaining, 2, "an empirical estimate neither admits nor rejects; the upstream mock receives the request");
         assert.deepEqual(
             measuredMessages?.map(({ role }) => role),
             ["system", "user"],
-            "context-envelope admission measured the same two rendered slots dispatched by PacketWire",
+            "the provider measured the same two rendered slots dispatched by PacketWire",
         );
         const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        const failure = errors
-            .map(({ rx }) => JSON.parse(rx) as {
-                problem?: {
-                    contextAdmission?: string;
-                    tokenKind?: string;
-                    tokenSource?: string;
-                    detail?: string;
-                };
-            })
-            .find(({ problem }) => problem?.contextAdmission === "estimate")
-            ?.problem;
-        assert.equal(failure?.tokenKind, "estimate");
-        assert.equal(failure?.tokenSource, "heuristic:chars2");
-        assert.match(failure?.detail ?? "", /cannot verify the effective context envelope/);
+        assert.equal(errors.length, 0, "deferred admission is not an error");
     } finally {
         await db.close();
     }
 });
 
-test("a proven prompt-token upper bound can authorize context-envelope admission", async () => {
+test("a proven request-token upper bound can authorize provider admission", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -676,13 +667,7 @@ test("a proven prompt-token upper bound can authorize context-envelope admission
                 source: "test:proven-request-bound",
             }),
         });
-        const restore = pinSafety(199_990);
-        let result: Awaited<ReturnType<Engine["runLoop"]>>;
-        try {
-            result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
-        } finally {
-            restore();
-        }
+        const result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
         assert.equal(result.result.status, 200);
         assert.equal(mock.remaining, 0, "the proven bound admits the request to generation");
     } finally {

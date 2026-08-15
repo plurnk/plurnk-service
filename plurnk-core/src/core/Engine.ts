@@ -13,7 +13,7 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry } from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, BranchWorkerNotify, BranchCompletionGate, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
 import { promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
-import { rulerCount } from "./token-ruler.ts";
+import { contentWeight } from "./content-weight.ts";
 import SearchGate from "./search-gate.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
@@ -77,8 +77,10 @@ import type { RuntimeSchemeFacet } from "../server/DaemonModule.ts";
 
 export type LoopUsage = {
     accounting: ProviderAccounting;
+    curationWeight: number | null;
+    curationBudget: number | null;
     contextTokens: number | null;
-    promptBudget: number | null;
+    contextCapacity: number | null;
     meta: Record<string, unknown>;
 };
 
@@ -116,7 +118,7 @@ export default class Engine {
     #mimetypes: Mimetypes;
     // {§tokenomics-agnostic-ruler} — the stable model-independent ruler used
     // for write-time, catalog, receipt, and packet weights.
-    #tokenize: (text: string) => number;
+    #weighContent: (text: string) => number;
     // Boot-discovered runtime executors. Daemon builds + sets via
     // setExecutors at start(); undefined until then (and in bare tests).
     #executors: ExecutorRegistry | undefined;
@@ -286,7 +288,7 @@ export default class Engine {
     readonly #acquireWorkspaceTurn: AcquireWorkspaceTurn;
     readonly #workspaceTurnCompleted: WorkspaceTurnCompleted | undefined;
 
-    constructor({ db, schemes, mimetypes, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnCompleted, noticeNotify, tokenize }: {
+    constructor({ db, schemes, mimetypes, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnCompleted, noticeNotify, weigh }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
@@ -300,7 +302,7 @@ export default class Engine {
         acquireWorkspaceTurn?: AcquireWorkspaceTurn;
         workspaceTurnCompleted?: WorkspaceTurnCompleted;
         noticeNotify?: NoticeNotify;
-        tokenize?: (text: string) => number;
+        weigh?: (text: string) => number;
     }) {
         this.#db = db;
         this.#lifecycle = new LoopLifecycle(db);
@@ -317,14 +319,14 @@ export default class Engine {
             discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] },
         });
         // {§tokenomics-agnostic-ruler} — standalone construction and the daemon
-        // use the same default; provider counting is confined to hard
-        // context-envelope admission.
-        this.#tokenize = tokenize ?? rulerCount;
+        // use the same default; provider request counting remains confined to
+        // provider-owned capacity assessment.
+        this.#weighContent = weigh ?? contentWeight;
 
         const executors = (): ExecutorRegistry | undefined => this.#executors;
         const loopSignal = (loopId: number): AbortSignal | undefined => this.#loopAborts.get(loopId)?.signal;
         this.#notices = new NoticeChannel({ notify: noticeNotify });
-        this.#problems = new ProblemLog(db);
+        this.#problems = new ProblemLog(db, this.#weighContent);
         this.#strikes = new StrikeRail();
         this.#packets = new PacketBuilder({
             db,
@@ -334,12 +336,12 @@ export default class Engine {
         this.#proposals = new ProposalLifecycle({
             db, schemes, notices: this.#notices,
             streamEventNotify, wakeWorkerNotify,
-            tokenize: this.#tokenize, mimetypes: this.#mimetypes, executors, loopSignal,
+            weigh: this.#weighContent, mimetypes: this.#mimetypes, executors, loopSignal,
             liveSubscriptions: this.#liveSubscriptions,
         });
         this.#dispatcher = new Dispatcher({ searchGate: this.searchGate,
             db, schemes, mimetypes: this.#mimetypes,
-            tokenize: this.#tokenize,
+            weigh: this.#weighContent,
             notices: this.#notices, proposals: this.#proposals,
             executors, loopSignal,
             streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants,
@@ -351,7 +353,7 @@ export default class Engine {
             db,
             schemes,
             mimetypes: this.#mimetypes,
-            tokenize: this.#tokenize,
+            weigh: this.#weighContent,
             notices: this.#notices,
             problems: this.#problems,
             strikes: this.#strikes,
@@ -371,7 +373,7 @@ export default class Engine {
             db,
             mimetypes: this.#mimetypes,
             executors,
-            tokenize: this.#tokenize,
+            weigh: this.#weighContent,
             streamEventNotify,
             wakeWorkerNotify,
             injectWorker,
@@ -431,8 +433,8 @@ export default class Engine {
         };
     }
 
-    promptBudgetFor(provider: Provider): number | null {
-        return this.#packets.promptBudgetFor(provider);
+    curationBudgetFor(provider: Provider): number | null {
+        return this.#packets.curationBudgetFor(provider);
     }
 
     // {§attribution} — reporting derives from exact provider-request evidence;
@@ -453,18 +455,24 @@ export default class Engine {
     // {§notifications-loop-terminated}, {§provider-accounting}
     async loopUsage(loopId: number): Promise<LoopUsage> {
         const row = await this.#db.engine_loop_usage.get<{
-            context: number | null;
-            context_size: number | null;
+            context_tokens: number | null;
+            curation_weight: number | null;
+            curation_budget: number | null;
+            context_capacity: number | null;
             meta: string | null;
         }>({ loop_id: loopId });
         if (row === undefined) throw new Error(`loopUsage: loop ${loopId} does not exist`);
         const requests = await this.#db.engine_loop_provider_requests.all<ProviderRequestStorageRow>({ loop_id: loopId });
         return {
             accounting: aggregateProviderAccounting(requests.map(providerRequestFromStorageRow)),
-            // Latest physical request on the latest turn, not the billed total.
-            contextTokens: row.context,
-            // Latest effective packet allowance; null when uncapped or unknown.
-            promptBudget: row.context_size,
+            // Latest assembled request's stable model-independent weight.
+            curationWeight: row.curation_weight,
+            // Latest provider-derived calibration used only for curation.
+            curationBudget: row.curation_budget,
+            // Latest emission call's last physical request, not the billed total.
+            contextTokens: row.context_tokens,
+            // Request-shaped physical capacity from that same latest emission call.
+            contextCapacity: row.context_capacity,
             // Latest turn's opaque provider metadata. {§meta-passthrough}
             meta: JSON.parse(row.meta ?? "{}") as Record<string, unknown>,
         };
@@ -490,7 +498,7 @@ export default class Engine {
         origin?: WriterTier;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
-    }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "context_envelope" | "invalid_emission" | "loop_timeout" | "external" | null }> {
+    }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "provider_capacity" | "invalid_emission" | "loop_timeout" | "external" | null }> {
         // A 202 park suspends this durable loop and a later wake re-enters runLoop.
         // Its ceiling therefore counts every prior turn, not merely this process-local
         // execution segment.
@@ -678,15 +686,15 @@ export default class Engine {
             }
             invalidEmissionRecoveryEntryId = null;
 
-            // SPEC {§grinder}: the effective context envelope rejected the request.
-            if (turn.budgetHardStop) {
-                if (turn.budgetFailure === undefined) {
-                    throw new Error("a context-envelope hard-stop requires its exact failure");
+            // SPEC {§grinder}: the provider rejected the changed request for capacity.
+            if (turn.capacityHardStop) {
+                if (turn.capacityFailure === undefined) {
+                    throw new Error("a provider-capacity stop requires its exact failure");
                 }
-                const result = await this.#lifecycle.finish(loopId, turn.budgetFailure);
-                if (result === null) throw new Error(`loop ${loopId} became terminal before budget settlement`);
-                cleanup("forceful", "context_envelope");
-                return { turnIds, result, hitMaxTurns: false, reason: "context_envelope" };
+                const result = await this.#lifecycle.finish(loopId, turn.capacityFailure);
+                if (result === null) throw new Error(`loop ${loopId} became terminal before provider-capacity settlement`);
+                cleanup("forceful", "provider_capacity");
+                return { turnIds, result, hitMaxTurns: false, reason: "provider_capacity" };
             }
 
             // {§engine-rails} — per-turn strike accounting (cycle detection,
@@ -819,7 +827,7 @@ export default class Engine {
             signal: undefined,
             streamEventNotify: this.#streamEventNotify,
             wakeWorkerNotify: this.#wakeWorkerNotify,
-            tokenize: this.#tokenize,
+            weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
             pushNotice: (notice) => this.#notices.notify(workspaceId, 0, notice),
@@ -878,7 +886,7 @@ export default class Engine {
             signal: this.#loopAborts.get(loopId)?.signal,
             streamEventNotify: this.#streamEventNotify,
             wakeWorkerNotify: this.#wakeWorkerNotify,
-            tokenize: this.#tokenize,
+            weigh: this.#weighContent,
             pushNotice: (notice) => this.#notices.push(workspaceRow.workspace_id, loopId, notice),
         };
         const entry: EntryData = {

@@ -122,6 +122,22 @@ test("LogBody resolves built-in result-backed bodies", () => {
     }
 });
 
+test("LogBody weighs complete canonical content without persistence-envelope or presentation overhead", () => {
+    const row = {
+        op: "READ",
+        tx: JSON.stringify({ op: "READ", target: "notes.md" }),
+        rx: JSON.stringify({ status: 200, content: "alpha\nbeta", mimetype: "text/plain" }),
+        mimetypeTx: "application/json",
+        mimetypeRx: "application/json",
+    };
+    assert.equal(LogBody.weight(row, (text) => text.length), "alpha\nbeta".length);
+    assert.equal(
+        LogBody.weight({ op: "error", tx: "", rx: { status: 500, problem: { detail: "metadata only" } } }, (text) => text.length),
+        0,
+        "a bodyless Problem does not acquire envelope weight",
+    );
+});
+
 test("LogBody resolves COPY/MOVE bodies only from ordered textual effects", () => {
     assert.deepEqual(
         LogBody.resolve({

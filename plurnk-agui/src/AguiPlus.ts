@@ -68,12 +68,29 @@ export const resolutionFromResume = (entry: ResumeEntry): Resolution | null => {
 // ── §2 — reads → shared STATE ────────────────────────────────────────
 // The client OBSERVES this; no providers.list / workspace.list round-trips.
 export interface AguiPlusState {
-    providers?: Array<{ alias: string; model: string; active: boolean; promptBudget: number | null }>;
+    providers?: Array<{ alias: string; model: string; active: boolean; inputCapacity: number | null }>;
     workspace?: { id: number; name: string; projectRoot?: string | null; budget?: number | null };
     workspaces?: Array<{ id: number; name: string }>;
     constraints?: Array<{ effect: string; glob: string }>;
 }
-export const stateSnapshot = (s: AguiPlusState): AguiEvent => ({ type: EventType.STATE_SNAPSHOT, snapshot: { plurnk: s } });
+export interface AguiBudgetState {
+    readonly curationWeight: number | null;
+    readonly curationBudget: number | null;
+    readonly contextTokens: number | null;
+    readonly contextCapacity: number | null;
+}
+
+const EMPTY_BUDGET: AguiBudgetState = Object.freeze({
+    curationWeight: null,
+    curationBudget: null,
+    contextTokens: null,
+    contextCapacity: null,
+});
+
+export const stateSnapshot = (s: AguiPlusState): AguiEvent => ({
+    type: EventType.STATE_SNAPSHOT,
+    snapshot: { plurnk: s, budget: EMPTY_BUDGET },
+});
 export const stateDelta = (patches: Array<{ op: string; path: string; value?: unknown }>): AguiEvent => ({ type: EventType.STATE_DELTA, delta: patches });
 
 // ── §3 — management actions: forwardedProps in, CUSTOM out ────────────

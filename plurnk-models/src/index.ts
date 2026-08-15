@@ -8,13 +8,15 @@ import providers from "./providers.json" with { type: "json" };
 export type ModelCost = {
     readonly inputPer1M: number;        // USD per 1M input tokens
     readonly outputPer1M: number;       // USD per 1M output tokens
+    readonly reasoningPer1M?: number;
     readonly cacheReadPer1M?: number;
     readonly cacheWritePer1M?: number;
 };
 
 export type ModelInfo = {
     readonly contextWindow: number;     // tokens
-    readonly maxOutput?: number;        // completion cap in tokens; absent when the source had none
+    readonly maxInputTokens?: number;   // independent input cap; absent when the source had none
+    readonly maxOutputTokens?: number;  // independent total-output cap; absent when the source had none
     readonly reasoning?: boolean;       // true when Models.dev asserts reasoning capability
     readonly cost?: ModelCost;          // absent without complete input and output rates
 };

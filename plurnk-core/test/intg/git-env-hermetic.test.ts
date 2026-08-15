@@ -61,7 +61,7 @@ test("demo fixture + production git spawns ignore a hook's absolute GIT_DIR — 
         const ctx: PlurnkSchemeContext = {
             db, workspaceId, workerId, loopId, turnId,
             writer: "plurnk", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
-            tokenize: (t: string) => Math.ceil(t.length / 4),
+            weigh: (t: string) => Math.ceil(t.length / 4),
         };
         await GitMembership.indexGitMembership(ctx);
         const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, owner_id: await Owner.commonsId(db, workspaceId), scheme: "file", pathname: "tracked.md" });

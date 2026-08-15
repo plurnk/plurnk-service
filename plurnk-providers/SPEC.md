@@ -9,8 +9,8 @@ ordinary provider protocols.
 The provider stack has four owners:
 
 1. Models.dev supplies a release-time snapshot of provider package, API
-   endpoint, credential names, models, context windows, output limits,
-   reasoning capability, and USD prices.
+   endpoint, credential names, models, context/input/output limits, reasoning
+   capability, and USD rates including distinct reasoning rates when supplied.
 2. Official AI SDK providers own vendor request and response protocols.
 3. This package owns the PLURNK contract: aliases, envelopes, normalized usage
    and errors, evidence, local capabilities, and first-party metadata.
@@ -31,16 +31,24 @@ operation:
 interface Provider {
   readonly model: string;
   readonly contextWindow: number | null;
+  readonly maxInputTokens: number | null;
+  readonly maxOutputTokens: number | null;
+  readonly outputBudget: number | null;
+  readonly reasoningBudget: number | null;
+  readonly inputCapacity: number | null;
   readonly servedModel?: string;
   readonly constrainsOutput?: boolean;
-  readonly requiresMaxTokens?: boolean;
-  readonly reasoningReserve?: number | null;
-  readonly completionReserve?: number | null;
+  readonly requiresOutputBudget?: boolean;
 
   countPromptTokens(
     messages: readonly ChatMessage[],
     signal?: AbortSignal,
   ): Promise<PromptTokenMeasurement>;
+  assessRequestCapacity(
+    messages: readonly ChatMessage[],
+    maxOutputTokens?: number,
+    signal?: AbortSignal,
+  ): Promise<ProviderRequestCapacity>;
   tokenize?(text: string): Promise<number[]>;
   generate(args: GenerateArgs): Promise<ProviderResponse>;
 }
@@ -52,22 +60,38 @@ operator cap. `null` means genuinely unknown; a consumer MUST NOT invent a
 stand-in. The context-window knob is a hard cap, never model-facing grinder
 pressure.
 
-`PromptTokenMeasurement` is a discriminated request-level result:
+§provider-prompt-measurement `PromptTokenMeasurement` is a discriminated
+request-level result:
 
-| `kind`        | Meaning                                                | May authorize hard context-envelope admission |
-| ------------- | ------------------------------------------------------ | --------------------------------------------- |
-| `exact`       | Exact count for the complete provider request.         | Yes.                                          |
-| `upper_bound` | Proven upper bound for the complete provider request.  | Yes.                                          |
-| `estimate`    | Empirical prediction with required causal `detail`.    | No.                                           |
+| `kind` | Meaning | Capacity authority |
+| --- | --- | --- |
+| `exact` | Exact count for the complete provider request. | May prove fit or overflow. |
+| `upper_bound` | Proven upper bound for the complete provider request. | May prove fit; exceeding a limit does not prove overflow. |
+| `estimate` | Empirical prediction with required causal `detail`. | Cannot admit or reject. |
+| `unavailable` | No quantified measurement, with required causal `detail`. | Cannot admit or reject. |
 
-Every result carries a non-negative integer `tokens` and a non-empty `source`.
+Every result carries a non-empty `source`; quantified kinds carry non-negative
+integer `tokens`.
 `countPromptTokens` receives the same messages supplied to `generate` and may
 perform cancellable provider I/O. The common fallback is chars/2 over message
 content; it is announced once and reported honestly as an estimate because it
 knows neither the serving vocabulary nor provider-owned request framing.
-An unavailable optional counting endpoint likewise returns an estimate naming
-the cause. A malformed measurement is a provider contract violation and fails
-hard; consumers do not reinterpret it as ordinary unavailability.
+An adapter may retain that estimate when an optional counting endpoint fails,
+provided its detail names the cause; one unable to quantify anything returns
+`unavailable`. A malformed measurement is a provider contract violation and
+fails hard.
+
+§provider-capacity-admission `assessRequestCapacity` intersects every known
+physical input constraint: independent `maxInputTokens` and
+`contextWindow - outputBudget`. Its result is `admit`, `reject`, or `defer` and
+retains the complete limit and measurement evidence. Exact fit admits; exact
+overflow rejects. A proven upper bound admits only when it fits. Unknown limits,
+an upper bound above a limit, estimates, and unavailable measurements defer to
+the upstream provider as capacity oracle. The same stable intersection is
+exposed as `inputCapacity`; `null` means the available limits cannot establish
+one. A known combined context and output budget must leave positive input
+capacity. Consumers may display or use that fact as policy, but MUST NOT
+substitute their own content heuristic for request-shaped admission.
 
 `tokenize` is the separate content-token capability and exists only when the
 endpoint exposes its real vocabulary. Content tokenization does not substitute
@@ -102,7 +126,7 @@ Providers MUST NOT interpret either value.
 
 - `messages`: system, user, and assistant text messages;
 - caller cancellation through `signal`;
-- optional `grammar` and `maxTokens`;
+- optional `grammar` and call-specific `maxOutputTokens` tightening;
 - standard `sampling` intent;
 - the caller-owned `callKind` output contract when one applies;
 - opaque attribution tags plus client, strike, workspace, loop, and turn metadata.
@@ -117,9 +141,10 @@ The signal is request metadata and never enters model-facing messages. Generic
 provider callers MAY omit it; Core supplies it for every model call.
 
 A successful return carries the model's raw content and reasoning, normalized
-finish reason, model identity, its ordered {§provider-request-accounting},
-opaque evidence, optional metadata, and optional notices. A `ProviderError`
-carries the same accounting array. The provider transports and observes model
+finish reason, model identity, its ordered {§provider-request-accounting}, the
+request's `ProviderRequestCapacity`, opaque evidence, optional metadata, and
+optional notices. A `ProviderError` carries the same available capacity and
+accounting evidence. The provider transports and observes model
 output; it never retries, discards, or repairs an otherwise completed exchange
 because PLURNK grammar did not accept it.
 
@@ -195,7 +220,7 @@ the provider adapter; Models.dev's reasoning bit remains capability metadata.
 
 The portable SDK surface has no boolean-enabled reasoning value. An unqualified
 `on` therefore projects to its conventional `medium` enabled posture. This is a
-wire activation value, not a reasoning reserve or output-token ceiling.
+wire activation value, not a reasoning budget or output-token ceiling.
 
 §provider-cache-affinity **Cache affinity is route-owned request projection.**
 When a provider documents a semantics-preserving conversation, session, or
@@ -272,16 +297,20 @@ alias.
 
 Provider and model facts resolve independently:
 
-| Fact                 | Natural source                                         | Operator source                                      | Effective value                                                                                                                                        |
-| -------------------- | ------------------------------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Context window       | Catalog metadata or a local endpoint probe.            | `PLURNK_PROVIDERS_CONTEXT_WINDOW`.                   | Minimum when both exist; the sole value otherwise. A cataloged cloud miss fails construction; a compatible probe miss remains `null` with one warning. |
-| Completion envelope  | Catalog `maxOutput`; there is no live limit probe.     | `PLURNK_PROVIDERS_COMPLETION_RESERVE`.               | An absolute reserve wins. A percentage derives from the effective window and is capped by catalog `maxOutput` when present.                            |
-| Reasoning capability | Catalog `reasoning: true`, exposed by snapshot lookup. | Runtime activation, reserve, and adapter wire style. | The catalog bit is informational; provider construction neither activates nor blocks reasoning from it.                                                |
-| Estimated USD rates  | Models.dev input, output, and optional cache-read/cache-write rates. | None. | Missing differently-priced categories or rates produce unknown evidence; exact all-zero rates produce an estimated USD zero. No live price fetch exists. |
+| Fact | Natural source | Operator source | Effective value |
+| --- | --- | --- | --- |
+| Context window | Catalog metadata or local endpoint probe. | `PLURNK_PROVIDERS_CONTEXT_WINDOW`. | Minimum when both exist; sole value otherwise. Cataloged cloud miss fails construction; compatible probe miss remains `null` with one warning. |
+| Maximum input | Catalog `limit.input`; no generic live probe. | None. | Catalog value or `null`; never reconstructed from context and output. |
+| Maximum output | Catalog `limit.output`; no generic live probe. | None. | Minimum of catalog value and effective context, or `null`. |
+| Total output budget | None. | `PLURNK_PROVIDERS_OUTPUT_BUDGET`. | Percentage of effective context or absolute count, capped by known context/output limits; a call may only tighten it. |
+| Reasoning budget | None. | Optional `PLURNK_PROVIDERS_REASONING_BUDGET`. | Percentage of effective context or absolute count; valid only as a strict subset of total output and effective only while reasoning is on or adaptive. |
+| Reasoning capability | Catalog `reasoning: true`. | Runtime activation and adapter wire style. | Catalog bit remains informational; it neither activates nor blocks reasoning. |
+| Estimated USD rates | Models.dev input, output, optional reasoning, and optional cache rates. | None. | Missing differently-priced usage or rates produces unknown; exact all-zero rates produces estimated USD zero. |
 
-Models.dev cache-read and cache-write cost default to input cost when omitted.
-When either differs from input, the corresponding usage detail must be known or
-the request estimate is unknown.
+Models.dev cache-read and cache-write rates default to the input rate, and the
+reasoning rate defaults to the output rate, when omitted. A differently priced
+category requires its corresponding usage detail or the request estimate is
+unknown.
 
 `instantiateProvider` resolves in this order:
 
@@ -356,7 +385,7 @@ also expose:
 - EOS marker removal;
 - exact complete-request counting through `/v1/chat/completions/input_tokens`;
 - exact content token IDs through `/tokenize`;
-- the requirement that the caller provide `maxTokens`.
+- the requirement that the adapter apply a finite output budget.
 
 `PLURNK_PROVIDERS_LLAMA_SERVER` may force or disable detection. Probe attempts
 and delay are knobs. A failed probe does not silently assert capabilities.
@@ -372,12 +401,11 @@ every request:
 | Posture | Template activation | `thinking_budget_tokens` |
 |---|---:|---:|
 | `off` | false | `0` |
-| `adaptive` | true | resolved reasoning reserve |
-| `on` | true | resolved reasoning reserve |
-| `on` + budget | true | explicit reasoning budget |
+| `adaptive` | true | configured reasoning subset, otherwise omitted |
+| `on` | true | configured reasoning subset, otherwise omitted |
 
-The explicit budget may tighten but MUST NOT exceed the resolved reasoning
-reserve. Template calls normally use `reasoning_format: "auto"` for a separate
+The allowance is contained by the request's total output budget. Template calls
+normally use `reasoning_format: "auto"` for a separate
 readable channel. A GBNF-bearing call uses `"none"` so the exact constrained
 sentence survives response projection; the adapter separates its leading
 reasoning enclosure only after preserving grammar evidence. Process-wide
@@ -424,6 +452,16 @@ Upstream diagnostic text is bounded by
 normal value. Retry exhaustion is preserved as `attempts` and
 `retryExhausted`, and the resulting Problem is not marked retryable after the
 provider has consumed its automatic retry budget.
+
+§provider-capacity-failure A proven exact preflight overflow and an upstream
+context rejection normalize to `ProviderError(kind="capacity_exceeded")` and
+an RFC 9457 status 413. `capacityStage` is `preflight` or `upstream`; a
+non-413 upstream status remains `providerStatus`, while physical request
+accounting retains the status actually received. Preflight rejection occurs
+before provider I/O and therefore opens no request identity and creates no
+request-accounting row. Capacity failures are not connectivity failures and are
+never retried by the provider scheduler; bounded packet recovery belongs to the
+consumer.
 
 §provider-connectivity The provider adapter owns one attempt scheduler around
 the complete generation exchange; SDK-internal retries are disabled.
@@ -522,11 +560,35 @@ correlate them to an entity it actually created rather than reusing `id`.
 
 ## §12 Generation envelopes
 
-§provider-generation-envelope Reasoning and completion reserves are percentages
-of the resolved context
-window or absolute token counts. Absolute pins win. The provider reports the
-resolved reserves; the consumer owns prompt packing and the per-call output
-cap. Model-limit precedence is defined once in {§model-fact-resolution}.
+§provider-generation-envelope Every request has at most one total output
+budget. It includes visible output and hidden reasoning. An optional reasoning
+budget is a strict subset of that total, never an additive reserve. The
+configured total is a percentage of effective context or an absolute count;
+percentages resolve to the nearest whole token with a one-token minimum. It is
+capped by known context and model-output limits; `generate.maxOutputTokens` may
+only tighten it for one call. The effective reasoning subset tightens with that
+total and remains strictly smaller.
+
+The adapter owns native projection. A backend whose generic SDK maximum already
+includes reasoning receives the total directly. When a native SDK instead adds
+an explicit reasoning allowance to its generic visible-output maximum, the
+adapter sends `total - reasoning` through the generic field and the reasoning
+subset through the documented provider option. Core and other callers never
+reconstruct this arithmetic.
+
+§provider-output-budget-conformance When a completed response reports
+normalized output-token usage greater than its effective total output budget,
+the exchange is an `invalid_response` at 502 rather than an admitted result or
+a prompt-capacity 413. Its complete failed-attempt evidence and settled charged
+request remain available. The violation is final and is never automatically
+replayed. Missing output usage cannot prove a violation.
+
+`PLURNK_PROVIDERS_OUTPUT_BUDGET` is required for standard providers and ships
+as `35%`. `PLURNK_PROVIDERS_REASONING_BUDGET` is optional; leaving it unset
+preserves provider-adaptive depth. A backend known to decode without a finite
+limit advertises `requiresOutputBudget` and fails construction when no total can
+be resolved. The retired additive reserve knobs fail hard rather than creating
+a second envelope contract.
 
 ## §13 Capacity pool
 
@@ -539,8 +601,13 @@ availability and rate-limit failures that carry no normalized response attempt;
 {§provider-interrupted-attempt} propagates without overflow.
 
 Prompt measurement covers every backend that could receive the request. The
-pool takes the largest result; differing exact counts or any proven bound yield
-an `upper_bound`, while any estimate makes the aggregate an estimate.
+pool takes the largest quantified result; differing exact counts or any proven
+bound yield an `upper_bound`, any estimate makes the aggregate an estimate, and
+any unavailable backend makes it unavailable. Physical limits and budgets are
+independent safe minima across the pool. `inputCapacity` is the minimum of each
+backend's complete derived input capacity, never a synthetic subtraction across
+minima from different backends; request-specific output tightening repeats the
+complete-envelope derivation per backend before taking the minimum.
 
 ## §14 Conformance
 
@@ -552,7 +619,12 @@ Coverage MUST prove:
 - compatible extension preservation;
 - timeout, retry, cancellation, interrupted-attempt, and final-error behavior;
 - local capability probes and pins;
-- exact, bounded, and estimated complete-request token measurements;
+- exact, bounded, estimated, and unavailable complete-request measurements;
+- independent input/context/output limits, asymmetric admission, and normalized
+  local/upstream capacity failures;
+- one total output budget and native additive-reasoning projection;
+- provider-reported output beyond that budget failing once with complete
+  attempt and accounting evidence;
 - local reasoning activation, response-wide allowance, and GBNF coexistence;
 - explicit tagged-reasoning projection across streamed, buffered, capped, and
   literal-tag responses;

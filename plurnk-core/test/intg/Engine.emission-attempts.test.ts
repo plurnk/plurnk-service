@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Digest from "../../src/digest/Digest.ts";
 import { ProviderAccountingIntegrityError } from "../../src/core/ModelCall.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection, seedEntryWithChannel } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection, seedEntryWithChannel, testProviderCapacity } from "./_helpers.ts";
 
 const requestUsage = (
     inputTokens: number,
@@ -1141,6 +1141,7 @@ test("#161: a complete-looking resource-interrupted attempt is persisted but nev
                 choices: [{ finish_reason: "insufficient_system_resource" }],
             },
             accounting: [requestAccounting],
+            capacity: testProviderCapacity([], 100_000),
             meta: { requestId: "interrupted-1" },
         };
         const provider = new AttemptWitness({ contextWindow: 100_000, responses: [] });

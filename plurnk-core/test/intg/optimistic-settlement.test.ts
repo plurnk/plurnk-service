@@ -21,6 +21,7 @@ import {
     waitForDb,
     withDaemon,
 } from "./_rpc.ts";
+import { testProviderCapacity } from "./_helpers.ts";
 
 const requestAccounting = {
     provider: "provider:controlled-settlement",
@@ -30,7 +31,11 @@ const requestAccounting = {
     cost: { kind: "estimated", amount: { amount: "0", currency: "USD" }, source: "controlled fixture" },
 } as const;
 
-const response = (content: string, grammar?: string): ProviderResponse => {
+const response = (
+    content: string,
+    capacity: ProviderResponse["capacity"],
+    grammar?: string,
+): ProviderResponse => {
     const turn = content.startsWith("# PLAN") ? content : `# PLAN0\n\n${content}`;
     return {
         assistant: {
@@ -41,6 +46,7 @@ const response = (content: string, grammar?: string): ProviderResponse => {
         },
         assistantRaw: null,
         accounting: [requestAccounting],
+        capacity,
         ...(grammar === undefined
             ? {}
             : { grammarEvidence: { input: turn, contentStart: 0, transported: true } }),
@@ -49,6 +55,11 @@ const response = (content: string, grammar?: string): ProviderResponse => {
 
 class ControlledWorkerProvider implements Provider {
     readonly contextWindow = 100_000;
+    readonly maxInputTokens = null;
+    readonly maxOutputTokens = null;
+    readonly outputBudget = 1;
+    readonly reasoningBudget = null;
+    readonly inputCapacity = this.contextWindow - this.outputBudget;
     readonly model = "controlled-settlement";
     readonly childrenStarted = Promise.withResolvers<void>();
     readonly #parentTurns: readonly string[];
@@ -84,6 +95,10 @@ class ControlledWorkerProvider implements Provider {
         });
     }
 
+    async assessRequestCapacity(messages: readonly ChatMessage[]) {
+        return testProviderCapacity(messages, this.contextWindow, this.outputBudget);
+    }
+
     async generate({
         messages,
         workerId,
@@ -93,6 +108,7 @@ class ControlledWorkerProvider implements Provider {
         observeRequest,
     }: Parameters<Provider["generate"]>[0]): Promise<ProviderResponse> {
         signal?.throwIfAborted();
+        const capacity = await this.assessRequestCapacity(messages);
         const settle = await observeRequest?.({
             provider: requestAccounting.provider,
             model: requestAccounting.model,
@@ -105,7 +121,7 @@ class ControlledWorkerProvider implements Provider {
             this.#parentStartedAt[index] = performance.now();
             this.#parentStarts[index]?.resolve();
             await settle?.(requestAccounting);
-            return response(content, grammar);
+            return response(content, capacity, grammar);
         }
 
         const index = this.#childCalls++;
@@ -114,7 +130,7 @@ class ControlledWorkerProvider implements Provider {
         await this.#childReleases[index].promise;
         signal?.throwIfAborted();
         await settle?.(requestAccounting);
-        return response(`## SEND0 [200]\nchild ${index + 1} done`, grammar);
+        return response(`## SEND0 [200]\nchild ${index + 1} done`, capacity, grammar);
     }
 
     releaseChild(index: number): void {

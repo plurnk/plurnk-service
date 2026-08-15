@@ -16,8 +16,7 @@ const env = {
     PLURNK_PROVIDERS_TEMPERATURE: "0.2",
     PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15",
     PLURNK_PROVIDERS_FREQUENCY_PENALTY: "0",
-    PLURNK_PROVIDERS_REASONING_RESERVE: "10%",
-    PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%",
+    PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%",
     PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
     PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT: "512",
     PLURNK_PROVIDERS_CACHE_AFFINITY: "1",
@@ -34,18 +33,20 @@ test("catalog provider resolves model physics and Models.dev USD rates", () => {
     assert.notEqual(provider, null);
     assert.equal(provider?.model, "gpt-4.1-mini");
     assert.equal(provider?.contextWindow, 1_047_576);
-    assert.equal(provider?.reasoningReserve, 16_384);
-    assert.equal(provider?.completionReserve, 32_768);
+    assert.equal(provider?.maxInputTokens, null);
+    assert.equal(provider?.maxOutputTokens, 32_768);
+    assert.equal(provider?.outputBudget, 32_768);
+    assert.equal(provider?.reasoningBudget, null);
 });
 
-test("an operator context window caps catalog physics and percentage reserves derive from the cap", () => {
+test("an operator context window caps catalog physics and percentage output policy", () => {
     const provider = catalogProviderFromEnv("openai", {
         ...env,
         PLURNK_PROVIDERS_CONTEXT_WINDOW: "128000",
     }, "gpt-4.1-mini");
     assert.equal(provider?.contextWindow, 128_000);
-    assert.equal(provider?.reasoningReserve, 16_000);
-    assert.equal(provider?.completionReserve, 32_000);
+    assert.equal(provider?.outputBudget, 32_768, "the model output maximum remains the tighter cap");
+    assert.equal(provider?.reasoningBudget, null);
 
     const oversized = catalogProviderFromEnv("openai", {
         ...env,
@@ -89,7 +90,7 @@ test("official AI SDK provider owns the native request while PLURNK owns call se
     const result = await provider?.generate({
         workerId: "worker",
         messages: [{ role: "user", content: "hello" }],
-        maxTokens: 64,
+        maxOutputTokens: 64,
         sampling: { top_p: 0.8, seed: 7 },
     });
 
@@ -107,6 +108,78 @@ test("official AI SDK provider owns the native request while PLURNK owns call se
     assert.equal(calls[0]?.body.seed, 7);
     assert.equal(calls[0]?.body.max_tokens, 64);
     assert.equal(calls[0]?.body.prompt_cache_key, "worker", "the official OpenAI SDK projects the documented affinity key");
+});
+
+test("xAI's native chat contract caps the complete reasoning response", async () => {
+    let call: { headers: Headers; body: Record<string, unknown> } | undefined;
+    mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
+        call = {
+            headers: new Headers(init?.headers),
+            body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+        };
+        return new Response([
+            `data: ${JSON.stringify({
+                id: "response-xai",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "grok-build-0.1",
+                choices: [{ index: 0, delta: { reasoning_content: "consider" }, finish_reason: null }],
+            })}`,
+            `data: ${JSON.stringify({
+                id: "response-xai",
+                object: "chat.completion.chunk",
+                created: 2,
+                model: "grok-build-0.1",
+                choices: [{ index: 0, delta: { content: "OK" }, finish_reason: "stop" }],
+            })}`,
+            `data: ${JSON.stringify({
+                id: "response-xai",
+                object: "chat.completion.chunk",
+                created: 3,
+                model: "grok-build-0.1",
+                choices: [],
+                usage: {
+                    prompt_tokens: 5,
+                    completion_tokens: 4,
+                    total_tokens: 9,
+                    prompt_tokens_details: { cached_tokens: 2 },
+                    completion_tokens_details: { reasoning_tokens: 3 },
+                    cost_in_usd_ticks: 1_230_000,
+                },
+            })}`,
+            "data: [DONE]",
+        ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
+    });
+
+    const provider = catalogProviderFromEnv("xai", {
+        ...env,
+        XAI_API_KEY: "test-key",
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+    }, "grok-build-0.1");
+    const result = await provider?.generate({
+        workerId: "xai-worker",
+        messages: [{ role: "user", content: "hello" }],
+        maxOutputTokens: 16,
+    });
+
+    assert.equal(call?.body.max_completion_tokens, 16);
+    assert.equal("max_tokens" in (call?.body ?? {}), false);
+    assert.equal(call?.headers.get("x-grok-conv-id"), "xai-worker");
+    assert.equal(result?.assistant.reasoning, "consider");
+    assert.equal(result?.assistant.content, "OK");
+    assert.deepEqual(result?.accounting[0]?.usage, {
+        inputTokens: 5,
+        outputTokens: 4,
+        totalTokens: 9,
+        inputTokenDetails: { cacheReadTokens: 2 },
+        outputTokenDetails: { textTokens: 1, reasoningTokens: 3 },
+    });
+    assert.deepEqual(result?.accounting[0]?.cost, {
+        kind: "charged",
+        amount: { amount: "1230000", currency: "USDTICK" },
+        usdEquivalent: "0.000123",
+        source: "xAI response usage.cost_in_usd_ticks",
+    });
 });
 
 test("Cerebras explicit reasoning activation needs no operator effort or token budget", async () => {
@@ -347,7 +420,7 @@ test("Models.dev is the only fallback rate table", async () => {
         `data: ${JSON.stringify({
             id: "response",
             model: "served",
-            choices: [{ delta: { content: "ok" }, finish_reason: "stop" }],
+            choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
         })}`,
         `data: ${JSON.stringify({
             id: "response",

@@ -25,7 +25,7 @@ test("SchemeCtxImpl exposes only the public plugin context", () => {
         writer: "model",
         signal: undefined,
         injectWorker: async () => ({ action: "enqueued_new_loop", loopId: 1 }),
-        tokenize: () => 0,
+        weigh: () => 0,
     };
 
     const ctx = new SchemeCtxImpl(internal, manifest.name, manifest, new LiveSubscriptions());

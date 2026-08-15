@@ -542,7 +542,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
             target: { scheme: "worker", pathname: "/**" }, tx: { body: null },
             rx: {
                 content: '[{"path":"worker:///a"}]', mimetype: "application/json",
-                itemsTokenTotal: 80, returnedItemsTokenTotal: 80,
+                itemsWeightTotal: 80, returnedItemsWeightTotal: 80,
                 matchingPathCount: 1, matchLocationCount: 0,
                 range: { unit: "resource", total: 1, requested: [1, 16], returned: [1, 1] },
             },
@@ -552,7 +552,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
             target: { scheme: "worker", pathname: "/**" }, tx: { body: { raw: "/target/" } },
             rx: {
                 content: '[{"path":"worker:///a","matchLocationCount":2}]', mimetype: "application/json",
-                itemsTokenTotal: 1_000, returnedItemsTokenTotal: 400,
+                itemsWeightTotal: 1_000, returnedItemsWeightTotal: 400,
                 matchingPathCount: 20, matchLocationCount: 42,
                 range: { unit: "resource", total: 20, requested: [1, 16], returned: [1, 16] },
             },
@@ -562,7 +562,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
             target: { scheme: null, pathname: "/exact.md" }, tx: { body: { raw: "/target/" } },
             rx: {
                 content: `[${JSON.stringify({ region })}]`, mimetype: "application/json",
-                itemsTokenTotal: 80, returnedItemsTokenTotal: 80,
+                itemsWeightTotal: 80, returnedItemsWeightTotal: 80,
                 matchingPathCount: 1, matchLocationCount: 1,
                 range: { unit: "matchLocation", total: 1, requested: [1, 16], returned: [1, 1] },
             },
@@ -572,7 +572,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
             target: { scheme: "worker", pathname: "/missing/**" }, tx: { body: null },
             rx: {
                 content: "[]", mimetype: "application/json",
-                itemsTokenTotal: 0, returnedItemsTokenTotal: 0,
+                itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
                 matchingPathCount: 0, matchLocationCount: 0,
                 range: { unit: "resource", total: 0, requested: [1, 16] },
             },
@@ -658,7 +658,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
     if (tokenizer === null) throw new Error("The bundled Gemma tokenizer is required for the metadata budget contract.");
     assert.equal(tokenizer.tokenizerId, "5f7eee611703c5ce");
     const metadataTokens = await tokenizer.countTokens(metadata.map((row) => JSON.stringify(row)).join("\n"));
-    assert.equal(metadataTokens, 567, "canonical retrieval metadata has one reviewed Gemma-token weight");
+    assert.equal(metadataTokens, 567, "canonical retrieval metadata has one reviewed Gemma-token count");
 
     assert.throws(
         () => PacketWire.renderLog([{
@@ -1155,13 +1155,13 @@ test("structured mutation receipts bypass a second generic preview", () => {
     });
 });
 
-test("{§prompt-projection}: prompt rows share one explicit projection budget", () => {
+test("{§prompt-projection}: prompt rows share one explicit projection-weight allowance", () => {
     const content = Array.from({ length: 80 }, (_, i) => `prompt ${i + 1} ${"x".repeat(32)}`).join("\n");
     const budget = 80;
     const rendered = PacketWire.renderLog([
         { coordinate: "1/1/1", op: "prompt", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/1" }, rx: { content, mimetype: "text/markdown" } },
         { coordinate: "1/1/2", op: "prompt", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/2" }, rx: { content, mimetype: "text/markdown" } },
-    ], tok, { promptProjectionBudget: budget });
+    ], tok, { promptProjectionWeight: budget });
 
     const weights = [...rendered.matchAll(/"tokens":(\d+)/g)].map((match) => Number(match[1]));
     assert.equal(weights.length, 2);

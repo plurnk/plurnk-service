@@ -61,16 +61,17 @@ test("a pollable provider exposes the lower operator-capped window and derives i
             {
                 ...process.env,
                 PLURNK_PROVIDERS_CONTEXT_WINDOW_TIGHT: "32000",
-                PLURNK_PROVIDERS_REASONING_RESERVE_TIGHT: "10%",
-                PLURNK_PROVIDERS_COMPLETION_RESERVE_TIGHT: "25%",
+                PLURNK_PROVIDERS_OUTPUT_BUDGET_TIGHT: "35%",
+                PLURNK_PROVIDERS_REASONING_BUDGET_TIGHT: "10%",
                 PLURNK_PROVIDERS_FETCH_TIMEOUT: "1500",
                 PLURNK_PROVIDERS_PROBE_ATTEMPTS: "1",
                 PLURNK_PROVIDERS_PROBE_DELAY: "0",
             },
         );
         assert.equal(provider.contextWindow, 32_000);
-        assert.equal(provider.reasoningReserve, 3_200);
-        assert.equal(provider.completionReserve, 8_000);
+        assert.equal(provider.outputBudget, 11_200);
+        assert.equal(provider.reasoningBudget, 3_200);
+        assert.equal(provider.inputCapacity, 20_800);
     } finally {
         globalThis.fetch = realFetch;
     }

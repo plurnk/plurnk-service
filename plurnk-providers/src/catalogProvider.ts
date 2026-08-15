@@ -3,7 +3,7 @@ import {
     contextWindowFromEnv,
     effectiveContextWindow,
     dataCaptureFromEnv,
-    envelopeFromEnv,
+    generationEnvelopeFromEnv,
     parseRequiredFloat,
     parseRequiredInt,
     parseTimeoutMs,
@@ -11,8 +11,6 @@ import {
     cacheWritePolicyFromEnv,
     reasoningFromEnv,
     reasoningResponseStyleFromEnv,
-    resolveReserve,
-    type ReserveSpec,
 } from "./env.ts";
 import AiSdkProvider, { type ReasoningStyle } from "./AiSdkProvider.ts";
 import { configuredProviderInfo, createSdkModel } from "./sdkModels.ts";
@@ -55,6 +53,7 @@ export const providerFromSdkModel = ({
     cacheAffinity,
     systemCacheProviderOptions,
     reasoningResponseProviderOptions,
+    additiveReasoningProvider,
 }: {
     name: string;
     env: NodeJS.ProcessEnv;
@@ -69,32 +68,32 @@ export const providerFromSdkModel = ({
     cacheAffinity?: CacheAffinity;
     systemCacheProviderOptions?: AiSdkProviderOptions;
     reasoningResponseProviderOptions?: AiSdkProviderOptions;
+    additiveReasoningProvider?: "anthropic" | "bedrock";
 }): Provider => {
     emitWarningOnce(
-        `${name} provider: request-level prompt counting is a chars/2 estimate; hard context-envelope admission fails closed without exact or bounded evidence`,
+        `${name} provider: request-level prompt counting is a chars/2 estimate; capacity is deferred to the provider`,
         "PLURNK_PROMPT_COUNT_ESTIMATE",
     );
 
-    const reasoning = reasoningFromEnv(env, name);
-    const { reasoningReserve: configuredReasoning, completionReserve: configuredCompletion } = envelopeFromEnv(env, name);
-    const completionReserve: ReserveSpec = "tokens" in configuredCompletion
-        ? configuredCompletion
-        : info?.maxOutput === undefined
-            ? configuredCompletion
-            : { tokens: Math.min(info.maxOutput, Math.round(configuredCompletion.percent * contextWindow)) };
-    const completionTokens = resolveReserve(completionReserve, contextWindow);
-    const reasoningReserve: ReserveSpec = "tokens" in configuredReasoning
-        ? configuredReasoning
-        : reasoning.budget !== null
-            ? { tokens: reasoning.budget }
-            : completionTokens === null
-                ? configuredReasoning
-                : { tokens: Math.round(completionTokens / 2) };
+    const maxInputTokens = info?.maxInputTokens ?? null;
+    const maxOutputTokens = info?.maxOutputTokens === undefined
+        ? null
+        : Math.min(info.maxOutputTokens, contextWindow);
+    const envelope = generationEnvelopeFromEnv(
+        env,
+        name,
+        contextWindow,
+        maxOutputTokens,
+    );
+    const reasoning = reasoningFromEnv(env, name, envelope.reasoningBudget);
 
     const catalogCost = info?.cost;
     const rates = catalogCost === undefined ? null : {
         input: catalogCost.inputPer1M,
         output: catalogCost.outputPer1M,
+        ...(catalogCost.reasoningPer1M === undefined
+            ? {}
+            : { reasoning: catalogCost.reasoningPer1M }),
         ...(catalogCost.cacheReadPer1M === undefined
             ? {}
             : { cacheRead: catalogCost.cacheReadPer1M }),
@@ -115,6 +114,11 @@ export const providerFromSdkModel = ({
         ...(url === undefined ? {} : { url }),
         ...(headers === undefined ? {} : { headers: { ...headers } }),
         contextWindow,
+        maxInputTokens,
+        maxOutputTokens,
+        outputBudget: envelope.outputBudget,
+        reasoningBudget: reasoning.budget,
+        ...(additiveReasoningProvider === undefined ? {} : { additiveReasoningProvider }),
         fetchTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "PLURNK_PROVIDERS_FETCH_TIMEOUT", name),
         operationTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "PLURNK_PROVIDERS_OPERATION_TIMEOUT", name),
         firstContentTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT", name),
@@ -124,8 +128,6 @@ export const providerFromSdkModel = ({
         temperature: parseRequiredFloat(env.PLURNK_PROVIDERS_TEMPERATURE, "PLURNK_PROVIDERS_TEMPERATURE", name, 0),
         repeatPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_REPEAT_PENALTY, "PLURNK_PROVIDERS_REPEAT_PENALTY", name, 0),
         frequencyPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_FREQUENCY_PENALTY, "PLURNK_PROVIDERS_FREQUENCY_PENALTY", name, 0),
-        reasoningReserve,
-        completionReserve,
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", name),
         errorDetailLimit: parseRequiredInt(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT", name),
         reasoningStyle: reasoningStyleFromEnv(env, name),
@@ -183,6 +185,7 @@ export const catalogProviderFromEnv = (
         cacheAffinity: sdk.cacheAffinity,
         systemCacheProviderOptions: sdk.systemCacheProviderOptions,
         reasoningResponseProviderOptions: sdk.reasoningResponseProviderOptions,
+        additiveReasoningProvider: sdk.additiveReasoningProvider,
         contextWindow,
         info,
     });

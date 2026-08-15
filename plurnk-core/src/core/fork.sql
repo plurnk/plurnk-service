@@ -61,14 +61,14 @@ RETURNING id;
 SELECT id, loop_id, turn_id, sequence, at, origin, source, op, suffix, signal,
        ambient_event_id,
        scheme, username, password, hostname, port, pathname, query, fragment,
-       lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens,
+       lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight,
        state, outcome, attrs, expanded
 FROM log_entries WHERE worker_id = $worker_id ORDER BY id;
 
 -- PREP: fork_insert_log_entry
 -- RETURNING the new id so the caller can copy the row's classifications onto it ({§log-item-tags}).
-INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, op, suffix, signal, scheme, username, password, hostname, port, pathname, query, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, tokens, state, outcome, attrs, expanded)
-VALUES ($worker_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $ambient_event_id, $op, $suffix, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $tokens, $state, $outcome, $attrs, $expanded)
+INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, op, suffix, signal, scheme, username, password, hostname, port, pathname, query, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, outcome, attrs, expanded)
+VALUES ($worker_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $ambient_event_id, $op, $suffix, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight, $state, $outcome, $attrs, $expanded)
 RETURNING id;
 
 -- PREP: fork_copy_log_tags
@@ -125,5 +125,5 @@ RETURNING id;
 -- PREP: fork_copy_entry_channels
 -- Copy every source channel from the source entry to the copy. Deep projections
 -- live on the shared artifact, not on either entry.
-INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, state, producer_result)
-SELECT $new_entry_id, name, content, mimetype, tokens, state, producer_result FROM entry_channels WHERE entry_id = $old_entry_id;
+INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, state, producer_result)
+SELECT $new_entry_id, name, content, mimetype, weight, state, producer_result FROM entry_channels WHERE entry_id = $old_entry_id;

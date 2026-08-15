@@ -113,20 +113,14 @@ export function effectiveContextWindow(operatorCap: number | null, naturalWindow
             : Math.min(operatorCap, naturalWindow);
 }
 
-// {§provider-generation-envelope} How much of a
-// effective context window is reserved for reasoning and for completion — the
-// remainder (minus the consumer's own packing-safety margin) is the prompt
-// gauge. Provider-owned: the window is the effective hard envelope and these are
-// amounts OF it. Each knob accepts a percentage of the window
-// ("10%") or an absolute token count ("4096"); the floor ships percentages so
-// every window-advertising endpoint (llama-server n_ctx, the plurnk.ai router,
-// a cataloged cloud model) arrives at sane defaults with ZERO operator tuning.
-// Per-alias suffixes override for measured envelopes; absolutes win over the
-// window derivation entirely.
-export type ReserveSpec = { percent: number } | { tokens: number };
+// {§provider-generation-envelope} Generation has one total output budget. An
+// optional reasoning budget is a subset, never an additive second reserve.
+// Percentages are of the effective context window; absolutes remain useful for
+// measured local deployments. Physical model limits always cap operator policy.
+export type TokenBudgetSpec = { percent: number } | { tokens: number };
 
-const parseReserve = (raw: string | undefined, name: string, label: string): ReserveSpec => {
-    if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set (a percentage of the window like "10%", or an absolute token count)`);
+const parseTokenBudget = (raw: string | undefined, name: string, label: string): TokenBudgetSpec => {
+    if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set (a percentage of the context window like "35%", or an absolute token count)`);
     const pct = /^([0-9]+(?:\.[0-9]+)?)%$/.exec(raw);
     if (pct !== null) {
         const p = Number(pct[1]);
@@ -138,37 +132,110 @@ const parseReserve = (raw: string | undefined, name: string, label: string): Res
     return { tokens: n };
 };
 
-export const envelopeFromEnv = (env: NodeJS.ProcessEnv, label: string): { reasoningReserve: ReserveSpec; completionReserve: ReserveSpec } => ({
-    reasoningReserve: parseReserve(env.PLURNK_PROVIDERS_REASONING_RESERVE, "PLURNK_PROVIDERS_REASONING_RESERVE", label),
-    completionReserve: parseReserve(env.PLURNK_PROVIDERS_COMPLETION_RESERVE, "PLURNK_PROVIDERS_COMPLETION_RESERVE", label),
-});
-
-// Resolve a ReserveSpec against a known window: absolutes stand alone; a
+// Resolve a token budget against a known window: absolutes stand alone; a
 // percentage needs the window (null when unknown — the underivable/no-cap case).
-export const resolveReserve = (spec: ReserveSpec, window: number | null): number | null =>
-    "tokens" in spec ? spec.tokens : window === null ? null : Math.round(spec.percent * window);
+export const resolveTokenBudget = (spec: TokenBudgetSpec, window: number | null): number | null =>
+    "tokens" in spec
+        ? spec.tokens
+        : window === null
+            ? null
+            : Math.max(1, Math.round(spec.percent * window));
 
-// TOLERANT envelope read for fixtures + consumers that resolve reserves against
-// a known window and treat ABSENCE as "no claim" (null), never fail-hard —
-// unlike envelopeFromEnv (the REQUIRED provider path, fed by the shipped floor).
-// Mock uses this so the service's partition/budget suite drives the SAME
-// env→reserve resolution a real provider does, without the floor. An invalid
-// value still throws (a malformed reserve is an error, not an absence).
-export const resolveEnvelopeFromEnv = (env: NodeJS.ProcessEnv, window: number | null): { reasoningReserve: number | null; completionReserve: number | null } => {
-    const one = (raw: string | undefined, name: string): number | null =>
-        raw === undefined || raw.length === 0 ? null : resolveReserve(parseReserve(raw, name, "mock"), window);
-    return {
-        reasoningReserve: one(env.PLURNK_PROVIDERS_REASONING_RESERVE, "PLURNK_PROVIDERS_REASONING_RESERVE"),
-        completionReserve: one(env.PLURNK_PROVIDERS_COMPLETION_RESERVE, "PLURNK_PROVIDERS_COMPLETION_RESERVE"),
-    };
+export type GenerationEnvelope = {
+    readonly outputBudget: number | null;
+    readonly reasoningBudget: number | null;
+};
+
+const shedRetiredEnvelope = (env: NodeJS.ProcessEnv, label: string): void => {
+    for (const name of ["PLURNK_PROVIDERS_REASONING_RESERVE", "PLURNK_PROVIDERS_COMPLETION_RESERVE"] as const) {
+        if (env[name] !== undefined && env[name] !== "") {
+            throw new Error(
+                `${label} provider: ${name} is retired; reasoning is now a subset of the total generation envelope. Replace the old pair with PLURNK_PROVIDERS_OUTPUT_BUDGET and optional PLURNK_PROVIDERS_REASONING_BUDGET ({§provider-generation-envelope})`,
+            );
+        }
+    }
+};
+
+const optionalTokenBudget = (
+    raw: string | undefined,
+    name: string,
+    label: string,
+): TokenBudgetSpec | null => raw === undefined || raw.length === 0
+    ? null
+    : parseTokenBudget(raw, name, label);
+
+const resolveGeneration = (
+    outputSpec: TokenBudgetSpec | null,
+    reasoningSpec: TokenBudgetSpec | null,
+    contextWindow: number | null,
+    maxOutputTokens: number | null,
+    label: string,
+): GenerationEnvelope => {
+    const requestedOutput = outputSpec === null ? null : resolveTokenBudget(outputSpec, contextWindow);
+    const physicalCaps = [contextWindow, maxOutputTokens].filter((value): value is number => value !== null);
+    const outputBudget = requestedOutput === null
+        ? null
+        : Math.min(requestedOutput, ...physicalCaps);
+    if (contextWindow !== null && outputBudget !== null && outputBudget >= contextWindow) {
+        throw new Error(
+            `${label} provider: PLURNK_PROVIDERS_OUTPUT_BUDGET (${outputBudget}) must leave positive input capacity inside the context window (${contextWindow})`,
+        );
+    }
+    const reasoningBudget = reasoningSpec === null
+        ? null
+        : resolveTokenBudget(reasoningSpec, contextWindow);
+    if (reasoningBudget !== null && outputBudget === null) {
+        throw new Error(
+            `${label} provider: PLURNK_PROVIDERS_REASONING_BUDGET requires a resolved PLURNK_PROVIDERS_OUTPUT_BUDGET; reasoning is a subset of total output`,
+        );
+    }
+    if (reasoningBudget !== null && outputBudget !== null && reasoningBudget >= outputBudget) {
+        throw new Error(
+            `${label} provider: PLURNK_PROVIDERS_REASONING_BUDGET (${reasoningBudget}) exceeds the effective PLURNK_PROVIDERS_OUTPUT_BUDGET (${outputBudget}); reasoning is a subset of total output`,
+        );
+    }
+    return { outputBudget, reasoningBudget };
+};
+
+// Standard providers receive the shipped OUTPUT_BUDGET floor and fail hard if
+// it is absent. Mock uses the tolerant sibling below so ordinary unit fixtures
+// make no generation claim unless a test deliberately configures one.
+export const generationEnvelopeFromEnv = (
+    env: NodeJS.ProcessEnv,
+    label: string,
+    contextWindow: number | null,
+    maxOutputTokens: number | null,
+): GenerationEnvelope => {
+    shedRetiredEnvelope(env, label);
+    return resolveGeneration(
+        parseTokenBudget(env.PLURNK_PROVIDERS_OUTPUT_BUDGET, "PLURNK_PROVIDERS_OUTPUT_BUDGET", label),
+        optionalTokenBudget(env.PLURNK_PROVIDERS_REASONING_BUDGET, "PLURNK_PROVIDERS_REASONING_BUDGET", label),
+        contextWindow,
+        maxOutputTokens,
+        label,
+    );
+};
+
+export const resolveGenerationEnvelopeFromEnv = (
+    env: NodeJS.ProcessEnv,
+    contextWindow: number | null,
+    maxOutputTokens: number | null = null,
+): GenerationEnvelope => {
+    shedRetiredEnvelope(env, "mock");
+    return resolveGeneration(
+        optionalTokenBudget(env.PLURNK_PROVIDERS_OUTPUT_BUDGET, "PLURNK_PROVIDERS_OUTPUT_BUDGET", "mock"),
+        optionalTokenBudget(env.PLURNK_PROVIDERS_REASONING_BUDGET, "PLURNK_PROVIDERS_REASONING_BUDGET", "mock"),
+        contextWindow,
+        maxOutputTokens,
+        "mock",
+    );
 };
 
 // {§provider-configuration} The side-channel reasoning knobs — activation and budget
 // are separate vars, so a numeric budget can never silently flip wire flags:
 //   PLURNK_PROVIDERS_REASONING           off | adaptive | on   (REQUIRED, fail-hard)
-//   PLURNK_PROVIDERS_REASONING_BUDGET  optional positive int when REASONING=on —
-//     an explicit magnitude for tier/budget mapping. On llama-server it is the
-//     request-scoped allowance and cannot exceed the physical reasoning reserve.
+//   PLURNK_PROVIDERS_REASONING_BUDGET  optional reasoning subset of the total
+//     output budget, used for tier/budget mapping where the backend supports it.
 // The provider maps intent to the backend's mechanism; the consumer states
 // intent, never mechanism. PLAN is a separate public intended-goals record.
 export type ReasoningMode = "off" | "adaptive" | "on";
@@ -189,20 +256,18 @@ export const reasoningResponseStyleFromEnv = (
     return raw;
 };
 
-export const reasoningFromEnv = (env: NodeJS.ProcessEnv, label: string): Reasoning => {
+export const reasoningFromEnv = (
+    env: NodeJS.ProcessEnv,
+    label: string,
+    resolvedBudget: number | null = null,
+): Reasoning => {
     shedRenamed(env, "PLURNK_PROVIDERS_THINKING", "PLURNK_PROVIDERS_REASONING", label, "provider configuration contract"); // lexicon-allow
     shedRenamed(env, "PLURNK_PROVIDERS_THINKING_CAPACITY", "PLURNK_PROVIDERS_REASONING_BUDGET", label, "provider configuration contract"); // lexicon-allow
     const name = "PLURNK_PROVIDERS_REASONING";
     const raw = env[name];
     if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set (off | adaptive | on)`);
     if (raw !== "off" && raw !== "adaptive" && raw !== "on") throw new Error(`${label} provider: ${name} must be one of "off", "adaptive", "on" (got "${raw}")`);
-    if (raw !== "on") return { mode: raw, budget: null };
-    const capName = "PLURNK_PROVIDERS_REASONING_BUDGET";
-    const capRaw = env[capName];
-    if (capRaw === undefined || capRaw.length === 0) return { mode: "on", budget: null };
-    const n = Number(capRaw);
-    if (!Number.isInteger(n) || n <= 0) throw new Error(`${label} provider: ${capName} must be a positive integer (got "${capRaw}")`);
-    return { mode: "on", budget: n };
+    return { mode: raw, budget: raw === "off" ? null : resolvedBudget };
 };
 
 // ── Per-alias knob scoping (per-alias scoping doctrine, user 2026-07-03): PLURNK_PROVIDERS_<KNOB>[_<alias>] ──
@@ -213,8 +278,7 @@ export const reasoningFromEnv = (env: NodeJS.ProcessEnv, label: string): Reasoni
 // facts (API keys, canonical endpoints) remain vendor-named; the per-alias
 // endpoint override stays PLURNK_BASEURL_<alias> (its existing precedent).
 export const PROVIDERS_KNOBS = Object.freeze([
-    "PLURNK_PROVIDERS_REASONING_RESERVE",
-    "PLURNK_PROVIDERS_COMPLETION_RESERVE",
+    "PLURNK_PROVIDERS_OUTPUT_BUDGET",
     "PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE",
     "PLURNK_PROVIDERS_REASONING_BUDGET",
     "PLURNK_PROVIDERS_REASONING",
@@ -250,10 +314,9 @@ export const PROVIDERS_KNOBS = Object.freeze([
 // single overlay.
 //
 // `knobs` (optional) lets a CONSUMER scope its OWN closed knob list with this
-// same parser — e.g. the service's window-partition vars (PLURNK_SERVICE_CONTEXT_WINDOW/
-// MAX_TURNS/...), so a 64k cloud envelope and a 12k gemma envelope
-// coexist per-alias without the service reimplementing the suffix/collision
-// rules. Default stays the providers-family list; my call sites pass nothing.
+// same parser — e.g. service loop policy or prompt projection — without
+// reimplementing the suffix/collision rules. Default stays the
+// providers-family list; provider call sites pass nothing.
 export const scopeEnvToAlias = (env: NodeJS.ProcessEnv, alias: string, knobs: readonly string[] = PROVIDERS_KNOBS): NodeJS.ProcessEnv => {
     const folded = alias.toLowerCase();
     const out: NodeJS.ProcessEnv = { ...env };

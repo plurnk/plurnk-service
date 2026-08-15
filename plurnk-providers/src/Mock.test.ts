@@ -13,6 +13,7 @@ const build = (responses: MockResponse[] = [{ assistant: { content: "hi", reason
 test("Mock: contextWindow and model are stable across reads", () => {
     const m = build();
     assert.equal(m.contextWindow, 100000);
+    assert.equal(m.inputCapacity, null);
     assert.equal(m.contextWindow, 100000);
     assert.equal(m.model, "mock");
     assert.equal(m.model, "mock");
@@ -148,35 +149,48 @@ test("Mock: exhausted queue throws a ProviderError carrying its settled accounti
 
 // -- {§provider-generation-envelope} --
 
-test("the reserve getters are on the Provider interface (not just the concrete class)", () => {
-    // Typing against the contract catches a getter-only concrete surface.
-    const prevR = process.env.PLURNK_PROVIDERS_REASONING_RESERVE;
+test("the generation-envelope getters are on the Provider interface", () => {
+    const previous = {
+        output: process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET,
+        reasoning: process.env.PLURNK_PROVIDERS_REASONING_BUDGET,
+    };
     try {
-        process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "10%";
+        process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "35%";
+        process.env.PLURNK_PROVIDERS_REASONING_BUDGET = "10%";
         const p: Provider = new Mock({ contextWindow: 49152, responses: [] });
-        assert.equal(p.reasoningReserve, 4915); // 10% of 49152, read through the interface type
+        assert.equal(p.outputBudget, 17_203);
+        assert.equal(p.reasoningBudget, 4_915);
+        assert.equal(p.inputCapacity, 31_949);
     } finally {
-        if (prevR === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_RESERVE; else process.env.PLURNK_PROVIDERS_REASONING_RESERVE = prevR;
+        if (previous.output === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
+        else process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = previous.output;
+        if (previous.reasoning === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+        else process.env.PLURNK_PROVIDERS_REASONING_BUDGET = previous.reasoning;
     }
 });
 
-test("Mock resolves reserves from PLURNK_PROVIDERS_*_RESERVE against its window (the service partition path)", () => {
-    const prevR = process.env.PLURNK_PROVIDERS_REASONING_RESERVE;
-    const prevC = process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE;
+test("Mock resolves percentage and absolute generation budgets against its window", () => {
+    const previous = {
+        output: process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET,
+        reasoning: process.env.PLURNK_PROVIDERS_REASONING_BUDGET,
+    };
     try {
-        process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "10%";
-        process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE = "8192"; // mixed pct + absolute
+        process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "35%";
+        process.env.PLURNK_PROVIDERS_REASONING_BUDGET = "8192";
         const m = new Mock({ contextWindow: 49152, responses: [] });
-        assert.equal(m.reasoningReserve, 4915);  // 10% of 49152
-        assert.equal(m.completionReserve, 8192); // absolute stands
+        assert.equal(m.outputBudget, 17_203);
+        assert.equal(m.reasoningBudget, 8_192);
     } finally {
-        if (prevR === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_RESERVE; else process.env.PLURNK_PROVIDERS_REASONING_RESERVE = prevR;
-        if (prevC === undefined) delete process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE; else process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE = prevC;
+        if (previous.output === undefined) delete process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
+        else process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = previous.output;
+        if (previous.reasoning === undefined) delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+        else process.env.PLURNK_PROVIDERS_REASONING_BUDGET = previous.reasoning;
     }
 });
 
-test("no reserve env → null (the no-cap path; bare Mocks unaffected)", () => {
+test("no generation-budget env leaves a bare Mock unbounded", () => {
     const m = new Mock({ contextWindow: 49152, responses: [] });
-    assert.equal(m.reasoningReserve, null);
-    assert.equal(m.completionReserve, null);
+    assert.equal(m.outputBudget, null);
+    assert.equal(m.reasoningBudget, null);
+    assert.equal(m.inputCapacity, null);
 });

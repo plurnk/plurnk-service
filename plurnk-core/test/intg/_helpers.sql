@@ -73,7 +73,7 @@ WHERE mc.turn_id = $turn_id
 ORDER BY mc.sequence;
 
 -- PREP: test_model_calls
-SELECT mc.id, mc.sequence, mc.kind, mc.state, mc.response, mc.failure,
+SELECT mc.id, mc.sequence, mc.kind, mc.state, mc.response, mc.failure, mc.capacity,
        mc.attributions, mc.finish_reason, mc.model, mc.timestamp, mc.completed_at,
        le.id AS log_entry_id
 FROM model_calls mc
@@ -116,7 +116,7 @@ SELECT id, attributes FROM entries
 WHERE workspace_id = $workspace_id AND scheme = $scheme AND pathname = $pathname;
 
 -- PREP: test_get_channel
-SELECT content, mimetype, tokens, state FROM entry_channels
+SELECT content, mimetype, weight, state FROM entry_channels
 WHERE entry_id = $entry_id AND name = $name;
 
 -- PREP: test_get_subscription
@@ -154,7 +154,7 @@ VALUES ($workspace_id, $owner_id, $scheme, $pathname)
 RETURNING id;
 
 -- PREP: test_seed_channel
-INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, state)
+INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, state)
 VALUES ($entry_id, $name, $content, $mimetype, 0, $state);
 
 -- PREP: test_get_packet
@@ -167,7 +167,7 @@ SELECT status FROM turns WHERE id = $id;
 SELECT id, sequence, status, packet FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_turn
-SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, rx, attrs, model_call_id
+SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, rx, attrs, weight, model_call_id
 FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
 
 -- PREP: test_log_entries_by_worker
@@ -450,7 +450,7 @@ JOIN entries e ON e.deep_hash = d.deep_hash
 GROUP BY e.pathname;
 
 -- PREP: test_log_entries_by_worker_op
-SELECT pathname, source, tokens, attrs FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
+SELECT pathname, source, weight, attrs FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
 
 -- PREP: test_model_emission_rows
 SELECT id, turn_id, sequence, op, attrs FROM log_entries
@@ -473,7 +473,7 @@ SELECT pathname, tx, rx, mimetype_rx, status_rx, attrs
 FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
 
 -- PREP: test_error_rows_for_worker
-SELECT rx FROM log_entries WHERE worker_id = $worker_id AND op = 'error';
+SELECT rx, weight FROM log_entries WHERE worker_id = $worker_id AND op = 'error';
 
 -- PREP: test_send_rows_for_worker
 SELECT rx, status_rx FROM log_entries WHERE worker_id = $worker_id AND op = 'SEND';
@@ -510,7 +510,7 @@ JOIN derivation_embeddings ee ON ee.derivation_id = d.id
 WHERE e.id = $entry_id ORDER BY ee.chunk_seq;
 
 -- PREP: test_seed_channel_hashed
-INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, content_hash, state)
+INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, state)
 VALUES ($entry_id, $name, $content, $mimetype, 0, $content_hash, $state);
 
 -- PREP: test_count_stamped_deep_hash

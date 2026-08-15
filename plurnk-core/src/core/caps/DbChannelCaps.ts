@@ -46,12 +46,12 @@ export default class DbChannelCaps implements ChannelCaps {
     }
 
     async replace(pathname: string, channel: string, content: string): Promise<SchemeResult> {
-        const { tokenize } = this.#ctx;
-        if (tokenize === undefined) throw new Error("DbChannelCaps.replace: ctx.tokenize is required for token accounting");
+        const { weigh } = this.#ctx;
+        if (weigh === undefined) throw new Error("DbChannelCaps.replace: ctx.weigh is required for token accounting");
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, pathname, this.#ownerId);
         if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${renderAddress(this.#scheme, pathname)}.`, pathname);
         const r = await this.#ctx.db.replace_channel_content.run({
-            content, tokens: tokenize(content), entry_id: entryId, channel,
+            content, weight: weigh(content), entry_id: entryId, channel,
         });
         return r.changes > 0
             ? Results.assert({ status: 200 })

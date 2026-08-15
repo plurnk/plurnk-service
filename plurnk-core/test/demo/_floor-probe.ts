@@ -1,32 +1,28 @@
-// Measure a workspace's true turn-1 packet floor. A one-token virtual prompt budget
-// makes pressure visible, while an independent one-turn ceiling bounds the probe.
-// The measurement is the first stored request, not the loop's terminal disposition.
-// Budget-test gauges derive from THIS number × a pressure factor, so teaching growth
-// (grammar/schemes/personality releases) re-calibrates the pins instead of breaking them
-// — the razor-pin treadmill (three re-pinnings in one week) ends here.
+// Measure a workspace's true turn-1 packet floor under its natural provider
+// envelope. The measurement is the first stored request, not the loop's terminal
+// disposition. Pressure tests derive their provider input-capacity target from
+// THIS number, so teaching growth re-calibrates the pin instead of starting a
+// razor-pin treadmill.
 
-import { liveWorkspace, liveLoop, pinAliasBudget } from "../_live-harness.ts";
+import { liveWorkspace, liveLoop } from "../_live-harness.ts";
 
-export const measureFloor = async (opts: { label: string; projectRoot: string; prompt: string }): Promise<number> => {
-    // The pressure pin MUST ride the active alias's suffix (bare is overridden by
-    // the model's own .env knobs). Pressure is deliberately not a terminal condition.
-    const restore = pinAliasBudget({ PROMPT_BUDGET: "1", SAFETY: "0" });
+export const measureFloor = async (opts: { label: string; projectRoot: string; prompt: string }): Promise<{
+    weight: number;
+    outputBudget: number;
+}> => {
+    const s = await liveWorkspace({ name: `floor-probe-${opts.label}-${crypto.randomUUID()}`, projectRoot: opts.projectRoot });
     try {
-        const s = await liveWorkspace({ name: `floor-probe-${opts.label}-${crypto.randomUUID()}`, projectRoot: opts.projectRoot });
-        try {
-            const { turnIds } = await liveLoop(
-                s,
-                2,
-                { prompt: opts.prompt, maxTurns: 1 },
-                { timeoutMs: 240_000 },
-            );
-            if (turnIds.length !== 1) throw new Error(`floor probe recorded ${turnIds.length} turns; expected exactly one`);
-            const row = await s.db.test_get_turn.get<{ packet: string }>({ id: turnIds[0] });
-            const tokens = (JSON.parse(row?.packet ?? "{}") as { tokens?: number }).tokens ?? 0;
-            if (tokens <= 0) throw new Error("floor probe read no packet total from the first stored request");
-            return tokens;
-        } finally { await s.cleanup(); }
-    } finally {
-        restore();
-    }
+        const { turnIds } = await liveLoop(
+            s,
+            2,
+            { prompt: opts.prompt, maxTurns: 1 },
+            { timeoutMs: 240_000 },
+        );
+        if (turnIds.length !== 1) throw new Error(`floor probe recorded ${turnIds.length} turns; expected exactly one`);
+        const row = await s.db.test_get_turn.get<{ packet: string }>({ id: turnIds[0] });
+        const weight = (JSON.parse(row?.packet ?? "{}") as { weight?: number }).weight ?? 0;
+        if (weight <= 0) throw new Error("floor probe read no packet weight from the first stored request");
+        if (s.provider.outputBudget === null) throw new Error("floor probe provider has no resolved output budget");
+        return { weight, outputBudget: s.provider.outputBudget };
+    } finally { await s.cleanup(); }
 };

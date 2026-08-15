@@ -242,7 +242,7 @@ export default class SchemeRegistry {
     // worker://plurnk/docs/<name>.md by LoopDocs, READ on demand). The verbose semantics live
     // in that pull doc, not here: terse pushes, depth pulls. Unlike the executor
     // contract table, these are complete operation examples. Insertion order; a scheme with no example
-    // (provisional, e.g. skill) is omitted. The doc's token weight rides its manifest entry.
+    // (provisional, e.g. skill) is omitted. The doc's curation weight rides its manifest entry.
     teach(): string {
         const examples: string[] = [];
         const excluded = docsExcludeSet();

@@ -40,19 +40,20 @@ When a value is required, an unset or retired name fails boot naming the violate
 
 These are relationships *between* flags. Set them as a unit.
 
-- **Hard capacity and PLURNK pressure are separate.** Providers report the
-  effective total context envelope and generation capacity. Core derives the
-  natural prompt gauge from those facts. Optional `PLURNK_SERVICE_PROMPT_BUDGET_<alias>`
-  only tightens the model-facing gauge and grinder; it is never sent to the
-  provider and never changes hard admission or generation settings.
+- **One generation envelope derives input capacity.** The provider resolves
+  model input/output limits, the effective context window, one total output
+  budget, and an optional reasoning subset. Its resulting input capacity drives
+  both physical request admission and Core's model-independent curation gauge;
+  Core has no second token budget or packing margin. Request-shaped token
+  evidence remains provider-owned ({§tokenomics-window-partition}).
   `PLURNK_SERVICE_PROMPT_PROJECTION_<alias>` assigns a stable percentage of
   that gauge to automatic prompt bodies; it never limits stored prompt size
   ({§prompt-projection}).
-- **Reasoning capacity is request-scoped on llama-server.**
-  `PLURNK_PROVIDERS_REASONING_RESERVE_<alias>` is the adaptive cumulative
-  response allowance. An explicit `PLURNK_PROVIDERS_REASONING_BUDGET_<alias>`
-  may tighten but cannot exceed it. The provider sends the allowance on every
-  request; no serving-box flag synchronization is required.
+- **Reasoning is part of output.** `PLURNK_PROVIDERS_OUTPUT_BUDGET_<alias>` is
+  the complete response ceiling, including hidden reasoning. Optional
+  `PLURNK_PROVIDERS_REASONING_BUDGET_<alias>` is a strict subset; unset leaves
+  depth provider-adaptive. Activation remains the independent
+  `PLURNK_PROVIDERS_REASONING_<alias>` contract.
 - **Local GBNF is optional.** The PLURNK language is always parsed normally.
   Local llama-server users may set `PLURNK_PROVIDERS_GBNF_<alias>`; transport
   and enforcement are verified at boot. Cloud and endpoint-managed aliases
@@ -66,7 +67,7 @@ These are relationships *between* flags. Set them as a unit.
 
 ## Profiles (examples, not a decision tree — adapt to the real box)
 
-- **Local GPU (llama-server).** `PLURNK_MODEL_local="openai/<name>"`, `OPENAI_BASE_URL=http://127.0.0.1:<port>`, `PLURNK_MODEL=local`, `PLURNK_PROVIDERS_GBNF_local=plurnk.qwen.gbnf` for Qwen's template-prefilled `<think>` protocol (or `plurnk.gemma.gbnf` when Gemma generates a complete Harmony channel). The provider detects llama-server, verifies its GBNF transport, and derives a request-scoped reasoning allowance from the detected window. Add `PLURNK_PROVIDERS_LLAMA_SERVER_local=1` only when the endpoint cannot be fingerprinted reliably.
+- **Local GPU (llama-server).** `PLURNK_MODEL_local="openai/<name>"`, `OPENAI_BASE_URL=http://127.0.0.1:<port>`, `PLURNK_MODEL=local`, `PLURNK_PROVIDERS_GBNF_local=plurnk.qwen.gbnf` for Qwen's template-prefilled `<think>` protocol (or `plurnk.gemma.gbnf` when Gemma generates a complete Harmony channel). The provider detects llama-server, verifies its GBNF transport, and derives input capacity from the detected window and configured output envelope. Add `PLURNK_PROVIDERS_LLAMA_SERVER_local=1` only when the endpoint cannot be fingerprinted reliably.
 - **Cloud, bring-your-own-key.** `PLURNK_MODEL_cloud="openrouter/<model>"`, `OPENROUTER_API_KEY=…`, `PLURNK_MODEL=cloud`. No local GBNF or `LLAMA_SERVER` pin.
 - **plurnk.ai endpoint.** `PLURNK_MODEL_plurnk="plurnk/plurnk"`, `PLURNK_API_KEY=…`, `PLURNK_MODEL=plurnk`.
 - **Headless / CI / constrained container.** A CPU-only box should NOT disable semantic search — it should point derivation at a real embedder: `PLURNK_MIMETYPES_EMBED_BASE_URL` (any OpenAI-compatible `/v1/embeddings` — a host GPU turns a CPU-hours corpus grind into seconds). Weak hardware is the target workload, not a reason to shed capability; `PLURNK_SERVICE_EMBED_DISABLE=1` exists for test lanes that deterministically assert non-semantic behavior, nothing else. Consider `PLURNK_SERVICE_MAX_TURNS=<n>` as a cost cap, `PLURNK_SERVICE_GIT_ALLOWED=0` to lock out git in a sandbox.
@@ -84,11 +85,11 @@ Each mirrors a `# --- section ---` in the floor; consult the floor for exact def
 - **Providers** — the portable provider knobs and defaults are defined by
   `@plurnk/plurnk-providers/.env.defaults`; any provider knob may take an alias
   suffix that wins over the bare fallback.
-- **Provider capacity and prompt budget** —
-  `PLURNK_PROVIDERS_CONTEXT_WINDOW`/`_REASONING_RESERVE`/`_COMPLETION_RESERVE`
-  describe provider capacity. `PLURNK_SERVICE_PROMPT_BUDGET` applies optional
-  virtual pressure; `PLURNK_SERVICE_PROMPT_PROJECTION` assigns the automatic
-  prompt-body share; `PLURNK_SERVICE_SAFETY` is the packing margin.
+- **Provider envelope and prompt projection** —
+  `PLURNK_PROVIDERS_CONTEXT_WINDOW`/`_OUTPUT_BUDGET` and optional
+  `_REASONING_BUDGET` derive physical input capacity.
+  `PLURNK_SERVICE_PROMPT_PROJECTION` assigns the automatic prompt-body share
+  of that provider-derived curation gauge.
 - **Plugins** — bare `PLURNK_PLUGINS_TRUSTED_ONLY` (0/unset = load all installed; a value = `@plurnk/*` plus an allowlist).
 - **Semantic search** — `PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS`/`_CHUNK_OVERLAP` (service-side chunking), `PLURNK_SERVICE_EMBED_DISABLE` (FTS-only), `PLURNK_MIMETYPES_EMBED_WORKERS` (the embedder's pool — mimetypes-owned).
 - **Schemes: http** — `PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT`, `_TTL_MS`, optional `# TAVILY_API_KEY=`, and `PLURNK_SCHEMES_HTTP_TAVILY_DEPTH`/`_TAVILY_TIMEOUT_MS`.

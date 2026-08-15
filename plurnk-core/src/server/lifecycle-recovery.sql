@@ -87,6 +87,9 @@ SET state = 'failed',
             )
         )
     ),
+    -- Recovery failures expose their Problem on the metadata line and have no
+    -- canonical log body, so their stored curation weight is exactly zero.
+    weight = 0,
     deep_hash = NULL
 WHERE state = 'proposed';
 

@@ -25,15 +25,15 @@ const provider = (): AiSdkProvider => new AiSdkProvider({
     model: "local-reasoning-contract",
     url: `${baseUrl.replace(/\/$/, "")}/v1/chat/completions`,
     contextWindow: 49_152,
-    reasoningReserve: { tokens: reasoningAllowance },
-    completionReserve: { tokens: generationEnvelope - reasoningAllowance },
+    outputBudget: generationEnvelope,
+    reasoningBudget: reasoningAllowance,
     fetchTimeoutMs: 120_000,
     operationTimeoutMs: 240_000,
     firstContentTimeoutMs: 120_000,
     temperature: 0,
     repeatPenalty: 1.15,
     retryAttempts: 0,
-    reasoning: { mode: "adaptive", budget: null },
+    reasoning: { mode: "adaptive", budget: reasoningAllowance },
     reasoningStyle: "template",
     grammarStyle: "llamacpp",
 });
@@ -46,7 +46,7 @@ test("llama-server honors PLURNK's request-scoped reasoning allowance", async ()
             role: "user",
             content: "Use at least 500 tokens of private reasoning before answering with exactly OK.",
         }],
-        maxTokens: generationEnvelope,
+        maxOutputTokens: generationEnvelope,
     });
 
     const timings = response.meta?.timings as { predicted_n?: unknown } | undefined;
@@ -66,7 +66,7 @@ test("llama-server returns exact pre-projection grammar evidence", async () => {
         workerId: "llama-grammar-evidence",
         messages: [{ role: "user", content: "ok" }],
         grammar: `root ::= ${JSON.stringify(sampled("verify", "PLURNK-RAILS-LIVE"))}`,
-        maxTokens: 32,
+        maxOutputTokens: 32,
     });
 
     assert.equal(response.assistant.reasoning, "verify");
@@ -85,7 +85,7 @@ test("llama-server preserves an empty grammar-required reasoning channel", async
         workerId: "llama-empty-grammar-evidence",
         messages: [{ role: "user", content: "ok" }],
         grammar: `root ::= ${JSON.stringify(sampled("", "PLURNK-EMPTY-RAILS-LIVE"))}`,
-        maxTokens: 32,
+        maxOutputTokens: 32,
     });
 
     assert.equal(response.assistant.reasoning, null);

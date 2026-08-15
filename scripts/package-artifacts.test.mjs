@@ -8,7 +8,7 @@ test("package artifact projection leaves packages without special roots unchange
 
 test("core package projection retains runtime-loaded modules and rejects test helpers", () => {
     assert.deepEqual(packageArtifactViolations("plurnk-core", [
-        "dist/core/ruler_count.js",
+        "dist/core/content_weight.js",
         "dist/index.js",
         "dist/schemes/cosine.js",
     ]), []);
@@ -18,7 +18,7 @@ test("core package projection retains runtime-loaded modules and rejects test he
         "dist/core/zero-pin.d.ts",
         "dist/schemes/cosine.js",
     ]), [
-        "plurnk-core: required runtime artifact is absent: dist/core/ruler_count.js",
+        "plurnk-core: required runtime artifact is absent: dist/core/content_weight.js",
         "plurnk-core: test-only artifact leaked into package: dist/core/world-state.js",
         "plurnk-core: test-only artifact leaked into package: dist/core/world-state.sql",
         "plurnk-core: test-only artifact leaked into package: dist/core/zero-pin.d.ts",

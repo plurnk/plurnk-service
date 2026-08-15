@@ -287,7 +287,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             mimetype_tx: string;
             rx: string;
             mimetype_rx: string;
-            tokens: number;
+            weight: number;
             deep_hash: string | null;
             attrs: string;
             tags: string;
@@ -476,7 +476,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             const channel: LogCatalogMatch[0] = {
                 path,
                 mimetype: proj.mimetype,
-                tokens: row.tokens,
+                weight: row.weight,
                 lines: proj.content.length === 0 ? 0 : proj.content.split("\n").length,
             };
             const storedTags = JSON.parse(row.tags) as unknown;
@@ -493,7 +493,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             const item: CatalogScope = {
                 path: `log:///${folder.selector}`,
                 items: members.length,
-                tokens: members.reduce((sum, row) => sum + row.tokens, 0),
+                weight: members.reduce((sum, row) => sum + row.weight, 0),
             };
             scopes.push(item);
         }

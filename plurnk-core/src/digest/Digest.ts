@@ -987,7 +987,7 @@ export default class Digest {
                         messages,
                         workerId: id,
                         primaryWorkerId: id,
-                        maxTokens: outputTokens,
+                        maxOutputTokens: outputTokens,
                         observeRequest,
                         ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
                     });

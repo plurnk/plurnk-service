@@ -1,4 +1,4 @@
-import type { Provider, ProviderRequestAccounting, ProviderResponse, ChatMessage, PromptTokenMeasurement } from "./types.ts";
+import type { Provider, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ChatMessage, PromptTokenMeasurement } from "./types.ts";
 import { ProviderError, type ProviderErrorKind } from "./errors.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { assertPromptTokenMeasurement } from "./promptTokens.ts";
@@ -6,6 +6,7 @@ import Meta, {
     type PluginAttribution,
     type PluginAttributionContext,
 } from "@plurnk/plurnk-meta";
+import { effectiveInputCapacity, effectiveOutputBudget, effectiveReasoningBudget, requestCapacityDecision } from "./capacity.ts";
 
 // A backend-AVAILABILITY failure: the sub-provider already exhausted its OWN
 // transient retries before throwing one of these, so re-hitting the same
@@ -33,7 +34,7 @@ export default class Pool implements Provider {
     readonly #affinity = new Map<string, number>(); // workerId -> backend index; sticky, LRU-bounded
     readonly #cap: number;                            // LRU ceiling on the affinity map
     #next = 0;                                        // round-robin cursor for NEW workers
-    readonly #floor: Provider;                        // the min-window backend: the safe budget floor
+    readonly #floor: Provider;                        // the min-window backend: the safe context floor
 
     // Optional exact tokenizer: present iff every backend exposes one (same
     // vocab, since interchangeable). Delegated; absent when the fleet can't.
@@ -52,9 +53,9 @@ export default class Pool implements Provider {
         this.#cap = backends.length * 8;
 
         // The exposed window is the SAFE FLOOR across backends (a packet that fits the
-        // smallest fits all); its reserves travel with it so the budget stays
-        // self-consistent. ANY unknown (null) window makes the pool null - a worker
-        // might route to it, and the consumer must not improvise a cap
+        // smallest fits all). Every other capacity fact aggregates independently
+        // below. ANY unknown (null) window makes the pool null - a worker might
+        // route to it, and the consumer must not improvise a cap
         // ({§model-fact-resolution}).
         const anyUnknown = backends.find((b) => b.contextWindow === null);
         this.#floor = anyUnknown ?? backends.reduce((lo, b) => (b.contextWindow! < lo.contextWindow! ? b : lo));
@@ -78,12 +79,21 @@ export default class Pool implements Provider {
 
     get model(): string { return this.#backends[0].model; }
     get contextWindow(): number | null { return this.#floor.contextWindow; }
-    get reasoningReserve(): number | null | undefined { return this.#floor.reasoningReserve; }
-    get completionReserve(): number | null | undefined { return this.#floor.completionReserve; }
+    #minimumKnown(project: (provider: Provider) => number | null): number | null {
+        const values = this.#backends.map(project);
+        return values.some((value) => value === null)
+            ? null
+            : Math.min(...values as number[]);
+    }
+    get maxInputTokens(): number | null { return this.#minimumKnown((provider) => provider.maxInputTokens); }
+    get maxOutputTokens(): number | null { return this.#minimumKnown((provider) => provider.maxOutputTokens); }
+    get outputBudget(): number | null { return this.#minimumKnown((provider) => provider.outputBudget); }
+    get reasoningBudget(): number | null { return this.#minimumKnown((provider) => provider.reasoningBudget); }
+    get inputCapacity(): number | null { return this.#minimumKnown((provider) => provider.inputCapacity); }
 
     // Served id / capabilities aggregate CONSERVATIVELY: a worker could land on any
     // backend, so claim `constrainsOutput` only if EVERY backend does, and
-    // `requiresMaxTokens` if ANY does (bring a cap if even one backend needs it).
+    // `requiresOutputBudget` if ANY does (bring a cap if even one backend needs it).
     get servedModel(): string | undefined {
         const s = this.#backends[0].servedModel;
         return this.#backends.every((b) => b.servedModel === s) ? s : undefined;
@@ -91,8 +101,8 @@ export default class Pool implements Provider {
     get constrainsOutput(): boolean | undefined {
         return this.#backends.every((b) => b.constrainsOutput === true) ? true : undefined;
     }
-    get requiresMaxTokens(): boolean | undefined {
-        return this.#backends.some((b) => b.requiresMaxTokens === true) ? true : undefined;
+    get requiresOutputBudget(): boolean | undefined {
+        return this.#backends.some((b) => b.requiresOutputBudget === true) ? true : undefined;
     }
 
     async countPromptTokens(
@@ -104,8 +114,20 @@ export default class Pool implements Provider {
                 await backend.countPromptTokens(messages, signal),
                 `Pool backend ${backend.model}`,
             )));
-        const tokens = Math.max(...measurements.map((measurement) => measurement.tokens));
         const sources = [...new Set(measurements.map(({ source }) => source))].join(",");
+        const unavailable = measurements.find((measurement) => measurement.kind === "unavailable");
+        if (unavailable?.kind === "unavailable") {
+            return {
+                kind: "unavailable",
+                source: `pool:${sources}`,
+                detail: `at least one interchangeable backend cannot measure the request: ${unavailable.detail}`,
+            };
+        }
+        const available = measurements.filter(
+            (measurement): measurement is Exclude<PromptTokenMeasurement, { readonly kind: "unavailable" }> =>
+                measurement.kind !== "unavailable",
+        );
+        const tokens = Math.max(...available.map((measurement) => measurement.tokens));
         const estimate = measurements.find((measurement) => measurement.kind === "estimate");
         if (estimate?.kind === "estimate") {
             return {
@@ -115,12 +137,55 @@ export default class Pool implements Provider {
                 detail: `at least one interchangeable backend has only an estimate: ${estimate.detail}`,
             };
         }
-        const exact = measurements.every((measurement) => measurement.kind === "exact")
-            && measurements.every((measurement) => measurement.tokens === tokens);
+        const exact = available.every((measurement) => measurement.kind === "exact")
+            && available.every((measurement) => measurement.tokens === tokens);
         return {
             kind: exact ? "exact" : "upper_bound",
             tokens,
             source: `pool:${sources}`,
+        };
+    }
+
+    async assessRequestCapacity(
+        messages: readonly ChatMessage[],
+        maxOutputTokens?: number,
+        signal?: AbortSignal,
+    ): Promise<ProviderRequestCapacity> {
+        const envelopes = this.#backends.map((provider) => {
+            const outputBudget = effectiveOutputBudget({
+                requested: maxOutputTokens,
+                configured: provider.outputBudget,
+                maxOutputTokens: provider.maxOutputTokens,
+                contextWindow: provider.contextWindow,
+            });
+            return {
+                outputBudget,
+                reasoningBudget: effectiveReasoningBudget({
+                    configured: provider.reasoningBudget,
+                    outputBudget,
+                }),
+                inputCapacity: effectiveInputCapacity({
+                    contextWindow: provider.contextWindow,
+                    maxInputTokens: provider.maxInputTokens,
+                    outputBudget,
+                }),
+            };
+        });
+        const minimum = (values: readonly (number | null)[]): number | null =>
+            values.some((value) => value === null)
+                ? null
+                : Math.min(...values as number[]);
+        const measurement = await this.countPromptTokens(messages, signal);
+        const inputCapacity = minimum(envelopes.map((envelope) => envelope.inputCapacity));
+        return {
+            decision: requestCapacityDecision(inputCapacity, measurement),
+            contextWindow: this.contextWindow,
+            maxInputTokens: this.maxInputTokens,
+            maxOutputTokens: this.maxOutputTokens,
+            outputBudget: minimum(envelopes.map((envelope) => envelope.outputBudget)),
+            reasoningBudget: minimum(envelopes.map((envelope) => envelope.reasoningBudget)),
+            inputCapacity,
+            prompt: measurement,
         };
     }
     // --- dispatch ---

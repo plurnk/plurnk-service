@@ -1,7 +1,7 @@
 const projections = new Map([
     ["plurnk-core", {
         required: [
-            "dist/core/ruler_count.js",
+            "dist/core/content_weight.js",
             "dist/schemes/cosine.js",
         ],
         forbiddenPrefixes: [

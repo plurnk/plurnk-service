@@ -44,7 +44,28 @@ export type PromptTokenMeasurement =
         readonly tokens: number;
         readonly source: string;
         readonly detail: string;
+    }
+    | {
+        readonly kind: "unavailable";
+        readonly source: string;
+        readonly detail: string;
     };
+
+export type ProviderRequestCapacityDecision = "admit" | "defer" | "reject";
+
+// Complete pre-I/O evidence for one logical request. `defer` is intentional:
+// an estimate or incomplete limit set cannot safely veto a request, so the
+// upstream provider remains the capacity oracle.
+export interface ProviderRequestCapacity {
+    readonly decision: ProviderRequestCapacityDecision;
+    readonly contextWindow: number | null;
+    readonly maxInputTokens: number | null;
+    readonly maxOutputTokens: number | null;
+    readonly outputBudget: number | null;
+    readonly reasoningBudget: number | null;
+    readonly inputCapacity: number | null;
+    readonly prompt: PromptTokenMeasurement;
+}
 
 export type ChargedCost = Extract<ProviderCost, { kind: "charged" }>;
 
@@ -147,6 +168,7 @@ export interface ProviderResponse<TFinish extends ProviderAttemptFinishReason = 
     // Ordered physical request evidence, including automatic retries and pool
     // failover that preceded this response. {§provider-request-accounting}
     readonly accounting: readonly ProviderRequestAccounting[];
+    readonly capacity: ProviderRequestCapacity;
     // {§gbnf-response-observation} — evidence only; the consumer owns the verdict.
     readonly grammarEvidence?: GrammarEvidence;
     // Per-turn provider→client metadata bag: the backend's non-standard top-level
@@ -177,7 +199,7 @@ export interface ProviderGenerateArgs {
     readonly primaryWorkerId?: string;
     readonly signal?: AbortSignal;
     readonly grammar?: string;
-    readonly maxTokens?: number;
+    readonly maxOutputTokens?: number;
     readonly attributions?: string[];
     readonly client?: string;
     readonly strikes?: number;
@@ -200,11 +222,9 @@ export interface Provider {
     // to constrain and which root variant to send is consumer policy
     // ({§gbnf-response-observation}).
     //
-    // `maxTokens` is the consumer's per-call output ceiling (wire `max_tokens`).
-    // Without it, most servers generate UNBOUNDED (llama-server n_predict -1) —
-    // under a multi-op grammar that degenerates to the context wall,
-    // so a constrained consumer is expected to pass it. Policy stays the
-    // consumer's; the provider only transports.
+    // `maxOutputTokens` may tighten the provider's configured total output
+    // budget for this call. It includes visible output and hidden reasoning;
+    // the adapter owns projection into each backend's native wire semantics.
     //
     // `workerId` is the REQUIRED, opaque, stable identity of the consumer's work
     // stream (loop/run). Providers MAY key backend affinity on it — e.g.
@@ -253,6 +273,11 @@ export interface Provider {
     // including any stricter operator cap. `null` means unknown; under
     // llama-server parallelism the probed natural value is per slot.
     readonly contextWindow: number | null;
+    readonly maxInputTokens: number | null;
+    readonly maxOutputTokens: number | null;
+    readonly outputBudget: number | null;
+    readonly reasoningBudget: number | null;
+    readonly inputCapacity: number | null;
     readonly model: string;
     // Optional: the backend's self-reported served model id, from a
     // /v1/models-shaped probe (llama-server today; any such backend). For a local
@@ -272,17 +297,16 @@ export interface Provider {
     // clamp an over-ask (fireworks/xai, verified live) never set this; undefined
     // = no claim. Introspectable so a consumer can refuse AT BOOT a local alias
     // with no declared envelope, instead of dying mid-turn in partition math.
-    readonly requiresMaxTokens?: boolean;
-    // Optional generation-envelope reserves ({§provider-generation-envelope}) — the amounts of
-    // the effective window reserved for reasoning and completion: floor
-    // percentages of `contextWindow`, or absolute per-alias pins that win
-    // outright. The consumer's prompt budget is `contextWindow - reasoningReserve
-    // - completionReserve - <its own packing-safety margin>`; the generation cap
-    // is the two pooled. `null` = underivable (window unknown, no absolute pin) →
-    // the consumer's no-cap path. Absent = a bare sibling makes NO claim (treated
-    // as null). All first-party providers claim, so null means genuinely-unknown.
-    readonly reasoningReserve?: number | null;
-    readonly completionReserve?: number | null;
+    readonly requiresOutputBudget?: boolean;
+    // The adapter owns request-specific physical admission. A proven fit may
+    // admit and an exact overflow may reject before I/O. Incomplete limits,
+    // estimates, bounds that do not prove fit, and unavailable measurements
+    // defer to the upstream provider as the capacity oracle.
+    assessRequestCapacity(
+        messages: readonly ChatMessage[],
+        maxOutputTokens?: number,
+        signal?: AbortSignal,
+    ): Promise<ProviderRequestCapacity>;
     // Provider-owned preflight measurement of the complete chat request,
     // including provider/template framing when the adapter can know it.
     // Estimates are explicit and MUST NOT authorize hard context-envelope admission.

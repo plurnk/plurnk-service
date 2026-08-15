@@ -243,7 +243,7 @@ test("boot terminalizes a proposed occurrence whose process-local resolution own
             rx: JSON.stringify({ status: 202, body: "review material" }),
             mimetype_rx: "application/json",
             status_rx: 202,
-            tokens: 0,
+            weight: 0,
             state: "proposed",
             outcome: null,
             attrs: "{}",

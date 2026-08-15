@@ -15,7 +15,7 @@ const nodeModules = Meta.nearestNodeModules(root) ?? resolve(root, "node_modules
 // {§operator-config-zero-pin-gate} — strip tuning after env files and before defaults fill gaps.
 if (process.env.PLURNK_ZERO_PIN === "1") {
     const stripped = ZeroPin.scrubZeroPinTuning(process.env);
-    process.stderr.write(`floor: ZERO-PIN — stripped ${stripped.length} tuning pin(s)${stripped.length > 0 ? ": " + stripped.join(", ") : ""}; provider capacity and prompt budget derive naturally\n`);
+    process.stderr.write(`floor: ZERO-PIN — stripped ${stripped.length} tuning pin(s)${stripped.length > 0 ? ": " + stripped.join(", ") : ""}; provider capacity derives naturally\n`);
 }
 
 EnvDefaults.apply(EnvDefaults.merge(await EnvDefaults.collect(root, nodeModules)));

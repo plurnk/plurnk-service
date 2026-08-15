@@ -4,6 +4,7 @@ import Pool from "./Pool.ts";
 import { ProviderError } from "./errors.ts";
 import type { PromptTokenMeasurement, Provider, ProviderResponse } from "./types.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
+import { effectiveInputCapacity } from "./capacity.ts";
 
 test.afterEach(() => { resetEmittedWarnings(); });
 
@@ -22,12 +23,23 @@ const RESP: ProviderResponse = {
         usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
         cost: { kind: "unknown", reason: "test fixture has no cost" },
     }],
+    capacity: {
+        decision: "admit",
+        contextWindow: 48_000,
+        maxInputTokens: null,
+        maxOutputTokens: null,
+        outputBudget: 12_000,
+        reasoningBudget: null,
+        inputCapacity: 36_000,
+        prompt: { kind: "exact", tokens: 0, source: "test:exact" },
+    },
 };
 
 type FakeOpts = {
     model?: string; window?: number | null; servedModel?: string;
-    constrainsOutput?: boolean; requiresMaxTokens?: boolean;
-    reasoningReserve?: number | null; completionReserve?: number | null;
+    constrainsOutput?: boolean; requiresOutputBudget?: boolean;
+    maxInputTokens?: number | null; maxOutputTokens?: number | null;
+    outputBudget?: number | null; reasoningBudget?: number | null;
     tokenize?: boolean; throws?: Error;
     promptMeasurement?: PromptTokenMeasurement;
 };
@@ -37,16 +49,37 @@ const backend = (opts: FakeOpts = {}) => {
     const b: Provider = {
         model: opts.model ?? "gemma",
         contextWindow: opts.window === undefined ? 48000 : opts.window,
+        maxInputTokens: opts.maxInputTokens ?? null,
+        maxOutputTokens: opts.maxOutputTokens ?? null,
+        outputBudget: opts.outputBudget ?? null,
+        reasoningBudget: opts.reasoningBudget ?? null,
+        inputCapacity: effectiveInputCapacity({
+            contextWindow: opts.window === undefined ? 48_000 : opts.window,
+            maxInputTokens: opts.maxInputTokens ?? null,
+            outputBudget: opts.outputBudget ?? null,
+        }),
         ...(opts.servedModel !== undefined ? { servedModel: opts.servedModel } : {}),
         ...(opts.constrainsOutput !== undefined ? { constrainsOutput: opts.constrainsOutput } : {}),
-        ...(opts.requiresMaxTokens !== undefined ? { requiresMaxTokens: opts.requiresMaxTokens } : {}),
-        ...(opts.reasoningReserve !== undefined ? { reasoningReserve: opts.reasoningReserve } : {}),
-        ...(opts.completionReserve !== undefined ? { completionReserve: opts.completionReserve } : {}),
+        ...(opts.requiresOutputBudget !== undefined ? { requiresOutputBudget: opts.requiresOutputBudget } : {}),
         ...(opts.tokenize ? { tokenize: async (t: string) => [t.length] } : {}),
         countPromptTokens: async (messages) => opts.promptMeasurement ?? ({
             kind: "exact",
             tokens: messages.reduce((sum, { content }) => sum + content.length, 0),
             source: "test:exact",
+        }),
+        assessRequestCapacity: async (messages, maxOutputTokens) => ({
+            decision: "admit",
+            contextWindow: opts.window === undefined ? 48_000 : opts.window,
+            maxInputTokens: opts.maxInputTokens ?? null,
+            maxOutputTokens: opts.maxOutputTokens ?? null,
+            outputBudget: maxOutputTokens ?? opts.outputBudget ?? null,
+            reasoningBudget: opts.reasoningBudget ?? null,
+            inputCapacity: null,
+            prompt: opts.promptMeasurement ?? {
+                kind: "exact",
+                tokens: messages.reduce((sum, { content }) => sum + content.length, 0),
+                source: "test:exact",
+            },
         }),
         generate: async (args: Parameters<Provider["generate"]>[0]): Promise<ProviderResponse> => {
             served.push(args.workerId);
@@ -82,20 +115,22 @@ test("Pool: any unknown (null) window makes the pool null - no improvised cap", 
     assert.equal(new Pool([backend({ window: 48000 }).b, backend({ window: null }).b]).contextWindow, null);
 });
 
-test("Pool: reserves travel with the floor window", () => {
-    const big = backend({ window: 48000, reasoningReserve: 4800, completionReserve: 12000 }).b;
-    const small = backend({ window: 32000, reasoningReserve: 3200, completionReserve: 8000 }).b;
+test("Pool: physical limits and budgets aggregate to independent safe floors", () => {
+    const big = backend({ window: 48000, maxInputTokens: 40_000, maxOutputTokens: 16_000, outputBudget: 12_000, reasoningBudget: 4_800 }).b;
+    const small = backend({ window: 32000, maxInputTokens: 24_000, maxOutputTokens: 12_000, outputBudget: 8_000, reasoningBudget: 3_200 }).b;
     const p = new Pool([big, small]);
     assert.equal(p.contextWindow, 32000);
-    assert.equal(p.reasoningReserve, 3200);   // the floor backend's, not the larger one's
-    assert.equal(p.completionReserve, 8000);
+    assert.equal(p.maxInputTokens, 24_000);
+    assert.equal(p.maxOutputTokens, 12_000);
+    assert.equal(p.outputBudget, 8_000);
+    assert.equal(p.reasoningBudget, 3_200);
 });
 
-test("Pool: capabilities aggregate conservatively (constrainsOutput all-true, requiresMaxTokens any-true)", () => {
+test("Pool: capabilities aggregate conservatively (constrainsOutput all-true, requiresOutputBudget any-true)", () => {
     assert.equal(new Pool([backend({ constrainsOutput: true }).b, backend({ constrainsOutput: true }).b]).constrainsOutput, true);
     assert.equal(new Pool([backend({ constrainsOutput: true }).b, backend({ constrainsOutput: false }).b]).constrainsOutput, undefined);
-    assert.equal(new Pool([backend({ requiresMaxTokens: false }).b, backend({ requiresMaxTokens: true }).b]).requiresMaxTokens, true);
-    assert.equal(new Pool([backend({}).b]).requiresMaxTokens, undefined);
+    assert.equal(new Pool([backend({ requiresOutputBudget: false }).b, backend({ requiresOutputBudget: true }).b]).requiresOutputBudget, true);
+    assert.equal(new Pool([backend({}).b]).requiresOutputBudget, undefined);
 });
 
 test("Pool: servedModel is the common id, undefined when they differ", () => {
@@ -131,6 +166,29 @@ test("Pool: prompt evidence is conservative across every routable backend", asyn
         source: "pool:test:a,heuristic:chars2",
         detail: "at least one interchangeable backend has only an estimate: unknown framing",
     });
+
+    const unavailable = backend({ promptMeasurement: {
+        kind: "unavailable", source: "test:none", detail: "counter offline",
+    } }).b;
+    assert.deepEqual(await new Pool([exact, unavailable]).countPromptTokens([]), {
+        kind: "unavailable",
+        source: "pool:test:a,test:none",
+        detail: "at least one interchangeable backend cannot measure the request: counter offline",
+    });
+});
+
+test("Pool: request capacity uses the smallest complete backend envelope", async () => {
+    const prompt = { kind: "exact", tokens: 11, source: "test:exact" } as const;
+    const narrowInput = backend({ window: 100, outputBudget: 90, promptMeasurement: prompt }).b;
+    const narrowContext = backend({ window: 50, outputBudget: 10, promptMeasurement: prompt }).b;
+    const pool = new Pool([narrowInput, narrowContext]);
+
+    assert.equal(pool.inputCapacity, 10);
+    const capacity = await pool.assessRequestCapacity([]);
+    assert.equal(capacity.contextWindow, 50);
+    assert.equal(capacity.outputBudget, 10);
+    assert.equal(capacity.inputCapacity, 10, "independent minima do not synthesize a nonexistent 40-token envelope");
+    assert.equal(capacity.decision, "reject");
 });
 
 // --- dispatch: round-robin + affinity ---

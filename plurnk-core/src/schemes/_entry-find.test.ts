@@ -26,7 +26,7 @@ const statement: FindStatement = {
 };
 
 const item: CatalogMatch = [
-    { path: "worker:///doc.md", mimetype: "text/markdown", tokens: 4, lines: 1 },
+    { path: "worker:///doc.md", mimetype: "text/markdown", weight: 4, lines: 1 },
 ];
 
 test("{§find-result-projection}: a valid exact match without an addressable location remains a successful selection", () => {
@@ -68,12 +68,16 @@ test("{§find-result-projection}: resource results are default-first channel gro
         { ...statement, body: null },
         pathScope("*", false),
         [{ item, match: { pathname: "/doc.md", matches: [] } }],
-        [{ path: "worker:///src/**", items: 2, tokens: 8 }],
+        [{ path: "worker:///src/**", items: 2, weight: 8 }],
     );
 
     assert.deepEqual(result.results, [
-        [{ path: "worker:///doc.md", mimetype: "text/markdown", tokens: 4, lines: 1 }],
-        [{ path: "worker:///src/**", items: 2, tokens: 8 }],
+        [{ path: "worker:///doc.md", mimetype: "text/markdown", weight: 4, lines: 1 }],
+        [{ path: "worker:///src/**", items: 2, weight: 8 }],
     ]);
-    assert.equal(result.returnedItemsTokenTotal, 12);
+    assert.equal(result.content, [
+        "[[{\"path\":\"worker:///doc.md\",\"mimetype\":\"text/markdown\",\"tokens\":4,\"lines\":1}],",
+        "[{\"path\":\"worker:///src/**\",\"items\":2,\"tokens\":8}]]",
+    ].join("\n"));
+    assert.equal(result.returnedItemsWeightTotal, 12);
 });

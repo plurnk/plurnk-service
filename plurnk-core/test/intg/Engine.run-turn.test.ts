@@ -6,7 +6,7 @@ import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import type { StoredPacketSection } from "../../src/core/StoredPacket.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { rulerCount } from "../../src/core/token-ruler.ts";
+import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, packetSection, logEntries } from "./_helpers.ts";
@@ -201,10 +201,10 @@ test("Engine.runTurn: admitted response does not change packet request-weight se
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         assert.ok(row !== undefined);
-        const packet = JSON.parse(row.packet) as { tokens: number; sections: StoredPacketSection[] };
-        const requestWeight = rulerCount(PacketWire.renderSlot(packet.sections, "system"))
-            + rulerCount(PacketWire.renderSlot(packet.sections, "user"));
-        assert.equal(packet.tokens, requestWeight);
+        const packet = JSON.parse(row.packet) as { weight: number; sections: StoredPacketSection[] };
+        const requestWeight = contentWeight(PacketWire.renderSlot(packet.sections, "system"))
+            + contentWeight(PacketWire.renderSlot(packet.sections, "user"));
+        assert.equal(packet.weight, requestWeight);
     } finally { await db.close(); }
 });
 
@@ -795,7 +795,7 @@ test("Errors pointers use the canonical projected operation of a materialization
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/rejected", query: null, fragment: null, lineMarker: null,
             tx: "{}", mimetype_tx: "application/json",
-            rx: "{}", mimetype_rx: "application/json", status_rx: 422, tokens: 0,
+            rx: "{}", mimetype_rx: "application/json", status_rx: 422, weight: 0,
             state: "resolved", outcome: null, attrs: JSON.stringify({ kind: "entry_materialized" }),
         });
         const packets = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });

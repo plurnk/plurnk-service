@@ -54,8 +54,8 @@ export interface DaemonSeam {
     dispatchClientAction(args: { workspaceId: number; workerId: number; statements: PlurnkStatement[] }): Promise<OperationResult[]>;
     // Journal read — the module's primary render input (ownership-verified per workspace).
     readLog(args: { workspaceId: number; workerId: number; loopId?: number; turnId?: number; sinceId?: number; limit?: number; loopSeq?: number; turnSeq?: number; sequence?: number }): Promise<LogEntryWire[]>;
-    // Providers + effective prompt budget (promptBudget) for the STATE gauge.
-    listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; promptBudget: number | null }> };
+    // Providers + their resolved physical input capacity for the STATE gauge.
+    listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; inputCapacity: number | null }> };
     // Workspace lifecycle — establish the world/client-worker value a thread binds to.
     // Conversation-worker selection remains a separate module-owned step.
     createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object; constraints?: Array<{ effect: string; glob: string }> }): Promise<ClientEnvelope>;

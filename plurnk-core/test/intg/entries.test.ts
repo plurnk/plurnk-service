@@ -176,11 +176,11 @@ test("entry_channels: insert channel — defaults populate", async () => {
     try {
         const entryId = await insertEntry(db, "worker", "france");
         await db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "body", content: "Paris is the capital.", mimetype: "text/markdown" });
-        const row = await db.test_entry_channels_get_first.get<{ name: string; content: string; mimetype: string; tokens: number; state: string }>({ entry_id: entryId });
+        const row = await db.test_entry_channels_get_first.get<{ name: string; content: string; mimetype: string; weight: number; state: string }>({ entry_id: entryId });
         assert.equal(row?.name, "body");
         assert.equal(row?.content, "Paris is the capital.");
         assert.equal(row?.mimetype, "text/markdown");
-        assert.equal(row?.tokens, 0);
+        assert.equal(row?.weight, 0);
         assert.equal(row?.state, "static");
     } finally { await db.close(); }
 });
@@ -299,12 +299,12 @@ test("entry_channels: empty name or mimetype rejected by CHECK", async () => {
     } finally { await db.close(); }
 });
 
-test("entry_channels: tokens negative rejected", async () => {
+test("entry_channels: weight negative rejected", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertEntry(db, "worker", "z");
         await assert.rejects(
-            () => db.test_entry_channels_insert_with_tokens.run({ entry_id: entryId, name: "body", content: "", mimetype: "text/plain", tokens: -1 }),
+            () => db.test_entry_channels_insert_with_weight.run({ entry_id: entryId, name: "body", content: "", mimetype: "text/plain", weight: -1 }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }

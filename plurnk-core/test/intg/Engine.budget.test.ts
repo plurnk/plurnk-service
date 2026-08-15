@@ -8,16 +8,11 @@ import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 
-test("the prompt ceiling derives from the provider window minus reserves — reserves over the window fail hard", async () => {
-    // {§tokenomics-window-partition} — the envelope is provider-owned: the window is the provider's own (Mock ctor), the
-    // reserves ride the bare PLURNK_PROVIDERS_*_RESERVE knobs Mock reads, SAFETY stays core's.
-    // 1000+2000 reserves + 500 safety: a 10000 window → promptBudget 6500; a 5000 window → 1500;
-    // a 3000 window → reserves exceed it → the build fails hard (pinned absolutes vs the window).
-    const KEYS = ["PLURNK_PROVIDERS_REASONING_RESERVE", "PLURNK_PROVIDERS_COMPLETION_RESERVE", "PLURNK_SERVICE_SAFETY"] as const;
+test("input capacity subtracts the total output budget once; reasoning is only its subset", async () => {
+    const KEYS = ["PLURNK_PROVIDERS_OUTPUT_BUDGET", "PLURNK_PROVIDERS_REASONING_BUDGET"] as const;
     const prev = KEYS.map((k) => process.env[k]);
-    process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "1000";
-    process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE = "2000";
-    process.env.PLURNK_SERVICE_SAFETY = "500";
+    process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "3000";
+    process.env.PLURNK_PROVIDERS_REASONING_BUDGET = "1000";
     const db = await openMigrated();
     try {
         const run = async (contextWindow: number): Promise<string> => {
@@ -29,9 +24,9 @@ test("the prompt ceiling derives from the provider window minus reserves — res
             const r = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
             return packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: r.turnId }))!.packet), "budget");
         };
-        assert.match(await run(10000), /Token Ceiling 6500 /, "the provider window governs: 10000 − 3500 reserves");
-        assert.match(await run(5000), /Token Ceiling 1500 /, "a narrower window: 5000 − 3500");
-        await assert.rejects(() => run(3000), /partition contradiction/, "reserves exceeding the window fail hard");
+        assert.match(await run(10000), /Token Ceiling 7000 /, "the total output budget is subtracted once");
+        assert.match(await run(5000), /Token Ceiling 2000 /, "a narrower window retains the same total output budget");
+        await assert.rejects(() => run(3000), /must leave positive input capacity/, "an output envelope cannot consume the complete context window");
     } finally {
         KEYS.forEach((k, i) => { if (prev[i] === undefined) delete process.env[k]; else process.env[k] = prev[i]; });
         await db.close();
@@ -62,31 +57,21 @@ test("Engine.runTurn: budget readout — partition-derived ceiling, free reconci
         });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         if (row === undefined) throw new Error("turn not found");
-        const packet = JSON.parse(row.packet) as { tokens: number };
+        const packet = JSON.parse(row.packet) as { weight: number };
         const budget = packetSection(packet, "budget");
-        // partition: provider window 4000 − test reserves (256+1024+64) = 2656
-        assert.match(budget, /Token Ceiling 2656 · Token Usage\s+\d+ \(\s*\d+%\) · Tokens Free\s+\d+/, "headline carries the partition-derived ceiling, usage, percent, and free");
+        // provider window 4000 − fixture total output budget 1280 = 2720
+        assert.match(budget, /Token Ceiling 2720 · Token Usage\s+\d+ \(\s*\d+%\) · Tokens Free\s+\d+/, "headline carries the provider-derived curation calibration, usage, percent, and free");
         const usage = Number(/Token Usage\s+(\d+)/.exec(budget)?.[1]);
         const free = Number(/Tokens Free\s+(\d+)/.exec(budget)?.[1]);
-        assert.ok(free > 0 && free < 2656, `free ${free} within (0, 2656)`);
-        assert.equal(usage, packet.tokens, "headline usage equals the exact stored request weight");
-        assert.equal(usage + free, 2656, "the exact packet ledger closes against its ceiling");
+        assert.ok(free > 0 && free < 2720, `free ${free} within (0, 2720)`);
+        assert.equal(usage, packet.weight, "the model-facing token label projects the exact stored curation weight");
+        assert.equal(usage + free, 2720, "the curation ledger closes against its calibration");
     } finally { await db.close(); }
 });
 
-test("a virtual prompt budget tightens the gauge and grinder without changing hard capacity or generation", async () => {
+test("Core reuses provider input capacity for curation without inventing another budget", async () => {
     const db = await openMigrated();
-    const prev = {
-        cap: process.env.PLURNK_SERVICE_PROMPT_BUDGET,
-        rr: process.env.PLURNK_PROVIDERS_REASONING_RESERVE,
-        cr: process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE,
-        safety: process.env.PLURNK_SERVICE_SAFETY,
-    };
     try {
-        process.env.PLURNK_PROVIDERS_REASONING_RESERVE = "4915";
-        process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE = "12288";
-        process.env.PLURNK_SERVICE_SAFETY = "1024";
-        process.env.PLURNK_SERVICE_PROMPT_BUDGET = "128000";
         const schemes = new SchemeRegistry();
         const packets = new PacketBuilder({
             db,
@@ -94,44 +79,33 @@ test("a virtual prompt budget tightens the gauge and grinder without changing ha
             executors: () => undefined,
         });
         const provider = new Mock({ contextWindow: 1_048_575, responses: [] });
-        const budget = packets.promptBudgetFor(provider);
-        assert.equal(budget, 128_000);
-        assert.equal(provider.contextWindow, 1_048_575, "virtual pressure does not rewrite the effective context envelope");
-        assert.equal(provider.reasoningReserve, 4915, "virtual pressure does not rewrite reasoning settings");
-        assert.equal(provider.completionReserve, 12288, "virtual pressure does not rewrite completion settings");
-        assert.equal(packets.maxTokensFor(provider), 4915 + 12288, "virtual pressure does not rewrite maxTokens");
-
-        process.env.PLURNK_SERVICE_PROMPT_BUDGET = "2000000";
-        assert.equal(
-            packets.promptBudgetFor(provider),
-            1_048_575 - 4915 - 12288 - 1024,
-            "a virtual cap cannot widen the natural prompt gauge",
-        );
+        assert.equal(packets.curationBudgetFor(provider), provider.inputCapacity);
+        assert.equal(provider.inputCapacity, 1_048_575 - 1280);
+        assert.equal(provider.reasoningBudget, 256);
+        assert.equal(provider.outputBudget, 1280, "reasoning does not add to the total response envelope");
 
         const unknown = new Mock({ contextWindow: null, responses: [] });
-        process.env.PLURNK_SERVICE_PROMPT_BUDGET = "64000";
-        assert.equal(packets.promptBudgetFor(unknown), 64_000, "virtual pressure remains usable when provider capacity is unknown");
+        assert.equal(packets.curationBudgetFor(unknown), null, "unknown physical capacity remains unknown to curation");
     } finally {
-        for (const [k, v] of [["PLURNK_SERVICE_PROMPT_BUDGET", prev.cap], ["PLURNK_PROVIDERS_REASONING_RESERVE", prev.rr], ["PLURNK_PROVIDERS_COMPLETION_RESERVE", prev.cr]] as const) {
-            if (v === undefined) delete process.env[k]; else process.env[k] = v;
-        }
-        if (prev.safety === undefined) delete process.env.PLURNK_SERVICE_SAFETY; else process.env.PLURNK_SERVICE_SAFETY = prev.safety;
         await db.close();
     }
 });
 
-test("a malformed virtual prompt budget fails at construction", async () => {
-    const previous = process.env.PLURNK_SERVICE_PROMPT_BUDGET;
+test("retired service-side capacity knobs fail at construction", async () => {
+    const keys = ["PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_SAFETY_rig"] as const;
+    const previous = keys.map((key) => process.env[key]);
     const db = await openMigrated();
     try {
-        process.env.PLURNK_SERVICE_PROMPT_BUDGET = "12.5";
-        assert.throws(
-            () => new Engine({ db, schemes: new SchemeRegistry() }),
-            /PLURNK_SERVICE_PROMPT_BUDGET must be a positive integer/,
-        );
+        for (const key of keys) {
+            process.env[key] = "1";
+            assert.throws(() => new Engine({ db, schemes: new SchemeRegistry() }), new RegExp(`${key} is retired`));
+            delete process.env[key];
+        }
     } finally {
-        if (previous === undefined) delete process.env.PLURNK_SERVICE_PROMPT_BUDGET;
-        else process.env.PLURNK_SERVICE_PROMPT_BUDGET = previous;
+        keys.forEach((key, index) => {
+            if (previous[index] === undefined) delete process.env[key];
+            else process.env[key] = previous[index];
+        });
         await db.close();
     }
 });

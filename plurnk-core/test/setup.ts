@@ -16,15 +16,10 @@ const fixture = {
     // alias-scoped machinery a stable name whose bare partition (below) governs.
     PLURNK_MODEL: "mocktest",
     PLURNK_MODEL_mocktest: "openai/mocktest",
-    // Reserves scaled for fake Mock windows: a 8192-token Mock can't fit a real model's ~13312 of
-    // reserves, so prompt budget must stay positive. `mocktest` has no per-alias override, so this
-    // bare partition is what resolves for it — real models' PLURNK_SERVICE_*_<alias> never apply.
-    // {§tokenomics-window-partition} — the envelope is provider-owned; Mock reads the bare
-    // _RESERVE knobs and takes its
-    // window from the constructor. 78848 (the old env window) is dead: each test's Mock declares.
-    PLURNK_PROVIDERS_REASONING_RESERVE: "256",
-    PLURNK_PROVIDERS_COMPLETION_RESERVE: "1024",
-    PLURNK_SERVICE_SAFETY: "64",
+    // A fixture-sized total output envelope leaves room in tiny Mock windows.
+    // Reasoning is a subset of that total, never an additive reserve.
+    PLURNK_PROVIDERS_OUTPUT_BUDGET: "1280",
+    PLURNK_PROVIDERS_REASONING_BUDGET: "256",
     // Test isolation, tier-wide: no operator doc-foist, no operator system policy, a bounded turn
     // ceiling so a wandering green loop still ends legibly, a scratch DB. Vector-ranking suites
     // re-enable the embedder per-file (they delete PLURNK_SERVICE_EMBED_DISABLE in their own setup).

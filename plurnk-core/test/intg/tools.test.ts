@@ -8,8 +8,8 @@ import PacketWire from "../../src/core/packet-wire.ts";
 test("registered tools render as a closed, titled contract table; omitted when empty", () => {
     // Parameterized tools body (empty ⇒ section omitted).
     const userSections = (tools: string) => [
-        { name: "definition", slot: "user", header: null, content: "...plurnk.md...", tokens: 0 },
-        { name: "tools", slot: "user", header: "Registered Tools", content: tools, tokens: 0 },
+        { name: "definition", slot: "user", header: null, content: "...plurnk.md...", weight: 0 },
+        { name: "tools", slot: "user", header: "Registered Tools", content: tools, weight: 0 },
     ];
     const withTools = PacketWire.renderSlot(userSections("| `[executor]` | `(target)` | body | example |\n| --- | --- | --- | --- |\n| `[node]` | script | JavaScript | `## EXEC0 [node]`<br>`console.log(1);` |"), "user");
     assert.match(withTools, /\| `\[node\]` \| script \| JavaScript \|/, "the registered executable contract renders");

@@ -95,7 +95,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
         const owner = await resolveStreamStatement(statement, core);
         if (owner === null) {
             return Results.failure(`scheme:${this.#executor.manifest.name}`, "stream-not-found", 404, "No visible stream exists at the requested address.", {
-                content: null, mimetype: null, results: [], itemsTokenTotal: 0, returnedItemsTokenTotal: 0,
+                content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
                 matchingPathCount: 0, matchLocationCount: 0,
             }) as FindResult;
         }

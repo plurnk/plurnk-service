@@ -3,6 +3,7 @@ import { strict as assert } from "node:assert";
 import {
     cacheAffinityFromEnv,
     cacheWritePolicyFromEnv,
+    generationEnvelopeFromEnv,
     parseRequiredInt,
     parseOptionalInt,
     parseTimeoutMs,
@@ -51,11 +52,10 @@ test("reasoningFromEnv: activation is independent from an optional explicit budg
     assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "off" }, "openai"), { mode: "off", budget: null });
     assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "adaptive" }, "openai"), { mode: "adaptive", budget: null });
     assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on" }, "openai"), { mode: "on", budget: null });
-    assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "4096" }, "openai"), { mode: "on", budget: 4096 });
+    assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on" }, "openai", 4096), { mode: "on", budget: 4096 });
+    assert.deepEqual(reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "adaptive" }, "openai", 4096), { mode: "adaptive", budget: 4096 });
     assert.throws(() => reasoningFromEnv({}, "openai"), /PLURNK_PROVIDERS_REASONING must be set/);
     assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "8192" }, "openai"), /must be one of "off", "adaptive", "on"/); // the old numeric habit fails loudly
-    assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "0" }, "openai"), /positive integer/);
-    assert.throws(() => reasoningFromEnv({ PLURNK_PROVIDERS_REASONING: "on", PLURNK_PROVIDERS_REASONING_BUDGET: "1.5" }, "openai"), /positive integer/);
 });
 
 test("{§provider-tagged-reasoning} response style is explicit and invalid values fail at the provider boundary", () => {
@@ -112,7 +112,7 @@ test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases i
         PLURNK_PROVIDERS_REASONING_BUDGET_TURBODERP: "4096", // case-folds like PLURNK_MODEL_ keys
         PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE_TURBODERP: "think-tags",
         PLURNK_PROVIDERS_CONTEXT_WINDOW_turboderp: "8000",
-        PLURNK_PROVIDERS_COMPLETION_RESERVE_turboderp: "4096",
+        PLURNK_PROVIDERS_OUTPUT_BUDGET_turboderp: "4096",
         PLURNK_PROVIDERS_CONTEXT_WINDOW_other: "1",
     } as NodeJS.ProcessEnv;
     const scoped = scopeEnvToAlias(env, "turboderp");
@@ -120,7 +120,7 @@ test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases i
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING_BUDGET, "4096");
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE, "think-tags");
     assert.equal(scoped.PLURNK_PROVIDERS_CONTEXT_WINDOW, "8000");
-    assert.equal(scoped.PLURNK_PROVIDERS_COMPLETION_RESERVE, "4096");
+    assert.equal(scoped.PLURNK_PROVIDERS_OUTPUT_BUDGET, "4096");
     assert.equal(scopeEnvToAlias(env, "plain").PLURNK_PROVIDERS_REASONING, "off"); // fallback intact
 });
 
@@ -171,16 +171,16 @@ test("contextWindowFromEnv: reads the new name, sheds CONTEXT_SIZE hard, null wh
 
 test("scopeEnvToAlias: a caller-supplied knob list scopes consumer-owned vars", async () => {
     const { scopeEnvToAlias } = await import("./env.ts");
-    const SERVICE_KNOBS = ["PLURNK_SERVICE_MAX_TURNS", "PLURNK_SERVICE_LOOP_TIMEOUT", "PLURNK_SERVICE_EXEC_HOLD_MS", "PLURNK_SERVICE_SAFETY"];
+    const SERVICE_KNOBS = ["PLURNK_SERVICE_MAX_TURNS", "PLURNK_SERVICE_LOOP_TIMEOUT", "PLURNK_SERVICE_EXEC_HOLD_MS", "PLURNK_SERVICE_PROMPT_PROJECTION"];
     const env = {
-        PLURNK_SERVICE_MAX_TURNS: "163840", PLURNK_SERVICE_LOOP_TIMEOUT: "16384", PLURNK_SERVICE_EXEC_HOLD_MS: "49152", PLURNK_SERVICE_SAFETY: "1024",
+        PLURNK_SERVICE_MAX_TURNS: "163840", PLURNK_SERVICE_LOOP_TIMEOUT: "16384", PLURNK_SERVICE_EXEC_HOLD_MS: "49152", PLURNK_SERVICE_PROMPT_PROJECTION: "25%",
         PLURNK_SERVICE_MAX_TURNS_turboderp: "78848", PLURNK_SERVICE_LOOP_TIMEOUT_turboderp: "4096", PLURNK_SERVICE_EXEC_HOLD_MS_TURBODERP: "8192", // case-folds
     } as NodeJS.ProcessEnv;
     const gemma = scopeEnvToAlias(env, "turboderp", SERVICE_KNOBS);
     assert.equal(gemma.PLURNK_SERVICE_MAX_TURNS, "78848");
     assert.equal(gemma.PLURNK_SERVICE_LOOP_TIMEOUT, "4096");
     assert.equal(gemma.PLURNK_SERVICE_EXEC_HOLD_MS, "8192");
-    assert.equal(gemma.PLURNK_SERVICE_SAFETY, "1024"); // bare fallback intact
+    assert.equal(gemma.PLURNK_SERVICE_PROMPT_PROJECTION, "25%"); // bare fallback intact
     const cloud = scopeEnvToAlias(env, "fireslow", SERVICE_KNOBS);
     assert.equal(cloud.PLURNK_SERVICE_LOOP_TIMEOUT, "16384"); // 64k envelope untouched by gemma overrides
     assert.equal(cloud.PLURNK_SERVICE_EXEC_HOLD_MS, "49152");
@@ -241,23 +241,52 @@ test("the shipped DRY floor is off and claims no universally safe shape", async 
 
 // -- {§provider-generation-envelope} --
 
-test("envelopeFromEnv: percentages and absolutes parse; missing/invalid fail hard", async () => {
-    const { envelopeFromEnv } = await import("./env.ts");
+test("generationEnvelopeFromEnv: output is total and reasoning is an optional subset", () => {
     assert.deepEqual(
-        envelopeFromEnv({ PLURNK_PROVIDERS_REASONING_RESERVE: "10%", PLURNK_PROVIDERS_COMPLETION_RESERVE: "4096" } as NodeJS.ProcessEnv, "x"),
-        { reasoningReserve: { percent: 0.1 }, completionReserve: { tokens: 4096 } },
+        generationEnvelopeFromEnv({
+            PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%",
+            PLURNK_PROVIDERS_REASONING_BUDGET: "4096",
+        } as NodeJS.ProcessEnv, "x", 100_000, 32_000),
+        { outputBudget: 32_000, reasoningBudget: 4096 },
     );
-    assert.throws(() => envelopeFromEnv({ PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%" } as NodeJS.ProcessEnv, "x"), /PLURNK_PROVIDERS_REASONING_RESERVE must be set/);
-    assert.throws(() => envelopeFromEnv({ PLURNK_PROVIDERS_REASONING_RESERVE: "150%", PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%" } as NodeJS.ProcessEnv, "x"), /percentage must be in \(0, 100\)/);
-    assert.throws(() => envelopeFromEnv({ PLURNK_PROVIDERS_REASONING_RESERVE: "-5", PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%" } as NodeJS.ProcessEnv, "x"), /positive integer token count/);
+    assert.throws(() => generationEnvelopeFromEnv({}, "x", 100_000, null), /PLURNK_PROVIDERS_OUTPUT_BUDGET must be set/);
+    assert.throws(() => generationEnvelopeFromEnv({ PLURNK_PROVIDERS_OUTPUT_BUDGET: "150%" }, "x", 100_000, null), /percentage must be in \(0, 100\)/);
+    assert.throws(() => generationEnvelopeFromEnv({ PLURNK_PROVIDERS_OUTPUT_BUDGET: "-5" }, "x", 100_000, null), /positive integer token count/);
+    assert.throws(() => generationEnvelopeFromEnv({ PLURNK_PROVIDERS_OUTPUT_BUDGET: "100000" }, "x", 100_000, null), /must leave positive input capacity/);
+    assert.throws(() => generationEnvelopeFromEnv({
+        PLURNK_PROVIDERS_OUTPUT_BUDGET: "20%",
+        PLURNK_PROVIDERS_REASONING_BUDGET: "25%",
+    }, "x", 100_000, null), /reasoning is a subset of total output/);
+    assert.deepEqual(
+        generationEnvelopeFromEnv({ PLURNK_PROVIDERS_OUTPUT_BUDGET: "1%" }, "x", 2, null),
+        { outputBudget: 1, reasoningBudget: null },
+        "a valid percentage always resolves to at least one whole token",
+    );
+    assert.throws(
+        () => generationEnvelopeFromEnv({ PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%" }, "x", 1, null),
+        /must leave positive input capacity/,
+    );
 });
 
 test("envelope knobs are per-alias scopable (measured envelope per box)", async () => {
-    const { scopeEnvToAlias, envelopeFromEnv } = await import("./env.ts");
+    const { scopeEnvToAlias } = await import("./env.ts");
     const env = {
-        PLURNK_PROVIDERS_REASONING_RESERVE: "10%", PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%",
-        PLURNK_PROVIDERS_REASONING_RESERVE_turboderp: "4096", PLURNK_PROVIDERS_COMPLETION_RESERVE_turboderp: "8192",
+        PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%",
+        PLURNK_PROVIDERS_REASONING_BUDGET: "10%",
+        PLURNK_PROVIDERS_OUTPUT_BUDGET_turboderp: "8192",
+        PLURNK_PROVIDERS_REASONING_BUDGET_turboderp: "4096",
     } as NodeJS.ProcessEnv;
-    assert.deepEqual(envelopeFromEnv(scopeEnvToAlias(env, "turboderp"), "x"), { reasoningReserve: { tokens: 4096 }, completionReserve: { tokens: 8192 } });
-    assert.deepEqual(envelopeFromEnv(scopeEnvToAlias(env, "jennifer"), "x"), { reasoningReserve: { percent: 0.1 }, completionReserve: { percent: 0.25 } });
+    assert.deepEqual(generationEnvelopeFromEnv(scopeEnvToAlias(env, "turboderp"), "x", 49_152, null), { outputBudget: 8192, reasoningBudget: 4096 });
+    assert.deepEqual(generationEnvelopeFromEnv(scopeEnvToAlias(env, "jennifer"), "x", 100_000, null), { outputBudget: 35_000, reasoningBudget: 10_000 });
+});
+
+test("retired additive reserve knobs fail rather than creating a dual contract", () => {
+    assert.throws(() => generationEnvelopeFromEnv({
+        PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%",
+        PLURNK_PROVIDERS_REASONING_RESERVE: "10%",
+    }, "x", 100_000, null), /PLURNK_PROVIDERS_REASONING_RESERVE is retired/);
+    assert.throws(() => generationEnvelopeFromEnv({
+        PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%",
+        PLURNK_PROVIDERS_COMPLETION_RESERVE: "25%",
+    }, "x", 100_000, null), /PLURNK_PROVIDERS_COMPLETION_RESERVE is retired/);
 });

@@ -36,7 +36,7 @@ export type LogEntryWire = {
     rx: unknown;
     mimetype_rx: string;
     status_rx: number;
-    tokens: number;
+    weight: number;
     attrs: unknown;
     tags: string[];
 };
@@ -94,7 +94,7 @@ export default class LogEntry {
             rx: LogEntry.#parseJsonOrNull(row.rx),
             mimetype_rx: row.mimetype_rx as string,
             status_rx: row.status_rx as number,
-            tokens: row.tokens as number,
+            weight: row.weight as number,
             attrs: LogEntry.#parseJsonOrNull(row.attrs),
             tags: LogEntry.#parseTags(row.tags),
         };

@@ -55,7 +55,9 @@ test("Worker.find returns the scheme's catalog groups (JSON), filtered to matche
         // FIND is the filtered catalog: one default-first channel array per resource.
         assert.equal(r.mimetype, "application/json");
         assert.deepEqual(paths(r), ["worker:///a", "worker:///b", "worker:///c"]);
-        assert.deepEqual(JSON.parse(r.content!), r.results, "content is the JSON serialization of the catalog groups");
+        const projected = JSON.parse(r.content!) as Array<Array<Record<string, unknown>>>;
+        assert.equal(projected[0]?.[0]?.tokens, resources(r)[0]?.[0].weight);
+        assert.equal(Object.hasOwn(projected[0]?.[0] ?? {}, "weight"), false, "only final model projection calls curation weight tokens");
         const renderedRows = r.content!.split("\n");
         assert.equal(renderedRows.length, r.results.length, "each FIND result ordinal owns one physical JSON line");
         assert.match(renderedRows[0], /^\[\[\{"path":"worker:\/\/\/a"/);
@@ -68,7 +70,7 @@ test("Worker.find returns the scheme's catalog groups (JSON), filtered to matche
         assert.ok("mimetype" in first[0], "an entry group contains channels, not a scope summary");
         assert.equal(typeof first[0].mimetype, "string");
         assert.equal(first[0].lines, 1, "\"alpha\" is one line");
-        assert.equal(typeof first[0].tokens, "number");
+        assert.equal(typeof first[0].weight, "number");
         assert.ok(!("extent" in first[0]), "a catalog channel carries no legacy extent");
     } finally { db.close(); }
 });
@@ -112,7 +114,7 @@ test("a single-star path glob lists one level with actionable recursive folder s
         const src = resources(root).find(([item]) => item.path === "worker:///src/**");
         assert.ok(src !== undefined && "items" in src[0], "the directory is a one-element scope group, not a fake entry");
         assert.equal(src[0].items, 3, "the summary counts every descendant recursively, including dot entries");
-        assert.ok(src[0].tokens > 0, "the summary reports the recursive subtree's READ weight");
+        assert.ok(src[0].weight > 0, "the summary reports the recursive subtree's READ weight");
         assert.equal(root.matchingPathCount, 2, "folder summaries never become matching resource paths");
 
         const drilled = await worker.find(findStmt(url("src/*")), ctx);
@@ -346,7 +348,7 @@ test("Worker.find markerless selection returns the first 16 with a compact selec
         assert.equal(bounded.results.length, 16);
         assert.equal(bounded.range?.total, 20);
         assert.deepEqual(bounded.range?.returned, [1, 16]);
-        assert.ok(bounded.itemsTokenTotal > bounded.returnedItemsTokenTotal);
+        assert.ok(bounded.itemsWeightTotal > bounded.returnedItemsWeightTotal);
 
         const all = await worker.find(
             { ...findStmt(url("")), lineMarker: { marks: [1, -1] } },
@@ -354,7 +356,7 @@ test("Worker.find markerless selection returns the first 16 with a compact selec
         );
         assert.equal(all.results.length, 20);
         assert.deepEqual(all.range?.returned, [1, 20]);
-        assert.equal(all.itemsTokenTotal, all.returnedItemsTokenTotal);
+        assert.equal(all.itemsWeightTotal, all.returnedItemsWeightTotal);
     } finally { db.close(); }
 });
 
@@ -368,8 +370,8 @@ test("Worker.find with no matches returns an empty 204 result", async () => {
             content: null,
             mimetype: null,
             results: [],
-            itemsTokenTotal: 0,
-            returnedItemsTokenTotal: 0,
+            itemsWeightTotal: 0,
+            returnedItemsWeightTotal: 0,
             matchingPathCount: 0,
             matchLocationCount: 0,
             range: {

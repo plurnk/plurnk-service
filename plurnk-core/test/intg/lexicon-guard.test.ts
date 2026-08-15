@@ -28,10 +28,10 @@ const walk = (d: string, a: string[] = []): string[] => {
 const BANNED: Array<{ label: string; re: RegExp; canon: string }> = [
     { label: "thinking", re: /\bthinking\b/i, canon: "reasoning ({§lexicon})" },
     { label: "session (noun)", re: /\bsessions?\b/i, canon: "the exact workspace / worker / loop noun from {§lifecycle-terms}" },
-    { label: "contextSize", re: /contextSize/, canon: "contextWindow (the provider window) or promptBudget (the derived denominator) — {§lexicon}" },
+    { label: "contextSize", re: /contextSize/, canon: "contextWindow (the provider envelope) or curationBudget/contextCapacity (the applicable denominator) — {§lexicon}" },
     { label: "decodeBudget", re: /decodeBudget/, canon: "maxTokensFor — the standard max_tokens concept ({§lexicon})" },
-    { label: "usage_context_size", re: /usage_context_size/, canon: "usage_prompt_budget ({§lexicon})" },
-    { label: "retired partition knobs", re: /PLURNK_SERVICE_(CTX|ASSISTANT|CONTEXT_WINDOW|REASONING(?!_)|COMPLETION)/, canon: "PLURNK_PROVIDERS_{CONTEXT_WINDOW,REASONING_RESERVE,COMPLETION_RESERVE} ({§tokenomics-window-partition}) — only the shed may name these" },
+    { label: "usage_context_size", re: /usage_context_size/, canon: "usage_curation_budget or physical context capacity, as applicable ({§lexicon})" },
+    { label: "retired partition knobs", re: /PLURNK_SERVICE_(CTX|ASSISTANT|CONTEXT_WINDOW|REASONING(?!_)|COMPLETION)/, canon: "PLURNK_PROVIDERS_{CONTEXT_WINDOW,OUTPUT_BUDGET,REASONING_BUDGET} ({§tokenomics-window-partition}) — only the shed may name these" },
     // {§lexicon} — quoted wire strings are lexicon too: the endpoint agent caught `Plurnk-Run-Id` shipping
     // a workerId under the retired noun, invisible to identifier-shaped bans. Exact-string bans only
     // (the run noun is unguardable as a word — verbs are legal); extend per retired wire name.

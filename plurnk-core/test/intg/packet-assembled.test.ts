@@ -13,13 +13,13 @@ import { join } from "node:path";
 import Engine from "../../src/core/Engine.ts";
 import Paths from "../../src/Paths.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { rulerCount } from "../../src/core/token-ruler.ts";
+import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { InvalidLoopFlagsError, Validator } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { copyStmt, editStmt, readStmt, findStmt, regex, sendStmt, urlPath } from "./_dsl.ts";
 
-const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; header: string | null; content: string; tokens: number }> }> =>
+const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; header: string | null; content: string; weight: number }> }> =>
     JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
 
 test("assembled packet: editable READ lines carry copyable anchors without changing their visible ordinals", async () => {
@@ -554,7 +554,7 @@ test("assembled packet: definition tables compact without changing other whitesp
         const packet = await getPacket(db, result.turnId);
 
         assert.equal(packetSection(packet, "definition"), expected, "the stored model-facing definition is the compact projection");
-        assert.equal(packet.sections.find((section) => section.name === "definition")?.tokens, rulerCount(expected), "definition render-weight measures the compact projection");
+        assert.equal(packet.sections.find((section) => section.name === "definition")?.weight, contentWeight(expected), "definition render-weight measures the compact projection");
     } finally { await db.close(); }
 });
 

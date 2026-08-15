@@ -6,7 +6,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
 import PacketWire from "../../src/core/packet-wire.ts";
 import type { StoredPacketSection } from "../../src/core/StoredPacket.ts";
-import { rulerCount } from "../../src/core/token-ruler.ts";
+import { contentWeight } from "../../src/core/content-weight.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
@@ -48,7 +48,7 @@ test("plugin packet control: a scheme adds, removes, and reorders packet section
         assert.equal(packetSection(packet, "demo"), "hello from the plugin");
         const demo = (packet.sections as StoredPacketSection[]).find((section) => section.name === "demo");
         assert.ok(demo !== undefined);
-        assert.equal(demo.tokens, rulerCount(PacketWire.renderSection(demo)), "core assigns the durable render-weight");
+        assert.equal(demo.weight, contentWeight(PacketWire.renderSection(demo)), "core assigns the durable render-weight");
         // REMOVE: the kernel's budget section is gone.
         assert.equal(packetSection(packet, "budget"), "");
         // REORDER: the plugin's section leads the user slot.

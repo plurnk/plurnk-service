@@ -26,7 +26,7 @@ flowchart LR
 | **agent**         | PLURNK                | The plurnk runtime. Acts in-workspace as the reserved `plurnk` worker ({§actor-boundary} self-hosting), never a privileged singleton owning its own entries ({§entry-owner}, {§machine-processes}). |
 | **workspace**     | Core                  | Durable user-named shared world. Persists across workers and process restarts. Identity: `workspaces.id` + unique `workspaces.name`. |
 | **worker**        | Core                  | Durable actor and private history over one workspace. Owns its loops and log rows, may carry a `parent_worker_id`, and has one process-local cancellation scope while active. |
-| **loop**          | Core                  | Queued-to-terminal unit of model or client work within a worker. Status ∈ {100 pending · 102 running · 200 done · 202 waiting (blocked on a live obligation, {§send}) · 413 context-envelope rejection · 429 turn-ceiling · 499 cancelled · 500 failed · 504 wall-clock timeout ({§operator-config-loop-timeout}) · 508 runaway}. Many loops may belong to one worker. |
+| **loop**          | Core                  | Queued-to-terminal unit of model or client work within a worker. Status ∈ {100 pending · 102 running · 200 done · 202 waiting (blocked on a live obligation, {§send}) · 413 provider input-capacity failure · 429 turn-ceiling · 499 cancelled · 500 failed · 504 wall-clock timeout ({§operator-config-loop-timeout}) · 508 runaway}. Many loops may belong to one worker. |
 | **turn**          | Core                  | One engine scheduling unit (or one client-op scheduling unit). A model turn sends one assembled prompt through one or more emission attempts and admits at most one response. Many turns may belong to one loop. Identity: `(loop_id, sequence)`. |
 | **model call**    | Core/provider         | One logical `provider.generate` invocation. Emission attempts and BARE inferences share this durable accounting owner; provider retries remain cardinal physical requests beneath it. Identity: `(turn_id, sequence)`. |
 | **op**            | Model/core            | One DSL operation the model emits, parsed into a `PlurnkStatement`. One admitted turn produces zero or more ops. |
@@ -43,7 +43,7 @@ flowchart LR
 | Term | Meaning |
 |---|---|
 | **entry** | The unit of canonical state. Identity: `(workspace, owner, scheme, pathname)` ({§entry-identity-no-null}). Holds one or more `channels` of content plus private `attributes`. |
-| **channel** | A named content buffer on an entry. Examples: `body`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, `tokens`, `state`. |
+| **channel** | A named content buffer on an entry. Examples: `body`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, curation `weight`, and lifecycle `state`. |
 | **scope** | A scheme-manifest declaration ignored by core; registrations are discovered at boot and are not persisted. Entry sharing and privacy are owner-based; #80 owns retiring this residual axis. |
 | **scheme** | An addressed capability family + handler. Built-ins include `worker`, `prompt`, `log`, and bare/file paths; discovered schemes and executor-runtime tags extend that set. Internal `exec` routes the EXEC op but is not an addressable model namespace. Consumption surface {§scheme-surface}; author contract: [plurnk-schemes](../plurnk-schemes/SPEC.md). |
 | **mimetype** | A channel's content type. Drives the handler that produces the structural projections (`symbols`, `deepJson`, `deepXml`). Consumption surface {§mimetype-surface}; author contract: [plurnk-mimetypes](../plurnk-mimetypes/SPEC.md). |
@@ -679,12 +679,13 @@ Author-facing contract: [`@plurnk/plurnk-providers`](../plurnk-providers/SPEC.md
 
 ### §provider-surface Consumption surface
 
-Two current entry points:
+Three current entry points:
 
 - §provider-surface-generate `provider.generate(args)` — once per logical model call. An emission attempt supplies the complete packet messages, worker/turn coordinates, generation envelope, optional local grammar, first-party metadata, and `callKind: "emission"`. A BARE inference supplies only one user message containing its body plus non-prompt call identity and accounting metadata, including `callKind: "bare"` ({§bare-inference} {§provider-call-kind}). Both receive a durable physical-request observer; provider-owned retry and failover may issue several ordered requests beneath either call. A successful `ProviderResponse` reaches its call-specific consumer; a `ProviderError.attempt` remains failed response evidence under {§provider-interrupted-attempt}. Core persists normalized response evidence separately from physical accounting and relays encrypted reasoning only from an admitted emission ({§encrypted-reasoning-carrier}).
-- §provider-surface-prompt-measurement `provider.countPromptTokens(messages, signal)` — cancellable measurement of the complete provider request with `exact`, `upper_bound`, or `estimate` provenance. It is used only for hard context-envelope admission ({§tokenomics-context-envelope-admission}); model-facing stored and rendered weights use the provider-agnostic ruler.
+- §provider-surface-capacity `provider.assessRequestCapacity(messages, maxOutputTokens?, signal?)` — provider-owned intersection of request-shaped token evidence and every known physical input limit. It admits, rejects only a proven exact overflow, or defers ambiguity to upstream ({§tokenomics-context-envelope-admission}). `generate` performs this assessment for its exact request and preserves the evidence on success and capacity failure.
+- §provider-surface-prompt-measurement `provider.countPromptTokens(messages, signal)` — the cancellable complete-request measurement primitive used by provider capacity assessment, with `exact`, `upper_bound`, `estimate`, or `unavailable` provenance. Core never substitutes this physical fact for its curation ruler.
 
-§provider-surface-identity Provider capacity and identity are immutable for one instance. `contextWindow` (the effective total context envelope, or `null` when unknown) and the optional reasoning/completion reserves define the natural prompt partition and hard admission check ({§tokenomics}); `model` identifies persisted turn/provider evidence. Local GBNF boot verification also consumes `constrainsOutput` ({§grammar-enforcement-verified-at-boot}).
+§provider-surface-identity Provider capacity and identity are immutable for one instance. `contextWindow`, `maxInputTokens`, and `maxOutputTokens` carry known model limits; `outputBudget` is the total generation envelope, optional `reasoningBudget` is its strict subset, and `inputCapacity` is the stable intersection of known input constraints ({§tokenomics}). Unknown facts remain `null`. `model` identifies persisted turn/provider evidence. Local GBNF boot verification also consumes `constrainsOutput` ({§grammar-enforcement-verified-at-boot}).
 
 §meta-passthrough **Metadata passthrough (provider → client).** `generate` may return an open `meta: Record<string, unknown>` bag. The service stores it unenforced per turn (`turns.meta`, `json_valid` only — no schema) and forwards the latest turn's blob in `loop/terminated.usage` ({§notifications}). The service never reads a field within it. Providers own their metadata shapes; monetary values carry an explicit amount and currency rather than an implied unit. Absent → `{}`. The mirror direction (client → provider, the self-identified `client` id) rides `generate({client})` ({§attribution}).
 
@@ -696,13 +697,13 @@ Two current entry points:
 - BARE calls admitted by one turn launch as one parallel batch; each call retains independent observer and failure state, and the engine awaits the complete batch before committing results in authored order ({§bare-inference}).
 - §provider-guarantees-request-observer Immediately before each physical provider I/O, the provider opens its provider/model identity through `observeRequest` and settles the returned handle exactly once as response or error. Core durably records that occurrence before I/O and rejects a returned response or `ProviderError` whose ordered accounting differs from the observed records. Persistence failure is an internal contract failure, never optional telemetry.
 - §provider-guarantees-assistantraw-opaque `assistantRaw` is opaque to the engine (forensics-only).
-- `countPromptTokens` receives the exact `PacketWire` messages later supplied to `generate`. The engine calls it only when negative ruler pressure requires hard context-envelope admission; it may perform provider I/O and receives the loop cancellation signal.
+- Capacity assessment receives the exact `PacketWire` messages supplied to `generate`, its effective total-output tightening, and the loop cancellation signal. It may perform provider I/O. A curation-weight comparison never authorizes or rejects physical I/O.
 
 ### §emission-admission Provider emission admission
 
 A completed provider exchange is an **emission attempt**, not necessarily an engine turn. The provider transports and observes the model's bytes; ANTLR is the admission authority only after provider completion. Admission asks whether the exchange has a trustworthy frame: its first parsed operation is PLAN, its last parsed operation is a terminal SEND, every hard parse error is bounded between those anchors, and no `unparsedTail` exists. Missing anchors, an error outside the frame, or a boundary-destroying tail rejects the entire exchange regardless of `finishReason`; no recovered prefix dispatches. Parser warnings remain admissible. `finish=length` is forensic evidence of likely truncation, not an independent rejection rule. A provider-declared resource interruption never reaches admission, even when its partial bytes form a complete-looking frame ({§provider-interrupted-attempt}).
 
-Core retries a rejected emission against the exact same packet beneath the same engine turn, up to `PLURNK_SERVICE_EMISSION_ATTEMPTS`. Rejected bytes never dispatch or reach the engine strike rail. Before each `generate`, Core opens one durable logical `model_calls` row and its emission-specific `turn_attempts` admission row. Beneath the model call, every provider observer invocation opens one cardinal `provider_requests` occurrence immediately before physical I/O and settles it as response or error. Adapter retries and capacity failover append requests in issue order; a response-less failure therefore remains an accounted occurrence rather than disappearing. Normalized response evidence is durable before parser classification and does not duplicate the separately owned accounting. The accepted exchange alone completes `turns.packet`; every physical request remains in turn and loop accounting, while the context gauge reads the latest settled emission request on the latest turn. Digest exposes rejected response evidence as `packetNNN.attemptNNN.rejected.*` and every physical request in its machine-readable ledger.
+Core retries a rejected emission against the exact same packet beneath the same engine turn, up to `PLURNK_SERVICE_EMISSION_ATTEMPTS`. Rejected bytes never dispatch or reach the engine strike rail. Before each `generate`, Core opens one durable logical `model_calls` row and its emission-specific `turn_attempts` admission row. A call that ends without response evidence leaves that admission row unclassified (`accepted IS NULL`) and does not consume the emission-attempt ceiling. Beneath the model call, every provider observer invocation opens one cardinal `provider_requests` occurrence immediately before physical I/O and settles it as response or error. Adapter retries and capacity failover append requests in issue order; a response-less failure therefore remains an accounted occurrence rather than disappearing. Normalized response evidence is durable before parser classification and does not duplicate the separately owned accounting. The accepted exchange alone completes `turns.packet`; every physical request remains in turn and loop accounting, while the context gauge reads the latest settled emission request on the latest turn. Digest exposes rejected response evidence as `packetNNN.attemptNNN.rejected.*` and every physical request in its machine-readable ledger.
 
 The first exhaustion in a consecutive sequence closes that unadmitted turn as a continue and opens exactly one ordinary recovery turn. Its packet projects the latest rejected response OPEN from a durably FOLDED model item under {§model-entry-log-curation} and carries one transient `invalid_emission` Notice whose complete message is: `Your previous response contained an unrecoverable syntax error. No operations were performed. Try again.` No parser diagnostic, attempt count, or rail state becomes model-facing. The recovery turn has its own honestly stored packet and its configured private same-packet attempts. The packet-local projection never changes the row's curation state, so no later packet repeats the malformed body unless the model explicitly OPENs it. Admission clears the recovery state; exhausting the informed turn terminates instead of opening another.
 
@@ -1022,9 +1023,9 @@ Engine → scheme guarantees:
 - `ctx.signal` is wired to the worker's AbortController ({§provider-guarantees-signal-wired}).
 - §scheme-surface-exception-500 Scheme exceptions are contract violations. Core records their complete cause in daemon diagnostics, closes the action with a generic core-owned 500 Problem, and surfaces that durable row in the next turn's `errors` section ({§operation-results}). Implementation exception text is not repurposed as a model recovery instruction.
 
-**Tokenization participation.** Core's shared `_entry-crud.ts` write helper
-populates `entry_channels.tokens` at write time through `ctx.tokenize`
-({§tokenomics-tokens-stored-at-write}). Scheme handlers reach that path through
+**Curation-weight participation.** Core's shared `_entry-crud.ts` write helper
+populates `entry_channels.weight` at write time through `ctx.weigh`
+({§tokenomics-weight-stored-at-write}). Scheme handlers reach that path through
 the public `ctx.entries` capability. Raw database writes are outside the scheme
 API and receive no implicit token accounting.
 
@@ -1115,9 +1116,9 @@ discovery ({§mimetype-discovery}).
 
 **Token accounting.** The daemon injects no tokenizer into `Mimetypes`; content
 projection is independent of packet budgeting. Core uses the stable
-model-independent ruler for stored/catalog weights and the model-facing budget
+model-independent ruler for stored/catalog weights and the model-facing curation budget
 ({§tokenomics-agnostic-ruler}). The provider's request-shaped measurement is
-confined to hard context-envelope admission
+confined to provider-owned physical capacity assessment
 ({§tokenomics-context-envelope-admission}).
 
 §persistent-search-index **Persistent search index.** `SearchIndex.maintain` is the pre-model engine pass. Each searchable resource supplies an address and the exact readable body its READ exposes. Entries supply their default body; `LogBody` resolves each log row's canonical full body from its durable tx/rx envelope. Acquisition schemes project remote source material before storing that body; search never introduces a second hidden text projection. The readable body, mimetype, resolved text/binary classification, mimetype projection identity, embedder configuration, and applicable search exclusion form a content hash. Complete artifacts own FTS, vectors, symbol definitions, and references; resource rows hold only the attachment hash. Binary, empty, and excluded derivations do not invoke handler projections and therefore use one fixed no-projection identity.
@@ -1350,7 +1351,7 @@ OPEN/FOLD operate on the **log** (`log:///`) - the model's context-curation surf
 
 ### §jsonplurnk The Log's wire format
 
-The `## Log` section renders as a fixed three-backtick `jsonplurnk` fence - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw multiline string. Its opening JSON quote is followed by a physical newline, every content line begins with a numeric `N:` or anchored `@hash N:` coordinate prefix whose separator is one or more ASCII spaces, and its closing quote appears at column zero before either the object close or a following member. Source quotes, braces, fences, and headings cannot collide with either boundary because source text never occupies column zero after projection; source backticks therefore cannot form a CommonMark closing fence. The fixed opener keeps the packet prefix stable across content changes. The carve-out is localized to `body`, so the strip-parser recognizes `"body":"` followed by a newline, consumes one or more coordinate-prefixed lines, and replaces the raw multiline value with an escaped JSON string while preserving following members to recover strict JSON. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":"\n<coordinate>...\n"` with it shown. `path` is the complete model-facing log identity: when a projected operation exists it ends in `/OP`, and no separate `op` field duplicates it. Nonempty `tags` is the row's complete deduplicated, sorted folksonomy; an untagged row omits it. When an OPEN bounded projection differs from the canonical body, it appends `"chunk":"showing <selected> of <complete>"` after `body`; otherwise it omits `chunk`. Complete-line extents use inclusive two-coordinate line regions. A cut inside a line uses four-coordinate, start-inclusive and end-exclusive regions with 1-based Unicode code-point columns. The row's `path` remains the canonical READ target. The block is data only - no prose leads the fence. `tokens` is the ruler-weight of the row's ordinary packet body: the room OPEN adds and FOLD saves. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page has a different weight. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/coordinate-prefixed bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
+The `## Log` section renders as a fixed three-backtick `jsonplurnk` fence - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw multiline string. Its opening JSON quote is followed by a physical newline, every content line begins with a numeric `N:` or anchored `@hash N:` coordinate prefix whose separator is one or more ASCII spaces, and its closing quote appears at column zero before either the object close or a following member. Source quotes, braces, fences, and headings cannot collide with either boundary because source text never occupies column zero after projection; source backticks therefore cannot form a CommonMark closing fence. The fixed opener keeps the packet prefix stable across content changes. The carve-out is localized to `body`, so the strip-parser recognizes `"body":"` followed by a newline, consumes one or more coordinate-prefixed lines, and replaces the raw multiline value with an escaped JSON string while preserving following members to recover strict JSON. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":"\n<coordinate>...\n"` with it shown. `path` is the complete model-facing log identity: when a projected operation exists it ends in `/OP`, and no separate `op` field duplicates it. Nonempty `tags` is the row's complete deduplicated, sorted folksonomy; an untagged row omits it. When an OPEN bounded projection differs from the canonical body, it appends `"chunk":"showing <selected> of <complete>"` after `body`; otherwise it omits `chunk`. Complete-line extents use inclusive two-coordinate line regions. A cut inside a line uses four-coordinate, start-inclusive and end-exclusive regions with 1-based Unicode code-point columns. The row's `path` remains the canonical READ target. The block is data only - no prose leads the fence. `tokens` is the model-facing projection of the row's curation weight: the room OPEN adds and FOLD saves. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page has a different weight. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/coordinate-prefixed bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
 
 ### §retrieval-packet-metadata READ/FIND packet metadata
 
@@ -1473,7 +1474,7 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
 - §find-glob-filter-on-content `body` matcher operates on entry content (glob/regex/jsonpath/xpath), per `plurnk.md` "Pattern Filtering"; the path-glob lives in the (target), not the body.
 - §find-semantic-selection Every matcher operates only over the candidate set selected by `(target)`; relation matchers do not bypass that selection. Semantic ranking is exhaustive within that candidate set, then applies the ordinary FIND result scope. Markerless semantic FIND therefore uses the same `<1,16>` default as every other matcher. Integers retain FIND's positional contract: `<N>` selects result N and `<N,M>` selects the inclusive range. A leading decimal first applies a minimum cosine-similarity threshold; following integers select positions within that ranked threshold set. Thus `<0.7,10,20>` means threshold 0.7 followed by results 10 through 20, while `<0.7>` applies the threshold and the ordinary first-16 page.
 - §find-scoped-isolation Workspace + scheme scoped — no cross-workspace/cross-scheme leakage.
-- §find-result-projection **The authored target shape determines the result unit; result cardinality never changes it** ({§find-result-unit}). Returns `FindResult { status, content, mimetype, results, range, matchingPathCount, matchLocationCount, itemsTokenTotal, returnedItemsTokenTotal }`:
+- §find-result-projection **The authored target shape determines the result unit; result cardinality never changes it** ({§find-result-unit}). Returns `FindResult { status, content, mimetype, results, range, matchingPathCount, matchLocationCount, itemsWeightTotal, returnedItemsWeightTotal }`:
 
   | Target | Matcher body | `range.unit` | Result rows |
   |---|---|---|---|
@@ -1497,25 +1498,26 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   contains one nonempty, flat channel array per resource. Element `[0]` is always
   the default channel and carries the bare resource path; later elements carry
   their complete `path#channel` addresses. Each channel is
-  `{ path, mimetype, tokens, lines, parseIssues? }`; `parseIssues` is the
+  `{ path, mimetype, weight, lines, parseIssues? }`; `parseIssues` is the
   positive-only advisory projection of `{§mimetype-parse-issues}` for the exact
   body derivation under `{§scheme-catalog-parse-issues}`. Resource-level `stream` and broad-match
   `matchLocationCount` live only on `[0]`. A single-channel resource is therefore
   a one-element array, with no path-owning wrapper or duplicated channel map.
   A terminal single-star path scope is a one-level map: direct entries retain
   that shape, while deeper first-segment directories collapse to the one-element
-  group `[{ path: "dir/**", items, tokens }]`, where the selector and both aggregates
+  group `[{ path: "dir/**", items, weight }]`, where the selector and both aggregates
   describe the exact recursive subtree. Scope summaries are navigation
   metadata, not resources. Markerless FIND returns positions 1–16 in the
   selected unit; `<N,M>` selects an inclusive page and `<1,-1>` explicitly
   selects all. `range` reports the unit, complete result total, normalized
-  request, and returned positions ({§range-extent}). `itemsTokenTotal` weighs the complete matched set while
-  `returnedItemsTokenTotal` weighs the returned resource page; in exact
+  request, and returned positions ({§range-extent}). `itemsWeightTotal` weighs the complete matched set while
+  `returnedItemsWeightTotal` weighs the returned resource page; in exact
   location mode both weigh the one selected resource once. Resource order is
   rank for `~`semantic and candidate order otherwise; location order is dialect
   order and exact duplicates deduplicate. The intended drill-down is broad FIND
   to choose paths, exact-target FIND to choose locations, then exact READ.
-  `content` uses the shared generated-JSON projection
+  `content` uses the shared generated-JSON projection and translates only this
+  final model-facing representation from `weight` to `tokens`
   ({§json-result-rendering}), so universal packet numbering makes result
   ordinal N addressable as line N, matching `<N>` pagination without a second
   coordinate system. Pagination is the only FIND materialization bound; no
@@ -1728,7 +1730,7 @@ stream cannot fall through an internal `exec`-only query. {§stream-control}
 §exec-env-scoped **Scoped environment.** An EXEC subprocess inherits the *project's* environment — its `.env`, the standard shell vars — so the model's commands run as the project expects; but never plurnk's own secrets: the provider API keys and `PLURNK_*` config are stripped before the spawn, so a model-executed command can't `printenv` the engine's keys. The service owns the scoping policy (the denylist); the executor spawns with the env it is handed.
 
 - §exec-hold-until-concluded **The turn-hold exception** — for runtimes in `PLURNK_SERVICE_EXEC_HOLD` (a decision-table env, shipped listing the search family), an in-flight stream **pauses the cycle**: the next packet does not assemble until the stream concludes, so the model never burns a turn asking "are we there yet" about a result the engine controls end-to-end. This exception is limited to seconds-bounded runtimes whose final result the engine controls end-to-end. Bounded by `PLURNK_SERVICE_EXEC_HOLD_MS` and **fail-open**: at the cap the standard cycle resumes untouched (waits, wakes, polls). Zero grammar or teaching surface — the model emits EXEC followed by SEND signal `102` as ever; the wake-shaped world simply arrives one packet sooner. It extends selected runtimes beyond the ordinary {§worker-optimistic-settlement} cap before the next packet assembles. A bare entry holds ALL of a runtime's spawns; a `<runtime>:<effect>` suffix (`github:read`) holds only that effect-class — an MCP server is one runtime whose tools split (a `read` `get_issue` is instant; a `host` `run_migration` is a slow mutation), so an operator opts the known-fast read-class in without parking on the mutation. Conservative stays default: an arbitrary third-party server's latency never parks the engine unless a suffix opts a class in.
-- §exec-entry-sink **The entry() sink** — an executor may *request* entry materialization (execs SPEC §2.6: every sink is a consumer-implemented callback; the executor owns zero substrate). The service implements it in exec dispatch: `entry(path, content: string | null, {tags, mimetype?})` upserts the entry, then journals ONE typed `EDIT` row in the reserved `plurnk` worker's log — the fs-fiction pattern, `source` = the calling worker, `tokens` = the content's count, and `attrs.kind="entry_materialized"`. The requested tags classify that journal row under {§log-item-tags}; they never become resource metadata or duplicate into attrs. Durable replay and clients retain that exact creation event. The model packet projects the typed event as a folded system `READ` of the resulting ordinary resource: its relevant truth is readable state now available in the environment, not an agent-authored mutation. **The executor owns no fetcher:** a `content: null` is a *declaration* — the service acquires the page through schemes-http's checked WebFetcher and accepts its model-facing body and available source/evidence channels {§html-materialization}. Generic public HTML follows the same origin-Markdown, configured Tavily, and local-projection routes as exact HTTP acquisition. A failed acquisition, body-production failure, materialization exception, or absent final projection rejects the sink and produces no HTTP entry, but does not invalidate a search runtime's upstream discovery row; materialization exceptions retain their cause in daemon diagnostics. A non-null `content` is the materialize-given-body path (the caller already holds the bytes and states their mimetype) and grants no provider authority. **No page body ever rides a packet**; the announcement is the folded row's path, weight, and log classifications, and the model READs/~queries what it chooses. Parallel `entry()` calls serialize on a per-spawn chain; a rejected call leaves the chain healthy. The spawn tail settles that complete chain before unregistering, so executor idleness and shutdown are barriers over its materialization writes. The narration context (one plurnk-worker turn) is lazy per spawn, not per entry.
+- §exec-entry-sink **The entry() sink** — an executor may *request* entry materialization (execs SPEC §2.6: every sink is a consumer-implemented callback; the executor owns zero substrate). The service implements it in exec dispatch: `entry(path, content: string | null, {tags, mimetype?})` upserts the entry, then journals ONE typed `EDIT` row in the reserved `plurnk` worker's log — the fs-fiction pattern, `source` = the calling worker, `weight` = the canonical resulting span's curation weight, and `attrs.kind="entry_materialized"`. The requested tags classify that journal row under {§log-item-tags}; they never become resource metadata or duplicate into attrs. Durable replay and clients retain that exact creation event. The model packet projects the typed event as a folded system `READ` of the resulting ordinary resource: its relevant truth is readable state now available in the environment, not an agent-authored mutation. **The executor owns no fetcher:** a `content: null` is a *declaration* — the service acquires the page through schemes-http's checked WebFetcher and accepts its model-facing body and available source/evidence channels {§html-materialization}. Generic public HTML follows the same origin-Markdown, configured Tavily, and local-projection routes as exact HTTP acquisition. A failed acquisition, body-production failure, materialization exception, or absent final projection rejects the sink and produces no HTTP entry, but does not invalidate a search runtime's upstream discovery row; materialization exceptions retain their cause in daemon diagnostics. A non-null `content` is the materialize-given-body path (the caller already holds the bytes and states their mimetype) and grants no provider authority. **No page body ever rides a packet**; the announcement is the folded row's path, weight, and log classifications, and the model READs/~queries what it chooses. Parallel `entry()` calls serialize on a per-spawn chain; a rejected call leaves the chain healthy. The spawn tail settles that complete chain before unregistering, so executor idleness and shutdown are barriers over its materialization writes. The narration context (one plurnk-worker turn) is lazy per spawn, not per entry.
 
 ### §proposal The proposal lifecycle
 
@@ -1805,7 +1807,7 @@ pretends to reconstruct an opaque plugin connection.
 
 ### §chunk-accumulation Chunk accumulation
 
-§chunk-accumulation-chunks-accumulate SSE event types, WS message types, exec stdout/stderr each map to a named channel. Each stored channel carries `content`, `mimetype`, `tokens`, and lifecycle `state` ({§channel-state}). The subscription registry owns durable subscription identity and process-local cancellation routing, not a second channel-state representation. Chunks accumulate into the channel as they arrive — not buffered until close.
+§chunk-accumulation-chunks-accumulate SSE event types, WS message types, exec stdout/stderr each map to a named channel. Each stored channel carries `content`, `mimetype`, curation `weight`, and lifecycle `state` ({§channel-state}). The subscription registry owns durable subscription identity and process-local cancellation routing, not a second channel-state representation. Chunks accumulate into the channel as they arrive — not buffered until close.
 
 ### §no-chunk-rows No per-chunk log rows
 
@@ -2017,7 +2019,7 @@ Model selection: separate alias cascade in `ProviderRegistry` ({§provider-insta
 | `PLURNK_SERVICE_EMISSION_ATTEMPTS`                          | `3` | Completed provider responses allowed beneath one engine turn before an untrustworthy model-turn frame exhausts admission. Bounded interior operation errors are admitted and do not spend this budget. Consecutive exhaustion after the one informed recovery turn terminates independently of strikes. |
 | `PLURNK_SERVICE_PREVIEW_LINES`                              | `16` | Maximum lines in an ordinary bounded log-body projection ({§body-projection}). |
 | `PLURNK_SERVICE_PREVIEW_CHARS`                              | `2560` | Maximum Unicode code points in an ordinary bounded log-body projection, with CRLF treated as one indivisible separator; independently contains single-line bodies ({§body-projection}). |
-| `PLURNK_SERVICE_PROMPT_PROJECTION`                          | `25%` | Aggregate ruler-weight share of the enforced packet budget available to automatic prompt-body projection ({§prompt-projection}); alias-scoped overrides are supported. |
+| `PLURNK_SERVICE_PROMPT_PROJECTION`                          | `25%` | Aggregate curation-weight share of the provider-derived input capacity available to automatic prompt-body projection ({§prompt-projection}); alias-scoped overrides are supported. |
 | `PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES`                  | `2` | Complete neighboring lines hashed on each side of a model-facing line anchor ({§line-anchors}). |
 | `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES`                 | `2` | Surrounding and landed lines shown at each EDIT result boundary ({§edit-result-receipt-projection}). |
 | `PLURNK_SERVICE_MIN_CYCLES`                                 | `3` | Min repetitions before cycle detection fires ({§engine-rails}). |
@@ -2068,14 +2070,13 @@ before assembled package defaults fill unset values:
 | Configuration family                                      | Zero-pin treatment |
 |-----------------------------------------------------------|--------------------|
 | Any `PLURNK_PROVIDERS_CONTEXT_WINDOW`                     | Remove             |
-| Alias-specific reasoning/completion reserves and safety   | Remove             |
-| Any `PLURNK_SERVICE_PROMPT_BUDGET`                        | Remove             |
+| Alias-specific output and reasoning budgets              | Remove             |
 | Model selection, routes, and credentials                  | Retain             |
-| Bare shipped reserve and safety defaults                  | Retain             |
+| Bare shipped generation-envelope defaults                | Retain             |
 | Unrelated environment                                     | Retain             |
 
 The floor reports every removed key. A gate that succeeds only with those pins
-is red because provider capacity and the natural prompt budget did not derive for
+is red because provider capacity did not derive for
 a fresh-user configuration.
 
 §operator-config-max-turns-ceiling Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_SERVICE_MAX_TURNS` ships **off** (`-1` = no cap; the loop ends via SEND, budget, strikes, or cycle detection) and, when an operator sets a positive value, the per-call request is `min()`-capped against it.
@@ -2186,7 +2187,7 @@ Its function names are transport-neutral library calls, not public wire names.
 | Client observation                                | `look({ workspaceId, workerId, statement })` | Runs an already-parsed READ through the full resolver without a log row. A non-READ statement is rejected ({§op-look}). |
 | §methods-log-read Reads                           | `readLog({ workspaceId, workerId, ...coordinate })` | Ownership-checks the worker, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate. `limit` defaults to 100 and is capped at 1000. |
 | §methods-entry-read Reads                         | `readEntry({ workspaceId, workerId, target, channel?, offset? })` | Resolves the selector from that worker's perspective and returns {§entry-read-result}, either complete or as one channel suffix, without creating action evidence. |
-| Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective `promptBudget` when core can establish it. |
+| Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
 | Client capabilities                               | `listClientDisplayCapabilities()` | Composes sorted scheme declarations ({§manifest-client-display}) followed by sorted MIME declarations ({§mimetype-client-display}) into the validated shared wire ({§client-display-capabilities}). The internal `exec` operation handler is excluded; its addressable runtime-tag scheme faces remain included. |
 | §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings?, constraints? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, materializes current docs and constraints, starts derivation warming, and emits global `workspace/created`. `projectRoot` is established here or the workspace remains headless. |
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |
@@ -2286,7 +2287,7 @@ active lifecycle behind. LOOK text anchors resolve through the same
 | Event                                                        | Payload | When fired |
 |--------------------------------------------------------------|---------|------------|
 | §notifications-log-entry-notify `log/entry`                  | `{ entry: LogEntry }` | A `log_entries` row is committed. |
-| §notifications-loop-terminated `loop/terminated`             | `{ workerId, loopId, result, hitMaxTurns, turnIds, usage: { accounting, contextTokens, promptBudget, meta }, attributions }` | One loop reaches a terminal state. `result` is the exact universal operation result, including its RFC 9457 Problem Details on failure. `accounting` is the loop's contracts-owned {§provider-accounting}; `contextTokens` and `promptBudget` are the latest-turn gauge pair, and `meta` is that turn's opaque provider bag. `attributions` is the sorted union of exact provider-request evidence ({§attribution}), separate from accounting. Worker and loop are an inseparable owning coordinate. |
+| §notifications-loop-terminated `loop/terminated`             | `{ workerId, loopId, result, hitMaxTurns, turnIds, usage: { accounting, curationWeight, curationBudget, contextTokens, contextCapacity, meta }, attributions }` | One loop reaches a terminal state. `result` is the exact universal operation result, including its RFC 9457 Problem Details on failure. `accounting` is the loop's contracts-owned {§provider-accounting}; the two curation facts and two physical-context facts follow {§tokenomics-client-gauge}; `meta` is that turn's opaque provider bag. `attributions` is the sorted union of exact provider-request evidence ({§attribution}), separate from accounting. Worker and loop are an inseparable owning coordinate. |
 | §notifications-loop-proposal `loop/proposal`                 | contracts-owned `ProposalProjection` | Dispatch pauses on a durable 202 proposal. `disposition` is the sole authority for whether a client presents review UI; live and reconnect share {§proposal-projection}. |
 | §notifications-workspace-created `workspace/created`         | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
 | §notifications-workspace-branch-batch `workspace/branch-batch` | Branch-batch lifecycle payload | A branch batch enters queued, running, completed, failed, or recovery-required state. |
@@ -2399,63 +2400,40 @@ trust gate; an external client action cannot invoke it. Whole-list transformatio
 the fork-avoidance valve for alternate packet shapes ({§ecosystem}), while
 grinding and folding remain closed engine concerns.
 
-### §tokenomics Tokenomics: four quantities, one model-facing ruler
+### §tokenomics Tokenomics: four facts, one curation ruler
 
 Token accounting distinguishes the artifact being measured, the unit, and the
 time of measurement.
 
-| Quantity                                                            | Source and unit                                                   | When                                            | Contract                                                                                                                                                                              |
-|:--------------------------------------------------------------------|:------------------------------------------------------------------|:------------------------------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Provider usage                                                      | Provider-reported input/output tokens and cache/reasoning details | After each physical request                     | Durable monetary and transport forensics under {§provider-usage}; never the pre-call packet budget.                                                                                   |
-| Packet render-weight                                                | `rulerCount = ceil(chars/2)` over rendered slots                  | Every packet build                              | Drives the Budget readout and grinder.                                                                                                                                                |
-| Stored content-depth                                                | The same ruler over entry/log content                             | When content is written                         | Weights catalog and log rows without per-model workspace state.                                                                                                                       |
-| §tokenomics-context-envelope-admission Hard context-envelope admission | Provider measurement of the complete `PacketWire` message request | After the grinder leaves negative ruler pressure | Exact counts and proven upper bounds may admit the request within the effective total envelope. Estimates and unknown capacity fail closed. Never model-facing.                       |
+| Fact | Owner and unit | Time | Contract |
+|:-----|:---------------|:-----|:---------|
+| Core curation weight | `contentWeight = ceil(chars/2)` over channel content, canonical log bodies, and rendered packet slots | Write/build | Stable, model-independent pressure and OPEN/FOLD savings; never a tokenizer claim. |
+| §tokenomics-context-envelope-admission Provider input capacity | Provider model limits and configured total output envelope, in provider tokens | Before every logical request | `min(maxInputTokens, contextWindow - outputBudget)` over the known terms. The provider alone measures the complete request and admits, defers, or rejects it. |
+| Provider generation envelope | Provider total output budget and optional reasoning subset, in provider tokens | Before every logical request | One total output budget includes hidden reasoning. A reasoning budget is a strict subset, never an additive reserve. |
+| Provider usage and cost | Provider-reported input/output/cache/reasoning tokens and monetary evidence | After every physical request | Durable physical-request forensics under {§provider-usage}; never curation state or a preflight estimate. |
 
-- §tokenomics-tokens-stored-at-write **Ruler tokens, stored at write.** `entry_channels.tokens` and `log_entries.tokens` are populated with the model-independent `rulerCount` when their content is written. The stored number is a stable content-depth measurement, not a provider-specific prediction.
-- §tokenomics-render-weight-budget **Render-weight budget.** The budget headline — `ceiling`, `tokenUsage`, `tokensFree` — is the ruler measurement of the *assembled packet* after section transforms and budget substitution. Core measures minimum-width probes, monotonically expands fields that do not fit, then right-aligns the final values into those same widths; final substitution is length-invariant and displayed usage equals the stored request weight. A `SUM` of stored content-depth would measure different artifacts and cannot substitute for packet render-weight.
-- §tokenomics-context-percent **Prompt-budget percent.** The headline carries usage as a percent of the enforced model-facing budget — `usage Y (P%)` — beside the absolutes. It reads the ceiling already in hand; no extra provider call.
-- §tokenomics-window-partition **Hard capacity and virtual pressure are
-  separate.** The provider owns the effective total context envelope and
-  generation settings. The envelope is already the minimum of model capacity
-  and any stricter operator context cap ({§model-fact-resolution}); that cap is
-  final. Core derives the natural prompt gauge from the envelope and its packing-safety
-  margin. `PLURNK_SERVICE_PROMPT_BUDGET` is an optional alias-scoped virtual
-  ceiling:
-  `promptBudget = min(configuredPromptBudget, naturalPromptCapacity)`. Unset
-  uses the natural capacity. The virtual ceiling controls only the packet gauge
-  and grinder; it never changes the hard context envelope, reasoning, completion, or
-  `maxTokens`.
+- §tokenomics-weight-stored-at-write **Curation weight, stored at write.** `entry_channels.weight` weighs the complete channel content. `log_entries.weight` weighs the complete canonical `LogBody` content before coordinate and packet presentation; persistence `tx`/`rx` envelopes contribute nothing merely by existing, and proposal settlement recomputes the value when the canonical result changes. Bodyless rows therefore weigh zero. The stored number is a stable content-depth measurement, not a provider-token prediction.
+- §tokenomics-render-weight-budget **Packet curation budget.** The Curation headline measures the *assembled packet* after section transforms and readout substitution. Core measures minimum-width probes, monotonically expands fields that do not fit, then right-aligns final values into those widths; final substitution is length-invariant and displayed weight equals the stored request weight. A `SUM` of stored content weights measures a different artifact and cannot substitute for packet render weight.
+- §tokenomics-context-percent **Curation percent.** The headline carries packet weight as a percentage of its curation budget beside the absolutes. It reads the capacity already resolved by the provider; no extra provider call.
+- §tokenomics-window-partition **One capacity derivation; no service-side token budget.** The provider owns model limits and the configured total output envelope. Its resolved `inputCapacity` is the numeric curation-budget calibration as well as the physical denominator exposed to clients. That reuse is policy, not a unit conversion: Core compares stable curation weight with it only to shape context, while provider request-shaped evidence alone admits or rejects I/O. `PLURNK_SERVICE_PROMPT_BUDGET`, `PLURNK_SERVICE_SAFETY`, and the additive reasoning/completion reserve knobs are retired; local and custom deployments tune context window, total output budget, optional reasoning subset, and prompt-projection percentage at their owning layers.
 - §tokenomics-prompt-projection-share **Prompt projection is stable packet policy.**
   `PLURNK_SERVICE_PROMPT_PROJECTION` is a required alias-scoped percentage in
-  `(0, 100)`. It allocates that share of the enforced `promptBudget` to the
+  `(0, 100)`. It allocates that share of the provider-derived curation budget to the
   aggregate automatic prompt-body projection. It does not bound stored prompt
   size, provider capacity, an explicit READ/FIND result, or the complete packet.
   Basing the share on the stable ceiling rather than current free weight keeps
   one prompt's projection byte-stable as the worker log evolves.
-- §tokenomics-window-unpollable-deliberate **Unknown provider capacity stays
-  unknown.** Without a configured virtual ceiling, an unknown provider window
-  leaves the prompt uncapped and omits denominator-dependent gauge telemetry. A
-  configured virtual ceiling still supplies PLURNK's curation gauge without
-  pretending to describe hard capacity. A negative-gauge request cannot be
-  admitted without a known effective context and generation envelope.
+- §tokenomics-window-unpollable-deliberate **Unknown provider capacity stays unknown.** When the provider cannot derive `inputCapacity`, Core omits denominator-dependent curation telemetry and uses the ordinary bounded prompt projection. The provider still sends requests whose measurement or limits are estimates or unavailable: ambiguity defers to the upstream capacity oracle rather than becoming a local rejection.
 
-§tokenomics-client-gauge **The client gauge pairs current occupancy with its
-effective ceiling.** A model switch changes both latest-turn values together;
-the loop's aggregate provider accounting remains monetary evidence, not a gauge
-input.
-
-| Surface                    | `contextTokens`                                                                                           | `promptBudget`                                                                |
-| -------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `loop/terminated.usage`    | `inputTokens` from the latest settled physical request on the latest turn; `null` when absent or unknown | Latest turn's enforced packet allowance; `null` when uncapped or unknown      |
-| `providers.list` alias row | not present                                                                                               | Active alias's current enforced packet allowance; `null` when not established |
+§tokenomics-client-gauge **Clients receive curation and physical occupancy as separate pairs.** `loop/terminated.usage` carries latest-turn `curationWeight`/`curationBudget` and latest-emission-call `contextTokens`/`contextCapacity`; each unknown fact is `null`. Both physical facts bind to that same call: a preflight rejection may report capacity while its absent physical request leaves `contextTokens=null`, never borrowed from an earlier call. Clients never divide provider-reported physical tokens by Core curation weight. `providers.list` exposes each instantiated alias's `inputCapacity`. A model switch replaces the latest-turn facts together; aggregate provider accounting remains cardinal monetary evidence, not a gauge input.
 
 - **Derivation is eager and exhaustive.** Workspace creation and searchable-resource changes start one coalesced warm. The first model turn joins that warm; later turns derive intervening changes before dispatch. No model operation observes partial graph or vector coverage. A semantic query ranks every eligible candidate in scope, so lexical overlap never gates vector recall. With no embedder, readable-content FTS is the explicit keyword fallback. Progress notices make the wait visible; latency is never hidden by partial semantics. {§derivation-exhaustive}
 - §membership-binary-sniff **Binary truth beats the label; no entry dominates the corpus.** A tracked member whose HEAD bytes contain NUL enters {§membership-source-projection} as `application/octet-stream` **regardless of what extension-based detection claims**; byte-level evidence outranks a default label. Every eligible text is tiled losslessly to the embedder window and every tile is embedded before its derivation attaches; semantic ranking max-pools the best chunk per candidate.
-- §tokenomics-agnostic-ruler **One model-agnostic ruler.** The daemon runs workers on different models in one workspace concurrently, while catalog and log accounting are workspace-wide. The complete model-facing ledger therefore uses `rulerCount = ceil(chars/2)`: one content has one number regardless of which model reads it, with no per-model workspace state or recount pass. Nonnegative-gauge packets rely on that ruler. Only a negative-gauge packet invokes the shipping provider's request-shaped hard-envelope measurement.
-- §tokenomics-neutral-telemetry **Budget telemetry is state, with one pressure alarm.** The model-facing Budget ordinarily has exactly one line: token ceiling, current usage and percentage, and free tokens. When free tokens are negative, exactly one second line reads `Context Token Budget Panic: YOU MUST FOLD or KILL enough less-relevant log items to restore free tokens.` Per-entry weights remain on log rows where they describe the entries themselves. Packet-level composition, rankings, and visualizations are absent. OPEN/FOLD/KILL remain the ordinary curation capabilities; no deterministic recovery process is prescribed.
-- §tokenomics-content-hash-identity **Content identity, not per-tokenizer counts.** Static channel writes stamp `content_hash` (SHA-256) as a stable per-content identity. `tokens` is stored in ruler units beside that content and is never keyed or recomputed by model.
+- §tokenomics-agnostic-ruler **One model-agnostic curation ruler.** The daemon runs workers on different models in one workspace concurrently, while catalog and log accounting are workspace-wide. `contentWeight = ceil(chars/2)` therefore gives one content one stable number without per-model workspace state or recount passes. It controls curation only; every provider call independently measures the complete request as well as it can.
+- §tokenomics-neutral-telemetry **Curation telemetry is state, with one pressure alarm.** The model-facing Curation section ordinarily has one line: budget, current packet weight and percentage, and free weight. When free weight is negative, exactly one second line directs the model to FOLD or KILL less-relevant log items. Per-entry weights remain on log rows where they describe OPEN cost and FOLD savings. Packet-level composition, rankings, and physical token speculation are absent.
+- §tokenomics-content-hash-identity **Content identity, not per-tokenizer counts.** Static channel writes stamp `content_hash` (SHA-256) as stable content identity. `weight` is stored beside that content and is never keyed or recomputed by model.
 - §tokenomics-provider-usage **Provider accounting is physical-request evidence, not curation state.** Every issued physical request has one durable pre-I/O `provider_requests` identity and settles once as response or error. Each record preserves conventional {§provider-usage} quantities and required {§provider-cost} evidence; an unreported quantity remains absent, including on response-less failures, and is never replaced by zero. `model_calls` own logical response/failure evidence, `turn_attempts` specialize emission admission, and `provider_requests` are the sole durable accounting representation. Emissions, BARE calls, rejected responses, retries, failovers, and errors therefore remain cardinal and ordered. Turn, loop, worker, workspace, digest, and protocol accounting are derived from those records through the shared {§provider-accounting} projection; only emission calls contribute the latest-packet context gauge. The baseline stores no floating-point money, denormalized totals, or rollup triggers. A documented direct charge becomes `charged`; otherwise the provider may compute an exact-decimal USD `estimated` amount from complete usage and the exact model's Models.dev rates; insufficient evidence becomes `unknown`. Derived `costUsd` is an exact decimal string only when every request is expressible in USD and is `null` otherwise. This is operational request accounting, not invoice reconciliation. Output and reasoning are quantities the model cannot FOLD, so they never alter the model-facing Budget ledger.
-- §tokenomics-negative-pressure **Negative ruler pressure is honest and nonterminal.** The readout describes the packet the model actually receives: usage and percent may exceed the virtual ceiling, and free tokens equal `ceiling - usage` without flooring. Crossing the ceiling records {§grinder-overflow-problem}, then the grinder ({§grinder}) folds only the newest boundary. If the rebuilt packet remains negative but exact or proven-bounded request evidence fits the effective hard envelope, generation proceeds under the ordinary operation contract. Overflow creates no strike or one-turn quota; only failed hard-envelope admission terminally rejects generation.
+- §tokenomics-negative-pressure **Negative curation pressure is honest and nonterminal.** The readout describes the packet the model actually receives: weight and percent may exceed the curation budget, and free weight equals `budget - weight` without flooring. Crossing the budget records {§grinder-overflow-problem}, then the grinder ({§grinder}) folds only the newest boundary. Remaining curation debt never decides physical admission, creates a strike, or establishes a one-turn quota.
 
 ### §membership Workspace identity, membership, disk co-location
 
@@ -2600,46 +2578,53 @@ explicit.
 
 ### §grinder Budget enforcement: the grinder
 
-The grinder is the one pre-provider curation path for the model-facing prompt
-gauge. Hard admission remains a separate predicate over the effective total
-context envelope:
+The grinder is the one pre-provider curation path for the model-facing gauge.
+It never decides physical admission. Every request then crosses the provider's
+request-shaped capacity boundary, where proven exact overflow may reject
+pre-I/O and ambiguous evidence defers to upstream:
 
 ```mermaid
 flowchart TD
-    assemble["Assemble and measure<br/>request packet"] --> policy{"Nonnegative<br/>ruler gauge?"}
-    policy -->|yes| unchanged["Provider generate<br/>packet unchanged"]
+    assemble["Assemble and measure<br/>request packet"] --> policy{"Packet weight ≤<br/>curation budget?"}
+    policy -->|yes| generate["Provider generate"]
     policy -->|no| problem["Record nonterminal 413<br/>Token Budget Overflow"]
     problem --> fold["FOLD newest boundary<br/>and its OPEN effects<br/>tag overflow"]
     fold --> rebuild["Rebuild and remeasure"]
-    rebuild --> folded{"Nonnegative<br/>ruler gauge?"}
-    folded -->|yes| recovered["Provider generate<br/>with folded packet"]
-    folded -->|no| admission{"Exact or bounded request<br/>fits hard envelope?"}
-    admission -->|yes| pressured["Provider generate<br/>with negative Budget alarm"]
-    admission -->|no / unknown / estimate| stop["413 hard stop<br/>no provider call"]
+    rebuild --> generate
+    generate --> capacity{"Provider capacity<br/>failure?"}
+    capacity -->|no| response["Classify completed response"]
+    capacity -->|yes| prompt{"Withholding automatic<br/>prompt bodies changes request?"}
+    prompt -->|yes| retryPrompt["Persist failure;<br/>rebuild and retry"]
+    retryPrompt --> generate
+    prompt -->|no| boundary{"Newest boundary not yet<br/>rolled back, and rollback<br/>changes request?"}
+    boundary -->|yes| retryBoundary["Persist failure;<br/>roll back, rebuild, retry"]
+    retryBoundary --> generate
+    boundary -->|no| stop["Persist terminal 413"]
 ```
 
 §grinder-overflow-only **The grinder fires only on actual overflow.** In
 `Engine.runTurn`, after `PacketBuilder.buildRequestPacket` assembles the request
 and before `provider.generate`, it compares the packet's render-weight
-({§tokenomics}) with the virtual ceiling. At or under the ceiling, the packet
+({§tokenomics}) with the provider-derived curation budget. At or under the budget, the packet
 ships untouched. The grinder never trims
 speculatively or "helpfully."
 
 - §grinder-overflow-problem **Token Budget Overflow is a nonterminal 413 Problem.** Every over-ceiling assembly records exactly one `engine/context/token-budget-overflow` Problem before automatic recovery, with pre-recovery `usage`, `ceiling`, and `deficit` evidence. Its exact `detail` is `Token Budget Overflow: Token Usage exceeded Token Ceiling. Newest log items were automatically FOLDed to fit within token budget. Curate the log and/or perform more conservatively scoped or chunked retrieval operations to recover.` The Problem remains durable and model-visible even when folding restores room and the turn later concludes successfully; it does not strike or replace the turn's terminal disposition.
 - §grinder-layer1-rollback **One rule, every turn: roll back context introduced by the newest boundary.** On overflow the grinder folds, in one set operation, still-open rows born in the immediately prior turn or current pre-model turn plus exact older rows that a successful OPEN in the immediately prior turn transitioned from folded to open. It reads those landed effects from {§fold-open-meta-operations}; it never re-runs the selector, treats an already-open target as newly introduced, or chooses other older history by relevance. Turn 1 has no prior turn, so only its pre-model rows qualify. The same set operation additively applies the `overflow` tag to every row it folds; rows and bodies remain re-OPENable.
 - §grinder-errors-exempt **Errors, the prompt, AND the plan are exempt.** The grinder never folds an `op='error'` row: errors are the model's durable, curatable record of what went wrong. Nor does it fold the actionless **user prompt** row (`prompt:///<loop>/<N>`): the task frame is not ordinary model-authored memory. Nor a **PLAN row**: the checklist is the model's orientation surface when the grinder fires. All three stay OPEN until the model itself FOLDs or KILLs them.
-- §grinder-hard-413 **The terminal hard stop belongs only to effective-envelope admission.** If the rebuilt packet remains ruler-negative, Core measures the complete `PacketWire` request and reserves the configured generation envelope. Exact or proven-bounded evidence within `provider.contextWindow` admits an ordinary turn regardless of ruler debt. Unknown capacity, an estimate, or evidence exceeding the effective prompt capacity abandons the loop immediately at **413 Content Too Large** without calling `provider.generate`. The terminal request stores one `engine/context/context-envelope-admission-failed` Problem with ruler pressure and admission evidence, distinct from the preceding nonterminal overflow 413; it is failure forensics, not a model recovery turn.
+- §grinder-hard-413 **Only a provider capacity failure can terminalize at 413.** Every `provider.generate` assesses its exact request under {§provider-surface-capacity}. A proven exact preflight overflow issues no physical request; estimate, unavailable evidence, and a non-fitting upper bound defer to upstream, whose context rejection normalizes to the same `capacity_exceeded` failure. Core retries only after changing the request: first by withholding automatic prompt-body projection when that changes the packet, then by rolling back the newest boundary once when the grinder has not already done so and that changes the packet. Each failed logical call, any issued physical request, capacity evidence, and model-visible provider Problem remain durable; these recovery calls do not consume the completed-emission attempt budget. Core never resends identical bytes as capacity recovery and never chooses arbitrary older history. If neither recovery changes the request, or the changed request is still rejected, the request-only turn and exact provider Problem terminalize the loop at **413 Content Too Large**.
 
-- §tokenomics-fetch-fits-free **A retrieval larger than the available packet room arrives folded with a 413 explanation.** The result lands in the next build; if that build exceeds the ceiling, Core records {§grinder-overflow-problem} and folds the newest boundary, which contains the result. Its row and exact body remain durable and re-OPENable, and its `overflow` tag identifies every row selected by the automatic fold. Remaining ruler debt follows {§tokenomics-negative-pressure}.
+- §tokenomics-fetch-fits-free **A retrieval larger than the available packet room arrives folded with a 413 explanation.** The result lands in the next build; if that build exceeds the curation budget, Core records {§grinder-overflow-problem} and folds the newest boundary, which contains the result. Its row and exact body remain durable and re-OPENable, and its `overflow` tag identifies every row selected by the automatic fold. Remaining curation debt follows {§tokenomics-negative-pressure}.
 
-- §loop-terminals **Engine-imposed terminals are HTTP-precise** — the loop-status vocabulary, one meaning each: `200` concluded (the model's SEND signal `200`) · `499` model-abandoned (signal `499`, or a cancel) · `429` maxTurns exhausted · `413` effective context-envelope admission failed · `500` strike threshold or invalid-emission exhaustion (distinct Problem types; `508` when the crossing strike was a detected cycle) · `504` loop timeout / exec-timeout restamp · `202` the bounded wait — a loop blocked on a live obligation (the model's `## SEND0 [202] <T,P>`, {§wait-obligation-matrix}); a wait on nothing resolves to `200` unless a successful same-turn FOLD requires the curated next packet · `100`/`102` queued/running. Never a catch-all, never a new value without changing the owning schema.
+- §loop-terminals **Engine-imposed terminals are HTTP-precise** — the loop-status vocabulary, one meaning each: `200` concluded (the model's SEND signal `200`) · `499` model-abandoned (signal `499`, or a cancel) · `429` maxTurns exhausted · `413` provider input-capacity failure after changed-request recovery · `500` strike threshold or invalid-emission exhaustion (distinct Problem types; `508` when the crossing strike was a detected cycle) · `504` loop timeout / exec-timeout restamp · `202` the bounded wait — a loop blocked on a live obligation (the model's `## SEND0 [202] <T,P>`, {§wait-obligation-matrix}); a wait on nothing resolves to `200` unless a successful same-turn FOLD requires the curated next packet · `100`/`102` queued/running. Never a catch-all, never a new value without changing the owning schema.
 
-§grinder-pressure-surface **What the model sees.** A fold-to-fit packet carries the open {§grinder-overflow-problem} row, its terse `## Errors` pointer, and ordinary folded rows whose complete sorted `tags` include `overflow`. If ruler pressure remains negative but hard admission succeeds, the Budget section also reports the negative free-token value and its one panic line ({§tokenomics-neutral-telemetry}). The 413 diagnoses the overflow without striking, terminalizing the turn, or changing the ordinary operation contract.
+§grinder-pressure-surface **What the model sees.** A fold-to-fit packet carries the open {§grinder-overflow-problem} row, its terse `## Errors` pointer, and ordinary folded rows whose complete sorted `tags` include `overflow`. If curation pressure remains negative but the provider accepts the request, the Budget section also reports the negative free-weight value and its one panic line ({§tokenomics-neutral-telemetry}). The curation 413 diagnoses the overflow without striking, terminalizing the turn, or changing the ordinary operation contract.
 
-The model controls its context; the engine enforces the hard envelope without
-choosing what older history matters. The same boundary applies on turn 1 and
-turn 101. The grinder folds reversibly, never deletes, and never performs
-speculative or non-overflow trimming.
+The model controls its context; the provider owns physical admission, and Core
+performs only bounded changed-request recovery without choosing what older
+history matters. The same boundary applies on turn 1 and turn 101. The grinder
+folds reversibly, never deletes, and never performs speculative or non-overflow
+trimming.
 
 ### §env-delta The environment delta: what changed since the model last looked
 
@@ -2849,14 +2834,14 @@ leaves the request-only record, while rejected exchanges remain in
 | Turn state                    | `turns.packet`                                  |
 | ----------------------------- | ----------------------------------------------- |
 | No model request assembled    | SQL `NULL`                                      |
-| Request assembled             | `{ tokens, sections }`                         |
-| Response admitted             | `{ tokens, sections, assistant, assistantRaw }` |
+| Request assembled             | `{ weight, sections }`                         |
+| Response admitted             | `{ weight, sections, assistant, assistantRaw }` |
 
 | Field                   | Presence                         | Contract                                                                                                                                                                      |
 | ----------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tokens`                | Every assembled model request    | Ruler weight of both rendered request slots. Admission does not change its meaning; it is never response weight or provider usage.                                             |
+| `weight`                | Every assembled model request    | Curation weight of both rendered request slots. Admission does not change its meaning; it is never response weight or provider usage.                                          |
 | `sections`              | Every assembled model request    | Ordered post-transform request sections. `PacketWire.renderSlot` groups them into system and user messages, and the digest re-renders those stored sections byte-for-byte.     |
-| `sections[].tokens`     | Every stored section             | Independently measured render-weight of that section. Their sum is not the rendered request weight because slot separators and independent rounding remain outside each row.  |
+| `sections[].weight`     | Every stored section             | Independently measured curation weight of that section. Their sum is not the rendered request weight because slot separators and independent rounding remain outside each row. |
 | `assistant.content`     | Admitted response only           | Accepted model content from which operations were parsed.                                                                                                                     |
 | `assistant.ops`         | Admitted response only           | Parsed operations admitted from that content.                                                                                                                                |
 | `assistant.reasoning`   | Admitted response only           | Normalized readable reasoning text, or `null`.                                                                                                                               |
@@ -2871,7 +2856,7 @@ or request-only note instead of fabricating response files.
 
 The external tokenless draft and transformation boundary is owned by
 {§scheme-packet-transform}. Core alone extends each validated draft with its
-measured `tokens` field for storage. #74 tracks coverage that mistakes the sum
+measured `weight` field for storage. #74 tracks coverage that mistakes the sum
 of section weights for the rendered request weight.
 
 §definition-table-projection The authored `plurnk.md` remains human-aligned. Its `definition` section deterministically removes Markdown table-cell padding and shortens separator cells to three dashes before plugin transforms, measurement, storage, and wire rendering; alignment colons survive, while fenced blocks and all non-table whitespace remain exact.
@@ -2884,17 +2869,13 @@ of section weights for the rendered request weight.
 | Core lifecycle           | Use the exact Workspace → Worker → Loop → Turn → Op hierarchy in {§lifecycle-terms}. An AG-UI Run or thread is always protocol-qualified. |
 | Model-facing packet      | Use the model's training distribution: operations mirror HTTP and shell, `display` mirrors CSS, and jsonplurnk remains JSON. Renaming this vocabulary to internal API terminology would discard useful resonance for a standard the model never sees. |
 
-`promptBudget` is deliberately distinct from `contextWindow`: it is PLURNK's
-enforced packet allowance, bounded by provider capacity and optionally tightened
-by service policy.
-
 | PLURNK-native term             | Why it remains |
 |--------------------------------|----------------|
 | `worker` / `loop` / `turn`     | The process hierarchy in {§lifecycle-terms}; unqualified `run` names no internal entity. |
 | `packet`                       | The assembled address space, a kernel concept rather than merely a provider request. |
 | `costUsd`                      | No standard cost field exists; the explicit currency avoids implied units, and the value remains an exact decimal string. |
-| `PLURNK_SERVICE_SAFETY`        | The ruler's packing margin is a service fact no provider owns. |
-| the `chars/2` ruler            | Model-agnostic by design ({§tokenomics-agnostic-ruler}). |
+| `curationWeight` / `curationBudget` | Explicitly distinguish Core's model-independent context-shaping facts from physical provider tokens. |
+| the `chars/2` curation ruler   | Model-agnostic by design ({§tokenomics-agnostic-ruler}); it is never presented as a tokenizer. |
 
 Retired terms stay retired: the lexicon guard rejects `thinking`, the unqualified `session` noun, `contextSize`, `decodeBudget`, and moved partition-knob names. <!-- lexicon-allow: this sentence enumerates the retired terms -->
 
@@ -2924,7 +2905,7 @@ READ and FIND own their range or pagination before packet rendering; the packet 
 
 §prompt-entry **Prompt as a first-class entry and log row.** Each prompt is stored once at `prompt:///<loop>/<N>` as an owner-keyed text/markdown entry, then published to its turn as one actionless lowercase `prompt` log row. No synthetic EDIT or READ operation is invented. The row is born OPEN and obeys {§body-projection}. The **Active User Prompts** section closes the user-slot status clump as a paths-only list (`* prompt:///<loop>/<N>`), so every frame remains directly READable even after its log row is folded or killed.
 
-§prompt-projection **Prompt storage is unbounded by model context; automatic materialization is not.** Core persists every accepted prompt completely before packet assembly. The selected provider's enforced `promptBudget` and the alias-resolved percentage from `PLURNK_SERVICE_PROMPT_PROJECTION` derive one aggregate ruler-weight allowance for OPEN prompt bodies. Complete prompt bodies render when their aggregate weight fits. Otherwise all OPEN prompt rows share the allowance: full bodies consume only their required share, unused shares are redistributed, and partial bodies render the largest leading complete-line region that fits their share or an exact character-bound prefix when the first physical line alone is larger. The sum of their rendered body weights never exceeds the allowance. Every partial body carries its exact `chunk` after `body`; the canonical `prompt:///` entry and `log:///` body remain complete and READ/FIND-addressable. Without an enforced packet ceiling the percentage is underivable, so prompt rows retain the ordinary bounded projection rather than inventing capacity. This policy never rejects, summarizes, or discards a prompt because it exceeds a context window.
+§prompt-projection **Prompt storage is unbounded by model context; automatic materialization is not.** Core persists every accepted prompt completely before packet assembly. The selected provider's derived `inputCapacity` and the alias-resolved percentage from `PLURNK_SERVICE_PROMPT_PROJECTION` derive one aggregate curation-weight allowance for OPEN prompt bodies. Complete prompt bodies render when their aggregate weight fits. Otherwise all OPEN prompt rows share the allowance: full bodies consume only their required share, unused shares are redistributed, and partial bodies render the largest leading complete-line region that fits their share or an exact character-bound prefix when the first physical line alone is larger. The sum of their rendered body weights never exceeds the allowance. Every partial body carries its exact `chunk` after `body`; the canonical `prompt:///` entry and `log:///` body remain complete and READ/FIND-addressable. When provider input capacity is unknown the percentage is underivable, so prompt rows retain the ordinary bounded projection rather than inventing capacity. This policy never rejects, summarizes, or discards a prompt because it exceeds a context window.
 
 §prompt-self-only The frame is self-only and owner-keyed:
 `entries.owner_id` carries worker identity while the address carries only the
@@ -2987,7 +2968,7 @@ retain distinct contracts and lifetimes.
 | failure | row | status |
 |---|---|---|
 | action failure | the failed op's own row; the owning scheme supplies Problem Details | 4xx/5xx |
-| context-envelope admission | `op='error'`, origin `plurnk`, source `engine`; `engine/context/context-envelope-admission-failed` Problem Details | 413 |
+| provider input capacity | `op='error'`, origin `plurnk`, source `provider`; exact provider-owned `capacity-exceeded` Problem Details | 413 |
 | max commands exceeded | `op='error'`, origin `plurnk`, source `rail`; `engine/rail/max-commands-exceeded` Problem Details | 429 |
 | idle turn | `op='error'`, origin `plurnk`, source `rail`; `engine/rail/idle-turn` Problem Details | 409 |
 

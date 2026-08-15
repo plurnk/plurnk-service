@@ -41,7 +41,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
                 pathname, query, fragment, lineMarker: null,
                 tx: "{}", mimetype_tx: "application/json",
                 rx: JSON.stringify({ status: 200, content: "x" }), mimetype_rx: "application/json",
-                status_rx: 200, tokens: 1, state: "resolved", outcome: null,
+                status_rx: 200, weight: 1, state: "resolved", outcome: null,
                 attrs: JSON.stringify(attrs),
             });
             if (row === undefined) throw new Error("digest log fixture insert returned no row");

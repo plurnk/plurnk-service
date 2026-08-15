@@ -9,7 +9,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testDeferredProviderCapacity } from "./_helpers.ts";
 import { foldStmt } from "./_dsl.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -148,8 +148,8 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1);
         await db.engine_close_turn.run({
-            id: turnId, status: 200, packet: JSON.stringify({ tokens: 0, sections: [], attributions: [] }),
-            usage_prompt_budget: null, finish_reason: null, model: "mock", meta: "{}",
+            id: turnId, status: 200, packet: JSON.stringify({ weight: 0, sections: [], attributions: [] }),
+            usage_curation_budget: null, finish_reason: null, model: "mock", meta: "{}",
         });
         const modelCall = await db.engine_open_model_call.get<{ id: number }>({
             turn_id: turnId,
@@ -184,6 +184,7 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
             id: modelCall.id,
             response: JSON.stringify({ assistant: { model: "mock" } }),
             failure: null,
+            capacity: JSON.stringify(testDeferredProviderCapacity("machine:emission-fixture")),
             finish_reason: null,
             model: "mock",
         });
@@ -221,6 +222,7 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
             id: bareCall.id,
             response: JSON.stringify({ assistant: { content: "Berlin", model: "mock" } }),
             failure: null,
+            capacity: JSON.stringify(testDeferredProviderCapacity("machine:bare-fixture")),
             finish_reason: "stop",
             model: "mock",
         });
@@ -249,7 +251,7 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
             rx: JSON.stringify({ status: 200, content: "Berlin", mimetype: "text/plain" }),
             mimetype_rx: "application/json",
             status_rx: 200,
-            tokens: 1,
+            weight: 1,
             state: "resolved",
             outcome: null,
             attrs: "{}",

@@ -27,7 +27,7 @@ test("an AUTHORED html write is verbatim — attribute data survives a default R
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `authored-${crypto.randomUUID()}`);
-        const ctx = makeSchemeCtx({ db, workspaceId, mimetypes: DEFAULT_MIMETYPES, tokenize: (t: string) => Math.ceil(t.length / 4) });
+        const ctx = makeSchemeCtx({ db, workspaceId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
 
         const written = await EntryCrud.writeEntry("/roster.html", { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "worker");
         assert.equal(written.status, 201);
@@ -75,7 +75,7 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
 
         const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/news.example/a" });
         assert.ok(entry !== undefined, "the fetched page materialized");
-        const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string; tokens: number }>({ entry_id: entry.id });
+        const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string; weight: number }>({ entry_id: entry.id });
         const byName = new Map(rows.map((r) => [r.name, r]));
         assert.equal(byName.get("body")?.mimetype, "text/markdown", "the decisive body is the projection");
         assert.match(byName.get("body")!.content, /Headline/, "the readable text survives");
@@ -85,7 +85,7 @@ test("a FETCHED html page (via the exec sink) projects: decisive markdown body +
             "the decisive Markdown projection has bounded prose lines",
         );
         assert.equal(byName.get("html")?.content, rawHtml, "the raw #html archive remains byte-for-byte faithful");
-        assert.ok(byName.get("body")!.tokens < byName.get("html")!.tokens, "the price is the projection's, not the scaffolding's");
+        assert.ok(byName.get("body")!.weight < byName.get("html")!.weight, "the curation weight is the projection's, not the scaffolding's");
     } finally { await quiesceExecs(schemes); await db.close(); }
 });
 

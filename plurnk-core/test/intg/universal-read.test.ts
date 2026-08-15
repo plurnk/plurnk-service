@@ -421,7 +421,7 @@ test("exact FIND shares representation preparation but retains universal query s
         const [channels] = result.results as Array<Array<{
             path: string;
             mimetype: string;
-            tokens: number;
+            weight: number;
             lines: number;
         }>>;
         assert.deepEqual(channels?.map(({ path }) => path), [
@@ -430,7 +430,7 @@ test("exact FIND shares representation preparation but retains universal query s
         ]);
         assert.equal(channels?.[0]?.mimetype, "text/markdown");
         assert.equal(channels?.[0]?.lines, 20);
-        assert.ok((channels?.[0]?.tokens ?? 0) > 0);
+        assert.ok((channels?.[0]?.weight ?? 0) > 0);
     } finally {
         await db.close();
     }

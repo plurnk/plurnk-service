@@ -28,6 +28,7 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 export interface LiveWorkspace {
     db: Db;
     ws: SeamSocket;
+    provider: Provider;
     workspaceId: number;
     runDir: string;
     cleanup: () => Promise<void>;
@@ -90,7 +91,7 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
         name: opts.name, projectRoot,
     })).result as { id: number };
     return {
-        db, ws, workspaceId: created.id, runDir,
+        db, ws, provider, workspaceId: created.id, runDir,
         cleanup: async () => {
             ws.close(); await daemon.stop(); await db.close();
             Digest.run({ dbPath, digestDir: join(runDir, "digest") });
@@ -150,7 +151,7 @@ export const seedEntry = async (
     });
     if (e === undefined) throw new Error("seedEntry: insert returned no row");
     await db.crud_write_channel.run({
-        entry_id: e.id, name: "body", content: opts.content, mimetype: opts.mimetype ?? "text/markdown", tokens: 0, state: "static",
+        entry_id: e.id, name: "body", content: opts.content, mimetype: opts.mimetype ?? "text/markdown", weight: 0, state: "static",
     });
     return e.id;
 };
@@ -171,19 +172,35 @@ export const lastRx = async (db: Db, modelWorkerId: number, op: string): Promise
     return row?.rx ?? "";
 };
 
-// Pin budget-related test configuration for the ACTIVE alias. The suffix wins
-// over ambient operator settings and remains alias-agnostic when the demo model pivots.
-export const pinAliasBudget = (part: { PROMPT_BUDGET?: string; REASONING?: string; COMPLETION?: string; SAFETY?: string }): (() => void) => {
-    const alias = resolveActiveAlias(process.env)?.alias ?? "";
-    // PROMPT_BUDGET is virtual model-facing/grinder policy; it never changes hard capacity
-    // or response settings. The reserves are provider-tier ABSOLUTES (positive — a zero reserve
-    // is unspellable by design, pin "1" for a nil slice); SAFETY stays core's.
-    const entries: Array<readonly [string, string]> = ([
-        [`PLURNK_SERVICE_PROMPT_BUDGET_${alias}`, part.PROMPT_BUDGET],
-        [`PLURNK_PROVIDERS_REASONING_RESERVE_${alias}`, part.REASONING],
-        [`PLURNK_PROVIDERS_COMPLETION_RESERVE_${alias}`, part.COMPLETION],
-        [`PLURNK_SERVICE_SAFETY_${alias}`, part.SAFETY],
-    ] as Array<readonly [string, string | undefined]>).filter((e): e is readonly [string, string] => e[1] !== undefined);
+// Request a provider-derived input-capacity target for the ACTIVE alias. The
+// suffix wins over ambient operator settings and remains alias-agnostic when a
+// demo pivots models. There is deliberately no Core-only pressure gauge: the
+// context window and total output envelope derive both the curation calibration
+// and the physical request capacity through the production provider path. A
+// model's stricter natural context or input cap may lower the effective result.
+export const pinAliasInputCapacity = ({
+    inputCapacity,
+    outputBudget,
+}: {
+    inputCapacity: number;
+    outputBudget: number;
+}): (() => void) => {
+    if (!Number.isSafeInteger(inputCapacity) || inputCapacity <= 0) {
+        throw new TypeError(`inputCapacity must be a positive safe integer; got ${inputCapacity}`);
+    }
+    if (!Number.isSafeInteger(outputBudget) || outputBudget <= 0) {
+        throw new TypeError(`outputBudget must be a positive safe integer; got ${outputBudget}`);
+    }
+    const active = resolveActiveAlias(process.env);
+    if (active === null) throw new Error("PLURNK_MODEL not set; cannot pin the active alias input capacity");
+
+    // Preserve the naturally resolved output envelope measured by the floor
+    // probe. Only its input side is tightened for the pressure experiment.
+    const contextWindow = inputCapacity + outputBudget;
+    const entries: Array<readonly [string, string]> = [
+        [`PLURNK_PROVIDERS_CONTEXT_WINDOW_${active.alias}`, String(contextWindow)],
+        [`PLURNK_PROVIDERS_OUTPUT_BUDGET_${active.alias}`, String(outputBudget)],
+    ];
     const prev = entries.map(([k]) => [k, process.env[k]] as const);
     for (const [k, v] of entries) process.env[k] = v;
     return () => { for (const [k, v] of prev) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } };

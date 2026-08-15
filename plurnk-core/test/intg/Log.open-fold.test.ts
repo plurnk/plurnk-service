@@ -31,7 +31,7 @@ const setup = async (attrs = "{}") => {
         lineMarker: null,
         tx: "## EDIT0 (worker:///x)\nbody", mimetype_tx: "text/vnd.plurnk",
         rx: JSON.stringify({ status: 201 }), mimetype_rx: "application/json",
-        status_rx: 201, tokens: 0,
+        status_rx: 201, weight: 0,
         state: "resolved", outcome: null, attrs,
     });
     return { db, workspaceId, workerId, loopId, turnId };
@@ -189,7 +189,7 @@ test("engine_render_log carries the delta source; self-authored entries stay nul
             pathname: "/config.toml", query: null, fragment: null, lineMarker: null,
             tx: "## EDIT0 (file:///config.toml)", mimetype_tx: "text/vnd.plurnk",
             rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
-            status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
+            status_rx: 200, weight: 0, state: "resolved", outcome: null, attrs: "{}",
         });
         const rows = await db.engine_render_log.all<{ sequence: number; source: string | null }>({ worker_id: workerId });
         assert.equal(rows.find((r) => r.sequence === 2)?.source, "file", "the delta's cause round-trips the render query → packet-wire renders source=\"file\"");
@@ -209,7 +209,7 @@ test("FOLD and OPEN apply the same tag + matcher filter", async () => {
                 pathname: "/doc", query: null, fragment: null, lineMarker: null,
                 tx: "## READ0 (worker:///doc)", mimetype_tx: "text/vnd.plurnk",
                 rx: JSON.stringify({ status: 200, content, mimetype: "text/plain", startLine: 1 }), mimetype_rx: "application/json",
-                status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
+                status_rx: 200, weight: 0, state: "resolved", outcome: null, attrs: "{}",
             });
             assert.ok(row !== undefined);
             return row.id;
@@ -294,7 +294,7 @@ test("KILL erases an op='error' log item exactly like any other — errors ARE n
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
             rx: JSON.stringify({ message: "parse error", snippet: "bad" }), mimetype_rx: "application/json",
-            status_rx: 400, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
+            status_rx: 400, weight: 0, state: "resolved", outcome: null, attrs: "{}",
         });
         const r = await new Log().kill("/1/1/2", null, makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
         assert.equal(r.status, 200, "an error row is KILLable exactly like any log item — no special-casing");
@@ -366,7 +366,7 @@ test("FOLD[tag] and OPEN[tag] symmetrically filter ALL-tag classifications", asy
                 pathname: "/doc", query: null, fragment: null, lineMarker: null,
                 tx: "## READ0 (worker:///doc)", mimetype_tx: "text/vnd.plurnk",
                 rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
-                status_rx: 200, tokens: 0, state: "resolved", outcome: null, attrs: "{}",
+                status_rx: 200, weight: 0, state: "resolved", outcome: null, attrs: "{}",
             });
             assert.ok(row !== undefined);
             return row.id;
@@ -459,7 +459,7 @@ test("FOLD/OPEN curate engine-minted error rows through the same operation coord
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
             rx: JSON.stringify({ status: 429, kind: "max_commands_exceeded", message: "too many commands" }),
-            mimetype_rx: "application/json", status_rx: 429, tokens: 50, state: "failed", outcome: "max_commands_exceeded", attrs: "{}",
+            mimetype_rx: "application/json", status_rx: 429, weight: 50, state: "failed", outcome: "max_commands_exceeded", attrs: "{}",
         });
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" });
         // The model's exact gesture — fold the error row by its canonical operation address.

@@ -52,7 +52,7 @@ DELETE FROM log_entries WHERE id = $id;
 -- fields Log's rx projection renders (FIND must match exactly what READ shows). Coordinate-ordered.
 SELECT
     (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
-    le.origin, le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash, le.attrs,
+    le.origin, le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.weight, le.deep_hash, le.attrs,
     COALESCE((
         SELECT json_group_array(ordered.tag)
         FROM (
@@ -105,7 +105,7 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- same ALL-tags filter; an authored FIND signal never routes here.
 SELECT
     (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
-    le.origin, le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.tokens, le.deep_hash, le.attrs,
+    le.origin, le.op, le.tx, le.mimetype_tx, le.rx, le.mimetype_rx, le.weight, le.deep_hash, le.attrs,
     COALESCE((
         SELECT json_group_array(ordered.tag)
         FROM (

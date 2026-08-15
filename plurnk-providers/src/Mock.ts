@@ -5,10 +5,11 @@
 // Provider contract. Production providers don't expose the `ops` escape
 // hatch — that's an intg-only convenience.
 
-import type { ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderEncryptedReasoningItem, ProviderRequestAccounting, ProviderResponse, ProviderUsage } from "./types.ts";
-import { resolveEnvelopeFromEnv } from "./env.ts";
+import type { ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderEncryptedReasoningItem, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ProviderUsage } from "./types.ts";
+import { resolveGenerationEnvelopeFromEnv } from "./env.ts";
 import { validateProviderRequestAccounting } from "./accounting.ts";
 import { ProviderError } from "./errors.ts";
+import { assessRequestCapacity, effectiveInputCapacity, effectiveOutputBudget, effectiveReasoningBudget } from "./capacity.ts";
 
 export type MockAssistant = {
     content: string;
@@ -46,29 +47,35 @@ type MockGenerateArgs = Omit<Parameters<Provider["generate"]>[0], "workerId"> & 
 
 export default class Mock implements Provider {
     #contextWindow: number | null;
-    #reasoningReserve: number | null;
-    #completionReserve: number | null;
+    #outputBudget: number | null;
+    #reasoningBudget: number | null;
     #queue: MockResponse[];
 
-    // {§provider-generation-envelope} Reserves resolve the same way a real
-    // provider's do — the tolerant env read (the service's partition/budget
-    // suite sets PLURNK_PROVIDERS_*_RESERVE
-    // and Mock reflects it, resolved against contextWindow). Tolerant, NOT the
-    // fail-hard envelopeFromEnv: Mock is the universal fixture, constructed
-    // without the reserves in most base tests, so absent env → null → the
-    // consumer's no-cap path, and the ~100 `new Mock({ contextWindow, responses })`
-    // sites stay untouched. Mock has no alias identity, so it reads the BARE knobs.
+    // {§provider-generation-envelope} Mock resolves the same generation
+    // envelope as a real provider, but tolerates absent policy because it is
+    // also the universal test fixture. No output budget means its context
+    // window alone cannot determine an input capacity. Mock has no alias
+    // identity, so it reads the bare knobs.
     constructor({ contextWindow, responses }: { contextWindow: number | null; responses: MockResponse[] }) {
         this.#contextWindow = contextWindow;
-        const env = resolveEnvelopeFromEnv(process.env, contextWindow);
-        this.#reasoningReserve = env.reasoningReserve;
-        this.#completionReserve = env.completionReserve;
+        const envelope = resolveGenerationEnvelopeFromEnv(process.env, contextWindow);
+        this.#outputBudget = envelope.outputBudget;
+        this.#reasoningBudget = envelope.reasoningBudget;
         this.#queue = [...responses];
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
-    get reasoningReserve(): number | null { return this.#reasoningReserve; }
-    get completionReserve(): number | null { return this.#completionReserve; }
+    get maxInputTokens(): number | null { return null; }
+    get maxOutputTokens(): number | null { return null; }
+    get outputBudget(): number | null { return this.#outputBudget; }
+    get reasoningBudget(): number | null { return this.#reasoningBudget; }
+    get inputCapacity(): number | null {
+        return effectiveInputCapacity({
+            contextWindow: this.#contextWindow,
+            maxInputTokens: this.maxInputTokens,
+            outputBudget: this.#outputBudget,
+        });
+    }
     get model(): string { return "mock"; }
 
     // Mock's deliberately simple vocabulary defines each two content code units
@@ -82,11 +89,42 @@ export default class Mock implements Provider {
         };
     }
 
-    async generate({ signal, grammar, observeRequest }: MockGenerateArgs): Promise<MockReturnedResponse> {
+    async assessRequestCapacity(
+        messages: readonly ChatMessage[],
+        maxOutputTokens?: number,
+    ): Promise<ProviderRequestCapacity> {
+        const outputBudget = effectiveOutputBudget({
+            requested: maxOutputTokens,
+            configured: this.#outputBudget,
+            maxOutputTokens: null,
+            contextWindow: this.#contextWindow,
+        });
+        const reasoningBudget = effectiveReasoningBudget({
+            configured: this.#reasoningBudget,
+            outputBudget,
+        });
+        return assessRequestCapacity({
+            contextWindow: this.#contextWindow,
+            maxInputTokens: null,
+            maxOutputTokens: null,
+            outputBudget,
+            reasoningBudget,
+            measurement: await this.countPromptTokens(messages),
+        });
+    }
+
+    async generate({ messages, maxOutputTokens, signal, grammar, observeRequest }: MockGenerateArgs): Promise<MockReturnedResponse> {
         // Honor abort before consuming the queue — an aborted call makes no
         // "wire call" and must not exhaust a queued response
         // ({§provider-failure-normalization}).
         signal?.throwIfAborted();
+        const capacity = await this.assessRequestCapacity(messages, maxOutputTokens);
+        if (capacity.decision === "reject") {
+            throw new ProviderError("mock", "capacity_exceeded", "Mock request exceeds its exact input capacity.", {
+                capacity,
+                extensions: { capacityStage: "preflight", capacity },
+            });
+        }
         const settle = await observeRequest?.({ provider: "provider:mock", model: this.model });
         const next = this.#queue.shift();
         if (next === undefined) {
@@ -101,7 +139,7 @@ export default class Mock implements Provider {
                 "mock",
                 "invalid_response",
                 "Mock provider exhausted: no more queued responses",
-                { accounting: [accounting] },
+                { accounting: [accounting], capacity },
             );
         }
         const a = next.assistant;
@@ -137,6 +175,7 @@ export default class Mock implements Provider {
             assistant,
             assistantRaw: next.assistantRaw ?? null,
             accounting: [requestAccounting],
+            capacity,
             ...(grammarEvidence !== undefined ? { grammarEvidence } : {}),
         };
     }

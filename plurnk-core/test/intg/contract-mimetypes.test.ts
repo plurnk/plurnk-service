@@ -320,7 +320,7 @@ test("a binary file persists only derived Unicode and refreshes when its project
             {
                 content: "projection-v1:1,2,3,4",
                 mimetype: "text/markdown",
-                tokens: 6,
+                weight: 6,
                 state: "static",
             },
         );
@@ -354,7 +354,7 @@ test("a binary file persists only derived Unicode and refreshes when its project
             {
                 content: "projection-v2:1,2,3,4",
                 mimetype: "text/markdown",
-                tokens: 6,
+                weight: 6,
                 state: "static",
             },
         );
@@ -395,7 +395,7 @@ test("a binary file persists only derived Unicode and refreshes when its project
             {
                 content: "",
                 mimetype: "application/x-readable-binary",
-                tokens: 0,
+                weight: 0,
                 state: "static",
             },
         );

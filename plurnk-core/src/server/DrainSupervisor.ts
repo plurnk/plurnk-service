@@ -444,8 +444,10 @@ export default class DrainSupervisor {
                     // longer blocks to return it). A genuine error rejects firstLoopPromise.
                     let usage: LoopUsage = {
                         accounting: aggregateProviderAccounting([]),
+                        curationWeight: null,
+                        curationBudget: null,
                         contextTokens: null,
-                        promptBudget: null,
+                        contextCapacity: null,
                         meta: {},
                     };
                     let attributions: string[] = [];

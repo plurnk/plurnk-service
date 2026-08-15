@@ -33,8 +33,27 @@ test("classifyProviderError maps HTTP status to kind", () => {
     assert.equal(k(409), "network_failure");
     assert.equal(k(500), "network_failure");
     assert.equal(k(503), "network_failure");
+    assert.equal(k(413), "capacity_exceeded");
     assert.equal(k(400), "invalid_response");
     assert.equal(k(404), "invalid_response");
+});
+
+test("capacity normalization prefers structured provider codes and keeps generic 400s distinct", () => {
+    const openai = apiError(400, JSON.stringify({
+        error: {
+            type: "invalid_request_error",
+            code: "context_length_exceeded",
+            message: "maximum context length exceeded",
+        },
+    }));
+    assert.equal(classifyProviderError(openai).kind, "capacity_exceeded");
+    const normalized = toProviderError(openai, "provider:openai");
+    assert.equal(normalized.status, 413);
+    assert.equal(normalized.problem.capacityStage, "upstream");
+    assert.equal(normalized.problem.providerStatus, 400);
+    assert.equal(classifyProviderError(apiError(400, JSON.stringify({
+        error: { type: "invalid_request_error", code: "bad_temperature", message: "bad temperature" },
+    }))).kind, "invalid_response");
 });
 
 test("provider retry directives survive HTTP failure normalization", () => {
@@ -101,6 +120,20 @@ test("#161: ProviderError carries resource-interrupted attempt evidence outside 
             usage: { inputTokens: 3, outputTokens: 1, totalTokens: 4 },
             cost: { kind: "unknown", reason: "fixture has no monetary evidence" },
         }],
+        capacity: {
+            decision: "defer",
+            contextWindow: null,
+            maxInputTokens: null,
+            maxOutputTokens: null,
+            outputBudget: null,
+            reasoningBudget: null,
+            inputCapacity: null,
+            prompt: {
+                kind: "unavailable",
+                source: "fixture",
+                detail: "the interrupted fixture has no preflight measurement",
+            },
+        },
     } as ProviderAttempt;
     const error = new ProviderError(
         "provider:deepseek",

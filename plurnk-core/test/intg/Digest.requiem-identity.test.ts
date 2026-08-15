@@ -9,7 +9,7 @@ import type { ChatMessage, ProviderAccounting, ProviderRequestAccounting } from 
 import Digest from "../../src/digest/Digest.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, testDeferredProviderCapacity } from "./_helpers.ts";
 
 // A witness that records the identity of every generate() call the requiem makes.
 class WitnessMock extends Mock {
@@ -23,10 +23,10 @@ class WitnessMock extends Mock {
 }
 
 const MODEL_PACKET = (worker: string) => JSON.stringify({
-    tokens: 0,
+    weight: 0,
     sections: [
-        { name: "system", slot: "system", header: null, content: `system for ${worker}`, tokens: 1 },
-        { name: "log", slot: "user", header: "Log", content: `log for ${worker}`, tokens: 1 },
+        { name: "system", slot: "system", header: null, content: `system for ${worker}`, weight: 1 },
+        { name: "log", slot: "user", header: "Log", content: `log for ${worker}`, weight: 1 },
     ],
     attributions: [],
     assistant: { content: `last emission of ${worker}`, ops: [], reasoning: null },
@@ -86,6 +86,7 @@ const recordResponseAttempt = async (db: Db, args: {
         id: modelCall.id,
         response: JSON.stringify(args.response),
         failure: null,
+        capacity: JSON.stringify(testDeferredProviderCapacity("requiem:fixture")),
         finish_reason: "stop",
         model: "mock",
     });

@@ -100,7 +100,7 @@ const withGitWorkspace = async (
         const ctx: PlurnkSchemeContext = {
             db, workspaceId, workerId, loopId, turnId,
             writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
-            tokenize: (t: string) => Math.ceil(t.length / 4),
+            weigh: (t: string) => Math.ceil(t.length / 4),
         };
         await fn(root, ctx, db, trackedPath);
     } finally {
@@ -364,7 +364,7 @@ test("out-of-band change to a member surfaces as a system delta-EDIT", async () 
 test("a member unchanged on disk is not re-tokenized on the next pass", async () => {
     await withGitWorkspace(async (_root, ctx) => {
         let calls = 0;
-        const counting: PlurnkSchemeContext = { ...ctx, tokenize: (t: string) => { calls += 1; return Math.ceil(t.length / 4); } };
+        const counting: PlurnkSchemeContext = { ...ctx, weigh: (t: string) => { calls += 1; return Math.ceil(t.length / 4); } };
         await GitMembership.indexGitMembership(counting);
         const afterFirst = calls;
         assert.ok(afterFirst > 0, "precondition: the first sync tokenizes the member");
@@ -378,7 +378,7 @@ test("overlapping startup and turn membership requests coalesce into one workspa
         let calls = 0;
         const slow: PlurnkSchemeContext = {
             ...ctx,
-            tokenize: (text: string) => {
+            weigh: (text: string) => {
                 calls += 1;
                 return Math.ceil(text.length / 4);
             },

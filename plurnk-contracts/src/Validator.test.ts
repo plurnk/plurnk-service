@@ -181,14 +181,14 @@ test("Problems creates canonical typed occurrences", () => {
     );
     assert.equal(
         Problems.create(
-            "engine:context",
-            "context-envelope-admission-failed",
+            "provider:example",
+            "capacity-exceeded",
             413,
-            "The configured context envelope cannot admit this request.",
+            "The provider cannot admit this request within its input capacity.",
             {},
-            { title: "Context envelope admission failed" },
+            { title: "Provider input capacity exceeded" },
         ).title,
-        "Context envelope admission failed",
+        "Provider input capacity exceeded",
     );
 });
 
@@ -345,7 +345,7 @@ test("EntryReadResult validates one exact client entry projection", () => {
                     contentOffset: 0,
                     contentLength: 5,
                     mimetype: "text/markdown",
-                    tokens: 3,
+                    weight: 3,
                     state: "static" as const,
                 },
             },

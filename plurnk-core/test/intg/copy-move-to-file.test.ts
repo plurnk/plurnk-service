@@ -31,7 +31,7 @@ const withWorkspace = async (fn: (root: string, ctx: Ctx) => Promise<void>): Pro
     const root = await mkdtemp(join(tmpdir(), "plurnk-cpmv-"));
     const db = await openMigrated();
     try {
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, tokenize: (t: string) => Math.ceil(t.length / 4) });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
         const workspaceId = await insertWorkspace(db, `cpmv-${crypto.randomUUID()}`);
         await db.test_set_workspace_project_root.run({ id: workspaceId, project_root: root });
         // {§fs-write-surface} — a non-git root grants nothing; the fixture is the CLIENT granting creates.

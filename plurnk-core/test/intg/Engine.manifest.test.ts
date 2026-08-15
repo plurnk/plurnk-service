@@ -56,7 +56,7 @@ test("the commons catalog is complete and unranked — every selected entry, no 
         const [gbody] = germany;
         assert.equal(gbody.path, "worker:///germany/capital", "the default channel carries the bare resource URI");
         assert.equal(gbody.mimetype, "text/markdown");
-        assert.equal(typeof gbody.tokens, "number", "tokens is the re-counted provider depth");
+        assert.equal(typeof gbody.weight, "number", "weight is the re-counted curation depth");
         assert.ok(gbody.lines >= 1, "lines is the content extent from process().totalLines");
     } finally { await db.close(); }
 });

@@ -72,8 +72,8 @@ interface RxView {
     mimetype?: unknown;
     startLine?: unknown;
     region?: unknown;
-    itemsTokenTotal?: unknown;
-    returnedItemsTokenTotal?: unknown;
+    itemsWeightTotal?: unknown;
+    returnedItemsWeightTotal?: unknown;
     matchLocationCount?: unknown;
     range?: unknown;
     receipt?: unknown;
@@ -103,11 +103,11 @@ interface NoticeView {
     position?: { type?: unknown; line?: unknown; column?: unknown } | null;
 }
 // Loose view of a section re-parsed from `turns.packet` JSON (the digest path).
-interface SectionView { name?: unknown; slot?: unknown; header?: unknown; content?: unknown; tokens?: unknown }
+interface SectionView { name?: unknown; slot?: unknown; header?: unknown; content?: unknown; weight?: unknown }
 interface Packet { sections?: SectionView[] }
-type CountTokens = (text: string) => number;
+type WeighContent = (text: string) => number;
 interface RenderLogOptions {
-    readonly promptProjectionBudget?: number;
+    readonly promptProjectionWeight?: number;
 }
 
 export default class PacketWire {
@@ -126,7 +126,7 @@ export default class PacketWire {
     // One section → its markdown block (`## {header}\n\n{content}`, or bare
     // content when header is null/empty), trailing newlines stripped. Empty
     // content renders to "" so renderSlot drops it. This is the unit the
-    // per-section `tokens` weight is measured over.
+    // per-section `weight` is measured over.
     static renderSection(s: SectionView): string {
         if (typeof s.content !== "string" || s.content.length === 0) return "";
         const header = typeof s.header === "string" && s.header.length > 0 ? s.header : null;
@@ -185,10 +185,10 @@ export default class PacketWire {
     // The log section's content: the model's curated rows as a fenced `jsonplurnk` array ({§jsonplurnk}).
     // Data only — no prose leads the fence (the log carries rules for no one). Empty log → ""
     // (the section is omitted).
-    static renderLog(entries: unknown, countTokens: CountTokens, options: RenderLogOptions = {}): string {
+    static renderLog(entries: unknown, weighContent: WeighContent, options: RenderLogOptions = {}): string {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
         if (log.length === 0) return "";
-        const items = PacketWire.#renderLogEntries(log, countTokens, options);
+        const items = PacketWire.#renderLogEntries(log, weighContent, options);
         // Every source line is coordinate-prefixed, so source backticks never occupy the
         // CommonMark closing-fence position. The fixed opener keeps the packet prefix cache-stable.
         return `\`\`\`jsonplurnk\n[\n${items}\n]\n\`\`\``;
@@ -407,9 +407,9 @@ export default class PacketWire {
     static #promptProjection(
         body: ReturnType<typeof LogBody.resolve>,
         budget: number,
-        countTokens: CountTokens,
+        weighContent: WeighContent,
     ): { text: string; cut: boolean; chunk: string | null } {
-        const weightAt = (end: number): number => countTokens(
+        const weightAt = (end: number): number => weighContent(
             PacketWire.#renderContentBody(body.content.slice(0, end), body.startLine, null),
         );
         if (weightAt(body.content.length) <= budget) {
@@ -461,20 +461,20 @@ export default class PacketWire {
         };
     }
 
-    static #promptBudgets(
+    static #promptProjectionWeights(
         entries: readonly LogEntryView[],
         bodies: readonly ReturnType<typeof LogBody.resolve>[],
-        countTokens: CountTokens,
+        weighContent: WeighContent,
         budget: number | undefined,
     ): ReadonlyMap<number, number> {
         if (budget === undefined) return new Map();
         if (!Number.isSafeInteger(budget) || budget < 0) {
-            throw new RangeError(`promptProjectionBudget must be a non-negative safe integer, got ${JSON.stringify(budget)}`);
+            throw new RangeError(`promptProjectionWeight must be a non-negative safe integer, got ${JSON.stringify(budget)}`);
         }
         const costs = entries.flatMap((entry, index) => {
             if (entry.op !== "prompt" || entry.folded === true || bodies[index]!.content.length === 0) return [];
             const rendered = PacketWire.#renderContentBody(bodies[index]!.content, bodies[index]!.startLine, null);
-            return [{ index, cost: countTokens(rendered) }];
+            return [{ index, cost: weighContent(rendered) }];
         });
         const allocations = new Map<number, number>();
         let remaining = budget;
@@ -497,7 +497,7 @@ export default class PacketWire {
         return allocations;
     }
 
-    static #renderLogEntries(entries: LogEntryView[], countTokens: CountTokens, options: RenderLogOptions): string {
+    static #renderLogEntries(entries: LogEntryView[], weighContent: WeighContent, options: RenderLogOptions): string {
         const bodies = entries.map((e) => {
             const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
             return LogBody.resolve({
@@ -509,11 +509,11 @@ export default class PacketWire {
                 mimetypeRx: typeof e.mimetype_rx === "string" ? e.mimetype_rx : undefined,
             });
         });
-        const promptBudgets = PacketWire.#promptBudgets(
+        const promptProjectionWeights = PacketWire.#promptProjectionWeights(
             entries,
             bodies,
-            countTokens,
-            options.promptProjectionBudget,
+            weighContent,
+            options.promptProjectionWeight,
         );
         return entries.map((e, index) => {
             const meta: Record<string, unknown> = {};
@@ -630,18 +630,18 @@ export default class PacketWire {
                 }
                 // These are underlying selected-content weights, distinct from
                 // the emitted body's generic `tokens` measurement.
-                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.itemsTokenTotal === "number" && rx.itemsTokenTotal > 0) {
-                    meta.itemsTokenTotal = rx.itemsTokenTotal;
+                if (op === "FIND" && rx !== null && typeof rx === "object" && typeof rx.itemsWeightTotal === "number" && rx.itemsWeightTotal > 0) {
+                    meta.itemsTokenTotal = rx.itemsWeightTotal;
                 }
                 if (
                     op === "FIND"
                     && rx !== null
                     && typeof rx === "object"
-                    && typeof rx.returnedItemsTokenTotal === "number"
-                    && rx.returnedItemsTokenTotal > 0
-                    && rx.returnedItemsTokenTotal !== rx.itemsTokenTotal
+                    && typeof rx.returnedItemsWeightTotal === "number"
+                    && rx.returnedItemsWeightTotal > 0
+                    && rx.returnedItemsWeightTotal !== rx.itemsWeightTotal
                 ) {
-                    meta.returnedItemsTokenTotal = rx.returnedItemsTokenTotal;
+                    meta.returnedItemsTokenTotal = rx.returnedItemsWeightTotal;
                 }
                 if (
                     findMatcher
@@ -694,9 +694,9 @@ export default class PacketWire {
                 || op === "FIND"
                 || op === "PLAN"
                 || structuredMutationReceipt;
-            const promptBudget = promptBudgets.get(index);
-            const projection = promptBudget !== undefined
-                ? PacketWire.#promptProjection(fullBody, promptBudget, countTokens)
+            const promptProjectionWeight = promptProjectionWeights.get(index);
+            const projection = promptProjectionWeight !== undefined
+                ? PacketWire.#promptProjection(fullBody, promptProjectionWeight, weighContent)
                 : previewExempt
                 ? { text: fullBody.content, cut: false, chunk: null }
                 : PacketWire.#preview(fullBody.content);
@@ -716,9 +716,9 @@ export default class PacketWire {
 
             // tokens on EVERY row (0 when there's genuinely no body) so the model can always weigh
             // it; for a folded row this is the room an OPEN would add.
-            // 0 for a genuinely empty body — never call countTokens("") (some providers return
+            // 0 for a genuinely empty body — never call weighContent("") (some providers return
             // undefined for it, which JSON.stringify would drop, leaving the row with no tokens).
-            meta.tokens = body.length > 0 ? countTokens(body) : 0;
+            meta.tokens = body.length > 0 ? weighContent(body) : 0;
             // lines beside tokens on a non-retrieval row with a navigable body — the count of
             // `N:`-numbered lines (fences and unnumbered prose don't count), so the model can plan
             // a <start,end> slice before paying for an OPEN. READ/FIND own typed extents instead.

@@ -34,6 +34,7 @@ import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import JournalTurn from "../core/JournalTurn.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
+import LogBody from "../core/LogBody.ts";
 import { setTimeout as delay } from "node:timers/promises";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
@@ -775,6 +776,17 @@ export default class Exec extends CoreSchemeAdapterBase {
                         `log:///${coordinate}`,
                     );
                 }
+                const tx = JSON.stringify({ op: "EDIT", body: source });
+                const rx = JSON.stringify(written.problem === undefined
+                    ? {
+                        ...written,
+                        span: decisive.split("\n").map((l, n) => `${n + 1}:${l}`).join("\n"),
+                    }
+                    : written);
+                const attrs = JSON.stringify(narrationAttrs);
+                if (ctx.weigh === undefined) {
+                    throw new Error("entry(): ctx.weigh is required for curation-weight accounting");
+                }
                 const logRow = await db.engine_insert_log_entry.get<{ id: number }>({
                     worker_id: narration.workerId, loop_id: narration.loopId, turn_id: narration.turnId, sequence,
                     // signal carries additive tag terms through the same slot a model's EDIT uses, so the
@@ -783,18 +795,22 @@ export default class Exec extends CoreSchemeAdapterBase {
                     op: "EDIT", suffix: "", signal: JSON.stringify(tagSignal),
                     scheme, username: null, password: null, hostname: null, port: null,
                     pathname, query: null, fragment: null, lineMarker: null,
-                    tx: JSON.stringify({ op: "EDIT", body: source }), mimetype_tx: "application/json",
-                    rx: JSON.stringify(written.problem === undefined
-                        ? {
-                            ...written,
-                            span: decisive.split("\n").map((l, n) => `${n + 1}:${l}`).join("\n"),
-                        }
-                        : written),
+                    tx, mimetype_tx: "application/json",
+                    rx,
                     mimetype_rx: "application/json",
-                    status_rx: written.status, tokens: ctx.tokenize?.(decisive) ?? 0, state: "resolved", outcome: null,
+                    status_rx: written.status,
+                    weight: LogBody.weight({
+                        op: "EDIT",
+                        attrs,
+                        tx,
+                        rx,
+                        mimetypeTx: "application/json",
+                        mimetypeRx: "application/json",
+                    }, ctx.weigh),
+                    state: "resolved", outcome: null,
                     // Durable provenance for clients/forensics. This is machine
                     // ambience, not a human/model action waterfall item.
-                    attrs: JSON.stringify(narrationAttrs),
+                    attrs,
                 });
                 if (logRow === undefined) throw new Error("entry(): log insert returned no row");
                 if (written.problem !== undefined) throw new OperationFailureError(written);
@@ -954,7 +970,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         const owner = await resolveStreamStatement(statement, core);
         if (owner === null) {
             return Results.failure("scheme:exec", "stream-not-found", 404, "No visible stream exists at the requested address.", {
-                content: null, mimetype: null, results: [], itemsTokenTotal: 0, returnedItemsTokenTotal: 0,
+                content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
                 matchingPathCount: 0, matchLocationCount: 0,
             }) as FindResult;
         }

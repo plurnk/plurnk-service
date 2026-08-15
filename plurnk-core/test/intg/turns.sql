@@ -7,17 +7,17 @@ INSERT INTO turns (loop_id, sequence, status, packet) VALUES ($loop_id, $sequenc
 -- PREP: test_turns_insert_with_version
 INSERT INTO turns (loop_id, sequence, status, packet, version) VALUES ($loop_id, $sequence, $status, $packet, $version);
 
--- PREP: test_turns_insert_with_prompt_budget
+-- PREP: test_turns_insert_with_curation_budget
 -- The turn retains only the latest-packet gauge denominator; provider usage is
 -- normalized under provider_requests. {§tokenomics-client-gauge}
-INSERT INTO turns (loop_id, sequence, status, packet, usage_prompt_budget)
-VALUES ($loop_id, $sequence, $status, $packet, $prompt_budget);
+INSERT INTO turns (loop_id, sequence, status, packet, usage_curation_budget)
+VALUES ($loop_id, $sequence, $status, $packet, $curation_budget);
 
 -- PREP: test_turns_get_full
 SELECT * FROM turns WHERE loop_id = $loop_id LIMIT 1;
 
--- PREP: test_turns_get_prompt_budget
-SELECT usage_prompt_budget FROM turns WHERE loop_id = $loop_id;
+-- PREP: test_turns_get_curation_budget
+SELECT usage_curation_budget FROM turns WHERE loop_id = $loop_id;
 
 -- PREP: test_turns_count_all
 SELECT COUNT(*) AS n FROM turns;

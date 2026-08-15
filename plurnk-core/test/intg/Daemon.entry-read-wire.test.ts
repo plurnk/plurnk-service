@@ -11,7 +11,7 @@ import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import { Validator, type ClientEntry, type EntryReadResult as EntryReadWire } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { rulerCount } from "../../src/core/token-ruler.ts";
+import { contentWeight } from "../../src/core/content-weight.ts";
 import { openMigrated } from "./_helpers.ts";
 import Dsl from "./dsl.ts";
 
@@ -84,7 +84,7 @@ test("entry.read resolves one owner-aware client entry and returns the exact sha
                     contentOffset: 0,
                     contentLength: 4,
                     mimetype: "text/markdown",
-                    tokens: rulerCount("A😀éZ"),
+                    weight: contentWeight("A😀éZ"),
                     state: "static",
                 },
             },
@@ -110,7 +110,7 @@ test("entry.read resolves one owner-aware client entry and returns the exact sha
             contentOffset: 2,
             contentLength: 4,
             mimetype: "text/markdown",
-            tokens: rulerCount("A😀éZ"),
+            weight: contentWeight("A😀éZ"),
             state: "static",
         });
 

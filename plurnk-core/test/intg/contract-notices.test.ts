@@ -10,7 +10,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import { Mock, ProviderError } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, seedEntryWithChannel } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, seedEntryWithChannel, testProviderCapacity } from "./_helpers.ts";
 import { editStmt, readStmt, sendStmt, urlPath } from "./_dsl.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 
@@ -61,6 +61,7 @@ const noticeProvider = (extraDrains: number) => {
             assistant: { content: NOTICE_CONTENT, reasoning: null, finishReason: "stop", model: "mock" },
             assistantRaw: { id: "x", filtered: true },
             accounting: [accounting],
+            capacity: testProviderCapacity(req.messages, provider.contextWindow),
             notices: [{ source: "provider:mock", kind: "grammar_unenforced", level: "warn", message: "decode escaped into a discarded channel", position: NOTICE_POS }],
         };
     };

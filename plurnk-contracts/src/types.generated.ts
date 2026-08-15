@@ -353,7 +353,7 @@ content: string
 contentOffset: number
 contentLength: number
 mimetype: string
-tokens: number
+weight: number
 state: ("static" | "active" | "closed" | "errored")
 }
 /**

@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { mkdir, readFile } from "node:fs/promises";
 import { Paths } from "../../src/index.ts";
-import { rulerCount } from "../../src/core/token-ruler.ts";
+import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
@@ -19,6 +19,43 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { ReadStatement } from "@plurnk/plurnk-contracts";
 import { Results, type EntryReadResult } from "@plurnk/plurnk-schemes";
 import { contentHash } from "../../src/core/content-hash.ts";
+import {
+    assessRequestCapacity,
+    resolveGenerationEnvelopeFromEnv,
+    type ChatMessage,
+    type ProviderRequestCapacity,
+} from "@plurnk/plurnk-providers";
+
+export const testProviderCapacity = (
+    messages: readonly ChatMessage[],
+    contextWindow: number | null,
+    outputBudget = 1,
+): ProviderRequestCapacity => assessRequestCapacity({
+    contextWindow,
+    maxInputTokens: null,
+    maxOutputTokens: null,
+    outputBudget,
+    reasoningBudget: null,
+    measurement: {
+        kind: "exact",
+        tokens: messages.reduce((sum, { content }) => sum + Math.ceil(content.length / 2), 0),
+        source: "core:test-fixture",
+    },
+});
+
+export const testDeferredProviderCapacity = (source = "core:test-fixture"): ProviderRequestCapacity =>
+    assessRequestCapacity({
+        contextWindow: null,
+        maxInputTokens: null,
+        maxOutputTokens: null,
+        outputBudget: null,
+        reasoningBudget: null,
+        measurement: {
+            kind: "unavailable",
+            source,
+            detail: "fixture has no physical model envelope",
+        },
+    });
 
 // Auto-discovering Mimetypes for scheme-test contexts. Default-constructed
 // Mimetypes walks node_modules for installed `@plurnk/plurnk-mimetypes-*` siblings
@@ -54,9 +91,9 @@ export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): Plu
     writer: "model",
     signal: undefined,
     mimetypes: DEFAULT_MIMETYPES,
-    // Write-time token accounting (SPEC {§tokenomics}). Divisor stand-in mirrors the
-    // production boot tripwire; the entry/log write helpers require it.
-    tokenize: (text: string) => Math.ceil(text.length / 4),
+    // Write-time curation weight (SPEC {§tokenomics}). Divisor stand-in mirrors
+    // the production boot tripwire; the entry/log write helpers require it.
+    weigh: (text: string) => Math.ceil(text.length / 4),
     ...overrides,
 });
 
@@ -66,7 +103,7 @@ export const makeHandlerCtx = (ctx: PlurnkSchemeContext, manifest: SchemeManifes
 export const seedStaticChannel = async (
     db: Db,
     entryId: number | undefined,
-    channel: { readonly name: string; readonly content: string; readonly mimetype: string; readonly tokens?: number },
+    channel: { readonly name: string; readonly content: string; readonly mimetype: string; readonly weight?: number },
 ): Promise<void> => {
     if (entryId === undefined) throw new Error("A static channel fixture requires an entry id.");
     await db.crud_write_channel.run({
@@ -74,7 +111,7 @@ export const seedStaticChannel = async (
         name: channel.name,
         content: channel.content,
         mimetype: channel.mimetype,
-        tokens: channel.tokens ?? 0,
+        weight: channel.weight ?? 0,
         content_hash: contentHash(channel.content),
         state: "static",
         producer_result: null,
@@ -99,7 +136,7 @@ export const lookThroughScheme = async (
         db: ctx.db,
         schemes,
         mimetypes: ctx.mimetypes,
-        tokenize: ctx.tokenize,
+        weigh: ctx.weigh,
     });
     const result = await engine.look({
         statement,
@@ -159,7 +196,7 @@ export const openMigrated = async (atPath?: string): Promise<Db> => {
         ],
         functions: [
             resolve(PROJECT_ROOT, "src/schemes/cosine.ts"),
-            resolve(PROJECT_ROOT, "src/core/ruler_count.ts"),
+            resolve(PROJECT_ROOT, "src/core/content_weight.ts"),
         ],
     })) as unknown as Db;
     return db;
@@ -172,13 +209,33 @@ export const quiesceExecs = async (schemes: { get(name: string): unknown }): Pro
     if (exec?.idle !== undefined) await exec.idle();
 };
 
-// Test-only viable window ({§definition-table-projection}, {§tokenomics-window-partition}):
-// measure current authored teaching once, add configured generation reserves, and double for the
-// docs catalog plus headroom. Conclusion fixtures use it so teaching growth cannot make unrelated
-// loops impossible; grinder and overflow tests deliberately select their own sub-floor windows.
-const _reserves = ["REASONING", "COMPLETION", "SAFETY"].reduce((n, k) => n + Number(process.env[`PLURNK_SERVICE_${k}`] ?? 0), 0);
-const _viableWindow = Math.ceil((rulerCount(await readFile(Paths.instructionsSystem, "utf8")) + _reserves) * 2);
-export const viableWindow = (): number => _viableWindow;
+// Test-only viable context ({§definition-table-projection}, {§tokenomics-window-partition}):
+// preserve twice the current authored teaching as input under the provider-owned
+// output policy. Conclusion fixtures stay viable as teaching grows; pressure
+// tests pin their own envelopes. Resolve the shipped percentage or an operator's
+// absolute through the production contract instead of reproducing its syntax.
+const _testInputCapacity = contentWeight(await readFile(Paths.instructionsSystem, "utf8")) * 2;
+let _viableWindow: number | undefined;
+export const viableWindow = (): number => {
+    if (_viableWindow !== undefined) return _viableWindow;
+    const absoluteEnvelope = resolveGenerationEnvelopeFromEnv(process.env, null);
+    let candidate = absoluteEnvelope.outputBudget === null
+        ? Math.max(2, _testInputCapacity)
+        : _testInputCapacity + absoluteEnvelope.outputBudget;
+    while (true) {
+        const { outputBudget } = resolveGenerationEnvelopeFromEnv(process.env, candidate);
+        if (outputBudget === null) {
+            throw new TypeError("integration setup requires PLURNK_PROVIDERS_OUTPUT_BUDGET");
+        }
+        if (candidate - outputBudget >= _testInputCapacity) break;
+        if (candidate > Number.MAX_SAFE_INTEGER / 2) {
+            throw new RangeError("integration setup could not derive a safe mock context window");
+        }
+        candidate *= 2;
+    }
+    _viableWindow = candidate;
+    return candidate;
+};
 
 export const insertWorkspace = async (db: Db, name: string): Promise<number> => {
     const row = await db.test_insert_workspace.get<{ id: number }>({ name });
@@ -205,7 +262,7 @@ export const insertLoop = async (db: Db, workerId: number, sequence: number, pro
 };
 
 const MIN_PACKET = JSON.stringify({
-    tokens: 0,
+    weight: 0,
     sections: [],
     attributions: [],
     assistant: { content: "", ops: [], reasoning: null },

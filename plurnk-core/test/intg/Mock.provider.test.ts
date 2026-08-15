@@ -35,7 +35,7 @@ test("Mock.provider: prompt measurement carries exact provenance", async () => {
 test("Mock.provider: returns queued responses in order", async () => {
     const r1 = response("first", [editStmt("a", "1")]);
     const r2 = response("second", [editStmt("b", "2")]);
-    const mock = new Mock({ contextWindow: 100, responses: [r1, r2] });
+    const mock = new Mock({ contextWindow: 10_000, responses: [r1, r2] });
     const a = await mock.generate({ messages: [{ role: "user", content: "anything" }] });
     const b = await mock.generate({ messages: [{ role: "user", content: "anything" }] });
     assert.equal(a.assistant.content, "first");
@@ -43,7 +43,7 @@ test("Mock.provider: returns queued responses in order", async () => {
 });
 
 test("Mock.provider: exhausted queue throws", async () => {
-    const mock = new Mock({ contextWindow: 100, responses: [response("only", [])] });
+    const mock = new Mock({ contextWindow: 10_000, responses: [response("only", [])] });
     await mock.generate({ messages: [{ role: "user", content: "x" }] });
     await assert.rejects(() => mock.generate({ messages: [{ role: "user", content: "y" }] }), /Mock provider exhausted/);
 });
@@ -59,7 +59,7 @@ test("Mock.provider: assistant and request accounting remain separate", async ()
         },
         usage: { inputTokens: 100, outputTokens: 42, totalTokens: 142 },
     };
-    const mock = new Mock({ contextWindow: 100, responses: [r] });
+    const mock = new Mock({ contextWindow: 10_000, responses: [r] });
     const result = await mock.generate({ messages: [{ role: "user", content: "x" }] });
     assert.equal(result.assistant.content, "## SEND0 [200]\ndone");
     assert.equal(result.accounting[0]?.usage?.outputTokens, 42);
@@ -74,7 +74,7 @@ test("Mock.provider: assistant and request accounting remain separate", async ()
 
 test("Mock.provider: request accounting defaults fill when the fixture omits usage", async () => {
     const r: MockResponse = { assistant: { content: "", ops: [], reasoning: null } };
-    const mock = new Mock({ contextWindow: 100, responses: [r] });
+    const mock = new Mock({ contextWindow: 10_000, responses: [r] });
     const result = await mock.generate({ messages: [] });
     assert.deepEqual(result.accounting[0]?.usage, { inputTokens: 0, outputTokens: 0, totalTokens: 0 });
     assert.equal(result.assistant.finishReason, "stop");
@@ -83,7 +83,7 @@ test("Mock.provider: request accounting defaults fill when the fixture omits usa
 
 test("Mock.provider: prompt is ignored — same input doesn't influence output", async () => {
     const mock = new Mock({
-        contextWindow: 100,
+        contextWindow: 10_000,
         responses: [response("alpha", []), response("alpha", [])],
     });
     const a = await mock.generate({ messages: [{ role: "user", content: "completely different" }] });
@@ -95,7 +95,7 @@ test("Mock.provider: prompt is ignored — same input doesn't influence output",
 test("Mock.provider: assistantRaw defaults to null; explicit value is passed through", async () => {
     const r1: MockResponse = { assistant: { content: "x", ops: [], reasoning: null } };
     const r2: MockResponse = { assistant: { content: "y", ops: [], reasoning: null }, assistantRaw: { vendor: "anthropic", id: "msg_123" } };
-    const mock = new Mock({ contextWindow: 100, responses: [r1, r2] });
+    const mock = new Mock({ contextWindow: 10_000, responses: [r1, r2] });
     const a = await mock.generate({ messages: [] });
     const b = await mock.generate({ messages: [] });
     assert.equal(a.assistantRaw, null);
@@ -104,7 +104,7 @@ test("Mock.provider: assistantRaw defaults to null; explicit value is passed thr
 
 test("Mock.provider: remaining count tracks unconsumed responses", async () => {
     const mock = new Mock({
-        contextWindow: 100,
+        contextWindow: 10_000,
         responses: [response("a", []), response("b", []), response("c", [])],
     });
     assert.equal(mock.remaining, 3);
@@ -116,7 +116,7 @@ test("Mock.provider: remaining count tracks unconsumed responses", async () => {
 });
 
 test("Mock.provider: preserves an explicitly empty test-fixture ops array", async () => {
-    const mock = new Mock({ contextWindow: 100, responses: [response("", [])] });
+    const mock = new Mock({ contextWindow: 10_000, responses: [response("", [])] });
     const result = await mock.generate({ messages: [] });
     assert.deepEqual(result.assistant.ops, []);
 });
@@ -128,7 +128,7 @@ test("Mock.provider: multi-op response (the typical loop turn)", async () => {
         sendStmt(102, "continuing"),
     ];
     const content = "## EDIT0 (worker:///a)\n1\n\n## EDIT0 (worker:///b)\n2\n\n## SEND0 [102]\ncontinuing";
-    const mock = new Mock({ contextWindow: 100, responses: [response(content, ops)] });
+    const mock = new Mock({ contextWindow: 10_000, responses: [response(content, ops)] });
     const result = await mock.generate({ messages: [] });
     assert.equal(result.assistant.ops?.length, 3);
     assert.deepEqual((result.assistant.ops as PlurnkStatement[] | undefined)?.map((o) => o.op), ["EDIT", "EDIT", "SEND"]);

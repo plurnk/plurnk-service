@@ -81,7 +81,7 @@ export default class ProviderInstantiate {
     static async #construct(alias: ProviderAlias, env: NodeJS.ProcessEnv): Promise<Provider> {
         // {§operator-config-precedence} — promote the alias-scoped provider-knob family
         // (PLURNK_PROVIDERS_*_<alias>) to
-        // bare BEFORE construction, so a per-alias TEMPERATURE/reserve pin binds. Without this
+        // bare BEFORE construction, so per-alias tuning and generation-envelope pins bind. Without this
         // the whole per-alias provider surface was silently dropped at construction.
         env = scopeEnvToAlias(env, alias.alias);
         return ProviderInstantiate.#constructWith(alias, env);
@@ -158,7 +158,7 @@ export default class ProviderInstantiate {
         try {
             response = await provider.generate({
                 messages: [{ role: "user", content: "ok" }],
-                workerId: "gbnf-enforcement-verify", grammar: forcing, maxTokens: 32,
+                workerId: "gbnf-enforcement-verify", grammar: forcing, maxOutputTokens: 32,
             });
         } catch (cause) {
             // A rejected probe request is distinct from a completed unconstrained response.

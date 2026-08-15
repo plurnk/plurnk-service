@@ -5,7 +5,7 @@ import JournalTurn from "../../src/core/JournalTurn.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
 const MIN_PACKET = JSON.stringify({
-    tokens: 0,
+    weight: 0,
     sections: [],
     attributions: [],
     assistant: { content: "", ops: [], reasoning: null },
@@ -38,14 +38,14 @@ test("turns: insert with required fields — defaults populate", async () => {
         await db.test_turns_insert.run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET });
         const row = await db.test_turns_get_full.get<{
             id: number; version: number; loop_id: number; sequence: number; timestamp: string;
-            status: number; usage_prompt_budget: number | null; packet: string;
+            status: number; usage_curation_budget: number | null; packet: string;
         }>({ loop_id: loopId });
         assert.ok((row?.id ?? 0) >= 1);
         assert.equal(row?.version, 0);
         assert.equal(row?.sequence, 1);
         assert.match(row?.timestamp ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
         assert.equal(row?.status, 200);
-        assert.equal(row?.usage_prompt_budget, null);
+        assert.equal(row?.usage_curation_budget, null);
         assert.equal(row?.packet, MIN_PACKET);
     } finally { await db.close(); }
 });
@@ -205,32 +205,32 @@ test("turns: CASCADE chain workspace→workers→loops→turns", async () => {
     } finally { await db.close(); }
 });
 
-test("turns: prompt budget is a positive optional gauge denominator", async () => {
+test("turns: curation budget is a positive optional gauge denominator", async () => {
     const { db, loopId } = await setup();
     try {
-        for (const promptBudget of [0, -1]) {
+        for (const curationBudget of [0, -1]) {
             await assert.rejects(
-                () => db.test_turns_insert_with_prompt_budget.run({
+                () => db.test_turns_insert_with_curation_budget.run({
                     loop_id: loopId,
                     sequence: 1,
                     status: 200,
                     packet: MIN_PACKET,
-                    prompt_budget: promptBudget,
+                    curation_budget: curationBudget,
                 }),
                 /CHECK constraint failed/,
             );
         }
-        await db.test_turns_insert_with_prompt_budget.run({
+        await db.test_turns_insert_with_curation_budget.run({
             loop_id: loopId,
             sequence: 1,
             status: 200,
             packet: MIN_PACKET,
-            prompt_budget: 200_000,
+            curation_budget: 200_000,
         });
-        const row = await db.test_turns_get_prompt_budget.get<{
-            usage_prompt_budget: number;
+        const row = await db.test_turns_get_curation_budget.get<{
+            usage_curation_budget: number;
         }>({ loop_id: loopId });
-        assert.equal(row?.usage_prompt_budget, 200_000);
+        assert.equal(row?.usage_curation_budget, 200_000);
     } finally { await db.close(); }
 });
 

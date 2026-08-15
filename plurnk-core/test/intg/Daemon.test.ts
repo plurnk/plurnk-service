@@ -444,7 +444,7 @@ test("providers.list returns parsed aliases with active marker", async () => {
                 process.env.PLURNK_MODEL = "gemma";
                 const response = await rpcCall(ws, 1, "providers.list");
                 const result = response.result as {
-                    aliases: Array<{ alias: string; provider: string; model: string; active: boolean; promptBudget: number | null }>;
+                    aliases: Array<{ alias: string; provider: string; model: string; active: boolean; inputCapacity: number | null }>;
                 };
                 const gemma = result.aliases.find((a) => a.alias === "gemma");
                 const opus = result.aliases.find((a) => a.alias === "opus");
@@ -453,11 +453,9 @@ test("providers.list returns parsed aliases with active marker", async () => {
                 assert.equal(gemma?.model, "macher.gguf");
                 assert.equal(gemma?.active, true);
                 assert.equal(opus?.active, false);
-                // {§tokenomics-window-partition} — the active alias carries the enforced prompt budget; an inactive
-                // alias is null (provider not instantiated), so the client omits the gauge.
-                const budget = 8192 - Number(process.env.PLURNK_PROVIDERS_REASONING_RESERVE) - Number(process.env.PLURNK_PROVIDERS_COMPLETION_RESERVE) - Number(process.env.PLURNK_SERVICE_SAFETY);
-                assert.equal(gemma?.promptBudget, budget, "active alias carries the effective prompt budget, not the raw window");
-                assert.equal(opus?.promptBudget, null, "inactive alias has no window → null");
+                const capacity = 8192 - Number(process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET);
+                assert.equal(gemma?.inputCapacity, capacity, "the active alias carries provider-derived input capacity");
+                assert.equal(opus?.inputCapacity, null, "an inactive alias has no instantiated capacity");
             } finally {
                 // Restore env so other tests aren't polluted.
                 for (const k of Object.keys(process.env)) {
@@ -550,7 +548,7 @@ test("the client-interface seam does not manufacture a resolver from an ownerles
             pathname: "/x", query: null, fragment: null, lineMarker: null,
             tx: "## EDIT0 (worker:///x)\nbody", mimetype_tx: "text/vnd.plurnk",
             rx: JSON.stringify({ status: 202 }), mimetype_rx: "application/json",
-            status_rx: 202, tokens: 0, state: "proposed", outcome: null, attrs: "{}",
+            status_rx: 202, weight: 0, state: "proposed", outcome: null, attrs: "{}",
         });
         assert.ok(row !== undefined);
         const pending = await daemon.pendingProposals(workspaceId);
@@ -725,12 +723,12 @@ test("the client-interface seam — metadata reads surface providers, workspaces
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-meta" })).result as { id: number };
 
-            // providers + budget — the active test alias is mocktest, carrying the effective prompt budget.
+            // providers + capacity — the active test alias is mocktest, carrying derived input capacity.
             const providers = daemon.listProviders();
             const active = providers.aliases.find((a) => a.active);
             assert.ok(active !== undefined, "listProviders reports the active alias");
             assert.equal(active!.alias, "mocktest");
-            assert.equal(typeof active!.promptBudget, "number", "the active alias carries the effective prompt budget");
+            assert.equal(typeof active!.inputCapacity, "number", "the active alias carries resolved input capacity");
 
             // workspaces + workers — the created workspace and its client worker are present.
             const workspaces = await daemon.listWorkspaces();
@@ -852,7 +850,7 @@ test("the client-interface seam — readEntry returns an entry's shape and incre
                 name: "body",
                 content: "network body",
                 mimetype: "text/plain",
-                tokens: 2,
+                weight: 2,
                 content_hash: null,
                 state: "static",
             });

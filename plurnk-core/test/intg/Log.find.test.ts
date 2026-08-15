@@ -67,10 +67,12 @@ test("a body-less FIND(log:///1/1) lists the turn's rows — the hierarchy is th
         const r = await new Log().find(findStmt(urlPath("log", "/1/1")), makeSchemeCtx({ db, workerId, mimetypes: DEFAULT_MIMETYPES }));
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 3, "the turn's three rows, catalog-shaped");
-        assert.deepEqual(JSON.parse(r.content!), r.results, "line-addressable content remains the exact JSON result array");
+        const projected = JSON.parse(r.content!) as Array<Array<Record<string, unknown>>>;
+        assert.equal(projected[0]?.[0]?.tokens, resources(r)[0]?.[0].weight);
+        assert.equal(Object.hasOwn(projected[0]?.[0] ?? {}, "weight"), false, "model projection translates internal weight once");
         assert.equal(r.content!.split("\n").length, r.results.length, "log FIND uses the same one-item-per-line rendering as entry FIND");
         assert.ok(paths(r).every((path) => /^log:\/\/\/1\/1\/\d+\//.test(path)), "each item carries log:///loop/turn/seq/OP");
-        assert.ok(resources(r).every(([item]) => item.tokens >= 0), "each default channel carries {mimetype, tokens, lines}");
+        assert.ok(resources(r).every(([item]) => item.weight >= 0), "each default channel carries internal curation weight");
     } finally { await db.close(); }
 });
 
@@ -119,7 +121,7 @@ test("markerless log FIND returns the first 16 rows with a compact selection ext
         assert.equal(bounded.results.length, 16);
         assert.equal(bounded.range?.total, 20);
         assert.deepEqual(bounded.range?.returned, [1, 16]);
-        assert.ok(bounded.itemsTokenTotal > bounded.returnedItemsTokenTotal);
+        assert.ok(bounded.itemsWeightTotal > bounded.returnedItemsWeightTotal);
 
         const all = await log.find({
             ...findStmt(urlPath("log", "/1/1")),
@@ -127,7 +129,7 @@ test("markerless log FIND returns the first 16 rows with a compact selection ext
         }, ctx);
         assert.equal(all.results.length, 20);
         assert.deepEqual(all.range?.returned, [1, 20]);
-        assert.equal(all.itemsTokenTotal, all.returnedItemsTokenTotal);
+        assert.equal(all.itemsWeightTotal, all.returnedItemsWeightTotal);
     } finally { await db.close(); }
 });
 
@@ -141,7 +143,7 @@ test("a single-star log FIND maps one coordinate level without crossing separato
         assert.equal(root.status, 200);
         assert.deepEqual(paths(root), ["log:///1/**"]);
         const loop = resources(root)[0]?.[0];
-        assert.ok(loop !== undefined && "items" in loop && loop.items === 3 && loop.tokens >= 0, "the loop scope summarizes its recursive rows");
+        assert.ok(loop !== undefined && "items" in loop && loop.items === 3 && loop.weight >= 0, "the loop scope summarizes its recursive rows");
         assert.equal(root.matchingPathCount, 0, "the summary is navigation metadata, not a hidden row match");
 
         const segmented = await log.find(findStmt(urlPath("log", "/*/*/*")), ctx);
@@ -240,7 +242,7 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
             rx: JSON.stringify({ status: 200 }),
             mimetype_rx: "application/json",
             status_rx: 200,
-            tokens: 0,
+            weight: 0,
             state: "resolved",
             outcome: null,
             attrs: "{}",

@@ -21,7 +21,7 @@ type ManifestRow = {
     channel: string;
     content: string;
     mimetype: string;
-    tokens: number;
+    weight: number;
     subscription_id: number | null;
     seconds: number | null;
     close_status: number | null;
@@ -49,9 +49,9 @@ export default class EntryManifest {
     }
 
     static async catalogRowsFor(ctx: PlurnkSchemeContext, schemeFilter?: string, ownerId?: number): Promise<CatalogEntry[]> {
-        const { db, workspaceId, mimetypes, tokenize } = ctx;
+        const { db, workspaceId, mimetypes, weigh } = ctx;
         if (mimetypes === undefined) throw new Error("catalogRowsFor: ctx.mimetypes is required for the lines (extent) field");
-        if (tokenize === undefined) throw new Error("catalogRowsFor: ctx.tokenize is required — the model-agnostic ruler, re-counted at render");
+        if (weigh === undefined) throw new Error("catalogRowsFor: ctx.weigh is required — model-independent curation weight, re-counted at render");
         const resolvedOwnerId = ownerId ?? await Owner.commonsId(db, workspaceId);
         const all = await db.engine_list_owner_entries.all<ManifestRow>({
             workspace_id: workspaceId,
@@ -95,7 +95,7 @@ export default class EntryManifest {
             entry.channels.push({
                 path: channelPath,
                 mimetype: row.mimetype,
-                tokens: tokenize(row.content),
+                weight: weigh(row.content),
                 lines: totalLines,
                 ...(row.channel === "body" && row.parse_issues !== null
                     ? { parseIssues: row.parse_issues }

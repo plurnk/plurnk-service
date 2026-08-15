@@ -66,8 +66,8 @@ RETURNING name;
 
 -- PREP: crud_write_channel
 -- {§tokenomics-content-hash-identity}: every static write stamps stable content identity.
-INSERT INTO entry_channels (entry_id, name, content, mimetype, tokens, content_hash, state, producer_result)
-VALUES ($entry_id, $name, $content, $mimetype, $tokens, $content_hash, $state, $producer_result);
+INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, state, producer_result)
+VALUES ($entry_id, $name, $content, $mimetype, $weight, $content_hash, $state, $producer_result);
 
 -- PREP: crud_delete_entry
 DELETE FROM entries WHERE id = $entry_id;

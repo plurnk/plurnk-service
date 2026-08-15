@@ -61,7 +61,7 @@ export default class Translator {
         if (this.#modelWorkerId === null && e.origin === "model" && typeof workerId === "number") this.#modelWorkerId = workerId;
         const foreign = this.#modelWorkerId !== null && typeof workerId === "number" && workerId !== this.#modelWorkerId;
         // {§agui-row-channel} — the FULL wire row rides plurnk.row alongside the core projection:
-        // fold state, durable tags, tokens, coordinates — everything the TUI/nvim render that
+        // fold state, durable tags, curation weight, coordinates — everything the TUI/nvim render that
         // the core vocabulary can't hold. Rich clients render from plurnk.row; generic clients
         // never see the difference. This is the metadata channel the exclusive-portal migration
         // stands on: core events for the world, plurnk.* for the family.
@@ -143,8 +143,10 @@ export default class Translator {
         events.push({
             type: EventType.STATE_DELTA,
             delta: [
+                { op: "replace", path: "/budget/curationWeight", value: n.usage.curationWeight },
+                { op: "replace", path: "/budget/curationBudget", value: n.usage.curationBudget },
                 { op: "replace", path: "/budget/contextTokens", value: n.usage.contextTokens },
-                { op: "replace", path: "/budget/promptBudget", value: n.usage.promptBudget },
+                { op: "replace", path: "/budget/contextCapacity", value: n.usage.contextCapacity },
             ],
         });
         // Family channel — the full terminal truth the core STATE_DELTA can't hold

@@ -33,6 +33,11 @@ const EMPTY_BODY: ResolvedLogBody = Object.freeze({
 // search derivation consume it complete. Storage envelopes and tx/rx placement
 // are persistence details and must not change what the row means.
 export default class LogBody {
+    static weight(row: LogBodyRow, weighContent: (text: string) => number): number {
+        const { content } = LogBody.resolve(row);
+        return content.length === 0 ? 0 : weighContent(content);
+    }
+
     static #decode(value: unknown, mimetype: string | undefined): unknown {
         if (typeof value !== "string" || mimetype !== "application/json") return value;
         try {

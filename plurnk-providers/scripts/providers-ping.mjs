@@ -193,7 +193,7 @@ export const pingRequest = (route) => {
         workerId,
         primaryWorkerId: workerId,
         signal: AbortSignal.timeout(PING_TIMEOUT_MS),
-        maxTokens: PING_MAX_TOKENS,
+        maxOutputTokens: PING_MAX_TOKENS,
     };
 };
 

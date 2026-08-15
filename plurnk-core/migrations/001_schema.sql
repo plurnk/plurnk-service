@@ -219,9 +219,9 @@ CREATE TABLE IF NOT EXISTS turns (
     sequence         INTEGER NOT NULL           CHECK (sequence >= 1),
     timestamp        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     status           INTEGER NOT NULL           CHECK (status BETWEEN 100 AND 599),
-    -- Effective packet allowance for this turn's provider and policy; NULL is
-    -- uncapped or unknown. {§tokenomics-client-gauge}
-    usage_prompt_budget INTEGER                  CHECK (usage_prompt_budget IS NULL OR usage_prompt_budget >= 1),
+    -- Provider-derived curation calibration for this turn; NULL when input
+    -- capacity is unknown. {§tokenomics-client-gauge}
+    usage_curation_budget INTEGER                CHECK (usage_curation_budget IS NULL OR usage_curation_budget >= 1),
     -- {§packet-stored-shape}: NULL means no model request was assembled. A
     -- present packet is either the measured request or that request extended
     -- by the paired admitted-response fields.
@@ -231,8 +231,8 @@ CREATE TABLE IF NOT EXISTS turns (
             WHEN json_valid(packet) = 0 THEN 0
             ELSE COALESCE(
                 json_type(packet) = 'object'
-                AND json_type(packet, '$.tokens') = 'integer'
-                AND json_extract(packet, '$.tokens') >= 0
+                AND json_type(packet, '$.weight') = 'integer'
+                AND json_extract(packet, '$.weight') >= 0
                 AND json_type(packet, '$.sections') = 'array'
                 AND json_type(packet, '$.attributions') = 'array'
                 AND (
@@ -274,6 +274,12 @@ CREATE TABLE IF NOT EXISTS model_calls (
     state            TEXT    NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'response', 'error')),
     response         TEXT             CHECK (response IS NULL OR json_valid(response)),
     failure          TEXT             CHECK (failure IS NULL OR json_valid(failure)),
+    -- Request-shaped provider capacity evidence. A completed response always
+    -- has it; a pre-I/O or transport failure may retain it without fabricating
+    -- physical usage.
+    capacity         TEXT             CHECK (
+        capacity IS NULL OR (json_valid(capacity) AND json_type(capacity) = 'object')
+    ),
     -- Exact opaque tag set forwarded with this provider call.
     -- {§attribution}
     attributions     TEXT    NOT NULL DEFAULT '[]' CHECK (
@@ -286,10 +292,12 @@ CREATE TABLE IF NOT EXISTS model_calls (
     CHECK (
         (state = 'pending'
             AND response IS NULL AND failure IS NULL
+            AND capacity IS NULL
             AND finish_reason IS NULL AND completed_at IS NULL)
         OR
         (state = 'response'
             AND response IS NOT NULL
+            AND capacity IS NOT NULL
             AND completed_at IS NOT NULL)
         OR
         (state = 'error'
@@ -319,7 +327,7 @@ BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS model_calls_observation_immutable
-BEFORE UPDATE OF response, failure, finish_reason, model, completed_at
+BEFORE UPDATE OF response, failure, capacity, finish_reason, model, completed_at
 ON model_calls
 WHEN OLD.state != 'pending'
 BEGIN
@@ -587,9 +595,9 @@ CREATE TABLE IF NOT EXISTS entry_channels (
     name     TEXT    NOT NULL             CHECK (length(name) > 0),
     content  TEXT    NOT NULL             CHECK (length(content) <= 104857600),
     mimetype TEXT    NOT NULL             CHECK (length(mimetype) > 0),
-    tokens   INTEGER NOT NULL DEFAULT 0   CHECK (tokens >= 0),
-    -- content identity: sha256 of content, stamped at static writes (streamed appends leave it
-    -- NULL). The per-tokenizer token cache it once keyed was retired — {§tokenomics-agnostic-ruler}.
+    weight   INTEGER NOT NULL DEFAULT 0   CHECK (weight >= 0),
+    -- Content identity: sha256 of content, stamped at static writes; streamed
+    -- appends leave it NULL. Curation weight remains model-independent.
     content_hash TEXT,
     state    TEXT    NOT NULL DEFAULT 'static' CHECK (state IN ('static', 'active', 'closed', 'errored')),
     -- Exact terminal producer evidence for this representation channel. NULL is
@@ -767,7 +775,9 @@ CREATE TABLE IF NOT EXISTS log_entries (
     mimetype_rx     TEXT    NOT NULL           CHECK (length(mimetype_rx) > 0),
     status_rx       INTEGER NOT NULL           CHECK (status_rx BETWEEN 100 AND 599),
 
-    tokens          INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0),
+    -- Complete canonical LogBody content before coordinate/presentation
+    -- projection; persistence envelopes do not contribute. {§tokenomics-weight-stored-at-write}
+    weight          INTEGER NOT NULL DEFAULT 0 CHECK (weight >= 0),
 
     state           TEXT    NOT NULL DEFAULT 'resolved'
                     CHECK (state IN ('proposed', 'resolved', 'failed', 'cancelled')),

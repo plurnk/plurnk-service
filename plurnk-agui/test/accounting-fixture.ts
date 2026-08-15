@@ -8,8 +8,10 @@ type LoopUsageFixture = {
     cacheReadTokens?: number;
     cost?: ProviderCost;
     accounting?: ProviderAccounting;
+    curationWeight?: number | null;
+    curationBudget?: number | null;
     contextTokens?: number | null;
-    promptBudget?: number | null;
+    contextCapacity?: number | null;
     meta?: Record<string, unknown>;
 };
 
@@ -68,8 +70,10 @@ export const loopUsage = (fixture: LoopUsageFixture = {}): TerminatedNotificatio
         });
     return {
         accounting,
+        curationWeight: fixture.curationWeight ?? null,
+        curationBudget: fixture.curationBudget ?? null,
         contextTokens: fixture.contextTokens ?? fixture.inputTokens ?? null,
-        promptBudget: fixture.promptBudget ?? null,
+        contextCapacity: fixture.contextCapacity ?? null,
         meta: fixture.meta ?? {},
     };
 };

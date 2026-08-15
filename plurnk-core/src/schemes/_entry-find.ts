@@ -32,7 +32,7 @@ export interface Match { pathname: string; matches: MatchEvidence[]; }
 export type CatalogScope = {
     path: string;
     items: number;
-    tokens: number;
+    weight: number;
     matchLocationCount?: never;
     locator?: never;
     region?: never;
@@ -46,22 +46,22 @@ export type CatalogResource = CatalogMatch | CatalogScopeGroup;
 export type MatchLocation = MatchEvidence & {
     path?: never;
     items?: never;
-    tokens?: never;
+    weight?: never;
     matchLocationCount?: never;
 };
 export type MatchItem = CatalogResource | MatchLocation;
 
-export const findItemTokens = (item: CatalogResource): number => "items" in item[0]
-    ? item[0].tokens
-    : item.reduce((sum, channel) => sum + channel.tokens, 0);
+export const findItemWeight = (item: CatalogResource): number => "items" in item[0]
+    ? item[0].weight
+    : item.reduce((sum, channel) => sum + channel.weight, 0);
 
 export interface FindFields {
     readonly [field: string]: unknown;
     content: string | null;
     mimetype: string | null;
     results: MatchItem[];
-    itemsTokenTotal: number;  // content weight of the complete matched set
-    returnedItemsTokenTotal: number; // content weight of the returned page
+    itemsWeightTotal: number;
+    returnedItemsWeightTotal: number;
     matchingPathCount: number;
     matchLocationCount: number;
     range?: RangeExtent;
@@ -83,8 +83,8 @@ export const emptyFindFields = (): FindFields => ({
     content: null,
     mimetype: null,
     results: [],
-    itemsTokenTotal: 0,
-    returnedItemsTokenTotal: 0,
+    itemsWeightTotal: 0,
+    returnedItemsWeightTotal: 0,
     matchingPathCount: 0,
     matchLocationCount: 0,
 });
@@ -100,6 +100,22 @@ const uniqueMatchLocations = (locations: readonly MatchEvidence[]): MatchLocatio
     }
     return unique;
 };
+
+// Scheme results retain model-independent curation `weight`. The generated
+// JSON body is the final model-facing boundary, where the familiar `tokens`
+// label intentionally describes the same OPEN/FOLD cost shown in the packet.
+const renderFindContent = (items: readonly MatchItem[]): string => renderJsonResult(
+    items.map((item) => Array.isArray(item)
+        ? item.map((row) => {
+            if (!Object.hasOwn(row, "weight") || Object.hasOwn(row, "tokens")) {
+                throw new TypeError("a FIND catalog row requires exactly one internal weight field");
+            }
+            return Object.fromEntries(
+                Object.entries(row).map(([key, value]) => [key === "weight" ? "tokens" : key, value]),
+            );
+        })
+        : item),
+);
 
 // {§find-result-projection} — selection remains grouped internally because
 // schemes and curation operate on resources. This one public projection owns
@@ -121,14 +137,14 @@ export const projectFindResult = (
 
     const matchingPathCount = resources.length;
     const matchLocationCount = resources.reduce((sum, { match }) => sum + uniqueMatchLocations(match.matches).length, 0);
-    const itemsTokenTotal = resources.reduce((sum, { item }) => sum + findItemTokens(item), 0)
-        + scopes.reduce((sum, item) => sum + item.tokens, 0);
+    const itemsWeightTotal = resources.reduce((sum, { item }) => sum + findItemWeight(item), 0)
+        + scopes.reduce((sum, item) => sum + item.weight, 0);
     const fields = {
         content: null,
         mimetype: null,
         results: [] as MatchItem[],
-        itemsTokenTotal,
-        returnedItemsTokenTotal: 0,
+        itemsWeightTotal,
+        returnedItemsWeightTotal: 0,
         matchingPathCount,
         matchLocationCount,
     };
@@ -175,16 +191,16 @@ export const projectFindResult = (
     }
 
     const results = page.items ?? [];
-    const returnedItemsTokenTotal = locationMode
-        ? itemsTokenTotal
-        : results.reduce((sum, item) => sum + findItemTokens(item as CatalogResource), 0);
+    const returnedItemsWeightTotal = locationMode
+        ? itemsWeightTotal
+        : results.reduce((sum, item) => sum + findItemWeight(item as CatalogResource), 0);
     return {
         status: 200,
-        content: renderJsonResult(results), // {§find-result-projection} {§json-result-rendering}
+        content: renderFindContent(results), // {§find-result-projection} {§json-result-rendering}
         mimetype: "application/json",
         results,
-        itemsTokenTotal,
-        returnedItemsTokenTotal,
+        itemsWeightTotal,
+        returnedItemsWeightTotal,
         matchingPathCount,
         matchLocationCount,
         ...(page.range === undefined ? {} : { range: page.range }),
@@ -526,16 +542,16 @@ export default class EntryFind {
         const scopes: CatalogScope[] = [];
         if (statement.body === null && match.scope !== undefined && match.candidatePathnames !== undefined) {
             for (const folder of pathFolderSummaries(match.scope, match.candidatePathnames)) {
-                let tokens = 0;
+                let weight = 0;
                 let items = 0;
                 for (const pathname of folder.pathnames) {
                     const row = byPath.get(EntryManifest.toPath(scheme, pathname));
                     if (row === undefined) continue;
                     items++;
-                    tokens += row.reduce((sum, channel) => sum + channel.tokens, 0);
+                    weight += row.reduce((sum, channel) => sum + channel.weight, 0);
                 }
                 if (items > 0) {
-                    scopes.push({ path: EntryManifest.toPath(scheme, folder.selector), items, tokens });
+                    scopes.push({ path: EntryManifest.toPath(scheme, folder.selector), items, weight });
                 }
             }
         }

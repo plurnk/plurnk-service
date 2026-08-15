@@ -9,7 +9,7 @@ WHERE workspace_id = $workspace_id
   AND pathname = $pathname;
 
 -- PREP: entry_read_channels
-SELECT name, content, 0 AS contentOffset, length(content) AS contentLength, mimetype, tokens, state
+SELECT name, content, 0 AS contentOffset, length(content) AS contentLength, mimetype, weight, state
 FROM entry_channels
 WHERE entry_id = $entry_id;
 
@@ -21,7 +21,7 @@ SELECT name,
        min($offset, length(content)) AS contentOffset,
        length(content) AS contentLength,
        mimetype,
-       tokens,
+       weight,
        state
 FROM entry_channels
 WHERE entry_id = $entry_id AND name = $channel;

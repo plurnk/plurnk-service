@@ -35,15 +35,19 @@ const prune = (m) => {
     const contextWindow = m?.limit?.context;
     if (typeof contextWindow !== "number" || contextWindow <= 0) return null;
     const info = { contextWindow };
-    // Retain the source's model-specific output limit when present.
-    const maxOutput = m?.limit?.output;
-    if (typeof maxOutput === "number" && maxOutput > 0) info.maxOutput = maxOutput;
+    // Context, input, and output are independent Models.dev facts. Neither
+    // specialized limit can be reconstructed safely from the other two.
+    const maxInputTokens = m?.limit?.input;
+    if (typeof maxInputTokens === "number" && maxInputTokens > 0) info.maxInputTokens = maxInputTokens;
+    const maxOutputTokens = m?.limit?.output;
+    if (typeof maxOutputTokens === "number" && maxOutputTokens > 0) info.maxOutputTokens = maxOutputTokens;
     // The capability bit is informational. Runtime activation and wire style are
     // provider concerns, not catalog fields. Store only an asserted true value.
     if (m?.reasoning === true) info.reasoning = true;
     const c = m?.cost;
     if (c && typeof c.input === "number" && typeof c.output === "number") {
         info.cost = { inputPer1M: c.input, outputPer1M: c.output };
+        if (typeof c.reasoning === "number") info.cost.reasoningPer1M = c.reasoning;
         if (typeof c.cache_read === "number") info.cost.cacheReadPer1M = c.cache_read;
         if (typeof c.cache_write === "number") info.cost.cacheWritePer1M = c.cache_write;
     }

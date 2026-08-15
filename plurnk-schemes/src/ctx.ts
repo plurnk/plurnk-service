@@ -73,7 +73,7 @@ export type EntryStreamLifecycle =
 export interface EntryCatalogChannel {
     readonly path: string;
     readonly mimetype: string;
-    readonly tokens: number;
+    readonly weight: number;
     readonly lines: number;
     readonly parseIssues?: number;
 }
@@ -88,7 +88,7 @@ export type EntryCatalogItem = readonly [EntryCatalogDefaultChannel, ...EntryCat
 export interface EntryCatalogScope {
     readonly path: string;
     readonly items: number;
-    readonly tokens: number;
+    readonly weight: number;
 }
 
 export type EntryCatalogScopeGroup = readonly [EntryCatalogScope];
@@ -97,8 +97,8 @@ export interface EntryFindResult extends SchemeResult {
     readonly content: string | null;
     readonly mimetype: string | null;
     readonly results: ReadonlyArray<EntryCatalogItem | EntryCatalogScopeGroup | MatchEvidence>;
-    readonly itemsTokenTotal: number;
-    readonly returnedItemsTokenTotal: number;
+    readonly itemsWeightTotal: number;
+    readonly returnedItemsWeightTotal: number;
     readonly matchingPathCount: number;
     readonly matchLocationCount: number;
     readonly range?: RangeExtent;

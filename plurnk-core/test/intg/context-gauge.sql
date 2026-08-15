@@ -4,14 +4,43 @@ INSERT INTO turns (
     sequence,
     status,
     packet,
-    usage_prompt_budget
+    usage_curation_budget
 )
 VALUES (
     $loop_id,
     $sequence,
     200,
-    '{"tokens":0,"sections":[],"attributions":[],"assistant":{"content":"fixture","ops":[],"reasoning":null},"assistantRaw":null}',
-    $prompt_budget
+    json_object(
+        'weight', CAST($curation_weight AS INTEGER),
+        'sections', json('[]'),
+        'attributions', json('[]'),
+        'assistant', json('{"content":"fixture","ops":[],"reasoning":null}'),
+        'assistantRaw', json('null')
+    ),
+    $curation_budget
+)
+RETURNING id;
+
+-- PREP: test_context_insert_failed_model_call
+INSERT INTO model_calls (
+    turn_id,
+    sequence,
+    kind,
+    state,
+    failure,
+    capacity,
+    model,
+    completed_at
+)
+VALUES (
+    $turn_id,
+    $sequence,
+    'emission',
+    'error',
+    json('{"status":413,"problem":{"type":"https://problems.plurnk.dev/provider/fixture/capacity-exceeded","title":"Capacity exceeded","status":413,"detail":"Fixture capacity failure."}}'),
+    $capacity,
+    'fixture',
+    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 )
 RETURNING id;
 
@@ -22,6 +51,7 @@ INSERT INTO model_calls (
     kind,
     state,
     response,
+    capacity,
     finish_reason,
     model,
     completed_at
@@ -32,6 +62,7 @@ VALUES (
     $kind,
     'response',
     '{"assistant":{"content":"fixture"}}',
+    $capacity,
     'stop',
     'fixture',
     strftime('%Y-%m-%dT%H:%M:%fZ', 'now')

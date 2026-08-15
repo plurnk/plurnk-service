@@ -43,14 +43,13 @@ export interface PlurnkSchemeContext {
     // populated; absent in bare test fixtures. Exec dispatch fail-hards if
     // absent rather than silently falling back to a default runtime.
     readonly executors?: ExecutorRegistry;
-    // Write-time tokenizer (SPEC {§tokenomics}). Synchronous per the provider
-    // contract ({§provider-surface}). Engine populates it from its configured tokenizer;
-    // the entry/log write helpers count content tokens through it at write
-    // time and store the count on entry_channels.tokens / log_entries.tokens.
+    // Stable write-time curation weight ({§tokenomics}).
+    // Engine populates it with Core's model-independent content ruler;
+    // entry/log helpers store it on entry_channels.weight / log_entries.weight.
     // Optional like the other engine-populated capabilities (absent in bare
     // test fixtures) — the write helpers fail-hard if a write is attempted
     // without it rather than silently storing 0.
-    readonly tokenize?: (text: string) => number;
+    readonly weigh?: (text: string) => number;
     // A scheme's default channel — the manifest keys channels by addressable URI (note 4):
     // default → the bare entry path, non-default → path#channel. Engine wires the registry;
     // absent → "body" (correct for body-default entries, e.g. test ctxs without exec).

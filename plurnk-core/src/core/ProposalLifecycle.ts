@@ -23,6 +23,7 @@ import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import type { ProposalApplyResult, SchemeCtx } from "@plurnk/plurnk-schemes";
 import Results, { OperationFailureError } from "./results.ts";
+import LogBody from "./LogBody.ts";
 
 // Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
 // to propose; dispatch writes a state='proposed' log entry, registers a waiter
@@ -104,7 +105,7 @@ export default class ProposalLifecycle {
     #notices: NoticeChannel;
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeWorkerNotify: WakeWorkerNotify | undefined;
-    #tokenize: (text: string) => number;
+    #weighContent: (text: string) => number;
     #mimetypes: Mimetypes | undefined;
     // Boot-discovered runtime executors, late-injected on Engine — thunked.
     #executors: () => ExecutorRegistry | undefined;
@@ -121,13 +122,13 @@ export default class ProposalLifecycle {
     // observers run, so an observer cannot become a hidden policy fallback.
     #listeners: Array<(payload: ProposalPendingEvent) => void> = [];
 
-    constructor({ db, schemes, notices, streamEventNotify, wakeWorkerNotify, tokenize, mimetypes, executors, loopSignal, liveSubscriptions }: {
+    constructor({ db, schemes, notices, streamEventNotify, wakeWorkerNotify, weigh, mimetypes, executors, loopSignal, liveSubscriptions }: {
         db: Db;
         schemes: SchemeRegistry;
         notices: NoticeChannel;
         streamEventNotify?: StreamEventNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
-        tokenize: (text: string) => number;
+        weigh: (text: string) => number;
         mimetypes?: Mimetypes;
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
@@ -138,7 +139,7 @@ export default class ProposalLifecycle {
         this.#notices = notices;
         this.#streamEventNotify = streamEventNotify;
         this.#wakeWorkerNotify = wakeWorkerNotify;
-        this.#tokenize = tokenize;
+        this.#weighContent = weigh;
         this.#mimetypes = mimetypes;
         this.#executors = executors;
         this.#loopSignal = loopSignal;
@@ -448,7 +449,7 @@ export default class ProposalLifecycle {
                 writer: "model", signal: this.#loopSignal(loopId),
                 streamEventNotify: this.#streamEventNotify,
                 wakeWorkerNotify: this.#wakeWorkerNotify,
-                tokenize: this.#tokenize,
+                weigh: this.#weighContent,
                 mimetypes: this.#mimetypes,
                 pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
                 executors: this.#executors(),
@@ -562,12 +563,24 @@ export default class ProposalLifecycle {
             turn_seq: number;
             sequence: number;
             op: string;
+            attrs: string;
+            tx: string;
+            mimetype_tx: string;
+            mimetype_rx: string;
         }>({ id: logEntryId });
         if (coordinate === undefined) throw new Error(`ProposalLifecycle.applyResolution: log entry ${logEntryId} has no coordinate`);
         Results.attachInstance(result, `log:///${coordinate.loop_seq}/${coordinate.turn_seq}/${coordinate.sequence}/${coordinate.op}`);
         const rx = JSON.stringify(result);
+        const weight = LogBody.weight({
+            op: coordinate.op,
+            attrs: coordinate.attrs,
+            tx: coordinate.tx,
+            rx,
+            mimetypeTx: coordinate.mimetype_tx,
+            mimetypeRx: coordinate.mimetype_rx,
+        }, this.#weighContent);
         await this.#db.engine_resolve_log_entry.run({
-            id: logEntryId, state, outcome, status_rx: status, rx,
+            id: logEntryId, state, outcome, status_rx: status, rx, weight,
         });
         return result;
     }

@@ -11,7 +11,7 @@ export interface CoreSchemeServices {
     readonly db: Db;
     readonly mimetypes: Mimetypes;
     readonly executors: () => ExecutorRegistry | undefined;
-    readonly tokenize: (text: string) => number;
+    readonly weigh: (text: string) => number;
     readonly streamEventNotify: StreamEventNotify | undefined;
     readonly wakeWorkerNotify: WakeWorkerNotify | undefined;
     readonly injectWorker: InjectWorkerNotify | undefined;
@@ -76,7 +76,7 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
             injectWorker: services.injectWorker,
             mimetypes: services.mimetypes,
             executors: services.executors(),
-            tokenize: services.tokenize,
+            weigh: services.weigh,
             defaultChannelFor: services.defaultChannelFor,
             pushNotice: (notice) => services.pushNotice(ctx.workspaceId, ctx.loopId, notice),
         };

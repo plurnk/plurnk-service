@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 import { logEntries, packetSection } from "./_helpers.ts";
+import { contentWeight } from "../../src/core/content-weight.ts";
 
 test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without an explicit READ", async () => {
     // Turn 1: EXEC + SEND[202] (join). Whether echo is still live or has already
@@ -75,6 +76,7 @@ test("a generated JSON result stays typed, item-addressable, and complete throug
                 op: string;
                 origin: string;
                 rx: string;
+                weight: number;
             }>({ turn_id: turn2 });
             const observation = rows.find((row) =>
                 row.scheme === "sqlite" && row.op === "READ" && row.origin === "plurnk");
@@ -84,6 +86,7 @@ test("a generated JSON result stays typed, item-addressable, and complete throug
             assert.equal(result.mimetype, "application/json", "ambient delivery preserves the channel type");
             assert.equal(result.content.split("\n").length, 30, "each generated array item retains one physical line");
             assert.equal((JSON.parse(result.content) as unknown[]).length, 30, "the complete output remains valid JSON");
+            assert.equal(observation.weight, contentWeight(result.content), "the stream delta stores its complete canonical READ-body weight");
 
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(packetRow!.packet);

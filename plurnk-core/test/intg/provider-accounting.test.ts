@@ -12,7 +12,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, testDeferredProviderCapacity } from "./_helpers.ts";
 
 const openRequest = async (
     db: Db,
@@ -49,6 +49,7 @@ const openRequest = async (
             id: modelCall!.id,
             response: JSON.stringify({ assistant: { content: "fixture" } }),
             failure: null,
+            capacity: JSON.stringify(testDeferredProviderCapacity("accounting:fixture")),
             finish_reason: "stop",
             model: accounting.model,
         });
@@ -61,6 +62,7 @@ const openRequest = async (
         await db.engine_fail_model_call.run({
             id: modelCall!.id,
             failure: JSON.stringify({ status: 502, problem: { status: 502 } }),
+            capacity: null,
         });
     }
 };
@@ -157,12 +159,12 @@ test("the baseline has no floating-point or denormalized accounting columns", as
             assert.equal(
                 tableInfo(table).some(({ name }) => name.startsWith("usage_") || name === "cost_usd"),
                 table === "turns",
-                `${table} has no accounting rollup (turns retains only usage_prompt_budget)`,
+                `${table} has no accounting rollup (turns retains only usage_curation_budget)`,
             );
         }
         assert.deepEqual(
             tableInfo("turns").filter(({ name }) => name.startsWith("usage_")).map(({ name }) => name),
-            ["usage_prompt_budget"],
+            ["usage_curation_budget"],
         );
         assert.equal(
             tableInfo("provider_requests").some(({ type }) => type === "REAL"),
