@@ -48,7 +48,7 @@ test("the prompt row can be folded and opened again", async () => {
         const folded = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.equal(folded.status, 200, "FOLD of the frame body is legal");
         const opened = await engine.dispatch({ statement: openStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
-        assert.equal(opened.status, 200, "OPEN restores the ordinary prompt projection");
+        assert.equal(opened.status, 200, "OPEN restores the configured prompt projection");
         const exp = await db.test_prompt_expanded.get<{ expanded: number }>({});
         assert.equal(exp?.expanded, 1, "the frame survives the round trip");
     } finally { await db.close(); }

@@ -135,3 +135,21 @@ test("a malformed virtual prompt budget fails at construction", async () => {
         await db.close();
     }
 });
+
+test("a malformed prompt projection percentage fails at construction", async () => {
+    const previous = process.env.PLURNK_SERVICE_PROMPT_PROJECTION;
+    const db = await openMigrated();
+    try {
+        for (const invalid of ["25", "0%", "100%", "wat%"] as const) {
+            process.env.PLURNK_SERVICE_PROMPT_PROJECTION = invalid;
+            assert.throws(
+                () => new Engine({ db, schemes: new SchemeRegistry() }),
+                /PLURNK_SERVICE_PROMPT_PROJECTION must be a percentage in \(0, 100\)/,
+            );
+        }
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_PROMPT_PROJECTION;
+        else process.env.PLURNK_SERVICE_PROMPT_PROJECTION = previous;
+        await db.close();
+    }
+});

@@ -105,6 +105,9 @@ interface NoticeView {
 interface SectionView { name?: unknown; slot?: unknown; header?: unknown; content?: unknown; tokens?: unknown }
 interface Packet { sections?: SectionView[] }
 type CountTokens = (text: string) => number;
+interface RenderLogOptions {
+    readonly promptProjectionBudget?: number;
+}
 
 export default class PacketWire {
     // {§packet-markdown} Render the sections in `slot` to one ChatMessage.content
@@ -181,10 +184,10 @@ export default class PacketWire {
     // The log section's content: the model's curated rows as a fenced `jsonplurnk` array ({§jsonplurnk}).
     // Data only — no prose leads the fence (the log carries rules for no one). Empty log → ""
     // (the section is omitted).
-    static renderLog(entries: unknown, countTokens: CountTokens): string {
+    static renderLog(entries: unknown, countTokens: CountTokens, options: RenderLogOptions = {}): string {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
         if (log.length === 0) return "";
-        const items = PacketWire.#renderLogEntries(log, countTokens);
+        const items = PacketWire.#renderLogEntries(log, countTokens, options);
         // Every source line is coordinate-prefixed, so source backticks never occupy the
         // CommonMark closing-fence position. The fixed opener keeps the packet prefix cache-stable.
         return `\`\`\`jsonplurnk\n[\n${items}\n]\n\`\`\``;
@@ -398,8 +401,118 @@ export default class PacketWire {
         return `READing ${selected} of ${complete}`;
     }
 
-    static #renderLogEntries(entries: LogEntryView[], countTokens: CountTokens): string {
-        return entries.map((e) => {
+    static #promptProjection(
+        body: ReturnType<typeof LogBody.resolve>,
+        budget: number,
+        countTokens: CountTokens,
+    ): { text: string; cut: boolean; chunk: string | null } {
+        const weightAt = (end: number): number => countTokens(
+            PacketWire.#renderContentBody(body.content.slice(0, end), body.startLine, null),
+        );
+        if (weightAt(body.content.length) <= budget) {
+            return { text: body.content, cut: false, chunk: null };
+        }
+        if (budget <= 0) return { text: "", cut: true, chunk: null };
+
+        const coordinates = new TextCoordinates(body.content);
+        const lines = coordinates.logicalLines();
+        const completeLineEnds = lines
+            .filter((line) => line.separator.length > 0 && line.end < body.content.length)
+            .map((line) => line.end);
+        let low = 0;
+        let high = completeLineEnds.length;
+        while (low < high) {
+            const middle = Math.floor((low + high) / 2);
+            if (weightAt(completeLineEnds[middle]!) <= budget) low = middle + 1;
+            else high = middle;
+        }
+        const completeLineEnd = low === 0 ? 0 : completeLineEnds[low - 1]!;
+        if (completeLineEnd > 0) {
+            return {
+                text: body.content.slice(0, completeLineEnd),
+                cut: true,
+                chunk: PacketWire.#chunk(coordinates, lines, completeLineEnd, body.content.length),
+            };
+        }
+
+        const firstLineEnd = lines[0]?.contentEnd ?? body.content.length;
+        const offsets = [0];
+        let offset = 0;
+        for (const codePoint of body.content.slice(0, firstLineEnd)) {
+            offset += codePoint.length;
+            offsets.push(offset);
+        }
+        low = 0;
+        high = offsets.length;
+        while (low < high) {
+            const middle = Math.floor((low + high) / 2);
+            if (weightAt(offsets[middle]!) <= budget) low = middle + 1;
+            else high = middle;
+        }
+        const characterEnd = low === 0 ? 0 : offsets[low - 1]!;
+        if (characterEnd === 0) return { text: "", cut: true, chunk: null };
+        return {
+            text: body.content.slice(0, characterEnd),
+            cut: true,
+            chunk: PacketWire.#chunk(coordinates, lines, characterEnd, body.content.length),
+        };
+    }
+
+    static #promptBudgets(
+        entries: readonly LogEntryView[],
+        bodies: readonly ReturnType<typeof LogBody.resolve>[],
+        countTokens: CountTokens,
+        budget: number | undefined,
+    ): ReadonlyMap<number, number> {
+        if (budget === undefined) return new Map();
+        if (!Number.isSafeInteger(budget) || budget < 0) {
+            throw new RangeError(`promptProjectionBudget must be a non-negative safe integer, got ${JSON.stringify(budget)}`);
+        }
+        const costs = entries.flatMap((entry, index) => {
+            if (entry.op !== "prompt" || entry.folded === true || bodies[index]!.content.length === 0) return [];
+            const rendered = PacketWire.#renderContentBody(bodies[index]!.content, bodies[index]!.startLine, null);
+            return [{ index, cost: countTokens(rendered) }];
+        });
+        const allocations = new Map<number, number>();
+        let remaining = budget;
+        let active = costs;
+        while (active.length > 0) {
+            const share = Math.floor(remaining / active.length);
+            const complete = active.filter(({ cost }) => cost <= share);
+            if (complete.length === 0) {
+                const extra = remaining % active.length;
+                active.forEach(({ index }, position) => allocations.set(index, share + (position < extra ? 1 : 0)));
+                break;
+            }
+            for (const { index, cost } of complete) {
+                allocations.set(index, cost);
+                remaining -= cost;
+            }
+            const completed = new Set(complete.map(({ index }) => index));
+            active = active.filter(({ index }) => !completed.has(index));
+        }
+        return allocations;
+    }
+
+    static #renderLogEntries(entries: LogEntryView[], countTokens: CountTokens, options: RenderLogOptions): string {
+        const bodies = entries.map((e) => {
+            const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
+            return LogBody.resolve({
+                op,
+                attrs: e.attrs,
+                tx: e.tx,
+                rx: e.rx,
+                mimetypeTx: typeof e.mimetype_tx === "string" ? e.mimetype_tx : undefined,
+                mimetypeRx: typeof e.mimetype_rx === "string" ? e.mimetype_rx : undefined,
+            });
+        });
+        const promptBudgets = PacketWire.#promptBudgets(
+            entries,
+            bodies,
+            countTokens,
+            options.promptProjectionBudget,
+        );
+        return entries.map((e, index) => {
             const meta: Record<string, unknown> = {};
             const coordinate = typeof e.coordinate === "string" ? e.coordinate : null;
             const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
@@ -564,19 +677,16 @@ export default class PacketWire {
             }
 
             // The canonical full body is shared with log READ, log FIND,
-            // and search derivation. READ/FIND already own selection bounds and
-            // render complete; every other body uses this one preview projection.
-            const fullBody = LogBody.resolve({
-                op,
-                attrs: e.attrs,
-                tx: e.tx,
-                rx: e.rx,
-                mimetypeTx: typeof e.mimetype_tx === "string" ? e.mimetype_tx : undefined,
-                mimetypeRx: typeof e.mimetype_rx === "string" ? e.mimetype_rx : undefined,
-            });
+            // and search derivation. READ/FIND own selection bounds, PLAN is
+            // persistent working memory, and prompt rows share their packet
+            // allowance; every remaining body uses the ordinary fixed preview.
+            const fullBody = bodies[index]!;
             const emptyFind = op === "FIND" && e.status === 200 && findItems === 0;
-            const previewExempt = op === "READ" || op === "FIND";
-            const projection = previewExempt
+            const previewExempt = op === "READ" || op === "FIND" || op === "PLAN";
+            const promptBudget = promptBudgets.get(index);
+            const projection = promptBudget !== undefined
+                ? PacketWire.#promptProjection(fullBody, promptBudget, countTokens)
+                : previewExempt
                 ? { text: fullBody.content, cut: false, chunk: null }
                 : PacketWire.#preview(fullBody.content);
             if (projection.cut && path === null) {

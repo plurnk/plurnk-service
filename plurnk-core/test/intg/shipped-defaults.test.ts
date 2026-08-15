@@ -48,6 +48,7 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     const previewChars = Number(env.get("PLURNK_SERVICE_PREVIEW_CHARS"));
     assert.equal(previewLines, 16, "the shipped ordinary preview retains sixteen lines");
     assert.equal(previewChars, 2560, "the independent single-line allowance ships at 2560 characters");
+    assert.equal(env.get("PLURNK_SERVICE_PROMPT_PROJECTION"), "25%", "prompt initialization ships at one quarter of the stable packet budget");
     // {§tokenomics-window-partition} — the bare partition is cloud-generous:
     // 163840 − 16384 − 49152 − 1024 = 97280 prompt
     // budget with a 65536 decode envelope the backend self-clamps (the local per-alias template

@@ -1013,7 +1013,7 @@ test("the fixed jsonplurnk fence is cache-stable because body coordinates preven
     assert.equal(out.endsWith("\n```"), true);
 });
 
-test("every READ/FIND body bypasses the ordinary preview", () => {
+test("PLAN/READ/FIND bodies bypass the ordinary preview", () => {
     const long = Array.from({ length: 30 }, (_, i) => `line ${i + 1} of a runaway emission`).join("\n");
 
     // A short PLAN renders whole — no behavior change for a well-formed op.
@@ -1023,12 +1023,13 @@ test("every READ/FIND body bypasses the ordinary preview", () => {
     assert.match(shortOut, /Tidy context, then read the loader\./, "a short PLAN renders in full");
     assert.doesNotMatch(shortOut, /"chunk"/, "a complete body needs no chunk extent");
 
-    // A runaway PLAN (30 lines) renders preview-bounded — the run42 bomb, defused.
+    // PLAN is the model's persistent working memory. Its OPEN projection is
+    // complete even when it exceeds the ordinary body preview.
     const planOut = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "PLAN", status: 200, target: { scheme: null, pathname: "" }, tx: { body: long } },
     ], tok);
-    assert.match(planOut, /"body":"[\s\S]*","chunk":"READing <1,16> of <1,30>"}/, "the PLAN preview states its displayed and complete line extents after its body");
-    assert.doesNotMatch(planOut, /line 20 of a runaway/, "content past the 16-line preview is cut from the render");
+    assert.match(planOut, /line 30 of a runaway/, "the model receives its complete PLAN working memory");
+    assert.doesNotMatch(planOut, /"chunk"/, "a PLAN never carries an ordinary preview cut");
 
     // Mutation receipts are generated results, not deliberate retrievals.
     const numberedSpan = Array.from({ length: 30 }, (_, i) => `${i + 1}:span line ${i + 1}`).join("\n");
@@ -1058,13 +1059,11 @@ test("every READ/FIND body bypasses the ordinary preview", () => {
     assert.doesNotMatch(pushedRead, /"chunk"/, "provenance does not introduce a hidden READ bound");
 });
 
-test("every non-retrieval body producer uses the same addressable preview", () => {
+test("every ordinary bounded body producer uses the same addressable preview", () => {
     const long = Array.from({ length: 30 }, (_, i) => `producer line ${i + 1}`).join("\n");
     const numbered = Array.from({ length: 30 }, (_, i) => `${i + 1}:producer line ${i + 1}`).join("\n");
     const entries = [
-        { op: "prompt", origin: "plurnk", target: { scheme: "prompt", pathname: "/1/1" }, rx: { content: long, mimetype: "text/markdown" } },
         { op: null, origin: "model", target: null, attrs: { kind: "model_emission" }, rx: { content: long, mimetype: "text/vnd.plurnk" } },
-        { op: "PLAN", origin: "model", target: null, tx: { body: long } },
         { op: "SEND", origin: "model", target: null, tx: { body: { raw: long } } },
         { op: "WORK", origin: "model", target: { scheme: "worker", pathname: "/reviewer" }, tx: { body: long } },
         { op: "FORK", origin: "model", target: null, tx: { body: long } },
@@ -1112,6 +1111,21 @@ test("every non-retrieval body producer uses the same addressable preview", () =
     });
 });
 
+test("{§prompt-projection}: prompt rows share one explicit projection budget", () => {
+    const content = Array.from({ length: 80 }, (_, i) => `prompt ${i + 1} ${"x".repeat(32)}`).join("\n");
+    const budget = 80;
+    const rendered = PacketWire.renderLog([
+        { coordinate: "1/1/1", op: "prompt", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/1" }, rx: { content, mimetype: "text/markdown" } },
+        { coordinate: "1/1/2", op: "prompt", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/2" }, rx: { content, mimetype: "text/markdown" } },
+    ], tok, { promptProjectionBudget: budget });
+
+    const weights = [...rendered.matchAll(/"tokens":(\d+)/g)].map((match) => Number(match[1]));
+    assert.equal(weights.length, 2);
+    assert.ok(weights.every((weight) => weight > 0), "each arriving frame receives a visible share");
+    assert.ok(weights.reduce((sum, weight) => sum + weight, 0) <= budget, "the aggregate prompt body weight stays within the shared allowance");
+    assert.equal([...rendered.matchAll(/"chunk":"READing /g)].length, 2, "both partial frames state their exact displayed and complete extents");
+});
+
 test("{§jsonplurnk}: a character preview never cuts a numbered body inside its next line prefix", () => {
     const previousLines = process.env.PLURNK_SERVICE_PREVIEW_LINES;
     const previousChars = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
@@ -1147,7 +1161,7 @@ test("{§jsonplurnk}: a character-bound chunk uses exact Unicode text coordinate
         const rendered = PacketWire.renderLog([{
             coordinate: "1/1/1",
             origin: "model",
-            op: "PLAN",
+            op: "SEND",
             status: 200,
             tx: { body: "😀abcdef" },
         }], tok);
@@ -1176,7 +1190,7 @@ test("{§body-projection}: a character ceiling treats CRLF as one indivisible se
         const rendered = PacketWire.renderLog([{
             coordinate: "1/1/1",
             origin: "model",
-            op: "PLAN",
+            op: "SEND",
             status: 200,
             tx: { body: "ab\r\ncdef" },
         }], tok);
@@ -1198,7 +1212,7 @@ test("{§jsonplurnk}: a folded bounded body does not claim to display a chunk", 
     const rendered = PacketWire.renderLog([{
         coordinate: "1/1/1",
         origin: "model",
-        op: "PLAN",
+        op: "SEND",
         status: 200,
         folded: true,
         tx: { body: long },
@@ -1217,23 +1231,22 @@ test("preview bounds are exact and reject invalid configuration", () => {
         const sixteenTerminatedLines = `${Array.from({ length: 16 }, (_, i) => `line ${i + 1}`).join("\n")}\n`;
         const exact = PacketWire.renderLog([{
             coordinate: "1/1/1",
-            origin: "plurnk",
-            op: "prompt",
+            origin: "model",
+            op: "SEND",
             status: 200,
-            target: { scheme: "prompt", pathname: "/1/1" },
-            rx: { content: sixteenTerminatedLines, mimetype: "text/plain" },
+            tx: { body: sixteenTerminatedLines },
         }], tok);
         assert.doesNotMatch(exact, /"chunk"/, "a trailing newline does not invent a seventeenth line");
 
         process.env.PLURNK_SERVICE_PREVIEW_LINES = "0";
         assert.throws(
-            () => PacketWire.renderLog([{ coordinate: "1/1/1", op: "PLAN", origin: "model", status: 200, tx: { body: "x" } }], tok),
+            () => PacketWire.renderLog([{ coordinate: "1/1/1", op: "SEND", origin: "model", status: 200, tx: { body: "x" } }], tok),
             /PLURNK_SERVICE_PREVIEW_LINES must be a positive safe integer/,
         );
         process.env.PLURNK_SERVICE_PREVIEW_LINES = "16";
         process.env.PLURNK_SERVICE_PREVIEW_CHARS = "NaN";
         assert.throws(
-            () => PacketWire.renderLog([{ coordinate: "1/1/1", op: "PLAN", origin: "model", status: 200, tx: { body: "x" } }], tok),
+            () => PacketWire.renderLog([{ coordinate: "1/1/1", op: "SEND", origin: "model", status: 200, tx: { body: "x" } }], tok),
             /PLURNK_SERVICE_PREVIEW_CHARS must be a positive safe integer/,
         );
     } finally {

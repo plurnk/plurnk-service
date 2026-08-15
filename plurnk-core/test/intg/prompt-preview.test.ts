@@ -1,6 +1,6 @@
-// Prompt frames are first-class actionless log rows. Their ordinary OPEN
-// projection obeys the universal preview contract, and the Active User Prompts
-// section retains each prompt:// address for direct retrieval.
+// Prompt frames are first-class actionless log rows. Their automatic OPEN
+// projection receives a stable share of the packet budget, and the Active User
+// Prompts section retains each prompt:// address for direct retrieval.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -31,12 +31,12 @@ test("a short prompt lands as one first-class prompt row", async () => {
     });
 });
 
-test("a long prompt renders an honest addressable preview and the section lists its entry", async () => {
+test("a jumbo prompt renders an adaptive addressable chunk and the section lists its complete entry", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "par-long" });
-            const fat = Array.from({ length: 30 }, (_, i) => `prompt line ${i + 1}`).join("\n");
+            const fat = Array.from({ length: 4_000 }, (_, i) => `prompt line ${i + 1}: ${"x".repeat(72)}`).join("\n");
             const resp = await runLoopToTerminal(ws, 2, { prompt: fat });
             const { loopId, turnIds } = resp as { loopId: number; turnIds: number[] };
             const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
@@ -46,12 +46,20 @@ test("a long prompt renders an honest addressable preview and the section lists 
             const packet = JSON.parse(row!.packet) as { sections?: Array<{ name: string; slot: string; header: string | null; content: string }> };
             const logSection = (packet.sections ?? []).find((sec) => sec.name === "log");
             const promptSection = (packet.sections ?? []).find((sec) => sec.name === "prompt");
-            assert.match(logSection?.content ?? "", /prompt line 1/, "the prompt preview reaches the model");
-            assert.doesNotMatch(logSection?.content ?? "", /prompt line 30/, "content beyond the preview is withheld");
-            assert.match(logSection?.content ?? "", /"body":"[\s\S]*","chunk":"READing <1,16> of <1,30>"}/, "the preview states its displayed and complete extents after its body");
+            assert.match(logSection?.content ?? "", /prompt line 1/, "the prompt projection reaches the model");
+            assert.match(logSection?.content ?? "", /prompt line 17/, "prompt initialization is not clipped by the ordinary sixteen-line preview");
+            assert.doesNotMatch(logSection?.content ?? "", /prompt line 4000:/, "content beyond the adaptive projection remains outside the packet");
+            const chunk = /"chunk":"READing <1,(\d+)> of <1,4000>"/.exec(logSection?.content ?? "");
+            assert.ok(chunk, "the projection states its displayed and complete extents after its body");
+            assert.ok(Number(chunk[1]) > Number(process.env.PLURNK_SERVICE_PREVIEW_LINES), "the dynamic prompt projection exceeds the unrelated ordinary preview bound");
             const projectedPrompt = logEntries(packet).find((entry) =>
                 typeof entry.path === "string" && entry.path.endsWith("/prompt"));
-            assert.equal(projectedPrompt?.chunk, "READing <1,16> of <1,30>", "the independent packet parser retains the following member");
+            assert.equal(projectedPrompt?.chunk, `READing <1,${chunk[1]}> of <1,4000>`, "the independent packet parser retains the following member");
+            const budgetSection = (packet.sections ?? []).find((sec) => sec.name === "budget")?.content ?? "";
+            const ceiling = Number(/Token Ceiling\s+(\d+)/.exec(budgetSection)?.[1]);
+            const projectionPercent = Number(/^([0-9]+(?:\.[0-9]+)?)%$/.exec(process.env.PLURNK_SERVICE_PROMPT_PROJECTION ?? "")?.[1]);
+            assert.ok(Number.isFinite(ceiling) && Number.isFinite(projectionPercent));
+            assert.ok(Number(projectedPrompt?.tokens) <= Math.floor(ceiling * projectionPercent / 100), "the projected body stays within its configured quarter-window allowance");
             const bodyTarget = /"path":"(log:\/\/\/1\/1\/\d+\/prompt)"/
                 .exec(logSection?.content ?? "")?.[1];
             assert.ok(bodyTarget, "the emitted canonical-body target is present");
@@ -112,28 +120,23 @@ test("a small deliverable rides whole — whole-when-small is the common case, u
     assert.ok(!rendered.includes("\"chunk\""), "an in-bounds body has no chunk extent");
 });
 
-test("a single-line prompt cannot bypass the character bound", async () => {
+test("a single-line jumbo prompt uses the adaptive prompt allowance rather than the ordinary character preview", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "par-bomb" });
-            const bomb = `find the needle: ${"hay ".repeat(5000)}needle`; // one line, ~20k chars
+            const bomb = `find the needle: ${"hay ".repeat(50_000)}needle`;
             const resp = await runLoopToTerminal(ws, 2, { prompt: bomb });
             const { turnIds } = resp as { loopId: number; turnIds: number[] };
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds[0] });
             const packet = JSON.parse(row!.packet) as { sections?: Array<{ name: string; content: string }> };
             const log = (packet.sections ?? []).find((sec) => sec.name === "log")?.content ?? "";
             const longestHayRun = (log.match(/(?:hay )+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0);
-            assert.ok(longestHayRun <= Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS), "the prompt obeys the character bound");
+            assert.ok(longestHayRun > Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS), "prompt initialization is independent of the ordinary character preview");
+            assert.ok(longestHayRun < bomb.length, "the jumbo single line is still projected rather than stuffed whole into the packet");
             const chunk = /"chunk":"READing <1,1,1,(\d+)> of <1,1,1,(\d+)>"/.exec(log);
-            assert.deepEqual(
-                chunk?.slice(1),
-                [
-                    String(Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS) + 1),
-                    String(Array.from(bomb).length + 1),
-                ],
-                "the prompt states the exact selected and complete character extents",
-            );
+            assert.ok(Number(chunk?.[1]) > Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS) + 1);
+            assert.equal(chunk?.[2], String(Array.from(bomb).length + 1), "the prompt states the exact complete character extent");
         } finally { ws.close(); }
     });
 });

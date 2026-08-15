@@ -116,6 +116,16 @@ const readOptionalPositiveIntFrom = (env: NodeJS.ProcessEnv, name: string): numb
     return n;
 };
 
+const readRequiredPercentFrom = (env: NodeJS.ProcessEnv, name: string): number => {
+    const raw = env[name];
+    const match = /^([0-9]+(?:\.[0-9]+)?)%$/.exec(raw ?? "");
+    const percent = Number(match?.[1]);
+    if (!Number.isFinite(percent) || percent <= 0 || percent >= 100) {
+        throw new Error(`${name} must be a percentage in (0, 100); got ${JSON.stringify(raw)}`);
+    }
+    return percent / 100;
+};
+
 export type { ChatMessage } from "@plurnk/plurnk-providers";
 
 export type ContextEnvelopeAdmission =
@@ -163,6 +173,7 @@ export default class PacketBuilder {
         const bootAlias = resolveActiveAlias(process.env)?.alias ?? "";
         this.#safetyFor(bootAlias);
         this.#promptBudgetCapFor(bootAlias);
+        this.#promptProjectionFor(bootAlias);
     }
 
     // {§tokenomics-window-partition} — provider generation settings and core packet policy both resolve per alias.
@@ -171,7 +182,7 @@ export default class PacketBuilder {
     // alias when a provider carries no side-table entry (a test Mock).
     // Provider context and response reserves remain provider-owned. Core owns only its virtual
     // prompt budget and the ruler's packing-safety margin.
-    static #KNOBS = ["PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_SAFETY"] as const;
+    static #KNOBS = ["PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_SAFETY"] as const;
     #shedChecked = false;
 
     #safetyFor(alias: string): number {
@@ -196,6 +207,11 @@ export default class PacketBuilder {
     #promptBudgetCapFor(alias: string): number | null {
         const view = scopeEnvToAlias(process.env, alias, PacketBuilder.#KNOBS);
         return readOptionalPositiveIntFrom(view, "PLURNK_SERVICE_PROMPT_BUDGET");
+    }
+
+    #promptProjectionFor(alias: string): number {
+        const view = scopeEnvToAlias(process.env, alias, PacketBuilder.#KNOBS);
+        return readRequiredPercentFrom(view, "PLURNK_SERVICE_PROMPT_PROJECTION");
     }
 
     #partitionFor(provider: Provider): { reasoning: number | null; completion: number | null; safety: number } {
@@ -305,6 +321,10 @@ export default class PacketBuilder {
         const activeSchemes = this.#schemes.resolveForLoop(await LoopFlagsReader.read(this.#db, loopId));
         const tools = this.#collectTools(await this.#workspaceEnabled(workspaceId), await WorkspaceSettings.questionsEnabled(this.#db, workspaceId), activeSchemes);
         const ceiling = this.ceilingFor(provider);
+        const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
+        const promptProjectionBudget = ceiling === null
+            ? null
+            : Math.floor(ceiling * this.#promptProjectionFor(alias));
         const budgetReadout = BudgetReadout.draft(ceiling);
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only
@@ -339,7 +359,16 @@ export default class PacketBuilder {
             { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach() },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
-            { name: "log", slot: "user", header: "Log", content: PacketWire.renderLog(log, countTokens) },
+            {
+                name: "log",
+                slot: "user",
+                header: "Log",
+                content: PacketWire.renderLog(
+                    log,
+                    countTokens,
+                    promptProjectionBudget === null ? {} : { promptProjectionBudget },
+                ),
+            },
             // The per-turn status clump follows the log ({§packet-cache-monotone}).
             // child-orientation: what this worker holds live — streams then child workers — just above errors. Terse
             // pointers (the path is the actionable address the model READs/OPENs/KILLs), never advice. {§child-orientation}

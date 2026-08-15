@@ -2002,6 +2002,7 @@ Model selection: separate alias cascade in `ProviderRegistry` ({§provider-insta
 | `PLURNK_SERVICE_EMISSION_ATTEMPTS`                          | `3` | Completed provider responses allowed beneath one engine turn before an untrustworthy model-turn frame exhausts admission. Bounded interior operation errors are admitted and do not spend this budget. Consecutive exhaustion after the one informed recovery turn terminates independently of strikes. |
 | `PLURNK_SERVICE_PREVIEW_LINES`                              | `16` | Maximum lines in an ordinary bounded log-body projection ({§body-projection}). |
 | `PLURNK_SERVICE_PREVIEW_CHARS`                              | `2560` | Maximum Unicode code points in an ordinary bounded log-body projection, with CRLF treated as one indivisible separator; independently contains single-line bodies ({§body-projection}). |
+| `PLURNK_SERVICE_PROMPT_PROJECTION`                          | `25%` | Aggregate ruler-weight share of the enforced packet budget available to automatic prompt-body projection ({§prompt-projection}); alias-scoped overrides are supported. |
 | `PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES`                  | `2` | Complete neighboring lines hashed on each side of a model-facing line anchor ({§line-anchors}). |
 | `PLURNK_SERVICE_MIN_CYCLES`                                 | `3` | Min repetitions before cycle detection fires ({§engine-rails}). |
 | `PLURNK_SERVICE_MAX_CYCLE_PERIOD`                           | `4` | Max period length cycle detection examines ({§engine-rails}). |
@@ -2405,6 +2406,13 @@ time of measurement.
   uses the natural capacity. The virtual ceiling controls only the packet gauge
   and grinder; it never changes the hard context envelope, reasoning, completion, or
   `maxTokens`.
+- §tokenomics-prompt-projection-share **Prompt projection is stable packet policy.**
+  `PLURNK_SERVICE_PROMPT_PROJECTION` is a required alias-scoped percentage in
+  `(0, 100)`. It allocates that share of the enforced `promptBudget` to the
+  aggregate automatic prompt-body projection. It does not bound stored prompt
+  size, provider capacity, an explicit READ/FIND result, or the complete packet.
+  Basing the share on the stable ceiling rather than current free weight keeps
+  one prompt's projection byte-stable as the worker log evolves.
 - §tokenomics-window-unpollable-deliberate **Unknown provider capacity stays
   unknown.** Without a configured virtual ceiling, an unknown provider window
   leaves the prompt uncapped and omits denominator-dependent gauge telemetry. A
@@ -2877,12 +2885,16 @@ evidence when a downstream standard cannot represent the complete list.
 | row producer | ordinary OPEN projection |
 |---|---|
 | any `READ` or `FIND` | complete selected operation result |
+| any `PLAN` | complete authored working memory |
+| actionless lowercase `prompt` | budgeted head under {§prompt-projection} |
 | every other nonempty body | head bounded independently by `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS` |
 | bodyless row | `"display":"none","body":""` |
 
-READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. Prompts, model-emission mirrors, PLAN/SEND/WORK/FORK bodies, EXEC commands, mutation receipts, and extension-produced bodies use the bounded projection. When an OPEN projection differs from its canonical body, `chunk` follows the displayed `body` with the exact selected and complete extents defined by {§jsonplurnk}; complete and FOLDED bodies omit it. `## READ0 (log:///<coordinate>/<OP>)` applies its default or explicit text range to the canonical body; the unsuffixed exact shorthand and authoritative suffix behavior are defined by {§log-coordinate-hierarchy}. `## FIND0 (log:///...)` and search match that same full body. FOLD hides the ordinary projection, and OPEN restores it without bypassing the bound. System/policy sections are not log bodies. Notices are transient non-log observations; they share the line/character bounds but have no durable body or recovery URI.
+READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. PLAN is likewise complete while OPEN: it is the model's explicit persistent reasoning inventory, not ordinary content that the model should have to retrieve from itself. Prompt rows follow their separate adaptive projection contract. Model-emission mirrors, SEND/WORK/FORK bodies, EXEC commands, mutation receipts, and extension-produced bodies use the ordinary fixed bound. When an OPEN projection differs from its canonical body, `chunk` follows the displayed `body` with the exact selected and complete extents defined by {§jsonplurnk}; complete and FOLDED bodies omit it. `## READ0 (log:///<coordinate>/<OP>)` applies its default or explicit text range to the canonical body; the unsuffixed exact shorthand and authoritative suffix behavior are defined by {§log-coordinate-hierarchy}. `## FIND0 (log:///...)` and search match that same full body. FOLD hides the ordinary projection, and OPEN restores the producer's projection without changing its bound. System/policy sections are not log bodies. Notices are transient non-log observations; they share the ordinary line/character bounds but have no durable body or recovery URI.
 
 §prompt-entry **Prompt as a first-class entry and log row.** Each prompt is stored once at `prompt:///<loop>/<N>` as an owner-keyed text/markdown entry, then published to its turn as one actionless lowercase `prompt` log row. No synthetic EDIT or READ operation is invented. The row is born OPEN and obeys {§body-projection}. The **Active User Prompts** section closes the user-slot status clump as a paths-only list (`* prompt:///<loop>/<N>`), so every frame remains directly READable even after its log row is folded or killed.
+
+§prompt-projection **Prompt storage is unbounded by model context; automatic materialization is not.** Core persists every accepted prompt completely before packet assembly. The selected provider's enforced `promptBudget` and the alias-resolved percentage from `PLURNK_SERVICE_PROMPT_PROJECTION` derive one aggregate ruler-weight allowance for OPEN prompt bodies. Complete prompt bodies render when their aggregate weight fits. Otherwise all OPEN prompt rows share the allowance: full bodies consume only their required share, unused shares are redistributed, and partial bodies render the largest leading complete-line region that fits their share or an exact character-bound prefix when the first physical line alone is larger. The sum of their rendered body weights never exceeds the allowance. Every partial body carries its exact `chunk` after `body`; the canonical `prompt:///` entry and `log:///` body remain complete and READ/FIND-addressable. Without an enforced packet ceiling the percentage is underivable, so prompt rows retain the ordinary bounded projection rather than inventing capacity. This policy never rejects, summarizes, or discards a prompt because it exceeds a context window.
 
 §prompt-self-only The frame is self-only and owner-keyed:
 `entries.owner_id` carries worker identity while the address carries only the

@@ -45,6 +45,9 @@ These are relationships *between* flags. Set them as a unit.
   natural prompt gauge from those facts. Optional `PLURNK_SERVICE_PROMPT_BUDGET_<alias>`
   only tightens the model-facing gauge and grinder; it is never sent to the
   provider and never changes hard admission or generation settings.
+  `PLURNK_SERVICE_PROMPT_PROJECTION_<alias>` assigns a stable percentage of
+  that gauge to automatic prompt bodies; it never limits stored prompt size
+  ({§prompt-projection}).
 - **Reasoning capacity is request-scoped on llama-server.**
   `PLURNK_PROVIDERS_REASONING_RESERVE_<alias>` is the adaptive cumulative
   response allowance. An explicit `PLURNK_PROVIDERS_REASONING_BUDGET_<alias>`
@@ -84,7 +87,8 @@ Each mirrors a `# --- section ---` in the floor; consult the floor for exact def
 - **Provider capacity and prompt budget** —
   `PLURNK_PROVIDERS_CONTEXT_WINDOW`/`_REASONING_RESERVE`/`_COMPLETION_RESERVE`
   describe provider capacity. `PLURNK_SERVICE_PROMPT_BUDGET` applies optional
-  virtual pressure; `PLURNK_SERVICE_SAFETY` is the packing margin.
+  virtual pressure; `PLURNK_SERVICE_PROMPT_PROJECTION` assigns the automatic
+  prompt-body share; `PLURNK_SERVICE_SAFETY` is the packing margin.
 - **Plugins** — bare `PLURNK_PLUGINS_TRUSTED_ONLY` (0/unset = load all installed; a value = `@plurnk/*` plus an allowlist).
 - **Semantic search** — `PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS`/`_CHUNK_OVERLAP` (service-side chunking), `PLURNK_SERVICE_EMBED_DISABLE` (FTS-only), `PLURNK_MIMETYPES_EMBED_WORKERS` (the embedder's pool — mimetypes-owned).
 - **Schemes: http** — `PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT`, `_TTL_MS`, optional `# TAVILY_API_KEY=`, and `PLURNK_SCHEMES_HTTP_TAVILY_DEPTH`/`_TAVILY_TIMEOUT_MS`.
