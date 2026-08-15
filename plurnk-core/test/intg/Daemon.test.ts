@@ -10,6 +10,22 @@ import { OperationFailureError } from "../../src/core/results.ts";
 import { Validator, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
+const lateWakeFailures: string[] = [];
+const consoleError = console.error;
+console.error = (...args: unknown[]): void => {
+    const rendered = args.map(String).join(" ");
+    if (/wake-on-completion/.test(rendered)) lateWakeFailures.push(rendered);
+    else consoleError(...args);
+};
+test.after(() => {
+    console.error = consoleError;
+    assert.deepEqual(
+        lateWakeFailures,
+        [],
+        "the real daemon/EXEC teardown path leaves no wake task beyond database ownership",
+    );
+});
+
 // A stand-in registration in the daemon-module setup shape:
 // framework types only — decl + executor + the driver's probe result. The kernel wraps the
 // RegistryEntry itself; registration needs no live driver (the scheme face reads lazily at dispatch).

@@ -205,7 +205,7 @@ export default class Daemon {
             // model-independent. Request-shaped token facts stay provider-owned.
             weigh: contentWeight,
             streamEventNotify: (workspaceId, event) => this.notifyStreamEvent(workspaceId, event),
-            wakeWorkerNotify: (payload) => { void this.#drains.handleWakeWorker(payload); },
+            wakeWorkerNotify: (payload) => this.#drains.notifyWakeWorker(payload),
             // worker:// loop-start primitive — spawn/fork/irc deliver through
             // Daemon.inject (active sister → fold; idle → enqueue + drain). The
             // daemon owns provider + the law-file system prompt; the worker scheme
@@ -1404,7 +1404,7 @@ export default class Daemon {
         this.#branchBatches.beginStop();
         this.#drains.beginStop("daemon_stopping");
         await this.#branchBatches.idle();
-        await this.#drains.idle();
+        const [drainResult] = await Promise.allSettled([this.#drains.idle()]);
         const closeResults = await moduleClose;
         const [streamingResult] = await Promise.allSettled([this.#drainStreamingSchemes()]);
         const [derivationResult] = await Promise.allSettled([
@@ -1414,7 +1414,19 @@ export default class Daemon {
             ? await Promise.allSettled([this.#mimetypes.dispose()])
             : [];
         const [schemeResult] = await Promise.allSettled([this.#schemes.close()]);
-        const closeErrors = [...closeResults, streamingResult, derivationResult, ...mimetypeResults, schemeResult]
+        // Streaming and scheme closure are the last producers of synchronous
+        // conclusion notifications. Join the supervisor-owned async tails only
+        // after those producers settle, before the caller may close SQLite.
+        const [wakeResult] = await Promise.allSettled([this.#drains.idle()]);
+        const closeErrors = [
+            ...closeResults,
+            drainResult,
+            streamingResult,
+            derivationResult,
+            ...mimetypeResults,
+            schemeResult,
+            wakeResult,
+        ]
             .filter((result): result is PromiseRejectedResult => result.status === "rejected")
             .flatMap((result) => result.reason instanceof AggregateError
                 ? [...result.reason.errors]

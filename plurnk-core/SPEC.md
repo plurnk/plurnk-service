@@ -2164,6 +2164,22 @@ recovers durable lifecycle, and starts modules in registration order. Shutdown
 closes started and self-closing modules in reverse order and surfaces aggregated
 close failures.
 
+§module-shutdown-order `Daemon.stop()` returns only after active worker drains,
+streaming producers, derivations, mimetypes, schemes, and every accepted
+conclusion-wake task have settled in dependency order. The supervisor owns each
+asynchronous wake task from acceptance through settlement; a task failure
+participates in the shutdown aggregate. The database may be released only after
+the final wake barrier resolves.
+
+```mermaid
+flowchart LR
+    stop[Stop accepting work] --> drains[Settle worker drains]
+    drains --> producers[Settle streaming producers]
+    producers --> resources[Dispose derivations,<br/>mimetypes, and schemes]
+    resources --> wakes[Settle conclusion wakes]
+    wakes --> database[Release database]
+```
+
 | Setup function                                                         | Contract |
 |------------------------------------------------------------------------|----------|
 | `registerRuntime({ decl, executor, availability, scheme? })`           | Admits one canonical tag under {§executor-runtime-declaration}, then adds its executor and optional claimed scheme facet atomically. |

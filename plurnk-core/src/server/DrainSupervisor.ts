@@ -112,6 +112,8 @@ export default class DrainSupervisor {
     // exiting drain cannot clobber a successor that raced in.
     readonly #activeDrains = new Map<number, { controller: AbortController; promise: Promise<unknown> }>();
     readonly #drainExitTasks = new Set<Promise<void>>();
+    readonly #wakeTasks = new Set<Promise<void>>();
+    readonly #wakeFailures: unknown[] = [];
     // One cancellation scope spans a worker's loops and streams. It outlives
     // any single drain and is replaced only after it has been aborted.
     readonly #workerAborts = new Map<number, AbortController>();
@@ -190,8 +192,19 @@ export default class DrainSupervisor {
     }
 
     async idle(): Promise<void> {
-        await Promise.allSettled([...this.#activeDrains.values()].map(({ promise }) => promise));
-        await Promise.allSettled([...this.#drainExitTasks]);
+        for (;;) {
+            const pending = [
+                ...[...this.#activeDrains.values()].map(({ promise }) => promise),
+                ...this.#drainExitTasks,
+                ...this.#wakeTasks,
+            ];
+            if (pending.length === 0) break;
+            await Promise.allSettled(pending);
+        }
+        const failures = this.#wakeFailures.splice(0);
+        if (failures.length > 0) {
+            throw new AggregateError(failures, "wake-on-completion settlement failed");
+        }
     }
 
     async inject(args: DrainInjectionArgs): Promise<DrainInjectionResult> {
@@ -712,7 +725,22 @@ export default class DrainSupervisor {
         await Promise.all(open.map(({ id }) => this.#cancelSubscription(id)));
     }
 
-    async handleWakeWorker(payload: WakeWorkerPayload): Promise<void> {
+    // {§module-shutdown-order}: the producer emits synchronously, while the
+    // supervisor owns the asynchronous scheduler work and its shutdown truth.
+    notifyWakeWorker(payload: WakeWorkerPayload): void {
+        const task = this.#handleWakeWorker(payload);
+        this.#wakeTasks.add(task);
+        void task.then(
+            () => { this.#wakeTasks.delete(task); },
+            (error: unknown) => {
+                this.#wakeTasks.delete(task);
+                this.#wakeFailures.push(error);
+                console.error("wake-on-completion failed:", error);
+            },
+        );
+    }
+
+    async #handleWakeWorker(payload: WakeWorkerPayload): Promise<void> {
         const { entryOwnerId, ...wake } = payload;
         const conclusion = { ...wake, workerId: entryOwnerId };
         // {§search-gate} — settle the dedup registration: promote on a 200 conclusion, drop on
@@ -741,53 +769,48 @@ export default class DrainSupervisor {
             return;
         }
 
-        try {
-            const systemPrompt = await this.#readSystemPrompt();
+        const systemPrompt = await this.#readSystemPrompt();
 
-            // A slept (202) loop means the worker parked via SEND signal 202 → resume it in place: re-queue
-            // it (202→100) so the drain re-claims and CONTINUES it (seq>1 → no re-foist). Checked
-            // FIRST: the slept status is the worker's true disposition regardless of a draining
-            // sibling mid-teardown (the ensureDrain lock serializes the re-claim). No fresh loop,
-            // no summary-as-prompt — the resumed loop reads the concluded stream's own state from
-            // the manifest. {§worker-lifecycle-wake-liveness}.
-            const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: payload.workerId });
-            if (slept !== undefined) {
-                // {§worker-optimistic-settlement} — publish this conclusion now,
-                // then let the worker-local gate coalesce only the provider
-                // dispatch. Concurrent stream/child callbacks join that one gate.
-                void this.settleCompletionWake(
-                    payload.workspaceId,
-                    payload.workerId,
-                    systemPrompt,
-                    false,
-                ).catch((err: unknown) => {
-                    console.error("completion wake settlement failed:", err instanceof Error ? err.message : String(err));
-                });
-                this.#emit(payload.workspaceId, "stream/concluded", {
-                    ...conclusion, wakeAction: "resumed-loop", wakeLoopId: slept.id,
-                });
-                return;
-            }
-
-            // No slept loop. A live loop surfaces the concluded stream ambiently via the
-            // environment-observation injector ({§exec-stream}) on its next turn — there is no prompt
-            // to inject and NO task to overwrite. The obsolete "automated environment update"
-            // synthesis (which clobbered the model's actual goal) is retired; just tell the client.
-            if (this.#activeDrains.has(payload.workerId)) {
-                this.#emit(payload.workspaceId, "stream/concluded", {
-                    ...conclusion, wakeAction: "no-op-active-loop",
-                });
-                return;
-            }
-
-            // No slept loop, no active drain — nothing to resume (e.g. a SEND-200-done worker whose
-            // streams were swept). Surface the conclusion without opening a loop.
+        // A slept (202) loop means the worker parked via SEND signal 202 → resume it in place: re-queue
+        // it (202→100) so the drain re-claims and CONTINUES it (seq>1 → no re-foist). Checked
+        // FIRST: the slept status is the worker's true disposition regardless of a draining
+        // sibling mid-teardown (the ensureDrain lock serializes the re-claim). No fresh loop,
+        // no summary-as-prompt — the resumed loop reads the concluded stream's own state from
+        // the manifest. {§worker-lifecycle-wake-liveness}.
+        const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: payload.workerId });
+        if (slept !== undefined) {
+            // {§worker-optimistic-settlement} — publish this conclusion now,
+            // then let the worker-local gate coalesce only the provider
+            // dispatch. Concurrent stream/child callbacks join that one gate.
+            const settlement = this.settleCompletionWake(
+                payload.workspaceId,
+                payload.workerId,
+                systemPrompt,
+                false,
+            );
             this.#emit(payload.workspaceId, "stream/concluded", {
-                ...conclusion, wakeAction: "no-loop",
+                ...conclusion, wakeAction: "resumed-loop", wakeLoopId: slept.id,
             });
-        } catch (err) {
-            console.error("wake-on-completion setup failed:", err instanceof Error ? err.message : String(err));
+            await settlement;
+            return;
         }
+
+        // No slept loop. A live loop surfaces the concluded stream ambiently via the
+        // environment-observation injector ({§exec-stream}) on its next turn — there is no prompt
+        // to inject and NO task to overwrite. The obsolete "automated environment update"
+        // synthesis (which clobbered the model's actual goal) is retired; just tell the client.
+        if (this.#activeDrains.has(payload.workerId)) {
+            this.#emit(payload.workspaceId, "stream/concluded", {
+                ...conclusion, wakeAction: "no-op-active-loop",
+            });
+            return;
+        }
+
+        // No slept loop, no active drain — nothing to resume (e.g. a SEND-200-done worker whose
+        // streams were swept). Surface the conclusion without opening a loop.
+        this.#emit(payload.workspaceId, "stream/concluded", {
+            ...conclusion, wakeAction: "no-loop",
+        });
     }
 
     async schedulePollWake(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
