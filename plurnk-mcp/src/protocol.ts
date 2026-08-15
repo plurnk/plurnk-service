@@ -1,0 +1,4 @@
+export const MCP_PROTOCOL_VERSION = "2026-07-28";
+export const MCP_SPECIFICATION_COMMIT = "5f5440bb26a62e2cf3440b92da5a667efa03b267";
+export const MCP_CLIENT_VERSION = "2.0.0";
+export const MCP_CONFORMANCE_VERSION = "0.2.0-alpha.11";

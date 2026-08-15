@@ -16,8 +16,7 @@ import {
     requestTimeoutMs,
     type ServerConfig,
 } from "./config.ts";
-
-export const MCP_PROTOCOL_VERSION = "2026-07-28";
+import { MCP_PROTOCOL_VERSION } from "./protocol.ts";
 
 export interface ServerCatalog {
     readonly protocolVersion: typeof MCP_PROTOCOL_VERSION;

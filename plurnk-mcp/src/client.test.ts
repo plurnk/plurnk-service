@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import ServerConnection, { MCP_PROTOCOL_VERSION } from "./client.ts";
+import ServerConnection from "./client.ts";
+import { MCP_PROTOCOL_VERSION } from "./protocol.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const env = {
