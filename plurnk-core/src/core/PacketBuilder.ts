@@ -27,6 +27,7 @@ import { assertPromptTokenMeasurement, scopeEnvToAlias, resolveActiveAlias } fro
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import BudgetReadout from "./BudgetReadout.ts";
 import ExecutableTools from "./ExecutableTools.ts";
+import LineAnchors from "../content/line-anchors.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -621,6 +622,23 @@ export default class PacketBuilder {
                 throw new TypeError("A READ result's lineAnchors field must be an array.");
             }
             const lineAnchors = rawLineAnchors as readonly string[] | undefined;
+            const rawLineNumberWidth = LogEntryProjection.op(r) === "READ"
+                && r.status_rx === 200
+                && rx !== null
+                && typeof rx === "object"
+                && Object.hasOwn(rx, "lineNumberWidth")
+                ? (rx as { lineNumberWidth: unknown }).lineNumberWidth
+                : undefined;
+            if (
+                rawLineNumberWidth !== undefined
+                && !LineAnchors.isLineNumberWidth(rawLineNumberWidth)
+            ) {
+                throw new TypeError("A READ result's lineNumberWidth field must be a valid decimal line width.");
+            }
+            if ((lineAnchors === undefined) !== (rawLineNumberWidth === undefined)) {
+                throw new TypeError("A READ result's lineAnchors and lineNumberWidth fields must appear together.");
+            }
+            const lineNumberWidth = rawLineNumberWidth;
             return {
                 coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
                 origin: r.origin,
@@ -645,6 +663,7 @@ export default class PacketBuilder {
                 attrs: r.attrs === null ? null : JSON.parse(r.attrs),
                 tags: JSON.parse(r.tags),
                 ...(lineAnchors === undefined ? {} : { lineAnchors }),
+                ...(lineNumberWidth === undefined ? {} : { lineNumberWidth }),
             };
         });
     }

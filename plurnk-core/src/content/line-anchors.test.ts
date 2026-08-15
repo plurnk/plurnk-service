@@ -43,15 +43,24 @@ test("LineAnchors: rendering preserves physical content and separators while car
     const complete = "one\ntwo\nthree\nfour\nfive\nsix\nalpha\r\nbeta\rgamma\nten";
     const projection = "alpha\r\nbeta\rgamma\n";
     const anchors = LineAnchors.project(identity, complete, projection, 7);
-    const rendered = LineAnchors.render(projection, 7, anchors);
+    const rendered = LineAnchors.render(
+        projection,
+        7,
+        anchors,
+        LineAnchors.lineNumberWidth(complete),
+    );
     const lines = rendered.split(/\r\n|\r|\n/);
-    assert.match(lines[0]!, /^@[0-9A-Za-z]{5} 7:alpha$/);
-    assert.match(lines[1]!, /^@[0-9A-Za-z]{5} 8:beta$/);
-    assert.match(lines[2]!, /^@[0-9A-Za-z]{5} 9:gamma$/);
+    assert.match(lines[0]!, /^@[0-9A-Za-z]{5}  7:alpha$/);
+    assert.match(lines[1]!, /^@[0-9A-Za-z]{5}  8:beta$/);
+    assert.match(lines[2]!, /^@[0-9A-Za-z]{5}  9:gamma$/);
     assert.equal(lines[3], "");
-    assert.match(rendered, / 7:alpha\r\n/);
-    assert.match(rendered, / 8:beta\r/);
-    assert.match(rendered, / 9:gamma\n$/);
+    assert.match(rendered, /  7:alpha\r\n/);
+    assert.match(rendered, /  8:beta\r/);
+    assert.match(rendered, /  9:gamma\n$/);
+    assert.throws(
+        () => LineAnchors.render(projection, 7, anchors, Number.MAX_SAFE_INTEGER),
+        /line-number width/,
+    );
 });
 
 test("LineAnchors: resolution lowers anchors only in line-coordinate positions", () => {

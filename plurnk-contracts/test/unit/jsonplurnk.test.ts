@@ -73,15 +73,15 @@ test("jsonplurnk: numbered body lines may begin at any selected source line", ()
     assert.equal(parsed[0].body, "900:first selected line\n901:second selected line\n");
 });
 
-test("jsonplurnk: anchored READ lines carry both a hash and visible line number", () => {
+test("jsonplurnk: anchored READ lines tolerate alignment spaces before the visible line number", () => {
     const block = `[
 {"op":"READ","path":"log:///1/1/1/READ","display":"open","body":"
-@aZ09b 900:first selected line
-@0Aa9Z 901:second selected line
+@aZ09b   9:first selected line
+@0Aa9Z 100:second selected line
 "}
 ]`;
     const parsed = Jsonplurnk.parse(block) as any[];
-    assert.equal(parsed[0].body, "@aZ09b 900:first selected line\n@0Aa9Z 901:second selected line\n");
+    assert.equal(parsed[0].body, "@aZ09b   9:first selected line\n@0Aa9Z 100:second selected line\n");
 });
 
 test("jsonplurnk: a fused anchor and line number is not a coordinate prefix", () => {

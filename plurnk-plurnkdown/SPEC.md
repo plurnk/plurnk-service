@@ -97,7 +97,8 @@ languages are opaque to the PLURNK syntax check.
 The Log is a fixed three-backtick `jsonplurnk` array owned by {§jsonplurnk}. It is valid GFM but
 deliberately not labeled `json`: an open nonempty `body` uses one raw multiline quoted string rather than a JSON-escaped string.
 Every physical body line begins with either a numeric `N:` or anchored
-`@hash N:` coordinate prefix. The closing quote appears at column zero before
+`@hash N:` coordinate prefix; the latter admits one or more separating ASCII
+spaces. The closing quote appears at column zero before
 either the object close or a following `chunk` member.
 Coordinate prefixes keep source backticks out of the CommonMark closing-fence position, so content
 cannot close the fixed fence. `@plurnk/plurnk-contracts` owns the deterministic transform that

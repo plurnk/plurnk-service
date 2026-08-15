@@ -829,6 +829,7 @@ test("READ bodies render copyable Base62 line anchors while other numbered bodie
         rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta", startLine: 7 },
         folded: false,
         lineAnchors: ["@aZ09b", "@Q1w2E"],
+        lineNumberWidth: 1,
     }], tok);
     assert.match(read, /@aZ09b 7:alpha/);
     assert.match(read, /@Q1w2E 8:beta/);
@@ -857,6 +858,7 @@ test("READ rendering fails hard when persisted anchors do not align with the pro
             rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta", startLine: 7 },
             folded: false,
             lineAnchors: ["@aZ09b"],
+            lineNumberWidth: 1,
         }], tok),
         /line anchors must align one-for-one/,
     );

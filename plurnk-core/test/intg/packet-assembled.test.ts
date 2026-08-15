@@ -31,12 +31,13 @@ test("assembled packet: editable READ lines carry copyable anchors without chang
         const schemes = new SchemeRegistry();
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
         const target = urlPath("worker", "/anchored.md");
+        const source = Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join("\n");
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
                 { assistant: { content: "", reasoning: null, ops: [
-                    editStmt(target, "alpha\nbeta"),
-                    readStmt(target, { marks: [1, -1] }),
+                    editStmt(target, source),
+                    readStmt(target, { marks: [9, 10] }),
                     sendStmt(102),
                 ] } },
                 { assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } },
@@ -50,7 +51,7 @@ test("assembled packet: editable READ lines carry copyable anchors without chang
             && typeof entry.path === "string"
             && entry.path.endsWith("/READ"));
         assert.equal(read?.target, "worker:///anchored.md");
-        assert.match(String(read?.body), /^@[0-9A-Za-z]{5} 1:alpha\n@[0-9A-Za-z]{5} 2:beta\n$/);
+        assert.match(String(read?.body), /^@[0-9A-Za-z]{5}   9:line 9\n@[0-9A-Za-z]{5}  10:line 10\n$/);
     } finally { await db.close(); }
 });
 

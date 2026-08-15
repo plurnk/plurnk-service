@@ -13,6 +13,7 @@ import ReadResolve from "./read-resolve.ts";
 export interface AnchoredReadResult extends EntryReadResult {
     readonly lineAnchorIdentity?: string;
     readonly lineAnchors?: readonly string[];
+    readonly lineNumberWidth?: number;
 }
 
 // {§universal-read-composition} Core's one exact-resource projection over a complete canonical
@@ -203,6 +204,7 @@ export default class ReadProjector {
                 result.content,
                 startLine,
             ),
+            lineNumberWidth: LineAnchors.lineNumberWidth(selectedRepresentation.content),
         };
     }
 }

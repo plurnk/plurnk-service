@@ -94,6 +94,7 @@ interface LogEntryView {
     attrs?: unknown;
     tags?: unknown;
     lineAnchors?: readonly string[];
+    lineNumberWidth?: number;
 }
 interface FailurePointer { status?: unknown; coordinate?: unknown }
 interface NoticeView {
@@ -229,13 +230,14 @@ export default class PacketWire {
     }
 
     // The single content-body renderer EVERY output-emitting op routes through.
-    // Exact READ content receives `@hash N:`; other textual bodies receive `N:`.
+    // Exact READ content receives source-width-aligned `@hash N:`; other textual bodies receive `N:`.
     // Matchers consume canonical content before this presentation projection.
     // Empty content produces no body.
     static #renderContentBody(
         content: string,
         startLine: number | null = 1,
         lineAnchors: readonly string[] | null = null,
+        lineNumberWidth: number | null = null,
     ): string {
         if (content.length === 0) return "";
         // `startLine === null` means the producer already supplied numbered
@@ -243,7 +245,7 @@ export default class PacketWire {
         const rendered = startLine !== null
             ? lineAnchors === null
                 ? PacketWire.#numberLines(content, startLine)
-                : LineAnchors.render(content, startLine, lineAnchors)
+                : LineAnchors.render(content, startLine, lineAnchors, lineNumberWidth ?? 0)
             : content;
         return PacketWire.#quoteBody(rendered);
     }
@@ -701,9 +703,15 @@ export default class PacketWire {
                 throw new Error("a previewed log body requires an addressable log path");
             }
             const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;
+            const lineNumberWidth = op === "READ" ? e.lineNumberWidth ?? null : null;
             const body = emptyFind || projection.text.length === 0
                 ? ""
-                : PacketWire.#renderContentBody(projection.text, fullBody.startLine, lineAnchors);
+                : PacketWire.#renderContentBody(
+                    projection.text,
+                    fullBody.startLine,
+                    lineAnchors,
+                    lineNumberWidth,
+                );
 
             // tokens on EVERY row (0 when there's genuinely no body) so the model can always weigh
             // it; for a folded row this is the room an OPEN would add.

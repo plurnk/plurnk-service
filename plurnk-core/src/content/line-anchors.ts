@@ -31,8 +31,9 @@ export default class LineAnchors {
     static readonly #ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     static readonly #LENGTH = 5;
     static readonly #MODULUS = BigInt(LineAnchors.#ALPHABET.length) ** BigInt(LineAnchors.#LENGTH);
+    static readonly #MAX_LINE_NUMBER_WIDTH = String(Number.MAX_SAFE_INTEGER).length;
     static readonly #TOKEN = /^@[0-9A-Za-z]{5}$/;
-    static readonly #PREFIXED_LINE = /^@[0-9A-Za-z]{5} [1-9]\d*:/;
+    static readonly #PREFIXED_LINE = /^@[0-9A-Za-z]{5} +[1-9]\d*:/;
 
     static isAnchor(value: unknown): value is string {
         return typeof value === "string" && LineAnchors.#TOKEN.test(value);
@@ -40,6 +41,12 @@ export default class LineAnchors {
 
     static isAnchoredLine(value: string): boolean {
         return LineAnchors.#PREFIXED_LINE.test(value);
+    }
+
+    static isLineNumberWidth(value: unknown): value is number {
+        return Number.isSafeInteger(value)
+            && (value as number) >= 1
+            && (value as number) <= LineAnchors.#MAX_LINE_NUMBER_WIDTH;
     }
 
     static hasAnchor(marker: TextLineMarker | null): marker is TextLineMarker {
@@ -123,6 +130,10 @@ export default class LineAnchors {
         return token;
     }
 
+    static lineNumberWidth(content: string): number {
+        return String(Math.max(TextCoordinates.logicalLines(content).length, 1)).length;
+    }
+
     static project(
         identity: string,
         completeContent: string,
@@ -152,7 +163,12 @@ export default class LineAnchors {
         }
     }
 
-    static render(content: string, startLine: number, anchors: readonly string[]): string {
+    static render(
+        content: string,
+        startLine: number,
+        anchors: readonly string[],
+        lineNumberWidth: number,
+    ): string {
         if (content.length === 0) {
             if (anchors.length !== 0) throw new TypeError("An empty READ projection cannot carry line anchors.");
             return "";
@@ -162,10 +178,20 @@ export default class LineAnchors {
         }
         LineAnchors.assertProjection(content, anchors);
         const lines = TextCoordinates.logicalLines(content);
+        const finalLine = startLine + lines.length - 1;
+        if (
+            !LineAnchors.isLineNumberWidth(lineNumberWidth)
+            || lineNumberWidth < String(finalLine).length
+        ) {
+            throw new RangeError(
+                `Anchored rendering requires a line-number width covering line ${finalLine}, got ${lineNumberWidth}.`,
+            );
+        }
         return lines.map((line, index) => {
             const lineNumber = startLine + index;
             const body = content.slice(line.start, line.contentEnd);
-            return `${anchors[index]} ${lineNumber}:${body}${line.separator}`;
+            const separator = " ".repeat(lineNumberWidth - String(lineNumber).length + 1);
+            return `${anchors[index]}${separator}${lineNumber}:${body}${line.separator}`;
         }).join("");
     }
 

@@ -5,7 +5,7 @@
  */
 export default class Jsonplurnk {
     static #OPENER = /"body":"\n/g;
-    static #COORDINATE = /^(?:[1-9]\d*:|@[0-9A-Za-z]{5} [1-9]\d*:)/;
+    static #COORDINATE = /^(?:[1-9]\d*:|@[0-9A-Za-z]{5} +[1-9]\d*:)/;
 
     static strip(block: string): string {
         const opener = Jsonplurnk.#OPENER;

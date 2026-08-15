@@ -192,7 +192,7 @@ export default class Results {
                 "representation preparation cannot carry transient channel outcomes",
             );
         }
-        const projectionFields = ["content", "mimetype", "channel", "startLine", "lineAnchorIdentity", "lineAnchors", "region", "matches", "range"];
+        const projectionFields = ["content", "mimetype", "channel", "startLine", "lineAnchorIdentity", "lineAnchors", "lineNumberWidth", "region", "matches", "range"];
         const owned = projectionFields.find((field) => Object.hasOwn(exact, field));
         if (owned !== undefined) {
             throw new InvalidOperationResultError(
@@ -209,7 +209,7 @@ export default class Results {
                 `channel producer result cannot use nonterminal status ${exact.status}`,
             );
         }
-        const projectionFields = ["content", "mimetype", "channel", "startLine", "lineAnchorIdentity", "lineAnchors", "region", "matches", "range"];
+        const projectionFields = ["content", "mimetype", "channel", "startLine", "lineAnchorIdentity", "lineAnchors", "lineNumberWidth", "region", "matches", "range"];
         const owned = projectionFields.find((field) => Object.hasOwn(exact, field));
         if (owned !== undefined) {
             throw new InvalidOperationResultError(
