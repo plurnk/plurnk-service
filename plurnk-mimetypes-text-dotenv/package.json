@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-dotenv",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "text/x-dotenv (.env) mimetype handler for plurnk-service. Variables as symbols, values exposed. Hand-rolled, no parser dependency.",
     "type": "module",
     "license": "MIT",
@@ -51,7 +51,7 @@
         "prepack": "npm run build"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^1.5.0"
+        "@plurnk/plurnk-mimetypes": "^1.6.0"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-text-dotenv#readme",
     "bugs": {

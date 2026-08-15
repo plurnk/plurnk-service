@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-embeddings",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "Portable local/remote embedder for @plurnk/plurnk-mimetypes' explicitly requested embedding seam. The bundled local MiniLM path uses vendored WASM with no native addon, runtime network, or transitive install scripts.",
     "type": "module",
     "license": "MIT",
@@ -42,7 +42,7 @@
         "@huggingface/tokenizers": "^0.1.3"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^1.5.0"
+        "@plurnk/plurnk-mimetypes": "^1.6.0"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-embeddings#readme",
     "bugs": {

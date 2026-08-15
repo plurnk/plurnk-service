@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-text-markdown",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "text/markdown mimetype handler for plurnk-service.",
     "type": "module",
     "license": "MIT",
@@ -50,7 +50,7 @@
         "marked": "^18.0.5"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^1.5.0"
+        "@plurnk/plurnk-mimetypes": "^1.6.0"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-text-markdown#readme",
     "bugs": {

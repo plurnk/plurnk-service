@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-search",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "Web search runtime executor for plurnk-service's exec scheme — dispatches general and news searches to a SearXNG instance.",
     "keywords": [
         "plurnk",
@@ -36,16 +36,26 @@
                 "name": "search",
                 "glyph": "🔎",
                 "invocation": {
-                    "body": { "role": "search query", "required": true },
-                    "example": { "body": "Plurnk agent protocol" }
+                    "body": {
+                        "role": "search query",
+                        "required": true
+                    },
+                    "example": {
+                        "body": "Plurnk agent protocol"
+                    }
                 }
             },
             {
                 "name": "news",
                 "glyph": "📰",
                 "invocation": {
-                    "body": { "role": "news search query", "required": true },
-                    "example": { "body": "artificial intelligence regulation" }
+                    "body": {
+                        "role": "news search query",
+                        "required": true
+                    },
+                    "example": {
+                        "body": "artificial intelligence regulation"
+                    }
                 }
             }
         ]
@@ -74,6 +84,6 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "^1.5.0"
+        "@plurnk/plurnk-execs": "^1.6.0"
     }
 }

@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-wasm",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "WebAssembly runtime executor for plurnk-service's exec scheme — in-process sandboxed execution of WAT (text) and wasm (binary) modules.",
     "keywords": [
         "plurnk",
@@ -37,20 +37,38 @@
                 "name": "wat",
                 "glyph": "🧩",
                 "invocation": {
-                    "body": { "role": "inline WAT module", "required": false },
-                    "target": { "role": "WAT module", "required": false, "kind": "resource" },
+                    "body": {
+                        "role": "inline WAT module",
+                        "required": false
+                    },
+                    "target": {
+                        "role": "WAT module",
+                        "required": false,
+                        "kind": "resource"
+                    },
                     "exclusive": true,
-                    "example": { "body": "(module)" }
+                    "example": {
+                        "body": "(module)"
+                    }
                 }
             },
             {
                 "name": "wasm",
                 "glyph": "🧩",
                 "invocation": {
-                    "body": { "role": "inline base64 WASM module", "required": false },
-                    "target": { "role": "WASM module", "required": false, "kind": "resource" },
+                    "body": {
+                        "role": "inline base64 WASM module",
+                        "required": false
+                    },
+                    "target": {
+                        "role": "WASM module",
+                        "required": false,
+                        "kind": "resource"
+                    },
                     "exclusive": true,
-                    "example": { "target": "module.wasm" }
+                    "example": {
+                        "target": "module.wasm"
+                    }
                 }
             }
         ]
@@ -81,6 +99,6 @@
         "wabt": "^1.0.39"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "^1.5.0"
+        "@plurnk/plurnk-execs": "^1.6.0"
     }
 }

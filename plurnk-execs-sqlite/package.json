@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-sqlite",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "SQLite runtime executor for plurnk-service's exec scheme — runs the sqlite runtime tag in-process via node:sqlite, results as application/json.",
     "keywords": [
         "plurnk",
@@ -35,9 +35,19 @@
                 "name": "sqlite",
                 "glyph": "🗃",
                 "invocation": {
-                    "body": { "role": "SQL statement", "required": true },
-                    "target": { "role": "SQLite database", "required": false, "kind": "path" },
-                    "example": { "target": "app.db", "body": "SELECT 1;" }
+                    "body": {
+                        "role": "SQL statement",
+                        "required": true
+                    },
+                    "target": {
+                        "role": "SQLite database",
+                        "required": false,
+                        "kind": "path"
+                    },
+                    "example": {
+                        "target": "app.db",
+                        "body": "SELECT 1;"
+                    }
                 }
             }
         ]
@@ -66,6 +76,6 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "^1.5.0"
+        "@plurnk/plurnk-execs": "^1.6.0"
     }
 }

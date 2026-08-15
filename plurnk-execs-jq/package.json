@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-execs-jq",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "jq runtime executor for plurnk-service's exec scheme — shells the system jq binary to filter or transform JSON.",
     "keywords": [
         "plurnk",
@@ -36,9 +36,19 @@
                 "name": "jq",
                 "glyph": "🧰",
                 "invocation": {
-                    "body": { "role": "jq filter", "required": false },
-                    "target": { "role": "JSON input", "required": false, "kind": "resource" },
-                    "example": { "target": "package.json", "body": ".name" }
+                    "body": {
+                        "role": "jq filter",
+                        "required": false
+                    },
+                    "target": {
+                        "role": "JSON input",
+                        "required": false,
+                        "kind": "resource"
+                    },
+                    "example": {
+                        "target": "package.json",
+                        "body": ".name"
+                    }
                 }
             }
         ]
@@ -67,6 +77,6 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-execs": "^1.5.0"
+        "@plurnk/plurnk-execs": "^1.6.0"
     }
 }
