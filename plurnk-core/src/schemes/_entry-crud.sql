@@ -55,7 +55,7 @@ UPDATE entries SET synced_sig = $synced_sig WHERE id = $entry_id;
 -- An observed deletion keeps the Git membership marker but removes its stale
 -- readable/derived representation. `absent` distinguishes that observed state
 -- from a member that has never been synchronized.
-UPDATE entries SET synced_sig = 'absent', deep_hash = NULL WHERE id = $entry_id;
+UPDATE entries SET synced_sig = 'absent' WHERE id = $entry_id;
 
 -- PREP: crud_delete_channels
 DELETE FROM entry_channels WHERE entry_id = $entry_id;
@@ -68,6 +68,24 @@ RETURNING name;
 -- {§tokenomics-content-hash-identity}: every static write stamps stable content identity.
 INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, state, producer_result)
 VALUES ($entry_id, $name, $content, $mimetype, $weight, $content_hash, $state, $producer_result);
+
+-- PREP: crud_attach_channel_derivation
+-- Attach only while the channel still denotes the exact representation that
+-- was derived. A concurrent stream append or replacement leaves it unattached
+-- for the next maintenance pass instead of publishing stale search evidence.
+UPDATE entry_channels
+SET deep_hash = $deep_hash
+WHERE entry_id = $entry_id
+  AND name = $channel
+  AND content = $content
+  AND mimetype = $mimetype
+  AND EXISTS (
+      SELECT 1
+      FROM entries e
+      WHERE e.id = entry_channels.entry_id
+        AND e.scheme = $scheme
+        AND e.pathname = $pathname
+  );
 
 -- PREP: crud_delete_entry
 DELETE FROM entries WHERE id = $entry_id;

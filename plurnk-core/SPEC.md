@@ -1008,7 +1008,7 @@ Engine → scheme guarantees:
   returns `200`, while only a retained live representation may return `102`
   ({§read-preparation}). No public handler can replace READ.
 - Exact FIND uses the same resolved identity and representation preparation
-  before standard entry selection, then composes the exact default channel's
+  before standard entry selection, then composes the exact selected channel's
   durable producer result with the core-owned query projection. Broad FIND may invoke a custom `find()` for
   genuinely protocol-owned candidate enumeration, or `prepareFind()` followed
   by the standard catalog query. Acquisition never owns matcher, pagination,
@@ -1121,7 +1121,7 @@ model-independent ruler for stored/catalog weights and the model-facing curation
 confined to provider-owned physical capacity assessment
 ({§tokenomics-context-envelope-admission}).
 
-§persistent-search-index **Persistent search index.** `SearchIndex.maintain` is the pre-model engine pass. Each searchable resource supplies an address and the exact readable body its READ exposes. Entries supply their default body; `LogBody` resolves each log row's canonical full body from its durable tx/rx envelope. Acquisition schemes project remote source material before storing that body; search never introduces a second hidden text projection. The readable body, mimetype, resolved text/binary classification, mimetype projection identity, embedder configuration, and applicable search exclusion form a content hash. Complete artifacts own FTS, vectors, symbol definitions, and references; resource rows hold only the attachment hash. Binary, empty, and excluded derivations do not invoke handler projections and therefore use one fixed no-projection identity.
+§persistent-search-index **Persistent search index.** `SearchIndex.maintain` is the pre-model engine pass. Every addressable entry channel supplies the exact readable representation its READ exposes; `LogBody` resolves each log row's canonical full body from its durable tx/rx envelope. Acquisition schemes project remote source material before storing addressable channels; search never introduces a second hidden text projection. The channel content, mimetype, resolved text/binary classification, mimetype projection identity, embedder configuration, and applicable search exclusion form a content hash. Complete artifacts own FTS, vectors, symbol definitions, and references; each `entry_channels` row or log row holds only its own attachment hash. Binary, empty, and excluded derivations do not invoke handler projections and therefore use one fixed no-projection identity.
 
 §search-exclusion **File-search eligibility is Core policy.**
 `PLURNK_SERVICE_SEARCH_EXCLUDE` is a comma-separated table of anchored
@@ -1129,21 +1129,21 @@ body-glob patterns. Patterns containing `/` match the full pathname; every
 other pattern matches the basename. Whitespace around entries is ignored, an
 empty setting excludes nothing, and the first match is the observable reason.
 
-| Search subject     | Exclusion evaluation                                    |
-|--------------------|---------------------------------------------------------|
-| `file` entry       | Apply the configured repository-path patterns once.     |
-| Other-scheme entry | Always eligible; its pathname is a resource identity.   |
-| Log projection     | Always eligible; it has no repository-path membership.  |
+| Search subject       | Exclusion evaluation                                    |
+|----------------------|---------------------------------------------------------|
+| `file` entry         | Apply the configured repository-path patterns once.     |
+| Other-scheme channel | Always eligible; its pathname is a resource identity.   |
+| Log projection       | Always eligible; it has no repository-path membership.  |
 
 A match produces the `excluded` derivation disposition and suppresses graph,
-FTS, and vectors while leaving the stored body and direct READ unchanged. The
+FTS, and vectors while leaving the stored channel and direct READ unchanged. The
 same reason participates in the derivation hash and is surfaced by diagnostics
 and digests. Mimetype detection and projection do not read or report this
 scheme policy.
 
 ```mermaid
 flowchart LR
-    E["entry default body"] --> P["exact READ body"]
+    E["entry channel"] --> P["exact addressed READ"]
     L["log result envelope"] --> P
     P --> H["content-addressed derivation"]
     H --> F["FTS"]
@@ -1156,7 +1156,7 @@ flowchart LR
     G --> Q
 ```
 
-§derivation-exhaustive Identical projections attach the same immutable artifact regardless of their source table. Search primitives therefore consume only `{key, deepHash}` candidates and cannot depend on entry or log storage. Semantic and graph FIND require every selected candidate—and graph's relationship universe—to be attached. An incomplete set returns 503 with `problem.search = {state:"incomplete", indexed, total}`; it never silently searches a partial corpus. Normal execution joins the eager workspace warm before model dispatch, so that response is an interface invariant and diagnostic, not a lazy-search mode.
+§derivation-exhaustive Identical projections attach the same immutable artifact regardless of their source table. Search primitives therefore consume only `{key, deepHash}` candidates and cannot depend on entry or log storage. Semantic and graph FIND require every selected channel candidate—and every channel in graph's relationship universe—to be attached. An incomplete set returns 503 with `problem.search = {state:"incomplete", indexed, total}`; it never silently searches a partial corpus. Normal execution joins the eager workspace warm before model dispatch, so that response is an interface invariant and diagnostic, not a lazy-search mode.
 
 The graph projection stores only addressable symbol names. A structured-data handler may legitimately emit an empty key into its symbols channel, but the `@graph` matcher cannot name an empty symbol; that one definition is omitted from graph storage without suppressing FTS, vectors, or the remaining definitions. Invalid references and other persistence violations still fail the resource derivation explicitly.
 
@@ -1471,7 +1471,8 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   as READ, entry CRUD, and any preceding `prepareFind()`. URI authorities are
   identity-bearing: `https://example.com/page` queries
   `(https, /example.com/page)`, never `(https, /page)`.
-- §find-glob-filter-on-content `body` matcher operates on entry content (glob/regex/jsonpath/xpath), per `plurnk.md` "Pattern Filtering"; the path-glob lives in the (target), not the body.
+- §find-channel-selection The target selects a channel under {§channel-selection}. That channel controls candidate eligibility, every matcher dialect's content or derivation, match-evidence coordinates, and exact producer-result composition. A selected channel absent from an exact entry is 404; a broad scope simply excludes entries lacking it. Successful resource-mode results remain complete default-first channel groups, so sibling channels are navigable catalog metadata rather than additional matches.
+- §find-glob-filter-on-content `body` matcher operates on the addressed entry channel (glob/regex/jsonpath/xpath), per `plurnk.md` "Pattern Filtering"; the path-glob lives in the (target), not the body.
 - §find-semantic-selection Every matcher operates only over the candidate set selected by `(target)`; relation matchers do not bypass that selection. Semantic ranking is exhaustive within that candidate set, then applies the ordinary FIND result scope. Markerless semantic FIND therefore uses the same `<1,16>` default as every other matcher. Integers retain FIND's positional contract: `<N>` selects result N and `<N,M>` selects the inclusive range. A leading decimal first applies a minimum cosine-similarity threshold; following integers select positions within that ranked threshold set. Thus `<0.7,10,20>` means threshold 0.7 followed by results 10 through 20, while `<0.7>` applies the threshold and the ordinary first-16 page.
 - §find-scoped-isolation Workspace + scheme scoped — no cross-workspace/cross-scheme leakage.
 - §find-result-projection **The authored target shape determines the result unit; result cardinality never changes it** ({§find-result-unit}). Returns `FindResult { status, content, mimetype, results, range, matchingPathCount, matchLocationCount, itemsWeightTotal, returnedItemsWeightTotal }`:
@@ -1500,7 +1501,7 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   their complete `path#channel` addresses. Each channel is
   `{ path, mimetype, weight, lines, parseIssues? }`; `parseIssues` is the
   positive-only advisory projection of `{§mimetype-parse-issues}` for the exact
-  body derivation under `{§scheme-catalog-parse-issues}`. Resource-level `stream` and broad-match
+  channel derivation under `{§scheme-catalog-parse-issues}`. Resource-level `stream` and broad-match
   `matchLocationCount` live only on `[0]`. A single-channel resource is therefore
   a one-element array, with no path-owning wrapper or duplicated channel map.
   A terminal single-star path scope is a one-level map: direct entries retain
@@ -2547,8 +2548,8 @@ media type, and projection identity remain explicit auxiliary evidence. A
 normal
 `## READ0 (https://host/path?query)` therefore publishes only the sanitized body
 under that exact URL—never raw HTML, response headers, or a channel-selection
-lesson. FIND and embeddings consume the same stored readable
-projection and never re-fetch each match. Because the search family is in
+lesson. FIND and embeddings consume the addressed stored channel representation
+and never re-fetch a match. Because the search family is in
 `PLURNK_SERVICE_EXEC_HOLD`, the cycle holds until acquisition concludes
 ({§exec-hold-until-concluded}), so the next packet contains final
 materialization verdicts and folded ambient rows for every acquired page.
@@ -2601,13 +2602,13 @@ identity, and terminal disposition without exposing raw bytes or a base64 lane.
 | Binary with readable projection    | Derived Unicode as `text/markdown`                   | READ uses the projection; source-aware EDIT remains 415.                         |
 | Binary without projection/over cap | Empty marker under the source binary mimetype        | READ and EDIT return 415; private metadata distinguishes unavailable from limit. |
 
-§derivation-dedup-parallel **The index dedups then parallelizes.** The derivation identity hashes the exact READ body, mimetype, reader behavior, embedding configuration, and applicable search exclusion. A resource attaches the immutable artifact only after it is complete; identical entry and log bodies therefore share one FTS row, one symbol graph, and one vector set without copying. Distinct artifacts run with bounded producer concurrency (`PLURNK_SERVICE_DERIVE_CONCURRENCY`). Pending artifacts sort by readable content length before entering that pool, so small resources start first while every outlier still derives fully. Unset uses a host-relative square-root fan-out; a positive integer is an exact operator budget and `-1` claims every core. Token-count and embedding batches retain only a pool-sized promise window; graph persistence writes at most `PLURNK_SERVICE_DERIVE_STORE_BATCH` definitions or references per SQLite statement. Every resource completed by a successful pass attaches a terminal classified artifact, identically at concurrency 1 and N. Multi-item warming reports aggregate milestones and heartbeat notices according to `PLURNK_SERVICE_DERIVE_PROGRESS_STEPS` and `PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS`.
+§derivation-dedup-parallel **The index dedups then parallelizes.** The derivation identity hashes the exact READ channel representation, mimetype, reader behavior, embedding configuration, and applicable search exclusion. A channel or log projection attaches the immutable artifact only after it is complete; identical projections therefore share one FTS row, one symbol graph, and one vector set without copying. Distinct artifacts run with bounded producer concurrency (`PLURNK_SERVICE_DERIVE_CONCURRENCY`). Pending artifacts sort by readable content length before entering that pool, so small resources start first while every outlier still derives fully. Unset uses a host-relative square-root fan-out; a positive integer is an exact operator budget and `-1` claims every core. Token-count and embedding batches retain only a pool-sized promise window; graph persistence writes at most `PLURNK_SERVICE_DERIVE_STORE_BATCH` definitions or references per SQLite statement. Every representation completed by a successful pass attaches a terminal classified artifact, identically at concurrency 1 and N. Multi-item warming reports aggregate milestones and heartbeat notices according to `PLURNK_SERVICE_DERIVE_PROGRESS_STEPS` and `PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS`.
 
 The artifact also retains a positive `{§mimetype-parse-issues}` count when the
-exact parsed body reported one. It remains advisory alongside a normally
+exact parsed channel reported one. It remains advisory alongside a normally
 completed semantic disposition; zero and unavailable evidence persist as
-absence. Catalog projection attaches it only to that parsed body channel, never
-to sibling channels whose content the artifact does not describe.
+absence. Catalog projection attaches it only to that channel, never to a sibling
+whose content the artifact does not describe.
 
 Every completed artifact records one terminal disposition: `vector`, `lexical`
 (only no embedder or an operator size ceiling), `excluded` (the configured
@@ -2621,11 +2622,11 @@ every non-vector attachment with its disposition and reason. Successful
 optional projection degradations continue indexing and surface their framework
 Notice once per identical observation in a maintenance pass.
 
-§semantic-embed-dedup **Identical content embeds once.** The metaproject's repeated `tokenizer.json` bodies - and any log result exposing the same exact READ body - attach one content-addressed derivation artifact. Graph, FTS, and chunk vectors exist once; addresses join through the artifact hash. One pass-wide semantic plan binds the selected chunk counter to this identity: the embedder's own counter is covered by model-space identity, while a separately resolved fallback counter contributes its `tokenizerId` and exactness. Model, vocabulary, vector-wire encoding ({§mimetype-embedding-wire}), or configuration changes therefore produce a different identity, so incompatible vector spaces, encodings, or chunk boundaries never share.
+§semantic-embed-dedup **Identical content embeds once.** The metaproject's repeated `tokenizer.json` channels - and any log result exposing the same exact readable text - attach one content-addressed derivation artifact. Graph, FTS, and chunk vectors exist once; addresses join through the artifact hash. One pass-wide semantic plan binds the selected chunk counter to this identity: the embedder's own counter is covered by model-space identity, while a separately resolved fallback counter contributes its `tokenizerId` and exactness. Model, vocabulary, vector-wire encoding ({§mimetype-embedding-wire}), or configuration changes therefore produce a different identity, so incompatible vector spaces, encodings, or chunk boundaries never share.
 
 Lossless chunk admission requires either the embedder's own counter or an exact fallback tokenizer. An empirical estimate never proves that content fits the declared token window. When pending readable content would require vectors and only an estimate is available, maintenance surfaces its degradation Notice and fails before embedding or attaching a derivation; no/disabled embedding and the established empty, binary, excluded, and maximum-size dispositions remain non-vector outcomes.
 
-§semantic-max-embed-size **Embedding has an optional size posture.** `PLURNK_SERVICE_MAX_EMBED_SIZE` is an operator-set maximum UTF-8 byte size eligible for vectors; `0` is unlimited and is the shipped default. The measured value is the exact default body READ exposes and the embedder receives. Exhaustive embedding therefore remains the normal posture. When a nonzero ceiling rejects an oversized body, the entry remains directly readable with full graph and lexical indexing; only vectors are absent. The setting is folded into the deep derivation signature, so changing it honestly re-derives affected entries. Client notices report compact aggregate progress; the digest records every non-vector pathname, terminal disposition, and reason for forensic inspection.
+§semantic-max-embed-size **Embedding has an optional size posture.** `PLURNK_SERVICE_MAX_EMBED_SIZE` is an operator-set maximum UTF-8 byte size eligible for vectors; `0` is unlimited and is the shipped default. The measured value is the exact addressed channel representation READ exposes and the embedder receives. Exhaustive embedding therefore remains the normal posture. When a nonzero ceiling rejects an oversized representation, its channel remains directly readable with full graph and lexical indexing; only vectors are absent. The setting is folded into the deep derivation signature, so changing it honestly re-derives affected channels. Client notices report compact aggregate progress; the digest records every non-vector address, terminal disposition, and reason for forensic inspection.
 
 §membership-change-gated-sync **Sync is idempotent and change-gated.** Per turn, membership materializes every member's model-readable snapshot into its entry. Text with an unchanged disk signature is a stat-only no-op. The version token is either the observed `mtime:size` or the explicit `absent` state; an observed deletion removes the stale readable channels, and a later reappearance is therefore a new divergence rather than a first-sight materialization. Binary sources additionally compare the cached per-mimetype projection identity; unchanged bytes are never reacquired, while changed reader behavior rematerializes without fabricating a filesystem-divergence event. Coverage is exhaustive across the project repository while work is proportional to source or projection change. After a pass every member carries the current representation defined by {§membership-source-projection}.
 
@@ -3343,7 +3344,7 @@ Carried from the contract walk; durable.
   {§copy-move-observation}.
 - **READ rx** prefixes every textual line under {§render-rule}; eligible
   editable resources carry `@hash N:`, and all others carry `N:`.
-- **FIND body matcher** applies to entry content (all dialects), per-candidate via the in-tree `Matcher.matchAgainstContent` ({§matcher-dispatch}; status 200 = content hit → entry selected). The target scope selects candidates; the path-glob is the (target). FIND's signal classifies its own log item ({§log-item-tags}).
+- **FIND body matcher** applies to the addressed entry channel (all dialects), per-candidate via the in-tree `Matcher.matchAgainstContent` ({§matcher-dispatch}; status 200 = content hit → entry selected). The target scope and channel select candidates; the path-glob is the (target). FIND's signal classifies its own log item ({§log-item-tags}).
 - **OPEN/FOLD** operate on the **log** (`log:///`), not entries ({§open-fold}) — FOLD collapses a log row to its path, OPEN restores its body. Aimed at an entry scheme they return 501.
 - **SEND signal `410`** deletes as a side-effect (not the model idiom; {§move}): with `#fragment`, that channel only; without, the whole entry. **SEND signal `499`** resolves the durable open-subscription row and invokes that subscription's exact callable owner through the process-local live registry ({§subscriptions}).
 - **File scheme** detects with `Mimetypes.detect({ path })` and classifies with the same configured service ({§mimetype-classification-consumption}). Handler-declared binary sources materialize through {§membership-source-projection}; projected bodies are READ-able, while source-aware EDIT remains 415.

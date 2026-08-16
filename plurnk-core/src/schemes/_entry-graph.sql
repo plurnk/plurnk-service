@@ -96,8 +96,3 @@ WHERE d.name = $name;
 -- {§graph-relations}
 SELECT DISTINCT name FROM symbol_refs
 WHERE derivation_id = $derivation_id AND container IS $container;
-
--- PREP: graph_set_deep_hash
--- Stamp the body-content hash at the moment an entry's deep channels were
--- (re)derived. The next manifest-add pass skips the entry while the hash holds.
-UPDATE entries SET deep_hash = $deep_hash WHERE id = $entry_id;

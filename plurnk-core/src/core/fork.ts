@@ -137,12 +137,12 @@ export default class Fork {
         // {§worker-scheme} — inherit the parent's private scratch: same pathnames, the BRANCH as owner
         // ({§entry-owner} — ownership is the column, never the pathname), so the branch's private
         // workspace is independent and diverges on its own edits.
-        const scratch = await db.fork_get_private_entries.all<{ id: number; scheme: string; pathname: string; deep_hash: string | null; attributes: string }>(
+        const scratch = await db.fork_get_private_entries.all<{ id: number; scheme: string; pathname: string; attributes: string }>(
             { workspace_id: parent.workspace_id, owner_id: parentWorkerId },
         );
         for (const s of scratch) {
             const ne = await db.fork_insert_private_entry.get<{ id: number }>(
-                { workspace_id: parent.workspace_id, owner_id: branchWorkerId, scheme: s.scheme, pathname: s.pathname, deep_hash: s.deep_hash, attributes: s.attributes },
+                { workspace_id: parent.workspace_id, owner_id: branchWorkerId, scheme: s.scheme, pathname: s.pathname, attributes: s.attributes },
             );
             if (ne === undefined) throw new Error("fork: private entry copy returned no row");
             await db.fork_copy_entry_channels.run({ old_entry_id: s.id, new_entry_id: ne.id });

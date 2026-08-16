@@ -109,21 +109,21 @@ VALUES (
 -- the branch's scratch is independent — it edits its own without touching the parent's.
 
 -- PREP: fork_get_private_entries
--- The parent's private entries. Content-addressed deep artifact pointers
--- and attributes ride along; copying the channels keeps the pointer valid so
--- the next-turn pump skips re-derivation (the content is byte-identical).
-SELECT id, scheme, pathname, deep_hash, attributes
+-- The parent's private entries. Attributes ride along; channel copying below
+-- retains each content-addressed derivation pointer with its exact content.
+SELECT id, scheme, pathname, attributes
 FROM entries WHERE workspace_id = $workspace_id AND owner_id = $owner_id ORDER BY id;
 
 -- PREP: fork_insert_private_entry
 -- A private entry copy with the branch as owner. synced_sig/membership_origin are NULL
 -- (scratch is never disk-synced nor a file member); version defaults 0.
-INSERT INTO entries (workspace_id, owner_id, scheme, pathname, deep_hash, attributes)
-VALUES ($workspace_id, $owner_id, $scheme, $pathname, $deep_hash, $attributes)
+INSERT INTO entries (workspace_id, owner_id, scheme, pathname, attributes)
+VALUES ($workspace_id, $owner_id, $scheme, $pathname, $attributes)
 RETURNING id;
 
 -- PREP: fork_copy_entry_channels
 -- Copy every source channel from the source entry to the copy. Deep projections
 -- live on the shared artifact, not on either entry.
-INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, state, producer_result)
-SELECT $new_entry_id, name, content, mimetype, weight, state, producer_result FROM entry_channels WHERE entry_id = $old_entry_id;
+INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, deep_hash, state, producer_result)
+SELECT $new_entry_id, name, content, mimetype, weight, content_hash, deep_hash, state, producer_result
+FROM entry_channels WHERE entry_id = $old_entry_id;

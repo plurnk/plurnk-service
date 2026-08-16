@@ -27,7 +27,7 @@ import {
 class PreparedDataScheme implements SchemeHandler {
     static manifest: SchemeManifest = {
         name: "prepared",
-        channels: { body: "text/markdown" },
+        channels: { body: "text/markdown", details: "text/markdown" },
         defaultChannel: "body",
         category: "data",
         writableBy: ["model"],
@@ -41,6 +41,11 @@ class PreparedDataScheme implements SchemeHandler {
                 body: {
                     content: "the universal answer is forty-two",
                     mimetype: "text/markdown",
+                },
+                details: {
+                    content: "auxiliary exact needle",
+                    mimetype: "text/markdown",
+                    producerResult: { status: 203, producer: "details-specimen" },
                 },
             },
         });
@@ -164,6 +169,35 @@ test("exact matcher FIND invokes preparation, then returns flat match locations"
         };
         assert.equal(rx.results?.length, 1);
         assert.ok(rx.results?.[0]?.region !== undefined);
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§find-channel-selection}: exact FIND composes the selected channel's producer result", async () => {
+    const db = await openMigrated();
+    const schemes = new SchemeRegistry();
+    schemes.register("prepared", new PreparedDataScheme());
+    const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+    try {
+        const workspaceId = await insertWorkspace(db, `universal-find-channel-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        const result = await engine.dispatch({
+            statement: parseFind("## FIND0 (prepared:///fact.md#details)\n*exact needle*"),
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: 1,
+            origin: "model",
+        });
+
+        assert.equal(result.status, 203);
+        assert.equal(result.producer, "details-specimen");
+        assert.equal(result.matchingPathCount, 1);
+        assert.equal(result.matchLocationCount, 1);
     } finally {
         await db.close();
     }

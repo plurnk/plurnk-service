@@ -5,15 +5,15 @@
 -- per plurnk.md "Pattern Filtering" it runs against entry CONTENT, which
 -- needs the mimetypes plugin (xpath/jsonpath/regex/glob over structured
 -- content) — so the body match runs in JS (Matcher.matchAgainstContent) over
--- the default-channel content this query returns. Static query handles every
+-- the selected-channel content this query returns. Static query handles every
 -- filter combination via IS-NULL guards.
 
 -- PREP: find_workspace_entry_candidates
--- $channel: default-channel name whose content the body matcher runs against
+-- $channel: addressed channel whose content the body matcher runs against
 -- $scope_prefix: the literal pathname prefix before any glob syntax, or NULL
 -- for no prefix. TypeScript applies the authoritative shell-glob match; this
 -- query supplies only a safe candidate superset.
-SELECT e.id AS entry_id, e.pathname, e.deep_hash, ec.content, ec.mimetype
+SELECT e.id AS entry_id, e.pathname, ec.deep_hash, ec.content, ec.mimetype
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
 WHERE e.workspace_id = $workspace_id
@@ -26,8 +26,9 @@ ORDER BY e.pathname;
 -- Relation matchers need the same target candidate set without loading every
 -- candidate body across the SQL boundary. The ranker joins these identities to
 -- derivations and performs exhaustive ranking within the selected set.
-SELECT e.id AS entry_id, e.pathname, e.deep_hash
+SELECT e.id AS entry_id, e.pathname, ec.deep_hash
 FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = $channel
 WHERE e.workspace_id = $workspace_id
   AND e.owner_id = $owner_id
   AND e.scheme = $scheme
@@ -39,7 +40,8 @@ ORDER BY e.pathname;
 -- workspace, while the caller's target/tag candidate set still constrains
 -- which addresses may be returned. Only the universal address→artifact pair
 -- crosses this boundary.
-SELECT (e.scheme || ':' || e.id) AS key, e.deep_hash
+SELECT (e.scheme || ':' || e.id || '#' || ec.name) AS key, ec.deep_hash
 FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id
 WHERE e.workspace_id = $workspace_id
-ORDER BY e.id;
+ORDER BY e.id, ec.name;

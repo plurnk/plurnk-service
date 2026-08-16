@@ -162,7 +162,7 @@ test("{§scheme-catalog-parse-issues} catalog quietly marks parser recovery with
         const clean = catalog.find(([channel]) => channel.path === "worker:///clean.ts");
         assert.equal(broken?.[0].parseIssues, 1);
         const notes = broken?.find((channel) => channel.path === "worker:///broken.ts#notes");
-        assert.equal(notes !== undefined && "parseIssues" in notes, false, "the body derivation never labels an unparsed sibling channel");
+        assert.equal(notes !== undefined && "parseIssues" in notes, false, "one channel's parser issues never label a sibling channel");
         assert.equal(clean !== undefined && "parseIssues" in clean[0], false, "clean source carries no success badge");
 
         const derivation = await db.test_derivation_disposition.get<{ disposition: string }>({ entry_id: brokenId });

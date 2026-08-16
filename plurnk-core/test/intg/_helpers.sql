@@ -216,6 +216,15 @@ SELECT COUNT(*) AS n FROM entry_channels WHERE entry_id = $entry_id;
 -- PREP: test_list_channels_for_entry
 SELECT name, content, mimetype, state FROM entry_channels WHERE entry_id = $entry_id ORDER BY name;
 
+-- PREP: test_channel_hashes_for_entry
+SELECT name, deep_hash, content_hash FROM entry_channels WHERE entry_id = $entry_id ORDER BY name;
+
+-- PREP: test_set_entry_updated_at
+UPDATE entries SET updated_at = $updated_at WHERE id = $entry_id;
+
+-- PREP: test_entry_updated_at
+SELECT updated_at FROM entries WHERE id = $entry_id;
+
 -- PREP: test_count_log_entries_by_worker
 SELECT COUNT(*) AS n FROM log_entries WHERE worker_id = $worker_id;
 
@@ -334,7 +343,8 @@ SELECT COUNT(*) AS n FROM log_entries WHERE worker_id = $worker_id AND origin = 
 -- PREP: test_fts_search
 SELECT e.pathname FROM derivation_fts f
 JOIN derivations d ON d.id = f.rowid
-JOIN entries e ON e.deep_hash = d.deep_hash
+JOIN entry_channels ec ON ec.deep_hash = d.deep_hash AND ec.name = 'body'
+JOIN entries e ON e.id = ec.entry_id
 WHERE f.content MATCH $query AND e.workspace_id = $workspace_id
 ORDER BY e.pathname;
 
@@ -360,8 +370,11 @@ SELECT pathname, state FROM log_entries WHERE op = 'EDIT' AND origin = 'model' O
 SELECT packet FROM turns WHERE packet IS NOT NULL;
 
 -- PREP: test_deep_hash
--- A workspace entry's stamped deep hash (any entry: the warm-completion proof).
-SELECT deep_hash FROM entries WHERE workspace_id = $workspace_id AND deep_hash IS NOT NULL LIMIT 1;
+-- A workspace body's stamped deep hash (any body: the warm-completion proof).
+SELECT ec.deep_hash FROM entry_channels ec
+JOIN entries e ON e.id = ec.entry_id
+WHERE e.workspace_id = $workspace_id AND ec.name = 'body' AND ec.deep_hash IS NOT NULL
+LIMIT 1;
 
 -- PREP: test_ops_by_loop
 -- {§fold-open-meta-operations} — every model-origin op row with its status.
@@ -379,7 +392,10 @@ SELECT s.id FROM subscriptions s WHERE s.closed_at IS NULL AND $worker_id IS NOT
 SELECT pathname FROM entries WHERE workspace_id = $workspace_id AND scheme = $scheme AND pathname LIKE $prefix ORDER BY pathname;
 
 -- PREP: test_entries_with_hash_by_scheme_prefix
-SELECT pathname, deep_hash FROM entries WHERE workspace_id = $workspace_id AND scheme = $scheme AND pathname LIKE $prefix ORDER BY pathname;
+SELECT e.pathname, ec.deep_hash FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
+WHERE e.workspace_id = $workspace_id AND e.scheme = $scheme AND e.pathname LIKE $prefix
+ORDER BY e.pathname;
 
 -- PREP: test_artifact_counts
 SELECT count(DISTINCT d.id) AS artifacts, count(ee.derivation_id) AS vectors
@@ -394,10 +410,11 @@ WHERE derivation_id = (SELECT id FROM derivations WHERE deep_hash = $deep_hash)
 ORDER BY name;
 
 -- PREP: test_derivation_interruption_state
-SELECT e.deep_hash,
+SELECT ec.deep_hash,
        (SELECT count(*) FROM derivations WHERE state = 'building') AS building,
        (SELECT count(*) FROM derivations WHERE state = 'complete') AS complete
 FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
 WHERE e.workspace_id = $workspace_id AND e.pathname = '/interrupted.md';
 
 -- PREP: test_derivation_state_counts
@@ -411,20 +428,23 @@ SELECT id, scheme, pathname FROM entries WHERE pathname = $pathname;
 -- PREP: test_count_embeddings
 SELECT count(*) AS n
 FROM entries e
-JOIN derivations d ON d.deep_hash = e.deep_hash
+JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
+JOIN derivations d ON d.deep_hash = ec.deep_hash
 JOIN derivation_embeddings ee ON ee.derivation_id = d.id
 WHERE e.id = $entry_id;
 
 -- PREP: test_derivation_for_entry
 SELECT d.id
 FROM entries e
-JOIN derivations d ON d.deep_hash = e.deep_hash
+JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
+JOIN derivations d ON d.deep_hash = ec.deep_hash
 WHERE e.id = $entry_id;
 
 -- PREP: test_derivation_disposition
-SELECT d.disposition, d.reason, e.deep_hash
+SELECT d.disposition, d.reason, ec.deep_hash
 FROM entries e
-JOIN derivations d ON d.deep_hash = e.deep_hash
+JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
+JOIN derivations d ON d.deep_hash = ec.deep_hash
 WHERE e.id = $entry_id;
 
 -- PREP: test_get_log_entry_attrs_by_turn
@@ -446,7 +466,8 @@ RETURNING id;
 SELECT e.pathname, min(ee.rowid) AS first_rowid
 FROM derivation_embeddings ee
 JOIN derivations d ON d.id = ee.derivation_id
-JOIN entries e ON e.deep_hash = d.deep_hash
+JOIN entry_channels ec ON ec.deep_hash = d.deep_hash AND ec.name = 'body'
+JOIN entries e ON e.id = ec.entry_id
 GROUP BY e.pathname;
 
 -- PREP: test_log_entries_by_worker_op
@@ -505,7 +526,8 @@ SELECT attributes FROM entries WHERE workspace_id = $workspace_id AND scheme = $
 
 -- PREP: test_embeddings_for_entry
 SELECT ee.vector FROM entries e
-JOIN derivations d ON d.deep_hash = e.deep_hash
+JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
+JOIN derivations d ON d.deep_hash = ec.deep_hash
 JOIN derivation_embeddings ee ON ee.derivation_id = d.id
 WHERE e.id = $entry_id ORDER BY ee.chunk_seq;
 
@@ -514,7 +536,9 @@ INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_h
 VALUES ($entry_id, $name, $content, $mimetype, 0, $content_hash, $state);
 
 -- PREP: test_count_stamped_deep_hash
-SELECT COUNT(*) AS n FROM entries WHERE workspace_id = $workspace_id AND deep_hash IS NOT NULL;
+SELECT COUNT(*) AS n FROM entry_channels ec
+JOIN entries e ON e.id = ec.entry_id
+WHERE e.workspace_id = $workspace_id AND ec.name = 'body' AND ec.deep_hash IS NOT NULL;
 
 -- PREP: test_get_turn_meta
 SELECT meta FROM turns WHERE id = $id;
@@ -535,11 +559,12 @@ SELECT id FROM workers WHERE workspace_id = $workspace_id ORDER BY id LIMIT 1;
 SELECT pathname, tx FROM log_entries WHERE loop_id = $loop_id ORDER BY id DESC LIMIT 1;
 
 -- PREP: test_entry_deep_hash_by_path
-SELECT deep_hash
-FROM entries
-WHERE workspace_id = $workspace_id
-  AND scheme = $scheme
-  AND pathname = $pathname
+SELECT ec.deep_hash
+FROM entries e
+JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
+WHERE e.workspace_id = $workspace_id
+  AND e.scheme = $scheme
+  AND e.pathname = $pathname
 LIMIT 1;
 
 -- PREP: test_log_deep_hash_by_turn_sequence

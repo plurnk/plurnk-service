@@ -97,7 +97,7 @@ export default class EntryManifest {
                 mimetype: row.mimetype,
                 weight: weigh(row.content),
                 lines: totalLines,
-                ...(row.channel === "body" && row.parse_issues !== null
+                ...(row.parse_issues !== null
                     ? { parseIssues: row.parse_issues }
                     : {}),
             });

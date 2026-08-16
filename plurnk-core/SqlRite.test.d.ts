@@ -71,6 +71,7 @@ export class SqlRiteSync {
 	crud_delete_channels: SqlRiteSyncPreparedStatements;
 	crud_delete_channel: SqlRiteSyncPreparedStatements;
 	crud_write_channel: SqlRiteSyncPreparedStatements;
+	crud_attach_channel_derivation: SqlRiteSyncPreparedStatements;
 	crud_delete_entry: SqlRiteSyncPreparedStatements;
 	crud_list_reconcilable_members: SqlRiteSyncPreparedStatements;
 	crud_insert_workspace_constraint: SqlRiteSyncPreparedStatements;
@@ -93,7 +94,6 @@ export class SqlRiteSync {
 	graph_defs_candidates: SqlRiteSyncPreparedStatements;
 	graph_resolve_def_candidates: SqlRiteSyncPreparedStatements;
 	graph_refs_from_source: SqlRiteSyncPreparedStatements;
-	graph_set_deep_hash: SqlRiteSyncPreparedStatements;
 	ops_insert_workspace_entry_if_absent: SqlRiteSyncPreparedStatements;
 	ops_insert_channel_if_absent: SqlRiteSyncPreparedStatements;
 	ops_update_channel_if_content: SqlRiteSyncPreparedStatements;
@@ -340,6 +340,9 @@ export class SqlRiteSync {
 	test_count_entries: SqlRiteSyncPreparedStatements;
 	test_count_channels_for_entry: SqlRiteSyncPreparedStatements;
 	test_list_channels_for_entry: SqlRiteSyncPreparedStatements;
+	test_channel_hashes_for_entry: SqlRiteSyncPreparedStatements;
+	test_set_entry_updated_at: SqlRiteSyncPreparedStatements;
+	test_entry_updated_at: SqlRiteSyncPreparedStatements;
 	test_count_log_entries_by_worker: SqlRiteSyncPreparedStatements;
 	test_get_entry_by_id: SqlRiteSyncPreparedStatements;
 	test_first_log_entry_for_turn: SqlRiteSyncPreparedStatements;
@@ -550,6 +553,7 @@ export default class SqlRite {
 	crud_delete_channels: SqlRitePreparedStatements;
 	crud_delete_channel: SqlRitePreparedStatements;
 	crud_write_channel: SqlRitePreparedStatements;
+	crud_attach_channel_derivation: SqlRitePreparedStatements;
 	crud_delete_entry: SqlRitePreparedStatements;
 	crud_list_reconcilable_members: SqlRitePreparedStatements;
 	crud_insert_workspace_constraint: SqlRitePreparedStatements;
@@ -572,7 +576,6 @@ export default class SqlRite {
 	graph_defs_candidates: SqlRitePreparedStatements;
 	graph_resolve_def_candidates: SqlRitePreparedStatements;
 	graph_refs_from_source: SqlRitePreparedStatements;
-	graph_set_deep_hash: SqlRitePreparedStatements;
 	ops_insert_workspace_entry_if_absent: SqlRitePreparedStatements;
 	ops_insert_channel_if_absent: SqlRitePreparedStatements;
 	ops_update_channel_if_content: SqlRitePreparedStatements;
@@ -819,6 +822,9 @@ export default class SqlRite {
 	test_count_entries: SqlRitePreparedStatements;
 	test_count_channels_for_entry: SqlRitePreparedStatements;
 	test_list_channels_for_entry: SqlRitePreparedStatements;
+	test_channel_hashes_for_entry: SqlRitePreparedStatements;
+	test_set_entry_updated_at: SqlRitePreparedStatements;
+	test_entry_updated_at: SqlRitePreparedStatements;
 	test_count_log_entries_by_worker: SqlRitePreparedStatements;
 	test_get_entry_by_id: SqlRitePreparedStatements;
 	test_first_log_entry_for_turn: SqlRitePreparedStatements;

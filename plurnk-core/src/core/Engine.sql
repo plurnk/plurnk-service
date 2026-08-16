@@ -66,7 +66,7 @@ LIMIT 1;
 -- PREP: engine_list_owner_entries
 -- {§entry-owner} — one principal's entries (catalogRowsFor source for an owner-scoped FIND/foist):
 -- the commons, a worker's own space, or a named space — exactly one owner's rows, its perspective.
-SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.weight AS weight, e.deep_hash,
+SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.weight AS weight, ec.deep_hash,
     d.parse_issues,
     s.id AS subscription_id,
     CASE WHEN s.closed_at IS NULL
@@ -76,7 +76,7 @@ SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, e
     s.close_status
 FROM entries e
 JOIN entry_channels ec ON ec.entry_id = e.id
-LEFT JOIN derivations d ON d.deep_hash = e.deep_hash
+LEFT JOIN derivations d ON d.deep_hash = ec.deep_hash
 LEFT JOIN subscriptions s ON s.id = (
     SELECT latest.id
     FROM subscriptions latest
@@ -263,7 +263,7 @@ WHERE id = $id AND state = 'pending';
 -- The latest subscription carries stream lifecycle into the catalog. `seconds`
 -- is the live age of an open stream; close_status is the exact terminal status
 -- of a closed one. Entries with no subscription remain ordinary static entries.
-SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.weight AS weight, e.deep_hash,
+SELECT e.id AS entry_id, e.scheme, e.pathname, ec.name AS channel, ec.content, ec.mimetype, ec.weight AS weight, ec.deep_hash,
     s.id AS subscription_id,
     CASE WHEN s.closed_at IS NULL
         THEN CAST(unixepoch('now') - unixepoch(s.opened_at) AS INTEGER)

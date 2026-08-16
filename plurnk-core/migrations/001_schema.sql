@@ -532,9 +532,9 @@ BEGIN
 END;
 
 -- derivations
--- Content-addressed deep projections. Entries point at a COMPLETE artifact by
--- deep_hash; graph, FTS, and vectors are stored once regardless of how many
--- workspace/worktree paths carry identical content under the same reader/config.
+-- Content-addressed deep projections. Entry channels and log projections point
+-- at a COMPLETE artifact by deep_hash; graph, FTS, and vectors are stored once
+-- regardless of how many addresses carry identical content under the same reader/config.
 -- A building row is unattached and safely replaceable after interruption.
 CREATE TABLE IF NOT EXISTS derivations (
     id          INTEGER NOT NULL PRIMARY KEY,
@@ -572,11 +572,6 @@ CREATE TABLE IF NOT EXISTS entries (
     -- == members; 'client'/'constraint' (model-created, add-glob) are not git's to reclaim.
     -- NULL = not a file member (other schemes don't carry origin).
     membership_origin TEXT                   CHECK (membership_origin IS NULL OR membership_origin IN ('git', 'client', 'constraint')),
-    -- {§membership-change-gated-sync}: hash of the body content at the last
-    -- deep-channel derivation. The manifest-add pass re-derives symbols/refs (and
-    -- embeddings, later) ONLY when this differs from the current body hash — an
-    -- unchanged entry is skipped, never re-metadatafied every turn.
-    deep_hash TEXT,
     -- SPEC {§membership-change-gated-sync} — the per-member sync stat-detect:
     -- "<mtimeMs>:<size>" of the disk file at its last materialization, or `absent`
     -- after an observed deletion. The pre-turn
@@ -584,13 +579,13 @@ CREATE TABLE IF NOT EXISTS entries (
     -- signature changed; an unchanged member is a no-op. NULL = never synced.
     synced_sig TEXT,
     -- User Note 5 — manifest cache-friendliness. Last-modified stamp, bumped on every
-    -- channel write by entries_touch_on_channel_write; engine_list_workspace_entries orders
-    -- the catalog by it ASC so dormant entries hold the stable prompt-cache prefix.
+    -- addressable representation change; engine_list_workspace_entries orders the catalog
+    -- by it ASC so dormant entries hold the stable prompt-cache prefix. Private derivation
+    -- attachment does not make an entry recently touched.
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     CHECK (workspace_id IS NOT NULL),
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
-    FOREIGN KEY (owner_id)     REFERENCES workers(id)    ON DELETE CASCADE,
-    FOREIGN KEY (deep_hash)    REFERENCES derivations(deep_hash)
+    FOREIGN KEY (owner_id)     REFERENCES workers(id)    ON DELETE CASCADE
 ) STRICT;
 
 -- {§entry-owner} / {§stream-owner-scoped} — owner is the sole visibility and identity axis.
@@ -610,6 +605,9 @@ CREATE TABLE IF NOT EXISTS entry_channels (
     -- Content identity: sha256 of content, stamped at static writes; streamed
     -- appends leave it NULL. Curation weight remains model-independent.
     content_hash TEXT,
+    -- Search derivation for this exact addressable channel representation.
+    -- Content or mimetype changes invalidate it at the owning channel row.
+    deep_hash TEXT,
     state    TEXT    NOT NULL DEFAULT 'static' CHECK (state IN ('static', 'active', 'closed', 'errored')),
     -- Exact terminal producer evidence for this representation channel. NULL is
     -- the ordinary implicit {status:200}; selection/projection metadata belongs
@@ -642,12 +640,26 @@ CREATE TABLE IF NOT EXISTS entry_channels (
         END
     ),
     PRIMARY KEY (entry_id, name),
-    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+    FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE,
+    FOREIGN KEY (deep_hash) REFERENCES derivations(deep_hash)
 ) STRICT, WITHOUT ROWID;
 
--- User Note 5 — bump the entry's updated_at on any channel write so the catalog
--- (ordered by updated_at ASC) keeps recently-touched entries at the tail and holds
--- the prompt-cache prefix stable across turns.
+-- A changed channel representation cannot retain search evidence derived from
+-- its predecessor. This trigger is the one invalidation owner for every write
+-- path, including model EDIT, plugin channel capabilities, and streams.
+CREATE TRIGGER IF NOT EXISTS entry_channels_invalidate_derivation
+AFTER UPDATE OF content, mimetype ON entry_channels
+WHEN OLD.content IS NOT NEW.content OR OLD.mimetype IS NOT NEW.mimetype
+BEGIN
+    UPDATE entry_channels
+    SET deep_hash = NULL
+    WHERE entry_id = NEW.entry_id AND name = NEW.name AND deep_hash IS NOT NULL;
+END;
+
+-- User Note 5 — bump the entry's updated_at on addressable representation or
+-- lifecycle writes so the catalog (ordered by updated_at ASC) keeps recently-
+-- touched entries at the tail and holds the prompt-cache prefix stable across
+-- turns. Content hashes and search attachments are private metadata, not touches.
 CREATE TRIGGER IF NOT EXISTS entries_touch_on_channel_write
 AFTER INSERT ON entry_channels
 BEGIN
@@ -655,7 +667,7 @@ BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS entries_touch_on_channel_update
-AFTER UPDATE ON entry_channels
+AFTER UPDATE OF content, mimetype, weight, state, producer_result ON entry_channels
 BEGIN
     UPDATE entries SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.entry_id;
 END;

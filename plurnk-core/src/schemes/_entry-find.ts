@@ -6,13 +6,13 @@
 // FIND slot semantics (contracts SPEC §4/§7):
 //   target  — required scope (path or glob); selects which entries are candidates
 //   body    — matcher (glob/regex/jsonpath/xpath/~semantic/@graph). A content matcher
-//             runs against the entry's default-channel CONTENT (Matcher.matchAgainstContent
+//             runs against the addressed channel's CONTENT (Matcher.matchAgainstContent
 //             → the mimetypes plugin) and INCLUDES/EXCLUDES the entry — e.g.
 //             log FIND over `log:///**/error` with `/timeout/i` keeps matching rows.
 //   signal  — classifies the durable FIND log item; never filters resources
 //   <L>     — result pagination: resource or match-location positions N..M
 
-import { DEFAULT_RETRIEVAL_LIMIT, renderJsonResult, type FindStatement, type RangeExtent } from "@plurnk/plurnk-contracts";
+import { DEFAULT_RETRIEVAL_LIMIT, PathSyntax, renderJsonResult, type FindStatement, type RangeExtent } from "@plurnk/plurnk-contracts";
 import { LineMarkerOps } from "../content/index.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
@@ -208,6 +208,11 @@ export const projectFindResult = (
 };
 
 export default class EntryFind {
+    static #targetPath(scheme: string, pathname: string, fragment: string | null): string {
+        const path = EntryManifest.toPath(scheme, pathname);
+        return fragment === null ? path : `${path}#${PathSyntax.escapeTarget(fragment)}`;
+    }
+
     static #scopePathnameOf(statement: FindStatement): string | null {
         const path = statement.target;
         if (path === null) return null;
@@ -220,7 +225,7 @@ export default class EntryFind {
     // Resolve a FIND to its matched workspace resources — entry-level, unique, in result
     // order (rank for ~semantic, candidate order otherwise). Candidate selection (scope +
     // scope) runs in SQL (find_workspace_entry_candidates); a content matcher then runs against
-    // each candidate's default-channel CONTENT (Matcher.matchAgainstContent → the mimetypes
+    // each candidate's addressed-channel CONTENT (Matcher.matchAgainstContent → the mimetypes
     // plugin) and INCLUDES/EXCLUDES the entry - 200 keeps it, 204/203 drop it, and a
     // 4xx matcher failure ends the whole operation. Path-scoping stays in the (target). Match
     // locations remain grouped by resource internally until the target-shaped public projection.
@@ -232,8 +237,10 @@ export default class EntryFind {
     ): Promise<{
         status: number;
         matches: Match[];
+        channel?: string;
         scope?: PathScope;
         candidatePathnames?: string[];
+        code?: string;
         error?: string;
         problem?: ProblemDetails;
         extensions?: Readonly<Record<string, unknown>>;
@@ -245,6 +252,49 @@ export default class EntryFind {
                 error: "FIND requires a target.",
                 extensions: {
                     recovery: "Provide the FIND target.",
+                    retryable: false,
+                },
+            };
+        }
+        const fragment = statement.target.kind === "url" ? statement.target.fragment : null;
+        const channel = fragment ?? manifest.defaultChannel;
+        const availableChannels = [...new Set([
+            manifest.defaultChannel,
+            ...Object.keys(manifest.channels),
+        ])].filter((candidate) => candidate.length > 0);
+        if (channel.length === 0) {
+            return {
+                status: 400,
+                matches: [],
+                code: "channel-required",
+                error: `The '${manifest.name}' scheme has no default channel.`,
+                extensions: {
+                    scheme: manifest.name,
+                    recovery: "Address a named channel with a URI fragment.",
+                    retryable: false,
+                },
+            };
+        }
+        if (
+            fragment !== null
+            && fragment !== manifest.defaultChannel
+            && !Object.hasOwn(manifest.channels, fragment)
+        ) {
+            return {
+                status: 400,
+                matches: [],
+                code: "channel-not-found",
+                error: `Channel #${fragment} is not declared by the '${manifest.name}' scheme.`,
+                extensions: {
+                    requestedChannel: fragment,
+                    availableChannels,
+                    ...(availableChannels.length === 0
+                        ? {}
+                        : {
+                            recovery: `Use one of the available channels: ${availableChannels
+                                .map((candidate) => `#${candidate}`)
+                                .join(", ")}.`,
+                        }),
                     retryable: false,
                 },
             };
@@ -265,11 +315,13 @@ export default class EntryFind {
                 scheme, pathname: scope.pathname,
             });
             if (exact === undefined) {
+                const target = EntryFind.#targetPath(scheme, scope.pathname, fragment);
                 return {
                     status: 404,
                     matches: [],
-                    error: `No entry exists at ${EntryManifest.toPath(scheme, scope.pathname)}.`,
-                    extensions: { target: EntryManifest.toPath(scheme, scope.pathname) },
+                    code: "entry-not-found",
+                    error: `No entry exists at ${target}.`,
+                    extensions: { target },
                 };
             }
         }
@@ -287,7 +339,7 @@ export default class EntryFind {
             workspace_id: workspaceId,
             owner_id: address.ownerId ?? await Owner.commonsId(db, workspaceId),
             scheme,
-            ...(semantic ? {} : { channel: manifest.defaultChannel }),
+            channel,
             scope_prefix: scope?.candidatePrefix ?? null,
         });
         const candidatePathnames = statement.body === null && scope?.kind === "glob" && scope.shallowPrefix !== null
@@ -309,6 +361,16 @@ export default class EntryFind {
                     },
                 };
             }
+        }
+        if (scope?.kind === "exact" && candidates.length === 0) {
+            const target = EntryFind.#targetPath(scheme, scope.pathname, fragment);
+            return {
+                status: 404,
+                matches: [],
+                code: "entry-not-found",
+                error: `No entry exists at ${target}.`,
+                extensions: { target },
+            };
         }
 
         // Every dialect resolves to one selection per resource. Content
@@ -377,6 +439,7 @@ export default class EntryFind {
                 })),
                 ctx,
                 manifest,
+                channel,
                 address.ownerId,
             );
         } else if (statement.body === null) {
@@ -442,6 +505,7 @@ export default class EntryFind {
                 })),
                 ctx,
                 manifest,
+                channel,
                 address.ownerId,
             );
         } else {
@@ -461,13 +525,14 @@ export default class EntryFind {
             matches = r.matches.map((match) => ({ pathname: match.key, matches: match.matches }));
         }
 
-        return { status: 200, matches, ...(scope === null ? {} : { scope }), ...(candidatePathnames === undefined ? {} : { candidatePathnames }) };
+        return { status: 200, matches, channel, ...(scope === null ? {} : { scope }), ...(candidatePathnames === undefined ? {} : { candidatePathnames }) };
     }
 
     static async #addTextRegions(
         matches: readonly SourceCandidateMatch[],
         ctx: PlurnkSchemeContext,
         manifest: SchemeManifest,
+        channel: string,
         explicitOwnerId?: number,
     ): Promise<Match[]> {
         if (matches.every(({ span }) => span === null)) {
@@ -482,9 +547,9 @@ export default class EntryFind {
                 owner_id: ownerId,
                 scheme,
                 pathname,
-                channel: manifest.defaultChannel,
+                channel,
             });
-            if (row === undefined) throw new Error(`EntryFind.#addTextRegions: matched entry ${pathname} has no default channel`);
+            if (row === undefined) throw new Error(`EntryFind.#addTextRegions: matched entry ${pathname} has no selected channel ${channel}`);
             candidates.push({ key: pathname, ...row });
         }
         const resolved = Matcher.addTextRegions(matches, candidates);
@@ -515,7 +580,7 @@ export default class EntryFind {
             }
             return Results.failure(
                 `scheme:${manifest.name}`,
-                match.status === 404 ? "entry-not-found" : match.status === 416 ? "range-not-satisfiable" : "find-failed",
+                match.code ?? (match.status === 404 ? "entry-not-found" : match.status === 416 ? "range-not-satisfiable" : "find-failed"),
                 match.status,
                 match.error,
                 empty,
@@ -560,7 +625,7 @@ export default class EntryFind {
         if (address.pathname === undefined) return projected;
 
         // Exact FIND consumes the same selected canonical producer as exact
-        // READ. Query projection remains core-owned, while the durable default-
+        // READ. Query projection remains core-owned, while the durable selected-
         // channel outcome survives cold and warm acquisition identically.
         const stored = await EntryCrud.readEntry(
             address.pathname,
@@ -573,7 +638,8 @@ export default class EntryFind {
                 `EntryFind projected exact entry ${address.pathname} but could not read its canonical representation.`,
             );
         }
-        const producerResult = stored.entry.channels[manifest.defaultChannel]?.producerResult;
+        if (match.channel === undefined) throw new Error("FIND selection succeeded without a selected channel");
+        const producerResult = stored.entry.channels[match.channel]?.producerResult;
         return producerResult === undefined
             ? projected
             : Results.assert({

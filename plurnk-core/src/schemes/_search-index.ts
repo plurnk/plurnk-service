@@ -1,6 +1,6 @@
-// Search-index materialization for every readable workspace body. Entries
-// and logs attach to the same immutable, content-addressed derivation artifacts;
-// FTS, vectors, and graph relationships consume those artifacts uniformly.
+// Search-index materialization for every readable workspace channel. Entry
+// channels and logs attach to the same immutable, content-addressed derivation
+// artifacts; FTS, vectors, and graph relationships consume them uniformly.
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import { isMimetypeInputError } from "@plurnk/plurnk-mimetypes";
@@ -24,11 +24,13 @@ type EntryRow = {
 };
 type DerivationRow = {
     id: number;
-    attachment: "entry" | "log";
     pathname: string;
     content: string;
     mimetype: string;
-};
+} & (
+    | { attachment: "entry-channel"; scheme: string; channel: string }
+    | { attachment: "log" }
+);
 type PendingDerivation = {
     r: DerivationRow;
     hash: string;
@@ -46,7 +48,7 @@ type DerivationCallbacks = {
 const NO_PROJECTION_IDENTITY = "projection:none";
 
 export default class SearchIndex {
-    // The index materializes one immutable artifact per exact READ body and
+    // The index materializes one immutable artifact per exact READ representation and
     // configuration identity, then atomically attaches resource addresses to it.
     // Cancellation leaves a building artifact unattached for retry; a typed
     // invalid-source failure is terminal and observable so
@@ -70,8 +72,16 @@ export default class SearchIndex {
         const { db, mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("deriveOne: ctx.mimetypes is required");
         const attach = async (): Promise<void> => {
-            if (r.attachment === "entry") {
-                await db.graph_set_deep_hash.run({ entry_id: r.id, deep_hash: hash });
+            if (r.attachment === "entry-channel") {
+                await db.crud_attach_channel_derivation.run({
+                    entry_id: r.id,
+                    scheme: r.scheme,
+                    pathname: r.pathname,
+                    channel: r.channel,
+                    content: r.content,
+                    mimetype: r.mimetype,
+                    deep_hash: hash,
+                });
             } else {
                 await db.log_set_deep_hash.run({ log_entry_id: r.id, deep_hash: hash });
             }
@@ -133,10 +143,8 @@ export default class SearchIndex {
         // building and propagates so a later warm can retry; it is never
         // mislabeled as one malformed resource.
         await EntryGraph.populateFrom(db, derivationId, result.symbols ?? [], result.references ?? []);
-        // The stored default body is the exact text READ exposes and therefore the
-        // only honest coordinate space for FTS and vectors. Acquisition schemes
-        // project noisy source material before writing that body (HTTP retains raw
-        // HTML in an auxiliary channel); authored files remain verbatim data.
+        // The selected stored channel is the exact text an addressed READ exposes
+        // and therefore the honest coordinate space for FTS and vectors.
         const semanticSource = r.content;
         await EntrySemantic.indexFts(db, derivationId, semanticSource);
         // Size rejection is vector-only: membership, READ, graph, and FTS remain exhaustive.
@@ -184,7 +192,7 @@ export default class SearchIndex {
             attrs: string;
         }>({ workspace_id: workspaceId });
         // One resolved plan supplies both chunking and the configuration identity
-        // for every entry in this pass ({§semantic-embed-dedup}).
+        // for every representation in this pass ({§semantic-embed-dedup}).
         const semanticPlan = await EntrySemantic.prepareEmbeddings(mimetypes);
         const deepCfgSig = semanticPlan.signature;
         const projectionIdentities = new Map<string, Promise<string>>();
@@ -205,11 +213,10 @@ export default class SearchIndex {
         };
         // No embedder (absent OR PLURNK_SERVICE_EMBED_DISABLE) is represented by
         // the same plan and `embed:none` signature; derivation keeps only graph/FTS.
-        // Compute the changed-resource worklist before scheduling so aggregate
+        // Compute the changed-representation worklist before scheduling so aggregate
         // progress has a stable total. {§derivation-dedup-parallel}
         const pending: PendingDerivation[] = [];
         for (const r of entryRows) {
-            if (r.channel !== "body") continue; // derivation fires on the body channel only
             const searchExcluded = matchSearchExclusion(r);
             const dispositionIdentity = searchExcluded === undefined ? "included" : `excluded:${searchExcluded}`;
             const binary = (await mimetypes.classify(r.mimetype)).binary;
@@ -230,7 +237,9 @@ export default class SearchIndex {
             if (hash !== r.deep_hash) pending.push({
                 r: {
                     id: r.entry_id,
-                    attachment: "entry",
+                    attachment: "entry-channel",
+                    scheme: r.scheme,
+                    channel: r.channel,
                     pathname: r.pathname,
                     content: r.content,
                     mimetype: r.mimetype,

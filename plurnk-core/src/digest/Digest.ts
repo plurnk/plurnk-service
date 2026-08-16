@@ -49,6 +49,7 @@ import PacketWire from "../core/packet-wire.ts";
 import LogBody from "../core/LogBody.ts";
 import StoredPacket, { type DurablePacket } from "../core/StoredPacket.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
+import EntryManifest from "../schemes/_entry-manifest.ts";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import {
     aggregateProviderAccounting,
@@ -244,14 +245,20 @@ interface DigestModel {
     workerRollups: Map<number, WorkerRollupRow>;
     opMixByWorker: Map<number, OpMixRow[]>;
     embeddings: {
-        body_entries: number;
+        channel_entries: number;
         derivation_complete: number;
         vector_complete: number;
         lexical: number;
         excluded: number;
         nonsemantic: number;
         failed: number;
-        dispositions: Array<{ pathname: string; disposition: string; reason: string | null }>;
+        dispositions: Array<{
+            scheme: string;
+            pathname: string;
+            channel: string;
+            disposition: string;
+            reason: string | null;
+        }>;
         unfinished: number;
         derivation_artifacts_complete: number;
         derivation_artifacts_building: number;
@@ -511,11 +518,12 @@ export default class Digest {
         const bareCalls = m.modelCalls.filter((call) => call.kind === "bare").length;
         const pendingRequests = m.providerRequests.filter((request) => request.state === "pending").length;
         lines.push(`Workspaces: ${m.workspaces.length}  Workers: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Model calls: ${m.modelCalls.length} (${bareCalls} BARE, ${erroredCalls} errored, ${pendingCalls} open)  Emission attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected)  Provider requests: ${m.providerRequests.length} (${pendingRequests} open)  Log entries: ${m.logEntries.length}`);
-        lines.push(`Semantic:  body=${m.embeddings.body_entries} attached=${m.embeddings.derivation_complete} (vector=${m.embeddings.vector_complete} lexical=${m.embeddings.lexical} excluded=${m.embeddings.excluded} nonsemantic=${m.embeddings.nonsemantic} failed=${m.embeddings.failed}) unattached=${m.embeddings.unfinished} artifacts=${m.embeddings.derivation_artifacts_complete} complete/${m.embeddings.derivation_artifacts_building} building chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
+        lines.push(`Semantic:  channels=${m.embeddings.channel_entries} attached=${m.embeddings.derivation_complete} (vector=${m.embeddings.vector_complete} lexical=${m.embeddings.lexical} excluded=${m.embeddings.excluded} nonsemantic=${m.embeddings.nonsemantic} failed=${m.embeddings.failed}) unattached=${m.embeddings.unfinished} artifacts=${m.embeddings.derivation_artifacts_complete} complete/${m.embeddings.derivation_artifacts_building} building chunks=${m.embeddings.chunk_rows} models=${m.embeddings.models} token-derivations=${m.embeddings.token_derivations}`);
         if (m.embeddings.dispositions.length > 0) {
             lines.push("Semantic dispositions:");
             for (const row of m.embeddings.dispositions) {
-                lines.push(`  ${row.disposition} ${row.pathname}${row.reason === null ? "" : ` — ${row.reason}`}`);
+                const address = `${EntryManifest.toPath(row.scheme, row.pathname)}#${row.channel}`;
+                lines.push(`  ${row.disposition} ${address}${row.reason === null ? "" : ` — ${row.reason}`}`);
             }
         }
         // Triage rollup up top: how many conversations limped vs died vs ran clean, and the total
@@ -1093,7 +1101,10 @@ export default class Digest {
         const has = (t: string): boolean => probe.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t) !== undefined;
         const hasColumn = (table: string, column: string): boolean => probe.prepare(`SELECT 1 FROM pragma_table_info(?) WHERE name=?`).get(table, column) !== undefined;
         const one = (q: string): number => Number((probe.prepare(q).get() as { n: number }).n);
-        const semanticStateAvailable = has("entries") && has("entry_channels") && hasColumn("entries", "deep_hash");
+        const channelDerivations = has("entry_channels") && hasColumn("entry_channels", "deep_hash");
+        const legacyEntryDerivations = has("entries") && hasColumn("entries", "deep_hash");
+        const semanticStateAvailable = has("entries") && has("entry_channels")
+            && (channelDerivations || legacyEntryDerivations);
         if (has("log_curation_effects")) {
             curationEffects = probe.prepare(`
                 SELECT operation_log_entry_id, target_log_entry_id, expanded_before,
@@ -1102,26 +1113,30 @@ export default class Digest {
                 ORDER BY operation_log_entry_id, target_log_entry_id
             `).all() as unknown as LogCurationEffectRow[];
         }
-        const body = semanticStateAvailable
-            ? "FROM entries e JOIN entry_channels ec ON ec.entry_id=e.id AND ec.name='body'"
+        const subjects = semanticStateAvailable
+            ? `FROM entries e JOIN entry_channels ec ON ec.entry_id=e.id${channelDerivations ? "" : " AND ec.name='body'"}`
             : "";
-        const hasDisposition = has("derivations") && hasColumn("derivations", "disposition");
+        const attachment = channelDerivations ? "ec.deep_hash" : "e.deep_hash";
+        const channelProjection = channelDerivations ? "ec.name" : "'body'";
+        const hasDisposition = semanticStateAvailable
+            && has("derivations")
+            && hasColumn("derivations", "disposition");
         const dispositionCount = (value: string): number => hasDisposition
-            ? one(`SELECT count(*) n ${body} JOIN derivations d ON d.deep_hash=e.deep_hash WHERE d.disposition='${value}'`)
+            ? one(`SELECT count(*) n ${subjects} JOIN derivations d ON d.deep_hash=${attachment} WHERE d.disposition='${value}'`)
             : -1;
         const dispositions = hasDisposition
-            ? probe.prepare(`SELECT e.pathname, d.disposition, d.reason ${body} JOIN derivations d ON d.deep_hash=e.deep_hash WHERE d.disposition <> 'vector' ORDER BY d.disposition, e.pathname`).all() as Array<{ pathname: string; disposition: string; reason: string | null }>
+            ? probe.prepare(`SELECT e.scheme, e.pathname, ${channelProjection} AS channel, d.disposition, d.reason ${subjects} JOIN derivations d ON d.deep_hash=${attachment} WHERE d.disposition <> 'vector' ORDER BY d.disposition, e.scheme, e.pathname, channel`).all() as Array<{ scheme: string; pathname: string; channel: string; disposition: string; reason: string | null }>
             : [];
         const embeddings = {
-            body_entries: semanticStateAvailable ? one(`SELECT count(*) n ${body}`) : -1,
-            derivation_complete: semanticStateAvailable ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NOT NULL`) : -1,
+            channel_entries: semanticStateAvailable ? one(`SELECT count(*) n ${subjects}`) : -1,
+            derivation_complete: semanticStateAvailable ? one(`SELECT count(*) n ${subjects} WHERE ${attachment} IS NOT NULL`) : -1,
             vector_complete: dispositionCount("vector"),
             lexical: dispositionCount("lexical"),
             excluded: dispositionCount("excluded"),
             nonsemantic: dispositionCount("nonsemantic"),
             failed: dispositionCount("failed"),
             dispositions,
-            unfinished: semanticStateAvailable ? one(`SELECT count(*) n ${body} WHERE e.deep_hash IS NULL`) : -1,
+            unfinished: semanticStateAvailable ? one(`SELECT count(*) n ${subjects} WHERE ${attachment} IS NULL`) : -1,
             derivation_artifacts_complete: semanticStateAvailable && has("derivations") ? one("SELECT count(*) n FROM derivations WHERE state='complete'") : -1,
             derivation_artifacts_building: semanticStateAvailable && has("derivations") ? one("SELECT count(*) n FROM derivations WHERE state='building'") : -1,
             chunk_rows: has("derivation_embeddings") ? one("SELECT count(*) n FROM derivation_embeddings") : -1,
