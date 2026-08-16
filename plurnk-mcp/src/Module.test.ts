@@ -19,6 +19,7 @@ import type McpResources from "./McpResources.ts";
 import Module, { closeConnections } from "./Module.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
+const legacyFixture = fileURLToPath(new URL("./fixtures/legacy-server.mjs", import.meta.url));
 const floor = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
     PLURNK_MCP_REQUEST_TIMEOUT: "30000",
@@ -433,6 +434,37 @@ test("failed replacement leaves durable state, Registry, and prior connection au
         assert.equal(h.replacementCalls(), calls, "the failed candidate never reaches core commit");
         assert.deepEqual(h.durable.get(1), priorState);
         assert.equal(h.snapshots.get(1)?.[0], priorRuntime);
+    } finally {
+        await module.close();
+    }
+});
+
+test("{§mcp-management-actions} a legacy endpoint is attributed at the public action boundary", async () => {
+    const module = Module.init({ env: floor });
+    const h = harness();
+    try {
+        await module.setup(h.seam);
+        await h.hydrate(1);
+        await assert.rejects(
+            () => h.invoke(1, "workspace.mcp.attach", {
+                server: echoDefinition({ args: [legacyFixture] }),
+            }),
+            (error: unknown) => {
+                const problem = (error as { problem?: Record<string, unknown> }).problem;
+                assert.equal(
+                    problem?.type,
+                    "https://problems.plurnk.dev/mcp/management/protocol-revision-unsupported",
+                );
+                assert.equal(problem?.status, 502);
+                assert.equal(problem?.retryable, false);
+                assert.equal(problem?.server, "echo");
+                assert.equal(problem?.requiredRevision, "2026-07-28");
+                assert.equal(problem?.requiredMethod, "server/discover");
+                assert.match(String(problem?.detail ?? ""), /upgrade or replace the legacy endpoint/i);
+                return true;
+            },
+        );
+        assert.deepEqual(h.snapshots.get(1), [], "the rejected endpoint publishes no capability");
     } finally {
         await module.close();
     }

@@ -175,6 +175,14 @@ workspace identifier in params.
 | `workspace.mcp.oauth.complete` | `name`, `callbackUrl` | State- and issuer-validates one pending interactive callback through the SDK, completes connection preparation, then performs the originally requested attach, replace, or reconnect. |
 | `workspace.mcp.complete` | `server`, `ref`, `argument`; optional `context` | Requests negotiated prompt/resource-template argument completion for a client-owned interaction. |
 
+Expected preparation failures cross the action boundary as MCP-management
+Problems rather than generic AG-UI failures:
+
+| Endpoint condition | Problem |
+|---|---|
+| Definitively does not offer pinned `2026-07-28` through `server/discover` | `502 protocol-revision-unsupported`, non-retryable; names the server, required revision and method, and directs the operator to upgrade or replace the legacy endpoint |
+| Cannot connect or complete current discovery/catalog preparation | `502 server-unavailable`, retryable; names the server and transport without exposing credentials |
+
 Interactive preparation returns a successful pending result shaped as
 `{ status: 202, authorization: { url } }`; it publishes no candidate runtime.
 The action owner retains one pending candidate per `(workspace, name)` and a

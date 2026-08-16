@@ -30,6 +30,9 @@ class PacketCapturingMock extends Mock {
 const fixture = fileURLToPath(
     new URL("../../../plurnk-mcp/src/fixtures/echo-server.mjs", import.meta.url),
 );
+const legacyFixture = fileURLToPath(
+    new URL("../../../plurnk-mcp/src/fixtures/legacy-server.mjs", import.meta.url),
+);
 
 const parseEvents = (body: string): Event[] => body
     .split("\n\n")
@@ -207,6 +210,31 @@ test("AG-UI hot attachment composes MCP Registry, execution, review, failure, an
             .map((event) => String(event.delta ?? ""))
             .join("");
         assert.match(recoveredSpeech, /reported its expected tool error; recovery is complete/);
+
+        const legacy = actionResult(await post(port, runInput(workspace, "legacy-attach", {
+            forwardedProps: {
+                plurnk: {
+                    workspace,
+                    action: {
+                        kind: "workspace.mcp.attach",
+                        server: {
+                            name: "legacy",
+                            transport: "stdio",
+                            command: process.execPath,
+                            args: [legacyFixture],
+                        },
+                    },
+                },
+            },
+        })));
+        assert.equal(legacy.ok, false);
+        assert.equal(
+            legacy.problem?.type,
+            "https://problems.plurnk.dev/mcp/management/protocol-revision-unsupported",
+        );
+        assert.equal(legacy.problem?.retryable, false);
+        assert.equal(legacy.problem?.server, "legacy");
+        assert.match(String(legacy.problem?.detail ?? ""), /upgrade or replace the legacy endpoint/i);
     } finally {
         await daemon.stop();
         await db.close();
