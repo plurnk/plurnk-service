@@ -26,8 +26,24 @@ test("provider source does not import the PLURNK parser", () => {
     }
 });
 
+const assertRuntimeNeutralGraph = (entrypoint: string, allowed: ReadonlySet<string>): void => {
+    const pending = [entrypoint];
+    const visited = new Set<string>();
+    while (pending.length > 0) {
+        const file = pending.pop()!;
+        if (visited.has(file)) continue;
+        visited.add(file);
+        assert.ok(allowed.has(file), `${entrypoint} reaches ${file}`);
+        const source = readFileSync(join(root, file), "utf8");
+        assert.doesNotMatch(source, /from\s+["']node:/, `${file} imports a Node built-in`);
+        for (const match of source.matchAll(/from\s+["']\.\/([^"']+)\.ts["']/g)) {
+            pending.push(`${match[1]}.ts`);
+        }
+    }
+};
+
 test("the OpenAI-compatible entrypoint excludes Node-owned provider machinery", () => {
-    const allowed = new Set([
+    assertRuntimeNeutralGraph("openai.ts", new Set([
         "accounting.ts",
         "AiSdkProvider.ts",
         "aiSdkTransport.ts",
@@ -38,21 +54,17 @@ test("the OpenAI-compatible entrypoint excludes Node-owned provider machinery", 
         "notices.ts",
         "openai.ts",
         "promptTokens.ts",
+        "providerError.ts",
         "types.ts",
         "usage.ts",
         "warnings.ts",
-    ]);
-    const pending = ["openai.ts"];
-    const visited = new Set<string>();
-    while (pending.length > 0) {
-        const file = pending.pop()!;
-        if (visited.has(file)) continue;
-        visited.add(file);
-        assert.ok(allowed.has(file), `runtime-neutral entrypoint reaches ${file}`);
-        const source = readFileSync(join(root, file), "utf8");
-        assert.doesNotMatch(source, /from\s+["']node:/, `${file} imports a Node built-in`);
-        for (const match of source.matchAll(/from\s+["']\.\/([^"']+)\.ts["']/g)) {
-            pending.push(`${match[1]}.ts`);
-        }
-    }
+    ]));
+});
+
+test("the normalized-error entrypoint excludes transport and Node machinery", () => {
+    assertRuntimeNeutralGraph("providerError.ts", new Set([
+        "notices.ts",
+        "providerError.ts",
+        "types.ts",
+    ]));
 });
