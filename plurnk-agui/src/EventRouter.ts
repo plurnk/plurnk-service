@@ -44,7 +44,9 @@ export default class EventRouter {
                 { type: EventType.CUSTOM, name: "plurnk.stream", value: params },
                 EventRouter.#activity(params),
             ];
-            case "loop/proposal": return []; // ProposalHitl owns HITL (terminate-resume tool-call)
+            case "loop/proposal":
+            case "loop/interaction":
+                return []; // ProposalHitl owns the shared terminate-resume path.
             default: return []; // workspace/created + anything unmodeled: the module handles out-of-band
         }
     }

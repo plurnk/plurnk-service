@@ -60,6 +60,7 @@ interface ExecArgs {
     write(channel: string, chunk: string, mimetype?: string): void;
     setState(channel: string, state: ChannelState): void;
     emit(notice: Notice): void;
+    interact(request: ClientInteractionRequest): Promise<ClientInteractionResolution>;
     entry?(
         path: string,
         content: string | null,
@@ -96,6 +97,7 @@ surface.
 | `write`    | Append to a declared channel. An optional mimetype replaces that channel's per-call output type.        |
 | `setState` | Move a declared channel from `active` to terminal `closed` or `errored`.                                |
 | `emit`     | Publish a transient, nonterminal Notice.                                                                |
+| §executor-interaction-sink `interact` | Await one contracts-owned client interaction ({§client-interaction-wire}). Core owns identity, pending-state durability, client presentation, and cancellation; the executor owns the request and returned payload's meaning. |
 | `entry`    | Optionally request consumer-owned entry materialization and receive its canonical model-facing address. |
 
 The executor receives callbacks, never a database, subscription registry,

@@ -40,6 +40,7 @@ import TerminalResult from "./TerminalResult.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
 import JournalTurn from "./JournalTurn.ts";
 import LogBody from "./LogBody.ts";
+import type ClientInteractions from "./ClientInteractions.ts";
 
 // TurnRunner owns one durable model turn; Engine retains the surrounding loop
 // lifecycle and public facade.
@@ -272,6 +273,7 @@ export default class TurnRunner {
     readonly #wakeWorkerNotify: WakeWorkerNotify | undefined;
     readonly #executors: () => ExecutorRegistry | undefined;
     readonly #loopSignal: (loopId: number) => AbortSignal | undefined;
+    readonly #interactions: ClientInteractions;
     readonly #warmWorkspace: WarmWorkspace;
     readonly #dispatch: TurnDispatch;
     readonly #resolveWorkerProviderIdentity: (workerId: number) => Promise<{
@@ -295,6 +297,7 @@ export default class TurnRunner {
         wakeWorkerNotify,
         executors,
         loopSignal,
+        interactions,
         warmWorkspace,
         dispatch,
         resolveWorkerProviderIdentity,
@@ -313,6 +316,7 @@ export default class TurnRunner {
         wakeWorkerNotify?: WakeWorkerNotify;
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
+        interactions: ClientInteractions;
         warmWorkspace: WarmWorkspace;
         dispatch: TurnDispatch;
         resolveWorkerProviderIdentity: (workerId: number) => Promise<{
@@ -334,6 +338,7 @@ export default class TurnRunner {
         this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#executors = executors;
         this.#loopSignal = loopSignal;
+        this.#interactions = interactions;
         this.#warmWorkspace = warmWorkspace;
         this.#dispatch = dispatch;
         this.#resolveWorkerProviderIdentity = resolveWorkerProviderIdentity;
@@ -643,6 +648,11 @@ export default class TurnRunner {
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workspaceId),
             pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
+            requestInteraction: (request) => this.#interactions.request(
+                request,
+                { workspaceId, workerId, loopId, turnId },
+                this.#loopSignal(loopId),
+            ),
         };
 
         // Pre-model writes. Each prompt the model has not seen yet becomes an

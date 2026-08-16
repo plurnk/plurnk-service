@@ -5,7 +5,7 @@
 
 export { default as Module } from "./Module.ts";
 export type { ModuleOptions, ModuleRegistration } from "./Module.ts";
-export type { DaemonSeam, ClientEnvelope, PendingProposal, ProposalResolution, PlurnkStatement, LogEntryWire } from "./DaemonSeam.ts";
+export type { DaemonSeam, ClientEnvelope, PendingProposal, PendingClientInteraction, ProposalResolution, PlurnkStatement, LogEntryWire } from "./DaemonSeam.ts";
 export { default as Portal } from "./Portal.ts";
 export { default as EventRouter } from "./EventRouter.ts";
 export { default as ProposalHitl } from "./ProposalHitl.ts";

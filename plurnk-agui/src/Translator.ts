@@ -10,7 +10,7 @@
 //   log/entry          (plurnk) → CUSTOM plurnk.ambient (foists, deltas, narrations — the
 //                                 environment speaking; generic UIs skip, rich UIs render)
 //   turn_id changes             → STEP_FINISHED/STEP_STARTED
-//   loop/proposal               → owned by ProposalHitl (tool call + AG-UI interrupt)
+//   loop/proposal|interaction   → owned by ProposalHitl (tool call + AG-UI interrupt)
 //   loop/terminated             → STATE_DELTA (budget truth) + RUN_FINISHED or RUN_ERROR
 // Numbers are passed through verbatim, never recomputed — the daemon's gauge is the gauge
 // ({§agui-numbers-passthrough}).

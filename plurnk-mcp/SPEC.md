@@ -157,15 +157,20 @@ workspace identifier in params.
 | `workspace.mcp.detach` | `name` | Removes a workspace attachment or writes a tombstone for a service default, then removes its exact Registry, docs, and resource authority. |
 | `workspace.mcp.reconnect` | `name` | Builds a fresh connection from the existing unexpanded definition and atomically replaces the old connection after successful preparation. |
 | `workspace.mcp.oauth.complete` | `name`, `callbackUrl` | State- and issuer-validates one pending interactive callback through the SDK, completes connection preparation, then performs the originally requested attach, replace, or reconnect. |
+| `workspace.mcp.complete` | `server`, `ref`, `argument`; optional `context` | Requests negotiated prompt/resource-template argument completion for a client-owned interaction. |
 
 Interactive preparation returns a successful pending result shaped as
 `{ status: 202, authorization: { url } }`; it publishes no candidate runtime.
 The action owner retains one pending candidate per `(workspace, name)` and a
-new request cancels and replaces it. `oauth.complete` accepts the complete
+new request cancels and replaces it. Unrelated workspace changes remain
+authoritative while authorization is pending; drift of the same server fails
+completion with a conflict instead of replaying a stale workspace snapshot.
+`oauth.complete` accepts the complete
 callback URL so state, `code`, and `iss` remain one parsing unit. A missing,
 expired, mismatched, or replayed callback fails without exposing attacker-owned
-OAuth error text. There is no callback HTTP endpoint, authority-root resource,
-or MCP-specific AG-UI route.
+OAuth error text. It completes either pending hydration or the originally
+requested attach, replace, or reconnect. There is no callback HTTP endpoint,
+authority-root resource, or MCP-specific AG-UI route.
 
 ## §mcp-setup Atomic lifecycle
 

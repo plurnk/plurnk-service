@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { access, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import type { ExecArgs } from "@plurnk/plurnk-execs";
+import type { Notice } from "@plurnk/plurnk-contracts";
 import McpExecutor, { runtimeDecl } from "./McpExecutor.ts";
 import ServerConnection from "./client.ts";
 
@@ -16,6 +21,7 @@ const configured = (): {
         PLURNK_MCP_REQUEST_TIMEOUT: "30000",
     };
     const connection = new ServerConnection({
+        name: "echo",
         transport: "stdio",
         command: process.execPath,
         args: [fixture],
@@ -38,12 +44,15 @@ const harness = (
     args: ExecArgs;
     writes: string[];
     states: string[];
+    notices: Notice[];
 } => {
     const writes: string[] = [];
     const states: string[] = [];
+    const notices: Notice[] = [];
     return {
         writes,
         states,
+        notices,
         args: {
             runtime: "echo",
             body: "",
@@ -52,10 +61,23 @@ const harness = (
             signal: new AbortController().signal,
             write: (_channel, chunk) => writes.push(chunk),
             setState: (_channel, state) => states.push(state),
-            emit: () => undefined,
+            emit: (notice) => notices.push(notice),
+            interact: async () => ({ status: "cancelled" }),
             ...overrides,
         },
     };
+};
+
+const waitForFile = async (pathname: string): Promise<void> => {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+        try {
+            await access(pathname);
+            return;
+        } catch {
+            await delay(10);
+        }
+    }
+    await access(pathname);
 };
 
 test("runtime declaration provides the structural family fallback only", async () => {
@@ -172,6 +194,61 @@ test("MCP executor calls a current tool and writes its result", async () => {
                 .content?.[0]?.text,
             "hello",
         );
+    } finally {
+        await connection.close();
+    }
+});
+
+test("MCP progress and cancellation remain on the owning EXEC lifecycle over stdio", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-exec-lifecycle-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const marker = join(root, "cancelled");
+    const connection = new ServerConnection({
+        name: "lifecycle",
+        transport: "stdio",
+        command: process.execPath,
+        args: [fixture],
+        env: {
+            PLURNK_MCP_TEST_EXTENDED: "1",
+            PLURNK_MCP_TEST_CANCEL_MARKER: marker,
+        },
+        tools: ["progress", "wait"],
+    }, {
+        PLURNK_MCP_CONNECT_TIMEOUT: "30000",
+        PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+    });
+    const executor = new McpExecutor(
+        { runtime: "lifecycle", glyph: "🔌" },
+        connection,
+        { tools: ["progress", "wait"] },
+    );
+    try {
+        await executor.requireAvailable();
+        const progressed = harness({ runtime: "lifecycle", target: "progress" });
+        assert.equal((await executor.run(progressed.args)).status, 200);
+        assert.deepEqual(progressed.notices, [{
+            source: "exec:lifecycle",
+            kind: "mcp_progress",
+            level: "info",
+            message: "fixture halfway",
+            tool: "progress",
+            progress: 1,
+            total: 2,
+        }]);
+
+        const controller = new AbortController();
+        const cancelled = harness({
+            runtime: "lifecycle",
+            target: "wait",
+            signal: controller.signal,
+        });
+        const running = executor.run(cancelled.args);
+        await delay(50);
+        controller.abort(new Error("test cancellation"));
+        const result = await running;
+        assert.equal(result.status, 499);
+        assert.deepEqual(cancelled.states, ["errored"]);
+        await waitForFile(marker);
     } finally {
         await connection.close();
     }

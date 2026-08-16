@@ -5,9 +5,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import Portal from "./Portal.ts";
-import type { DaemonSeam, PendingProposal, ProposalResolution } from "./DaemonSeam.ts";
+import type {
+    DaemonSeam,
+    PendingClientInteraction,
+    PendingProposal,
+    ProposalResolution,
+} from "./DaemonSeam.ts";
 import type { AguiEvent } from "./types.ts";
-import { DEFAULT_LOOP_FLAGS } from "@plurnk/plurnk-contracts";
+import { DEFAULT_LOOP_FLAGS, type ClientInteractionResolution } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 
 const proposal = (over: Partial<PendingProposal> = {}): PendingProposal => ({
@@ -25,24 +30,60 @@ const proposal = (over: Partial<PendingProposal> = {}): PendingProposal => ({
     ...over,
 });
 
-const mockSeam = (pending: PendingProposal[] = []) => {
+const interaction = (over: Partial<PendingClientInteraction> = {}): PendingClientInteraction => ({
+    interactionId: 12,
+    workerId: 10,
+    loopId: 1,
+    turnId: 1,
+    request: {
+        toolName: "choose_color",
+        arguments: { palette: "warm" },
+        message: "Choose one color.",
+        responseSchema: {
+            type: "object",
+            properties: { color: { type: "string" } },
+            required: ["color"],
+        },
+    },
+    ...over,
+});
+
+const mockSeam = (
+    pending: PendingProposal[] = [],
+    pendingInteractions: PendingClientInteraction[] = [],
+) => {
     // The real seam holds a Set of handlers (Portal subscribes twice: render + HITL);
     // mirror that so both fire, not just the last registered.
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
     const workers: Array<{ workspaceId: number; prompt: string }> = [];
     const resolves: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
+    const interactionResolves: Array<{
+        interactionId: number;
+        resolution: ClientInteractionResolution;
+    }> = [];
     let cancelled: number | null = null;
     const seam = {
         subscribeToEvents: (h) => { handlers.add(h); return () => { handlers.delete(h); }; },
         pendingProposals: async () => pending,
+        pendingClientInteractions: async () => pendingInteractions,
         resolveProposal: (logEntryId, resolution) => { resolves.push({ logEntryId, resolution }); },
+        resolveClientInteraction: async (interactionId, resolution) => {
+            interactionResolves.push({ interactionId, resolution });
+        },
         runLoop: async (a) => { workers.push({ workspaceId: a.workspaceId, prompt: a.prompt }); return { status: 100, action: "enqueued_new_loop" as const, loopId: 77 }; },
         cancelDrain: (workerId) => { cancelled = workerId; return true; },
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [],
         listProviders: () => ({ aliases: [] }),
-    } satisfies Pick<DaemonSeam, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "runLoop" | "cancelDrain" | "dispatchClientAction" | "readLog" | "listProviders">;
-    return { seam, fire: (s: number | null, m: string, p: unknown) => handlers.forEach((h) => h(s, m, p)), workers, resolves, cancelled: () => cancelled };
+    } satisfies Pick<DaemonSeam, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "pendingClientInteractions" | "resolveClientInteraction" | "runLoop" | "cancelDrain" | "dispatchClientAction" | "readLog" | "listProviders">;
+    return {
+        seam,
+        fire: (s: number | null, m: string, p: unknown) => handlers.forEach((h) => h(s, m, p)),
+        workers,
+        resolves,
+        interactionResolves,
+        cancelled: () => cancelled,
+    };
 };
 
 test("a worker without pending interrupts drives the loop, then live events fan as AG-UI", async () => {
@@ -98,15 +139,18 @@ test("a worker without pending interrupts drives the loop, then live events fan 
 
 test("a terminal arriving before the loop acknowledgement settles only its matching AG-UI Run", async () => {
     const m = mockSeam();
+    const entered = Promise.withResolvers<void>();
     let acknowledge!: (value: { status: number; action: "enqueued_new_loop"; loopId: number }) => void;
-    m.seam.runLoop = async () => new Promise((resolve) => { acknowledge = resolve; });
+    m.seam.runLoop = async () => new Promise((resolve) => {
+        acknowledge = resolve;
+        entered.resolve();
+    });
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
     const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "nvim", emit: (events) => seen.push(...events) });
     const running = portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "fast" });
-    await Promise.resolve();
-    await Promise.resolve();
+    await entered.promise;
 
     const termination = (loopId: number) => ({
         loopId, result: { status: 200 }, hitMaxTurns: false, turnIds: [],
@@ -133,6 +177,45 @@ test("a worker with a durable proposal re-presents its interrupt instead of star
     assert.equal(await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "new work" }), null);
     assert.equal(m.workers.length, 0, "a pending interrupt blocks a new internal loop");
     assert.ok(seen.some((event) => event.type === "TOOL_CALL_END"), "the durable interrupt is presented again");
+    portal.stop();
+});
+
+test("a durable client interaction re-surfaces with its exact standard Interrupt and resumes through core", async () => {
+    const m = mockSeam([], [interaction({ interactionId: 30, loopId: 7 })]);
+    const seen: AguiEvent[] = [];
+    let interrupt: unknown;
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        threadId: "tui",
+        emit: (events) => {
+            seen.push(...events);
+            const end = events.find((event) => event.type === "TOOL_CALL_END") as { toolCallId?: string } | undefined;
+            if (end?.toolCallId !== undefined) interrupt = portal.interruptForToolCall(end.toolCallId);
+        },
+    });
+
+    assert.equal(await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "new work" }), null);
+    assert.equal(m.workers.length, 0);
+    assert.deepEqual(interrupt, {
+        id: "int:30",
+        reason: "tool_call",
+        toolCallId: "int:30",
+        message: "Choose one color.",
+        responseSchema: interaction().request.responseSchema,
+    });
+    await portal.resolve(3, thread, [{
+        interruptId: "int:30",
+        status: "resolved",
+        payload: { color: "orange" },
+    }]);
+    assert.deepEqual(m.interactionResolves, [{
+        interactionId: 30,
+        resolution: { status: "resolved", payload: { color: "orange" } },
+    }]);
+    assert.ok(seen.some((event) => event.type === "TOOL_CALL_END"));
     portal.stop();
 });
 

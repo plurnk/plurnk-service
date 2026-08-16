@@ -26,6 +26,8 @@ import {
     parsePath,
     Validator,
     type ClientDisplayCapabilities,
+    type ClientInteractionProjection,
+    type ClientInteractionResolution,
     type ClientEntryChannel,
     type EntryReadResult,
     type Notice,
@@ -319,6 +321,10 @@ export default class Daemon {
             const { workspaceId, ...proposal } = event;
             this.#broadcast({ workspaceId }, "loop/proposal", proposal);
         });
+        this.#engine.onClientInteractionPending((event) => {
+            const { workspaceId, ...interaction } = event;
+            this.#broadcast({ workspaceId }, "loop/interaction", interaction);
+        });
     }
 
 
@@ -345,6 +351,31 @@ export default class Daemon {
         const checkedLogEntryId = ClientInput.assertId("resolveProposal", "logEntryId", logEntryId);
         const checkedResolution = ClientInput.assertProposalResolution("resolveProposal", resolution);
         this.#engine.resolveProposal(checkedLogEntryId, checkedResolution);
+    }
+
+    async pendingClientInteractions(workspaceId: number): Promise<ClientInteractionProjection[]> {
+        const checkedWorkspaceId = ClientInput.assertId(
+            "pendingClientInteractions",
+            "workspaceId",
+            workspaceId,
+        );
+        return this.#engine.pendingClientInteractions(checkedWorkspaceId);
+    }
+
+    async resolveClientInteraction(
+        interactionId: number,
+        resolution: ClientInteractionResolution,
+    ): Promise<void> {
+        const checkedInteractionId = ClientInput.assertId(
+            "resolveClientInteraction",
+            "interactionId",
+            interactionId,
+        );
+        const checkedResolution = ClientInput.assertClientInteractionResolution(
+            "resolveClientInteraction",
+            resolution,
+        );
+        await this.#engine.resolveClientInteraction(checkedInteractionId, checkedResolution);
     }
 
     // {§methods-loop-run} — drive/steer a loop. The module supplies only workspace/worker/prompt;
@@ -1536,6 +1567,7 @@ export default class Daemon {
         await this.#db.recovery_settle_open_provider_requests.run({});
         await this.#db.recovery_fail_open_model_calls.run({});
         await this.#db.recovery_fail_ownerless_proposals.run({});
+        await this.#db.recovery_remove_ownerless_client_interactions.run({});
         await this.#db.recovery_error_orphan_subscription_channels.run({});
         await this.#db.recovery_fail_orphan_subscriptions.run({});
         await this.#db.recovery_resume_unblocked_parks.run({});
@@ -1790,6 +1822,7 @@ export default class Daemon {
 export type CoreSeam = Pick<Daemon,
     | "subscribeToEvents"
     | "pendingProposals" | "resolveProposal"
+    | "pendingClientInteractions" | "resolveClientInteraction"
     | "runLoop" | "cancelDrain" | "dispatchClientAction" | "ensureModelWorker"
     | "readLog" | "readEntry" | "look"
     | "listProviders" | "listWorkspaces" | "listWorkers" | "listPrompts" | "listMembers" | "listConstraints" | "workspaceDerivationStatus"

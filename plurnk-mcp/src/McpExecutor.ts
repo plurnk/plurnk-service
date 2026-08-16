@@ -11,12 +11,13 @@ import type {
     Effect,
     ExecArgs,
     ExecResult,
+    Notice,
     RuntimeAvailability,
     RuntimeDecl,
     RuntimeToolRegistry,
 } from "@plurnk/plurnk-execs";
-import ServerConnection from "./client.ts";
-import type { Tool } from "@modelcontextprotocol/client";
+import ServerConnection, { type ServerCatalog } from "./client.ts";
+import type { Progress, Tool } from "@modelcontextprotocol/client";
 import type { ToolPolicy } from "./config.ts";
 import { toolRegistry as presentTools } from "./ToolPresentation.ts";
 
@@ -36,11 +37,30 @@ export const runtimeDecl = (name: string): RuntimeDecl => ({
 const message = (error: unknown): string =>
     error instanceof Error ? error.message : String(error);
 
+const progressNotice = (
+    runtime: string,
+    tool: string,
+    progress: Progress,
+): Notice => ({
+    source: `exec:${runtime}`,
+    kind: "mcp_progress",
+    level: "info",
+    message: progress.message ?? (
+        progress.total === undefined
+            ? `MCP tool '${tool}' progressed to ${progress.progress}.`
+            : `MCP tool '${tool}' progressed to ${progress.progress}/${progress.total}.`
+    ),
+    tool,
+    progress: progress.progress,
+    ...(progress.total === undefined ? {} : { total: progress.total }),
+});
+
 export default class McpExecutor extends BaseExecutor {
     readonly #connection: ServerConnection;
     readonly #tools: readonly string[] | null;
     readonly #read: ReadonlySet<string>;
     #registry: RuntimeToolRegistry | null = null;
+    #catalog: ServerCatalog | null = null;
 
     constructor(
         metadata: { runtime: string; glyph: string },
@@ -112,6 +132,13 @@ export default class McpExecutor extends BaseExecutor {
         return this.#registry;
     }
 
+    get catalog(): ServerCatalog {
+        if (this.#catalog === null) {
+            throw new Error(`MCP catalog for '${this.runtime}' was read before availability was established.`);
+        }
+        return this.#catalog;
+    }
+
     override async probe(signal?: AbortSignal): Promise<RuntimeAvailability> {
         const detailLimit = ErrorDetail.configuredLimit();
         if (detailLimit === null) {
@@ -141,6 +168,7 @@ export default class McpExecutor extends BaseExecutor {
             "@plurnk/plurnk-mcp",
             this.runtime,
         );
+        this.#catalog = catalog;
         return {
             available: true,
             detail: [
@@ -159,6 +187,7 @@ export default class McpExecutor extends BaseExecutor {
         signal,
         write,
         setState,
+        emit,
     }: ExecArgs): Promise<ExecResult> {
         const fail = (
             code: string,
@@ -233,7 +262,12 @@ export default class McpExecutor extends BaseExecutor {
         }
 
         try {
-            const result = await this.#connection.callTool(target, args, signal);
+            const result = await this.#connection.callTool(
+                target,
+                args,
+                signal,
+                (progress) => emit(progressNotice(runtime, target, progress)),
+            );
             write(CHANNEL, renderJsonResult(result), "application/json");
             if (result.isError === true) {
                 return fail(

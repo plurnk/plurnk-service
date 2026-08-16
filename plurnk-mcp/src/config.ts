@@ -1,3 +1,8 @@
+import {
+    Validator,
+    type McpServerDefinition,
+} from "@plurnk/plurnk-contracts";
+
 const PREFIX = "PLURNK_MCP_";
 const COMPANION_SUFFIXES = [
     "_bearer",
@@ -13,7 +18,7 @@ const CONTROL_KEYS = new Map([
     ["request_timeout", `${PREFIX}REQUEST_TIMEOUT`],
 ]);
 const SERVER_NAME = /^[a-z][a-z0-9-]*$/;
-const ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+const ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/gu;
 
 type CompanionSuffix = typeof COMPANION_SUFFIXES[number];
 
@@ -21,26 +26,6 @@ interface EnvironmentVariable {
     readonly key: string;
     readonly value: string;
 }
-
-export interface StdioServerConfig {
-    readonly transport: "stdio";
-    readonly command: string;
-    readonly args: string[];
-    readonly cwd?: string;
-    readonly env?: Record<string, string>;
-    readonly tools?: readonly string[];
-    readonly read?: readonly string[];
-}
-
-export interface HttpServerConfig {
-    readonly transport: "http";
-    readonly url: string;
-    readonly headers?: Record<string, string>;
-    readonly tools?: readonly string[];
-    readonly read?: readonly string[];
-}
-
-export type ServerConfig = StdioServerConfig | HttpServerConfig;
 
 export interface ToolPolicy {
     readonly tools: readonly string[] | null;
@@ -117,7 +102,7 @@ const parseEnvironment = (environ: NodeJS.ProcessEnv): ParsedEnvironment => {
     return { targets, companions };
 };
 
-const expandReferences = (value: string, environ: NodeJS.ProcessEnv, field: string): string =>
+export const expandReferences = (value: string, environ: NodeJS.ProcessEnv, field: string): string =>
     value.replaceAll(ENV_REFERENCE, (_match, name: string) => {
         const resolved = environ[name];
         if (resolved === undefined) throw new Error(`${field} references missing environment variable ${name}.`);
@@ -127,7 +112,6 @@ const expandReferences = (value: string, environ: NodeJS.ProcessEnv, field: stri
 const jsonStrings = (
     raw: string | undefined,
     field: string,
-    environ: NodeJS.ProcessEnv,
 ): string[] => {
     if (raw === undefined || raw.length === 0) return [];
     let parsed: unknown;
@@ -139,7 +123,7 @@ const jsonStrings = (
     if (!Array.isArray(parsed) || !parsed.every((value) => typeof value === "string")) {
         throw new Error(`${field} must be a JSON array of strings.`);
     }
-    return parsed.map((value) => expandReferences(value, environ, field));
+    return parsed;
 };
 
 const uniqueToolNames = (values: readonly string[], field: string): string[] => {
@@ -155,13 +139,11 @@ const uniqueToolNames = (values: readonly string[], field: string): string[] => 
 const toolNames = (
     raw: string | undefined,
     field: string,
-    environ: NodeJS.ProcessEnv,
-): string[] => uniqueToolNames(jsonStrings(raw, field, environ), field);
+): string[] => uniqueToolNames(jsonStrings(raw, field), field);
 
 const jsonRecord = (
     raw: string | undefined,
     field: string,
-    environ: NodeJS.ProcessEnv,
 ): Record<string, string> | undefined => {
     if (raw === undefined || raw.length === 0) return undefined;
     let parsed: unknown;
@@ -178,45 +160,16 @@ const jsonRecord = (
     ) {
         throw new Error(`${field} must be a JSON object with string values.`);
     }
-    return Object.fromEntries(
-        Object.entries(parsed).map(([key, value]) => [
-            key,
-            expandReferences(value as string, environ, field),
-        ]),
-    );
-};
-
-const httpHeaders = (
-    headers: Record<string, string> | undefined,
-    bearer: EnvironmentVariable | undefined,
-    environ: NodeJS.ProcessEnv,
-): Record<string, string> | undefined => {
-    if (bearer === undefined) return headers;
-    const token = expandReferences(bearer.value, environ, bearer.key);
-    if (token.length === 0) {
-        throw new Error(`${bearer.key} must resolve to a non-empty token.`);
-    }
-    const authorization = Object.keys(headers ?? {}).find(
-        (key) => key.toLowerCase() === "authorization",
-    );
-    if (authorization !== undefined) {
-        throw new Error(
-            `${bearer.key} conflicts with Authorization in the server's _HEADERS map.`,
-        );
-    }
-    return {
-        ...headers,
-        Authorization: `Bearer ${token}`,
-    };
+    return parsed as Record<string, string>;
 };
 
 export const serverNames = (environ: NodeJS.ProcessEnv = process.env): string[] =>
     [...parseEnvironment(environ).targets.keys()].toSorted();
 
-export const serverConfig = (
+export const serverDefinition = (
     name: string,
     environ: NodeJS.ProcessEnv = process.env,
-): ServerConfig | null => {
+): McpServerDefinition | null => {
     const { targets, companions } = parseEnvironment(environ);
     const folded = name.toLowerCase();
     const target = targets.get(folded);
@@ -229,8 +182,8 @@ export const serverConfig = (
     const policy = {
         ...(configuredTools === undefined
             ? {}
-            : { tools: toolNames(configuredTools.value, configuredTools.key, environ) }),
-        read: toolNames(fields?.get("_read")?.value, fieldName("_read"), environ),
+            : { tools: toolNames(configuredTools.value, configuredTools.key) }),
+        read: toolNames(fields?.get("_read")?.value, fieldName("_read")),
     };
     if (/^https?:\/\//i.test(target.value)) {
         const invalid = (["_args", "_cwd", "_env"] as const)
@@ -243,14 +196,26 @@ export const serverConfig = (
         const headers = jsonRecord(
             fields?.get("_headers")?.value,
             fieldName("_headers"),
-            environ,
         );
-        return {
+        const bearer = fields?.get("_bearer");
+        const authorizationHeader = Object.keys(headers ?? {}).find(
+            (key) => key.toLowerCase() === "authorization",
+        );
+        if (bearer !== undefined && authorizationHeader !== undefined) {
+            throw new Error(
+                `${bearer.key} conflicts with Authorization in the server's _HEADERS map.`,
+            );
+        }
+        return Validator.assertMcpServerDefinition({
+            name: folded,
             transport: "http",
             url: target.value,
-            headers: httpHeaders(headers, fields?.get("_bearer"), environ),
+            ...(headers === undefined ? {} : { headers }),
+            ...(bearer === undefined
+                ? {}
+                : { authorization: { type: "bearer" as const, token: bearer.value } }),
             ...policy,
-        };
+        });
     }
     const httpOnly = (["_headers", "_bearer"] as const)
         .flatMap((suffix) => fields?.get(suffix)?.key ?? []);
@@ -259,17 +224,26 @@ export const serverConfig = (
             `${httpOnly.join(", ")} cannot accompany stdio MCP server target ${target.key}.`,
         );
     }
-    return {
+    const cwd = fields?.get("_cwd")?.value;
+    const stdioEnvironment = jsonRecord(fields?.get("_env")?.value, fieldName("_env"));
+    return Validator.assertMcpServerDefinition({
+        name: folded,
         transport: "stdio",
         command: target.value,
-        args: jsonStrings(fields?.get("_args")?.value, fieldName("_args"), environ),
-        cwd: fields?.has("_cwd")
-            ? expandReferences(fields.get("_cwd")!.value, environ, fieldName("_cwd"))
-            : undefined,
-        env: jsonRecord(fields?.get("_env")?.value, fieldName("_env"), environ),
+        args: jsonStrings(fields?.get("_args")?.value, fieldName("_args")),
+        ...(cwd === undefined ? {} : { cwd }),
+        ...(stdioEnvironment === undefined ? {} : { env: stdioEnvironment }),
         ...policy,
-    };
+    });
 };
+
+export const serviceDefinitions = (
+    environ: NodeJS.ProcessEnv = process.env,
+): McpServerDefinition[] => serverNames(environ).map((name) => {
+    const definition = serverDefinition(name, environ);
+    if (definition === null) throw new Error(`MCP server '${name}' disappeared during configuration.`);
+    return definition;
+});
 
 export const connectTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number => {
     const raw = environ.PLURNK_MCP_CONNECT_TIMEOUT;

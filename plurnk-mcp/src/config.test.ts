@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
     connectTimeoutMs,
     requestTimeoutMs,
-    serverConfig,
+    serverDefinition,
     serverNames,
 } from "./config.ts";
 
@@ -22,51 +22,54 @@ test("configuration discovers case-folded server targets and exact stdio argumen
         PLURNK_MCP_ATLAS_READ: '["filesystem_read_text_file"]',
     };
     assert.deepEqual(serverNames(env), ["atlas"]);
-    assert.deepEqual(serverConfig("ATLAS", env), {
+    assert.deepEqual(serverDefinition("ATLAS", env), {
+        name: "atlas",
         transport: "stdio",
         command: "node",
         args: ["server.mjs", "--task", "smoke"],
         cwd: "/tmp/atlas",
-        env: undefined,
         tools: ["filesystem_read_text_file"],
         read: ["filesystem_read_text_file"],
     });
 });
 
-test("HTTP bearer authentication expands its authoritative environment reference", () => {
+test("HTTP bearer authentication preserves its authoritative environment reference", () => {
     const env = {
         ...floor,
         TOKEN: "secret",
         PLURNK_MCP_GITHUB: "https://example.test/mcp",
         PLURNK_MCP_GITHUB_BEARER: "${TOKEN}",
     };
-    assert.deepEqual(serverConfig("github", env), {
+    assert.deepEqual(serverDefinition("github", env), {
+        name: "github",
         transport: "http",
         url: "https://example.test/mcp",
-        headers: {
-            Authorization: "Bearer secret",
+        authorization: {
+            type: "bearer",
+            token: "${TOKEN}",
         },
         read: [],
     });
 });
 
-test("supplementary HTTP headers expand environment references and cannot conflict with bearer auth", () => {
+test("supplementary HTTP headers preserve environment references and cannot conflict with bearer auth", () => {
     const env = {
         ...floor,
         TOKEN: "secret",
         PLURNK_MCP_GITHUB: "https://example.test/mcp",
         PLURNK_MCP_GITHUB_HEADERS: '{"X-Tenant":"${TOKEN}"}',
     };
-    assert.deepEqual(serverConfig("github", env), {
+    assert.deepEqual(serverDefinition("github", env), {
+        name: "github",
         transport: "http",
         url: "https://example.test/mcp",
         headers: {
-            "X-Tenant": "secret",
+            "X-Tenant": "${TOKEN}",
         },
         read: [],
     });
     assert.throws(
-        () => serverConfig("github", {
+        () => serverDefinition("github", {
             ...env,
             PLURNK_MCP_GITHUB_BEARER: "${TOKEN}",
             PLURNK_MCP_GITHUB_HEADERS: '{"authorization":"custom"}',
@@ -75,31 +78,31 @@ test("supplementary HTTP headers expand environment references and cannot confli
     );
 });
 
-test("bearer authentication rejects absent and empty environment references", () => {
+test("bearer authentication accepts only a symbolic reference and defers resolution", () => {
     const env = {
         ...floor,
         PLURNK_MCP_GITHUB: "https://example.test/mcp",
     };
-    assert.throws(
-        () => serverConfig("github", {
+    assert.equal(
+        serverDefinition("github", {
             ...env,
             PLURNK_MCP_GITHUB_BEARER: "${TOKEN}",
-        }),
-        /BEARER.*missing environment variable TOKEN/,
+        })?.authorization?.type,
+        "bearer",
     );
     assert.throws(
-        () => serverConfig("github", {
+        () => serverDefinition("github", {
             ...env,
             TOKEN: "",
-            PLURNK_MCP_GITHUB_BEARER: "${TOKEN}",
+            PLURNK_MCP_GITHUB_BEARER: "literal-secret",
         }),
-        /BEARER.*resolve to a non-empty token/,
+        /invalid MCP server definition/,
     );
 });
 
 test("configuration rejects empty targets, orphan companions, and transport-specific companions", () => {
     assert.throws(
-        () => serverConfig("atlas", {
+        () => serverDefinition("atlas", {
             ...floor,
             PLURNK_MCP_ATLAS: "",
         }),
@@ -113,7 +116,7 @@ test("configuration rejects empty targets, orphan companions, and transport-spec
         /PLURNK_MCP_ATLAS_ARGS.*PLURNK_MCP_ATLAS/,
     );
     assert.throws(
-        () => serverConfig("github", {
+        () => serverDefinition("github", {
             ...floor,
             PLURNK_MCP_GITHUB: "https://example.test/mcp",
             PLURNK_MCP_GITHUB_ENV: "{}",
@@ -121,7 +124,7 @@ test("configuration rejects empty targets, orphan companions, and transport-spec
         /PLURNK_MCP_GITHUB_ENV.*PLURNK_MCP_GITHUB/,
     );
     assert.throws(
-        () => serverConfig("atlas", {
+        () => serverDefinition("atlas", {
             ...floor,
             PLURNK_MCP_ATLAS: "node",
             PLURNK_MCP_ATLAS_HEADERS: "{}",
@@ -129,7 +132,7 @@ test("configuration rejects empty targets, orphan companions, and transport-spec
         /PLURNK_MCP_ATLAS_HEADERS.*PLURNK_MCP_ATLAS/,
     );
     assert.throws(
-        () => serverConfig("atlas", {
+        () => serverDefinition("atlas", {
             ...floor,
             TOKEN: "secret",
             PLURNK_MCP_ATLAS: "node",
@@ -196,36 +199,34 @@ test("case-fold collisions and reserved global/suffix ambiguity name exact varia
 
 test("stdio targets preserve whitespace as part of one exact executable", () => {
     const target = "/opt/MCP Servers/atlas";
-    assert.deepEqual(serverConfig("atlas", {
+    assert.deepEqual(serverDefinition("atlas", {
         ...floor,
         PLURNK_MCP_ATLAS: target,
         PLURNK_MCP_ATLAS_ARGS: '["--stdio"]',
     }), {
+        name: "atlas",
         transport: "stdio",
         command: target,
         args: ["--stdio"],
-        cwd: undefined,
-        env: undefined,
         read: [],
     });
 });
 
 test("tool policy uses absence for all, an exact array to narrow, and rejects ambiguous or duplicate names", () => {
-    assert.deepEqual(serverConfig("atlas", {
+    assert.deepEqual(serverDefinition("atlas", {
         ...floor,
         PLURNK_MCP_ATLAS: "node",
         PLURNK_MCP_ATLAS_TOOLS: "[]",
     }), {
+        name: "atlas",
         transport: "stdio",
         command: "node",
         args: [],
-        cwd: undefined,
-        env: undefined,
         tools: [],
         read: [],
     });
     assert.throws(
-        () => serverConfig("atlas", {
+        () => serverDefinition("atlas", {
             ...floor,
             PLURNK_MCP_ATLAS: "node",
             PLURNK_MCP_ATLAS_TOOLS: '"echo"',
@@ -233,7 +234,7 @@ test("tool policy uses absence for all, an exact array to narrow, and rejects am
         /TOOLS.*JSON array of strings/,
     );
     assert.throws(
-        () => serverConfig("atlas", {
+        () => serverDefinition("atlas", {
             ...floor,
             PLURNK_MCP_ATLAS: "node",
             PLURNK_MCP_ATLAS_TOOLS: '["echo","echo"]',
@@ -241,7 +242,7 @@ test("tool policy uses absence for all, an exact array to narrow, and rejects am
         /TOOLS.*duplicate tool name 'echo'/,
     );
     assert.throws(
-        () => serverConfig("atlas", {
+        () => serverDefinition("atlas", {
             ...floor,
             PLURNK_MCP_ATLAS: "node",
             PLURNK_MCP_ATLAS_READ: '["echo","echo"]',

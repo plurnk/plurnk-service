@@ -116,15 +116,16 @@ sequenceDiagram
         Core->>Store: commit result and durable evidence
     end
     Core->>Store: commit turn and loop state
-    Core-->>AGUI: lifecycle, proposal, result, and terminal events
+    Core-->>AGUI: lifecycle, proposal/interaction, result, and terminal events
     AGUI-->>Client: protocol projection
 ```
 
 Core owns packet assembly at `{§packet-assembly}` and durable result handling at
 `{§operation-results}`. Provider, capability, and AG-UI details remain in their
-own specifications. A proposal pauses the same durable loop until an explicit
-client decision or core-owned automatic policy resolves it; client convenience
-and daemon authority are not interchangeable.
+own specifications. A proposal or client interaction pauses its owning
+operation until an explicit client decision, while core-owned proposal policy
+may resolve only proposals automatically; client convenience and daemon
+authority are not interchangeable.
 
 ## State authority
 

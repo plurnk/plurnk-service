@@ -849,6 +849,12 @@ export default class Exec extends CoreSchemeAdapterBase {
                 const reported: ExecutorResult = await executor.run({
                     runtime, body, cwd, target, signal,
                     entry: entrySink,
+                    interact: (request) => {
+                        if (ctx.requestInteraction === undefined) {
+                            throw new Error("EXEC client interaction capability is unavailable.");
+                        }
+                        return ctx.requestInteraction(request);
+                    },
                     env: ExecEnv.scoped(),  // SPEC {§exec} {§exec-env-scoped} — never plurnk's own secrets
                     write: (channel, chunk, mimetype) => enqueue(() => ChannelWrite.appendToChannel(db, {
                         entryId, channel, chunk, mimetype, notify: ctx.streamEventNotify, coordinate,

@@ -5,15 +5,45 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { proposalToolCall, proposalToolCallId, proposalToolName, resolutionFromResume, stateSnapshot, stateDelta, parseAction, actionResult } from "./AguiPlus.ts";
+import {
+    actionResult,
+    interactionInterrupt,
+    interactionResolutionFromResume,
+    interactionToolCall,
+    parseAction,
+    proposalToolCall,
+    proposalToolCallId,
+    proposalToolName,
+    resolutionFromResume,
+    stateDelta,
+    stateSnapshot,
+} from "./AguiPlus.ts";
 import type { ProposalNotification } from "./types.ts";
-import { DEFAULT_LOOP_FLAGS } from "@plurnk/plurnk-contracts";
+import { DEFAULT_LOOP_FLAGS, type ClientInteractionProjection } from "@plurnk/plurnk-contracts";
 
 const proposal = (over: Partial<ProposalNotification> = {}): ProposalNotification => ({
     logEntryId: 42, workerId: 2, loopId: 3, turnId: 4,
     op: "EDIT", target: { scheme: "file", pathname: "README.md" },
     body: "@@ -1 +1 @@\n-old\n+new", attrs: { patch: "…" }, flags: DEFAULT_LOOP_FLAGS,
     staleClobberRisk: false, disposition: { owner: "client" },
+    ...over,
+});
+
+const interaction = (over: Partial<ClientInteractionProjection> = {}): ClientInteractionProjection => ({
+    interactionId: 8,
+    workerId: 2,
+    loopId: 3,
+    turnId: 4,
+    request: {
+        toolName: "select_repository",
+        arguments: { owner: "plurnk" },
+        message: "Choose one repository.",
+        responseSchema: {
+            type: "object",
+            properties: { repository: { type: "string" } },
+            required: ["repository"],
+        },
+    },
     ...over,
 });
 
@@ -61,6 +91,44 @@ test("resolutionFromResume: standard cancellation and strict payload validation"
     assert.deepEqual(resolutionFromResume({ interruptId: "prop:5", status: "cancelled" }), { logEntryId: 5, decision: "cancel" });
     assert.equal(resolutionFromResume({ interruptId: "call_openai_xyz", status: "resolved", payload: { decision: "accept" } }), null, "a non-plurnk interrupt isn't a proposal resolution");
     assert.equal(resolutionFromResume({ interruptId: "prop:5", status: "resolved", payload: { decision: "maybe" } }), null, "an invalid decision is rejected, not coerced");
+});
+
+test("client interaction projects its exact tool call, interrupt guidance, and response schema", () => {
+    const value = interaction();
+    assert.deepEqual(interactionToolCall(value), [
+        { type: "TOOL_CALL_START", toolCallId: "int:8", toolCallName: "select_repository" },
+        { type: "TOOL_CALL_ARGS", toolCallId: "int:8", delta: JSON.stringify({ owner: "plurnk" }) },
+        { type: "TOOL_CALL_END", toolCallId: "int:8" },
+    ]);
+    assert.deepEqual(interactionInterrupt(value), {
+        id: "int:8",
+        reason: "tool_call",
+        toolCallId: "int:8",
+        message: "Choose one repository.",
+        responseSchema: value.request.responseSchema,
+    });
+});
+
+test("client interaction resume preserves an arbitrary resolved payload or standard cancellation", () => {
+    assert.deepEqual(
+        interactionResolutionFromResume({
+            interruptId: "int:8",
+            status: "resolved",
+            payload: { repository: "plurnk-service" },
+        }),
+        {
+            interactionId: 8,
+            resolution: { status: "resolved", payload: { repository: "plurnk-service" } },
+        },
+    );
+    assert.deepEqual(
+        interactionResolutionFromResume({ interruptId: "int:8", status: "cancelled" }),
+        { interactionId: 8, resolution: { status: "cancelled" } },
+    );
+    assert.equal(
+        interactionResolutionFromResume({ interruptId: "prop:8", status: "resolved", payload: {} }),
+        null,
+    );
 });
 
 test("reads → STATE: snapshot owns plurnk state and initializes replaceable budget facts", () => {

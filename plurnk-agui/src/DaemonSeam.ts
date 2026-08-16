@@ -15,7 +15,14 @@ export interface ProposalResolution {
 // Core's contracts-owned pending-proposal projection. Persistence never crosses
 // this seam; live delivery and reconnect expose the same domain shape.
 export type { ProposalProjection as PendingProposal } from "@plurnk/plurnk-contracts";
-import type { ClientDisplayCapabilities, EntryReadResult, ProposalProjection } from "@plurnk/plurnk-contracts";
+export type { ClientInteractionProjection as PendingClientInteraction } from "@plurnk/plurnk-contracts";
+import type {
+    ClientDisplayCapabilities,
+    ClientInteractionProjection,
+    ClientInteractionResolution,
+    EntryReadResult,
+    ProposalProjection,
+} from "@plurnk/plurnk-contracts";
 
 // The grammar owns the protocol: the statement handed to dispatchAsClient IS
 // @plurnk/plurnk-contracts's PlurnkStatement (parsed at the module's edge). Type-only
@@ -53,6 +60,13 @@ export interface DaemonSeam {
     // Hook A-resolve — feed the human's decision. The gate/validation/applyResolution
     // stay core; this is only the resolve. Throws for an unknown/already-resolved id.
     resolveProposal(logEntryId: number, resolution: ProposalResolution): void;
+    // Generic operation-owned client input shares AG-UI's interrupt/resume path
+    // without exposing the operation owner's private continuation state.
+    pendingClientInteractions(workspaceId: number): Promise<ClientInteractionProjection[]>;
+    resolveClientInteraction(
+        interactionId: number,
+        resolution: ClientInteractionResolution,
+    ): Promise<void>;
     // Worker split ({§machine-processes}): model loops live in the workspace's model worker, never the
     // client worker (connection scratch). Resolve it here — created on first use.
     ensureModelWorker(workspaceId: number): Promise<number>;

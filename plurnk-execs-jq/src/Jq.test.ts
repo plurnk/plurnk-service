@@ -21,6 +21,7 @@ const run = async (command: string, target: string | null = null, env?: NodeJS.P
         write: (_c, chunk) => { out = (out ?? "") + chunk; },
         setState: (_c, s) => states.push(s),
         emit: (e) => events.push(e),
+        interact: async () => ({ status: "cancelled" }),
     };
     const result = await new Jq({ runtime: "jq", glyph: "🧰" }).run(args);
     return { result, out, states, events };

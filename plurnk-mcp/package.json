@@ -54,11 +54,13 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "@modelcontextprotocol/client": "2.0.0"
+        "@modelcontextprotocol/client": "2.0.0",
+        "@plurnk/plurnk-contracts": "1.6.1"
     },
     "devDependencies": {
         "@modelcontextprotocol/conformance": "0.2.0-alpha.11",
-        "@modelcontextprotocol/server": "2.0.0"
+        "@modelcontextprotocol/server": "2.0.0",
+        "zod": "4.4.3"
     },
     "peerDependencies": {
         "@plurnk/plurnk-execs": "^1.6.1",

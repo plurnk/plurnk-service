@@ -8,13 +8,10 @@ export {
 } from "./protocol.ts";
 export {
     connectTimeoutMs,
+    expandReferences,
     requestTimeoutMs,
-    serverConfig,
+    serverDefinition,
     serverNames,
+    serviceDefinitions,
 } from "./config.ts";
-export type {
-    HttpServerConfig,
-    ServerConfig,
-    StdioServerConfig,
-    ToolPolicy,
-} from "./config.ts";
+export type { ToolPolicy } from "./config.ts";

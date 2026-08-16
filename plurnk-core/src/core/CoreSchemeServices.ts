@@ -2,7 +2,13 @@ import type { Db } from "./Db.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { InjectWorkerNotify, StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
-import type { Notice, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
+import type {
+    ClientInteractionRequest,
+    ClientInteractionResolution,
+    Notice,
+    ParsedPath,
+    ReadStatement,
+} from "@plurnk/plurnk-contracts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type { SchemeCtx, SchemeResult, StoredEntryData } from "@plurnk/plurnk-schemes";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -18,6 +24,11 @@ export interface CoreSchemeServices {
     readonly pushNotice: (workspaceId: number, loopId: number, notice: Notice) => void;
     readonly defaultChannelFor: (scheme: string, workspaceId: number) => string;
     readonly readExecSource: (statement: ReadStatement, ctx: PlurnkSchemeContext) => Promise<SchemeResult>;
+    readonly requestInteraction: (
+        request: ClientInteractionRequest,
+        ids: { workspaceId: number; workerId: number; loopId: number; turnId: number },
+        signal?: AbortSignal,
+    ) => Promise<ClientInteractionResolution>;
     readonly liveSubscriptions: LiveSubscriptions;
 }
 
@@ -79,6 +90,12 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
             weigh: services.weigh,
             defaultChannelFor: (scheme) => services.defaultChannelFor(scheme, ctx.workspaceId),
             pushNotice: (notice) => services.pushNotice(ctx.workspaceId, ctx.loopId, notice),
+            requestInteraction: (request) => services.requestInteraction(request, {
+                workspaceId: ctx.workspaceId,
+                workerId: ctx.workerId,
+                loopId: ctx.loopId,
+                turnId: ctx.turnId,
+            }, ctx.signal),
         };
     }
 

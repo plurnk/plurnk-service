@@ -33,6 +33,7 @@ const run = async (
         write: (channel, chunk) => { out[channel] = (out[channel] ?? "") + chunk; },
         setState: (channel, state) => { (states[channel] ??= []).push(state); },
         emit: () => {},
+        interact: async () => ({ status: "cancelled" }),
     };
     const result = await make().run(args);
     return { result, out, states };

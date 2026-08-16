@@ -25,7 +25,6 @@ import { PlurnkParser, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
-import { logEntryIdFromToolCallId, proposalInterrupt } from "./AguiPlus.ts";
 import { Problems, Validator, type ClientDisplayCapabilities, type ExecStatement, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 
@@ -160,7 +159,7 @@ export default class Module {
         ...this.#WORLD_SCOPED,
     ]));
     static #NOTIFICATIONS = Object.freeze([
-        "log/entry", "loop/terminated", "loop/proposal", "notice/event",
+        "log/entry", "loop/terminated", "loop/proposal", "loop/interaction", "notice/event",
         "stream/event", "stream/concluded", "workspace/branch-batch",
     ]);
 
@@ -426,11 +425,13 @@ export default class Module {
         const emit = (events: AguiEvent[]): void => {
             for (const e of events) {
                 res.write(`data: ${JSON.stringify(e)}\n\n`);
-                // Terminate-resume, the terminate half: a proposal tool-call ENDS this
-                // AG-UI Run (the loop stays paused in-engine awaiting the resume Run).
+                // Terminate-resume, the terminate half: a stopped-world tool call
+                // ends this AG-UI Run while its core owner remains paused.
                 if (e.type === "TOOL_CALL_END") {
-                    const logEntryId = logEntryIdFromToolCallId((e as { toolCallId: string }).toolCallId);
-                    if (logEntryId !== null) interrupts.push(proposalInterrupt(logEntryId));
+                    const interrupt = this.#portal.interruptForToolCall(
+                        (e as { toolCallId: string }).toolCallId,
+                    );
+                    if (interrupt !== null) interrupts.push(interrupt);
                 }
                 if (e.type === "RUN_FINISHED" || e.type === "RUN_ERROR") finish();
             }

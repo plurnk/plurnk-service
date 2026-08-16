@@ -24,6 +24,7 @@ import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import type { ProposalApplyResult, SchemeCtx } from "@plurnk/plurnk-schemes";
 import Results, { OperationFailureError } from "./results.ts";
 import LogBody from "./LogBody.ts";
+import type ClientInteractions from "./ClientInteractions.ts";
 
 // Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
 // to propose; dispatch writes a state='proposed' log entry, registers a waiter
@@ -112,6 +113,7 @@ export default class ProposalLifecycle {
     // Per-loop abort signal, owned by Engine.runLoop — thunked.
     #loopSignal: (loopId: number) => AbortSignal | undefined;
     #liveSubscriptions: LiveSubscriptions;
+    #interactions: ClientInteractions;
     // Proposal lifecycle: pending dispatch pauses waiting for resolution.
     // Dispatch awaits the promise when a scheme returns status 202;
     // Engine.resolveProposal feeds the resolution back in. Map is per-log-
@@ -122,7 +124,7 @@ export default class ProposalLifecycle {
     // observers run, so an observer cannot become a hidden policy fallback.
     #listeners: Array<(payload: ProposalPendingEvent) => void> = [];
 
-    constructor({ db, schemes, notices, streamEventNotify, wakeWorkerNotify, weigh, mimetypes, executors, loopSignal, liveSubscriptions }: {
+    constructor({ db, schemes, notices, streamEventNotify, wakeWorkerNotify, weigh, mimetypes, executors, loopSignal, liveSubscriptions, interactions }: {
         db: Db;
         schemes: SchemeRegistry;
         notices: NoticeChannel;
@@ -133,6 +135,7 @@ export default class ProposalLifecycle {
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
         liveSubscriptions: LiveSubscriptions;
+        interactions: ClientInteractions;
     }) {
         this.#db = db;
         this.#schemes = schemes;
@@ -144,6 +147,7 @@ export default class ProposalLifecycle {
         this.#executors = executors;
         this.#loopSignal = loopSignal;
         this.#liveSubscriptions = liveSubscriptions;
+        this.#interactions = interactions;
     }
 
     // External API to feed a resolution into a pending proposal. Called by
@@ -452,6 +456,11 @@ export default class ProposalLifecycle {
                 weigh: this.#weighContent,
                 mimetypes: this.#mimetypes,
                 pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
+                requestInteraction: (interaction) => this.#interactions.request(
+                    interaction,
+                    { workspaceId, workerId, loopId, turnId },
+                    this.#loopSignal(loopId),
+                ),
                 executors: this.#executors(),
             };
             const request = {

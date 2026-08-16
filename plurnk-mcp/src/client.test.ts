@@ -12,6 +12,7 @@ const env = {
 
 test("client pins the current MCP revision and exercises tools and resources", async () => {
     const connection = new ServerConnection({
+        name: "echo",
         transport: "stdio",
         command: process.execPath,
         args: [fixture],
@@ -31,6 +32,7 @@ test("client pins the current MCP revision and exercises tools and resources", a
             catalog.resources.map((resource) => resource.uri),
             ["fixture://document"],
         );
+        assert.deepEqual(catalog.prompts.map((prompt) => prompt.name), ["summarize"]);
         assert.equal(catalog.tools.find((tool) => tool.name === "echo")?.annotations?.readOnlyHint, true);
         assert.equal(catalog.tools.find((tool) => tool.name === "fail")?.annotations?.readOnlyHint, undefined);
 
@@ -45,6 +47,18 @@ test("client pins the current MCP revision and exercises tools and resources", a
         const resource = await connection.readResource("fixture://document");
         assert.equal(resource.contents[0]?.uri, "fixture://document");
         assert.equal("text" in resource.contents[0]!, true);
+
+        const prompt = await connection.getPrompt("summarize", { topic: "MCP" });
+        assert.deepEqual(prompt.messages, [{
+            role: "user",
+            content: { type: "text", text: "Summarize MCP." },
+        }]);
+
+        const completion = await connection.complete({
+            ref: { type: "ref/prompt", name: "summarize" },
+            argument: { name: "topic", value: "p" },
+        });
+        assert.deepEqual(completion.completion.values, ["Plurnk", "protocol"]);
     } finally {
         await connection.close();
     }

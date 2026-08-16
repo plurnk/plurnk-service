@@ -6,6 +6,10 @@ import { Policy } from "@plurnk/plurnk-execs";
 import Results, { OperationFailureError } from "../core/results.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 import WorkerName, { WorkerNameError } from "../core/WorkerName.ts";
+import {
+    Validator,
+    type ClientInteractionResolution,
+} from "@plurnk/plurnk-contracts";
 
 const CONSTRAINT_EFFECTS: ReadonlySet<string> = new Set(["pick", "hide", "view"]);
 
@@ -259,6 +263,27 @@ export default class ClientInput {
             ...(value.body === undefined ? {} : { body: value.body }),
             ...(value.outcome === undefined ? {} : { outcome: value.outcome }),
         } as ProposalResolution;
+    }
+
+    static assertClientInteractionResolution(
+        context: string,
+        resolution: unknown,
+    ): ClientInteractionResolution {
+        try {
+            return Validator.assertClientInteractionResolution(
+                resolution as ClientInteractionResolution,
+            );
+        } catch {
+            ClientInput.#invalid(
+                context,
+                "interaction-resolution-invalid",
+                "resolution is not a valid client interaction resolution.",
+                {
+                    field: "resolution",
+                    recovery: "Resolve with status 'resolved' and an optional payload, or status 'cancelled'.",
+                },
+            );
+        }
     }
 
     static assertConstraint(context: string, effect: unknown, glob: unknown): void {

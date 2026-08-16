@@ -91,6 +91,7 @@ export type {
     StoredEntryData,
     StreamSubscription,
     ProjectionCaps,
+    InteractionCaps,
     ProjectedText,
     NotifyCaps,
     ProposalApplyRequest,

@@ -1,5 +1,10 @@
 import { RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
-import type { PlurnkStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import type {
+    ClientInteractionProjection,
+    ClientInteractionResolution,
+    PlurnkStatement,
+    ParsedPath,
+} from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import Meta from "@plurnk/plurnk-meta";
@@ -28,6 +33,7 @@ import StrikeRail from "./StrikeRail.ts";
 import PacketBuilder, { type ChatMessage } from "./PacketBuilder.ts";
 import ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
+import ClientInteractions, { type ClientInteractionPendingEvent } from "./ClientInteractions.ts";
 import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 import Dispatcher from "./Dispatcher.ts";
 import type { DispatchContext, DispatchResult, ResolvedClientEntryAddress } from "./Dispatcher.ts";
@@ -138,6 +144,7 @@ export default class Engine {
     #packets: PacketBuilder;
     readonly searchGate = new SearchGate();
     #proposals: ProposalLifecycle;
+    #interactions: ClientInteractions;
     #dispatcher: Dispatcher;
     #turnRunner: TurnRunner;
     readonly #liveSubscriptions = new LiveSubscriptions();
@@ -333,16 +340,19 @@ export default class Engine {
             schemes,
             executors,
         });
+        this.#interactions = new ClientInteractions(db);
         this.#proposals = new ProposalLifecycle({
             db, schemes, notices: this.#notices,
             streamEventNotify, wakeWorkerNotify,
             weigh: this.#weighContent, mimetypes: this.#mimetypes, executors, loopSignal,
             liveSubscriptions: this.#liveSubscriptions,
+            interactions: this.#interactions,
         });
         this.#dispatcher = new Dispatcher({ searchGate: this.searchGate,
             db, schemes, mimetypes: this.#mimetypes,
             weigh: this.#weighContent,
             notices: this.#notices, proposals: this.#proposals,
+            interactions: this.#interactions,
             executors, loopSignal,
             streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants,
             parkDeadlines: this.parkDeadlines,
@@ -364,6 +374,7 @@ export default class Engine {
             wakeWorkerNotify,
             executors,
             loopSignal,
+            interactions: this.#interactions,
             warmWorkspace: (context, invalidate, materialize) =>
                 this.#queueWorkspaceWarm(context, invalidate, materialize),
             dispatch: (context) => this.dispatch(context),
@@ -380,6 +391,7 @@ export default class Engine {
             pushNotice: (workspaceId, loopId, notice) => this.#notices.push(workspaceId, loopId, notice),
             defaultChannelFor: (scheme, workspaceId) => schemes.defaultChannelFor(scheme, workspaceId),
             readExecSource: (statement, ctx) => this.#dispatcher.readExecSource(statement, ctx),
+            requestInteraction: (request, ids, signal) => this.#interactions.request(request, ids, signal),
             liveSubscriptions: this.#liveSubscriptions,
         });
     }
@@ -877,6 +889,21 @@ export default class Engine {
 
     async pendingProposals(workspaceId: number): Promise<ProposalProjection[]> {
         return this.#proposals.list(workspaceId);
+    }
+
+    onClientInteractionPending(listener: (event: ClientInteractionPendingEvent) => void): void {
+        this.#interactions.onPending(listener);
+    }
+
+    async pendingClientInteractions(workspaceId: number): Promise<ClientInteractionProjection[]> {
+        return this.#interactions.list(workspaceId);
+    }
+
+    async resolveClientInteraction(
+        interactionId: number,
+        resolution: ClientInteractionResolution,
+    ): Promise<void> {
+        await this.#interactions.resolve(interactionId, resolution);
     }
 
     // Used by wake-on-completion (daemon side): "is there any loop in this

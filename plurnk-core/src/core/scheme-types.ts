@@ -7,7 +7,11 @@ import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeWorkerNotify, InjectWorkerNotify } from "./ChannelWrite.ts";
 import type { WriterTier } from "./types.ts";
-import type { Notice } from "@plurnk/plurnk-contracts";
+import type {
+    ClientInteractionRequest,
+    ClientInteractionResolution,
+    Notice,
+} from "@plurnk/plurnk-contracts";
 
 // Re-export framework types so existing imports of `scheme-types.ts`
 // keep working without callers needing to know the new origin.
@@ -57,4 +61,9 @@ export interface PlurnkSchemeContext {
     // Push a transient Notice. The engine drains it into the next packet's
     // Notices section and broadcasts it through `notice/event`.
     readonly pushNotice?: (notice: Notice) => void;
+    // Standard client-owned interaction, bound to this exact operation by
+    // Engine. Public handlers receive it through SchemeCtx.interactions.
+    readonly requestInteraction?: (
+        request: ClientInteractionRequest,
+    ) => Promise<ClientInteractionResolution>;
 }

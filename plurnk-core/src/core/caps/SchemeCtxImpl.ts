@@ -2,7 +2,7 @@
 // daemon collaborators stay constructor-injected into core-owned adapters.
 
 import type {
-    SchemeCtx, EntryCaps, ChannelCaps, NotifyCaps, ProjectionCaps, SubscriptionCaps, SchemeManifest, WriterTier,
+    SchemeCtx, EntryCaps, ChannelCaps, NotifyCaps, ProjectionCaps, InteractionCaps, SubscriptionCaps, SchemeManifest, WriterTier,
 } from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import DbEntryCaps from "./DbEntryCaps.ts";
@@ -10,6 +10,7 @@ import DbChannelCaps from "./DbChannelCaps.ts";
 import DbNotifyCaps from "./DbNotifyCaps.ts";
 import DbSubscriptionCaps from "./DbSubscriptionCaps.ts";
 import DbProjectionCaps from "./DbProjectionCaps.ts";
+import CoreInteractionCaps from "./CoreInteractionCaps.ts";
 import type LiveSubscriptions from "../LiveSubscriptions.ts";
 import type { LineAnchorPrecondition } from "../../content/index.ts";
 
@@ -31,6 +32,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
     readonly channels: ChannelCaps;
     readonly notify: NotifyCaps;
     readonly projection: ProjectionCaps;
+    readonly interactions: InteractionCaps;
     readonly subscriptions: SubscriptionCaps;
     constructor(
         ctx: PlurnkSchemeContext,
@@ -50,6 +52,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
         this.channels = new DbChannelCaps(ctx, scheme, options.ownerId);
         this.notify = new DbNotifyCaps(ctx, scheme, options.ownerId);
         this.projection = new DbProjectionCaps(ctx);
+        this.interactions = new CoreInteractionCaps(ctx);
         this.subscriptions = new DbSubscriptionCaps(
             ctx,
             scheme,

@@ -179,7 +179,9 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
     };
     const ctx: SchemeCtx = {
         workspaceId: overrides.workspaceId ?? 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
-        entries, channels, notify, projection, subscriptions,
+        entries, channels, notify, projection,
+        interactions: { request: async () => ({ status: "cancelled" }) },
+        subscriptions,
     };
     return {
         ctx,

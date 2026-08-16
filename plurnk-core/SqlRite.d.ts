@@ -129,6 +129,9 @@ export class SqlRiteSync {
 	find_open_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
 	find_exec_close_status: SqlRiteSyncPreparedStatements;
+	client_interaction_insert: SqlRiteSyncPreparedStatements;
+	client_interaction_list: SqlRiteSyncPreparedStatements;
+	client_interaction_delete: SqlRiteSyncPreparedStatements;
 	digest_workspaces: SqlRiteSyncPreparedStatements;
 	digest_workers: SqlRiteSyncPreparedStatements;
 	digest_loops: SqlRiteSyncPreparedStatements;
@@ -240,6 +243,7 @@ export class SqlRiteSync {
 	recovery_settle_open_provider_requests: SqlRiteSyncPreparedStatements;
 	recovery_fail_open_model_calls: SqlRiteSyncPreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRiteSyncPreparedStatements;
+	recovery_remove_ownerless_client_interactions: SqlRiteSyncPreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRiteSyncPreparedStatements;
 	recovery_fail_orphan_subscriptions: SqlRiteSyncPreparedStatements;
 	recovery_resume_unblocked_parks: SqlRiteSyncPreparedStatements;
@@ -372,6 +376,9 @@ export default class SqlRite {
 	find_open_subscriptions_for_worker: SqlRitePreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRitePreparedStatements;
 	find_exec_close_status: SqlRitePreparedStatements;
+	client_interaction_insert: SqlRitePreparedStatements;
+	client_interaction_list: SqlRitePreparedStatements;
+	client_interaction_delete: SqlRitePreparedStatements;
 	digest_workspaces: SqlRitePreparedStatements;
 	digest_workers: SqlRitePreparedStatements;
 	digest_loops: SqlRitePreparedStatements;
@@ -483,6 +490,7 @@ export default class SqlRite {
 	recovery_settle_open_provider_requests: SqlRitePreparedStatements;
 	recovery_fail_open_model_calls: SqlRitePreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRitePreparedStatements;
+	recovery_remove_ownerless_client_interactions: SqlRitePreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRitePreparedStatements;
 	recovery_fail_orphan_subscriptions: SqlRitePreparedStatements;
 	recovery_resume_unblocked_parks: SqlRitePreparedStatements;

@@ -8,7 +8,11 @@
 
 import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
-import type { ProblemDetails } from "@plurnk/plurnk-contracts";
+import type {
+    ClientInteractionProjection,
+    ClientInteractionResolution,
+    ProblemDetails,
+} from "@plurnk/plurnk-contracts";
 
 // ── §1 — stop-the-world → tool-call ──────────────────────────────────
 // toolCallId correlates the terminating AG-UI Run's TOOL_CALL and interrupt with the next
@@ -63,6 +67,57 @@ export const resolutionFromResume = (entry: ResumeEntry): Resolution | null => {
     const body = typeof payload?.body === "string" ? payload.body : undefined;
     if (decision !== "accept" && decision !== "reject" && decision !== "cancel") return null;
     return { logEntryId, decision, ...(body !== undefined ? { body } : {}) };
+};
+
+export const interactionToolCallId = (interactionId: number): string => `int:${interactionId}`;
+export const interactionIdFromToolCallId = (toolCallId: string): number | null => {
+    const match = /^int:(\d+)$/.exec(toolCallId);
+    return match === null ? null : Number(match[1]);
+};
+
+export const interactionToolCall = (interaction: ClientInteractionProjection): AguiEvent[] => {
+    const toolCallId = interactionToolCallId(interaction.interactionId);
+    return [
+        {
+            type: EventType.TOOL_CALL_START,
+            toolCallId,
+            toolCallName: interaction.request.toolName,
+        },
+        {
+            type: EventType.TOOL_CALL_ARGS,
+            toolCallId,
+            delta: JSON.stringify(interaction.request.arguments),
+        },
+        { type: EventType.TOOL_CALL_END, toolCallId },
+    ];
+};
+
+export const interactionInterrupt = (interaction: ClientInteractionProjection): Interrupt => ({
+    id: interactionToolCallId(interaction.interactionId),
+    reason: "tool_call",
+    toolCallId: interactionToolCallId(interaction.interactionId),
+    message: interaction.request.message ?? "Provide the requested input.",
+    responseSchema: interaction.request.responseSchema,
+});
+
+export interface InteractionResolution {
+    interactionId: number;
+    resolution: ClientInteractionResolution;
+}
+
+export const interactionResolutionFromResume = (entry: ResumeEntry): InteractionResolution | null => {
+    const interactionId = interactionIdFromToolCallId(entry.interruptId);
+    if (interactionId === null) return null;
+    if (entry.status === "cancelled") {
+        return { interactionId, resolution: { status: "cancelled" } };
+    }
+    return {
+        interactionId,
+        resolution: {
+            status: "resolved",
+            ...(Object.hasOwn(entry, "payload") ? { payload: entry.payload } : {}),
+        },
+    };
 };
 
 // ── §2 — reads → shared STATE ────────────────────────────────────────

@@ -128,20 +128,27 @@ every other daemon surface.
 - §agui-replay **Reattach replays** — a rediscovered thread (the module restarted, a second
   frontend arrived) attaches to its existing workspace by name→id and opens ORIENTED: the model
   worker's PLAN activities and SEND speech replay as `MESSAGES_SNAPSHOT`; everything else stays
-  reachable via live `plurnk.row`. Pending proposals remain durable and are presented as
-  interrupts when the owning conversation is resumed; a days-old question is discoverable,
-  never converted into a mystery hang.
+  reachable via live `plurnk.row`. Pending proposals and client interactions remain durable while
+  their operation owners are live and are presented as interrupts when the owning conversation is
+  resumed; a days-old question is discoverable, never converted into a mystery hang.
 
-## §agui-proposal-resolve Stop-the-world
+## §agui-proposal-resolve Client-owned stop-the-world interactions
 
-Every client-owned daemon proposal - file edits and `[300]` operator questions —
-emits an AG-UI tool call and terminates AG-UI Run A with
+Every client-owned daemon proposal—file edits and `[300]` operator questions—and
+every contracts-owned client interaction emits an AG-UI tool call and terminates AG-UI Run A with
 `RUN_FINISHED.outcome.type = "interrupt"`. The durable loop remains paused indefinitely
 by default; absence is not an answer. AG-UI Run B on the same thread supplies standard
-`RunAgentInput.resume` entries. Each entry correlates through `interruptId = toolCallId =
-"prop:<logEntryId>"`; the module resolves every pending interrupt for that worker, binds
-AG-UI Run B to the persisted loop, and releases it. A resume containing foreign, partial, or
-multi-worker interrupt sets fails before any proposal is released.
+`RunAgentInput.resume` entries. Each entry correlates through `interruptId = toolCallId`, using
+`prop:<logEntryId>` for proposals and `int:<interactionId>` for client interactions. The module
+resolves the complete pending interrupt set for one worker, binds AG-UI Run B to the persisted
+loop, and releases it. A resume containing foreign, partial, unknown, duplicate, or multi-worker
+interrupt sets fails before any stopped operation is released.
+
+Proposal tool-call arguments and resume payloads retain the proposal review contract.
+Client-interaction tool calls use the request's exact `toolName` and `arguments`; their standard
+interrupt carries its optional `message` and `responseSchema`. A resolved resume payload becomes
+the generic resolved payload, while AG-UI cancellation becomes interaction cancellation. AG-UI
+never sees or reconstructs an upstream protocol's continuation state.
 
 §agui-proposal-disposition **AG-UI consumes disposition; it does not infer policy.** Both the live `loop/proposal` payload and `CoreSeam.pendingProposals()` return the contracts-owned `ProposalProjection`. `disposition.owner` is the sole presentation branch:
 
@@ -160,7 +167,7 @@ an omitted service-default selection.
 ## §agui-management-plane The action surface
 
 PLURNK has three inputs through the one AG-UI Run endpoint. A normal user message
-and a standard proposal resume are not management actions and have no invented
+and a standard interrupt resume are not management actions and have no invented
 `loop.run` or `loop.resolve` action names.
 
 ```mermaid
@@ -168,12 +175,12 @@ flowchart LR
     client["AG-UI client"] --> run["POST RunAgentInput"]
     run --> classify{"Input form"}
     classify -->|"textual user message"| loop["CoreSeam.runLoop"]
-    classify -->|"RunAgentInput.resume"| proposal["CoreSeam.resolveProposal"]
+    classify -->|"RunAgentInput.resume"| resume["CoreSeam proposal / interaction resolution"]
     classify -->|"forwardedProps.plurnk.action"| actions{"AG-UI action registry"}
     actions --> builtIn["Built-in validation<br/>and typed CoreSeam call"]
     actions --> extension["Scoped CoreSeam.invokeModuleAction"]
     loop --> events["Core event source"]
-    proposal --> events
+    resume --> events
     builtIn --> events
     events --> projection["AG-UI projection"]
     extension --> result["plurnk.action.result"]
@@ -320,14 +327,14 @@ into the conversation a generic frontend renders.
 Workspace information fans to every open AG-UI Run: ambient rows and stream activity
 remain visible across the workspace, with each SSE
 using its own render router. Terminal control does not fan. A message AG-UI Run binds
-to the exact `loopId` returned by `CoreSeam.runLoop`; a proposal-resume AG-UI Run binds to the
-pending proposal's persisted `loopId` before resolving it. Only that loop's
+to the exact `loopId` returned by `CoreSeam.runLoop`; an interrupt-resume AG-UI Run binds to the
+pending item's persisted `loopId` before resolving it. Only that loop's
 `loop/terminated` event may emit `plurnk.terminated` and close the SSE.
 The custom event preserves the daemon's exact universal `result`; failures use
 the Problem `type` as the AG-UI error code and `detail` as its message. The
 module never reconstructs a failure from a status, summary, or exception text.
-Proposal tool calls and interrupt outcomes route only to the proposal's owning
-worker; interrupting sibling AG-UI Runs would violate AG-UI Run identity. Terminations
+Stopped-world tool calls and interrupt outcomes route only to their owning worker;
+interrupting sibling AG-UI Runs would violate AG-UI Run identity. Terminations
 that race ahead of the `runLoop` acknowledgement are held until
 the loop identity is known. A sibling, child, or concurrent loop can therefore
 remain visible as topology without ending or relabelling this AG-UI Run.

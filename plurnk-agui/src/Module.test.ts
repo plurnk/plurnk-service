@@ -20,11 +20,13 @@ const mockSeam = () => {
         invokeModuleAction: async (name) => { throw new Error(`unexpected module action '${name}'`); },
         subscribeToEvents: (h) => { handlers.add(h); return () => { handlers.delete(h); }; },
         pendingProposals: async () => [],
+        pendingClientInteractions: async () => [],
         resolveProposal: (logEntryId, resolution) => {
             resolves.push({ logEntryId, resolution });
             // The engine's continued loop terminating — closes the resume stream.
             setImmediate(() => handlers.forEach((h) => h(3, "loop/terminated", { loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) })));
         },
+        resolveClientInteraction: async () => {},
         runLoop: async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.alias !== undefined ? { alias: a.alias } : {}), ...(a.model !== undefined ? { model: a.model } : {}), ...(a.childAlias !== undefined ? { childAlias: a.childAlias } : {}), ...(a.childModel !== undefined ? { childModel: a.childModel } : {}) }); return { status: 100, action: "injected_next_turn" as const, loopId: 9, turnSeq: 2 }; },
         cancelDrain: () => true,
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
@@ -823,6 +825,90 @@ test("a standard resume resolves the paused proposal without driving a new loop"
     } finally { await mod.close(); }
 });
 
+test("a generic client interaction round-trips through standard AG-UI interrupt and resume", async () => {
+    const { seam, emit, loopRuns } = mockSeam();
+    let pending = [{
+        interactionId: 88,
+        workerId: 77,
+        loopId: 6,
+        turnId: 9,
+        request: {
+            toolName: "choose_color",
+            arguments: { palette: "warm" },
+            message: "Choose one color.",
+            responseSchema: {
+                type: "object",
+                properties: { color: { type: "string" } },
+                required: ["color"],
+            },
+        },
+    }];
+    const resolutions: unknown[] = [];
+    seam.pendingClientInteractions = async () => pending;
+    seam.resolveClientInteraction = async (interactionId, resolution) => {
+        resolutions.push({ interactionId, resolution });
+        pending = [];
+        setImmediate(() => emit(3, "loop/terminated", {
+            loopId: 6,
+            result: { status: 200 },
+            hitMaxTurns: false,
+            turnIds: [9],
+            usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
+        }));
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const interrupted = await post(mod.address().port, {
+            threadId: "interaction-thread",
+            runId: "interaction-a",
+            messages: [{ role: "user", content: "continue" }],
+            forwardedProps: { plurnk: { workspace: "interaction-thread" } },
+        });
+        assert.deepEqual(
+            interrupted.filter((event) => event.type.startsWith("TOOL_CALL")),
+            [
+                { type: "TOOL_CALL_START", toolCallId: "int:88", toolCallName: "choose_color" },
+                { type: "TOOL_CALL_ARGS", toolCallId: "int:88", delta: JSON.stringify({ palette: "warm" }) },
+                { type: "TOOL_CALL_END", toolCallId: "int:88" },
+            ],
+        );
+        const terminal = interrupted.at(-1) as {
+            type?: string;
+            outcome?: { type?: string; interrupts?: unknown[] };
+        };
+        assert.equal(terminal.type, "RUN_FINISHED");
+        assert.deepEqual(terminal.outcome, {
+            type: "interrupt",
+            interrupts: [{
+                id: "int:88",
+                reason: "tool_call",
+                toolCallId: "int:88",
+                message: "Choose one color.",
+                responseSchema: pending[0].request.responseSchema,
+            }],
+        });
+        assert.equal(loopRuns.length, 0, "re-surfacing pending input does not start new model work");
+
+        const resumed = await post(mod.address().port, {
+            threadId: "interaction-thread",
+            runId: "interaction-b",
+            forwardedProps: { plurnk: { workspace: "interaction-thread" } },
+            resume: [{
+                interruptId: "int:88",
+                status: "resolved",
+                payload: { color: "orange" },
+            }],
+        });
+        assert.deepEqual(resolutions, [{
+            interactionId: 88,
+            resolution: { status: "resolved", payload: { color: "orange" } },
+        }]);
+        assert.equal(resumed.at(-1)?.type, "RUN_FINISHED");
+    } finally {
+        await mod.close();
+    }
+});
+
 test("PLURNK PARADIGM: the name IS the identity — no prefix, no forging, attach is real", async () => {
     const created: Array<{ name?: string }> = [];
     const attached: number[] = [];
@@ -1040,6 +1126,7 @@ test("discover returns the exact public action and notification membership", asy
         ]);
         assert.deepEqual(Object.keys(r.value.result.notifications).toSorted(), [
             "log/entry",
+            "loop/interaction",
             "loop/proposal",
             "loop/terminated",
             "notice/event",

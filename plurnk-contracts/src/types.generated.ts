@@ -19,6 +19,35 @@ mimetype: string
 display: CapabilityDisplay
 }
 
+export interface ClientInteractionProjection {
+interactionId: number
+workerId: number
+loopId: number
+turnId: number
+request: ClientInteractionRequest
+}
+/**
+ * A runtime-neutral request for one client-owned interaction. The owner supplies the standard tool presentation and response contract; protocol-private continuation state is excluded.
+ */
+
+export interface ClientInteractionRequest {
+toolName: string
+arguments: {
+[k: string]: unknown
+}
+message?: string
+responseSchema: {
+[k: string]: unknown
+}
+}
+
+export type ClientInteractionResolution = ({
+status: "resolved"
+payload?: unknown
+} | {
+status: "cancelled"
+})
+
 export type ClientStatement = (PlurnkStatement | LookStatement | BuffStatement)
 /**
  * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, lineMarker, body, suffix, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.

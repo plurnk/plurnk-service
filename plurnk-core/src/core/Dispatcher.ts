@@ -19,6 +19,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import type ProposalLifecycle from "./ProposalLifecycle.ts";
+import type ClientInteractions from "./ClientInteractions.ts";
 import type { ProposalResolution } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
@@ -156,6 +157,7 @@ export default class Dispatcher {
     #weighContent: (text: string) => number;
     #notices: NoticeChannel;
     #proposals: ProposalLifecycle;
+    #interactions: ClientInteractions;
     // Boot-discovered runtime executors, late-injected on Engine — thunked.
     #executors: () => ExecutorRegistry | undefined;
     // Per-loop abort signal, owned by Engine.runLoop — thunked.
@@ -177,13 +179,14 @@ export default class Dispatcher {
     #lifecycle: LoopLifecycle;
     #resourceMutations: ResourceMutations;
 
-    constructor({ db, schemes, mimetypes, weigh, notices, proposals, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, searchGate, parkDeadlines, joinTargets, liveSubscriptions }: {
+    constructor({ db, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, searchGate, parkDeadlines, joinTargets, liveSubscriptions }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
         weigh: (text: string) => number;
         notices: NoticeChannel;
         proposals: ProposalLifecycle;
+        interactions: ClientInteractions;
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
         streamEventNotify?: StreamEventNotify;
@@ -204,6 +207,7 @@ export default class Dispatcher {
         this.#weighContent = weigh;
         this.#notices = notices;
         this.#proposals = proposals;
+        this.#interactions = interactions;
         this.#executors = executors;
         this.#loopSignal = loopSignal;
         this.#streamEventNotify = streamEventNotify;
@@ -839,6 +843,11 @@ export default class Dispatcher {
             mimetypes: this.#mimetypes,
             weigh: this.#weighContent,
             pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
+            requestInteraction: (request) => this.#interactions.request(
+                request,
+                { workspaceId, workerId, loopId, turnId },
+                this.#loopSignal(loopId),
+            ),
             executors: this.#executors(),
         };
     }

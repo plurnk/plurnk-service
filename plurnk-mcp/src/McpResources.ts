@@ -11,13 +11,16 @@ import {
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import type { ReadResourceResult } from "@modelcontextprotocol/client";
-import ServerConnection from "./client.ts";
+import ServerConnection, { type ServerCatalog } from "./client.ts";
 
 const ROOT = "/";
 const RESOURCES = "/resources";
 const RESOURCE_PREFIX = `${RESOURCES}/`;
+const PROMPTS = "/prompts";
+const PROMPT_PREFIX = `${PROMPTS}/`;
 const RESOURCE_KIND = "mcp-resource";
 const CATALOG_KIND = "mcp-resource-catalog";
+const PROMPT_KIND = "mcp-prompt";
 
 class ResourceAddressError extends Error {}
 
@@ -42,6 +45,9 @@ const requireEntrySuccess = <T extends EntryStorageReadResult | EntryStorageWrit
 
 const resourcePath = (uri: string): string =>
     `${RESOURCE_PREFIX}${encodeURIComponent(uri)}`;
+
+const promptPath = (name: string): string =>
+    `${PROMPT_PREFIX}${encodeURIComponent(name)}`;
 
 const preparationFailure = (
     server: string,
@@ -140,39 +146,51 @@ const catalogEntry = (content: string, kind: string): EntryData => ({
 export default class McpResources {
     readonly #server: string;
     readonly #connection: ServerConnection;
+    readonly #catalog: ServerCatalog;
 
-    constructor(server: string, connection: ServerConnection) {
+    constructor(server: string, connection: ServerConnection, catalog: ServerCatalog) {
         this.#server = server;
         this.#connection = connection;
+        this.#catalog = catalog;
     }
 
     claims(pathname: string): boolean {
         return pathname === ROOT
             || pathname === RESOURCES
-            || pathname.startsWith(RESOURCE_PREFIX);
+            || pathname.startsWith(RESOURCE_PREFIX)
+            || pathname === PROMPTS
+            || pathname.startsWith(PROMPT_PREFIX);
     }
 
     async #materializeCatalog(ctx: SchemeCtx): Promise<void> {
-        const catalog = await this.#connection.resources(ctx.signal);
-        const resources = catalog.resources.map((resource) => ({
+        const resources = this.#catalog.resources.map((resource) => ({
             ...resource,
             address: `${this.#server}://${resourcePath(resource.uri)}`,
+        }));
+        const prompts = this.#catalog.prompts.map((prompt) => ({
+            ...prompt,
+            address: `${this.#server}://${promptPath(prompt.name)}`,
         }));
         requireEntrySuccess(await ctx.entries.write(
             ROOT,
             catalogEntry(JSON.stringify({
                 resources,
-                resourceTemplates: catalog.resourceTemplates,
+                resourceTemplates: this.#catalog.resourceTemplates,
+                prompts,
             }), "mcp-resource-index"),
         ));
         requireEntrySuccess(await ctx.entries.write(
             RESOURCES,
             catalogEntry(JSON.stringify({
                 resources,
-                resourceTemplates: catalog.resourceTemplates,
+                resourceTemplates: this.#catalog.resourceTemplates,
             }), "mcp-resource-index"),
         ));
-        await Promise.all(catalog.resources.map(async (resource) => {
+        requireEntrySuccess(await ctx.entries.write(
+            PROMPTS,
+            catalogEntry(JSON.stringify({ prompts }), "mcp-prompt-index"),
+        ));
+        await Promise.all(this.#catalog.resources.map(async (resource) => {
             const pathname = resourcePath(resource.uri);
             const existing = requireEntrySuccess(await ctx.entries.read(pathname));
             if (existing.entry?.attributes?.kind === RESOURCE_KIND) return;
@@ -186,6 +204,61 @@ export default class McpResources {
                     CATALOG_KIND,
                 ),
             ));
+        }));
+        await Promise.all(this.#catalog.prompts.map(async (prompt) => {
+            const pathname = promptPath(prompt.name);
+            const existing = requireEntrySuccess(await ctx.entries.read(pathname));
+            if (existing.entry?.attributes?.kind === PROMPT_KIND) return;
+            requireEntrySuccess(await ctx.entries.write(
+                pathname,
+                catalogEntry(
+                    JSON.stringify({
+                        ...prompt,
+                        address: `${this.#server}://${pathname}`,
+                    }),
+                    "mcp-prompt-catalog",
+                ),
+            ));
+        }));
+    }
+
+    async #materializePrompt(
+        request: RepresentationPreparationRequest,
+        ctx: SchemeCtx,
+    ): Promise<void> {
+        const encoded = request.pathname.slice(PROMPT_PREFIX.length);
+        if (encoded.length === 0 || encoded.includes("/")) {
+            throw new ResourceAddressError(`Invalid MCP prompt address '${request.pathname}'.`);
+        }
+        let name: string;
+        try {
+            name = decodeURIComponent(encoded);
+        } catch (cause) {
+            throw new ResourceAddressError(`Invalid encoded MCP prompt address '${request.pathname}'.`, { cause });
+        }
+        const search = new URLSearchParams(
+            request.target.kind === "url" ? request.target.query ?? "" : "",
+        );
+        const args: Record<string, string> = {};
+        for (const [key, value] of search) {
+            if (Object.hasOwn(args, key)) {
+                throw new ResourceAddressError(`MCP prompt argument '${key}' occurs more than once.`);
+            }
+            args[key] = value;
+        }
+        const result = await this.#connection.getPrompt(
+            name,
+            Object.keys(args).length === 0 ? undefined : args,
+            ctx.signal,
+        );
+        requireEntrySuccess(await ctx.entries.write(request.pathname, {
+            channels: {
+                body: {
+                    content: JSON.stringify(result),
+                    mimetype: "application/json",
+                },
+            },
+            attributes: { kind: PROMPT_KIND },
         }));
     }
 
@@ -222,6 +295,8 @@ export default class McpResources {
                 && !/[*?[\]{}]/.test(pathname);
             if (exactResource) {
                 await this.#materializeResource(pathname, ctx);
+            } else if (pathname.startsWith(PROMPT_PREFIX) && !/[*?[\]{}]/.test(pathname)) {
+                await this.#materializePrompt(request, ctx);
             } else {
                 await this.#materializeCatalog(ctx);
             }
