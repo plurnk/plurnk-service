@@ -1,5 +1,10 @@
 {
     "waivers": {
+        "@modelcontextprotocol/conformance": {
+            "reason": "npm's stable latest tag is the legacy 0.1 line; 0.2.0-alpha.11 is the exact current 2026-07-28 conformance referee",
+            "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/253",
+            "lane": "mcp"
+        },
         "zod": {
             "reason": "AI SDK ProviderErrorStructure is nominally bound to the Zod 3.25 zod/v4 compatibility export; native Zod 4 schemas fail its TypeScript contract",
             "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/5",
