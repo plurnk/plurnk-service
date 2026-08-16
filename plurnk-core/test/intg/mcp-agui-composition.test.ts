@@ -254,7 +254,16 @@ test(
             responses: [
                 makeMockResponse([
                     "# PLAN0",
-                    "Inspect the Kubernetes server's configured context.",
+                    "Inspect the enabled Kubernetes tool contract before calling it.",
+                    "",
+                    "## READ0 (worker://plurnk/docs/kubernetes.md)",
+                    "",
+                    "## SEND0 [102]",
+                    "Use the exact contract after reading it.",
+                ].join("\n")),
+                makeMockResponse([
+                    "# PLAN0",
+                    "Call the documented Kubernetes tool and inspect its result.",
                     "",
                     "## EXEC0 [kubernetes] (configuration_view)",
                     '{"minified":true}',
@@ -353,6 +362,12 @@ test(
                 },
             })));
             assert.equal(kubernetes.ok, true, JSON.stringify(kubernetes.problem));
+            const kubernetesSummary = kubernetes.result?.server as {
+                readonly enabledTools?: readonly string[];
+                readonly tools?: readonly string[];
+            } | undefined;
+            assert.deepEqual(kubernetesSummary?.enabledTools, ["configuration_view"]);
+            assert.equal(kubernetesSummary?.tools?.length, 14, "the real server advertises a larger catalog");
 
             const goji = actionResult(await post(port, runInput(workspace, "attach-goji", {
                 forwardedProps: {
@@ -385,7 +400,16 @@ test(
             assert.match(registryPacket, /`\[kubernetes\]` \| `\(configuration_view\)`/);
             assert.match(registryPacket, /`\[goji\]` \| `\(goji_explain_term\)`/);
             assert.doesNotMatch(registryPacket, /pods_list/, "disabled remote tools stay out of the Registry");
-            assert.match(packet(provider.requests, 1), /current-context: specimen/);
+            assert.equal(
+                registryPacket.match(/\| `\[kubernetes\]` \|/gu)?.length,
+                1,
+                "one enabled tool contributes exactly one Registry row",
+            );
+            const kubernetesDocs = provider.requests[1]
+                ?.find(({ role }) => role === "user")?.content ?? "";
+            assert.match(kubernetesDocs, /:## configuration_view$/m);
+            assert.doesNotMatch(kubernetesDocs, /:## pods_list$/m, "disabled tools stay out of pull docs");
+            assert.match(packet(provider.requests, 2), /current-context: specimen/);
 
             const gojiRun = await post(port, runInput(workspace, "call-goji", {
                 messages: [{
@@ -395,7 +419,7 @@ test(
                 }],
             }));
             assert.equal((gojiRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
-            const remoteResults = packet(provider.requests, 3);
+            const remoteResults = packet(provider.requests, 4);
             assert.match(remoteResults, /Answer Engine Optimisation/);
             assert.match(remoteResults, /Melbourne-based full-service digital agency/);
             const speech = gojiRun
