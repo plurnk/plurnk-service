@@ -641,7 +641,7 @@ export default class TurnRunner {
             wakeWorkerNotify: this.#wakeWorkerNotify,
             weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
-            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
+            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workspaceId),
             pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
         };
 
@@ -874,7 +874,7 @@ export default class TurnRunner {
         // the subsequent turn. The terminal output then surfaces born-OPEN via the stream-delta path.
         await this.#reapTurnScopedStreams(workerId);
         nextActionIndex += await this.#materializeEnvironmentDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
-        nextActionIndex += await this.#materializeStreamDeltas({ workerId, loopId, turnId, fromSequence: nextActionIndex });
+        nextActionIndex += await this.#materializeStreamDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
 
         // The post-reconciliation Git snapshot above is threaded into the packet
         // and every budget rebuild; overflow never shells again.
@@ -1840,9 +1840,9 @@ export default class TurnRunner {
 
 
     async #materializeStreamDeltas(args: {
-        workerId: number; loopId: number; turnId: number; fromSequence: number;
+        workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;
     }): Promise<number> {
-        const { workerId, loopId, turnId, fromSequence } = args;
+        const { workspaceId, workerId, loopId, turnId, fromSequence } = args;
         const channels = await this.#db.engine_worker_stream_channels.all<{
             subscription_id: number; runtime: string; coord: string; channel: string; content: string;
             mimetype: string; state: string; close_status: number | null; close_result: string | null; published_channel: string | null;
@@ -1854,7 +1854,7 @@ export default class TurnRunner {
             // ordinary address to the model; only an explicitly non-default
             // channel earns a fragment in the log.
             const visibleFragment = ch.published_channel !== null
-                && ch.channel === this.#schemes.defaultChannelFor(ch.runtime)
+                && ch.channel === this.#schemes.defaultChannelFor(ch.runtime, workspaceId)
                 ? null
                 : ch.channel;
             const prior = await this.#db.engine_stream_cursor.get<{ attrs: string }>({

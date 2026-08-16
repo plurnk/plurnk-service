@@ -1652,19 +1652,23 @@ unchanged for proposal policy, application, stream registration, and
 effect-qualified hold policy. The post-acceptance materialization path never
 triggers reclassification.
 
-§exec-registry-resolves The runtime slot (`signal`) selects an executor,
-resolved against the boot-time `ExecutorRegistry`: siblings are discovered and
-probed at startup, and availability is cached. An absent or empty tag selects
+§exec-registry-resolves The runtime slot (`signal`) selects an executor from
+the current workspace snapshot. Installed siblings form the immutable base:
+they are discovered and probed at startup, and availability is cached.
+Workspace capability providers may atomically overlay additional names under
+{§module-workspace-capabilities}; a name has one owner within a workspace, while
+independent workspaces may use the same name. An absent or empty tag selects
 `sh`; a non-empty tag selects exactly that registered executable tool. Unknown
 tags are refused 501 with direction to use only the advertised catalogue or
 put a complete command in bare `EXEC`; they are never reinterpreted as shell
 command words. An unavailable runtime is also 501 and carries the probe
 `detail`.
 
-For a family runtime, `ExecutorRegistry.toolRegistry()` validates the one
-executor-owned snapshot used by packet presentation, dispatch admission, and
-pull-document materialization. Core performs no protocol discovery while
-building a packet and has no alternate tool catalogue.
+For a family runtime, `ExecutorRegistry.toolRegistry(tag, workspaceId)`
+validates the one executor-owned snapshot used by packet presentation,
+dispatch admission, and pull-document materialization. Core performs no
+protocol discovery while building a packet and has no alternate tool
+catalogue.
 
 Per-tool programs such as `go`, `cargo`, `make`, and `npm` do not earn executor tags merely because they are executables; they are complete shell commands under `## EXEC0` or `## EXEC0 [sh]`. Registered tags exist only for tools that own a distinct body, target, or output contract. {§exec-registry-resolves}
 
@@ -2134,10 +2138,11 @@ leak into another.
   {§executor-policy}. Keys are matched case-insensitively and must be
   `PLURNK_EXECS_ONLY` or `PLURNK_EXECS_<canonical-runtime-tag>`; MCP connection
   configuration and non-string values are rejected. The boot-discovered
-  registry is authoritative and the workspace layer only intersects it: it
-  cannot register or re-enable a runtime. A canonical key for a currently
-  absent tag is accepted as inert policy and applies if that tag later belongs
-  to the boot set. Dispatch, the model-facing capability sheet, and executor
+  effective workspace registry is authoritative and the settings layer only
+  intersects it: settings cannot register or re-enable a runtime. A canonical
+  key for a currently absent tag is accepted as inert policy and applies if a
+  workspace capability provider later publishes that tag. Dispatch, the
+  model-facing capability sheet, and executor
   document materialization use the same registered-set intersection and policy
   predicate, so a workspace-disabled tag is neither executable nor taught.
 
@@ -2161,7 +2166,7 @@ names, request validation, discovery result, and event projection.
 ```mermaid
 flowchart LR
     register["Daemon.registerModule"] --> setup["module.setup(ModuleSetupSeam)"]
-    setup --> capabilities["Register runtimes, schemes,<br/>and extension actions"]
+    setup --> capabilities["Register static capabilities,<br/>workspace providers, and actions"]
     capabilities --> ready["Schemes ready; docs published;<br/>durable lifecycle recovered"]
     ready --> start["module.start(CoreSeam)"]
     start --> interface["Module-owned listener<br/>and client protocol"]
@@ -2193,11 +2198,28 @@ flowchart LR
     wakes --> database[Release database]
 ```
 
-| Setup function                                                         | Contract |
-|------------------------------------------------------------------------|----------|
-| `registerRuntimes([{ decl, executor, availability, scheme? }, ...])`   | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every executor and optional claimed scheme facet atomically. |
-| `registerScheme(name, handler)`                                        | Adds one addressable scheme handler; scheme readiness and model-facing capability publication remain core-owned. |
-| §module-action-registration `registerModuleAction(name, handler)`      | Adds a non-empty, extension-unique name and a handler receiving only `Readonly<Record<string, unknown>>`. Core supplies no implicit workspace or transport context. A client-interface module decides whether and how that name becomes public, and owns collisions with its built-ins. |
+| Setup function | Contract |
+|---|---|
+| `registerRuntimes([{ decl, executor, availability, scheme? }, ...])` | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every process-wide executor and optional claimed scheme facet atomically. |
+| `registerScheme(name, handler)` | Adds one process-wide addressable scheme handler; scheme readiness and model-facing capability publication remain core-owned. |
+| §module-action-registration `registerModuleAction({ name, scope, handler })` | Adds one non-empty, extension-unique action. `scope` is exactly `worldless` or `workspace`; the handler receives validated params and a separate matching context. A workspace context contains the trusted bound `workspaceId`, never a client parameter. A client-interface module decides whether and how the name becomes public and owns collisions with its built-ins. |
+| §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique provider whose `hydrate(workspaceId)` reconstructs its effective snapshot. Core invokes every provider for existing workspaces before capability publication and for a new workspace before that workspace is returned or advertised. |
+| §module-workspace-state `readWorkspaceModuleState(workspaceId, namespaceOwner)` | Reads the provider's one nullable JSON state value. Core owns workspace isolation and storage; the provider owns and validates its schema. Secret values are forbidden when a durable symbolic reference can identify their authoritative source. |
+| §module-workspace-capabilities `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })` | Replaces one provider's complete durable state and runtime/scheme snapshot at a quiescent workspace boundary. Core validates base/peer namespace claims before mutation, blocks new turns, commits the snapshot, and reconciles pull docs as one operation. Failure restores the prior state and presentation. The empty runtime set removes that provider's workspace namespace. |
+
+§module-workspace-quiescence **A capability snapshot changes only between
+workspace operations.** A replacement attempt while a turn or another
+capability mutation owns the workspace fails 409 instead of waiting behind an
+unbounded proposal. Candidate discovery may occur before the gate, but the
+provider must re-check its old connection for active user work after acquiring
+the gate. Infrastructure-owned watches may be cancelled during replacement;
+an active request, input exchange, or Task keeps the old snapshot authoritative
+and makes replacement fail 409.
+
+The version-1 baseline table `workspace_module_state` stores one JSON value per
+`(workspace_id, namespace_owner)`. It is not an alternate registry: executable
+and resource presentation always comes from the in-memory snapshot reconstructed
+by the registered provider. Deleting a workspace cascades its module state.
 
 ### §methods CoreSeam function set
 
@@ -2227,7 +2249,7 @@ Its function names are transport-neutral library calls, not public wire names.
 | Workspace metadata                                | `constrain(...)`, `unconstrain(...)`, `listConstraints(...)`, `listMembers(...)` | Owns the membership overlay and returns its resolved effects; clients do not reimplement constraint semantics. |
 | §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?)` | Returns nonempty loop-seed prompts from the workspace's model-origin root conversations, newest-first. The positive limit defaults to 100; spawned and forked child prompts are excluded. |
 | Workspace metadata                                | `listWorkspaces()`, `listWorkers(...)`, `workspaceDerivationStatus(...)` | Reads current workspace topology and derivation progress. |
-| Extension actions                                 | `listModuleActions()`, `invokeModuleAction(name, params)` | Lists setup-registered names in sorted order and invokes the exact registered handler. Missing names fail; handler values remain opaque to core. |
+| Extension actions | `listModuleActions()`, `invokeModuleAction(name, params, context)` | Lists setup-registered `{ name, scope }` descriptors in sorted order. Invocation requires a context matching the registered scope; missing names, forged scope, and missing workspace identity fail before the owner runs. Handler values remain opaque to core. |
 
 §methods-loop-run-fold-consistency **A folded prompt cannot silently reconfigure
 its loop.** When `runLoop` targets an active or 202-parked loop, core appends the
@@ -3053,7 +3075,15 @@ registered executors exist but EXEC is inactive, their table is replaced by
 an explicit disabled notice rather than silent absence. The dispatch 403 remains
 the backstop and names the non-retryable loop restriction.
 
-**Contributors: the wired executor tags.** Every available executor tag contributes its general {§executor-invocation} row or the closed rows and documentation from its {§executor-tool-registry} snapshot. Its doc is materialized at `worker://plurnk/docs/<tag>.md` and discovered via the turn-0 `## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, not linked inline. `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's rows and doc. The boot `ExecutorRegistry` probes availability per tag, so the table advertises runnable selectors instead of presuming a particular runtime exists.
+**Contributors: the workspace executor snapshot.** Every available executor tag
+contributes its general {§executor-invocation} row or the closed rows and
+documentation from its {§executor-tool-registry} snapshot. Its doc is
+materialized at `worker://plurnk/docs/<tag>.md` and discovered via the turn-0
+`## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, not linked inline.
+`PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's rows and doc. Installed
+executors are probed once; workspace providers publish only prepared runnable
+selectors, so the table never presumes that another workspace's capability is
+available here.
 
 ### §schemes user.schemes — the resource directory
 
@@ -3074,7 +3104,7 @@ surfaces with its cause and leaves no apparently initialized home.
 After that bootstrap the file is user-owned: edits and deletion persist, and a
 later boot never refreshes or recreates it.
 
-§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. `SchemeRegistry.teach()` renders the directory, `SchemeRegistry.docs()` resolves corpus-or-manifest documentation, and `docEntries()` supplies the current pull-document set when core publishes capabilities for a workspace. Materialization reconciles `worker://plurnk/docs/` exactly: vanished contributions are deleted before current documents are upserted, so an excluded or disabled capability cannot leave a stale model-facing contract.
+§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. `SchemeRegistry.teach(workspaceId)` renders the effective directory, `SchemeRegistry.docs(workspaceId)` resolves corpus-or-manifest documentation, and `docEntries(workspaceId)` supplies the current pull-document set when core publishes capabilities for a workspace. Materialization reconciles `worker://plurnk/docs/` exactly under the workspace capability gate: vanished contributions are deleted before current documents are upserted, so an excluded, disabled, detached, or replaced capability cannot leave a stale model-facing contract.
 
 ### §packet-git-status The Git status section — compact repository state
 

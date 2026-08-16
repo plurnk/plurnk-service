@@ -435,7 +435,7 @@ export default class ProposalLifecycle {
                     ? schemeNameOf(statement.body?.target ?? null)
                     : schemeNameOf(statement.target);
         if (schemeName === null) return { resolution };
-        const handler = this.#schemes.get(schemeName) as
+        const handler = this.#schemes.get(schemeName, workspaceId) as
             | { applyResolution?: (args: { attrs: object; body?: string }, ctx: SchemeCtx) => Promise<ProposalApplyResult> }
             | undefined;
         if (handler === undefined || typeof handler.applyResolution !== "function") return { resolution };
@@ -458,7 +458,7 @@ export default class ProposalLifecycle {
                 attrs: (originalResult.attrs ?? {}) as object,
                 body: resolution.body,
             };
-            const manifest = this.#schemes.manifestFor(schemeName);
+            const manifest = this.#schemes.manifestFor(schemeName, workspaceId);
             if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
             const applyResult = Results.assert(await handler.applyResolution(request, new SchemeCtxImpl(applyCtx, schemeName, manifest, this.#liveSubscriptions)));
             if (applyResult.status >= 400) {

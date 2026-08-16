@@ -53,3 +53,19 @@ test("exclusive mode admits only its selected lineage and serializes those turns
     exclusive.release();
     (await outsider)();
 });
+
+test("a capability replacement acquires only at an immediately quiescent boundary", async () => {
+    const gate = new WorkspaceGate(async () => false);
+    const first = gate.tryExclusive(1);
+    assert.ok(first !== null);
+    assert.equal(gate.tryExclusive(1), null, "a second replacement cannot queue behind the first");
+    first.release();
+
+    const turn = await gate.acquireTurn(1, 1);
+    assert.equal(gate.tryExclusive(1), null, "a replacement cannot wait behind active user work");
+    turn();
+
+    const settled = gate.tryExclusive(1);
+    assert.ok(settled !== null, "the retry succeeds after the workspace settles");
+    settled.release();
+});

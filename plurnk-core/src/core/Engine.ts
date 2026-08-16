@@ -378,7 +378,7 @@ export default class Engine {
             wakeWorkerNotify,
             injectWorker,
             pushNotice: (workspaceId, loopId, notice) => this.#notices.push(workspaceId, loopId, notice),
-            defaultChannelFor: (scheme) => schemes.defaultChannelFor(scheme),
+            defaultChannelFor: (scheme, workspaceId) => schemes.defaultChannelFor(scheme, workspaceId),
             readExecSource: (statement, ctx) => this.#dispatcher.readExecSource(statement, ctx),
             liveSubscriptions: this.#liveSubscriptions,
         });
@@ -427,6 +427,57 @@ export default class Engine {
 
     registerRuntime(tag: string, entry: RegistryEntry, scheme?: RuntimeSchemeFacet): void {
         this.registerRuntimes([{ tag, entry, scheme }]);
+    }
+
+    async prepareWorkspaceRuntimes(
+        workspaceId: number,
+        namespaceOwner: string,
+        registrations: readonly {
+            readonly tag: string;
+            readonly entry: RegistryEntry;
+            readonly scheme?: RuntimeSchemeFacet;
+        }[],
+    ): Promise<() => () => void> {
+        if (this.#executors === undefined) {
+            throw new Error("prepareWorkspaceRuntimes: executor registry not wired yet");
+        }
+        const normalized = registrations.map(({ tag, entry, scheme }) => {
+            RuntimeTag.assert(tag, "workspace module runtime");
+            return {
+                tag,
+                entry: {
+                    ...entry,
+                    invocation: RuntimeInvocation.assert(entry.invocation, entry.namespaceOwner.name, tag),
+                } satisfies RegistryEntry,
+                scheme,
+            };
+        });
+        const commitExecutors = this.#executors.prepareWorkspaceRegistrations(
+            workspaceId,
+            namespaceOwner,
+            normalized satisfies readonly RuntimeRegistryRegistration[],
+        );
+        const commitSchemes = await this.#schemes.prepareWorkspaceRuntimeSchemes(
+            workspaceId,
+            namespaceOwner,
+            normalized.map(({ tag, entry, scheme }) => ({
+                tag,
+                executor: entry.executor,
+                owner: entry.namespaceOwner,
+                facet: scheme,
+            })),
+        );
+        return () => {
+            const rollbackSchemes = commitSchemes();
+            const rollbackExecutors = commitExecutors();
+            let pending = true;
+            return () => {
+                if (!pending) return;
+                pending = false;
+                rollbackExecutors();
+                rollbackSchemes();
+            };
+        };
     }
 
     // A lineage's no-parent root; a root worker resolves to itself. Fail hard
@@ -850,7 +901,7 @@ export default class Engine {
             wakeWorkerNotify: this.#wakeWorkerNotify,
             weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
-            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
+            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workspaceId),
             pushNotice: (notice) => this.#notices.notify(workspaceId, 0, notice),
         };
         await this.#queueWorkspaceWarm(ctx); // materialize first; overlapping requests coalesce and rescan

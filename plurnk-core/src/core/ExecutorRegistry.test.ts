@@ -115,6 +115,79 @@ test("{§executor-tool-registry} validates and caches one snapshot for every con
     assert.equal(reads, 1);
 });
 
+const workspaceEntry = (tag: string, owner: string) => {
+    const runtimeManifest: SchemeManifest = {
+        name: tag,
+        channels: { body: "text/plain" },
+        defaultChannel: "body",
+        category: "data",
+        writableBy: ["model"],
+        volatile: true,
+        modelVisible: true,
+    };
+    const executor: Executor = {
+        runtime: tag,
+        glyph: "",
+        manifest: runtimeManifest,
+        defaultChannel: "body",
+        channels: { body: { mimetype: "text/plain" } },
+        run: async () => ({ status: 200 }),
+        probe: async () => ({ available: true }),
+        effect: () => "host",
+    };
+    return {
+        executor,
+        namespaceOwner: { kind: "module", name: owner } as const,
+        glyph: "",
+        invocation: invocation(`${tag} input`, tag),
+        documentation: `# ${tag}`,
+        available: true,
+        detail: undefined,
+    };
+};
+
+test("{§module-workspace-capabilities} workspace runtime snapshots isolate equal names and replace atomically", () => {
+    const registry = new ExecutorRegistry(new Map([["sh", workspaceEntry("sh", "base")]]));
+    const commitOne = registry.prepareWorkspaceRegistrations(1, "mcp", [{
+        tag: "gitea",
+        entry: workspaceEntry("gitea", "mcp"),
+    }]);
+    const rollbackOne = commitOne();
+
+    assert.deepEqual(registry.availableRuntimes(1), ["gitea", "sh"]);
+    assert.deepEqual(registry.availableRuntimes(2), ["sh"]);
+    assert.equal(registry.entry("gitea", 1)?.executor.runtime, "gitea");
+    assert.equal(registry.entry("gitea", 2), undefined);
+
+    registry.prepareWorkspaceRegistrations(2, "mcp", [{
+        tag: "gitea",
+        entry: workspaceEntry("gitea", "mcp"),
+    }])();
+    assert.equal(registry.entry("gitea", 2)?.executor.runtime, "gitea");
+
+    const rollbackRemoval = registry.prepareWorkspaceRegistrations(1, "mcp", [])();
+    assert.equal(registry.entry("gitea", 1), undefined, "empty owner snapshot removes only that workspace face");
+    assert.ok(registry.entry("gitea", 2), "the equal name in another workspace remains");
+
+    rollbackRemoval();
+    assert.ok(registry.entry("gitea", 1), "a failed composed commit can restore the prior snapshot");
+    rollbackOne();
+    assert.equal(registry.entry("gitea", 1), undefined);
+});
+
+test("{§module-workspace-capabilities} workspace overlays cannot shadow base or peer owners", () => {
+    const registry = new ExecutorRegistry(new Map([["sh", workspaceEntry("sh", "base")]]));
+    assert.throws(
+        () => registry.prepareWorkspaceRegistrations(1, "mcp", [{ tag: "sh", entry: workspaceEntry("sh", "mcp") }]),
+        /already registered by daemon module runtime 'base'/,
+    );
+    registry.prepareWorkspaceRegistrations(1, "mcp-a", [{ tag: "gitea", entry: workspaceEntry("gitea", "mcp-a") }])();
+    assert.throws(
+        () => registry.prepareWorkspaceRegistrations(1, "mcp-b", [{ tag: "gitea", entry: workspaceEntry("gitea", "mcp-b") }]),
+        /already registered by daemon module runtime 'mcp-a'/,
+    );
+});
+
 // Native Git and the explicit isomorphic-git subset beside a non-Git runtime.
 const gitAndShell = async () => ({
     registry: new Map([

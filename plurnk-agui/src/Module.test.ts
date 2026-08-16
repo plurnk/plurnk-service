@@ -477,7 +477,7 @@ test("#127: op.parse dispatches only the trusted prefix and appends one parser-o
 
 test("a module action colliding with an AG-UI built-in fails module startup", async () => {
     const { seam } = mockSeam();
-    seam.listModuleActions = () => ["ping"];
+    seam.listModuleActions = () => [{ name: "ping", scope: "worldless" }];
     await assert.rejects(
         () => Module.init({ host: "127.0.0.1", port: 0 }).start(seam),
         /module action 'ping' collides with AG-UI built-in action/,
@@ -489,12 +489,14 @@ test("module actions are advertised and invoked without AG-UI importing their ow
     const calls: Array<{
         name: string;
         params: Readonly<Record<string, unknown>>;
+        context: { readonly scope: "worldless" } | { readonly scope: "workspace"; readonly workspaceId: number };
     }> = [];
-    seam.listModuleActions = () => ["example.inspect"];
-    seam.invokeModuleAction = async (name, params) => {
+    seam.listModuleActions = () => [{ name: "example.inspect", scope: "worldless" }];
+    seam.invokeModuleAction = async (name, params, context) => {
         calls.push({
             name,
             params,
+            context,
         });
         return {
             prompt: "review",
@@ -556,10 +558,49 @@ test("module actions are advertised and invoked without AG-UI importing their ow
             params: {
                 target: "sample",
             },
+            context: { scope: "worldless" },
         }]);
     } finally {
         await mod.close();
     }
+});
+
+test("workspace module actions receive authority from the bound AG-UI envelope", async () => {
+    const { seam } = mockSeam();
+    const calls: Array<{
+        params: Readonly<Record<string, unknown>>;
+        context: { readonly scope: "worldless" } | { readonly scope: "workspace"; readonly workspaceId: number };
+    }> = [];
+    seam.listModuleActions = () => [{ name: "example.configure", scope: "workspace" }];
+    seam.invokeModuleAction = async (_name, params, context) => {
+        calls.push({ params, context });
+        return { configured: true };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const events = await post(mod.address().port, {
+            threadId: "module-workspace",
+            forwardedProps: {
+                plurnk: {
+                    workspace: "trusted-world",
+                    action: {
+                        kind: "example.configure",
+                        workspaceId: 999,
+                    },
+                },
+            },
+        });
+        const result = events.find((event) => event.type === "CUSTOM"
+            && (event as { name?: string }).name === "plurnk.action.result") as {
+            value?: { ok?: boolean; result?: { configured?: boolean } };
+        } | undefined;
+        assert.equal(result?.value?.ok, true);
+        assert.equal(result?.value?.result?.configured, true);
+        assert.deepEqual(calls, [{
+            params: { workspaceId: 999 },
+            context: { scope: "workspace", workspaceId: 3 },
+        }]);
+    } finally { await mod.close(); }
 });
 
 test("a module action preserves its owner-defined validation Problem", async () => {
@@ -571,7 +612,7 @@ test("a module action preserves its owner-defined validation Problem", async () 
         "A target is required.",
         { field: "target", stage: "validation", retryable: false },
     );
-    seam.listModuleActions = () => ["example.inspect"];
+    seam.listModuleActions = () => [{ name: "example.inspect", scope: "worldless" }];
     seam.invokeModuleAction = async () => {
         throw Object.assign(new Error(problem.detail), { problem });
     };
@@ -593,7 +634,7 @@ test("a module action preserves its owner-defined validation Problem", async () 
 
 test("a throwing module action becomes one generic action Problem and a completed AG-UI Run", async () => {
     const { seam } = mockSeam();
-    seam.listModuleActions = () => ["example.inspect"];
+    seam.listModuleActions = () => [{ name: "example.inspect", scope: "worldless" }];
     seam.invokeModuleAction = async () => { throw new Error("private extension detail"); };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {

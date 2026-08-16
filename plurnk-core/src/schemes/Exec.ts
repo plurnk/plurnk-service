@@ -274,9 +274,9 @@ export default class Exec extends CoreSchemeAdapterBase {
         // {§exec-registry-resolves} — a non-empty tag selects exactly one registered executable
         // tool. Unknown tags are not reinterpreted as shell command words: that would make the
         // executed command differ from the authored body. Bare EXEC remains the default-shell form.
-        const resolved = core.executors.entry(runtime);
+        const resolved = core.executors.entry(runtime, core.workspaceId);
         if (resolved === undefined) {
-            const available = core.executors.availableRuntimes()
+            const available = core.executors.availableRuntimes(core.workspaceId)
                 .filter((tag) => workspaceExecs === null || Policy.isEnabled(tag, workspaceExecs));
             return Results.failure(
                 "scheme:exec",
@@ -301,7 +301,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         // {§operator-config-workspace-execs} — the workspace layer only narrows
         // the registered set. Bare EXEC resolves to sh before the same gate.
         if (workspaceExecs !== null && !Policy.isEnabled(runtime, workspaceExecs)) {
-            const available = core.executors.availableRuntimes()
+            const available = core.executors.availableRuntimes(core.workspaceId)
                 .filter((tag) => Policy.isEnabled(tag, workspaceExecs));
             return Results.failure(
                 "scheme:exec",
@@ -334,7 +334,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             ) as ExecResult;
         }
 
-        const registry = core.executors.toolRegistry(runtime);
+        const registry = core.executors.toolRegistry(runtime, core.workspaceId);
         const exactTarget = statement.target?.raw ?? null;
         const registeredTool = registry?.tools.find((tool) => tool.target === exactTarget);
         if (registry !== null && registeredTool === undefined) {
@@ -571,7 +571,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         if (core.executors === undefined) {
             throw new InvalidOperationResultError("An accepted EXEC proposal has no executor registry.");
         }
-        const resolved = core.executors.entry(runtime);
+        const resolved = core.executors.entry(runtime, core.workspaceId);
         if (resolved === undefined) {
             throw new InvalidOperationResultError(`The '${runtime}' executor disappeared after its EXEC proposal.`);
         }

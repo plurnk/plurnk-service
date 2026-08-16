@@ -95,6 +95,35 @@ test("registerRuntimeSchemes: a non-reserved executor tag registers its own per-
     assert.ok(registry.has("sh"), "the sh per-tag face is registered under its tag");
 });
 
+test("{§module-workspace-capabilities} runtime scheme faces are workspace-isolated and reversible", async () => {
+    const registry = new SchemeRegistry();
+    const executor = {
+        runtime: "gitea",
+        glyph: "",
+        manifest: manifest("gitea"),
+        defaultChannel: "body",
+        channels: { body: { mimetype: "text/plain" } },
+        run: async () => ({ status: 200 as const }),
+        probe: async () => ({ available: true }),
+        effect: () => "host" as const,
+    };
+    const commit = await registry.prepareWorkspaceRuntimeSchemes(1, "mcp", [{
+        tag: "gitea",
+        executor,
+        owner: { kind: "module", name: "mcp" },
+    }]);
+    const rollback = commit();
+
+    assert.ok(registry.get("gitea", 1));
+    assert.equal(registry.get("gitea", 2), undefined);
+    assert.equal(registry.manifestFor("gitea", 1)?.name, "gitea");
+    assert.ok(registry.list(1).includes("gitea"));
+    assert.ok(!registry.list(2).includes("gitea"));
+
+    rollback();
+    assert.equal(registry.get("gitea", 1), undefined);
+});
+
 test("registerRuntimeSchemes: a tag colliding with an already-claimed scheme fails hard — one name, one owner", () => {
     const registry = new SchemeRegistry();
     registry.register("figma", handler("figma")); // an external scheme sibling claims the name first

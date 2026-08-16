@@ -171,7 +171,7 @@ flowchart LR
     classify -->|"RunAgentInput.resume"| proposal["CoreSeam.resolveProposal"]
     classify -->|"forwardedProps.plurnk.action"| actions{"AG-UI action registry"}
     actions --> builtIn["Built-in validation<br/>and typed CoreSeam call"]
-    actions --> extension["CoreSeam.invokeModuleAction"]
+    actions --> extension["Scoped CoreSeam.invokeModuleAction"]
     loop --> events["Core event source"]
     proposal --> events
     builtIn --> events
@@ -215,7 +215,17 @@ successfully transported management Run; it does not turn the Run into
 | `workspace.members`      | Workspace | none                                                 | `CoreSeam.listMembers`.                                                                                            |
 | `op.look`                | Workspace | `text`                                               | Admits one LOOK under {§agui-op-look}, rewrites it to READ, and calls core's no-log `look` projection.              |
 | `run.fork`               | Workspace | `name?`                                              | `CoreSeam.forkWorker` from the thread's conversation worker.                                                       |
-| Registered module action | Worldless | owner-defined                                        | `CoreSeam.invokeModuleAction`; the handler receives only the supplied params and owns their validation and result. |
+| Registered module action | Owner-declared | owner-defined | `CoreSeam.invokeModuleAction`; AG-UI passes either a worldless context or the already-bound workspace context outside supplied params. The owner validates params and owns the result. |
+
+§agui-module-action-scope **An extension action uses the same management plane,
+not a private endpoint.** `CoreSeam.listModuleActions()` returns its exact
+`{ name, scope }` descriptors. A worldless action follows the control path and
+cannot establish a workspace. A workspace action follows ordinary thread
+binding, resolves the client envelope first, and invokes core with
+`{ scope: "workspace", workspaceId: envelope.workspaceId }`; an `id`,
+`workspaceId`, or similarly named owner parameter cannot override that
+identity. `discover.methods` advertises both kinds by name without importing
+the extension owner.
 
 ### §agui-op-parse Parsed-operation projection
 

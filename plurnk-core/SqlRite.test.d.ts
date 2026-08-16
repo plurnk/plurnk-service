@@ -290,6 +290,9 @@ export class SqlRiteSync {
 	worker_name_count: SqlRiteSyncPreparedStatements;
 	worker_name_claim: SqlRiteSyncPreparedStatements;
 	worker_name_get_default_conversation: SqlRiteSyncPreparedStatements;
+	workspace_module_state_get: SqlRiteSyncPreparedStatements;
+	workspace_module_state_put: SqlRiteSyncPreparedStatements;
+	workspace_module_state_delete: SqlRiteSyncPreparedStatements;
 	test_insert_workspace: SqlRiteSyncPreparedStatements;
 	test_insert_worker: SqlRiteSyncPreparedStatements;
 	test_insert_loop: SqlRiteSyncPreparedStatements;
@@ -762,6 +765,9 @@ export default class SqlRite {
 	worker_name_count: SqlRitePreparedStatements;
 	worker_name_claim: SqlRitePreparedStatements;
 	worker_name_get_default_conversation: SqlRitePreparedStatements;
+	workspace_module_state_get: SqlRitePreparedStatements;
+	workspace_module_state_put: SqlRitePreparedStatements;
+	workspace_module_state_delete: SqlRitePreparedStatements;
 	test_insert_workspace: SqlRitePreparedStatements;
 	test_insert_worker: SqlRitePreparedStatements;
 	test_insert_loop: SqlRitePreparedStatements;

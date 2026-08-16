@@ -94,6 +94,12 @@ originating distinction in its canonical Problem/result path.
 
 ## §mcp-configuration Configuration
 
+Two inputs produce one effective definition per workspace. Service environment
+variables are convenience defaults instantiated independently for every
+workspace. The workspace's durable attachment map may add a server, replace a
+default, or retain a tombstone that suppresses a default after detach. Neither
+source expands the model-facing namespace with a second discovery surface.
+
 | Variable | Contract |
 |---|---|
 | `PLURNK_MCP_<server>` | HTTP(S) URL or exact stdio executable |
@@ -115,21 +121,99 @@ executable string even when its path contains whitespace; arguments never hide
 inside it. Bearer authentication and a case-insensitive `Authorization` entry
 in `_HEADERS` are mutually exclusive.
 
+§mcp-definition-wire The contracts-owned `McpServerDefinition` JSON Schema is
+the one workspace action and durable-state shape. It is a closed discriminated
+union:
+
+| Transport / authorization | Required definition | Optional definition |
+|---|---|---|
+| `stdio` | `name`, `transport`, `command` | `args`, `cwd`, `env`, `tools`, `read` |
+| `http` + none | `name`, `transport`, `url` | `headers`, `tools`, `read` |
+| `http` + bearer | above plus `authorization: { type: "bearer", token: "${NAME}" }` | — |
+| `http` + interactive OAuth | above plus `authorization: { type: "oauth", redirectUrl, clientMetadataUrl }` | `scope` |
+| `http` + client credentials | above plus `authorization: { type: "client-credentials", clientId, clientSecret: "${NAME}" }` | `scope` |
+
+`tools` absent enables the complete listed set; `[]` enables none. `read` is an
+exact subset of the enabled set. A credential field is one complete symbolic
+environment reference, not a copied token. Other string-valued `headers`,
+`env`, `cwd`, and argument values may contain symbolic references and are
+expanded only while preparing a connection. The unexpanded definition is the
+only durable form. Interactive OAuth tokens, PKCE verifier, issuer-bound
+discovery state, and authorization callback state remain process-memory
+credentials; a restart reconstructs the attachment as authorization-required
+instead of writing secrets into SQLite.
+
+### §mcp-management-actions Workspace management
+
+Every action below declares `scope: "workspace"` under
+{§module-action-registration}. AG-UI binds its workspace; none accepts a
+workspace identifier in params.
+
+| Action | Parameters | Result / effect |
+|---|---|---|
+| `workspace.mcp.list` | none | Sorted effective server summaries: name, source, transport, connection/authorization state, negotiated identity/capabilities, enabled tools, and read subset. No credential values. |
+| `workspace.mcp.attach` | `server: McpServerDefinition` | Adds a name absent from the effective workspace. Preparation completes before publication. |
+| `workspace.mcp.replace` | `server: McpServerDefinition` | Replaces one effective definition under the same name; absence is 404. |
+| `workspace.mcp.detach` | `name` | Removes a workspace attachment or writes a tombstone for a service default, then removes its exact Registry, docs, and resource authority. |
+| `workspace.mcp.reconnect` | `name` | Builds a fresh connection from the existing unexpanded definition and atomically replaces the old connection after successful preparation. |
+| `workspace.mcp.oauth.complete` | `name`, `callbackUrl` | State- and issuer-validates one pending interactive callback through the SDK, completes connection preparation, then performs the originally requested attach, replace, or reconnect. |
+
+Interactive preparation returns a successful pending result shaped as
+`{ status: 202, authorization: { url } }`; it publishes no candidate runtime.
+The action owner retains one pending candidate per `(workspace, name)` and a
+new request cancels and replaces it. `oauth.complete` accepts the complete
+callback URL so state, `code`, and `iss` remain one parsing unit. A missing,
+expired, mismatched, or replayed callback fails without exposing attacker-owned
+OAuth error text. There is no callback HTTP endpoint, authority-root resource,
+or MCP-specific AG-UI route.
+
 ## §mcp-setup Atomic lifecycle
 
-Setup parses every configured server, opens and probes every connection,
-lists tools, applies the enabled/effect policy, builds each exact tool Registry,
-validates the complete shared namespace, then publishes all registrations as
-one transaction. A configured tool absent from the server, a duplicate remote
-name, an enabled name not representable as a Plurnk target, or a `_READ` name
-outside the enabled set fails setup. Any failure
-publishes none and closes every acquired connection. Materialization and
-registration inspect the complete owning operation result; a non-success
-preserves its original Problem.
+For each workspace, hydration resolves service defaults against the durable
+attachment/tombstone map, opens and discovers every effective connection,
+lists the negotiated catalogs, applies enabled/effect policy, builds each exact
+tool Registry and resource facet, and submits one complete owner snapshot to
+{§module-workspace-capabilities}. A configured tool absent from the server, a
+duplicate remote name, an enabled name not representable as a Plurnk target,
+or a `read` name outside the enabled set fails that workspace hydration. No
+partial namespace is published and every acquired candidate closes.
 
-Shutdown first prevents new work, settles every connection attempt and active
-request/subscription/task, closes every acquired connection, then reports all
-close failures.
+Attach, replace, and reconnect prepare the candidate while the old snapshot
+remains authoritative, then commit only at {§module-workspace-quiescence}. The
+old connection rejects replacement while it owns an active protocol request,
+MRTR exchange, or Task. Cache/list-change watches are infrastructure and close
+with the old connection after the new snapshot commits. A failed candidate or
+commit leaves the durable definition, connection, Registry, docs, and resource
+authority unchanged. Materialization and registration inspect the complete
+owning operation result; a non-success preserves its original Problem.
+
+Shutdown first prevents new work, cancels pending OAuth candidates and
+infrastructure watches, settles every active request and Task, closes every
+acquired connection, then reports all close failures.
+
+## §mcp-host-composition Protocol-to-Plurnk composition
+
+One `ServerConnection` owns negotiation, SDK caches, authorization partition,
+subscriptions, active request controllers, MRTR rounds, and Tasks for one
+workspace attachment. The host does not reproduce SDK protocol machinery.
+
+| Protocol event | Plurnk composition |
+|---|---|
+| `tools/call` progress | Writes ordinary transient progress on the owning EXEC stream; it creates no log sibling or polling vocabulary. |
+| Operation cancellation | The owning EXEC abort signal closes the HTTP request stream or sends the stdio cancellation notification. |
+| `input_required` | Opens one client-owned interaction attached to the existing operation. The opaque `requestState` is stored byte-for-byte and only the originating request is reissued after the client response. |
+| Elicitation form / URL | Uses the same interaction owner as `input_required`; unsupported modes fail the originating operation before any retry. |
+| Task handle | Keeps the original EXEC stream active, follows `tasks/get` and selected Task notifications, and settles that same stream with the terminal result or error. |
+| Task input | Routes through the operation's client interaction, then sends `tasks/update`; it never asks the model to manufacture protocol state. |
+| Task cancellation | The owning EXEC cancellation invokes `tasks/cancel` before settling the ordinary stream cancellation. |
+| List/resource invalidation | Invalidates the SDK cache and atomically refreshes the attachment snapshot; private cache entries remain authorization-partitioned. |
+| Prompt get / completion | Serves ordinary resource-authority reads and host interactions from negotiated prompt/template definitions; no prompt becomes an executable tool. |
+
+The general executor interaction contract, not this package, owns client
+interrupt durability and AG-UI presentation. A disconnect re-surfaces its
+pending client-owned interaction exactly as proposal review does. MRTR round
+limits, request timeout, cancellation, and Task terminal state are one
+operation lifecycle; none becomes a hidden retry loop.
 
 ## §mcp-model-projection Model-facing projection
 

@@ -11,6 +11,7 @@ export {
     InvalidRangeExtentError,
     InvalidTextRegionError,
     InvalidClientDisplayCapabilitiesError,
+    InvalidMcpServerDefinitionError,
 } from "./Validator.ts";
 export { default as Problems } from "./Problems.ts";
 export type { ProblemOptions } from "./Problems.ts";

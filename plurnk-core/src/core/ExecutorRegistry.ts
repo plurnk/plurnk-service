@@ -70,8 +70,9 @@ export interface RuntimeRegistryRegistration {
 // degrades that tag to unavailable — it never crashes boot. {§exec-registry-resolves}
 export default class ExecutorRegistry {
     readonly #byTag: Map<string, RegistryEntry>;   // own copy — runtime registration mutates it in place
+    readonly #workspaceByOwner = new Map<number, Map<string, Map<string, RegistryEntry>>>();
     readonly #packageAttributions: PackageAttributions;
-    readonly #toolRegistries = new Map<string, RuntimeToolRegistry | null>();
+    readonly #toolRegistries = new WeakMap<Executor, RuntimeToolRegistry | null>();
 
     constructor(byTag: ReadonlyMap<string, RegistryEntry>, packageAttributions: PackageAttributions = new Map()) {
         this.#byTag = new Map(byTag);
@@ -102,16 +103,84 @@ export default class ExecutorRegistry {
         return () => {
             for (const { tag, entry } of registrations) {
                 this.#byTag.set(tag, entry);
-                this.#toolRegistries.delete(tag);
             }
+        };
+    }
+
+    // One module owner replaces its complete runtime set within one workspace.
+    // Validation observes the immutable base and every peer owner, while the
+    // owner's own prior set is deliberately replaceable. The commit is
+    // synchronous/no-fail and returns an equally no-fail rollback for the
+    // composed registry/docs/database transaction. {§module-workspace-capabilities}
+    prepareWorkspaceRegistrations(
+        workspaceId: number,
+        namespaceOwner: string,
+        registrations: readonly RuntimeRegistryRegistration[],
+    ): () => () => void {
+        if (!Number.isSafeInteger(workspaceId) || workspaceId < 1) {
+            throw new Error("workspace runtime snapshot requires a positive workspace id");
+        }
+        if (namespaceOwner.length === 0) {
+            throw new Error("workspace runtime snapshot requires a non-empty namespace owner");
+        }
+        const byOwner = this.#workspaceByOwner.get(workspaceId);
+        const tags = new Set<string>();
+        for (const { tag, entry } of registrations) {
+            if (tags.has(tag)) {
+                throw new Error(`executor tag '${tag}' occurs more than once in one workspace snapshot`);
+            }
+            tags.add(tag);
+            if (entry.namespaceOwner.kind !== "module" || entry.namespaceOwner.name !== namespaceOwner) {
+                throw new Error(
+                    `workspace executor '${tag}' must be owned by daemon module runtime '${namespaceOwner}'`,
+                );
+            }
+            const base = this.#byTag.get(tag);
+            if (base !== undefined) this.#throwCollision(tag, base.namespaceOwner, entry.namespaceOwner);
+            for (const [peerOwner, entries] of byOwner ?? []) {
+                if (peerOwner === namespaceOwner) continue;
+                const peer = entries.get(tag);
+                if (peer !== undefined) this.#throwCollision(tag, peer.namespaceOwner, entry.namespaceOwner);
+            }
+        }
+        const next = new Map(registrations.map(({ tag, entry }) => [tag, entry]));
+        const previous = byOwner?.get(namespaceOwner);
+        return () => {
+            const owners = this.#workspaceByOwner.get(workspaceId) ?? new Map<string, Map<string, RegistryEntry>>();
+            if (next.size === 0) owners.delete(namespaceOwner);
+            else owners.set(namespaceOwner, next);
+            if (owners.size === 0) this.#workspaceByOwner.delete(workspaceId);
+            else this.#workspaceByOwner.set(workspaceId, owners);
+            let pending = true;
+            return () => {
+                if (!pending) return;
+                pending = false;
+                const current = this.#workspaceByOwner.get(workspaceId)
+                    ?? new Map<string, Map<string, RegistryEntry>>();
+                if (previous === undefined) current.delete(namespaceOwner);
+                else current.set(namespaceOwner, previous);
+                if (current.size === 0) this.#workspaceByOwner.delete(workspaceId);
+                else this.#workspaceByOwner.set(workspaceId, current);
+            };
         };
     }
 
     assertCanRegister(tag: string, incoming: RuntimeNamespaceOwner): void {
         const existing = this.#byTag.get(tag);
-        if (existing === undefined) return;
+        if (existing !== undefined) this.#throwCollision(tag, existing.namespaceOwner, incoming);
+        for (const byOwner of this.#workspaceByOwner.values()) {
+            for (const entries of byOwner.values()) {
+                const workspaceEntry = entries.get(tag);
+                if (workspaceEntry !== undefined) {
+                    this.#throwCollision(tag, workspaceEntry.namespaceOwner, incoming);
+                }
+            }
+        }
+    }
+
+    #throwCollision(tag: string, existing: RuntimeNamespaceOwner, incoming: RuntimeNamespaceOwner): never {
         throw new Error(
-            `executor tag '${tag}' is already registered by ${ExecutorRegistry.#describeOwner(existing.namespaceOwner)}; `
+            `executor tag '${tag}' is already registered by ${ExecutorRegistry.#describeOwner(existing)}; `
             + `${ExecutorRegistry.#describeOwner(incoming)} cannot claim it`,
         );
     }
@@ -232,33 +301,44 @@ export default class ExecutorRegistry {
         }
     }
 
-    entry(tag: string): RegistryEntry | undefined {
+    entry(tag: string, workspaceId?: number): RegistryEntry | undefined {
+        if (workspaceId !== undefined) {
+            for (const entries of this.#workspaceByOwner.get(workspaceId)?.values() ?? []) {
+                const entry = entries.get(tag);
+                if (entry !== undefined) return entry;
+            }
+        }
         return this.#byTag.get(tag);
     }
 
     // A family runtime's exact tools, invocation contracts, and pull document
     // cross the plugin boundary as one validated snapshot. Absence means the
     // runtime's static invocation declaration is authoritative.
-    toolRegistry(tag: string): RuntimeToolRegistry | null {
-        const cached = this.#toolRegistries.get(tag);
-        if (cached !== undefined || this.#toolRegistries.has(tag)) return cached ?? null;
-        const entry = this.#byTag.get(tag);
+    toolRegistry(tag: string, workspaceId?: number): RuntimeToolRegistry | null {
+        const entry = this.entry(tag, workspaceId);
         if (entry === undefined || entry.executor.toolRegistry === undefined) return null;
+        const cached = this.#toolRegistries.get(entry.executor);
+        if (cached !== undefined || this.#toolRegistries.has(entry.executor)) return cached ?? null;
         const registry = RuntimeInvocation.assertToolRegistry(
             entry.executor.toolRegistry(),
             entry.namespaceOwner.name,
             tag,
         );
-        this.#toolRegistries.set(tag, registry);
+        this.#toolRegistries.set(entry.executor, registry);
         return registry;
     }
 
     // The actionable set offered to the model — available tags only. Unavailable
     // or unknown tags are omitted; they surface their `detail` on the 501 if the
     // model attempts one anyway.
-    availableRuntimes(): readonly string[] {
-        const tags: string[] = [];
-        for (const [tag, entry] of this.#byTag) if (entry.available) tags.push(tag);
-        return tags.toSorted((left, right) => left.localeCompare(right));
+    availableRuntimes(workspaceId?: number): readonly string[] {
+        const tags = new Set<string>();
+        for (const [tag, entry] of this.#byTag) if (entry.available) tags.add(tag);
+        if (workspaceId !== undefined) {
+            for (const entries of this.#workspaceByOwner.get(workspaceId)?.values() ?? []) {
+                for (const [tag, entry] of entries) if (entry.available) tags.add(tag);
+            }
+        }
+        return [...tags].toSorted((left, right) => left.localeCompare(right));
     }
 }

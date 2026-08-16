@@ -404,6 +404,41 @@ noInteraction: boolean
 noProposals: boolean
 }
 
+export type McpServerDefinition = ({
+[k: string]: unknown
+} & {
+name: string
+transport: ("stdio" | "http")
+command?: string
+args?: string[]
+cwd?: string
+env?: {
+[k: string]: string
+}
+url?: string
+headers?: {
+[k: string]: string
+}
+authorization?: ({
+type: "bearer"
+token: EnvironmentReference
+} | {
+type: "oauth"
+redirectUrl: string
+clientMetadataUrl: string
+scope?: string
+} | {
+type: "client-credentials"
+clientId: string
+clientSecret: EnvironmentReference
+scope?: string
+})
+tools?: string[]
+read?: string[]
+})
+
+export type EnvironmentReference = string
+
 export interface Notice {
 /**
  * Producer identifier. Top-level for self-contained subsystems; colon-namespaced for parameterized producers such as `provider:openai` or `exec:search`.

@@ -8,9 +8,27 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import type { Executor } from "../core/ExecutorRegistry.ts";
 
+export type ModuleActionScope = "worldless" | "workspace";
+
+export type ModuleActionContext =
+    | { readonly scope: "worldless" }
+    | { readonly scope: "workspace"; readonly workspaceId: number };
+
 export type ModuleActionHandler = (
     params: Readonly<Record<string, unknown>>,
+    context: ModuleActionContext,
 ) => unknown | Promise<unknown>;
+
+export interface ModuleActionRegistration {
+    readonly name: string;
+    readonly scope: ModuleActionScope;
+    readonly handler: ModuleActionHandler;
+}
+
+export interface ModuleActionDescriptor {
+    readonly name: string;
+    readonly scope: ModuleActionScope;
+}
 
 // A module-owned executor may expose protocol resources under the same scheme
 // name as its output streams. The facet claims only its own path subtree;
@@ -32,10 +50,27 @@ export interface RuntimeRegistration {
     readonly scheme?: RuntimeSchemeFacet;
 }
 
+export interface WorkspaceCapabilityProvider {
+    hydrate(workspaceId: number): void | Promise<void>;
+}
+
+export interface WorkspaceCapabilityReplacement {
+    readonly workspaceId: number;
+    readonly namespaceOwner: string;
+    readonly state: unknown | null;
+    readonly runtimes: readonly RuntimeRegistration[];
+}
+
 export interface ModuleSetupSeam {
     registerRuntimes(registrations: readonly RuntimeRegistration[]): Promise<void>;
     registerScheme(name: string, handler: object): Promise<void>;
-    registerModuleAction(name: string, handler: ModuleActionHandler): void;
+    registerModuleAction(registration: ModuleActionRegistration): void;
+    registerWorkspaceCapabilityProvider(
+        namespaceOwner: string,
+        provider: WorkspaceCapabilityProvider,
+    ): void;
+    readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null>;
+    replaceWorkspaceCapabilities(replacement: WorkspaceCapabilityReplacement): Promise<void>;
 }
 
 export interface StartedModule {

@@ -95,6 +95,45 @@ export default class WorkspaceGate {
         };
     }
 
+    // Capability snapshots cannot wait behind a proposal that may require the
+    // very client issuing the mutation. Acquire synchronously only at a fully
+    // quiescent boundary; otherwise the caller returns 409 and retries after
+    // settling current work. {§module-workspace-quiescence}
+    tryExclusive(workspaceId: number): WorkspaceExclusive | null {
+        const state = this.#state(workspaceId);
+        if (
+            state.readers !== 0
+            || state.exclusive
+            || state.exclusiveTurns !== 0
+            || state.writers.length !== 0
+            || state.turns.length !== 0
+        ) return null;
+        state.exclusive = true;
+        let held = true;
+        return {
+            acquired: Promise.resolve(),
+            setRoot: (workerId) => {
+                if (!held) throw new Error("Workspace exclusive gate has already been released");
+                if (state.exclusiveTurns !== 0) {
+                    throw new Error("Workspace exclusive root cannot change during an active turn");
+                }
+                state.exclusiveRoot = workerId;
+                this.#requestPump(workspaceId, state);
+            },
+            release: () => {
+                if (!held) return;
+                held = false;
+                if (state.exclusiveTurns !== 0) {
+                    throw new Error("Workspace exclusive gate cannot release during an active turn");
+                }
+                state.exclusive = false;
+                state.exclusiveRoot = null;
+                this.#prune(workspaceId, state);
+                this.#requestPump(workspaceId, state);
+            },
+        };
+    }
+
     async #pump(workspaceId: number, state: WorkspaceState): Promise<void> {
         if (state.pumping) return;
         state.pumping = true;

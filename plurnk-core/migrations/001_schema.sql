@@ -19,6 +19,17 @@ CREATE TABLE IF NOT EXISTS workspaces (
 
 CREATE INDEX IF NOT EXISTS workspaces_created_at ON workspaces (created_at);
 
+-- {§module-workspace-state}: one opaque, provider-validated JSON snapshot per
+-- module owner and workspace. Core owns isolation and lifecycle only.
+CREATE TABLE IF NOT EXISTS workspace_module_state (
+    workspace_id       INTEGER NOT NULL,
+    namespace_owner    TEXT    NOT NULL CHECK (length(namespace_owner) > 0),
+    state              TEXT    NOT NULL CHECK (json_valid(state)),
+    updated_at         TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    PRIMARY KEY (workspace_id, namespace_owner),
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+) STRICT;
+
 -- workers
 CREATE TABLE IF NOT EXISTS workers (
     id              INTEGER NOT NULL PRIMARY KEY,

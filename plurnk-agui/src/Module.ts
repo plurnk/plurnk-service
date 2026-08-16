@@ -15,7 +15,12 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server as HttpServer } from "node:http";
 import Portal from "./Portal.ts";
 import { stateSnapshot, parseAction, actionResult, type ActionRequest, type ActionOutcome } from "./AguiPlus.ts";
-import type { DaemonSeam, ClientEnvelope, PlurnkStatement } from "./DaemonSeam.ts";
+import type {
+    DaemonSeam,
+    ClientEnvelope,
+    ModuleActionDescriptor,
+    PlurnkStatement,
+} from "./DaemonSeam.ts";
 import { PlurnkParser, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
@@ -162,22 +167,29 @@ export default class Module {
     constructor(seam: DaemonSeam, opts: ModuleOptions) {
         this.#seam = seam;
         this.#opts = resolveModuleOptions(opts);
-        this.#moduleActionNames();
+        this.#moduleActions();
         this.#portal = new Portal(seam);
         this.#http = createServer((req, res) => { void this.#route(req, res); });
     }
 
-    #moduleActionNames(): string[] {
-        const names = this.#seam.listModuleActions();
-        const seen = new Set<string>();
-        for (const name of names) {
+    #moduleActions(): ReadonlyMap<string, ModuleActionDescriptor> {
+        const actions = new Map<string, ModuleActionDescriptor>();
+        for (const descriptor of this.#seam.listModuleActions()) {
+            const { name, scope } = descriptor;
             if (Module.#BUILTIN_ACTIONS.has(name)) {
                 throw new Error(`module action '${name}' collides with AG-UI built-in action`);
             }
-            if (seen.has(name)) throw new Error(`module action '${name}' is registered more than once`);
-            seen.add(name);
+            if (scope !== "worldless" && scope !== "workspace") {
+                throw new Error(`module action '${name}' has invalid scope '${String(scope)}'`);
+            }
+            if (actions.has(name)) throw new Error(`module action '${name}' is registered more than once`);
+            actions.set(name, descriptor);
         }
-        return names;
+        return actions;
+    }
+
+    #isWorkspaceAction(kind: string): boolean {
+        return Module.#WORLD_SCOPED.has(kind) || this.#moduleActions().get(kind)?.scope === "workspace";
     }
 
     static init(opts: ModuleOptions): ModuleRegistration {
@@ -367,7 +379,9 @@ export default class Module {
         // unknown kind, which is no worker at all) answers without binding — or forging — a
         // workspace. Only world-scoped actions and conversations reach #envelope below.
         const action = parseAction(input.forwardedProps);
-        if (action !== null && !Module.#WORLD_SCOPED.has(action.kind)) return await this.#controlRun(action, input, res);
+        if (action !== null && !this.#isWorkspaceAction(action.kind)) {
+            return await this.#controlRun(action, input, res);
+        }
 
         let prompt: string | null = null;
         if (action === null && input.resume === undefined) {
@@ -577,7 +591,7 @@ export default class Module {
         for (const k of [
             ...Module.#CONTROL_ACTIONS,
             ...Module.#WORLD_SCOPED,
-            ...this.#moduleActionNames(),
+            ...this.#moduleActions().keys(),
         ]) {
             if (methods[k]) throw new Error(`AG-UI action '${k}' is registered more than once`);
             methods[k] = true;
@@ -596,7 +610,7 @@ export default class Module {
     // runLoop folds a prompt into the active drain; the steered effect streams on the SSE.
     async #action(a: ActionRequest, env: ClientEnvelope | null, conversationWorkerId?: number): Promise<ActionOutcome> {
         const p = a.params;
-        const moduleActions = this.#moduleActionNames();
+        const moduleAction = this.#moduleActions().get(a.kind);
         try {
             // The control plane — worldless verbs (no bound workspace; #WORLD_SCOPED gates this).
             switch (a.kind) {
@@ -655,12 +669,15 @@ export default class Module {
                     return { ok: true, result: { id: att.workspaceId, name: att.workspaceName, workerId: att.workerId } };
                 }
             }
-            if (moduleActions.includes(a.kind)) {
-                return { ok: true, result: await this.#seam.invokeModuleAction(a.kind, p) };
+            if (moduleAction?.scope === "worldless") {
+                return {
+                    ok: true,
+                    result: await this.#seam.invokeModuleAction(a.kind, p, { scope: "worldless" }),
+                };
             }
             // Below this line lives IN a world. An unknown kind is no worker at all; a
             // world-scoped kind with no bound workspace is a routing bug — both surface plainly.
-            if (!Module.#WORLD_SCOPED.has(a.kind)) {
+            if (!Module.#WORLD_SCOPED.has(a.kind) && moduleAction?.scope !== "workspace") {
                 return actionFailure(
                     "unknown-action",
                     `Action '${a.kind}' is not registered.`,
@@ -672,6 +689,16 @@ export default class Module {
                 );
             }
             if (env === null) throw new Error(`action '${a.kind}' operates within a workspace, but none is bound`);
+            if (moduleAction?.scope === "workspace") {
+                return {
+                    ok: true,
+                    result: await this.#seam.invokeModuleAction(
+                        a.kind,
+                        p,
+                        { scope: "workspace", workspaceId: env.workspaceId },
+                    ),
+                };
+            }
             switch (a.kind) {
                 case "workspace.workers": return { ok: true, result: { workers: await this.#seam.listWorkers(typeof p.id === "number" ? p.id : env.workspaceId) } };
                 case "log.read": {

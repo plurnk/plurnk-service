@@ -24,13 +24,26 @@ import type { OperationResult } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 export type { PlurnkStatement };
 
+export type ModuleActionContext =
+    | { readonly scope: "worldless" }
+    | { readonly scope: "workspace"; readonly workspaceId: number };
+
+export interface ModuleActionDescriptor {
+    readonly name: string;
+    readonly scope: ModuleActionContext["scope"];
+}
+
 // A journal entry as the daemon ships it (readLog / the log/entry event carry this).
 export type LogEntryWire = Record<string, unknown>;
 
 export interface DaemonSeam {
     listClientDisplayCapabilities(): Promise<ClientDisplayCapabilities>;
-    listModuleActions(): string[];
-    invokeModuleAction(name: string, params: Readonly<Record<string, unknown>>): Promise<unknown>;
+    listModuleActions(): ModuleActionDescriptor[];
+    invokeModuleAction(
+        name: string,
+        params: Readonly<Record<string, unknown>>,
+        context: ModuleActionContext,
+    ): Promise<unknown>;
     // Hook B — the in-process event source. `handler` receives every workspace-scoped
     // engine event as (workspaceId, method, params); workspaceId is null for a global
     // event (workspace/created). Returns an unsubscribe. Core emits; the module fans out.

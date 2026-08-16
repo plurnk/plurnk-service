@@ -18,7 +18,8 @@ import proposalProjectionSchema from "../schema/ProposalProjection.json" with { 
 import proposalDispositionSchema from "../schema/ProposalDisposition.json" with { type: "json" };
 import loopFlagsSchema from "../schema/LoopFlags.json" with { type: "json" };
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
-import type { ClientDisplayCapabilities, EntryReadResult, LoopFlags, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, TextRegion } from "./types.generated.ts";
+import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
+import type { ClientDisplayCapabilities, EntryReadResult, LoopFlags, McpServerDefinition, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, TextRegion } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
@@ -31,6 +32,7 @@ export class InvalidRangeExtentError extends TypeError {}
 export class InvalidLoopFlagsError extends TypeError {}
 export class InvalidProposalProjectionError extends TypeError {}
 export class InvalidClientDisplayCapabilitiesError extends TypeError {}
+export class InvalidMcpServerDefinitionError extends TypeError {}
 
 export default class Validator {
     static #position = new CfValidator(positionSchema as Schema, "2020-12");
@@ -77,6 +79,10 @@ export default class Validator {
     );
     static #clientDisplayCapabilities = new CfValidator(
         clientDisplayCapabilitiesSchema as Schema,
+        "2020-12",
+    );
+    static #mcpServerDefinition = new CfValidator(
+        mcpServerDefinitionSchema as unknown as Schema,
         "2020-12",
     );
 
@@ -174,6 +180,10 @@ export default class Validator {
 
     static validateClientDisplayCapabilities(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#clientDisplayCapabilities, value);
+    }
+
+    static validateMcpServerDefinition(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#mcpServerDefinition, value);
     }
 
     static assertNotice<T extends Notice>(value: T): T {
@@ -276,6 +286,16 @@ export default class Validator {
         if (!result.valid) {
             throw new InvalidClientDisplayCapabilitiesError(
                 `invalid ClientDisplayCapabilities: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        return value;
+    }
+
+    static assertMcpServerDefinition<T extends McpServerDefinition>(value: T): T {
+        const result = Validator.validateMcpServerDefinition(value);
+        if (!result.valid) {
+            throw new InvalidMcpServerDefinitionError(
+                `invalid MCP server definition: ${JSON.stringify(result.errors)}`,
             );
         }
         return value;

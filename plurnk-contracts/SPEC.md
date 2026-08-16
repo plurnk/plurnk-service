@@ -12,6 +12,7 @@ is the single code API for those contracts.
 | Effective loop policy and its default                                           | `LoopFlags`, `DEFAULT_LOOP_FLAGS`                   |
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
+| Workspace MCP server attachment                                                | `McpServerDefinition`                               |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
 | Generated JSON result rendering                                                 | `renderJsonResult`                                  |
 | Local-model rails                                                               | `@plurnk/plurnk-contracts/plurnk.{gemma,qwen}.gbnf` |
@@ -947,6 +948,16 @@ modules expose this exact shape; clients own rendering, font support, theme,
 and identity fallback when `glyph` is absent. Empty framework sentinels are
 normalized to absence at composition. Display metadata is client state, never
 model-language syntax or model packet teaching.
+
+### §mcp-server-definition 13.8 MCP server definitions
+
+`McpServerDefinition` is the transport-neutral, client/daemon-shared definition
+of one workspace MCP server. It is a closed `stdio`/`http` union. The schema
+owns transport-specific fields, enabled/read tool sets, supported HTTP
+authorization choices, and symbolic credential references; it carries no
+workspace identifier, connection state, discovered catalog, or secret value.
+`Validator.assertMcpServerDefinition` is the admission boundary used by every
+client interface and the MCP host before persistence or connection work.
 
 ## 14. Parse diagnostics
 

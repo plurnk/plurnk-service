@@ -4,6 +4,7 @@ import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, m
 import { insertWorkspace, insertWorker, insertLoop, insertTurn, openMigrated, seedEntryWithChannel, viableWindow } from "./_helpers.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import type { CoreSeam } from "../../src/server/Daemon.ts";
+import type { ModuleSetupSeam, RuntimeRegistration } from "../../src/server/DaemonModule.ts";
 import Dsl from "./dsl.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
@@ -195,37 +196,211 @@ test("Daemon boot reports mimetype packages withheld by the shared trust gate", 
 test("Daemon: module actions register once during setup and invoke through CoreSeam", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
-    const calls: Array<Readonly<Record<string, unknown>>> = [];
+    const calls: Array<{
+        params: Readonly<Record<string, unknown>>;
+        context: { readonly scope: "worldless" } | { readonly scope: "workspace"; readonly workspaceId: number };
+    }> = [];
     daemon.registerModule({
         setup: (seam) => {
             assert.throws(
-                () => seam.registerModuleAction("", async () => ({})),
+                () => seam.registerModuleAction({
+                    name: "",
+                    scope: "worldless",
+                    handler: async () => ({}),
+                }),
                 /action name must not be empty/,
             );
-            seam.registerModuleAction("example.inspect", async (params) => {
-                calls.push(params);
-                return { inspected: params.target };
+            seam.registerModuleAction({
+                name: "example.inspect",
+                scope: "worldless",
+                handler: async (params, context) => {
+                    calls.push({ params, context });
+                    return { inspected: params.target };
+                },
             });
             assert.throws(
-                () => seam.registerModuleAction("example.inspect", async () => ({})),
+                () => seam.registerModuleAction({
+                    name: "example.inspect",
+                    scope: "worldless",
+                    handler: async () => ({}),
+                }),
                 /module action 'example\.inspect' is already registered/,
             );
         },
     });
     try {
         await daemon.start();
-        assert.deepEqual(daemon.listModuleActions(), ["example.inspect"]);
+        assert.deepEqual(daemon.listModuleActions(), [{ name: "example.inspect", scope: "worldless" }]);
         assert.deepEqual(
-            await daemon.invokeModuleAction("example.inspect", { target: "sample" }),
+            await daemon.invokeModuleAction(
+                "example.inspect",
+                { target: "sample" },
+                { scope: "worldless" },
+            ),
             { inspected: "sample" },
         );
-        assert.deepEqual(calls, [{ target: "sample" }]);
+        assert.deepEqual(calls, [{
+            params: { target: "sample" },
+            context: { scope: "worldless" },
+        }]);
         await assert.rejects(
-            () => daemon.invokeModuleAction("missing", {}),
+            () => daemon.invokeModuleAction("missing", {}, { scope: "worldless" }),
             /module action 'missing' is not registered/,
+        );
+        await assert.rejects(
+            () => daemon.invokeModuleAction(
+                "example.inspect",
+                {},
+                { scope: "workspace", workspaceId: 1 },
+            ),
+            /requires worldless context, not workspace/,
         );
     } finally {
         await daemon.stop();
+        await db.close();
+    }
+});
+
+test("Daemon: workspace capability providers hydrate, isolate, detach, and reconstruct snapshots", async () => {
+    const db = await openMigrated();
+    const owner = "workspace capability test module";
+    const tag = "workspacecap";
+    const existingId = await insertWorkspace(db, `workspace-cap-existing-${crypto.randomUUID()}`);
+    await db.workspace_module_state_put.run({
+        workspace_id: existingId,
+        namespace_owner: owner,
+        state: JSON.stringify({ source: "workspace" }),
+    });
+    const executions: number[] = [];
+    const hydrated: number[] = [];
+    let setupSeam: ModuleSetupSeam | null = null;
+    const activeSetupSeam = (): ModuleSetupSeam => {
+        if (setupSeam === null) throw new Error("workspace capability setup seam was not handed to the module");
+        return setupSeam;
+    };
+    const registration = (workspaceId: number): RuntimeRegistration => {
+        const base = fakeRegistration(tag);
+        return {
+            ...base,
+            namespaceOwner: owner,
+            executor: {
+                ...base.executor,
+                run: async () => {
+                    executions.push(workspaceId);
+                    return { status: 200 };
+                },
+            } as unknown as Executor,
+        };
+    };
+    const capabilityModule = {
+        setup: (seam: ModuleSetupSeam): void => {
+            setupSeam = seam;
+            seam.registerWorkspaceCapabilityProvider(owner, {
+                hydrate: async (workspaceId) => {
+                    hydrated.push(workspaceId);
+                    const state = await seam.readWorkspaceModuleState(workspaceId, owner);
+                    const detached = typeof state === "object"
+                        && state !== null
+                        && (state as { detached?: unknown }).detached === true;
+                    await seam.replaceWorkspaceCapabilities({
+                        workspaceId,
+                        namespaceOwner: owner,
+                        state,
+                        runtimes: detached ? [] : [registration(workspaceId)],
+                    });
+                },
+            });
+        },
+    };
+
+    const daemon = new Daemon({ db, provider: null });
+    daemon.registerModule(capabilityModule);
+    let createdId = 0;
+    try {
+        await daemon.start();
+        assert.deepEqual(hydrated, [existingId], "boot hydrates every existing workspace before publication");
+        const existing = await daemon.attachWorkspace({ workspaceId: existingId });
+        const existingResult = await daemon.dispatchAsClient({
+            workspaceId: existingId,
+            workerId: existing.workerId,
+            statement: Dsl.buildExec({ runtime: tag, command: "existing" }),
+        });
+        assert.equal(existingResult.status, 200);
+
+        const created = await daemon.createWorkspace({ name: `workspace-cap-new-${crypto.randomUUID()}` });
+        createdId = created.workspaceId;
+        assert.deepEqual(hydrated, [existingId, createdId], "creation hydrates before returning the workspace");
+        const createdResult = await daemon.dispatchAsClient({
+            workspaceId: createdId,
+            workerId: created.workerId,
+            statement: Dsl.buildExec({ runtime: tag, command: "created" }),
+        });
+        assert.equal(createdResult.status, 200);
+        assert.deepEqual(executions, [existingId, createdId]);
+
+        await activeSetupSeam().replaceWorkspaceCapabilities({
+            workspaceId: existingId,
+            namespaceOwner: owner,
+            state: { detached: true },
+            runtimes: [],
+        });
+        const detachedResult = await daemon.dispatchAsClient({
+            workspaceId: existingId,
+            workerId: existing.workerId,
+            statement: Dsl.buildExec({ runtime: tag, command: "detached" }),
+        });
+        assert.equal(detachedResult.status, 501);
+        const stillAttached = await daemon.dispatchAsClient({
+            workspaceId: createdId,
+            workerId: created.workerId,
+            statement: Dsl.buildExec({ runtime: tag, command: "isolated" }),
+        });
+        assert.equal(stillAttached.status, 200, "one workspace replacement cannot alter its peer");
+        assert.deepEqual(
+            await activeSetupSeam().readWorkspaceModuleState(existingId, owner),
+            { detached: true },
+        );
+
+        await assert.rejects(
+            () => activeSetupSeam().replaceWorkspaceCapabilities({
+                workspaceId: createdId,
+                namespaceOwner: owner,
+                state: { corrupted: true },
+                runtimes: [{ ...registration(createdId), decl: { ...registration(createdId).decl, name: "worker" } }],
+            }),
+            /reserved/,
+        );
+        assert.equal(
+            await activeSetupSeam().readWorkspaceModuleState(createdId, owner),
+            null,
+            "a rejected snapshot cannot mutate durable state",
+        );
+    } finally {
+        await daemon.stop();
+    }
+
+    const restored = new Daemon({ db, provider: null });
+    restored.registerModule(capabilityModule);
+    try {
+        hydrated.length = 0;
+        await restored.start();
+        assert.deepEqual(hydrated.toSorted((left, right) => left - right), [existingId, createdId].toSorted((left, right) => left - right));
+        const existing = await restored.attachWorkspace({ workspaceId: existingId });
+        const detached = await restored.dispatchAsClient({
+            workspaceId: existingId,
+            workerId: existing.workerId,
+            statement: Dsl.buildExec({ runtime: tag, command: "after-restart" }),
+        });
+        assert.equal(detached.status, 501, "the provider reconstructs the durable tombstone");
+        const created = await restored.attachWorkspace({ workspaceId: createdId });
+        const attached = await restored.dispatchAsClient({
+            workspaceId: createdId,
+            workerId: created.workerId,
+            statement: Dsl.buildExec({ runtime: tag, command: "after-restart" }),
+        });
+        assert.equal(attached.status, 200, "service-default capability reconstructs independently");
+    } finally {
+        await restored.stop();
         await db.close();
     }
 });
