@@ -80,6 +80,7 @@ test("resource reads maintain one overlap-replaced subscription for selected cac
         transport: "http",
         url: served.url,
     }, env);
+    let cancellationsBeforeClose = 0;
     try {
         const client = await connection.connect();
         await waitFor(() => listenFilters(served.requests).length === 1);
@@ -120,9 +121,17 @@ test("resource reads maintain one overlap-replaced subscription for selected cac
             3,
             "the update invalidates the cached alpha body without disturbing beta",
         );
+        cancellationsBeforeClose = served.requests
+            .filter((request) => methodOf(request) === "notifications/cancelled")
+            .length;
     } finally {
         await connection.close();
     }
+    assert.equal(
+        served.requests.filter((request) => methodOf(request) === "notifications/cancelled").length,
+        cancellationsBeforeClose,
+        "whole-connection shutdown does not redundantly cancel its listen request",
+    );
 });
 
 test("a remotely ended unified subscription is re-established with a fresh request", async (t) => {

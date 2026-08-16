@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -241,3 +241,172 @@ test("AG-UI hot attachment composes MCP Registry, execution, review, failure, an
         await rm(projectRoot, { recursive: true, force: true });
     }
 });
+
+test(
+    "current third-party stdio and HTTP servers compose through the assembled product",
+    {
+        skip: process.env.PLURNK_MCP_DOGFOOD !== "1",
+        timeout: 120_000,
+    },
+    async () => {
+        const provider = new PacketCapturingMock({
+            contextWindow: 1_000_000,
+            responses: [
+                makeMockResponse([
+                    "# PLAN0",
+                    "Inspect the Kubernetes server's configured context.",
+                    "",
+                    "## EXEC0 [kubernetes] (configuration_view)",
+                    '{"minified":true}',
+                    "",
+                    "## SEND0 [102]",
+                    "Inspect the returned configuration.",
+                ].join("\n")),
+                makeMockResponse("## SEND0 [200]\nThe current Kubernetes context is specimen."),
+                makeMockResponse([
+                    "# PLAN0",
+                    "Use the remote HTTP tool and resource, then report both observations.",
+                    "",
+                    "## EXEC0 [goji] (goji_explain_term)",
+                    '{"term":"AEO"}',
+                    "",
+                    "## READ0 (goji:///resources/goji%3A%2F%2Fabout)",
+                    "",
+                    "## SEND0 [102]",
+                    "Inspect both remote results.",
+                ].join("\n")),
+                makeMockResponse("## SEND0 [200]\nGOJI defines AEO as Answer Engine Optimisation and identifies itself as a Melbourne digital agency."),
+            ],
+        });
+        const db = await openMigrated();
+        const daemon = new Daemon({
+            db,
+            provider,
+            nodeModulesPath: join(import.meta.dirname, "../../node_modules"),
+        });
+        daemon.registerModule(McpModule.init({
+            env: {
+                PLURNK_MCP_CONNECT_TIMEOUT: "30000",
+                PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+            },
+        }));
+        const aguiRegistration = AguiModule.init({ host: "127.0.0.1", port: 0 });
+        let agui: AguiModule | null = null;
+        daemon.registerModule({
+            start: async (seam) => {
+                agui = await aguiRegistration.start(seam);
+                return agui;
+            },
+        });
+        const projectRoot = await mkdtemp(join(tmpdir(), "plurnk-mcp-dogfood-"));
+        const kubeconfig = join(projectRoot, "kubeconfig");
+        await writeFile(kubeconfig, [
+            "apiVersion: v1",
+            "kind: Config",
+            "clusters:",
+            "  - name: unreachable",
+            "    cluster:",
+            "      server: http://127.0.0.1:9",
+            "contexts:",
+            "  - name: specimen",
+            "    context:",
+            "      cluster: unreachable",
+            "      user: anonymous",
+            "current-context: specimen",
+            "users:",
+            "  - name: anonymous",
+            "    user: {}",
+            "",
+        ].join("\n"));
+
+        try {
+            await daemon.start();
+            assert.ok(agui !== null);
+            const port = (agui as AguiModule).address().port;
+            const workspace = `mcp-dogfood-${crypto.randomUUID()}`;
+
+            const kubernetes = actionResult(await post(port, runInput(workspace, "attach-kubernetes", {
+                forwardedProps: {
+                    plurnk: {
+                        workspace,
+                        projectRoot,
+                        action: {
+                            kind: "workspace.mcp.attach",
+                            server: {
+                                name: "kubernetes",
+                                transport: "stdio",
+                                command: "npx",
+                                args: [
+                                    "--yes",
+                                    "kubernetes-mcp-server@0.0.66",
+                                    "--kubeconfig",
+                                    kubeconfig,
+                                    "--read-only",
+                                    "--log-file",
+                                    join(projectRoot, "kubernetes.log"),
+                                ],
+                                tools: ["configuration_view"],
+                                read: ["configuration_view"],
+                            },
+                        },
+                    },
+                },
+            })));
+            assert.equal(kubernetes.ok, true, JSON.stringify(kubernetes.problem));
+
+            const goji = actionResult(await post(port, runInput(workspace, "attach-goji", {
+                forwardedProps: {
+                    plurnk: {
+                        workspace,
+                        action: {
+                            kind: "workspace.mcp.attach",
+                            server: {
+                                name: "goji",
+                                transport: "http",
+                                url: "https://mcp.goji.agency/mcp",
+                                tools: ["goji_explain_term"],
+                                read: ["goji_explain_term"],
+                            },
+                        },
+                    },
+                },
+            })));
+            assert.equal(goji.ok, true, JSON.stringify(goji.problem));
+
+            const kubernetesRun = await post(port, runInput(workspace, "call-kubernetes", {
+                messages: [{
+                    id: "prompt-kubernetes",
+                    role: "user",
+                    content: "Use the attached Kubernetes configuration tool and report the current context.",
+                }],
+            }));
+            assert.equal((kubernetesRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
+            const registryPacket = packet(provider.requests, 0);
+            assert.match(registryPacket, /`\[kubernetes\]` \| `\(configuration_view\)`/);
+            assert.match(registryPacket, /`\[goji\]` \| `\(goji_explain_term\)`/);
+            assert.doesNotMatch(registryPacket, /pods_list/, "disabled remote tools stay out of the Registry");
+            assert.match(packet(provider.requests, 1), /current-context: specimen/);
+
+            const gojiRun = await post(port, runInput(workspace, "call-goji", {
+                messages: [{
+                    id: "prompt-goji",
+                    role: "user",
+                    content: "Ask GOJI to explain AEO and read its about resource.",
+                }],
+            }));
+            assert.equal((gojiRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
+            const remoteResults = packet(provider.requests, 3);
+            assert.match(remoteResults, /Answer Engine Optimisation/);
+            assert.match(remoteResults, /Melbourne-based full-service digital agency/);
+            const speech = gojiRun
+                .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
+                .map((event) => String(event.delta ?? ""))
+                .join("");
+            assert.match(speech, /GOJI defines AEO as Answer Engine Optimisation/);
+        } finally {
+            await daemon.stop();
+            await db.close();
+            await rm(projectRoot, { recursive: true, force: true });
+        }
+    },
+);

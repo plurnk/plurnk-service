@@ -152,10 +152,7 @@ export default class Subscriptions {
             if (this.#listenAbort === controller) this.#listenAbort = undefined;
         }
 
-        if (this.#closed) {
-            await next.close();
-            return;
-        }
+        if (this.#closed) return;
         this.#clearRetry();
         this.#retryAttempt = 0;
         this.#current = next;
@@ -207,24 +204,12 @@ export default class Subscriptions {
         this.#options.onError?.(asError(cause));
     }
 
-    async close(): Promise<void> {
-        if (this.#closed) return;
+    retire(): Promise<void> {
+        if (this.#closed) return this.#work;
         this.#closed = true;
         this.#clearRetry();
-        this.#listenAbort?.abort(new Error("MCP subscription manager closed."));
         this.#listenAbort = undefined;
-        const current = this.#current;
         this.#current = undefined;
-        const closures = [
-            ...(current === undefined ? [] : [current.close()]),
-            this.#work,
-        ];
-        const settled = await Promise.allSettled(closures);
-        const failures = settled.flatMap((result) =>
-            result.status === "rejected" ? [result.reason] : []);
-        if (failures.length === 1) throw failures[0];
-        if (failures.length > 1) {
-            throw new AggregateError(failures, "MCP subscription shutdown failed.");
-        }
+        return this.#work;
     }
 }

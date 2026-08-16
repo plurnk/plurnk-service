@@ -736,17 +736,15 @@ export default class ServerConnection {
         if (client !== undefined) {
             closures.push(client.then(async ({ client: connected, extensions, subscriptions }) => {
                 const failures: unknown[] = [];
-                try {
-                    await subscriptions.close();
-                } catch (error) {
-                    failures.push(error);
-                }
                 extensions.close();
-                try {
-                    await connected.close();
-                } catch (error) {
-                    failures.push(error);
-                }
+                // A full connection close terminates its listen request. Retiring first
+                // avoids a redundant cancellation racing the SDK's removed listen ID.
+                const settled = await Promise.allSettled([
+                    subscriptions.retire(),
+                    connected.close(),
+                ]);
+                failures.push(...settled.flatMap((result) =>
+                    result.status === "rejected" ? [result.reason] : []));
                 if (failures.length === 1) throw failures[0];
                 if (failures.length > 1) {
                     throw new AggregateError(

@@ -218,7 +218,9 @@ owning operation result; a non-success preserves its original Problem.
 
 Shutdown first prevents new work, cancels pending OAuth candidates and
 infrastructure watches, settles every active request and Task, closes every
-acquired connection, then reports all close failures.
+acquired connection, then reports all close failures. Whole-connection
+shutdown retires subscription work before closing its transport; it does not
+first issue a redundant per-listen cancellation.
 
 ## §mcp-host-composition Protocol-to-Plurnk composition
 
