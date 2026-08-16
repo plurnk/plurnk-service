@@ -46,7 +46,8 @@
     "scripts": {
         "test:lint": "tsc --noEmit",
         "test:unit": "node --conditions=plurnk-dev --env-file-if-exists=../plurnk-execs/.env.defaults --test \"src/**/*.test.ts\"",
-        "test": "npm run test:lint && npm run test:unit",
+        "test:intg": "node --conditions=plurnk-dev --test \"test/intg/*.test.ts\"",
+        "test": "npm run test:lint && npm run test:unit && npm run test:intg",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:clean && npm run build:dist",

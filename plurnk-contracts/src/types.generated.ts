@@ -457,6 +457,16 @@ redirectUrl: string
 clientMetadataUrl: string
 scope?: string
 } | {
+type: "oauth"
+redirectUrl: string
+clientId: string
+clientSecret: EnvironmentReference
+scope?: string
+} | {
+type: "oauth"
+redirectUrl: string
+scope?: string
+} | {
 type: "client-credentials"
 clientId: string
 clientSecret: EnvironmentReference

@@ -41,7 +41,7 @@ scheme. There is no protocol downgrade or legacy fallback.
 | Cancellation | Per-request stream closure on HTTP; `notifications/cancelled` on stdio | Drive cancellation from the owning Plurnk abort signal and settle the same operation |
 | MRTR | `input_required` on `tools/call`, `resources/read`, or `prompts/get` | Fulfill supported input requests, echo opaque `requestState` byte-for-byte, and retry only the originating request with a fresh JSON-RPC ID |
 | Elicitation | Active client capability carried through MRTR | Advertise supported form/URL modes and route the request through Plurnk's client-owned interaction lifecycle |
-| Authorization | OAuth profile for HTTP transports | Use protected-resource and authorization-server discovery, PKCE, issuer validation, resource indicators, refresh, and bounded scope escalation; never apply OAuth to stdio |
+| Authorization | OAuth profile for HTTP transports | Require validated protected-resource and authorization-server metadata; never infer endpoints; use PKCE, issuer validation, resource indicators, refresh, and bounded scope escalation; never apply OAuth to stdio |
 
 ## §mcp-tasks Tasks extension
 
@@ -64,7 +64,8 @@ originating tool result; a failed Task preserves its JSON-RPC error.
 | Classification | Surfaces | Disposition |
 |---|---|---|
 | Deprecated | Roots, Sampling, Logging | Do not advertise or implement; use explicit resources/tool arguments, Plurnk's provider layer, and stderr/OpenTelemetry respectively |
-| Deprecated | HTTP+SSE transport; OAuth Dynamic Client Registration; Sampling `includeContext` values | Do not adopt; use Streamable HTTP, Client ID Metadata Documents, and no Sampling |
+| Deprecated | HTTP+SSE transport; Sampling `includeContext` values | Do not adopt; use Streamable HTTP and no Sampling |
+| Deprecated fallback | OAuth Dynamic Client Registration | Prefer pre-registration, then CIMD when advertised; use DCR only when authorization-server metadata advertises `registration_endpoint`; otherwise fail without probing an inferred endpoint |
 | Removed | `initialize`, `notifications/initialized`, `Mcp-Session-Id`, HTTP GET event stream | Reject the legacy lifecycle; every request is stateless and self-contained |
 | Removed | `ping`, `logging/setLevel`, `notifications/roots/list_changed` | Do not send, handle, or teach |
 | Removed | `resources/subscribe`, `resources/unsubscribe`, SSE resumption and `Last-Event-ID` | Use `subscriptions/listen`; reissue a lost request with a new ID |
@@ -143,7 +144,9 @@ union:
 | `stdio` | `name`, `transport`, `command` | `args`, `cwd`, `env`, `tools`, `read` |
 | `http` + none | `name`, `transport`, `url` | `headers`, `tools`, `read` |
 | `http` + bearer | above plus `authorization: { type: "bearer", token: "${NAME}" }` | — |
-| `http` + interactive OAuth | above plus `authorization: { type: "oauth", redirectUrl, clientMetadataUrl }` | `scope` |
+| `http` + interactive OAuth / CIMD preferred | above plus `authorization: { type: "oauth", redirectUrl, clientMetadataUrl }` | `scope`; DCR remains the server-advertised fallback when CIMD is unavailable |
+| `http` + interactive OAuth / pre-registered | above plus `authorization: { type: "oauth", redirectUrl, clientId, clientSecret: "${NAME}" }` | `scope` |
+| `http` + interactive OAuth / DCR fallback only | above plus `authorization: { type: "oauth", redirectUrl }` | `scope` |
 | `http` + client credentials | above plus `authorization: { type: "client-credentials", clientId, clientSecret: "${NAME}" }` | `scope` |
 
 `tools` absent enables the complete listed set; `[]` enables none. `read` is an

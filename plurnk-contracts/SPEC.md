@@ -975,6 +975,11 @@ workspace identifier, connection state, discovered catalog, or secret value.
 `Validator.assertMcpServerDefinition` is the admission boundary used by every
 client interface and the MCP host before persistence or connection work.
 
+Interactive OAuth always requires a callback URL. Its structurally exclusive
+identity modes are an HTTPS Client ID Metadata Document URL, a pre-registered
+client ID plus symbolic secret, or neither for server-advertised Dynamic Client
+Registration fallback. A definition cannot combine those identity modes.
+
 ## 14. Parse diagnostics
 
 §parse-diagnostics `PlurnkParseError` is a JSON-serializable Error subclass.

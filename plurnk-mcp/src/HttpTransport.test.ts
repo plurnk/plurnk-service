@@ -359,3 +359,103 @@ test("interactive HTTP OAuth preserves discovery, PKCE, state, issuer, and resou
     assert.ok((tokenRequest.get("code_verifier")?.length ?? 0) >= 43);
     assert.equal(tokenRequest.get("resource"), `${origin}/mcp`);
 });
+
+test("{§mcp-exclusions} unavailable deprecated DCR is attributed without probing it", async (t) => {
+    let origin = "";
+    let registrationRequests = 0;
+    const served = await serveMcpHttp(t, handler(), (request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/mcp") {
+            return new Response("unauthorized", {
+                status: 401,
+                headers: {
+                    "www-authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"`,
+                },
+            });
+        }
+        if (url.pathname === "/.well-known/oauth-protected-resource/mcp") {
+            return Response.json({
+                resource: `${origin}/mcp`,
+                authorization_servers: [origin],
+            });
+        }
+        if (url.pathname === "/.well-known/oauth-authorization-server") {
+            return Response.json({
+                issuer: origin,
+                authorization_endpoint: `${origin}/authorize`,
+                token_endpoint: `${origin}/token`,
+                response_types_supported: ["code"],
+                grant_types_supported: ["authorization_code"],
+                code_challenge_methods_supported: ["S256"],
+            });
+        }
+        if (url.pathname === "/register") registrationRequests += 1;
+        return new Response("not found", { status: 404 });
+    });
+    origin = new URL(served.url).origin;
+    const connection = new ServerConnection({
+        name: "dcr-unavailable",
+        transport: "http",
+        url: served.url,
+        authorization: {
+            type: "oauth",
+            redirectUrl: `${origin}/callback`,
+        },
+    }, floor);
+    t.after(() => connection.close());
+
+    await assert.rejects(
+        () => connection.connect(),
+        (error) => {
+            assert.match(String((error as Error).cause), /Dynamic Client Registration endpoint/);
+            return true;
+        },
+    );
+    assert.equal(registrationRequests, 0);
+});
+
+test("{§mcp-exclusions} OAuth rejects legacy endpoint inference without metadata", async (t) => {
+    let origin = "";
+    const legacyEndpointRequests: string[] = [];
+    const served = await serveMcpHttp(t, handler(), (request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/mcp") {
+            return new Response("unauthorized", {
+                status: 401,
+                headers: {
+                    "www-authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"`,
+                },
+            });
+        }
+        if (url.pathname === "/.well-known/oauth-protected-resource/mcp") {
+            return Response.json({
+                resource: `${origin}/mcp`,
+                authorization_servers: [origin],
+            });
+        }
+        if (["/authorize", "/token", "/register"].includes(url.pathname)) {
+            legacyEndpointRequests.push(url.pathname);
+        }
+        return new Response("not found", { status: 404 });
+    });
+    origin = new URL(served.url).origin;
+    const connection = new ServerConnection({
+        name: "missing-auth-metadata",
+        transport: "http",
+        url: served.url,
+        authorization: {
+            type: "oauth",
+            redirectUrl: `${origin}/callback`,
+        },
+    }, floor);
+    t.after(() => connection.close());
+
+    await assert.rejects(
+        () => connection.connect(),
+        (error) => {
+            assert.match(String((error as Error).cause), /authorization-server metadata/);
+            return true;
+        },
+    );
+    assert.deepEqual(legacyEndpointRequests, []);
+});

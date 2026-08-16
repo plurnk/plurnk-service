@@ -88,6 +88,26 @@ test("{§mcp-server-definition}: MCP attachments are one closed transport shape 
                 scope: "issues:read",
             },
         },
+        {
+            name: "pre-registered",
+            transport: "http",
+            url: "https://example.test/mcp",
+            authorization: {
+                type: "oauth",
+                redirectUrl: "http://127.0.0.1:3044/oauth/callback",
+                clientId: "known-client",
+                clientSecret: "${KNOWN_CLIENT_SECRET}",
+            },
+        },
+        {
+            name: "dynamic-fallback",
+            transport: "http",
+            url: "https://example.test/mcp",
+            authorization: {
+                type: "oauth",
+                redirectUrl: "http://127.0.0.1:3044/oauth/callback",
+            },
+        },
     ];
     for (const definition of definitions) {
         assert.equal(Validator.assertMcpServerDefinition(definition), definition);
@@ -113,6 +133,28 @@ test("{§mcp-server-definition}: MCP attachments are one closed transport shape 
                 type: "oauth",
                 redirectUrl: "http://127.0.0.1/callback",
                 clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
+            },
+        },
+        {
+            name: "mixed-oauth-identity",
+            transport: "http",
+            url: "https://example.test/mcp",
+            authorization: {
+                type: "oauth",
+                redirectUrl: "http://127.0.0.1/callback",
+                clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
+                clientId: "known-client",
+                clientSecret: "${KNOWN_CLIENT_SECRET}",
+            },
+        },
+        {
+            name: "incomplete-pre-registration",
+            transport: "http",
+            url: "https://example.test/mcp",
+            authorization: {
+                type: "oauth",
+                redirectUrl: "http://127.0.0.1/callback",
+                clientId: "known-client",
             },
         },
         { name: "extra", transport: "stdio", command: "mcp", workspaceId: 7 },

@@ -187,14 +187,36 @@ const resolveDefinition = (
             cachePartition: `client:${definition.authorization.clientId}`,
         };
     }
-    const oauthProvider = new InteractiveOAuthProvider(definition.authorization);
+    const oauthAuthorization = definition.authorization;
+    const oauthProvider = new InteractiveOAuthProvider({
+        redirectUrl: oauthAuthorization.redirectUrl,
+        ...(oauthAuthorization.scope === undefined ? {} : { scope: oauthAuthorization.scope }),
+        ...("clientMetadataUrl" in oauthAuthorization
+            ? { clientMetadataUrl: oauthAuthorization.clientMetadataUrl }
+            : {}),
+        ...("clientId" in oauthAuthorization
+            ? {
+                clientId: oauthAuthorization.clientId,
+                clientSecret: expandReferences(
+                    oauthAuthorization.clientSecret,
+                    environ,
+                    `${definition.name}.authorization.clientSecret`,
+                ),
+            }
+            : {}),
+    });
+    const cachePartition = "clientMetadataUrl" in oauthAuthorization
+        ? `oauth:cimd:${oauthAuthorization.clientMetadataUrl}`
+        : "clientId" in oauthAuthorization
+            ? `oauth:client:${oauthAuthorization.clientId}`
+            : "oauth:dynamic";
     return {
         transport: "http",
         url,
         ...(headers === undefined ? {} : { headers }),
         authProvider: oauthProvider,
         oauthProvider,
-        cachePartition: `oauth:${definition.authorization.clientMetadataUrl}`,
+        cachePartition,
     };
 };
 
@@ -322,7 +344,7 @@ const openClient = async (
         });
     } catch (cause) {
         const authorizationUrl = definition.transport === "http"
-            ? definition.oauthProvider?.authorizationUrl()
+            ? definition.oauthProvider?.takeAuthorizationUrl()
             : undefined;
         let closeFailure: unknown;
         try {
@@ -385,6 +407,7 @@ export default class ServerConnection {
         readonly transport: StreamableHTTPClientTransport;
         readonly provider: InteractiveOAuthProvider;
         readonly authorizationUrl: string;
+        readonly standaloneTransport: boolean;
     } | undefined;
     #activeRequests = 0;
     #closed = false;
@@ -443,6 +466,7 @@ export default class ServerConnection {
                     transport,
                     provider: this.#resolved.oauthProvider,
                     authorizationUrl: cause.authorizationUrl,
+                    standaloneTransport: true,
                 };
             }
             if (this.#client === pending) this.#client = undefined;
@@ -485,11 +509,36 @@ export default class ServerConnection {
     ): Promise<T> {
         this.#activeRequests += 1;
         try {
-            const { client, subscriptions, extensions } = await this.#open();
-            return await run(client, subscriptions, extensions);
+            const opened = await this.#open();
+            try {
+                return await run(opened.client, opened.subscriptions, opened.extensions);
+            } catch (cause) {
+                const authorization = this.#takeAuthorization(opened, cause);
+                if (authorization !== null) throw authorization;
+                throw cause;
+            }
         } finally {
             this.#activeRequests -= 1;
         }
+    }
+
+    #takeAuthorization(opened: OpenClient, cause: unknown): AuthorizationRequiredError | null {
+        if (
+            this.#resolved.transport !== "http"
+            || this.#resolved.oauthProvider === undefined
+            || !(opened.transport instanceof StreamableHTTPClientTransport)
+        ) {
+            return null;
+        }
+        const authorizationUrl = this.#resolved.oauthProvider.takeAuthorizationUrl();
+        if (authorizationUrl === undefined) return null;
+        this.#pendingAuthorization = {
+            transport: opened.transport,
+            provider: this.#resolved.oauthProvider,
+            authorizationUrl: authorizationUrl.href,
+            standaloneTransport: false,
+        };
+        return new AuthorizationRequiredError(authorizationUrl.href, cause);
     }
 
     async tools(signal?: AbortSignal): Promise<Tool[]> {
@@ -707,7 +756,7 @@ export default class ServerConnection {
                 }
             }));
         }
-        if (pending !== undefined) closures.push(pending.transport.close());
+        if (pending?.standaloneTransport === true) closures.push(pending.transport.close());
         const settled = await Promise.allSettled(closures);
         const failures = settled.flatMap((result) =>
             result.status === "rejected" ? [result.reason] : []);

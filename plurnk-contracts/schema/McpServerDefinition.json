@@ -67,6 +67,28 @@
                 {
                     "type": "object",
                     "additionalProperties": false,
+                    "required": ["type", "redirectUrl", "clientId", "clientSecret"],
+                    "properties": {
+                        "type": { "const": "oauth" },
+                        "redirectUrl": { "type": "string", "format": "uri" },
+                        "clientId": { "type": "string", "minLength": 1 },
+                        "clientSecret": { "$ref": "#/$defs/environmentReference" },
+                        "scope": { "type": "string", "minLength": 1 }
+                    }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["type", "redirectUrl"],
+                    "properties": {
+                        "type": { "const": "oauth" },
+                        "redirectUrl": { "type": "string", "format": "uri" },
+                        "scope": { "type": "string", "minLength": 1 }
+                    }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
                     "required": ["type", "clientId", "clientSecret"],
                     "properties": {
                         "type": { "const": "client-credentials" },
