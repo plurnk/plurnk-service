@@ -9,8 +9,13 @@ const RETRY_CEILING_MS = 5_000;
 
 export interface SubscriptionOptions {
     readonly timeout: number;
+    readonly tasks?: boolean;
     readonly onError?: (error: Error) => void;
 }
+
+type CurrentSubscriptionFilter = SubscriptionFilter & {
+    readonly taskIds?: string[];
+};
 
 const asError = (cause: unknown): Error => cause instanceof Error
     ? cause
@@ -19,7 +24,9 @@ const asError = (cause: unknown): Error => cause instanceof Error
 const filterFor = (
     client: Client,
     resources: ReadonlySet<string>,
-): SubscriptionFilter => {
+    tasks: ReadonlyMap<string, number>,
+    tasksEnabled: boolean,
+): CurrentSubscriptionFilter => {
     const capabilities = client.getDiscoverResult()?.capabilities;
     return {
         ...(capabilities?.tools?.listChanged === true
@@ -34,10 +41,13 @@ const filterFor = (
         ...(capabilities?.resources?.subscribe === true && resources.size > 0
             ? { resourceSubscriptions: [...resources].toSorted() }
             : {}),
+        ...(tasksEnabled && tasks.size > 0
+            ? { taskIds: [...tasks.keys()].toSorted() }
+            : {}),
     };
 };
 
-const hasSelections = (filter: SubscriptionFilter): boolean =>
+const hasSelections = (filter: CurrentSubscriptionFilter): boolean =>
     Object.keys(filter).length > 0;
 
 /** Owns the one current modern subscription filter for a server connection. */
@@ -45,6 +55,7 @@ export default class Subscriptions {
     readonly #client: Client;
     readonly #options: SubscriptionOptions;
     readonly #resources = new Set<string>();
+    readonly #tasks = new Map<string, number>();
     #current: McpSubscription | undefined;
     #work: Promise<void> = Promise.resolve();
     #retryTimer: NodeJS.Timeout | undefined;
@@ -57,10 +68,44 @@ export default class Subscriptions {
         this.#options = options;
         this.#current = client.autoOpenedSubscription;
         if (this.#current === undefined) {
-            if (hasSelections(filterFor(client, this.#resources))) this.#scheduleRetry();
+            if (hasSelections(this.#filter())) this.#scheduleRetry();
         } else {
             this.#observe(this.#current);
         }
+    }
+
+    async selectTask(taskId: string): Promise<() => Promise<void>> {
+        if (this.#closed) throw new Error("MCP subscriptions are closed.");
+        if (this.#options.tasks !== true) return async () => undefined;
+        const count = this.#tasks.get(taskId) ?? 0;
+        this.#tasks.set(taskId, count + 1);
+        if (count === 0) {
+            this.#clearRetry();
+            await this.#enqueueReplacement();
+        }
+        let released = false;
+        return async (): Promise<void> => {
+            if (released || this.#closed) return;
+            released = true;
+            const current = this.#tasks.get(taskId);
+            if (current === undefined) return;
+            if (current > 1) {
+                this.#tasks.set(taskId, current - 1);
+                return;
+            }
+            this.#tasks.delete(taskId);
+            this.#clearRetry();
+            await this.#enqueueReplacement();
+        };
+    }
+
+    #filter(): CurrentSubscriptionFilter {
+        return filterFor(
+            this.#client,
+            this.#resources,
+            this.#tasks,
+            this.#options.tasks === true,
+        );
     }
 
     async selectResource(uri: string): Promise<void> {
@@ -80,15 +125,20 @@ export default class Subscriptions {
 
     async #replace(): Promise<void> {
         if (this.#closed) return;
-        const filter = filterFor(this.#client, this.#resources);
-        if (!hasSelections(filter)) return;
+        const filter = this.#filter();
+        if (!hasSelections(filter)) {
+            const prior = this.#current;
+            this.#current = undefined;
+            if (prior !== undefined) await prior.close();
+            return;
+        }
 
         const prior = this.#current;
         const controller = new AbortController();
         this.#listenAbort = controller;
         let next: McpSubscription;
         try {
-            next = await this.#client.listen(filter, {
+            next = await this.#client.listen(filter as SubscriptionFilter, {
                 timeout: this.#options.timeout,
                 signal: controller.signal,
             });

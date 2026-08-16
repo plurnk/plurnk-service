@@ -5,6 +5,7 @@ import {
     type AuthProvider,
     type CallToolRequest,
     type CallToolResult,
+    type ClientCapabilities,
     type CompleteRequest,
     type CompleteResult,
     type DiscoverResult,
@@ -37,8 +38,17 @@ import {
     type ClientInteractionHandler,
 } from "./inputRequired.ts";
 import InteractiveOAuthProvider from "./oauth.ts";
-import { MCP_PROTOCOL_VERSION } from "./protocol.ts";
+import ExtensionChannel from "./extensionChannel.ts";
+import { mcpRoutingHeaderValue } from "./protocolHeaders.ts";
+import {
+    MCP_PROTOCOL_VERSION,
+    MCP_TASKS_EXTENSION_ID,
+} from "./protocol.ts";
 import Subscriptions from "./subscriptions.ts";
+import {
+    callToolWithTasks,
+    serverSupportsTasks,
+} from "./tasks.ts";
 
 export interface ServerCatalog {
     readonly protocolVersion: typeof MCP_PROTOCOL_VERSION;
@@ -201,6 +211,29 @@ const openTransport = (
                 ...(definition.authProvider === undefined
                     ? {}
                     : { authProvider: definition.authProvider }),
+                fetch: async (url, init) => {
+                    const body = typeof init?.body === "string"
+                        ? (() => {
+                            try {
+                                return JSON.parse(init.body) as unknown;
+                            } catch {
+                                return undefined;
+                            }
+                        })()
+                        : undefined;
+                    const request = body !== null && typeof body === "object" && !Array.isArray(body)
+                        ? body as { method?: unknown; params?: { taskId?: unknown } }
+                        : undefined;
+                    if (
+                        ["tasks/get", "tasks/update", "tasks/cancel"].includes(String(request?.method))
+                        && typeof request?.params?.taskId === "string"
+                    ) {
+                        const headers = new Headers(init?.headers);
+                        headers.set("Mcp-Name", mcpRoutingHeaderValue(request.params.taskId));
+                        return fetch(url, { ...init, headers });
+                    }
+                    return fetch(url, init);
+                },
             },
         );
     }
@@ -228,6 +261,7 @@ export class AuthorizationRequiredError extends Error {
 interface OpenClient {
     readonly client: Client;
     readonly transport: StdioClientTransport | StreamableHTTPClientTransport;
+    readonly extensions: ExtensionChannel;
     readonly subscriptions: Subscriptions;
 }
 
@@ -238,18 +272,23 @@ const openClient = async (
     transport: StdioClientTransport | StreamableHTTPClientTransport,
 ): Promise<OpenClient> => {
     const changed = (error?: Error): void => options.onCatalogChanged?.(error ?? null);
-    const client = new Client(
-        {
-            name: packageJson.name,
-            version: packageJson.version,
+    const clientInfo = {
+        name: packageJson.name,
+        version: packageJson.version,
+    };
+    const clientCapabilities = {
+        elicitation: {
+            form: {},
+            url: {},
         },
+        extensions: {
+            [MCP_TASKS_EXTENSION_ID]: {},
+        },
+    } satisfies ClientCapabilities;
+    const client = new Client(
+        clientInfo,
         {
-            capabilities: {
-                elicitation: {
-                    form: {},
-                    url: {},
-                },
-            },
+            capabilities: clientCapabilities,
             versionNegotiation: {
                 mode: { pin: MCP_PROTOCOL_VERSION },
             },
@@ -305,19 +344,32 @@ const openClient = async (
         }
         throw new Error(`MCP ${MCP_PROTOCOL_VERSION} connection failed.`, { cause });
     }
+    const discover = client.getDiscoverResult();
     if (
         client.getProtocolEra() !== "modern"
         || client.getNegotiatedProtocolVersion() !== MCP_PROTOCOL_VERSION
-        || client.getDiscoverResult() === undefined
+        || discover === undefined
     ) {
         await client.close();
         throw new Error(`MCP server did not negotiate required revision ${MCP_PROTOCOL_VERSION}.`);
     }
+    const extensions = new ExtensionChannel(transport, {
+        protocolVersion: MCP_PROTOCOL_VERSION,
+        clientInfo,
+        clientCapabilities,
+        cancelRequest: async (requestId) => client.notification({
+            method: "notifications/cancelled",
+            params: { requestId },
+        }),
+        onError: options.onInfrastructureError,
+    });
     return {
         client,
         transport,
+        extensions,
         subscriptions: new Subscriptions(client, {
             timeout: requestTimeoutMs(environ),
+            tasks: serverSupportsTasks(discover.capabilities),
             onError: options.onInfrastructureError,
         }),
     };
@@ -425,12 +477,16 @@ export default class ServerConnection {
     }
 
     async #request<T>(
-        run: (client: Client, subscriptions: Subscriptions) => Promise<T>,
+        run: (
+            client: Client,
+            subscriptions: Subscriptions,
+            extensions: ExtensionChannel,
+        ) => Promise<T>,
     ): Promise<T> {
         this.#activeRequests += 1;
         try {
-            const { client, subscriptions } = await this.#open();
-            return await run(client, subscriptions);
+            const { client, subscriptions, extensions } = await this.#open();
+            return await run(client, subscriptions, extensions);
         } finally {
             this.#activeRequests -= 1;
         }
@@ -506,20 +562,48 @@ export default class ServerConnection {
         signal?: AbortSignal,
         onProgress?: (progress: Progress) => void,
         interact?: ClientInteractionHandler,
+        toolDefinition?: Tool,
     ): Promise<CallToolResult> {
-        return this.#request(async (client) => runInputRequiredRequest<CallToolResult>({
-            server: this.#definition.name,
-            operation: "tools/call",
-            originalParams: { name, arguments: args },
-            signal,
-            interact,
-            onProgress,
-            timeout: requestTimeoutMs(this.#environ),
-            requestLeg: (params, options) => client.callTool(
-                params as CallToolRequest["params"],
-                options,
-            ) as Promise<CallToolResult | InputRequiredResult>,
-        }));
+        return this.#request(async (client, subscriptions, extensions) => {
+            const timeout = requestTimeoutMs(this.#environ);
+            if (serverSupportsTasks(client.getDiscoverResult()?.capabilities)) {
+                const tool = toolDefinition ?? (await client.listTools(
+                    undefined,
+                    this.#requestOptions(signal),
+                )).tools.find((candidate) => candidate.name === name);
+                if (tool === undefined) {
+                    throw new Error(`MCP server '${this.#definition.name}' did not list tool '${name}'.`);
+                }
+                return callToolWithTasks({
+                    server: this.#definition.name,
+                    name,
+                    args,
+                    tool,
+                    signal,
+                    onProgress,
+                    interact,
+                    timeout,
+                    channel: extensions,
+                    subscriptions,
+                });
+            }
+            return runInputRequiredRequest<CallToolResult>({
+                server: this.#definition.name,
+                operation: "tools/call",
+                originalParams: { name, arguments: args },
+                signal,
+                interact,
+                onProgress,
+                timeout,
+                requestLeg: (params, options) => client.callTool(
+                    params as CallToolRequest["params"],
+                    {
+                        ...options,
+                        ...(toolDefinition === undefined ? {} : { toolDefinition }),
+                    },
+                ) as Promise<CallToolResult | InputRequiredResult>,
+            });
+        });
     }
 
     async readResource(
@@ -601,13 +685,14 @@ export default class ServerConnection {
         this.#pendingAuthorization = undefined;
         const closures: Promise<void>[] = [];
         if (client !== undefined) {
-            closures.push(client.then(async ({ client: connected, subscriptions }) => {
+            closures.push(client.then(async ({ client: connected, extensions, subscriptions }) => {
                 const failures: unknown[] = [];
                 try {
                     await subscriptions.close();
                 } catch (error) {
                     failures.push(error);
                 }
+                extensions.close();
                 try {
                     await connected.close();
                 } catch (error) {

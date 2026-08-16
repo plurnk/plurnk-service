@@ -12,8 +12,13 @@ executor, resource, proposal, entry, Problem, and lifecycle contracts.
 The only accepted revision is `2026-07-28`, specification commit
 `5f5440bb26a62e2cf3440b92da5a667efa03b267`. The implementation exact-pins
 `@modelcontextprotocol/client@2.0.0`. SDK exports are not protocol authority:
-that package deliberately retains legacy and deprecated API shapes, while its
-generic protocol seam remains available for final-release extension messages.
+that package deliberately retains legacy and deprecated API shapes. It owns
+core negotiation and transport; this package owns only exact-pinned extension
+wire that the SDK does not yet implement.
+
+The optional Tasks authority is the official `experimental-ext-tasks` contract
+at commit `2c1425d9a288b9b1f489430fe1e00bb392b47e48`. Its absence from the current
+SDK runtime does not revive that SDK's retained 2025 Tasks vocabulary.
 
 Every request carries the modern `_meta` envelope. Connection setup verifies
 `server/discover` at the pinned revision before publishing any runtime or
@@ -31,7 +36,7 @@ scheme. There is no protocol downgrade or legacy fallback.
 | Completion | Negotiated server capability: `completion/complete` | Make prompt and resource-template completion available to the host interaction that owns the argument |
 | Pagination | Opaque cursors on list methods | Drain every page with a finite non-convergence guard; never publish a partial catalog as complete |
 | Caching | `server/discover`, list methods, and `resources/read` carry `ttlMs` and `cacheScope` | Honor freshness and notification invalidation; partition private entries by authorization context |
-| Subscriptions | `subscriptions/listen` plus acknowledged filters and correlated notifications | Keep one current filter for list changes and resource URIs read into cache; overlap filter replacement, re-listen after loss, and never use the removed resource subscription methods |
+| Subscriptions | `subscriptions/listen` plus acknowledged filters and correlated notifications | Keep one current filter for list changes, resource URIs read into cache, and active Task IDs; overlap filter replacement, re-listen after loss, and never use the removed resource subscription methods |
 | Progress | Request-scoped `notifications/progress` | Project progress onto the owning Plurnk operation without creating an independent protocol lifecycle |
 | Cancellation | Per-request stream closure on HTTP; `notifications/cancelled` on stdio | Drive cancellation from the owning Plurnk abort signal and settle the same operation |
 | MRTR | `input_required` on `tools/call`, `resources/read`, or `prompts/get` | Fulfill supported input requests, echo opaque `requestState` byte-for-byte, and retry only the originating request with a fresh JSON-RPC ID |
@@ -48,6 +53,11 @@ The server may return an unsolicited `resultType: "task"` handle from
 result or protocol error. Task notifications, when selected, use the unified
 subscription stream. `tasks/list`, `tasks/result`, and per-call task opt-in do
 not exist in this revision.
+
+Polling honors each current `pollIntervalMs` under the one owning operation
+deadline. Task input keys are fulfilled at most once, in one atomic client
+interaction per observed input set. A completed Task is validated as the
+originating tool result; a failed Task preserves its JSON-RPC error.
 
 ## §mcp-exclusions Removed, deprecated, and excluded surfaces
 
@@ -74,6 +84,8 @@ Every HTTP request carries matching `MCP-Protocol-Version` and `Mcp-Method`
 headers. Named requests also carry `Mcp-Name`; declared primitive tool
 parameters carry validated `Mcp-Param-*` headers. Header names compare
 case-insensitively, and body/header disagreement fails instead of guessing.
+For `tasks/get`, `tasks/update`, and `tasks/cancel`, `Mcp-Name` is the encoded
+`taskId` required by the Tasks extension.
 
 ## §mcp-errors Error allocation
 
@@ -81,6 +93,7 @@ case-insensitively, and body/header disagreement fails instead of guessing.
 |---|---|
 | Standard JSON-RPC parse/request/method/params/internal failures | `-32700`, `-32600`, `-32601`, `-32602`, `-32603` |
 | Missing resource or task handle | `-32602` |
+| Tasks extension capability absent | `-32003` |
 | Header/body mismatch | `-32020` `HeaderMismatch`; HTTP 400 |
 | Required client capability absent | `-32021` `MissingRequiredClientCapability`; HTTP 400 where applicable |
 | Protocol revision unsupported | `-32022` `UnsupportedProtocolVersion`; HTTP 400 |

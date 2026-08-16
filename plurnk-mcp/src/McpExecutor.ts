@@ -263,12 +263,17 @@ export default class McpExecutor extends BaseExecutor {
         }
 
         try {
+            const tool = this.#catalog?.tools.find((candidate) => candidate.name === target);
+            if (tool === undefined) {
+                throw new Error(`MCP tool '${target}' is absent from the prepared catalog.`);
+            }
             const result = await this.#connection.callTool(
                 target,
                 args,
                 signal,
                 (progress) => emit(progressNotice(runtime, target, progress)),
                 interact,
+                tool,
             );
             write(CHANNEL, renderJsonResult(result), "application/json");
             if (result.isError === true) {

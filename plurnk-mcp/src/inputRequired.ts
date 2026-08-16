@@ -27,8 +27,8 @@ export type ClientInteractionHandler = (
     request: ClientInteractionRequest,
 ) => Promise<ClientInteractionResolution>;
 
-type InputRequiredMethod = "tools/call" | "resources/read" | "prompts/get";
-type InputRequiredParams = CallToolRequest["params"]
+type InputRequiredMethod = "tools/call" | "resources/read" | "prompts/get" | "tasks/update";
+type CoreInputRequiredParams = CallToolRequest["params"]
     | ReadResourceRequest["params"]
     | GetPromptRequest["params"];
 type InputRequiredCompleteResult = CallToolResult | ReadResourceResult | GetPromptResult;
@@ -41,21 +41,29 @@ interface InputRequiredLegOptions {
     readonly onprogress?: (progress: Progress) => void;
 }
 
-type InputRequiredLeg<T extends InputRequiredCompleteResult> = (
-    params: InputRequiredParams,
+type InputRequiredLeg<T, P extends object> = (
+    params: P,
     options: InputRequiredLegOptions,
     retry: boolean,
 ) => Promise<T | InputRequiredResult>;
 
-interface InputRequiredRequestOptions<T extends InputRequiredCompleteResult> {
+interface InputRequiredRequestOptions<T, P extends object> {
     readonly server: string;
     readonly operation: InputRequiredMethod;
-    readonly originalParams: InputRequiredParams;
+    readonly originalParams: P;
     readonly signal?: AbortSignal;
     readonly onProgress?: (progress: Progress) => void;
     readonly interact?: ClientInteractionHandler;
     readonly timeout: number;
-    readonly requestLeg: InputRequiredLeg<T>;
+    readonly requestLeg: InputRequiredLeg<T, P>;
+}
+
+interface ResolveInputRequestsOptions {
+    readonly server: string;
+    readonly operation: InputRequiredMethod;
+    readonly inputRequests: Readonly<Record<string, unknown>>;
+    readonly interact?: ClientInteractionHandler;
+    readonly arguments?: Readonly<Record<string, unknown>>;
 }
 
 export const INPUT_REQUIRED_MAX_ROUNDS = 10;
@@ -105,20 +113,28 @@ const elicitationResponseSchema = (request: ElicitRequest): Record<string, unkno
 const supportedElicitations = (
     server: string,
     operation: InputRequiredMethod,
-    result: InputRequiredResult,
-): [string, ElicitRequest][] => Object.entries(result.inputRequests ?? {}).map(([key, request]) => {
+    inputRequests: Readonly<Record<string, unknown>>,
+): [string, ElicitRequest][] => Object.entries(inputRequests).map(([key, candidate]) => {
+    const request = candidate as { method?: unknown };
     if (request.method !== "elicitation/create") {
         throw new Error(
-            `MCP server '${server}' requested unsupported embedded input method '${request.method}' during '${operation}'; Plurnk advertises only elicitation form and URL modes.`,
+            `MCP server '${server}' requested unsupported embedded input method '${String(request.method)}' during '${operation}'; Plurnk advertises only elicitation form and URL modes.`,
         );
     }
-    return [key, request];
+    const parsed = specTypeSchemas.ElicitRequest["~standard"].validate(candidate);
+    if (parsed.issues !== undefined) {
+        throw new Error(
+            `MCP server '${server}' supplied invalid elicitation '${key}' during '${operation}': ${formatValidationIssues(parsed.issues)}.`,
+        );
+    }
+    return [key, parsed.value];
 });
 
 const interactionRequest = (
     server: string,
     operation: InputRequiredMethod,
     entries: readonly [string, ElicitRequest][],
+    args: Readonly<Record<string, unknown>> = {},
 ): ClientInteractionRequest => {
     const properties = Object.fromEntries(entries.map(([key, request]) => [
         key,
@@ -129,6 +145,7 @@ const interactionRequest = (
         arguments: {
             server,
             operation,
+            ...args,
             requests: Object.fromEntries(entries),
         },
         message: entries.length === 1
@@ -141,6 +158,24 @@ const interactionRequest = (
             properties,
         },
     };
+};
+
+export const resolveInputRequests = async ({
+    server,
+    operation,
+    inputRequests,
+    interact,
+    arguments: args,
+}: ResolveInputRequestsOptions): Promise<Record<string, InputResponse>> => {
+    const entries = supportedElicitations(server, operation, inputRequests);
+    if (entries.length === 0) return {};
+    if (interact === undefined) {
+        throw new Error(
+            `MCP server '${server}' requires client input during '${operation}', but this operation has no client interaction owner.`,
+        );
+    }
+    const request = interactionRequest(server, operation, entries, args);
+    return resolvedInputResponses(request, await interact(request));
 };
 
 const cancelledInputResponses = (
@@ -182,7 +217,10 @@ const resolvedInputResponses = async (
     return responses;
 };
 
-export const runInputRequiredRequest = async <T extends InputRequiredCompleteResult>({
+export const runInputRequiredRequest = async <
+    T = InputRequiredCompleteResult,
+    P extends object = CoreInputRequiredParams,
+>({
     server,
     operation,
     originalParams,
@@ -191,7 +229,7 @@ export const runInputRequiredRequest = async <T extends InputRequiredCompleteRes
     interact,
     timeout,
     requestLeg,
-}: InputRequiredRequestOptions<T>): Promise<T> => {
+}: InputRequiredRequestOptions<T, P>): Promise<T> => {
     const startedAt = Date.now();
     const options = {
         signal,
@@ -218,22 +256,21 @@ export const runInputRequiredRequest = async <T extends InputRequiredCompleteRes
             progress: round,
             message: `Fulfilling input required by '${operation}' (round ${round})`,
         });
-        const entries = supportedElicitations(server, operation, result);
         let inputResponses: Record<string, InputResponse> | undefined;
-        if (entries.length === 0) {
+        const inputRequests = result.inputRequests ?? {};
+        if (Object.keys(inputRequests).length === 0) {
             await delay(
                 REQUEST_STATE_ONLY_PACING_MS,
                 undefined,
                 signal === undefined ? {} : { signal },
             );
         } else {
-            if (interact === undefined) {
-                throw new Error(
-                    `MCP server '${server}' requires client input during '${operation}', but this operation has no client interaction owner.`,
-                );
-            }
-            const request = interactionRequest(server, operation, entries);
-            inputResponses = await resolvedInputResponses(request, await interact(request));
+            inputResponses = await resolveInputRequests({
+                server,
+                operation,
+                inputRequests,
+                interact,
+            });
             signal?.throwIfAborted();
         }
         const elapsed = Date.now() - startedAt;
@@ -253,7 +290,7 @@ export const runInputRequiredRequest = async <T extends InputRequiredCompleteRes
             ...(result.requestState === undefined
                 ? {}
                 : { requestState: result.requestState }),
-        } as InputRequiredParams;
+        } as P;
         result = await requestLeg(
             retryParams,
             {

@@ -88,7 +88,7 @@ test("client cancellation becomes a standard elicitation cancellation response",
             async () => ({ status: "cancelled" }),
         );
         const text = result.content[0]?.type === "text" ? result.content[0].text : "";
-        assert.match(text, /\"action\":\"cancel\"/);
+        assert.match(text, /"action":"cancel"/);
     } finally {
         await connection.close();
     }
