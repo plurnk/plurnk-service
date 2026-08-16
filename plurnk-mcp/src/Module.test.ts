@@ -152,6 +152,23 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
     assert.ok(predicate(), "condition did not become true");
 };
 
+const rejectsManagementProblem = async (
+    run: () => Promise<unknown>,
+    code: string,
+    status: number,
+): Promise<void> => {
+    await assert.rejects(run, (error: unknown) => {
+        const problem = (error as { problem?: Record<string, unknown> }).problem;
+        assert.equal(
+            problem?.type,
+            `https://problems.plurnk.dev/mcp/management/${code}`,
+        );
+        assert.equal(problem?.status, status);
+        assert.equal(problem?.retryable, false);
+        return true;
+    });
+};
+
 test("service defaults hydrate as workspace-local executor and resource snapshots", async () => {
     const module = Module.init({
         env: {
@@ -230,6 +247,131 @@ test("attach and detach change only the bound workspace and persist an unexpande
         await h.invoke(1, "workspace.mcp.detach", { name: "echo" });
         assert.deepEqual(h.snapshots.get(1), []);
         assert.equal(h.durable.get(1), null);
+    } finally {
+        await module.close();
+    }
+});
+
+test("{§mcp-management-actions} replace and reconnect publish one fresh complete attachment", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-replace-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const marker = join(root, "obsolete.closed");
+    const module = Module.init({ env: floor });
+    const h = harness();
+    try {
+        await module.setup(h.seam);
+        await h.hydrate(1);
+        await h.invoke(1, "workspace.mcp.attach", {
+            server: echoDefinition({
+                env: { PLURNK_MCP_TEST_CLOSE_MARKER: marker },
+                tools: ["echo"],
+                read: ["echo"],
+            }),
+        });
+        const first = h.snapshots.get(1)?.[0];
+        assert.deepEqual(first?.executor.toolRegistry().tools.map(({ target }) => target), ["echo"]);
+
+        const replaced = await h.invoke(1, "workspace.mcp.replace", {
+            server: echoDefinition({
+                env: { PLURNK_MCP_TEST_CLOSE_MARKER: marker },
+                tools: ["fail"],
+            }),
+        }) as { status: number };
+        assert.equal(replaced.status, 200);
+        const second = h.snapshots.get(1)?.[0];
+        assert.notEqual(second, first);
+        assert.deepEqual(second?.executor.toolRegistry().tools.map(({ target }) => target), ["fail"]);
+        assert.match(JSON.stringify(h.durable.get(1)), /"tools":\["fail"\]/);
+        await waitForFile(marker);
+
+        await rm(marker, { force: true });
+        const reconnected = await h.invoke(1, "workspace.mcp.reconnect", {
+            name: "echo",
+        }) as { status: number };
+        assert.equal(reconnected.status, 200);
+        const third = h.snapshots.get(1)?.[0];
+        assert.notEqual(third, second);
+        assert.deepEqual(third?.executor.toolRegistry().tools.map(({ target }) => target), ["fail"]);
+        await waitForFile(marker);
+    } finally {
+        await module.close();
+    }
+});
+
+test("{§mcp-setup} a workspace attachment reconstructs from its durable unexpanded definition", async () => {
+    const durable = new Map<number, unknown | null>();
+    const first = Module.init({ env: floor });
+    const firstHarness = harness(durable);
+    await first.setup(firstHarness.seam);
+    await firstHarness.hydrate(1);
+    await firstHarness.invoke(1, "workspace.mcp.attach", {
+        server: echoDefinition({ tools: ["echo"], read: ["echo"] }),
+    });
+    await first.close();
+
+    const restored = Module.init({ env: floor });
+    const restoredHarness = harness(durable);
+    try {
+        await restored.setup(restoredHarness.seam);
+        await restoredHarness.hydrate(1);
+        const listed = await restoredHarness.invoke(1, "workspace.mcp.list") as {
+            servers: Array<{ name: string; source: string; state: string }>;
+        };
+        assert.deepEqual(listed.servers.map(({ name, source, state }) => ({ name, source, state })), [{
+            name: "echo",
+            source: "workspace",
+            state: "connected",
+        }]);
+        assert.deepEqual(
+            restoredHarness.snapshots.get(1)?.[0]?.executor.toolRegistry().tools
+                .map(({ target }) => target),
+            ["echo"],
+        );
+    } finally {
+        await restored.close();
+    }
+});
+
+test("{§mcp-management-actions} management conflicts preserve exact Problems and prior state", async () => {
+    const module = Module.init({ env: floor });
+    const h = harness();
+    try {
+        await module.setup(h.seam);
+        await h.hydrate(1);
+        await rejectsManagementProblem(
+            () => h.invoke(1, "workspace.mcp.attach", { server: {} }),
+            "definition-invalid",
+            400,
+        );
+        assert.deepEqual(h.snapshots.get(1), []);
+
+        await h.invoke(1, "workspace.mcp.attach", { server: echoDefinition() });
+        const priorState = structuredClone(h.durable.get(1));
+        const priorRuntime = h.snapshots.get(1)?.[0];
+        await rejectsManagementProblem(
+            () => h.invoke(1, "workspace.mcp.attach", { server: echoDefinition() }),
+            "server-exists",
+            409,
+        );
+        await rejectsManagementProblem(
+            () => h.invoke(1, "workspace.mcp.replace", {
+                server: echoDefinition({ name: "missing" }),
+            }),
+            "server-not-found",
+            404,
+        );
+        await rejectsManagementProblem(
+            () => h.invoke(1, "workspace.mcp.detach", { name: "missing" }),
+            "server-not-found",
+            404,
+        );
+        await rejectsManagementProblem(
+            () => h.invoke(1, "workspace.mcp.reconnect", { name: "missing" }),
+            "server-not-found",
+            404,
+        );
+        assert.deepEqual(h.durable.get(1), priorState);
+        assert.equal(h.snapshots.get(1)?.[0], priorRuntime);
     } finally {
         await module.close();
     }

@@ -63,3 +63,29 @@ test("client pins the current MCP revision and exercises tools and resources", a
         await connection.close();
     }
 });
+
+test("an active user request prevents connection replacement until it settles", async () => {
+    const connection = new ServerConnection({
+        name: "echo",
+        transport: "stdio",
+        command: process.execPath,
+        args: [fixture],
+        env: { PLURNK_MCP_TEST_EXTENDED: "1" },
+    }, env);
+    const controller = new AbortController();
+    try {
+        await connection.catalog();
+        const pending = connection.callTool("wait", {}, controller.signal);
+        assert.equal(connection.activeRequests, 1);
+        assert.throws(
+            () => connection.assertReplaceable(),
+            /has 1 active user request/,
+        );
+        controller.abort(new Error("test request settled"));
+        await assert.rejects(pending);
+        assert.equal(connection.activeRequests, 0);
+        assert.doesNotThrow(() => connection.assertReplaceable());
+    } finally {
+        await connection.close();
+    }
+});
