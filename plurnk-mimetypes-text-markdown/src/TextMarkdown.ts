@@ -18,6 +18,23 @@ import { Lexer, type Token } from "marked";
 //
 // validate() inherits BaseHandler's no-op default (any string is valid markdown).
 export default class TextMarkdown extends BaseHandler {
+    override summary(content: HandlerContent): string | undefined {
+        if (typeof content !== "string") return undefined;
+        const tokens = new Lexer().lex(content);
+        const headingIndex = tokens.findIndex((token) => {
+            if (token.type !== "heading") return false;
+            const heading = token as Token & { depth: number; text: string };
+            return heading.depth === 2 && heading.text === "Summary";
+        });
+        if (headingIndex === -1) return undefined;
+        for (const token of tokens.slice(headingIndex + 1)) {
+            if (token.type === "space") continue;
+            if (token.type !== "paragraph") return undefined;
+            return (token as Token & { text: string }).text;
+        }
+        return undefined;
+    }
+
     override extractRaw(content: string): MimeSymbol[] {
         const tokens = new Lexer().lex(content);
         const symbols: MimeSymbol[] = [];

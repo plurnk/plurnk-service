@@ -97,16 +97,52 @@ export default class SearchIndex {
         if (artifact === undefined) throw new Error(`failed to create derivation artifact ${hash}`);
         const derivationId = artifact.id;
         let parseIssues: number | null = null;
+        let summary: string | null = null;
         const attachComplete = async (disposition: "vector" | "lexical" | "excluded" | "nonsemantic" | "failed", reason: string | null = null): Promise<void> => {
             await db.derivation_complete.run({
                 derivation_id: derivationId,
                 disposition,
                 reason,
                 parse_issues: parseIssues,
+                summary,
             });
             await attach();
         };
         const wantGraph = r.content.length > 0 && !binary;
+        if (!wantGraph) {
+            await EntryGraph.populateFrom(db, derivationId, [], []);
+            await EntrySemantic.indexFts(db, derivationId, "");
+            await EntrySemantic.indexEmbedding(db, derivationId, [], undefined);
+            await attachComplete(
+                searchExcluded === undefined ? "nonsemantic" : "excluded",
+                searchExcluded ?? (r.content.length === 0 ? "empty" : "binary"),
+            );
+            return;
+        }
+        let result: ProcessResult;
+        try {
+            result = await mimetypes.process(
+                { content: r.content, hint: r.mimetype, path: r.pathname },
+                {
+                    channels: searchExcluded === undefined ? ["symbols", "references"] : [],
+                    summary: true,
+                },
+            );
+        } catch (error) {
+            if (ctx.signal?.aborted === true || !isMimetypeInputError(error)) throw error;
+            await EntryGraph.populateFrom(db, derivationId, [], []);
+            await EntrySemantic.indexFts(db, derivationId, "");
+            await EntrySemantic.indexEmbedding(db, derivationId, [], undefined);
+            await attachComplete(
+                searchExcluded === undefined ? "failed" : "excluded",
+                searchExcluded ?? (error instanceof Error ? error.message : String(error)),
+            );
+            return;
+        }
+        ctx.signal?.throwIfAborted();
+        parseIssues = result.parseIssues ?? null;
+        summary = result.summary ?? null;
+        for (const notice of result.notices ?? []) callbacks.onNotice?.(notice);
         if (searchExcluded !== undefined) {
             await EntryGraph.populateFrom(db, derivationId, [], []);
             await EntrySemantic.indexFts(db, derivationId, "");
@@ -114,30 +150,6 @@ export default class SearchIndex {
             await attachComplete("excluded", searchExcluded);
             return;
         }
-        if (!wantGraph) {
-            await EntryGraph.populateFrom(db, derivationId, [], []);
-            await EntrySemantic.indexFts(db, derivationId, "");
-            await EntrySemantic.indexEmbedding(db, derivationId, [], undefined);
-            await attachComplete("nonsemantic", r.content.length === 0 ? "empty" : "binary");
-            return;
-        }
-        let result: ProcessResult;
-        try {
-            result = await mimetypes.process(
-                { content: r.content, hint: r.mimetype, path: r.pathname },
-                { channels: ["symbols", "references"] },
-            );
-        } catch (error) {
-            if (ctx.signal?.aborted === true || !isMimetypeInputError(error)) throw error;
-            await EntryGraph.populateFrom(db, derivationId, [], []);
-            await EntrySemantic.indexFts(db, derivationId, "");
-            await EntrySemantic.indexEmbedding(db, derivationId, [], undefined);
-            await attachComplete("failed", error instanceof Error ? error.message : String(error));
-            return;
-        }
-        ctx.signal?.throwIfAborted();
-        parseIssues = result.parseIssues ?? null;
-        for (const notice of result.notices ?? []) callbacks.onNotice?.(notice);
         // Persistence and embedding operations are outside typed input-failure
         // containment. An internal/operational failure leaves the artifact
         // building and propagates so a later warm can retry; it is never

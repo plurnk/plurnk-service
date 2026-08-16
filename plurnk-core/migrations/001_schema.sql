@@ -543,6 +543,14 @@ CREATE TABLE IF NOT EXISTS derivations (
     disposition TEXT    CHECK (disposition IN ('vector', 'lexical', 'excluded', 'nonsemantic', 'failed')),
     reason      TEXT,
     parse_issues INTEGER CHECK (parse_issues IS NULL OR parse_issues > 0),
+    summary     TEXT    CHECK (
+        summary IS NULL OR (
+            length(summary) > 0
+            AND summary = trim(summary)
+            AND instr(summary, char(10)) = 0
+            AND instr(summary, char(13)) = 0
+        )
+    ),
     CHECK ((state = 'building' AND disposition IS NULL) OR (state = 'complete' AND disposition IS NOT NULL))
 ) STRICT;
 

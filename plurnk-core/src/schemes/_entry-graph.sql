@@ -44,7 +44,8 @@ RETURNING id, state;
 
 -- PREP: derivation_complete
 UPDATE derivations
-SET state = 'complete', disposition = $disposition, reason = $reason, parse_issues = $parse_issues
+SET state = 'complete', disposition = $disposition, reason = $reason,
+    parse_issues = $parse_issues, summary = $summary
 WHERE id = $derivation_id;
 
 -- PREP: graph_referrers_candidates

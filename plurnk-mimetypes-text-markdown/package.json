@@ -15,7 +15,7 @@
         "handlers": [
             {
                 "name": "text/markdown",
-                "revision": "1",
+                "revision": "2",
                 "glyph": "📝",
                 "extensions": [
                     ".md",

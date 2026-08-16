@@ -170,6 +170,41 @@ test("{§scheme-catalog-parse-issues} catalog quietly marks parser recovery with
     } finally { await db.close(); }
 });
 
+test("{§scheme-catalog-summary} catalog projects a bounded summary on only its exact markdown channel", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `manifest-summary-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "what's available?");
+        const long = "x".repeat(300);
+        const entryId = await seedEntryWithChannel(db, {
+            workspaceId,
+            scheme: "worker",
+            pathname: "/tool.md",
+            channel: "body",
+            content: `# Tool\n\n## Summary\n\n${long}\n\n## Invocation\n\nDetails.`,
+            mimetype: "text/markdown",
+        });
+        await db.test_seed_channel.run({
+            entry_id: entryId,
+            name: "notes",
+            content: "No summary here.",
+            mimetype: "text/markdown",
+            state: "static",
+        });
+
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const provider = new Mock({ contextWindow: 100000, responses: [indexingTurn] });
+        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+
+        const catalog = await EntryManifest.catalogRowsFor(makeSchemeCtx({ db, workspaceId, workerId }));
+        const tool = catalog.find(([channel]) => channel.path === "worker:///tool.md");
+        assert.equal([...tool![0].summary!].length, 256);
+        assert.equal(tool![0].summary, `${"x".repeat(255)}…`);
+        assert.equal("summary" in tool![1]!, false, "one channel's summary never labels a sibling channel");
+    } finally { await db.close(); }
+});
+
 test("a JSON entry large enough to tile builds through the live embedder — the every-worker crash, end-to-end", async () => {
     const db = await openMigrated();
     try {

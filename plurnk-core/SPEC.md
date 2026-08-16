@@ -1499,9 +1499,15 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   contains one nonempty, flat channel array per resource. Element `[0]` is always
   the default channel and carries the bare resource path; later elements carry
   their complete `path#channel` addresses. Each channel is
-  `{ path, mimetype, weight, lines, parseIssues? }`; `parseIssues` is the
+  `{ path, mimetype, weight, lines, summary?, parseIssues? }`; `parseIssues` is the
   positive-only advisory projection of `{§mimetype-parse-issues}` for the exact
-  channel derivation under `{§scheme-catalog-parse-issues}`. Resource-level `stream` and broad-match
+  channel derivation under `{§scheme-catalog-parse-issues}`.
+
+  §scheme-catalog-summary **Catalog summary.** `summary` is the exact channel
+  derivation's `{§mimetype-summary}` clipped to at most 256 Unicode code points
+  including a visible terminal ellipsis; absent metadata is omitted.
+
+  Resource-level `stream` and broad-match
   `matchLocationCount` live only on `[0]`. A single-channel resource is therefore
   a one-element array, with no path-owning wrapper or duplicated channel map.
   A terminal single-star path scope is a one-level map: direct entries retain
@@ -2604,11 +2610,12 @@ identity, and terminal disposition without exposing raw bytes or a base64 lane.
 
 §derivation-dedup-parallel **The index dedups then parallelizes.** The derivation identity hashes the exact READ channel representation, mimetype, reader behavior, embedding configuration, and applicable search exclusion. A channel or log projection attaches the immutable artifact only after it is complete; identical projections therefore share one FTS row, one symbol graph, and one vector set without copying. Distinct artifacts run with bounded producer concurrency (`PLURNK_SERVICE_DERIVE_CONCURRENCY`). Pending artifacts sort by readable content length before entering that pool, so small resources start first while every outlier still derives fully. Unset uses a host-relative square-root fan-out; a positive integer is an exact operator budget and `-1` claims every core. Token-count and embedding batches retain only a pool-sized promise window; graph persistence writes at most `PLURNK_SERVICE_DERIVE_STORE_BATCH` definitions or references per SQLite statement. Every representation completed by a successful pass attaches a terminal classified artifact, identically at concurrency 1 and N. Multi-item warming reports aggregate milestones and heartbeat notices according to `PLURNK_SERVICE_DERIVE_PROGRESS_STEPS` and `PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS`.
 
-The artifact also retains a positive `{§mimetype-parse-issues}` count when the
-exact parsed channel reported one. It remains advisory alongside a normally
-completed semantic disposition; zero and unavailable evidence persist as
-absence. Catalog projection attaches it only to that channel, never to a sibling
-whose content the artifact does not describe.
+The artifact also retains a positive `{§mimetype-parse-issues}` count and the
+full normalized `{§mimetype-summary}` when the exact parsed channel reported
+either. Both remain advisory alongside a normally completed semantic
+disposition; zero, empty, and unavailable evidence persist as absence. Catalog
+projection attaches either only to that channel, never to a sibling whose
+content the artifact does not describe.
 
 Every completed artifact records one terminal disposition: `vector`, `lexical`
 (only no embedder or an operator size ceiling), `excluded` (the configured

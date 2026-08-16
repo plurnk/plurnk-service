@@ -335,7 +335,7 @@ function topLevel(a, b) [50-60]
 
 ## §mimetype-channel-selection 5. Channel selection
 
-`Mimetypes.process(input, { channels?, parseIssues? })` materializes exactly the requested channels and inspection evidence:
+`Mimetypes.process(input, { channels?, parseIssues?, summary? })` materializes exactly the requested channels and inspection evidence:
 
 ```ts
 type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "embedding";
@@ -343,7 +343,7 @@ type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "
 
 - **Default set: `symbols`, `deepJson`, `deepXml`, `references`, `content`** (five). `content` performs no model inference ({§mimetype-content}); `embedding` does and must be requested explicitly ({§mimetype-embedding}).
 - **Unrequested channels are not computed and their fields are absent** from `ProcessResult`. A channel an entry legitimately lacks (flat text has no deep tree) comes back *present but empty* (`[]` / `null` / `""`) — absence means "not asked," emptiness means "asked, nothing there."
-- **`channels: []` is valid** — metadata only (`mimetype`, `ok`, `totalLines`), with no projection parse unless `parseIssues: true` independently requests parser-recovery evidence.
+- **`channels: []` is valid** — metadata only (`mimetype`, `ok`, `totalLines`), with no projection parse unless `parseIssues: true` or `summary: true` independently requests its owning inspection evidence.
 - The default deep-xml projection consumes one deep-json result, then lazily falls back to one symbol outline. Already-requested dependency results are reused; dependencies computed only for `deepXml` remain unexposed.
 
 Current plurnk-service consumers:
@@ -353,7 +353,7 @@ Current plurnk-service consumers:
 | Entry extent                       | `process(..., { channels: [] })`                        |
 | Landed mutation inspection         | `process(..., { channels: [], parseIssues: true })`     |
 | Readable content projection        | `process(..., { channels: ["content"] })`               |
-| Search-index structural derivation | `process(..., { channels: ["symbols", "references"] })` |
+| Search-index structural derivation | `process(..., { channels: ["symbols", "references"], summary: true })` |
 | Content matcher                    | `query(...)`; not a `process()` channel request         |
 | Query-text embedding               | `process(..., { channels: ["embedding"] })`             |
 | Bulk corpus embedding              | `embedBatch(...)`                                       |
@@ -373,6 +373,17 @@ both explicit error nodes and parser-inserted missing nodes. Parser execution
 and handler defects retain the ordinary hard-failure policy rather than being
 misreported as source issues.
 
+§mimetype-summary **A summary is optional handler-owned document metadata.**
+`process(..., { summary: true })` invokes `BaseHandler.summary(content)` and
+returns a nonempty result as `ProcessResult.summary`; an absent or
+whitespace-only result is omitted. The framework collapses whitespace and
+trims the value into one line but does not summarize, truncate, or interpret
+the source. The default handler supplies no summary. For `text/markdown`, the
+summary is the first paragraph directly beneath the first exact semantic H2
+named `Summary`, before any subsequent heading; headings inside code and every
+other heading name or depth are inert. Callers own any bounded presentation of
+this full derived fact.
+
 ## §mimetype-validation 6. `validate`
 
 Default: no-op. Override only for mimetypes with a real syntax check that can fail (e.g., `application/json` throws on malformed JSON).
@@ -391,6 +402,7 @@ The exported `ProcessResult` type owns the executable field shape.
 | `mimetype`, `ok`, `totalLines`       | Present on every returned result.                                                                  |
 | Projection channel fields            | Requested only; absence differs from an honest empty projection ({§mimetype-channel-selection}).   |
 | `parseIssues`                         | Present only as a positive parser-recovery count from requested structural work.                    |
+| `summary`                             | Present only as a nonempty normalized line from requested handler summary inspection.               |
 | `grammarMissing`, `embeddingMissing` | Present only for the corresponding non-strict degradation.                                         |
 | `embeddingModel`                     | Present only when the returned vector carries a model-space identity.                              |
 | `notices`                            | Present only when a successful result carries one or more non-fatal degradations ({§notice}).      |
@@ -691,8 +703,9 @@ failure truth.
 
 ## §mimetype-channel-architecture 12. Channel architecture
 
-`ProcessResult` carries up to six caller-selected channels
-({§mimetype-channel-selection}). The four structural channels are:
+`ProcessResult` carries up to six caller-selected channels plus optional
+summary inspection metadata ({§mimetype-channel-selection}). The four
+structural channels are:
 
 ### 12.1 The channels
 

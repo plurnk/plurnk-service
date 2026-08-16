@@ -82,6 +82,7 @@ export interface EntryCatalogChannel {
     readonly mimetype: string;
     readonly weight: number;
     readonly lines: number;
+    readonly summary?: string;
     readonly parseIssues?: number;
 }
 

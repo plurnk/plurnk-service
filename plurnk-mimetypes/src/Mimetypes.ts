@@ -48,6 +48,7 @@ const HANDLER_METHODS = [
     "content",
     "validate",
     "parseIssues",
+    "summary",
     "projectionConfiguration",
     "query",
     "symbolsRaw",
@@ -95,6 +96,9 @@ export interface ProcessOptions {
     // Request parser-recovery evidence independently of structural channel
     // materialization ({§mimetype-parse-issues}).
     parseIssues?: boolean;
+    // Request optional handler-owned document summary metadata independently
+    // of projection channels ({§mimetype-summary}).
+    summary?: boolean;
     // A missing grammar normally returns explicit empty structural channels;
     // strict mode throws instead ({§mimetype-error-policy}).
     strict?: boolean;
@@ -110,6 +114,8 @@ export interface ProcessResult {
     grammarMissing?: string;
     // Positive parser-recovery count from requested inspection.
     parseIssues?: number;
+    // Nonempty normalized handler-owned document summary from requested inspection.
+    summary?: string;
 
     // Projection fields are present iff requested.
     // Structured definitions and outline source.
@@ -478,14 +484,16 @@ export default class Mimetypes {
         let references: MimeRef[] | undefined;
         let contentValue: string | undefined;
         let rawParseIssues: number | undefined;
+        let rawSummary: string | undefined;
         let deepXml: string | undefined;
         try {
-            [symbols, deepJsonValue, references, contentValue, rawParseIssues] = await Promise.all([
+            [symbols, deepJsonValue, references, contentValue, rawParseIssues, rawSummary] = await Promise.all([
                 channels.has("symbols") ? handler.extractRaw(content) : undefined,
                 needsDeepJson ? handler.deepJson(content) : undefined,
                 channels.has("references") ? handler.references(content) : undefined,
                 channels.has("content") ? handler.content(content) : undefined,
                 needsParseIssues ? handler.parseIssues(content) : undefined,
+                options.summary === true ? handler.summary(content) : undefined,
             ]);
             if (channels.has("deepXml")) {
                 deepXml = usesDefaultDeepXml
@@ -511,12 +519,14 @@ export default class Mimetypes {
             ? await this.#embeddings.embedFor(content, handler, options.strict === true)
             : {};
         const parseIssues = normalizeParseIssues(rawParseIssues, mimetype);
+        const summary = normalizeSummary(rawSummary, mimetype);
 
         return attachNotices({
             mimetype,
             ok: true,
             totalLines,
             ...(parseIssues === undefined ? {} : { parseIssues }),
+            ...(summary === undefined ? {} : { summary }),
             ...(channels.has("symbols") && { symbols }),
             ...(channels.has("deepJson") && { deepJson: deepJsonValue }),
             ...(channels.has("deepXml") && { deepXml }),
@@ -797,6 +807,17 @@ function normalizeParseIssues(value: number | undefined, mimetype: string): numb
         );
     }
     return value;
+}
+
+function normalizeSummary(value: string | undefined, mimetype: string): string | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== "string") {
+        throw new TypeError(
+            `Invalid summary result for ${mimetype}: expected a string or undefined; got ${typeof value}`,
+        );
+    }
+    const normalized = value.replaceAll(/\s+/gu, " ").trim();
+    return normalized === "" ? undefined : normalized;
 }
 
 // One metadata-only returned-error shape ({§mimetype-error-policy}).

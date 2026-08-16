@@ -65,6 +65,13 @@ export default class BaseHandler {
         return 0;
     }
 
+    // Optional semantic document summary. The orchestrator requests and
+    // normalizes it independently of structural projections
+    // ({§mimetype-summary}).
+    summary(_content: HandlerContent): string | undefined | Promise<string | undefined> {
+        return undefined;
+    }
+
     // Canonical effective settings that can change projection output
     // ({§mimetype-projection-identity}).
     projectionConfiguration(): string | Promise<string> {

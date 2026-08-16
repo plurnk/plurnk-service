@@ -27,6 +27,7 @@ type ManifestRow = {
     close_status: number | null;
     deep_hash: string | null;
     parse_issues: number | null;
+    summary: string | null;
 };
 
 export type StreamLifecycle = EntryStreamLifecycle;
@@ -40,6 +41,16 @@ type CatalogEntryState = {
     defaultChannel: string;
     stream?: StreamLifecycle;
     channels: CatalogChannel[];
+};
+
+const CATALOG_SUMMARY_CODE_POINTS = 256;
+
+const catalogSummary = (value: string | null): string | undefined => {
+    if (value === null) return undefined;
+    const points = [...value];
+    return points.length <= CATALOG_SUMMARY_CODE_POINTS
+        ? value
+        : `${points.slice(0, CATALOG_SUMMARY_CODE_POINTS - 1).join("")}…`;
 };
 
 export default class EntryManifest {
@@ -92,11 +103,13 @@ export default class EntryManifest {
             const channelPath = row.channel === entry.defaultChannel
                 ? entry.path
                 : `${entry.path}#${PathSyntax.escapeTarget(row.channel)}`;
+            const summary = catalogSummary(row.summary);
             entry.channels.push({
                 path: channelPath,
                 mimetype: row.mimetype,
                 weight: weigh(row.content),
                 lines: totalLines,
+                ...(summary === undefined ? {} : { summary }),
                 ...(row.parse_issues !== null
                     ? { parseIssues: row.parse_issues }
                     : {}),

@@ -202,6 +202,39 @@ describe("TextMarkdown", () => {
         assert.equal(await h.deepJson(new Uint8Array([1, 2, 3])), null);
     });
 
+    it("{§mimetype-summary}: derives the first paragraph directly under the first exact Summary H2", () => {
+        const h = new TextMarkdown(metadata);
+        const source = [
+            "# Tool",
+            "",
+            "## Summary",
+            "",
+            "Read one issue and its",
+            "discussion.",
+            "",
+            "A second paragraph is detailed documentation.",
+            "",
+            "## Invocation",
+            "",
+            "Use JSON arguments.",
+        ].join("\n");
+        assert.equal(h.summary(source), "Read one issue and its\ndiscussion.");
+    });
+
+    it("{§mimetype-summary}: ignores non-exact, nested, fenced, and paragraph-less Summary headings", () => {
+        const h = new TextMarkdown(metadata);
+        assert.equal(h.summary("# Summary\n\nWrong depth."), undefined);
+        assert.equal(h.summary("### Summary\n\nWrong depth."), undefined);
+        assert.equal(h.summary("## summary\n\nWrong case."), undefined);
+        assert.equal(h.summary("```md\n## Summary\n\nFenced.\n```"), undefined);
+        assert.equal(h.summary("## Summary\n\n### Detail\n\nNot direct."), undefined);
+    });
+
+    it("{§mimetype-summary}: recognizes a semantic setext H2", () => {
+        const h = new TextMarkdown(metadata);
+        assert.equal(h.summary("Summary\n-------\n\nA compact description."), "A compact description.");
+    });
+
     it("{§mimetype-channel-architecture}: jsonpath queries the deep-json markdown AST", async () => {
         const h = new TextMarkdown(metadata);
         const src = ["# Top", "", "## Section", "", "### Sub"].join("\n");

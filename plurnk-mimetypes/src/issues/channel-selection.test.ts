@@ -35,6 +35,7 @@ const INFO: HandlerInfo = {
 class StructuredHandler extends BaseHandler {
     static extractCalls = 0;
     static deepJsonCalls = 0;
+    static summaryCalls = 0;
     override extractRaw(): MimeSymbol[] {
         StructuredHandler.extractCalls += 1;
         return [{ name: "Thing", kind: "class", line: 2, endLine: 9 }];
@@ -42,6 +43,10 @@ class StructuredHandler extends BaseHandler {
     override deepJson(): unknown {
         StructuredHandler.deepJsonCalls += 1;
         return { type: "root", line: 1, endLine: 9 };
+    }
+    override summary(): string {
+        StructuredHandler.summaryCalls += 1;
+        return "  A summary\nwith whitespace.  ";
     }
 }
 
@@ -77,6 +82,7 @@ describe("{§mimetype-channel-selection} — C1: channel selection semantics", (
     it("channels: [] is metadata-only and pays no extraction", async () => {
         StructuredHandler.extractCalls = 0;
         StructuredHandler.deepJsonCalls = 0;
+        StructuredHandler.summaryCalls = 0;
         const m = makeMimetypes();
         const r = await m.process({ path: "a.tst", content: "a\nb\nc" }, { channels: [] });
         assert.deepEqual(r, {
@@ -86,6 +92,19 @@ describe("{§mimetype-channel-selection} — C1: channel selection semantics", (
         });
         assert.equal(StructuredHandler.extractCalls, 0);
         assert.equal(StructuredHandler.deepJsonCalls, 0);
+        assert.equal(StructuredHandler.summaryCalls, 0);
+    });
+
+    it("summary inspection is explicit, normalized, and independent of projection channels", async () => {
+        StructuredHandler.summaryCalls = 0;
+        const m = makeMimetypes();
+        const r = await m.process(
+            { path: "a.tst", content: "x" },
+            { channels: [], summary: true },
+        );
+        assert.equal(r.summary, "A summary with whitespace.");
+        assert.equal(StructuredHandler.summaryCalls, 1);
+        assert.equal("symbols" in r, false);
     });
 
     it("unrequested deepJson is still computed internally (not exposed) when deepXml needs it", async () => {
