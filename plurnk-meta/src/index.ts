@@ -48,7 +48,6 @@ export interface PluginAttributionSource {
 }
 
 const SCHEME_TEACHING = Object.freeze({
-    log: "docs/log.md",
     worker: "docs/worker.md",
 } as const);
 

@@ -216,8 +216,8 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.match(log, /"path":"log:\/\/\/[^"]+\/FIND"/, "the catalog foist appears as a FIND op in the log address");
         assert.match(
             log,
-            /\d+:## FIND0 \[\+init,\+tools\] \(worker:\/\/plurnk\/tools\/\*\.md\) <1,-1>\n\d+:\n\d+:## SEND0 \[102\]\n\d+:Next, address the prompt\./,
-            "the turn-0 initialization teaches tool discovery before SEND[102]",
+            /\d+:## FIND0 \[\+init,\+tools\] \(worker:\/\/plurnk\/tools\/\*\.md\) <1,-1>\n\d+:\n\d+:## FIND0 \[\+init\] \(\*\)/,
+            "the turn-0 initialization teaches tool discovery before the workspace file survey",
         );
 
     } finally {

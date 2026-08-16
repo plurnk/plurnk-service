@@ -213,19 +213,19 @@ export default class PacketWire {
         ];
     }
 
-    // Number a non-READ body line as `<N>:<line>` — a bare `N:` prefix, NO separator whitespace
+    // Number a non-READ body line as `<N>:<line>` — `N:` followed by NO separator whitespace
     // ({§render-rule-line-navigable-prefix}): the leading digit prevents column-zero fence collisions and gives
     // the model line refs for free (`## READ0 (...) <42-46>`), while the absence of any separator means a
     // reproduced line has nothing between `N:` and the content to copy — the hard-tab separator used
     // to leak into edit bodies and corrupt indentation. The content's OWN leading whitespace is
-    // content, preserved verbatim.
-    // Used for READ@200 content; index-preview numbering is the framework's
-    // job now (baked into the preview string).
-    static #numberLines(body: string, start = 1): string {
+    // content, preserved verbatim. Generated FIND rows may left-pad N to the
+    // complete result-set width so every page keeps one stable content column.
+    static #numberLines(body: string, start = 1, width = 0): string {
         let line = start;
-        return `${line++}:${body.replace(
+        const prefix = (): string => `${String(line++).padStart(width, " ")}:`;
+        return `${prefix()}${body.replace(
             /(\r\n|\r(?!\n)|\n)(?=[\s\S])/g,
-            (separator) => `${separator}${line++}:`,
+            (separator) => `${separator}${prefix()}`,
         )}`;
     }
 
@@ -238,13 +238,14 @@ export default class PacketWire {
         startLine: number | null = 1,
         lineAnchors: readonly string[] | null = null,
         lineNumberWidth: number | null = null,
+        numericLineNumberWidth = 0,
     ): string {
         if (content.length === 0) return "";
         // `startLine === null` means the producer already supplied numbered
         // content; re-numbering would duplicate its coordinates.
         const rendered = startLine !== null
             ? lineAnchors === null
-                ? PacketWire.#numberLines(content, startLine)
+                ? PacketWire.#numberLines(content, startLine, numericLineNumberWidth)
                 : LineAnchors.render(content, startLine, lineAnchors, lineNumberWidth ?? 0)
             : content;
         return PacketWire.#quoteBody(rendered);
@@ -293,7 +294,7 @@ export default class PacketWire {
     }
 
     // {§jsonplurnk} One deliberately raw multiline JSON string. The physical
-    // newline after the opening quote and every positive numeric or anchored coordinate prefix
+    // newline after the opening quote and every positive numeric (optionally left-padded) or anchored coordinate prefix
     // make the closing quote at column zero unambiguous without an invented
     // delimiter for source text to imitate. Already-numbered producer output is
     // checked here too: malformed bodies fail at the one projection boundary.
@@ -302,7 +303,7 @@ export default class PacketWire {
         const lines = body.split(/\r\n|\r|\n/);
         const contentLines = endsWithLineBreak ? lines.slice(0, -1) : lines;
         if (contentLines.length === 0 || contentLines.some((line) =>
-            !/^[1-9]\d*:/.test(line) && !LineAnchors.isAnchoredLine(line))) {
+            !/^ *[1-9]\d*:/.test(line) && !LineAnchors.isAnchoredLine(line))) {
             throw new TypeError("A raw jsonplurnk body requires a positive coordinate prefix on every physical line.");
         }
         return `"\n${body}${endsWithLineBreak ? "" : "\n"}"`;
@@ -705,13 +706,19 @@ export default class PacketWire {
             }
             const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;
             const lineNumberWidth = op === "READ" ? e.lineNumberWidth ?? null : null;
+            const findRange = op === "FIND" && meta.range !== null && typeof meta.range === "object"
+                ? meta.range as RangeExtent
+                : null;
+            const bodyStartLine = findRange?.returned?.[0] ?? fullBody.startLine;
+            const numericLineNumberWidth = findRange === null ? 0 : String(findRange.total).length;
             const body = emptyFind || projection.text.length === 0
                 ? ""
                 : PacketWire.#renderContentBody(
                     projection.text,
-                    fullBody.startLine,
+                    bodyStartLine,
                     lineAnchors,
                     lineNumberWidth,
+                    numericLineNumberWidth,
                 );
 
             // tokens on EVERY row (0 when there's genuinely no body) so the model can always weigh

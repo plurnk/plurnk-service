@@ -23,7 +23,6 @@ test("required built-in corpus absence rejects workspace doc materialization wit
     const root = await corpusRoot();
     const db = await openMigrated();
     try {
-        await writeFile(join(root, TEACHING_CORPUS.schemeDocs.log), "# log\n");
         const schemes = new SchemeRegistry({ readTeaching: teachingCorpusReader(root) });
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, `teaching-absent-${crypto.randomUUID()}`);
@@ -47,7 +46,6 @@ test("a failed required corpus read is not reclassified as optional absence", as
     const root = await corpusRoot();
     const db = await openMigrated();
     try {
-        await writeFile(join(root, TEACHING_CORPUS.schemeDocs.log), "# log\n");
         await mkdir(join(root, TEACHING_CORPUS.schemeDocs.worker));
         const schemes = new SchemeRegistry({ readTeaching: teachingCorpusReader(root) });
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
@@ -72,7 +70,6 @@ test("questions teaching is required exactly when the workspace admits that capa
     const root = await corpusRoot();
     const db = await openMigrated();
     try {
-        await writeFile(join(root, TEACHING_CORPUS.schemeDocs.log), "# log\n");
         await writeFile(join(root, TEACHING_CORPUS.schemeDocs.worker), "# worker\n");
         const schemes = new SchemeRegistry({ readTeaching: teachingCorpusReader(root) });
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });

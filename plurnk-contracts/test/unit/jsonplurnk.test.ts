@@ -73,6 +73,17 @@ test("jsonplurnk: numbered body lines may begin at any selected source line", ()
     assert.equal(parsed[0].body, "900:first selected line\n901:second selected line\n");
 });
 
+test("jsonplurnk: numeric coordinates may be left-padded for stable result alignment", () => {
+    const block = `[
+{"op":"FIND","path":"log:///1/1/1/FIND","display":"open","body":"
+  9:first result
+ 10:second result
+"}
+]`;
+    const parsed = Jsonplurnk.parse(block) as any[];
+    assert.equal(parsed[0].body, "  9:first result\n 10:second result\n");
+});
+
 test("jsonplurnk: anchored READ lines tolerate alignment spaces before the visible line number", () => {
     const block = `[
 {"op":"READ","path":"log:///1/1/1/READ","display":"open","body":"

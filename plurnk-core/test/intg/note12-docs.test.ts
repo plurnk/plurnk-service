@@ -22,8 +22,10 @@ test("{§schemes-directory}: teach() pushes an example while docs() carries the 
     assert.match(teaching, /## READ0 \(docstub:\/\/\/x\)/, "the scheme's canonical example is its bare heading (no bullet, no redundant scheme prefix — the example self-documents)");
     assert.doesNotMatch(teaching, /\(docs:/, "pull references are discovered rather than linked in the pushed catalog");
 
-    const stub = (await registry.docs()).find((d) => d.name === "docstub");
+    const docs = await registry.docs();
+    const stub = docs.find((d) => d.name === "docstub");
     assert.equal(stub?.content, "# docstub\nFuller reference content.", "docs() carries the content for materialization at worker://plurnk/docs/<name>.md");
+    assert.equal(docs.some(({ name }) => name === "log" || name === "prompt"), false, "self-evident log and prompt resources add no redundant pull docs");
 
     // A scheme with no example (provisional, e.g. skill) is omitted from the directory entirely.
     assert.doesNotMatch(teaching, /skill:\/\/\//, "a provisional scheme with no example is omitted from the directory");

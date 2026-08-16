@@ -787,8 +787,8 @@ export default class TurnRunner {
         await this.#warmWorkspace(systemCtx, true, false);
 
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
-        // Five FIND surveys foisted into the worker's first model turn establish the project,
-        // commons, private, documentation, and executable-tool surfaces in that order. Their
+        // Five FIND surveys foisted into the worker's first model turn establish the executable-tool,
+        // project, commons, private, and documentation surfaces in that order. Their
         // `init` classification lets the model curate this opening survey as one log set.
         if (seq === 1) {
             // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
@@ -800,6 +800,14 @@ export default class TurnRunner {
                 const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
                 await Owner.kernelId(this.#db, workspaceId);
                 const surveys: Array<{ statement: FindStatement; exemplar: string }> = [
+                    {
+                        statement: {
+                            op: "FIND", suffix: "", signal: ["+init", "+tools"],
+                            target: { kind: "url", raw: "worker://plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/tools/*.md", query: null, fragment: null },
+                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                        },
+                        exemplar: "## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>",
+                    },
                     {
                         statement: {
                             op: "FIND", suffix: "", signal: ["+init"],
@@ -834,14 +842,6 @@ export default class TurnRunner {
                         },
                         exemplar: "## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>",
                     },
-                    {
-                        statement: {
-                            op: "FIND", suffix: "", signal: ["+init", "+tools"],
-                            target: { kind: "url", raw: "worker://plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/tools/*.md", query: null, fragment: null },
-                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-                        },
-                        exemplar: "## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>",
-                    },
                 ];
                 for (const { statement, exemplar } of surveys) {
                     await this.#dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
@@ -855,7 +855,7 @@ export default class TurnRunner {
             // so the grammar can stay thin.
             if (workerFirstLoop) {
                 const initialization = [
-                    "# PLAN0\n* Initialization complete.\n* Next: address the prompt.",
+                    "# PLAN0\n* Discover the tooling available and survey the workspace file root.",
                     ...turnZeroMoves,
                     "## SEND0 [102]\nNext, address the prompt.",
                 ].join("\n\n");

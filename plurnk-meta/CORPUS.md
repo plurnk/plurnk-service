@@ -10,7 +10,7 @@ Authored defaults published by `@plurnk/plurnk-meta` and consumed by
 | ------------------------------- | ---------------------------------------------------------------------------- |
 | `PLURNK_PERSONALITY.md`         | Read before the first-run seed of user-owned `~/.plurnk/AGENTS.md`.          |
 | `requirements.md`               | Read for the compact Recap rendered last in every model packet.              |
-| `docs/log.md`, `docs/worker.md` | Read when registered built-in pull docs are materialized.                    |
+| `docs/worker.md`                | Read when registered built-in pull docs are materialized.                    |
 | `docs/questions.md`             | Read only when operator questions are enabled, then materialized as a doc.   |
 
 Core materializes eligible pull docs at `worker://plurnk/docs/<name>.md` and

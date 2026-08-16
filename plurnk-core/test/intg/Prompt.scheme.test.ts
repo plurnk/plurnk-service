@@ -23,6 +23,7 @@ test("prompt:// scheme manifest: engine-authored, model-READ-ONLY, body channel,
     assert.ok(!Prompt.manifest.writableBy.includes("model"), "the model never writes prompt:// — it is engine-authored");
     assert.ok(Prompt.manifest.writableBy.includes("client"));
     assert.ok(Prompt.manifest.writableBy.includes("plurnk"));
+    assert.equal(Prompt.manifest.documentation, undefined, "prompt:// needs no redundant pull document");
 });
 
 test("the engine writes prompt:///<loop>/<N> owner-keyed; each worker READs only ITS OWN frame at the shared coordinate", async () => {

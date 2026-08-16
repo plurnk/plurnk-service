@@ -19,7 +19,6 @@ test("teaching corpus: the meta owner publishes one exact immutable membership",
         personality: "PLURNK_PERSONALITY.md",
         requirements: "requirements.md",
         schemeDocs: {
-            log: "docs/log.md",
             worker: "docs/worker.md",
         },
         questions: "docs/questions.md",

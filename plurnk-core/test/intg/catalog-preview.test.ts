@@ -190,8 +190,8 @@ test("the turn-0 initialization mirrors the REAL foisted survey — dynamic, not
                 // DSL and framed PLAN → SEND. Not a frozen print: feed-as-turn-0, show-in-turn-1 are one act.
                 assert.match(
                     content,
-                    /^# PLAN0\n\* Initialization complete\.\n\* Next: address the prompt\./,
-                    "opens with initialized state and the next priority",
+                    /^# PLAN0\n\* Discover the tooling available and survey the workspace file root\./,
+                    "opens with the concrete orientation work",
                 );
                 assert.match(content, /## FIND0 \[\+init\] \(worker:\/\/\/\*\)/, "the classified markerless shallow survey is rendered back to DSL");
                 assert.doesNotMatch(content, /## FIND0 \[\+init\] \(worker:\/\/\/\*\) </, "the ordinary survey does not teach an explicit all-results scope");
@@ -220,14 +220,14 @@ test("an empty workspace executes all five orienting FINDs and preserves empty-s
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const finds = rows.filter((r) => r.op === "FIND");
                 assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
+                    { scheme: "worker", hostname: "plurnk", pathname: "/tools/*.md" },
                     { scheme: null, hostname: null, pathname: "*" },
                     { scheme: "worker", hostname: null, pathname: "/*" },
                     { scheme: "worker", hostname: "~", pathname: "/*" },
                     { scheme: "worker", hostname: "plurnk", pathname: "/docs/**" },
-                    { scheme: "worker", hostname: "plurnk", pathname: "/tools/*.md" },
                 ], "the five surveys execute in their taught order");
                 assert.deepEqual(finds.map(({ signal }) => JSON.parse(signal ?? "null")), [
-                    ["+init"], ["+init"], ["+init"], ["+init", "+docs"], ["+init", "+tools"],
+                    ["+init", "+tools"], ["+init"], ["+init"], ["+init"], ["+init", "+docs"],
                 ]);
                 const orientations = [
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true],
@@ -252,8 +252,9 @@ test("an empty workspace executes all five orienting FINDs and preserves empty-s
                 const exemplar = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 const content = (JSON.parse(exemplar!.rx) as { content: string }).content;
                 assert.equal(content, `# PLAN0
-* Initialization complete.
-* Next: address the prompt.
+* Discover the tooling available and survey the workspace file root.
+
+## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>
 
 ## FIND0 [+init] (*)
 
@@ -262,8 +263,6 @@ test("an empty workspace executes all five orienting FINDs and preserves empty-s
 ## FIND0 [+init] (worker://~/*)
 
 ## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>
-
-## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>
 
 ## SEND0 [102]
 Next, address the prompt.`);
@@ -275,7 +274,7 @@ Next, address the prompt.`);
                     tagsBySequence.get(sequence)?.push(tag);
                 }
                 assert.deepEqual(finds.map(({ sequence }) => tagsBySequence.get(sequence)), [
-                    ["init"], ["init"], ["init"], ["docs", "init"], ["init", "tools"],
+                    ["init", "tools"], ["init"], ["init"], ["init"], ["docs", "init"],
                 ], "each FIND classifies its own durable log item; docs and tools retain the shared init set");
             } finally { ws.close(); }
         });

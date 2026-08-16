@@ -299,7 +299,7 @@ export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
             }
             const newline = block.indexOf("\n", at);
             const end = newline === -1 ? block.length : newline;
-            if (!/^(?:[1-9]\d*:|@[0-9A-Za-z]{5} +[1-9]\d*:)/.test(block.slice(at, end).replace(/\r$/, ""))) {
+            if (!/^(?: *[1-9]\d*:|@[0-9A-Za-z]{5} +[1-9]\d*:)/.test(block.slice(at, end).replace(/\r$/, ""))) {
                 throw new Error("jsonplurnk test helper found a raw body line without coordinates");
             }
             lines++;

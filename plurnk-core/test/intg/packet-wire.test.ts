@@ -520,6 +520,31 @@ test("log render: a matcher FIND exposes surgical coordinates", () => {
     assert.match(out, /"body":"\n1:\[\{"region":\{"startLine":143/);
 });
 
+test("{§render-rule-line-navigable-prefix}: FIND ordinals retain page coordinates and complete-result alignment", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/1/3",
+        origin: "model",
+        op: "FIND",
+        status: 200,
+        target: { scheme: "worker", pathname: "/**" },
+        tx: { body: null },
+        rx: {
+            content: '[{"path":"worker:///q.md"},\n{"path":"worker:///r.md"}]',
+            mimetype: "application/json",
+            range: {
+                unit: "resource",
+                total: 100,
+                requested: [17, 18],
+                returned: [17, 18],
+            },
+        },
+    }], tok);
+
+    assert.match(out, /\n 17:\[\{"path":"worker:\/\/\/q\.md"\},\n 18:\{"path":"worker:\/\/\/r\.md"\}\]\n/);
+    assert.doesNotMatch(out, /\n1:\[\{/,
+        "a later page never invents page-local result ordinals");
+});
+
 test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metadata owner", async () => {
     const region = { startLine: 2, startColumn: 1, endLine: 2, endColumn: 6 };
     const lineRegion = { startLine: 17, startColumn: 1, endLine: 18, endColumn: 1 };
@@ -980,7 +1005,7 @@ test("an open initialization row identifies kernel-authored initialization witho
         coordinate: "1/1/1", origin: "plurnk", op: null, status: 200, folded: false,
         attrs: { kind: "initialization" },
         rx: {
-            content: "# PLAN0\n* Initialization complete.\n* Next: address the prompt.\n\n## SEND0 [102]\nNext, address the prompt.",
+            content: "# PLAN0\n* Discover the tooling available and survey the workspace file root.\n\n## SEND0 [102]\nNext, address the prompt.",
             mimetype: "text/vnd.plurnk",
         },
     }], tok);

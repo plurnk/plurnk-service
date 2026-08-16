@@ -413,6 +413,11 @@ test("Daemon boot reconciles documentation for existing workspaces once", async 
         await daemon.start();
         const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "worker", prefix: "/docs/%" });
         assert.ok(docs.length > 0, "boot publishes the current installed documentation surface into an existing workspace");
+        assert.equal(
+            docs.some(({ pathname }) => pathname === "/docs/log.md" || pathname === "/docs/prompt.md"),
+            false,
+            "self-evident log and prompt schemes do not materialize redundant pull documentation",
+        );
         const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
         assert.ok(plurnkWorker !== undefined, "boot publication is authored by the workspace's reserved plurnk worker");
     } finally {

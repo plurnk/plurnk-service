@@ -47,6 +47,8 @@ Body content is character-perfect, including whitespace.
 | KILL | delete or terminate            | code?        | target, including log item | -              | -                           |
 | SEND | close turn with submit code    | code?        | recipient?                 | timeout, poll? | message                     |
 
+YOU SHOULD use purpose-built Plurnk OPs when possible; use EXEC for scripts only when necessary.
+
 * Files you create are tracked automatically.
 * OP results become visible only in a later turn.
 
