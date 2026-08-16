@@ -38,6 +38,7 @@ import {
 } from "./inputRequired.ts";
 import InteractiveOAuthProvider from "./oauth.ts";
 import { MCP_PROTOCOL_VERSION } from "./protocol.ts";
+import Subscriptions from "./subscriptions.ts";
 
 export interface ServerCatalog {
     readonly protocolVersion: typeof MCP_PROTOCOL_VERSION;
@@ -70,6 +71,7 @@ type ResolvedDefinition = ResolvedStdioDefinition | ResolvedHttpDefinition;
 
 export interface ServerConnectionOptions {
     readonly onCatalogChanged?: (error: Error | null) => void;
+    readonly onInfrastructureError?: (error: Error) => void;
 }
 
 export type { ClientInteractionHandler } from "./inputRequired.ts";
@@ -226,6 +228,7 @@ export class AuthorizationRequiredError extends Error {
 interface OpenClient {
     readonly client: Client;
     readonly transport: StdioClientTransport | StreamableHTTPClientTransport;
+    readonly subscriptions: Subscriptions;
 }
 
 const openClient = async (
@@ -273,6 +276,7 @@ const openClient = async (
                 : {}),
         },
     );
+    client.onerror = (error): void => options.onInfrastructureError?.(error);
     try {
         await client.connect(transport, {
             timeout: connectTimeoutMs(environ),
@@ -309,7 +313,14 @@ const openClient = async (
         await client.close();
         throw new Error(`MCP server did not negotiate required revision ${MCP_PROTOCOL_VERSION}.`);
     }
-    return { client, transport };
+    return {
+        client,
+        transport,
+        subscriptions: new Subscriptions(client, {
+            timeout: requestTimeoutMs(environ),
+            onError: options.onInfrastructureError,
+        }),
+    };
 };
 
 export default class ServerConnection {
@@ -357,12 +368,12 @@ export default class ServerConnection {
         }
     }
 
-    async connect(): Promise<Client> {
+    async #open(): Promise<OpenClient> {
         if (this.#closed) throw new Error(`MCP server '${this.#definition.name}' connection is closed.`);
         if (this.#pendingAuthorization !== undefined) {
             throw new AuthorizationRequiredError(this.#pendingAuthorization.authorizationUrl);
         }
-        if (this.#client !== undefined) return (await this.#client).client;
+        if (this.#client !== undefined) return this.#client;
         const transport = openTransport(this.#resolved);
         const pending = openClient(
             this.#resolved,
@@ -386,7 +397,11 @@ export default class ServerConnection {
             throw cause;
         });
         this.#client = pending;
-        return (await pending).client;
+        return pending;
+    }
+
+    async connect(): Promise<Client> {
+        return (await this.#open()).client;
     }
 
     async finishAuthorization(callbackUrl: string): Promise<void> {
@@ -409,10 +424,13 @@ export default class ServerConnection {
         await this.connect();
     }
 
-    async #request<T>(run: (client: Client) => Promise<T>): Promise<T> {
+    async #request<T>(
+        run: (client: Client, subscriptions: Subscriptions) => Promise<T>,
+    ): Promise<T> {
         this.#activeRequests += 1;
         try {
-            return await run(await this.connect());
+            const { client, subscriptions } = await this.#open();
+            return await run(client, subscriptions);
         } finally {
             this.#activeRequests -= 1;
         }
@@ -509,18 +527,21 @@ export default class ServerConnection {
         signal?: AbortSignal,
         interact?: ClientInteractionHandler,
     ): Promise<ReadResourceResult> {
-        return this.#request(async (client) => runInputRequiredRequest<ReadResourceResult>({
-            server: this.#definition.name,
-            operation: "resources/read",
-            originalParams: { uri },
-            signal,
-            interact,
-            timeout: requestTimeoutMs(this.#environ),
-            requestLeg: (params, options, retry) => client.readResource(
-                params as ReadResourceRequest["params"],
-                retry ? { ...options, cacheMode: "refresh" } : options,
-            ) as Promise<ReadResourceResult | InputRequiredResult>,
-        }));
+        return this.#request(async (client, subscriptions) => {
+            await subscriptions.selectResource(uri);
+            return runInputRequiredRequest<ReadResourceResult>({
+                server: this.#definition.name,
+                operation: "resources/read",
+                originalParams: { uri },
+                signal,
+                interact,
+                timeout: requestTimeoutMs(this.#environ),
+                requestLeg: (params, options, retry) => client.readResource(
+                    params as ReadResourceRequest["params"],
+                    retry ? { ...options, cacheMode: "refresh" } : options,
+                ) as Promise<ReadResourceResult | InputRequiredResult>,
+            });
+        });
     }
 
     async getPrompt(
@@ -580,7 +601,26 @@ export default class ServerConnection {
         this.#pendingAuthorization = undefined;
         const closures: Promise<void>[] = [];
         if (client !== undefined) {
-            closures.push(client.then(({ client: connected }) => connected.close()));
+            closures.push(client.then(async ({ client: connected, subscriptions }) => {
+                const failures: unknown[] = [];
+                try {
+                    await subscriptions.close();
+                } catch (error) {
+                    failures.push(error);
+                }
+                try {
+                    await connected.close();
+                } catch (error) {
+                    failures.push(error);
+                }
+                if (failures.length === 1) throw failures[0];
+                if (failures.length > 1) {
+                    throw new AggregateError(
+                        failures,
+                        `MCP server '${this.#definition.name}' connection shutdown failed.`,
+                    );
+                }
+            }));
         }
         if (pending !== undefined) closures.push(pending.transport.close());
         const settled = await Promise.allSettled(closures);

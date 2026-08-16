@@ -31,7 +31,7 @@ scheme. There is no protocol downgrade or legacy fallback.
 | Completion | Negotiated server capability: `completion/complete` | Make prompt and resource-template completion available to the host interaction that owns the argument |
 | Pagination | Opaque cursors on list methods | Drain every page with a finite non-convergence guard; never publish a partial catalog as complete |
 | Caching | `server/discover`, list methods, and `resources/read` carry `ttlMs` and `cacheScope` | Honor freshness and notification invalidation; partition private entries by authorization context |
-| Subscriptions | `subscriptions/listen` plus acknowledged filters and correlated notifications | Use the unified stream for list changes and selected resources; re-listen after loss; never use the removed resource subscription methods |
+| Subscriptions | `subscriptions/listen` plus acknowledged filters and correlated notifications | Keep one current filter for list changes and resource URIs read into cache; overlap filter replacement, re-listen after loss, and never use the removed resource subscription methods |
 | Progress | Request-scoped `notifications/progress` | Project progress onto the owning Plurnk operation without creating an independent protocol lifecycle |
 | Cancellation | Per-request stream closure on HTTP; `notifications/cancelled` on stdio | Drive cancellation from the owning Plurnk abort signal and settle the same operation |
 | MRTR | `input_required` on `tools/call`, `resources/read`, or `prompts/get` | Fulfill supported input requests, echo opaque `requestState` byte-for-byte, and retry only the originating request with a fresh JSON-RPC ID |
@@ -211,7 +211,7 @@ workspace attachment. The host does not reproduce SDK protocol machinery.
 | Task handle | Keeps the original EXEC stream active, follows `tasks/get` and selected Task notifications, and settles that same stream with the terminal result or error. |
 | Task input | Routes through the operation's client interaction, then sends `tasks/update`; it never asks the model to manufacture protocol state. |
 | Task cancellation | The owning EXEC cancellation invokes `tasks/cancel` before settling the ordinary stream cancellation. |
-| List/resource invalidation | Invalidates the SDK cache and atomically refreshes the attachment snapshot; private cache entries remain authorization-partitioned. |
+| List/resource invalidation | List changes invalidate SDK catalogs and atomically refresh the attachment snapshot. Updates to selected resource URIs invalidate their SDK cache entries; private entries remain authorization-partitioned. |
 | Prompt get / completion | Serves ordinary resource-authority reads and host interactions from negotiated prompt/template definitions; no prompt becomes an executable tool. |
 
 The general executor interaction contract, not this package, owns client

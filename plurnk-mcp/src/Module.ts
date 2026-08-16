@@ -361,6 +361,9 @@ export default class Module {
                 }
                 this.#scheduleCatalogRefresh(workspaceId, definition.name);
             },
+            onInfrastructureError: (error) => {
+                console.error(`MCP server '${definition.name}' infrastructure failure:`, error);
+            },
         });
         const executor = new McpExecutor(
             { runtime: definition.name, glyph: "🔌" },
