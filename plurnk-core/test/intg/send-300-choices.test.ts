@@ -54,7 +54,7 @@ test("{§send-300-choices}: SEND[300] stops the world and the accepted body beco
         const optional = packet.sections?.find((section) => section.name === "optional-operations");
         assert.equal(optional?.header, "Enabled Optional Operations");
         assert.match(optional?.content ?? "", /## SEND0 \[300\]/, "the enabled question example is separate from executable selectors");
-        assert.doesNotMatch(packet.sections?.find((section) => section.name === "tools")?.content ?? "", /## SEND0 \[300\]/);
+        assert.equal(packet.sections?.some((section) => section.name === "tools"), false);
     } finally { await db.close(); }
 }); });
 
@@ -193,17 +193,17 @@ test("PLURNK_QUESTIONS=0 is a servicewide ceiling — the client's request canno
     }
 });
 
-test("the teaching injects ONLY where enabled — docEntries carries questions.md for the requesting workspace, not the default one", async () => {
+test("the teaching injects ONLY where enabled — referenceEntries carries questions.md for the requesting workspace, not the default one", async () => {
     const db = await openMigrated();
     try {
         const off = await insertWorkspace(db, `qdoc-off-${crypto.randomUUID()}`);
         const on = await insertWorkspace(db, `qdoc-on-${crypto.randomUUID()}`);
         await enableQuestions(db, on);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const offDocs = await engine.docEntries(off);
-        const onDocs = await engine.docEntries(on);
-        assert.ok(!offDocs.some((d) => d.name === "questions"), "an un-enabled workspace is never taught the op it can't use");
-        assert.ok(onDocs.some((d) => d.name === "questions" && /free-text/.test(d.content)), "the enabled workspace gets questions.md — including the always-free-text answer teaching");
+        const offDocs = await engine.referenceEntries(off);
+        const onDocs = await engine.referenceEntries(on);
+        assert.ok(!offDocs.some((d) => d.pathname === "/docs/questions.md"), "an un-enabled workspace is never taught the op it can't use");
+        assert.ok(onDocs.some((d) => d.pathname === "/docs/questions.md" && /free-text/.test(d.content)), "the enabled workspace gets questions.md — including the always-free-text answer teaching");
     } finally {
         await db.close();
     }

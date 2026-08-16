@@ -146,22 +146,24 @@ export type RuntimeInvocation = RuntimeInvocationShape & (
 
 export interface RuntimeRegisteredTool {
     readonly target: string;
+    readonly summary: string;
     readonly invocation: RuntimeInvocation;
+    readonly details?: string;
 }
 
 export interface RuntimeToolRegistry {
     readonly tools: readonly RuntimeRegisteredTool[];
-    readonly documentation: string;
 }
 
 // One discovered runtime tag and the package that provides it.
 export interface ExecInfo {
     runtime: string;
     glyph: string;
+    summary: string;
     invocation: RuntimeInvocation;
-    // Full markdown documentation for this tag. Empty when omitted. execs owns
-    // this field; HOW it reaches the model is the consumer's concern.
-    documentation: string;
+    // Supplemental Markdown for this tag. Empty when omitted. Summary and
+    // Invocation remain declaration-owned and are projected by the consumer.
+    details: string;
     packageName: string;
     // Published per-tag projection of the package-level attribution declaration.
     // Discovery validates it through {§plugin-attribution} before admission.
@@ -172,12 +174,13 @@ export interface ExecInfo {
 // manifest entry, and the element type a dynamic runtimes hook returns. `name`
 // is the canonical tag from {§executor-runtime-declaration}; the rest are the
 // manifest fields discover() surfaces onto ExecInfo (a per-tag
-// `docs/<tag>.md` file, when present, still wins over inline documentation).
+// `docs/<tag>.md` file, when present, still wins over inline details).
 export interface RuntimeDecl {
     name: string;
     glyph?: string;
+    summary: string;
     invocation: RuntimeInvocation;
-    documentation?: string;
+    details?: string;
 }
 
 // Dynamic runtime declaration hook ({§executor-dynamic-runtimes}). Discovery

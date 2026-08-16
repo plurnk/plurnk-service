@@ -1,5 +1,5 @@
 // {§operator-config-workspace-execs} — one subtractive workspace layer governs
-// dispatch, capability advertising, and executor document materialization.
+// dispatch and executable-tool resource materialization.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -8,7 +8,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { ExecStatement } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { sendStmt } from "./_dsl.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, packetSection, testExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
 const execStmt = (runtime: string): ExecStatement => ({ op: "EXEC", suffix: "", signal: runtime, target: null, lineMarker: null, body: "echo hi", position: { line: 1, column: 1 } });
 
@@ -44,20 +44,20 @@ test("{§operator-config-workspace-execs} case-insensitive ONLY makes omitted ta
     assert.equal(r.problem?.retryable, false);
 });
 
-test("{§operator-config-workspace-execs} one effective set filters packet teaching and executor docs", async () => {
+test("{§operator-config-workspace-execs} one effective set filters executable-tool resources", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `sp-render-${crypto.randomUUID()}`);
         // Baseline: node's doc is present with no workspace policy.
-        const before = await engine.docEntries(workspaceId);
-        assert.ok(before.some((d) => d.name === "node"), "baseline: node's reference doc renders");
+        const before = await engine.referenceEntries(workspaceId);
+        assert.ok(before.some((d) => d.pathname === "/tools/node.md"), "baseline: node's tool resource renders");
         // Disable node for the workspace → its doc drops.
         await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ execs: { PLURNK_EXECS_NODE: "0" } }) });
-        const after = await engine.docEntries(workspaceId);
-        assert.ok(!after.some((d) => d.name === "node"), "node disabled by workspace policy → no doc materialized");
-        assert.ok(after.some((d) => d.name === "sh"), "other tags' docs survive the filter");
+        const after = await engine.referenceEntries(workspaceId);
+        assert.ok(!after.some((d) => d.pathname === "/tools/node.md"), "node disabled by workspace policy → no resource materialized");
+        assert.ok(after.some((d) => d.pathname === "/tools/sh.md"), "other tool resources survive the filter");
 
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "policy teaching");
@@ -77,11 +77,7 @@ test("{§operator-config-workspace-execs} one effective set filters packet teach
         });
         const stored = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
         assert.ok(stored !== undefined);
-        const tools = packetSection(JSON.parse(stored.packet) as unknown, "tools");
-        const selectors = [...tools.matchAll(/^\| `\[([a-z][a-z0-9+.-]*)\]` \|/gm)]
-            .map((match) => match[1]);
-        assert.ok(!selectors.includes("node"), "node disabled by workspace policy → no capability row");
-        assert.ok(selectors.includes("sh"), "an enabled shell remains advertised");
-        assert.ok(selectors.length > 1, "the composed capability table contains multiple executable tools");
+        const packet = JSON.parse(stored.packet) as { sections: Array<{ name: string }> };
+        assert.equal(packet.sections.some(({ name }) => name === "tools"), false, "tool discovery does not recreate a hot-path packet section");
     } finally { await db.close(); }
 });

@@ -7,9 +7,9 @@ import LoopDocs from "../../src/server/loopDocs.ts";
 import { DEFAULT_MIMETYPES, insertWorkspace, openMigrated } from "./_helpers.ts";
 
 class FixtureEngine extends Engine {
-    documents: Array<{ name: string; content: string }> = [];
+    documents: Array<{ pathname: string; content: string }> = [];
 
-    override async docEntries(): Promise<Array<{ name: string; content: string }>> {
+    override async referenceEntries(): Promise<Array<{ pathname: string; content: string }>> {
         return this.documents;
     }
 }
@@ -31,14 +31,23 @@ test("{§schemes-self-doc-materialization} kernel documentation materialization 
             pathname,
         });
 
-        engine.documents = [{ name: "retired", content: "# Retired" }];
+        engine.documents = [
+            { pathname: "/docs/retired.md", content: "# Retired" },
+            { pathname: "/tools/retired.md", content: "# Retired tool" },
+        ];
         await LoopDocs.materialize(engine, db, workspaceId);
         assert.notEqual(await entry("/docs/retired.md"), undefined);
+        assert.notEqual(await entry("/tools/retired.md"), undefined);
 
-        engine.documents = [{ name: "current", content: "# Current" }];
+        engine.documents = [
+            { pathname: "/docs/current.md", content: "# Current" },
+            { pathname: "/tools/current.md", content: "# Current tool" },
+        ];
         await LoopDocs.materialize(engine, db, workspaceId);
         assert.equal(await entry("/docs/retired.md"), undefined);
+        assert.equal(await entry("/tools/retired.md"), undefined);
         assert.notEqual(await entry("/docs/current.md"), undefined);
+        assert.notEqual(await entry("/tools/current.md"), undefined);
     } finally {
         await db.close();
     }

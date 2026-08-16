@@ -231,6 +231,7 @@ carries the canonical attribution fact from {§plugin-attribution}.
       {
         "name": "cobol",
         "glyph": "🗄",
+        "summary": "Run a COBOL program.",
         "invocation": {
           "body": { "role": "COBOL program", "required": true },
           "example": { "body": "DISPLAY 'HELLO'." }
@@ -269,24 +270,30 @@ at boot; changing package membership or configuration requires a restart.
 
 ### §executor-runtime-declaration Runtime metadata
 
-| Field           | Meaning                                                                                            |
-| --------------- | -------------------------------------------------------------------------------------------------- |
-| `name`          | Canonical runtime tag and derived output-scheme name, admitted below.                              |
-| `glyph`         | Optional presentation glyph.                                                                       |
-| `invocation`    | Required body and target contract, validated and normalized below.                                 |
-| `documentation` | Optional full Markdown reference. `docs/<tag>.md` wins over the inline manifest field.             |
-| `attribution`   | Published per-tag projection of the validated package declaration ({§plugin-attribution}).         |
-| `packageName`   | Package that owns and default-exports the executor implementation.                                 |
+| Field         | Meaning                                                                                            |
+| ------------- | -------------------------------------------------------------------------------------------------- |
+| `name`        | Canonical runtime tag and derived output-scheme name, admitted below.                              |
+| `glyph`       | Optional presentation glyph.                                                                       |
+| `summary`     | Required one-line description of the capability.                                                   |
+| `invocation`  | Required body and target contract, validated and normalized below.                                 |
+| `details`     | Optional supplemental Markdown. `docs/<tag>.md` wins over the inline manifest field.               |
+| `attribution` | Published per-tag projection of the validated package declaration ({§plugin-attribution}).         |
+| `packageName` | Package that owns and default-exports the executor implementation.                                 |
 
-The framework carries invocation metadata and documentation content unchanged
-after validation. The consumer derives its complete always-on tools directory
-from either the static invocation or the executor's exact
-{§executor-tool-registry}; detailed instruction remains in on-demand
-documentation. A
+The framework validates and carries the summary, invocation, and supplemental
+details as separate facts. The consumer deterministically renders the
+model-facing tool document from either the static invocation or the executor's exact
+{§executor-tool-registry}; authors never duplicate Summary or Invocation in
+prose. A
 multi-tag package appears at most once in `Discovery.packageAttributions`, and
 only when at least one of its tags survives discovery policy. An instantiated
 executor may add attempt-time tags through the shared runtime hook
 ({§plugin-attribution}).
+
+A package `docs/<tag>.md` remains a valid standalone Markdown document. When
+its first line is the exact authoring title `# <tag>`, discovery removes that
+line and its following blank line before carrying the remainder as supplemental
+details; the generated tool document owns the one model-facing H1.
 
 §executor-invocation Every runtime declares exactly one invocation contract:
 
@@ -321,7 +328,7 @@ with a missing field, unknown field, invalid combination, multiline role, or
 wrong primitive type is a fail-hard plugin contract violation before
 registration. Static, dynamic-hook, and module-owned runtimes use this same
 validation path. The enclosing runtime declaration is closed to `name`,
-`glyph`, `invocation`, and `documentation`; unknown or mistyped metadata is a
+`glyph`, `summary`, `invocation`, and `details`; unknown or mistyped metadata is a
 contract violation rather than silently ignored teaching.
 
 §executor-tool-registry A runtime representing a finite family of exact tools
@@ -331,39 +338,50 @@ may implement `toolRegistry()` and return one immutable snapshot:
 interface RuntimeToolRegistry {
     tools: readonly {
         target: string;
+        summary: string;
         invocation: RuntimeInvocation;
+        details?: string;
     }[];
-    documentation: string;
 }
 ```
 
-Each entry owns one canonical literal target and its complete invocation
-contract. Its invocation declares that target bucket as required and
+Each entry owns one canonical literal target, one nonempty one-line summary,
+its complete invocation contract, and optional supplemental Markdown. Its
+invocation declares that target bucket as required and
 `literal`; duplicate targets, divergent example targets, or malformed
 invocations fail the plugin boundary. The exact target must round-trip through
 the language's canonical target-slot escaping. The closed `tools` set replaces the
-runtime's generic declaration for model presentation and dispatch admission:
+runtime's generic invocation for model presentation and dispatch admission:
 an empty set exposes and admits no target, with no generic fallback. Core uses
 the selected entry's invocation for bucket validation before calling
 `effect()`.
 
-The same snapshot owns the runtime's generated pull document. Its
-`documentation` replaces static runtime documentation, so enabled Registry
-rows, admitted targets, effect classification inputs, and detailed contracts
-cannot describe different tool sets. The hook is synchronous and
+The same snapshot owns every exact tool document, so enabled summaries,
+invocations, admitted targets, and effect-classification inputs cannot describe
+different tool sets. The hook is synchronous and
 side-effect-free; a protocol executor refreshes its cached snapshot at its own
 I/O boundary rather than making packet assembly perform network discovery.
+
+§executor-tool-document **Tool documents are the model-facing executor
+directory.** The consumer renders one Markdown document with exact H2
+`Summary` and `Invocation` sections from each declaration. A general runtime's
+document carries its executable witness; an exact tool's document carries its
+literal target and schema signature. Supplemental `details` follows those
+framework-owned sections and cannot own either fact. The consumer chooses the
+resource address, materializes the documents, and exposes their Summary through
+ordinary FIND metadata. No executor table or executor-specific discovery
+protocol exists.
 
 Runtime-name admission is one identity contract:
 
 | Constraint  | Contract                                                                                                      |
 | ----------- | ------------------------------------------------------------------------------------------------------------- |
 | Syntax      | `[a-z][a-z0-9+.-]*`: canonical lowercase RFC-scheme syntax that is also an admitted EXEC identifier.           |
-| Identity    | The exact name is the EXEC selector, registry key, `docs/<tag>.md` basename, and output URI-scheme name.       |
+| Identity    | The exact name is the EXEC selector, registry key, tool-family identity, and output URI-scheme name.           |
 | Reservation | `only` is unavailable because `PLURNK_EXECS_ONLY` owns that case-insensitive configuration key.               |
 
 Installed static declarations, trusted dynamic-hook declarations, and
-module-owned declarations use the same validator before documentation lookup,
+module-owned declarations use the same validator before detail lookup,
 policy filtering, or registry mutation. A malformed claimed declaration fails
 hard and names its package or module boundary; discovery still ignores an
 unreadable package that never forms an executor manifest.

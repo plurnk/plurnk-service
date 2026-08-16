@@ -216,8 +216,8 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.match(log, /"path":"log:\/\/\/[^"]+\/FIND"/, "the catalog foist appears as a FIND op in the log address");
         assert.match(
             log,
-            /13:## SEND0 \[102\]\n14:Next, address the prompt\./,
-            "the turn-0 initialization teaches SEND[102] as an explicit next action",
+            /\d+:## FIND0 \[\+init,\+tools\] \(worker:\/\/plurnk\/tools\/\*\.md\) <1,-1>\n\d+:\n\d+:## SEND0 \[102\]\n\d+:Next, address the prompt\./,
+            "the turn-0 initialization teaches tool discovery before SEND[102]",
         );
 
     } finally {
@@ -352,7 +352,7 @@ test("the default wire preserves canonical order and projects the Recap override
         // {§packet-cache-monotone}: trusted control-plane sections precede the user slot;
         // append-mostly log precedes per-turn status, active prompt pointers, and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
-        assert.deepEqual(slot("system"), ["definition", "system-policy", "project-policy", "tools", "schemes"], "stable privileged policy leads loop-dependent capabilities");
+        assert.deepEqual(slot("system"), ["definition", "system-policy", "project-policy", "schemes"], "stable privileged policy leads the resource directory");
         assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "errors", "notices", "git", "budget", "prompt", "requirements"], "user slot: log -> status clump -> active prompt paths -> Recap");
         assert.equal(packet.sections.find((section) => section.name === "prompt")?.header, "Active User Prompts");
         assert.equal(packet.sections.at(-1)?.header, "Recap");

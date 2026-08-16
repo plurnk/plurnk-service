@@ -26,12 +26,12 @@ const CHANNEL = "body";
 export const runtimeDecl = (name: string): RuntimeDecl => ({
     name,
     glyph: "🔌",
+    summary: `Use enabled tools from the ${name} MCP server.`,
     invocation: {
         body: { role: "JSON arguments", required: false },
         target: { role: "MCP tool", required: true, kind: "literal" },
         example: { target: "tool_name" },
     },
-    documentation: "",
 });
 
 const message = (error: unknown): string =>
@@ -222,7 +222,7 @@ export default class McpExecutor extends BaseExecutor {
                 400,
                 `MCP executor '${runtime}' requires a tool target.`,
                 {
-                    recovery: "Select a target listed for this executor in Registered Tools.",
+                    recovery: `Select a target documented under worker://plurnk/tools/${runtime}/.`,
                     retryable: false,
                 },
             );
@@ -234,7 +234,7 @@ export default class McpExecutor extends BaseExecutor {
                 `MCP tool '${target}' is not enabled on '${runtime}'.`,
                 {
                     tool: target,
-                    recovery: "Select a target listed for this executor in Registered Tools.",
+                    recovery: `Select a target documented under worker://plurnk/tools/${runtime}/.`,
                     retryable: false,
                 },
             );

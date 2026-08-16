@@ -29,8 +29,7 @@ flowchart LR
         direction LR
         definition["definition<br/>bare content"] --> policy["Policy"]
         policy --> project["Project Policy"]
-        project --> tools["Registered Tools"]
-        tools --> optional["Enabled Optional Operations"]
+        project --> optional["Enabled Optional Operations"]
         optional --> schemes["Resources"]
         schemes --> notes["Operator Notes"]
     end
@@ -53,8 +52,7 @@ flowchart LR
 | `definition`          | system | Bare `plurnk.md`; no wrapper heading          | {§definition-table-projection}  |
 | `system-policy`       | system | Authored Markdown                             | {§policy-sections}              |
 | `project-policy`      | system | Authored Markdown                             | {§policy-sections}              |
-| `tools`               | system | Generated Markdown capability table          | {§tools-capability-sheet}       |
-| `optional-operations` | system | `plurnk` fence                                | {§tools-capability-sheet}       |
+| `optional-operations` | system | `plurnk` fence                                | {§send-300-choices}             |
 | `schemes`             | system | `plurnk` fence                                | {§schemes-directory}            |
 | `inject`              | system | Authored Markdown                             | {§packet-inject}                |
 | `log`                 | user   | Dynamic `jsonplurnk` fence                    | {§jsonplurnk}                   |

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
+import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitFor } from "./_rpc.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 
@@ -8,7 +9,7 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
     const dsl = "## EDIT0 (worker:///france/capital)\nParis\n\n## SEND0 [200]\nParis is the capital.";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142)] });
 
-    await withDaemon(mock, async (db, _daemon, addr) => {
+    await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "loop-test" });
@@ -27,14 +28,10 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
             assert.equal(result.usage?.accounting.costUsd, "0");
             assert.deepEqual(result.attributions, [], "attribution remains a top-level terminal projection, separate from usage");
 
-            const entryCount = (await db.test_count_entries.get<{ n: number }>())?.n;
-            // worker:///france/capital + the prompt frame (2 base — no manifest.json entry, the
-            // catalog is FIND-served), plus 11 docs: the 3 non-excluded in-tree schemes (log/worker/prompt
-            // — file/exec dropped by the default PLURNK_SERVICE_DOCS_EXCLUDE, skill excluded too), the
-            // boot-discovered `http` + `wss` externals ({§plugin-discovery}), and sh/node/sqlite/git/jq —
-            // executor docs the execs family ships. Configured protocol modules add their own
-            // runtime docs only when present. 2 + 10 = 12.
-            assert.equal(entryCount, 12);
+            const read = await rpcCall(ws, 3, "entry.read", { target: "worker:///france/capital" });
+            const materialized = Validator.assertEntryReadResult(read.result as EntryReadResult);
+            assert.equal(materialized.status, 200);
+            assert.equal(materialized.entry?.channels.body?.content, "Paris");
         } finally { ws.close(); }
     });
 });

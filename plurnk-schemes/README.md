@@ -88,7 +88,7 @@ static manifest: SchemeManifest = {
 ```
 
 - **`example`** — the scheme's concise **hot-path** operation example set, rendered in the live resource catalogue every turn (like an execs runtime's `example`). Use one or more complete operations separated by blank lines; depth goes in `documentation`. Omit → not advertised.
-- **`documentation`** — the **deep doc** (ops, channels, edge cases). The consumer materializes it as a pull-able `worker://plurnk/docs/<name>.md` entry the model READs on demand — off the hot path. Mirrors `ExecInfo.documentation`. **Convention:** keep it in a **`docs/<name>.md`** file (root) and load it at module init with the snippet above — `../` resolves the same from `src/` (test) and `dist/` (built); add `docs/**/*` to `files`. A missing file fails-hard at import.
+- **`documentation`** — the **deep doc** (ops, channels, edge cases). The consumer materializes it as a pull-able `worker://plurnk/docs/<name>.md` entry the model READs on demand — off the hot path. It is analogous to executor supplemental `details`. **Convention:** keep it in a **`docs/<name>.md`** file (root) and load it at module init with the snippet above — `../` resolves the same from `src/` (test) and `dist/` (built); add `docs/**/*` to `files`. A missing file fails-hard at import.
 - **`glyph`** — optional opaque client display metadata. It is discoverable through the client capability wire and never rendered into model teaching; clients choose fallback, fonts, and theme.
 
 Declare `textEditScopes: true` only when `editBatch` accepts PLURNK's shared

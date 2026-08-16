@@ -59,8 +59,9 @@ const wire = async (run: Executor["run"]) => {
         },
         namespaceOwner: { kind: "module", name: `${tag} fixture` },
         glyph: "~",
+        summary: "Settlement fixture.",
         invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } },
-        documentation: "",
+        details: "",
         available: true,
         detail: undefined,
     } as never);

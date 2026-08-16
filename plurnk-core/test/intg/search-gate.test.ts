@@ -70,7 +70,7 @@ const seed = async (db: Awaited<ReturnType<typeof openMigrated>>, opts: { fail?:
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, wakeWorkerNotify: (p) => notifyRef.fn(p) });
     notifyRef.fn = (p) => engine.searchGate.settle(p.target.replace(/^[a-z+.-]+:\/\//, "/").replace(/^\/+/, "/"), p.result.status);
     engine.setExecutors(new ExecutorRegistry(new Map([["search", {
-        executor: stubExecutor(opts) as never, namespaceOwner: { kind: "module", name: "search-gate fixture" }, glyph: "🔎", invocation: { body: { role: "search query", required: true }, example: { body: "Plurnk agent protocol" } }, documentation: "", available: true, detail: undefined,
+        executor: stubExecutor(opts) as never, namespaceOwner: { kind: "module", name: "search-gate fixture" }, glyph: "🔎", summary: "Search fixture.", invocation: { body: { role: "search query", required: true }, example: { body: "Plurnk agent protocol" } }, details: "", available: true, detail: undefined,
     }]])));
     return { workspaceId, workerId, loopId, turnId, engine };
 };

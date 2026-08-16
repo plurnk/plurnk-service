@@ -35,6 +35,7 @@
             {
                 "name": "search",
                 "glyph": "🔎",
+                "summary": "Search the web through the configured SearXNG service.",
                 "invocation": {
                     "body": {
                         "role": "search query",
@@ -48,6 +49,7 @@
             {
                 "name": "news",
                 "glyph": "📰",
+                "summary": "Search current news through the configured SearXNG service.",
                 "invocation": {
                     "body": {
                         "role": "news search query",

@@ -170,12 +170,13 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
         executor: exe,
         namespaceOwner: { kind: "module", name: "effect fixture" },
         glyph: "🔧",
+        summary: "Effect fixture.",
         invocation: {
             body: { role: "fixture input", required: false },
             target: { role: "fixture resource", required: false, kind: "resource", directory: "cwd" },
             example: { body: "fixture" },
         },
-        documentation: "",
+        details: "",
         available: true,
         detail: undefined,
     }]]));

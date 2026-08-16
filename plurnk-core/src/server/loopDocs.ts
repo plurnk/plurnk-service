@@ -4,9 +4,10 @@
 //   1. operator/client reference docs (PLURNK_SERVICE_MD_* ∪ settings.mdDocs, client wins on
 //      collision) at worker://plurnk/<alias>.md — Engine.runTurn foists their READs at turn 0
 //      ({§operator-config-workspace-md-docs});
-//   2. the exact current plugin scheme/exec reference set at
-//      worker://plurnk/docs/<name>.md — discovered by the turn-0 kernel-doc FIND foist
-//      ({§schemes-self-doc-materialization}).
+//   2. the exact current scheme and executable-tool reference set under
+//      worker://plurnk/docs/ and worker://plurnk/tools/ — discovered by the
+//      turn-0 FIND surveys ({§schemes-self-doc-materialization},
+//      {§tools-resource-materialization}).
 import type Engine from "../core/Engine.ts";
 import type { Db } from "../core/Db.ts";
 import {
@@ -45,7 +46,7 @@ export default class LoopDocs {
         }));
 
         const desiredDocs = new Map(
-            (await engine.docEntries(workspaceId)).map(({ name, content }) => [`/docs/${name}.md`, content]),
+            (await engine.referenceEntries(workspaceId)).map(({ pathname, content }) => [pathname, content]),
         );
         const ownerId = await Owner.kernelId(db, workspaceId);
         const materializedDocs = await db.loop_docs_materialized.all<{ pathname: string }>({

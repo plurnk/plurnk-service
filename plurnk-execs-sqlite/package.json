@@ -34,6 +34,7 @@
             {
                 "name": "sqlite",
                 "glyph": "🗃",
+                "summary": "Run one SQL statement against SQLite.",
                 "invocation": {
                     "body": {
                         "role": "SQL statement",

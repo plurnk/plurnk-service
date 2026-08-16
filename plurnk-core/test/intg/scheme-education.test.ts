@@ -9,7 +9,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 
-test("resource directory: the packet's `schemes` section is a terse directory below tools; the catalogue left the definition", async () => {
+test("resource directory: the packet's `schemes` section is a terse directory after policy; the catalogue left the definition", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `scheme-edu-${crypto.randomUUID()}`);
@@ -54,10 +54,10 @@ test("resource directory: the packet's `schemes` section is a terse directory be
         assert.match(schemes, /glyph-test:\/\/\/example/, "the scheme's ordinary example remains teachable");
         assert.doesNotMatch(schemes, /GLYPH_MUST_STAY_CLIENT_SIDE/, "client display metadata never enters model teaching");
 
-        // Stable policy may intervene after definition; capabilities remain tools → resources.
+        // Stable policy intervenes after definition; the resource directory follows it.
         const sysOrder = (packet.sections as Array<{ name: string; slot: string }>).filter((s) => s.slot === "system").map((s) => s.name);
-        assert.ok(sysOrder.indexOf("tools") > sysOrder.indexOf("definition"), "tools follow definition and any privileged policy");
-        assert.equal(sysOrder.indexOf("schemes"), sysOrder.indexOf("tools") + 1, "the resource directory follows tools");
+        assert.equal(sysOrder.includes("tools"), false, "executable discovery does not recreate a hot-path tools section");
+        assert.equal(sysOrder.indexOf("schemes"), sysOrder.indexOf("project-policy") + 1, "the resource directory follows privileged policy");
     } finally {
         await db.close();
     }

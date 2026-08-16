@@ -42,8 +42,8 @@ class FakeExecutor {
 // One package, two tags with divergent probe results. {§executor-probe}
 const oneTwoTagPackage = async () => ({
     registry: new Map([
-        ["alpha", { runtime: "alpha", glyph: "α", invocation: invocation("alpha input", "alpha"), packageName: "fake-pkg" }],
-        ["beta", { runtime: "beta", glyph: "β", invocation: invocation("beta input", "beta"), packageName: "fake-pkg" }],
+        ["alpha", { runtime: "alpha", glyph: "α", summary: "Alpha fixture.", invocation: invocation("alpha input", "alpha"), details: "", packageName: "fake-pkg" }],
+        ["beta", { runtime: "beta", glyph: "β", summary: "Beta fixture.", invocation: invocation("beta input", "beta"), details: "", packageName: "fake-pkg" }],
     ]),
 });
 
@@ -85,13 +85,13 @@ test("{§executor-tool-registry} validates and caches one snapshot for every con
             return {
                 tools: [{
                     target: "issue_read",
+                    summary: "Read an issue.",
                     invocation: {
                         body: { role: "JSON arguments", required: false },
                         target: { role: "Read an issue", required: true, kind: "literal" },
                         signature: '{"issue_number": integer}',
                     },
                 }],
-                documentation: "# family",
             };
         },
     };
@@ -99,12 +99,13 @@ test("{§executor-tool-registry} validates and caches one snapshot for every con
         executor,
         namespaceOwner: { kind: "module", name: "fixture" },
         glyph: "",
+        summary: "Family fixture.",
         invocation: {
             body: { role: "JSON arguments", required: false },
             target: { role: "tool", required: true, kind: "literal" },
             example: { target: "tool_name" },
         },
-        documentation: "",
+        details: "",
         available: true,
         detail: undefined,
     }]]));
@@ -139,8 +140,9 @@ const workspaceEntry = (tag: string, owner: string) => {
         executor,
         namespaceOwner: { kind: "module", name: owner } as const,
         glyph: "",
+        summary: `${tag} fixture.`,
         invocation: invocation(`${tag} input`, tag),
-        documentation: `# ${tag}`,
+        details: `## Detail\n\n${tag}`,
         available: true,
         detail: undefined,
     };
@@ -191,9 +193,9 @@ test("{§module-workspace-capabilities} workspace overlays cannot shadow base or
 // Native Git and the explicit isomorphic-git subset beside a non-Git runtime.
 const gitAndShell = async () => ({
     registry: new Map([
-        ["sh", { runtime: "sh", glyph: "$", invocation: invocation("shell program", "pwd"), packageName: "fake-common" }],
-        ["git", { runtime: "git", glyph: "⎇", invocation: invocation("Git arguments", "status --short"), packageName: "@plurnk/plurnk-execs-git" }],
-        ["isogit", { runtime: "isogit", glyph: "iso", invocation: invocation("isogit arguments", "status"), packageName: "@plurnk/plurnk-execs-isogit" }],
+        ["sh", { runtime: "sh", glyph: "$", summary: "Shell fixture.", invocation: invocation("shell program", "pwd"), details: "", packageName: "fake-common" }],
+        ["git", { runtime: "git", glyph: "⎇", summary: "Git fixture.", invocation: invocation("Git arguments", "status --short"), details: "", packageName: "@plurnk/plurnk-execs-git" }],
+        ["isogit", { runtime: "isogit", glyph: "iso", summary: "Isogit fixture.", invocation: invocation("isogit arguments", "status"), details: "", packageName: "@plurnk/plurnk-execs-isogit" }],
     ]),
 });
 
@@ -209,7 +211,7 @@ test("{§executor-probe} ExecutorRegistry preserves per-tag availability within 
     assert.deepEqual(
         registry.entry("alpha")?.invocation,
         invocation("alpha input", "alpha"),
-        "the runtime-owned invocation contract reaches dispatch and the tools table",
+        "the runtime-owned invocation contract reaches dispatch and tool resources",
     );
 });
 
@@ -227,8 +229,8 @@ test("ExecutorRegistry consumes discovery attribution without reopening a strict
             kind: "exec",
             attribution: "@plurnk/strict",
             runtimes: [
-                { name: "alpha", invocation: invocation("alpha input", "alpha") },
-                { name: "beta", invocation: invocation("beta input", "beta") },
+                { name: "alpha", summary: "Alpha fixture.", invocation: invocation("alpha input", "alpha") },
+                { name: "beta", summary: "Beta fixture.", invocation: invocation("beta input", "beta") },
             ],
         },
     }));
@@ -280,7 +282,7 @@ test("{§executor-probe} an unavailable configured default fails boot", async ()
 test("{§operator-config-git-ceiling}: PLURNK_SERVICE_GIT_ALLOWED=0 drops native and isomorphic Git executors entirely", async () => {
     const prior = process.env.PLURNK_SERVICE_GIT_ALLOWED;
     try {
-        // Denied: neither Git capability can dispatch or appear in the tools sheet.
+        // Denied: neither Git capability can dispatch or publish a tool resource.
         process.env.PLURNK_SERVICE_GIT_ALLOWED = "0";
         const denied = await ExecutorRegistry.build({ discoverFn: gitAndShell, load: loadAvailable });
         assert.equal(denied.entry("git"), undefined, "git is not registered when git is denied");

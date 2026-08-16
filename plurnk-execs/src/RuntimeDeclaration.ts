@@ -1,8 +1,9 @@
 import RuntimeInvocation from "./RuntimeInvocation.ts";
+import RuntimeSummary from "./RuntimeSummary.ts";
 import RuntimeTag from "./RuntimeTag.ts";
 import type { RuntimeDecl } from "./types.ts";
 
-const FIELDS = new Set(["name", "glyph", "invocation", "documentation"]);
+const FIELDS = new Set(["name", "glyph", "summary", "invocation", "details"]);
 
 export default class RuntimeDeclaration {
     static assert(value: unknown, owner: string): RuntimeDecl {
@@ -17,21 +18,23 @@ export default class RuntimeDeclaration {
         if (unknown !== undefined) fail(`declaration has unknown field '${unknown}'`);
 
         const name = RuntimeTag.assert(declaration.name, owner);
+        const summary = RuntimeSummary.assert(declaration.summary, "summary", fail);
         const invocation = RuntimeInvocation.assert(declaration.invocation, owner, name);
         if ("glyph" in declaration && typeof declaration.glyph !== "string") {
             fail("glyph must be a string");
         }
-        if ("documentation" in declaration && typeof declaration.documentation !== "string") {
-            fail("documentation must be a string");
+        if ("details" in declaration && typeof declaration.details !== "string") {
+            fail("details must be a string");
         }
 
         return {
             name,
+            summary,
             invocation,
             ...(declaration.glyph === undefined ? {} : { glyph: declaration.glyph as string }),
-            ...(declaration.documentation === undefined
+            ...(declaration.details === undefined
                 ? {}
-                : { documentation: declaration.documentation as string }),
+                : { details: declaration.details as string }),
         };
     }
 }

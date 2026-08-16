@@ -9,8 +9,9 @@ import type { ExecInfo, ExecRegistry } from "./types.ts";
 const info = (runtime: string): ExecInfo => ({
     runtime,
     glyph: "•",
+    summary: `${runtime} fixture.`,
     invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } },
-    documentation: "",
+    details: "",
     packageName: `@plurnk/plurnk-execs-${runtime}`,
 });
 

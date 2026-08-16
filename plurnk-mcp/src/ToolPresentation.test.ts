@@ -28,7 +28,7 @@ test("{§mcp-tool-presentation} renders deterministic JSON-shaped signatures wit
     );
 });
 
-test("{§mcp-tool-presentation} derives Registry rows and standard pull docs from the same enabled tools", () => {
+test("{§mcp-tool-presentation} derives exact summaries and invocations from the same enabled tools", () => {
     const tools: Tool[] = [{
         name: "issue_read",
         title: "Issue",
@@ -50,23 +50,24 @@ test("{§mcp-tool-presentation} derives Registry rows and standard pull docs fro
     const registry = toolRegistry("gitea", tools);
     assert.deepEqual(registry.tools, [{
         target: "issue_read",
+        summary: "Read one issue.",
         invocation: {
             body: { role: "JSON arguments", required: true },
-            target: { role: "Read one issue.", required: true, kind: "literal" },
+            target: { role: "MCP tool", required: true, kind: "literal" },
             signature: '{"owner": string, "issue_number": integer}',
         },
     }]);
-    assert.match(registry.documentation, /^# gitea$/m);
-    assert.match(registry.documentation, /^## issue_read$/m);
-    assert.match(registry.documentation, /^### Input schema$/m);
-    assert.match(registry.documentation, /^### Output schema$/m);
-    assert.match(registry.documentation, /"required": \[/);
-    assert.doesNotMatch(registry.documentation, /tool_name|"value"/);
 });
 
 test("{§mcp-tool-presentation} an empty enabled set exposes no hidden tool names", () => {
     assert.deepEqual(toolRegistry("gitea", []), {
         tools: [],
-        documentation: "",
     });
+});
+
+test("{§mcp-tool-presentation} missing remote prose gets a factual fallback", () => {
+    assert.equal(toolRegistry("gitea", [{
+        name: "issue_read",
+        inputSchema: { type: "object" },
+    }]).tools[0]?.summary, "Invoke the issue_read tool exposed by the gitea MCP server.");
 });

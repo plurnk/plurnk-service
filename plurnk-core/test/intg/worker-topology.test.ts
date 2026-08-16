@@ -71,7 +71,7 @@ test("an empty failed child stream is observed by the child before its terminal 
     await withDaemon(mock, async (_db, daemon, addr) => {
         await daemon.registerRuntime({
             namespaceOwner: "worker topology test module",
-            decl: { name: "emptyfail", glyph: "×", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } }, documentation: "" },
+            decl: { name: "emptyfail", glyph: "×", summary: "Empty failure fixture.", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } } },
             executor: {
                 runtime: "emptyfail", glyph: "×",
                 get manifest() { return { name: "emptyfail", channels: { results: "text/plain" }, defaultChannel: "results", category: "data", writableBy: ["plugin"], volatile: true, modelVisible: true } as never; },
@@ -152,7 +152,7 @@ test("wake propagates UP a grandchild chain (parent→child→grandchild)", asyn
 });
 
 test("a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
-    // 16384: the static packet (tools sheet + docs) grew with execs-search 0.3.0's ten category
+    // 16384: the static packet and initialization log grew with execs-search 0.3.0's category
     // tags — the same teaching-growth budget-edge the delegation test hit at the FORK/WORK adopt.
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("## WORK0 (worker://w1)\nfirst job\n\n## SEND0 [202] <-1>\nawaiting w1", 10), // parent t1

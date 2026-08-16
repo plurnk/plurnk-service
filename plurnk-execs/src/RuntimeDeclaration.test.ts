@@ -6,21 +6,23 @@ test("{§executor-runtime-declaration} validates the complete runtime declaratio
     assert.deepEqual(RuntimeDeclaration.assert({
         name: "mcpserver",
         glyph: "🔌",
+        summary: "Use tools from an MCP server.",
         invocation: {
             body: { role: "JSON arguments", required: false },
             target: { role: "MCP tool", required: true, kind: "literal" },
             example: { target: "get_issue", body: "{}" },
         },
-        documentation: "# MCP server",
+        details: "## Limits\n\nServer-defined.",
     }, "@acme/acme-execs-mcp"), {
         name: "mcpserver",
         glyph: "🔌",
+        summary: "Use tools from an MCP server.",
         invocation: {
             body: { role: "JSON arguments", required: false },
             target: { role: "MCP tool", required: true, kind: "literal" },
             example: { target: "get_issue", body: "{}" },
         },
-        documentation: "# MCP server",
+        details: "## Limits\n\nServer-defined.",
     });
 });
 
@@ -28,9 +30,11 @@ test("{§executor-runtime-declaration} refuses legacy, misspelled, and mistyped 
     const invocation = { body: { role: "query", required: true }, example: { body: "find it" } };
     const cases: Array<[unknown, RegExp]> = [
         [null, /declaration must be an object/],
-        [{ name: "search", invocation, example: "## EXEC0" }, /unknown field 'example'/],
-        [{ name: "search", invocation, glyph: 1 }, /glyph must be a string/],
-        [{ name: "search", invocation, documentation: [] }, /documentation must be a string/],
+        [{ name: "search", summary: "Search.", invocation, example: "## EXEC0" }, /unknown field 'example'/],
+        [{ name: "search", summary: "Search.", invocation, glyph: 1 }, /glyph must be a string/],
+        [{ name: "search", invocation }, /summary must be one non-empty line/],
+        [{ name: "search", summary: "two\nlines", invocation }, /summary must be one non-empty line/],
+        [{ name: "search", summary: "Search.", invocation, details: [] }, /details must be a string/],
     ];
 
     for (const [value, expected] of cases) {

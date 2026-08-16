@@ -84,26 +84,28 @@ test("{§executor-tool-registry} validates one closed set of exact literal targe
         tools: [
             {
                 target: "issue_read",
+                summary: "Read an issue.",
                 invocation: {
                     body: { role: "JSON arguments", required: false },
-                    target: { role: "Read an issue", required: true, kind: "literal" },
+                    target: { role: "MCP tool", required: true, kind: "literal" },
                     signature: '{"owner": string, "repo": string}',
                 },
             },
             {
                 target: "issue_write",
+                summary: "Write an issue.",
                 invocation: {
                     body: { role: "JSON arguments", required: true },
-                    target: { role: "Write an issue", required: true, kind: "literal" },
+                    target: { role: "MCP tool", required: true, kind: "literal" },
                     example: { target: "issue_write", body: "{}" },
                 },
+                details: "## Authority\n\nRequires proposal review.",
             },
         ],
-        documentation: "# gitea\n\nExact schemas.",
     }, "@plurnk/plurnk-mcp", "gitea");
 
     assert.deepEqual(registry.tools.map((tool) => tool.target), ["issue_read", "issue_write"]);
-    assert.equal(registry.documentation, "# gitea\n\nExact schemas.");
+    assert.equal(registry.tools[1]?.details, "## Authority\n\nRequires proposal review.");
     assert.throws(
         () => RuntimeInvocation.assertToolRegistry({
             ...registry,
@@ -115,12 +117,12 @@ test("{§executor-tool-registry} validates one closed set of exact literal targe
         () => RuntimeInvocation.assertToolRegistry({
             tools: [{
                 target: "search",
+                summary: "Search.",
                 invocation: {
                     body: { role: "query", required: true },
                     example: { body: "find it" },
                 },
             }],
-            documentation: "",
         }, "fixture", "search"),
         /must declare a required literal target/,
     );
@@ -128,13 +130,13 @@ test("{§executor-tool-registry} validates one closed set of exact literal targe
         () => RuntimeInvocation.assertToolRegistry({
             tools: [{
                 target: "issue_read",
+                summary: "Read an issue.",
                 invocation: {
                     body: { role: "JSON arguments", required: true },
                     target: { role: "MCP tool", required: true, kind: "literal" },
                     example: { target: "different", body: "{}" },
                 },
             }],
-            documentation: "",
         }, "@plurnk/plurnk-mcp", "gitea"),
         /conflicts with invocation\.example\.target 'different'/,
     );
@@ -142,13 +144,13 @@ test("{§executor-tool-registry} validates one closed set of exact literal targe
         RuntimeInvocation.assertToolRegistry({
             tools: [{
                 target: "issue)read",
+                summary: "Read an issue.",
                 invocation: {
                     body: { role: "JSON arguments", required: false },
                     target: { role: "MCP tool", required: true, kind: "literal" },
                     signature: "{}",
                 },
             }],
-            documentation: "",
         }, "@plurnk/plurnk-mcp", "gitea").tools.map((tool) => tool.target),
         ["issue)read"],
     );
@@ -156,14 +158,24 @@ test("{§executor-tool-registry} validates one closed set of exact literal targe
         () => RuntimeInvocation.assertToolRegistry({
             tools: [{
                 target: "issue<read",
+                summary: "Read an issue.",
                 invocation: {
                     body: { role: "JSON arguments", required: false },
                     target: { role: "MCP tool", required: true, kind: "literal" },
                     signature: "{}",
                 },
             }],
-            documentation: "",
         }, "@plurnk/plurnk-mcp", "gitea"),
         /target 'issue<read' must render one valid EXEC section/,
+    );
+    assert.throws(
+        () => RuntimeInvocation.assertToolRegistry({
+            tools: [{
+                target: "issue_read",
+                summary: "two\nlines",
+                invocation: registry.tools[0]!.invocation,
+            }],
+        }, "@plurnk/plurnk-mcp", "gitea"),
+        /summary must be one non-empty line/,
     );
 });

@@ -302,7 +302,7 @@ the `plurnk` worker's log; the model sees the shared entry through its own READ.
 Client-provided workspace documents union with the operator set at the same
 entry surface.
 
-§actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS` foists turn-0 FINDs into the worker's first turn, so a worker opens with a navigable map instead of blank. An enabled preview executes exactly four orienting surveys in order: project files (`## FIND0 [+init] (*)`), workspace commons (`## FIND0 [+init] (worker:///*)`), the worker's own space (`## FIND0 [+init] (worker://~/*)`), and kernel docs (`## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>`). Their log classifications make the opening survey one `init` set while retaining `docs` on its documentation row ({§log-item-tags}). A shallow result renders direct entries normally and every deeper first-segment directory as an actionable `dir/**` summary with its recursive `items` and `tokens`. Ordinary surveys use FIND's markerless first-16 page, whose range metadata reports the requested and returned page against the complete result total; only the small curated kernel-doc surface explicitly selects all. The opening exemplar therefore demonstrates both `*` and `**` without normalizing an all-results override. Every survey executes even when empty because zero results are useful orientation. A positive `N` explicitly caps only the file map's rendered rows, using the map's actual direct-entry-plus-directory count; `-1` enables the ordinary markerless page; unset / `0` disables previews. `log://` is absent because the current worker's log already renders in present mode.
+§actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS` foists turn-0 FINDs into the worker's first turn, so a worker opens with a navigable map instead of blank. An enabled preview executes exactly five orienting surveys in order: project files (`## FIND0 [+init] (*)`), workspace commons (`## FIND0 [+init] (worker:///*)`), the worker's own space (`## FIND0 [+init] (worker://~/*)`), kernel docs (`## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>`), and executable tool families (`## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>`). Their log classifications make the opening survey one `init` set while retaining `docs` and `tools` on their respective rows ({§log-item-tags}). A shallow result renders direct entries normally and every deeper first-segment directory as an actionable `dir/**` summary with its recursive `items` and `tokens`; tool-family rows also carry the concise `{§scheme-catalog-summary}` that drives on-demand capability discovery. Ordinary surveys use FIND's markerless first-16 page, whose range metadata reports the requested and returned page against the complete result total; only the small curated kernel-doc and tool-family surfaces explicitly select all. The opening exemplar therefore demonstrates both `*` and `**` without normalizing an all-results override. Every survey executes even when empty because zero results are useful orientation. A positive `N` explicitly caps only the file map's rendered rows, using the map's actual direct-entry-plus-directory count; `-1` enables the ordinary markerless page; unset / `0` disables previews. `log://` is absent because the current worker's log already renders in present mode.
 
 §worker-initialization-entry **Worker initialization is not model output.** A worker's first loop begins with one born-OPEN actionless row at `log:///1/1/1`: `origin="plurnk"`, `op` null, and `attrs.kind="initialization"`. Its `text/vnd.plurnk` body dynamically mirrors the turn-zero PLAN, the orienting operations actually dispatched, and terminal `SEND0 [102]`. The PLAN states `* Initialization complete.` and `* Next: address the prompt.`; SEND hands off with `Next, address the prompt.`
 
@@ -2165,9 +2165,8 @@ leak into another.
   effective workspace registry is authoritative and the settings layer only
   intersects it: settings cannot register or re-enable a runtime. A canonical
   key for a currently absent tag is accepted as inert policy and applies if a
-  workspace capability provider later publishes that tag. Dispatch, the
-  model-facing capability sheet, and executor
-  document materialization use the same registered-set intersection and policy
+  workspace capability provider later publishes that tag. Dispatch and
+  model-facing tool-resource materialization use the same registered-set intersection and policy
   predicate, so a workspace-disabled tag is neither executable nor taught.
 
 Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
@@ -2441,21 +2440,20 @@ Conditional absence never reorders the surviving default sections.
 |     1 | system | `definition`          | Framework definition; leads the most stable prefix. |
 |     2 | system | `system-policy`       | Operator policy; empty content is omitted on the wire. |
 |     3 | system | `project-policy`      | Project policy; empty content is omitted on the wire. |
-|     4 | system | `tools`               | Executable capability sheet for this loop. |
-|     5 | system | `optional-operations` | Present only when optional operations are enabled. |
-|     6 | system | `schemes`             | Active resource catalogue. |
-|     7 | system | `inject`              | Present only when operator notes are configured. |
-|     8 | user   | `log`                 | Append-mostly model-visible history. |
-|     9 | user   | `child-streams`       | Per-turn status; empty content is omitted. |
-|    10 | user   | `child-workers`       | Per-turn status; empty content is omitted. |
-|    11 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
-|    12 | user   | `notices`             | Per-turn observations; empty content is omitted. |
-|    13 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
-|    14 | user   | `budget`              | Model-facing packet pressure; omitted when capacity is unknown. |
-|    15 | user   | `prompt`              | Current prompt-entry pointers. |
+|     4 | system | `optional-operations` | Present only when optional operations are enabled. |
+|     5 | system | `schemes`             | Active resource catalogue. |
+|     6 | system | `inject`              | Present only when operator notes are configured. |
+|     7 | user   | `log`                 | Append-mostly model-visible history. |
+|     8 | user   | `child-streams`       | Per-turn status; empty content is omitted. |
+|     9 | user   | `child-workers`       | Per-turn status; empty content is omitted. |
+|    10 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
+|    11 | user   | `notices`             | Per-turn observations; empty content is omitted. |
+|    12 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
+|    13 | user   | `budget`              | Model-facing packet pressure; omitted when capacity is unknown. |
+|    14 | user   | `prompt`              | Current prompt-entry pointers. |
 
 The order favors prefix-cache locality where semantics permit: the definition
-and privileged policy lead loop-dependent capabilities, while the append-mostly
+and privileged policy lead the resource directory, while the append-mostly
 log leads the volatile user-status clump. It does **not** claim that every system byte is
 immutable or that the complete packet is globally monotone in volatility:
 capabilities, operator notes, and policies can change. Trust is a separate
@@ -3092,38 +3090,55 @@ turn.** It cannot execute operations or alter the audited history.
 
 §notice-content-offset-pointer **Content-offset position.** A non-fatal diagnosis on an accepted emission (for example `grammar_unenforced` or `parse_advisory`) carries `position: { type: "content-offset", line, column }` into the model's own folded mirror row. A bounded hard parse error becomes a durable failed operation whose Problem Details preserve its line, column, source, and parser-owned diagnostic. Hard errors that make the frame untrustworthy remain only with their rejected forensic attempt.
 
-### §tools user.tools — the capability sheet
+### §tools Executable tool resources
 
-§tools-capability-sheet The tools capability sheet renders under `## Registered Tools`, after the policy sections. One generated Markdown table is the closed set of valid executor selectors. Its columns state `[executor]`, the `(target)` role and any concrete target witness, the body role, and `Invocation`: a body example, a schema-derived signature, or `bodyless`. The Invocation cell never repeats the `## EXEC0 [executor] (target)` syntax already defined by the headers and columns. A runtime exposing {§executor-tool-registry} contributes exactly one row per enabled exact target instead of its general row; an empty exact registry contributes no row and has no fallback. The compact legend leaves required inputs unmarked, marks optional inputs with `?`, pairs mutually exclusive alternatives with `↔`, marks refused buckets with `—`, and locates optional `<timeout,poll>` on the heading. The preface prefers purpose-built Plurnk operations over EXEC scripts. For a declaration with `target.directory: "cwd"`, the target cell distinguishes a local-directory working context from the plugin-authored non-directory target role. Optional non-EXEC operations render separately under `## Enabled Optional Operations` in a `plurnk` fence, so the catalogue remains truthful. `PacketBuilder.#collectTools` assembles both; a prose notice (e.g. the EXEC-disabled line) stays beside the table, and empty sections are omitted.
+§tools-resource-discovery **Executable capability discovery uses ordinary
+Plurnk resources.** No generated tool table rides the system packet. Every
+available, workspace-enabled runtime with an admitted invocation materializes one family document at
+`worker://plurnk/tools/<runtime>.md`. A general runtime's document contains its
+{§executor-tool-document}; a runtime with an exact
+{§executor-tool-registry} instead materializes one child document per enabled
+target at `worker://plurnk/tools/<runtime>/<encoded-target>.md`. Its family
+document summarizes the server or runtime and directs discovery into that
+folder without advertising a generic invocation that dispatch would reject.
+Target filenames use one deterministic percent-encoded path segment; the child
+document retains the exact unencoded target as invocation authority.
 
-§tools-loop-affinity **The capability sheet describes the current loop.** The
-sheet filters registered capabilities through the same
-`SchemeRegistry.resolveForLoop(flags)` predicate the dispatcher enforces. When
-registered executors exist but EXEC is inactive, their table is replaced by
-an explicit disabled notice rather than silent absence. The dispatch 403 remains
-the backstop and names the non-retryable loop restriction.
+```mermaid
+flowchart LR
+    Survey["Turn 0 FIND<br/>tools/*.md"] --> Families["family paths + summaries"]
+    Families --> Drill["FIND<br/>tools/runtime/*.md"]
+    Drill --> Tools["tool paths + summaries"]
+    Tools --> Read["READ selected document"]
+    Read --> Exec["EXEC declared invocation"]
+```
 
-**Contributors: the workspace executor snapshot.** Every available executor tag
-contributes its general {§executor-invocation} row or the closed rows and
-documentation from its {§executor-tool-registry} snapshot. Its doc is
-materialized at `worker://plurnk/docs/<tag>.md` and discovered via the turn-0
-`## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, not linked inline.
-`PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's rows and doc. Installed
-executors are probed once; workspace providers publish only prepared runnable
-selectors, so the table never presumes that another workspace's capability is
-available here.
+§tools-resource-materialization The runtime registry, workspace executor
+policy, tool resources, and dispatch use one effective workspace snapshot. A
+workspace-disabled, unavailable, detached, replaced, or removed runtime has no
+tool resource; an exact registry's empty set publishes no executable family and
+admits no invocation. Reconciliation deletes stale family and child documents
+before upserting the current set. `PLURNK_SERVICE_DOCS_EXCLUDE` does not hide an
+enabled executable; executor enablement is the sole user-configured filter
+shared by discovery and dispatch.
+
+The catalog describes workspace capabilities, not temporary authority. Loop
+mode remains a dispatch concern: an ask-mode EXEC receives the ordinary exact
+403 restriction instead of requiring a second per-loop documentation overlay.
+Optional non-EXEC operations remain a separate `## Enabled Optional Operations`
+section because they are language extensions rather than executable tools.
 
 ### §schemes user.schemes — the resource directory
 
-§schemes-directory A `## Resources` section renders in the system slot **after the policy sections and tools sheet** — a terse directory of the scheme families available this workspace, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into a `plurnk` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized at `worker://plurnk/docs/<scheme>.md` and discovered via the turn-0 `## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, keeping the raw packet free of doc links. Meta-owned `log` and `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc.
+§schemes-directory A `## Resources` section renders in the system slot **after the policy sections and optional operations** — a terse directory of the scheme families available this workspace, so the model knows what URI resources and operations exist before it acts. Each scheme that ships a `manifest.example` contributes one or more concise canonical ops (no scheme prefix; each example self-documents) into a `plurnk` fence. Scheme example sets are separated by one blank line. The doc is NOT linked inline — it is materialized at `worker://plurnk/docs/<scheme>.md` and discovered via the turn-0 `## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, keeping the raw packet free of doc links. Meta-owned `log` and `worker` depth is required teaching ({§teaching-corpus}); a failed source read rejects materialization with its cause and never falls back. Other core and plugin schemes may supply optional `manifest.documentation`; absence contributes no pull doc. The verbose semantics live in that pull doc (materialized like any entry, READ on demand), not the hot path — terse pushes, depth pulls. A scheme with no example (provisional) is omitted; `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named scheme's examples + doc.
 
 ### §inject system.inject — the operator injection
 
-§packet-inject When `PLURNK_SERVICE_PACKET_INJECT` names a readable markdown file, its content renders as an `## Operator Notes` section in the system slot after policy and capability teaching (definition → policy → project policy → tools → resources → inject). Read per-turn so the operator's edits take effect live; a set-but-unreadable path fails the turn hard (a deliberate setting with a broken path is a misconfig, surfaced not hidden). `~/` expands to home. It's the operator-side complement to the plugin section hook — a pressure valve so reshaping the packet edits operator content, never the core. Unset → no section.
+§packet-inject When `PLURNK_SERVICE_PACKET_INJECT` names a readable markdown file, its content renders as an `## Operator Notes` section in the system slot after policy and capability teaching (definition → policy → project policy → optional operations → resources → inject). Read per-turn so the operator's edits take effect live; a set-but-unreadable path fails the turn hard (a deliberate setting with a broken path is a misconfig, surfaced not hidden). `~/` expands to home. It's the operator-side complement to the plugin section hook — a pressure valve so reshaping the packet edits operator content, never the core. Unset → no section.
 
 ### §policy system.policy — the client's policy injection
 
-§policy-sections Two sections ride the system slot **after the definition and before loop-dependent capabilities**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `~/.plurnk/AGENTS.md`) and `## Project Policy` from `PLURNK_SERVICE_PROJECT` (default `<projectRoot>/AGENTS.md`, resolved relative to the workspace root). AGENTS.md is **policy** — the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. Reference and scratch docs are NOT policy; `PLURNK_SERVICE_MD_*` materializes them as READ-able entries ({§operator-config}).
+§policy-sections Two sections ride the system slot **after the definition and before capability teaching**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `~/.plurnk/AGENTS.md`) and `## Project Policy` from `PLURNK_SERVICE_PROJECT` (default `<projectRoot>/AGENTS.md`, resolved relative to the workspace root). AGENTS.md is **policy** — the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. Reference and scratch docs are NOT policy; `PLURNK_SERVICE_MD_*` materializes them as READ-able entries ({§operator-config}).
 
 On first run, and only when `~/.plurnk` itself is absent, the service seeds
 `AGENTS.md` from `@plurnk/plurnk-meta/PLURNK_PERSONALITY.md` ({§teaching-corpus}).
@@ -3132,7 +3147,7 @@ surfaces with its cause and leaves no apparently initialized home.
 After that bootstrap the file is user-owned: edits and deletion persist, and a
 later boot never refreshes or recreates it.
 
-§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. `SchemeRegistry.teach(workspaceId)` renders the effective directory, `SchemeRegistry.docs(workspaceId)` resolves corpus-or-manifest documentation, and `docEntries(workspaceId)` supplies the current pull-document set when core publishes capabilities for a workspace. Materialization reconciles `worker://plurnk/docs/` exactly under the workspace capability gate: vanished contributions are deleted before current documents are upserted, so an excluded, disabled, detached, or replaced capability cannot leave a stale model-facing contract.
+§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. `SchemeRegistry.teach(workspaceId)` renders the effective directory, `SchemeRegistry.docs(workspaceId)` resolves corpus-or-manifest documentation, and `referenceEntries(workspaceId)` supplies the current `/docs/` and `/tools/` resource set when core publishes workspace capabilities. One materializer reconciles both reserved scopes exactly: vanished contributions are deleted before current documents are upserted, so an excluded scheme or disabled, detached, replaced, or removed runtime cannot leave a stale model-facing contract.
 
 ### §packet-git-status The Git status section — compact repository state
 

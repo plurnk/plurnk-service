@@ -83,12 +83,13 @@ const waitForFile = async (pathname: string): Promise<void> => {
 
 test("runtime declaration provides the structural family fallback only", async () => {
     const declaration = runtimeDecl("echo");
+    assert.equal(declaration.summary, "Use enabled tools from the echo MCP server.");
     assert.deepEqual(declaration.invocation, {
         body: { role: "JSON arguments", required: false },
         target: { role: "MCP tool", required: true, kind: "literal" },
         example: { target: "tool_name" },
     });
-    assert.equal(declaration.documentation, "");
+    assert.equal(declaration.details, undefined);
     const { connection, executor } = configured();
     assert.equal(executor.manifest.example, "## FIND0 (echo:///resources/**)");
     await connection.close();
@@ -118,11 +119,10 @@ test("MCP executor publishes exact enabled targets and never trusts remote readO
         assert.deepEqual(registry.tools.map((tool) => tool.target), ["echo"]);
         assert.deepEqual(registry.tools[0]?.invocation, {
             body: { role: "JSON arguments", required: true },
-            target: { role: "Echo one message.", required: true, kind: "literal" },
+            target: { role: "MCP tool", required: true, kind: "literal" },
             signature: '{"message": string}',
         });
-        assert.match(registry.documentation, /^## echo$/m);
-        assert.doesNotMatch(registry.documentation, /^## fail$/m);
+        assert.equal(registry.tools[0]?.summary, "Echo one message.");
     } finally {
         await connection.close();
     }

@@ -46,6 +46,7 @@ const THIRD_PARTY_HANDLER_SOURCE = `
         }
         validate() {}
         parseIssues() { return 0; }
+        summary() { return undefined; }
         projectionConfiguration() { return ""; }
         extractRaw() { return []; }
         deepJson() { return null; }

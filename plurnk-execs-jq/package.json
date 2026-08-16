@@ -35,6 +35,7 @@
             {
                 "name": "jq",
                 "glyph": "🧰",
+                "summary": "Transform JSON with jq.",
                 "invocation": {
                     "body": {
                         "role": "jq filter",

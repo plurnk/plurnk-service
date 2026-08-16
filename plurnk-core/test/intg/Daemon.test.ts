@@ -35,8 +35,8 @@ const fakeRegistration = (tag: string) => ({
     decl: {
         name: tag,
         glyph: "🔌",
+        summary: `${tag} fixture.`,
         invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } },
-        documentation: "",
     },
     executor: {
         runtime: tag, glyph: "🔌",
@@ -1144,8 +1144,8 @@ test("the client-interface seam — a dispatched EXEC's stdout streams as stream
                 decl: {
                     name: "streamtag",
                     glyph: "🔌",
+                    summary: "Streaming fixture.",
                     invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } },
-                    documentation: "",
                 },
                 executor: {
                     runtime: "streamtag", glyph: "🔌",

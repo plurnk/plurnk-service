@@ -36,6 +36,7 @@ runtime declarations, and a default-exported `BaseExecutor` subclass.
       {
         "name": "cobol",
         "glyph": "🗄",
+        "summary": "Run a COBOL program.",
         "invocation": {
           "body": { "role": "COBOL program", "required": true },
           "example": { "body": "DISPLAY 'HELLO'." }
@@ -48,10 +49,11 @@ runtime declarations, and a default-exported `BaseExecutor` subclass.
 
 One package may claim several tags; the consumer instantiates and probes each
 tag independently. A name uses lowercase URI-scheme syntax
-`[a-z][a-z0-9+.-]*`; `only` is reserved by runtime policy. `invocation`
-defines the body and optional target buckets plus one canonical example used
-for both dispatch enforcement and the generated tool table. A `docs/<tag>.md` file supplies full reference
-material. See {§executor-runtime-declaration}.
+`[a-z][a-z0-9+.-]*`; `only` is reserved by runtime policy. `summary` is the
+one-line capability description. `invocation` defines the body and optional
+target buckets plus one canonical example used for dispatch enforcement and the
+generated `worker://plurnk/tools/` document. A `docs/<tag>.md` file supplies
+supplemental detail. See {§executor-runtime-declaration}.
 
 ### Implement the executor
 

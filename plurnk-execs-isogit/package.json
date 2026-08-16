@@ -34,6 +34,7 @@
             {
                 "name": "isogit",
                 "glyph": "git",
+                "summary": "Run supported in-process isomorphic-git commands.",
                 "invocation": {
                     "body": {
                         "role": "isogit command and arguments",

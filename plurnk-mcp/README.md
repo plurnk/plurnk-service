@@ -98,8 +98,8 @@ Portable timeouts and complete examples live in [`.env.defaults`](./.env.default
 
 | MCP surface | Plurnk surface |
 |---|---|
-| Enabled tool | Exact Registered Tools row and `## EXEC0 [server] (tool)` |
-| Tool schemas | `worker://plurnk/docs/<server>.md` |
+| Server tools | `worker://plurnk/tools/<server>.md` family summary |
+| Enabled tool | Exact `worker://plurnk/tools/<server>/<encoded-tool>.md` document and `## EXEC0 [server] (tool)` |
 | Resource catalog | `server:///` or `server:///resources` |
 | Resource | `server:///resources/<encoded-uri>` through ordinary `FIND` and `READ` |
 | Prompt catalog | `server:///prompts` |

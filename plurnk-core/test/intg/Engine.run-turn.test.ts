@@ -181,7 +181,7 @@ test("Engine.runTurn: packet stores system + user content from messages when the
         if (row === undefined) throw new Error("turn not found");
         const packet = JSON.parse(row.packet) as { assistant: unknown };
         // The definition section is now JUST the system message body — the scheme
-        // catalogue moved to its own `schemes` section (below tools). The body leads
+        // catalogue moved to its own `schemes` section. The body leads
         // the definition; the empty-prompt fallback is the assertion's real subject.
         const definition = packetSection(packet, "definition");
         assert.ok(definition.startsWith("system prompt body"), "system message body leads the definition section");

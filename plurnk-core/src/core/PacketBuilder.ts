@@ -5,7 +5,6 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { GitStatus } from "./git-state.ts";
 import { renderAddress, promptLoopPrefix } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
-import { docsExcludeSet } from "./teaching.ts";
 import { Policy } from "@plurnk/plurnk-execs";
 import WorkspaceSettings from "./workspace-settings.ts";
 import LoopFlagsReader from "./LoopFlagsReader.ts";
@@ -26,8 +25,8 @@ import type { ChatMessage, Provider } from "@plurnk/plurnk-providers";
 import { scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import BudgetReadout from "./BudgetReadout.ts";
-import ExecutableTools from "./ExecutableTools.ts";
 import LineAnchors from "../content/line-anchors.ts";
+import ToolResources from "./ToolResources.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -206,10 +205,13 @@ export default class PacketBuilder {
         // their complete prompt:/// entries addressable.
         promptProjection?: "automatic" | "withheld";
     }): Promise<RequestPacket> {
+        // {§loop-flags-effective-read} Validate active-loop policy before any
+        // packet assembly or provider spend, independently of its presentation.
+        await LoopFlagsReader.read(this.#db, loopId);
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         // plurnk.md (grammar/dialects) ONLY — the definition is the hot-path grammar.
-        // The resource catalogue is its own `schemes` section below tools ({§schemes-directory}),
+        // The resource catalogue is its own `schemes` section ({§schemes-directory}),
         // NOT appended here: the language teaching is scheme-agnostic, so the service advertises
         // the installed scheme set at packet-time via SchemeRegistry.teach().
         const system_definition = compactDefinitionTables(byRole("system"));
@@ -242,17 +244,9 @@ export default class PacketBuilder {
         const log = await this.#buildLog(workerId, transientOpenLogEntryId);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
         const weighContent = contentWeight;
-        // {§tools-loop-affinity}: teaching and dispatch resolve the same loop flags.
-        const activeSchemes = this.#schemes.resolveForLoop(
-            await LoopFlagsReader.read(this.#db, loopId),
-            workspaceId,
-        );
-        const tools = this.#collectTools(
-            workspaceId,
-            await this.#workspaceEnabled(workspaceId),
-            await WorkspaceSettings.questionsEnabled(this.#db, workspaceId),
-            activeSchemes,
-        );
+        const optionalOperations = await WorkspaceSettings.questionsEnabled(this.#db, workspaceId)
+            ? "```plurnk\n## SEND0 [300]\nDeploy where?;staging;production\n```"
+            : "";
         const curationBudget = this.curationBudgetFor(provider);
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
         const promptProjectionWeight = promptProjection === "withheld"
@@ -283,13 +277,12 @@ export default class PacketBuilder {
             .map((r) => ({ status: r.status, path: `worker://${r.name}` }));
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
-            // Stable privileged policy leads loop-dependent capabilities for
+            // Stable privileged policy leads capability teaching for
             // prefix-cache locality. Empty policy sections simply disappear.
             { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
             { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "" },
-            { name: "tools", slot: "system", header: "Registered Tools", content: tools.executors },
-            ...(tools.optionalOperations.length > 0
-                ? [{ name: "optional-operations", slot: "system" as const, header: "Enabled Optional Operations", content: tools.optionalOperations }]
+            ...(optionalOperations.length > 0
+                ? [{ name: "optional-operations", slot: "system" as const, header: "Enabled Optional Operations", content: optionalOperations }]
                 : []),
             { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach(workspaceId) },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
@@ -342,96 +335,44 @@ export default class PacketBuilder {
         return { weight: renderWeight, sections, attributions: [] };
     }
 
-    // {§operator-config-workspace-execs} — the capability sheet and executor
-    // documents share one workspace predicate with dispatch.
+    // {§operator-config-workspace-execs} — tool resources and dispatch share one
+    // workspace predicate.
     async #workspaceEnabled(workspaceId: number): Promise<(tag: string) => boolean> {
         const { execs } = await WorkspaceSettings.read(this.#db, workspaceId);
         if (execs === null) return () => true;
         return (tag: string) => Policy.isEnabled(tag, execs);
     }
 
-    // The complete ## Registered Tools contract table. {§tools-capability-sheet}
-    #collectTools(
-        workspaceId: number,
-        workspaceEnabled: (tag: string) => boolean,
-        questionsOn = false,
-        activeSchemes?: Set<string>,
-    ): { executors: string; optionalOperations: string } {
-        // Registered executors and optional operations remain distinct sheets.
-        // The former is a contract table; only the latter is an operation example fence.
-        // {§tools-capability-sheet} {§packet-operation-fences}
-        const executorTools: Array<{
-            runtime: string;
-            invocation: NonNullable<ReturnType<ExecutorRegistry["entry"]>>["invocation"];
-            exactTarget?: string;
-        }> = [];
-        const notices: string[] = [];
-        // {§send-300-choices} — the one-liner rides ONLY where questions are enabled (allowed +
-        // client-requested); the fuller questions.md doc injects through docEntries the same way.
-        const optionalOperations = questionsOn
-            ? "```plurnk\n## SEND0 [300]\nDeploy where?;staging;production\n```"
-            : "";
-        const executors = this.#executors();
-        if (executors !== undefined) {
-            const excluded = docsExcludeSet();
-            const runtimes = executors.availableRuntimes(workspaceId);
-            // {§tools-capability-sheet} The table is keyed on the exec scheme (the op face,
-            // excludedInAsk). When inactive, say so positively: plurnk.md
-            // still teaches EXEC as language, and silent absence measurably invites confabulated runtimes.
-            const execActive = activeSchemes === undefined || activeSchemes.has("exec");
-            if (runtimes.length > 0 && !execActive) {
-                notices.push("EXEC operations are disabled for this loop — do not run commands; answer or advise directly");
-            } else {
-                for (const tag of runtimes) {
-                    if (excluded.has(tag)) continue; // {§tools-capability-sheet} — exclude drops the row and doc
-                    if (!workspaceEnabled(tag)) continue; // {§operator-config-workspace-execs}
-                    const entry = executors.entry(tag, workspaceId);
-                    if (entry !== undefined) {
-                        const registry = executors.toolRegistry(tag, workspaceId);
-                        if (registry === null) {
-                            executorTools.push({ runtime: tag, invocation: entry.invocation });
-                        } else {
-                            executorTools.push(...registry.tools.map((tool) => ({
-                                runtime: tag,
-                                invocation: tool.invocation,
-                                exactTarget: tool.target,
-                            })));
-                        }
-                    }
-                }
-            }
-        }
-        const parts: string[] = [...notices];
-        const directory = ExecutableTools.render(executorTools);
-        if (directory !== "") parts.push(directory);
-        return { executors: parts.join("\n\n"), optionalOperations };
-    }
-
-    // #note12 — the plugin-provided reference docs (schemes' + execs' `documentation`),
-    // materialized at worker://plurnk/docs/<name>.md by LoopDocs (like operator
-    // docs) so the catalog can expose each doc's curation weight.
-    async docEntries(workspaceId: number): Promise<Array<{ name: string; content: string }>> {
-        const out = await this.#schemes.docs(workspaceId); // scheme docs already drop PLURNK_SERVICE_DOCS_EXCLUDE names
+    // {§schemes-self-doc-materialization} {§tools-resource-materialization} —
+    // one reserved reference set, materialized by LoopDocs.
+    async referenceEntries(workspaceId: number): Promise<Array<{ pathname: string; content: string }>> {
+        const out = (await this.#schemes.docs(workspaceId)).map(({ name, content }) => ({
+            pathname: `/docs/${name}.md`,
+            content,
+        }));
         // {§send-300-choices} {§teaching-corpus} — the conditional teaching: questions.md
-        // materializes ONLY for enabled workspaces — the same conditional-doc mechanism as the EXEC
-        // plugin docs below. An un-enabled workspace is never taught the op it can't use.
+        // materializes only for enabled workspaces.
         if (await WorkspaceSettings.questionsEnabled(this.#db, workspaceId)) {
             const q = await this.#schemes.questionsDoc();
-            if (q.length > 0) out.push({ name: "questions", content: q });
+            if (q.length > 0) out.push({ pathname: "/docs/questions.md", content: q });
         }
         const executors = this.#executors();
         if (executors !== undefined) {
-            const excluded = docsExcludeSet();
             const workspaceEnabled = await this.#workspaceEnabled(workspaceId); // {§operator-config-workspace-execs}
             for (const tag of executors.availableRuntimes(workspaceId)) {
-                if (excluded.has(tag)) continue; // {§tools-capability-sheet} — exec docs honor the same exclude
                 if (!workspaceEnabled(tag)) continue;
                 const entry = executors.entry(tag, workspaceId);
-                const doc = executors.toolRegistry(tag, workspaceId)?.documentation ?? entry?.documentation;
-                if (doc !== undefined && doc.length > 0) out.push({ name: tag, content: doc });
+                if (entry === undefined) continue;
+                out.push(...ToolResources.render({
+                    runtime: tag,
+                    summary: entry.summary,
+                    invocation: entry.invocation,
+                    details: entry.details,
+                    registry: executors.toolRegistry(tag, workspaceId),
+                }));
             }
         }
-        return out;
+        return out.toSorted((left, right) => left.pathname.localeCompare(right.pathname));
     }
 
     // SPEC {§grinder} — the budget grinder. Runs pre-LLM (in runTurn, after the packet

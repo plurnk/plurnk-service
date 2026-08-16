@@ -1,4 +1,5 @@
 import { PathSyntax, PlurnkParser } from "@plurnk/plurnk-contracts";
+import RuntimeSummary from "./RuntimeSummary.ts";
 import type {
     RuntimeBodyDecl,
     RuntimeInvocationExample,
@@ -178,19 +179,19 @@ export default class RuntimeInvocation {
             throw new Error(`runtime declaration invalid: ${packageName} '${runtime}' ${detail}`);
         };
         const registry = recordOf(value, "tool registry", fail);
-        assertKnownFields(registry, new Set(["tools", "documentation"]), "tool registry", fail);
+        assertKnownFields(registry, new Set(["tools"]), "tool registry", fail);
         const toolValues: unknown[] = Array.isArray(registry.tools)
             ? registry.tools
             : fail("tool registry.tools must be an array");
-        const documentation = typeof registry.documentation === "string"
-            ? registry.documentation
-            : fail("tool registry.documentation must be a string");
-
         const targets = new Set<string>();
         const tools = toolValues.map((value, index): RuntimeRegisteredTool => {
             const tool = recordOf(value, `tool registry.tools[${index}]`, fail);
-            assertKnownFields(tool, new Set(["target", "invocation"]), `tool registry.tools[${index}]`, fail);
+            assertKnownFields(tool, new Set(["target", "summary", "invocation", "details"]), `tool registry.tools[${index}]`, fail);
             const exactTarget = exampleLineOf(tool.target, `tool registry.tools[${index}].target`, fail);
+            const summary = RuntimeSummary.assert(tool.summary, `tool registry.tools[${index}].summary`, fail);
+            if ("details" in tool && typeof tool.details !== "string") {
+                fail(`tool registry.tools[${index}].details must be a string`);
+            }
             const escapedTarget = PathSyntax.escapeTarget(exactTarget);
             if (!oneExecSection(`## EXEC0 [${runtime}] (${escapedTarget})`, exactTarget)) {
                 fail(`tool registry.tools[${index}] target '${exactTarget}' must render one valid EXEC section`);
@@ -209,8 +210,13 @@ export default class RuntimeInvocation {
                 fail(`tool registry contains duplicate exact target '${exactTarget}'`);
             }
             targets.add(exactTarget);
-            return { target: exactTarget, invocation };
+            return {
+                target: exactTarget,
+                summary,
+                invocation,
+                ...(tool.details === undefined ? {} : { details: tool.details as string }),
+            };
         });
-        return { tools, documentation };
+        return { tools };
     }
 }

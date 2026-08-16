@@ -89,8 +89,8 @@ const setup = async () => {
     schemes.register("sideeffect-test", new SideEffectingScheme());
     const engine = new Engine({ db, schemes, mimetypes: makeMimetypes() });
     engine.setExecutors(new ExecutorRegistry(new Map([
-        ["flag-tool", { executor: flagExecutor, namespaceOwner: { kind: "module", name: "flag-tool fixture" }, glyph: "🧪", invocation: { body: { role: "fixture input", required: true }, target: { role: "fixture resource", required: false, kind: "resource" }, example: { body: "fixture" } }, documentation: "", available: true, detail: undefined }],
-        ["literal-tool", { executor: flagExecutor, namespaceOwner: { kind: "module", name: "literal-tool fixture" }, glyph: "🧪", invocation: { body: { role: "fixture input", required: false }, target: { role: "tool identifier", required: true, kind: "literal" }, example: { target: "fixture_tool", body: "{}" } }, documentation: "", available: true, detail: undefined }],
+        ["flag-tool", { executor: flagExecutor, namespaceOwner: { kind: "module", name: "flag-tool fixture" }, glyph: "🧪", summary: "Flag tool fixture.", invocation: { body: { role: "fixture input", required: true }, target: { role: "fixture resource", required: false, kind: "resource" }, example: { body: "fixture" } }, details: "", available: true, detail: undefined }],
+        ["literal-tool", { executor: flagExecutor, namespaceOwner: { kind: "module", name: "literal-tool fixture" }, glyph: "🧪", summary: "Literal tool fixture.", invocation: { body: { role: "fixture input", required: false }, target: { role: "tool identifier", required: true, kind: "literal" }, example: { target: "fixture_tool", body: "{}" } }, details: "", available: true, detail: undefined }],
     ])));
     return { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec: schemes.get("exec") as Exec };
 };

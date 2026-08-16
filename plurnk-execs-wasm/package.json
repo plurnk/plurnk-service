@@ -36,6 +36,7 @@
             {
                 "name": "wat",
                 "glyph": "🧩",
+                "summary": "Run a WebAssembly text module.",
                 "invocation": {
                     "body": {
                         "role": "inline WAT module",
@@ -55,6 +56,7 @@
             {
                 "name": "wasm",
                 "glyph": "🧩",
+                "summary": "Run a WebAssembly binary module.",
                 "invocation": {
                     "body": {
                         "role": "inline base64 WASM module",

@@ -32,6 +32,7 @@ const fixtureInvocation = {
 } as const;
 const runtime = (name: string, fields: Record<string, unknown> = {}): Record<string, unknown> => ({
     name,
+    summary: `${name} fixture.`,
     invocation: fixtureInvocation,
     ...fields,
 });
@@ -43,14 +44,14 @@ test("{§executor-invocation} discovery requires and publishes each runtime invo
     } as const;
     const valid = await makePkg({
         name: "@plurnk/plurnk-execs-search",
-        plurnk: { kind: "exec", runtimes: [{ name: "search", invocation }] },
+        plurnk: { kind: "exec", runtimes: [{ name: "search", summary: "Search the web.", invocation }] },
     });
     const { registry } = await Discover.scan({ packageDirs: [valid] });
     assert.deepEqual(registry.get("search")?.invocation, invocation);
 
     const missing = await makePkg({
         name: "@plurnk/plurnk-execs-broken",
-        plurnk: { kind: "exec", runtimes: [{ name: "broken" }] },
+        plurnk: { kind: "exec", runtimes: [{ name: "broken", summary: "Broken runtime." }] },
     });
     await assert.rejects(
         Discover.scan({ packageDirs: [missing] }),
@@ -61,7 +62,7 @@ test("{§executor-invocation} discovery requires and publishes each runtime invo
         name: "@plurnk/plurnk-execs-legacy",
         plurnk: {
             kind: "exec",
-            runtimes: [{ name: "legacy", invocation, example: "## EXEC0 [legacy]" }],
+            runtimes: [{ name: "legacy", summary: "Legacy runtime.", invocation, example: "## EXEC0 [legacy]" }],
         },
     });
     await assert.rejects(
@@ -77,7 +78,7 @@ test("discover: registers each runtime tag of an exec package", async () => {
         plurnk: {
             kind: "exec",
             runtimes: [
-                runtime("search", { glyph: "🔎", documentation: "# search\n\nSearXNG-backed." }),
+                runtime("search", { glyph: "🔎", details: "## Backend\n\nSearXNG-backed." }),
                 runtime("news", { glyph: "📰" }),
             ],
         },
@@ -85,23 +86,23 @@ test("discover: registers each runtime tag of an exec package", async () => {
     const { registry } = await Discover.scan({ packageDirs: [dir] });
 
     assert.equal(registry.size, 2);
-    // Invocation + documentation flow through; omitted documentation becomes "".
+    // Summary, invocation, and details flow through; omitted details becomes "".
     assert.deepEqual(registry.get("search"), {
-        runtime: "search", glyph: "🔎", invocation: fixtureInvocation,
-        documentation: "# search\n\nSearXNG-backed.", packageName: "@plurnk/plurnk-execs-search",
+        runtime: "search", glyph: "🔎", summary: "search fixture.", invocation: fixtureInvocation,
+        details: "## Backend\n\nSearXNG-backed.", packageName: "@plurnk/plurnk-execs-search",
     });
     assert.deepEqual(registry.get("news"), {
-        runtime: "news", glyph: "📰", invocation: fixtureInvocation,
-        documentation: "", packageName: "@plurnk/plurnk-execs-search",
+        runtime: "news", glyph: "📰", summary: "news fixture.", invocation: fixtureInvocation,
+        details: "", packageName: "@plurnk/plurnk-execs-search",
     });
 });
 
-test("discover: documentation is sourced from docs/<tag>.md with the inline field as fallback", async () => {
+test("discover: details are sourced from docs/<tag>.md with the inline field as fallback", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-common",
         plurnk: { kind: "exec", runtimes: [
-            runtime("sh", { documentation: "inline-sh (loses to the file)" }),
-            runtime("node", { documentation: "inline-node (no file → kept)" }),
+            runtime("sh", { details: "inline-sh (loses to the file)" }),
+            runtime("node", { details: "inline-node (no file → kept)" }),
             runtime("bc"),
         ] },
     });
@@ -109,9 +110,9 @@ test("discover: documentation is sourced from docs/<tag>.md with the inline fiel
     await fs.writeFile(path.join(dir, "docs", "sh.md"), "# sh\n\nfrom the file", "utf-8");
 
     const { registry } = await Discover.scan({ packageDirs: [dir] });
-    assert.equal(registry.get("sh")?.documentation, "# sh\n\nfrom the file", "docs/<tag>.md wins over the inline field");
-    assert.equal(registry.get("node")?.documentation, "inline-node (no file → kept)", "inline is the fallback when no file ships");
-    assert.equal(registry.get("bc")?.documentation, "", "neither file nor inline → empty");
+    assert.equal(registry.get("sh")?.details, "from the file", "docs/<tag>.md wins and its authoring title is not duplicated in the generated document");
+    assert.equal(registry.get("node")?.details, "inline-node (no file → kept)", "inline is the fallback when no file ships");
+    assert.equal(registry.get("bc")?.details, "", "neither file nor inline → empty");
 });
 
 test("discover: normalizes attribution once per package and preserves the published tag projection", async () => {
@@ -201,8 +202,8 @@ test("discover: dynamic runtimesModule hook materializes per-deployment tags", a
         "@plurnk/plurnk-execs-dynamic-fixture",
         `export async function runtimes() {
             return [
-                { name: "github", glyph: "🐙", invocation: { body: { role: "JSON arguments", required: false }, target: { role: "MCP tool", required: true, kind: "literal" }, example: { target: "get_issue", body: "{}" } }, documentation: "gh tools" },
-                { name: "figma", glyph: "🎨", invocation: { body: { role: "JSON arguments", required: false }, target: { role: "MCP tool", required: true, kind: "literal" }, example: { target: "get_file", body: "{}" } } },
+                { name: "github", glyph: "🐙", summary: "Use GitHub tools.", invocation: { body: { role: "JSON arguments", required: false }, target: { role: "MCP tool", required: true, kind: "literal" }, example: { target: "get_issue", body: "{}" } }, details: "gh tools" },
+                { name: "figma", glyph: "🎨", summary: "Use Figma tools.", invocation: { body: { role: "JSON arguments", required: false }, target: { role: "MCP tool", required: true, kind: "literal" }, example: { target: "get_file", body: "{}" } } },
             ];
         }`,
     );
@@ -210,21 +211,21 @@ test("discover: dynamic runtimesModule hook materializes per-deployment tags", a
 
     assert.equal(registry.size, 2);
     assert.deepEqual(registry.get("github"), {
-        runtime: "github", glyph: "🐙",
+        runtime: "github", glyph: "🐙", summary: "Use GitHub tools.",
         invocation: { body: { role: "JSON arguments", required: false }, target: { role: "MCP tool", required: true, kind: "literal" }, example: { target: "get_issue", body: "{}" } },
-        documentation: "gh tools", packageName: "@plurnk/plurnk-execs-dynamic-fixture",
+        details: "gh tools", packageName: "@plurnk/plurnk-execs-dynamic-fixture",
     });
     assert.deepEqual(registry.get("figma"), {
-        runtime: "figma", glyph: "🎨",
+        runtime: "figma", glyph: "🎨", summary: "Use Figma tools.",
         invocation: { body: { role: "JSON arguments", required: false }, target: { role: "MCP tool", required: true, kind: "literal" }, example: { target: "get_file", body: "{}" } },
-        documentation: "", packageName: "@plurnk/plurnk-execs-dynamic-fixture",
+        details: "", packageName: "@plurnk/plurnk-execs-dynamic-fixture",
     });
 });
 
 test("discover: the dynamic hook accepts a default export and a sync return", async () => {
     const dir = await makeDynamicPkg(
         "@plurnk/plurnk-execs-dynamic-fixture",
-        `export default () => [{ name: "slack", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } } }];`,
+        `export default () => [{ name: "slack", summary: "Use Slack tools.", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } } }];`,
     );
     const { registry } = await Discover.scan({ packageDirs: [dir] });
     assert.deepEqual([...registry.keys()], ["slack"]);
@@ -307,8 +308,8 @@ test("discover: ignores non-exec packages and missing glyphs default to empty", 
 
     assert.equal(registry.size, 1);
     assert.deepEqual(registry.get("sh"), {
-        runtime: "sh", glyph: "", invocation: fixtureInvocation,
-        documentation: "", packageName: "@plurnk/plurnk-execs-sh",
+        runtime: "sh", glyph: "", summary: "sh fixture.", invocation: fixtureInvocation,
+        details: "", packageName: "@plurnk/plurnk-execs-sh",
     });
 });
 

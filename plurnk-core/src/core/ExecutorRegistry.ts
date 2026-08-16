@@ -47,10 +47,10 @@ export interface RegistryEntry {
     // module-local runtime identity. {§plugin-namespace-arbitration}
     readonly namespaceOwner: RuntimeNamespaceOwner;
     readonly glyph: string;
+    readonly summary: string;
     readonly invocation: RuntimeInvocationDecl;
-    // Fuller reference doc for the tag (plurnk-execs ExecInfo.documentation),
-    // materialized at worker://plurnk/docs/<tag>.md. "" when omitted.
-    readonly documentation: string;
+    // Supplemental reference detail for the generated tool document.
+    readonly details: string;
     readonly available: boolean;
     readonly detail: string | undefined;
 }
@@ -217,7 +217,7 @@ export default class ExecutorRegistry {
         probeTimeoutMs?: number;
         cwd?: string;   // discovery root — the dir whose node_modules holds the exec plugins
         discoverFn?: () => Promise<{
-            registry: ReadonlyMap<string, { runtime: string; glyph: string; invocation: RuntimeInvocationDecl; documentation?: string; packageName: string }>;
+            registry: ReadonlyMap<string, { runtime: string; glyph: string; summary: string; invocation: RuntimeInvocationDecl; details: string; packageName: string }>;
             packageAttributions?: PackageAttributions;
             skipped?: string[];
         }>;
@@ -238,7 +238,7 @@ export default class ExecutorRegistry {
 
         // {§operator-config-git-ceiling} PLURNK_SERVICE_GIT_ALLOWED=0 must drop every
         // Git-capability executor entirely: a denied host neither dispatches
-        // the Git/isogit EXEC runtimes nor teaches them through the tools sheet.
+        // nor publishes the Git/isogit EXEC runtimes.
         const gitDenied = process.env.PLURNK_SERVICE_GIT_ALLOWED !== "1";
         const gitRuntimes = new Set(["git", "isogit"]);
         const infos = [...discovered.values()].filter((info) => !(gitDenied && gitRuntimes.has(info.runtime)));
@@ -259,8 +259,9 @@ export default class ExecutorRegistry {
                 executor,
                 namespaceOwner: { kind: "package", name: info.packageName },
                 glyph: info.glyph,
+                summary: info.summary,
                 invocation: info.invocation,
-                documentation: info.documentation ?? "",
+                details: info.details,
                 available: availability.available,
                 detail: availability.detail,
             });
@@ -311,7 +312,7 @@ export default class ExecutorRegistry {
         return this.#byTag.get(tag);
     }
 
-    // A family runtime's exact tools, invocation contracts, and pull document
+    // A family runtime's exact tools, summaries, and invocation contracts
     // cross the plugin boundary as one validated snapshot. Absence means the
     // runtime's static invocation declaration is authoritative.
     toolRegistry(tag: string, workspaceId?: number): RuntimeToolRegistry | null {

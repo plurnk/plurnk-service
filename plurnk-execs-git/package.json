@@ -33,6 +33,7 @@
             {
                 "name": "git",
                 "glyph": "🔀",
+                "summary": "Run native Git commands in a repository.",
                 "invocation": {
                     "body": {
                         "role": "Git arguments",

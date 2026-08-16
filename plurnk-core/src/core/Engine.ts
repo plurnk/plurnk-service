@@ -819,8 +819,8 @@ export default class Engine {
     runTurn(args: Parameters<TurnRunner["runTurn"]>[0]): ReturnType<TurnRunner["runTurn"]> {
         return this.#turnRunner.runTurn(args);
     }
-    docEntries(workspaceId: number): Promise<Array<{ name: string; content: string }>> {
-        return this.#packets.docEntries(workspaceId);
+    referenceEntries(workspaceId: number): Promise<Array<{ pathname: string; content: string }>> {
+        return this.#packets.referenceEntries(workspaceId);
     }
 
     // {§env-delta-log-pull} — materialize one closed interval of the ambient

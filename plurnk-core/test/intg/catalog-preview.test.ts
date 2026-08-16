@@ -207,7 +207,7 @@ test("the turn-0 initialization mirrors the REAL foisted survey — dynamic, not
     }
 });
 
-test("an empty workspace executes all four orienting FINDs and preserves empty-surface results", async () => {
+test("an empty workspace executes all five orienting FINDs and preserves empty-surface results", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "2";
@@ -224,15 +224,17 @@ test("an empty workspace executes all four orienting FINDs and preserves empty-s
                     { scheme: "worker", hostname: null, pathname: "/*" },
                     { scheme: "worker", hostname: "~", pathname: "/*" },
                     { scheme: "worker", hostname: "plurnk", pathname: "/docs/**" },
-                ], "the four surveys execute in their taught order");
+                    { scheme: "worker", hostname: "plurnk", pathname: "/tools/*.md" },
+                ], "the five surveys execute in their taught order");
                 assert.deepEqual(finds.map(({ signal }) => JSON.parse(signal ?? "null")), [
-                    ["+init"], ["+init"], ["+init"], ["+init", "+docs"],
+                    ["+init"], ["+init"], ["+init"], ["+init", "+docs"], ["+init", "+tools"],
                 ]);
                 const orientations = [
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true],
                     ["workspace commons", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/*"), true],
                     ["own space", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/*"), true],
                     ["kernel docs", finds.find((r) => r.scheme === "worker" && r.hostname === "plurnk" && r.pathname === "/docs/**"), false],
+                    ["executable tools", finds.find((r) => r.scheme === "worker" && r.hostname === "plurnk" && r.pathname === "/tools/*.md"), false],
                 ] as const;
                 for (const [name, row, expectEmpty] of orientations) {
                     assert.ok(row !== undefined, `${name} FIND executes even when empty`);
@@ -241,6 +243,12 @@ test("an empty workspace executes all four orienting FINDs and preserves empty-s
                     const items = result.results ?? (result.content !== undefined ? JSON.parse(result.content) as unknown[] : []);
                     if (expectEmpty) assert.deepEqual(items, [], `${name} preserves the informative zero-result response`);
                 }
+                const toolSurvey = finds.find((r) => r.pathname === "/tools/*.md");
+                const toolResult = JSON.parse(toolSurvey!.rx) as { content?: string; results?: unknown[] };
+                const toolItems = (toolResult.results
+                    ?? (toolResult.content === undefined ? [] : JSON.parse(toolResult.content) as unknown[])) as Array<Array<{ path: string; summary?: string }>>;
+                const shell = toolItems.flat().find(({ path }) => path === "worker://plurnk/tools/sh.md");
+                assert.equal(shell?.summary, "Run POSIX shell commands and scripts.", "Turn 0 carries the family summary without its invocation body");
                 const exemplar = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 const content = (JSON.parse(exemplar!.rx) as { content: string }).content;
                 assert.equal(content, `# PLAN0
@@ -255,6 +263,8 @@ test("an empty workspace executes all four orienting FINDs and preserves empty-s
 
 ## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>
 
+## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>
+
 ## SEND0 [102]
 Next, address the prompt.`);
                 const logTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: modelWorkerId });
@@ -265,8 +275,8 @@ Next, address the prompt.`);
                     tagsBySequence.get(sequence)?.push(tag);
                 }
                 assert.deepEqual(finds.map(({ sequence }) => tagsBySequence.get(sequence)), [
-                    ["init"], ["init"], ["init"], ["docs", "init"],
-                ], "each FIND classifies its own durable log item; docs retains the shared init set");
+                    ["init"], ["init"], ["init"], ["docs", "init"], ["init", "tools"],
+                ], "each FIND classifies its own durable log item; docs and tools retain the shared init set");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }

@@ -26,12 +26,12 @@ interface ExecManifest {
 //
 // Trust precedes executable hooks ({§executor-trust}). A package is recognized
 // only when its manifest declares `plurnk.kind === "exec"`; tags come from:
-//   - STATIC: `plurnk.runtimes: { name, glyph?, invocation, documentation? }[]` —
+//   - STATIC: `plurnk.runtimes: { name, glyph?, summary, invocation, details? }[]` —
 //     tags known at publish time.
 //   - DYNAMIC: `plurnk.runtimesModule: "<export-subpath>"` — a trusted hook that
 //     returns deployment-configured declarations ({§executor-dynamic-runtimes}).
 // Each decl registers its tag separately; one package can claim many tags
-// backed by the same default export. Invocation, documentation, and attribution
+// backed by the same default export. Summary, invocation, details, and attribution
 // projection are defined by {§executor-runtime-declaration}.
 //
 // Tags occupy one flat namespace. Two packages claiming one tag are a fail-hard
@@ -126,14 +126,15 @@ export default class Discover {
         const infos: ExecInfo[] = [];
         for (const raw of await Discover.#runtimeDecls(dir, packageName, plurnk)) {
             const decl = RuntimeDeclaration.assert(raw, packageName);
-            // A package doc file wins over inline documentation
+            // A package doc file wins over inline details
             // ({§executor-runtime-declaration}).
-            const documentation = await Discover.#readDocFile(dir, decl.name) ?? decl.documentation ?? "";
+            const details = await Discover.#readDocFile(dir, decl.name) ?? decl.details ?? "";
             infos.push({
                 runtime: decl.name,
                 glyph: decl.glyph ?? "",
+                summary: decl.summary,
                 invocation: decl.invocation,
-                documentation,
+                details,
                 packageName,
                 ...(attribution !== undefined ? { attribution } : {}),
             });
@@ -198,11 +199,16 @@ export default class Discover {
         return decls as RuntimeDecl[];
     }
 
-    // A tag's documentation file under the package's `docs/` folder — the docs
+    // A tag's supplemental detail file under the package's `docs/` folder — the
     // convention's source of truth. Returns null when the package ships none.
     static async #readDocFile(dir: string, tag: string): Promise<string | null> {
         try {
-            return await fs.readFile(path.join(dir, "docs", `${tag}.md`), "utf-8");
+            const source = await fs.readFile(path.join(dir, "docs", `${tag}.md`), "utf-8");
+            const title = `# ${tag}`;
+            if (source === title || source === `${title}\n`) return "";
+            if (source.startsWith(`${title}\r\n`)) return source.slice(title.length + 2).replace(/^\r?\n/u, "");
+            if (source.startsWith(`${title}\n`)) return source.slice(title.length + 1).replace(/^\r?\n/u, "");
+            return source;
         } catch {
             return null;
         }

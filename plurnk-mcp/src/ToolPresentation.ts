@@ -76,51 +76,15 @@ export const inputSignature = (inputSchema: unknown): string => {
     return root === null ? "unknown" : schemaType(root, root);
 };
 
-const roleOf = (tool: Tool): string => {
+const summaryOf = (server: string, tool: Tool): string => {
     const authored = tool.description ?? tool.annotations?.title ?? tool.title;
-    if (authored === undefined) return "MCP tool";
+    if (authored === undefined) {
+        return `Invoke the ${tool.name} tool exposed by the ${server} MCP server.`;
+    }
     const normalized = authored.replaceAll(/\s+/gu, " ").trim();
-    return normalized === "" ? "MCP tool" : normalized;
-};
-
-const inlineCode = (value: string): string => {
-    const longest = Math.max(0, ...[...value.matchAll(/`+/gu)].map((match) => match[0].length));
-    const fence = "`".repeat(longest + 1);
-    const padding = value.startsWith("`") || value.endsWith("`") ? " " : "";
-    return `${fence}${padding}${value}${padding}${fence}`;
-};
-
-const documentation = (server: string, tools: readonly Tool[]): string => {
-    if (tools.length === 0) return "";
-    const sections = tools.flatMap((tool) => [
-        `## ${tool.name}`,
-        "",
-        ...(tool.description === undefined ? [] : [tool.description.trim(), ""]),
-        `Invocation: ${inlineCode(inputSignature(tool.inputSchema))}`,
-        "",
-        "### Input schema",
-        "",
-        "```json",
-        JSON.stringify(tool.inputSchema, null, 2),
-        "```",
-        ...(tool.outputSchema === undefined
-            ? []
-            : [
-                "",
-                "### Output schema",
-                "",
-                "```json",
-                JSON.stringify(tool.outputSchema, null, 2),
-                "```",
-            ]),
-    ]);
-    return [
-        `# ${server}`,
-        "",
-        "Enabled MCP tool contracts.",
-        "",
-        ...sections,
-    ].join("\n");
+    return normalized === ""
+        ? `Invoke the ${tool.name} tool exposed by the ${server} MCP server.`
+        : normalized;
 };
 
 export const toolRegistry = (server: string, source: readonly Tool[]): RuntimeToolRegistry => {
@@ -128,19 +92,19 @@ export const toolRegistry = (server: string, source: readonly Tool[]): RuntimeTo
     return {
         tools: tools.map((tool) => ({
             target: tool.name,
+            summary: summaryOf(server, tool),
             invocation: {
                 body: {
                     role: "JSON arguments",
                     required: Array.isArray(tool.inputSchema.required) && tool.inputSchema.required.length > 0,
                 },
                 target: {
-                    role: roleOf(tool),
+                    role: "MCP tool",
                     required: true,
                     kind: "literal",
                 },
                 signature: inputSignature(tool.inputSchema),
             },
         })),
-        documentation: documentation(server, tools),
     };
 };

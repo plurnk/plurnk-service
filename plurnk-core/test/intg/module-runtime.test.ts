@@ -36,8 +36,9 @@ const fakeEntry = (tag: string, namespaceOwner = `test module '${tag}'`): Regist
     } as unknown as Executor,
     namespaceOwner: { kind: "module", name: namespaceOwner },
     glyph: "🔌",
+    summary: `${tag} fixture.`,
     invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } },
-    documentation: "",
+    details: "",
     available: true,
     detail: "fake",
 });
@@ -80,7 +81,7 @@ test("module runtime registration adds one dispatchable and model-visible tag", 
         const { schemes, executors, engine } = wire(db);
         engine.registerRuntime("myserver", fakeEntry("myserver"));
         assert.ok(executors.entry("myserver"), "tag in the executor registry - dispatch resolves EXEC[myserver]");
-        assert.ok(executors.availableRuntimes().includes("myserver"), "offered to the model on the next packet's tools sheet");
+        assert.ok(executors.availableRuntimes().includes("myserver"), "available for the workspace's tool-resource projection");
         assert.ok(schemes.has("myserver"), "scheme face registered - READ/FIND/KILL for the tag");
     } finally { await db.close(); }
 });

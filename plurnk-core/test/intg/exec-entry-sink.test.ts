@@ -125,7 +125,7 @@ const wire = async (opts?: {
             },
         },
         namespaceOwner: { kind: "module", name: `${tag} fixture` },
-        glyph: "?", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } }, documentation: "", available: true, detail: undefined,
+        glyph: "?", summary: "Entry sink fixture.", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } }, details: "", available: true, detail: undefined,
     });
     const workspaceId = await insertWorkspace(db, `sink-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId, null, "researcher");

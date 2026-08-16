@@ -398,7 +398,7 @@ test("story: compute a value too big for arithmetic shortcuts", { timeout: TIMEO
     } finally { await story.cleanup(); }
 });
 
-test("{§tools-loop-affinity}: ask mode answers a shell-tempting question in prose", { timeout: TIMEOUT }, async () => {
+test("{§mode-ask-read-only}: ask mode answers a shell-tempting question in prose", { timeout: TIMEOUT }, async () => {
     // Deterministic coverage pins the sheet and gate; this story probes model use.
     const story = await runStory({
         label: "ask-steer",

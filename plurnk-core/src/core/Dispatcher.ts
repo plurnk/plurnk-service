@@ -998,7 +998,7 @@ export default class Dispatcher {
         }
 
         const active = this.#schemes.resolveForLoop(flags, workspaceId);
-        // {§tools-loop-affinity}: name the non-retryable restriction so the model changes course.
+        // {§mode-ask-read-only}: name the non-retryable restriction so the model changes course.
         const restriction = flags.mode === "ask"
             ? "this is an ask-mode (read-only) loop — you cannot run commands or take host actions here"
             : flags.noWeb && flags.noInteraction ? "web and interaction are disabled for this loop"

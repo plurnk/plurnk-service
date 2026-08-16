@@ -41,7 +41,7 @@ const wire = async (run: Executor["run"]) => {
             run,
         },
         namespaceOwner: { kind: "module", name: `${tag} fixture` },
-        glyph: "?", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } }, documentation: "", available: true, detail: undefined,
+        glyph: "?", summary: "Conclude fixture.", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } }, details: "", available: true, detail: undefined,
     } as never);
     const workspaceId = await insertWorkspace(db, `honesty-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);

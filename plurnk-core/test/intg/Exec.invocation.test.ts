@@ -111,13 +111,13 @@ const wire = async () => {
                         return {
                             tools: [{
                                 target: "enabled_tool",
+                                summary: "Use the enabled fixture tool.",
                                 invocation: {
                                     body: { role: "required JSON arguments", required: true },
                                     target: { role: "Enabled fixture tool", required: true, kind: "literal" as const },
                                     signature: '{"value": string}',
                                 },
                             }],
-                            documentation: "# familytool\n\nEnabled fixture tool.",
                         };
                     },
                 }
@@ -127,8 +127,9 @@ const wire = async () => {
             executor,
             namespaceOwner: { kind: "module" as const, name: `${runtime} fixture` },
             glyph: "?",
+            summary: `${runtime} fixture.`,
             invocation,
-            documentation: "",
+            details: "",
             available: true,
             detail: undefined,
         }] as const;
@@ -192,8 +193,8 @@ test("{§executor-tool-registry} exact tools own admission and their invocation 
     const ctx = await wire();
     try {
         assert.deepEqual(
-            (await ctx.engine.docEntries(ctx.workspaceId)).find((doc) => doc.name === "familytool"),
-            { name: "familytool", content: "# familytool\n\nEnabled fixture tool." },
+            (await ctx.engine.referenceEntries(ctx.workspaceId)).find((doc) => doc.pathname === "/tools/familytool/enabled_tool.md")?.pathname,
+            "/tools/familytool/enabled_tool.md",
         );
         const missing = await ctx.dispatch(statement("familytool", null, "{}"));
         assert.equal(missing.status, 400);
