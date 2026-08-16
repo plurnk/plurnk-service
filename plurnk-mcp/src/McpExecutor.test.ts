@@ -11,6 +11,7 @@ import McpExecutor, { runtimeDecl } from "./McpExecutor.ts";
 import ServerConnection from "./client.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
+const interactionFixture = fileURLToPath(new URL("./fixtures/interaction-server.mjs", import.meta.url));
 
 const configured = (): {
     connection: ServerConnection;
@@ -194,6 +195,44 @@ test("MCP executor calls a current tool and writes its result", async () => {
                 .content?.[0]?.text,
             "hello",
         );
+    } finally {
+        await connection.close();
+    }
+});
+
+test("MCP executor keeps elicitation on its generic client interaction sink", async () => {
+    const connection = new ServerConnection({
+        name: "interaction",
+        transport: "stdio",
+        command: process.execPath,
+        args: [interactionFixture],
+        tools: ["batch"],
+    }, {
+        PLURNK_MCP_CONNECT_TIMEOUT: "30000",
+        PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+    });
+    const executor = new McpExecutor(
+        { runtime: "interaction", glyph: "🔌" },
+        connection,
+        { tools: ["batch"], read: [] },
+    );
+    try {
+        await executor.requireAvailable();
+        const h = harness({
+            runtime: "interaction",
+            target: "batch",
+            interact: async () => ({
+                status: "resolved",
+                payload: {
+                    profile: { action: "accept", content: { name: "Ada" } },
+                    approval: { action: "accept", content: { confirm: true } },
+                },
+            }),
+        });
+        const result = await executor.run(h.args);
+        assert.equal(result.status, 200);
+        assert.match(h.writes[0] ?? "", /Ada/);
+        assert.deepEqual(h.states, ["closed"]);
     } finally {
         await connection.close();
     }

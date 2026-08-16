@@ -250,6 +250,7 @@ export default class McpResources {
             name,
             Object.keys(args).length === 0 ? undefined : args,
             ctx.signal,
+            (interaction) => ctx.interactions.request(interaction),
         );
         requireEntrySuccess(await ctx.entries.write(request.pathname, {
             channels: {
@@ -273,7 +274,11 @@ export default class McpResources {
         } catch (cause) {
             throw new ResourceAddressError(`Invalid encoded MCP resource address '${pathname}'.`, { cause });
         }
-        const body = resourceBody(await this.#connection.readResource(uri, ctx.signal));
+        const body = resourceBody(await this.#connection.readResource(
+            uri,
+            ctx.signal,
+            (interaction) => ctx.interactions.request(interaction),
+        ));
         requireEntrySuccess(await ctx.entries.write(pathname, {
             channels: {
                 body: {

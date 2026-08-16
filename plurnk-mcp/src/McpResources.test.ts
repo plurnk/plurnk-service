@@ -13,6 +13,7 @@ import McpResources from "./McpResources.ts";
 import ServerConnection from "./client.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
+const interactionFixture = fileURLToPath(new URL("./fixtures/interaction-server.mjs", import.meta.url));
 const env = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
     PLURNK_MCP_REQUEST_TIMEOUT: "30000",
@@ -62,6 +63,9 @@ const context = (): {
     const entries = new Map<string, EntryData>();
     const ctx = {
         signal: undefined,
+        interactions: {
+            request: async () => ({ status: "cancelled" as const }),
+        },
         entries: {
             read: async (pathname: string) => ({
                 status: 200,
@@ -79,6 +83,27 @@ const context = (): {
         },
     } as unknown as SchemeCtx;
     return { ctx, entries };
+};
+
+const interactionResources = async (): Promise<{
+    connection: ServerConnection;
+    resources: McpResources;
+}> => {
+    const connection = new ServerConnection({
+        name: "interaction",
+        transport: "stdio",
+        command: process.execPath,
+        args: [interactionFixture],
+    }, env);
+    const executor = new McpExecutor(
+        { runtime: "interaction", glyph: "🔌" },
+        connection,
+    );
+    await executor.requireAvailable();
+    return {
+        connection,
+        resources: new McpResources("interaction", connection, executor.catalog),
+    };
 };
 
 test("resource facet materializes current MCP resources as ordinary entries", async () => {
@@ -137,6 +162,29 @@ test("prompt definitions and retrieval use the server resource authority", async
             content: { type: "text", text: "Summarize MCP." },
         }]);
         assert.deepEqual(entries.get(pathname)?.attributes, { kind: "mcp-prompt" });
+    } finally {
+        await connection.close();
+    }
+});
+
+test("resource materialization routes MCP elicitation through SchemeCtx", async () => {
+    const { connection, resources } = await interactionResources();
+    try {
+        const { ctx, entries } = context();
+        ctx.interactions.request = async (request) => {
+            assert.equal(request.toolName, "mcp_input_required");
+            assert.equal(request.arguments.operation, "resources/read");
+            return {
+                status: "resolved",
+                payload: {
+                    read: { action: "accept", content: { confirm: true } },
+                },
+            };
+        };
+        const pathname = "/resources/fixture%3A%2F%2Fguarded";
+        const result = await resources.prepareRepresentation(preparationRequest(pathname), ctx);
+        assert.equal(result.status, 200);
+        assert.equal(entries.get(pathname)?.channels.body?.content, "read:accept");
     } finally {
         await connection.close();
     }

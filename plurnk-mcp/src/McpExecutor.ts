@@ -188,6 +188,7 @@ export default class McpExecutor extends BaseExecutor {
         write,
         setState,
         emit,
+        interact,
     }: ExecArgs): Promise<ExecResult> {
         const fail = (
             code: string,
@@ -267,6 +268,7 @@ export default class McpExecutor extends BaseExecutor {
                 args,
                 signal,
                 (progress) => emit(progressNotice(runtime, target, progress)),
+                interact,
             );
             write(CHANNEL, renderJsonResult(result), "application/json");
             if (result.isError === true) {

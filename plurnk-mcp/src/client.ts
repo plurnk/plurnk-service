@@ -3,13 +3,17 @@ import {
     ClientCredentialsProvider,
     StreamableHTTPClientTransport,
     type AuthProvider,
+    type CallToolRequest,
     type CallToolResult,
     type CompleteRequest,
     type CompleteResult,
     type DiscoverResult,
+    type GetPromptRequest,
     type GetPromptResult,
+    type InputRequiredResult,
     type OAuthClientProvider,
     type Progress,
+    type ReadResourceRequest,
     type ReadResourceResult,
     type Tool,
 } from "@modelcontextprotocol/client";
@@ -27,6 +31,11 @@ import {
     expandReferences,
     requestTimeoutMs,
 } from "./config.ts";
+import {
+    INPUT_REQUIRED_MAX_ROUNDS,
+    runInputRequiredRequest,
+    type ClientInteractionHandler,
+} from "./inputRequired.ts";
 import InteractiveOAuthProvider from "./oauth.ts";
 import { MCP_PROTOCOL_VERSION } from "./protocol.ts";
 
@@ -62,6 +71,8 @@ type ResolvedDefinition = ResolvedStdioDefinition | ResolvedHttpDefinition;
 export interface ServerConnectionOptions {
     readonly onCatalogChanged?: (error: Error | null) => void;
 }
+
+export type { ClientInteractionHandler } from "./inputRequired.ts";
 
 const message = (error: unknown): string =>
     error instanceof Error ? error.message : String(error);
@@ -230,11 +241,18 @@ const openClient = async (
             version: packageJson.version,
         },
         {
+            capabilities: {
+                elicitation: {
+                    form: {},
+                    url: {},
+                },
+            },
             versionNegotiation: {
                 mode: { pin: MCP_PROTOCOL_VERSION },
             },
             inputRequired: {
                 autoFulfill: false,
+                maxRounds: INPUT_REQUIRED_MAX_ROUNDS,
             },
             listChanged: {
                 tools: {
@@ -469,29 +487,60 @@ export default class ServerConnection {
         args: Record<string, unknown>,
         signal?: AbortSignal,
         onProgress?: (progress: Progress) => void,
+        interact?: ClientInteractionHandler,
     ): Promise<CallToolResult> {
-        return this.#request(async (client) => client.callTool(
-            { name, arguments: args },
-            this.#requestOptions(signal, onProgress),
-        ));
+        return this.#request(async (client) => runInputRequiredRequest<CallToolResult>({
+            server: this.#definition.name,
+            operation: "tools/call",
+            originalParams: { name, arguments: args },
+            signal,
+            interact,
+            onProgress,
+            timeout: requestTimeoutMs(this.#environ),
+            requestLeg: (params, options) => client.callTool(
+                params as CallToolRequest["params"],
+                options,
+            ) as Promise<CallToolResult | InputRequiredResult>,
+        }));
     }
 
-    async readResource(uri: string, signal?: AbortSignal): Promise<ReadResourceResult> {
-        return this.#request(async (client) => client.readResource(
-            { uri },
-            this.#requestOptions(signal),
-        ));
+    async readResource(
+        uri: string,
+        signal?: AbortSignal,
+        interact?: ClientInteractionHandler,
+    ): Promise<ReadResourceResult> {
+        return this.#request(async (client) => runInputRequiredRequest<ReadResourceResult>({
+            server: this.#definition.name,
+            operation: "resources/read",
+            originalParams: { uri },
+            signal,
+            interact,
+            timeout: requestTimeoutMs(this.#environ),
+            requestLeg: (params, options, retry) => client.readResource(
+                params as ReadResourceRequest["params"],
+                retry ? { ...options, cacheMode: "refresh" } : options,
+            ) as Promise<ReadResourceResult | InputRequiredResult>,
+        }));
     }
 
     async getPrompt(
         name: string,
         args: Record<string, string> | undefined,
         signal?: AbortSignal,
+        interact?: ClientInteractionHandler,
     ): Promise<GetPromptResult> {
-        return this.#request(async (client) => client.getPrompt(
-            { name, ...(args === undefined ? {} : { arguments: args }) },
-            this.#requestOptions(signal),
-        ));
+        return this.#request(async (client) => runInputRequiredRequest<GetPromptResult>({
+            server: this.#definition.name,
+            operation: "prompts/get",
+            originalParams: { name, ...(args === undefined ? {} : { arguments: args }) },
+            signal,
+            interact,
+            timeout: requestTimeoutMs(this.#environ),
+            requestLeg: (params, options) => client.getPrompt(
+                params as GetPromptRequest["params"],
+                options,
+            ) as Promise<GetPromptResult | InputRequiredResult>,
+        }));
     }
 
     async complete(

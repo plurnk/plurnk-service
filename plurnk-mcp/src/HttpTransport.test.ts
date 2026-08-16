@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+    acceptedContent,
+    inputRequired,
     McpServer,
     createMcpHandler,
     type McpHttpHandler,
@@ -69,6 +71,47 @@ const lifecycleHandler = (
                 }, { once: true });
             });
             return { content: [{ type: "text", text: "unexpected" }] };
+        },
+    );
+    return server;
+}, {
+    legacy: "reject",
+    responseMode: "auto",
+    keepAliveMs: 0,
+});
+
+const httpRequestState = "http::\u03b4\nopaque";
+
+const interactionHandler = (): McpHttpHandler => createMcpHandler(() => {
+    const server = new McpServer({ name: "http-interaction-fixture", version: "1.0.0" });
+    server.registerTool(
+        "confirm",
+        { description: "Confirm over Streamable HTTP.", inputSchema: z.object({}) },
+        async (_args, ctx) => {
+            if (ctx.mcpReq.requestState() === undefined) {
+                return inputRequired({
+                    inputRequests: {
+                        confirm: inputRequired.elicit({
+                            message: "Continue over HTTP?",
+                            requestedSchema: {
+                                type: "object",
+                                properties: { confirm: { type: "boolean" } },
+                                required: ["confirm"],
+                                additionalProperties: false,
+                            },
+                        }),
+                    },
+                    requestState: httpRequestState,
+                });
+            }
+            if (ctx.mcpReq.requestState() !== httpRequestState) {
+                throw new Error("HTTP requestState changed in transit.");
+            }
+            const response = acceptedContent(ctx.mcpReq.inputResponses, "confirm", z.object({
+                confirm: z.boolean(),
+            }));
+            if (response?.confirm !== true) throw new Error("HTTP input response changed in transit.");
+            return { content: [{ type: "text", text: "confirmed" }] };
         },
     );
     return server;
@@ -165,6 +208,53 @@ test("HTTP progress and stream cancellation settle the same request", async (t) 
         false,
         "Streamable HTTP cancellation closes the request instead of posting a cancellation notification",
     );
+});
+
+test("Streamable HTTP retries MRTR with a fresh ID and exact private continuation state", async (t) => {
+    const served = await serveMcpHttp(t, interactionHandler());
+    const connection = new ServerConnection({
+        name: "interaction",
+        transport: "http",
+        url: served.url,
+    }, floor);
+    t.after(() => connection.close());
+
+    let projectedRequest = "";
+    const result = await connection.callTool(
+        "confirm",
+        {},
+        undefined,
+        undefined,
+        async (request) => {
+            projectedRequest = JSON.stringify(request);
+            return {
+                status: "resolved",
+                payload: {
+                    confirm: { action: "accept", content: { confirm: true } },
+                },
+            };
+        },
+    );
+    assert.deepEqual(result.content, [{ type: "text", text: "confirmed" }]);
+    assert.equal(projectedRequest.includes(httpRequestState), false);
+
+    const calls = served.requests
+        .map(({ body }) => body as {
+            id?: number;
+            method?: string;
+            params?: {
+                requestState?: string;
+                inputResponses?: Record<string, unknown>;
+            };
+        })
+        .filter(({ method }) => method === "tools/call");
+    assert.equal(calls.length, 2);
+    assert.notEqual(calls[0]?.id, calls[1]?.id);
+    assert.equal(calls[0]?.params?.requestState, undefined);
+    assert.equal(calls[1]?.params?.requestState, httpRequestState);
+    assert.deepEqual(calls[1]?.params?.inputResponses, {
+        confirm: { action: "accept", content: { confirm: true } },
+    });
 });
 
 test("interactive HTTP OAuth preserves discovery, PKCE, state, issuer, and resource binding", async (t) => {
