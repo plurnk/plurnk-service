@@ -7,6 +7,7 @@ import Validator, {
     InvalidClientDisplayCapabilitiesError,
     InvalidLoopFlagsError,
     InvalidMcpServerDefinitionError,
+    InvalidMcpServerOptionsError,
     InvalidNoticeError,
     InvalidOperationResultError,
     InvalidProblemDetailsError,
@@ -15,7 +16,7 @@ import Validator, {
     InvalidTextRegionError,
 } from "./Validator.ts";
 import Problems from "./Problems.ts";
-import type { ClientDisplayCapabilities, McpServerDefinition, RangeExtent } from "./types.generated.ts";
+import type { ClientDisplayCapabilities, McpServerDefinition, McpServerOptions, RangeExtent } from "./types.generated.ts";
 
 test("client interactions carry one generic tool contract without owner-private continuation state", () => {
     const request = {
@@ -59,7 +60,7 @@ test("client interactions carry one generic tool contract without owner-private 
     );
 });
 
-test("{§mcp-server-definition}: MCP attachments are one closed transport shape with symbolic credentials", () => {
+test("{§mcp-server-definition}: MCP server definitions are one closed transport shape with symbolic credentials", () => {
     const definitions: McpServerDefinition[] = [
         {
             name: "local-tools",
@@ -162,6 +163,38 @@ test("{§mcp-server-definition}: MCP attachments are one closed transport shape 
         assert.throws(
             () => Validator.assertMcpServerDefinition(invalid as never),
             InvalidMcpServerDefinitionError,
+        );
+    }
+});
+
+test("{§mcp-server-options}: MCP add options are a closed definition supplement", () => {
+    const options: McpServerOptions[] = [
+        {},
+        {
+            args: ["--stdio"],
+            cwd: "/workspace",
+            env: { GITEA_TOKEN: "${GITEA_TOKEN}" },
+            tools: ["issue_read"],
+            read: ["issue_read"],
+        },
+        {
+            headers: { "X-Tenant": "${TENANT}" },
+            authorization: { type: "bearer", token: "${GITEA_TOKEN}" },
+        },
+    ];
+    for (const option of options) {
+        assert.equal(Validator.assertMcpServerOptions(option), option);
+    }
+    for (const invalid of [
+        { alias: "gitea" },
+        { target: "gitea-mcp" },
+        { transport: "stdio" },
+        { args: "--stdio" },
+        { authorization: { type: "bearer", token: "literal-secret" } },
+    ]) {
+        assert.throws(
+            () => Validator.assertMcpServerOptions(invalid as never),
+            InvalidMcpServerOptionsError,
         );
     }
 });

@@ -4,6 +4,7 @@ import {
     connectTimeoutMs,
     requestTimeoutMs,
     serverDefinition,
+    serviceEnabledNames,
     serverNames,
 } from "./config.ts";
 
@@ -31,6 +32,35 @@ test("configuration discovers case-folded server targets and exact stdio argumen
         tools: ["filesystem_read_text_file"],
         read: ["filesystem_read_text_file"],
     });
+});
+
+test("configured servers are available independently from the exact cold-enabled set", () => {
+    const env = {
+        ...floor,
+        PLURNK_MCP_ATLAS: "node",
+        PLURNK_MCP_GITEA: "gitea-mcp",
+        PLURNK_MCP_ENABLED: '["gitea"]',
+    };
+    assert.deepEqual(serverNames(env), ["atlas", "gitea"]);
+    assert.deepEqual(serviceEnabledNames(env), ["gitea"]);
+    assert.deepEqual(serviceEnabledNames({
+        ...env,
+        PLURNK_MCP_ENABLED: "",
+    }), []);
+    assert.throws(
+        () => serviceEnabledNames({
+            ...env,
+            PLURNK_MCP_ENABLED: '["missing"]',
+        }),
+        /PLURNK_MCP_ENABLED.*unknown MCP server 'missing'/,
+    );
+    assert.throws(
+        () => serviceEnabledNames({
+            ...env,
+            PLURNK_MCP_ENABLED: '["gitea","gitea"]',
+        }),
+        /PLURNK_MCP_ENABLED.*duplicate MCP server 'gitea'/,
+    );
 });
 
 test("HTTP bearer authentication preserves its authoritative environment reference", () => {
@@ -194,6 +224,20 @@ test("case-fold collisions and reserved global/suffix ambiguity name exact varia
             PLURNK_MCP_connect_timeout: "30000",
         }),
         /PLURNK_MCP_connect_timeout.*PLURNK_MCP_CONNECT_TIMEOUT.*reserved global/,
+    );
+    assert.throws(
+        () => serverNames({
+            ...floor,
+            PLURNK_MCP_enabled: "[]",
+        }),
+        /PLURNK_MCP_enabled.*PLURNK_MCP_ENABLED.*reserved global/,
+    );
+    assert.throws(
+        () => serverNames({
+            ...floor,
+            PLURNK_MCP_ENABLED_ARGS: "[]",
+        }),
+        /PLURNK_MCP_ENABLED_ARGS.*PLURNK_MCP_ENABLED.*reserved global/,
     );
 });
 

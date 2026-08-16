@@ -16,6 +16,7 @@ const COMPANION_SUFFIXES = [
 const CONTROL_KEYS = new Map([
     ["connect_timeout", `${PREFIX}CONNECT_TIMEOUT`],
     ["request_timeout", `${PREFIX}REQUEST_TIMEOUT`],
+    ["enabled", `${PREFIX}ENABLED`],
 ]);
 const SERVER_NAME = /^[a-z][a-z0-9-]*$/;
 const ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/gu;
@@ -244,6 +245,26 @@ export const serviceDefinitions = (
     if (definition === null) throw new Error(`MCP server '${name}' disappeared during configuration.`);
     return definition;
 });
+
+export const serviceEnabledNames = (
+    environ: NodeJS.ProcessEnv = process.env,
+): string[] => {
+    const field = `${PREFIX}ENABLED`;
+    const configured = jsonStrings(environ[field], field);
+    const available = new Set(serverNames(environ));
+    const enabled = new Set<string>();
+    for (const name of configured) {
+        assertServerName(name, field);
+        if (!available.has(name)) {
+            throw new Error(`${field} contains unknown MCP server '${name}'.`);
+        }
+        if (enabled.has(name)) {
+            throw new Error(`${field} contains duplicate MCP server '${name}'.`);
+        }
+        enabled.add(name);
+    }
+    return [...enabled].toSorted();
+};
 
 export const connectTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number => {
     const raw = environ.PLURNK_MCP_CONNECT_TIMEOUT;

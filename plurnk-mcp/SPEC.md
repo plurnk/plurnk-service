@@ -108,11 +108,13 @@ originating distinction in its canonical Problem/result path.
 
 ## §mcp-configuration Configuration
 
-Two inputs produce one effective definition per workspace. Service environment
-variables are convenience defaults instantiated independently for every
-workspace. The workspace's durable attachment map may add a server, replace a
-default, or retain a tombstone that suppresses a default after detach. Neither
-source expands the model-facing namespace with a second discovery surface.
+Service configuration and workspace state produce one available set and one
+enabled subset per workspace. Every `PLURNK_MCP_<server>` declares an available
+service-owned definition. `PLURNK_MCP_ENABLED` names the exact subset enabled
+when a workspace has no override. Workspace state may positively override a
+service definition's enabledness or own an added definition and its enabledness.
+Disabled definitions remain client-visible but contribute no connection,
+Registry, documentation, or resource authority.
 
 | Variable | Contract |
 |---|---|
@@ -124,6 +126,7 @@ source expands the model-facing namespace with a second discovery surface.
 | `PLURNK_MCP_<server>_HEADERS` | JSON string map for supplementary HTTP headers |
 | `PLURNK_MCP_<server>_TOOLS` | Optional JSON array of exact enabled tool names; absent enables all listed server tools, while `[]` enables none |
 | `PLURNK_MCP_<server>_READ` | JSON string array forming an exact subset of enabled tools that the operator classifies as read-only; every other enabled tool retains the conservative `host` effect |
+| `PLURNK_MCP_ENABLED` | JSON array of exact configured server aliases enabled by default; absent or `[]` enables none |
 | `PLURNK_MCP_CONNECT_TIMEOUT` | Positive integer milliseconds |
 | `PLURNK_MCP_REQUEST_TIMEOUT` | Positive integer milliseconds |
 
@@ -136,8 +139,7 @@ inside it. Bearer authentication and a case-insensitive `Authorization` entry
 in `_HEADERS` are mutually exclusive.
 
 §mcp-definition-wire The contracts-owned `McpServerDefinition` JSON Schema is
-the one workspace action and durable-state shape. It is a closed discriminated
-union:
+the normalized durable definition shape. It is a closed discriminated union:
 
 | Transport / authorization | Required definition | Optional definition |
 |---|---|---|
@@ -159,6 +161,13 @@ discovery state, and authorization callback state remain process-memory
 credentials; a restart reconstructs the attachment as authorization-required
 instead of writing secrets into SQLite.
 
+The contracts-owned `McpServerOptions` schema is the closed supplement accepted
+by `workspace.mcp.add`. It may contain `args`, `cwd`, `env`, `headers`,
+`authorization`, `tools`, and `read`; it cannot repeat alias, target, or
+transport. An absolute HTTP(S) target selects Streamable HTTP. Every other
+target is one exact stdio executable. The normalized definition rejects
+transport-inapplicable options before any connection work.
+
 ### §mcp-management-actions Workspace management
 
 Every action below declares `scope: "workspace"` under
@@ -167,12 +176,12 @@ workspace identifier in params.
 
 | Action | Parameters | Result / effect |
 |---|---|---|
-| `workspace.mcp.list` | none | Sorted effective server summaries: name, source, transport, connection/authorization state, negotiated identity/capabilities, enabled tools, and read subset. No credential values. |
-| `workspace.mcp.attach` | `server: McpServerDefinition` | Adds a name absent from the effective workspace. Preparation completes before publication. |
-| `workspace.mcp.replace` | `server: McpServerDefinition` | Replaces one effective definition under the same name; absence is 404. |
-| `workspace.mcp.detach` | `name` | Removes a workspace attachment or writes a tombstone for a service default, then removes its exact Registry, docs, and resource authority. |
-| `workspace.mcp.reconnect` | `name` | Builds a fresh connection from the existing unexpanded definition and atomically replaces the old connection after successful preparation. |
-| `workspace.mcp.oauth.complete` | `name`, `callbackUrl` | State- and issuer-validates one pending interactive callback through the SDK, completes connection preparation, then performs the originally requested attach, replace, or reconnect. |
+| `workspace.mcp.list` | none | Sorted available server summaries: alias, source, target, transport, enabledness, connection/authorization state, negotiated identity/capabilities, enabled tools, and read subset. No credential values. |
+| `workspace.mcp.add` | `alias`, `target`; optional `options: McpServerOptions` | Adds and enables a workspace-owned alias absent from the available set. Preparation completes before publication. |
+| `workspace.mcp.enable` | `alias` | Enables an available alias for this workspace. Successful preparation precedes the durable override and capability publication. Already enabled is a no-op. |
+| `workspace.mcp.disable` | `alias` | Disables an available alias, retaining it for client discovery while removing its connection and complete model-facing capability set. Already disabled is a no-op. |
+| `workspace.mcp.remove` | `alias` | Removes a workspace-owned definition. Service-owned definitions reject removal and direct the client to disable them. |
+| `workspace.mcp.oauth.complete` | `alias`, `callbackUrl` | State- and issuer-validates one pending interactive callback through the SDK, completes connection preparation, then performs the originally requested add or enable. |
 | `workspace.mcp.complete` | `server`, `ref`, `argument`; optional `context` | Requests negotiated prompt/resource-template argument completion for a client-owned interaction. |
 
 Expected preparation failures cross the action boundary as MCP-management
@@ -185,7 +194,7 @@ Problems rather than generic AG-UI failures:
 
 Interactive preparation returns a successful pending result shaped as
 `{ status: 202, authorization: { url } }`; it publishes no candidate runtime.
-The action owner retains one pending candidate per `(workspace, name)` and a
+The action owner retains one pending candidate per `(workspace, alias)` and a
 new request cancels and replaces it. Unrelated workspace changes remain
 authoritative while authorization is pending; drift of the same server fails
 completion with a conflict instead of replaying a stale workspace snapshot.
@@ -193,13 +202,13 @@ completion with a conflict instead of replaying a stale workspace snapshot.
 callback URL so state, `code`, and `iss` remain one parsing unit. A missing,
 expired, mismatched, or replayed callback fails without exposing attacker-owned
 OAuth error text. It completes either pending hydration or the originally
-requested attach, replace, or reconnect. There is no callback HTTP endpoint,
+requested add or enable. There is no callback HTTP endpoint,
 authority-root resource, or MCP-specific AG-UI route.
 
 ## §mcp-setup Atomic lifecycle
 
-For each workspace, hydration resolves service defaults against the durable
-attachment/tombstone map, opens and discovers every effective connection,
+For each workspace, hydration resolves service defaults and durable positive
+workspace state, opens and discovers only enabled connections,
 lists the negotiated catalogs, applies enabled/effect policy, builds each exact
 tool Registry and resource facet, and submits one complete owner snapshot to
 {§module-workspace-capabilities}. A configured tool absent from the server, a
@@ -207,8 +216,9 @@ duplicate remote name, an enabled name not representable as a Plurnk target,
 or a `read` name outside the enabled set fails that workspace hydration. No
 partial namespace is published and every acquired candidate closes.
 
-Attach, replace, and reconnect prepare the candidate while the old snapshot
-remains authoritative, then commit only at {§module-workspace-quiescence}. The
+Add and enable prepare the candidate while the old snapshot remains
+authoritative, then commit only at {§module-workspace-quiescence}. Disable and
+remove commit the complete reduced snapshot at the same boundary. The
 old connection rejects replacement while it owns an active protocol request,
 MRTR exchange, or Task. Cache/list-change watches are infrastructure and close
 with the old connection after the new snapshot commits. A failed candidate or

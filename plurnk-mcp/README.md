@@ -9,12 +9,13 @@ The module accepts only protocol revision `2026-07-28`. A legacy endpoint is
 rejected with a `protocol-revision-unsupported` Problem that names the required
 revision and `server/discover`; Plurnk does not negotiate a downgrade.
 
-## Attach a server
+## Manage workspace servers
 
-Service environment variables provide optional defaults for every workspace.
-Users can also attach, replace, reconnect, or detach a server in one workspace
-without restarting the daemon. An existing AG-UI connection sends the ordinary
-management-action form under `forwardedProps.plurnk.action`:
+Service environment variables provide available servers for every workspace;
+`PLURNK_MCP_ENABLED` selects the exact cold-enabled subset. Users can add,
+enable, disable, or remove workspace servers without restarting the daemon. An
+existing AG-UI connection sends the ordinary management-action form under
+`forwardedProps.plurnk.action`:
 
 ```json
 {
@@ -22,11 +23,10 @@ management-action form under `forwardedProps.plurnk.action`:
     "plurnk": {
       "workspace": "example",
       "action": {
-        "kind": "workspace.mcp.attach",
-        "server": {
-          "name": "project",
-          "transport": "stdio",
-          "command": "/opt/mcp/current-server",
+        "kind": "workspace.mcp.add",
+        "alias": "project",
+        "target": "/opt/mcp/current-server",
+        "options": {
           "args": ["--stdio"],
           "env": { "PROJECT_TOKEN": "${PROJECT_TOKEN}" },
           "tools": ["issue_read", "issue_write"],
@@ -47,11 +47,11 @@ Available workspace actions are:
 | Action | Parameters |
 |---|---|
 | `workspace.mcp.list` | none |
-| `workspace.mcp.attach` | `server` definition |
-| `workspace.mcp.replace` | `server` definition with the existing name |
-| `workspace.mcp.detach` | `name` |
-| `workspace.mcp.reconnect` | `name` |
-| `workspace.mcp.oauth.complete` | `name`, complete `callbackUrl` |
+| `workspace.mcp.add` | `alias`, `target`; optional `options` |
+| `workspace.mcp.enable` | `alias` |
+| `workspace.mcp.disable` | `alias` |
+| `workspace.mcp.remove` | `alias` |
+| `workspace.mcp.oauth.complete` | `alias`, complete `callbackUrl` |
 | `workspace.mcp.complete` | `server`, completion `ref` and `argument`; optional `context` |
 
 The owning [specification](./SPEC.md) defines the complete action and server
@@ -59,7 +59,7 @@ definition contracts.
 
 ## Service defaults
 
-One `PLURNK_MCP_<server>` variable declares each default server. Its suffix
+One `PLURNK_MCP_<server>` variable declares each available server. Its suffix
 case-folds to an `[a-z][a-z0-9-]*` executor and URI-authority name.
 
 Streamable HTTP:
@@ -69,6 +69,7 @@ PLURNK_MCP_github=https://example.test/mcp
 PLURNK_MCP_github_BEARER=${GITHUB_TOKEN}
 PLURNK_MCP_github_TOOLS=["issue_read","issue_search"]
 PLURNK_MCP_github_READ=["issue_read","issue_search"]
+PLURNK_MCP_ENABLED=["github"]
 ```
 
 Stdio:
@@ -119,7 +120,7 @@ client.
 ## Authorization
 
 HTTP definitions support bearer references, client credentials, and
-interactive OAuth. Stdio never receives OAuth. Interactive attachment returns
+interactive OAuth. Stdio never receives OAuth. Interactive add or enable returns
 `{ "status": 202, "authorization": { "url": "..." } }` without publishing a
 partial server. After the user completes that URL, the client submits its
 complete callback URL through `workspace.mcp.oauth.complete`. PKCE, issuer and

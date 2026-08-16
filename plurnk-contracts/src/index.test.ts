@@ -19,6 +19,7 @@ test("the package root exposes exactly the supported runtime values", () => {
         "InvalidEntryReadResultError",
         "InvalidLoopFlagsError",
         "InvalidMcpServerDefinitionError",
+        "InvalidMcpServerOptionsError",
         "InvalidNoticeError",
         "InvalidOperationResultError",
         "InvalidProblemDetailsError",

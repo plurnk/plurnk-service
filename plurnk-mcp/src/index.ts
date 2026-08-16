@@ -15,5 +15,6 @@ export {
     serverDefinition,
     serverNames,
     serviceDefinitions,
+    serviceEnabledNames,
 } from "./config.ts";
 export type { ToolPolicy } from "./config.ts";

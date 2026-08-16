@@ -478,6 +478,55 @@ read?: string[]
 
 export type EnvironmentReference = string
 
+export type McpServerArguments = string[]
+
+export type McpServerAuthorization = ({
+type: "bearer"
+token: string
+} | {
+type: "oauth"
+redirectUrl: string
+clientMetadataUrl: string
+scope?: string
+} | {
+type: "oauth"
+redirectUrl: string
+clientId: string
+clientSecret: string
+scope?: string
+} | {
+type: "oauth"
+redirectUrl: string
+scope?: string
+} | {
+type: "client-credentials"
+clientId: string
+clientSecret: string
+scope?: string
+})
+
+export type McpServerToolNames = string[]
+
+export type McpServerReadTools = string[]
+
+export interface McpServerOptions {
+args?: McpServerArguments
+cwd?: string
+env?: McpServerEnvironment
+headers?: McpServerHeaders
+authorization?: McpServerAuthorization
+tools?: McpServerToolNames
+read?: McpServerReadTools
+}
+
+export interface McpServerEnvironment {
+[k: string]: string
+}
+
+export interface McpServerHeaders {
+[k: string]: string
+}
+
 export interface Notice {
 /**
  * Producer identifier. Top-level for self-contained subsystems; colon-namespaced for parameterized producers such as `provider:openai` or `exec:search`.

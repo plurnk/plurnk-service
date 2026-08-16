@@ -12,6 +12,7 @@ export {
     InvalidTextRegionError,
     InvalidClientDisplayCapabilitiesError,
     InvalidMcpServerDefinitionError,
+    InvalidMcpServerOptionsError,
     InvalidClientInteractionRequestError,
     InvalidClientInteractionProjectionError,
     InvalidClientInteractionResolutionError,

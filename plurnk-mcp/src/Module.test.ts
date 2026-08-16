@@ -10,7 +10,6 @@ import {
     createMcpHandler,
     type McpHttpHandler,
 } from "@modelcontextprotocol/server";
-import type { McpServerDefinition } from "@plurnk/plurnk-contracts";
 import type { RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
 import { z } from "zod/v4";
 import { serveMcpHttp } from "../test/http-fixture.ts";
@@ -103,16 +102,6 @@ const harness = (durable = new Map<number, unknown | null>()) => {
     };
 };
 
-const echoDefinition = (
-    overrides: Partial<McpServerDefinition> = {},
-): McpServerDefinition => ({
-    name: "echo",
-    transport: "stdio",
-    command: process.execPath,
-    args: [fixture],
-    ...overrides,
-});
-
 const httpHandler = (): McpHttpHandler => createMcpHandler(() => {
     const server = new McpServer({ name: "workspace-oauth-fixture", version: "1.0.0" });
     server.registerTool(
@@ -169,12 +158,61 @@ const rejectsManagementProblem = async (
     });
 };
 
+test("{§mcp-management-actions} cold service definitions remain available while workspace enabledness overrides defaults", async () => {
+    const env = {
+        ...floor,
+        PLURNK_MCP_ATLAS: process.execPath,
+        PLURNK_MCP_ATLAS_ARGS: JSON.stringify([fixture]),
+        PLURNK_MCP_ECHO: process.execPath,
+        PLURNK_MCP_ECHO_ARGS: JSON.stringify([fixture]),
+        PLURNK_MCP_ENABLED: '["echo"]',
+    };
+    const durable = new Map<number, unknown | null>();
+    const first = Module.init({ env });
+    const firstHarness = harness(durable);
+    await first.setup(firstHarness.seam);
+    await firstHarness.hydrate(1);
+    assert.deepEqual(firstHarness.snapshots.get(1)?.map(({ decl }) => decl.name), ["echo"]);
+    assert.deepEqual(
+        (await firstHarness.invoke(1, "workspace.mcp.list") as {
+            servers: Array<{ alias: string; enabled: boolean; state: string }>;
+        }).servers.map(({ alias, enabled, state }) => ({ alias, enabled, state })),
+        [
+            { alias: "atlas", enabled: false, state: "disabled" },
+            { alias: "echo", enabled: true, state: "connected" },
+        ],
+    );
+
+    await firstHarness.invoke(1, "workspace.mcp.enable", { alias: "atlas" });
+    await firstHarness.invoke(1, "workspace.mcp.disable", { alias: "echo" });
+    assert.deepEqual(firstHarness.snapshots.get(1)?.map(({ decl }) => decl.name), ["atlas"]);
+    assert.match(JSON.stringify(durable.get(1)), /"atlas".*"enabled":true/);
+    assert.match(JSON.stringify(durable.get(1)), /"echo".*"enabled":false/);
+    await first.close();
+
+    const restored = Module.init({ env });
+    const restoredHarness = harness(durable);
+    try {
+        await restored.setup(restoredHarness.seam);
+        await restoredHarness.hydrate(1);
+        assert.deepEqual(restoredHarness.snapshots.get(1)?.map(({ decl }) => decl.name), ["atlas"]);
+        await rejectsManagementProblem(
+            () => restoredHarness.invoke(1, "workspace.mcp.remove", { alias: "atlas" }),
+            "server-service-owned",
+            409,
+        );
+    } finally {
+        await restored.close();
+    }
+});
+
 test("service defaults hydrate as workspace-local executor and resource snapshots", async () => {
     const module = Module.init({
         env: {
             ...floor,
             PLURNK_MCP_ECHO: process.execPath,
             PLURNK_MCP_ECHO_ARGS: JSON.stringify([fixture]),
+            PLURNK_MCP_ENABLED: '["echo"]',
         },
     });
     const h = harness();
@@ -184,10 +222,10 @@ test("service defaults hydrate as workspace-local executor and resource snapshot
             [...h.actions.values()].map(({ name, scope }) => ({ name, scope })),
             [
                 "workspace.mcp.list",
-                "workspace.mcp.attach",
-                "workspace.mcp.replace",
-                "workspace.mcp.detach",
-                "workspace.mcp.reconnect",
+                "workspace.mcp.add",
+                "workspace.mcp.enable",
+                "workspace.mcp.disable",
+                "workspace.mcp.remove",
                 "workspace.mcp.oauth.complete",
                 "workspace.mcp.complete",
             ].map((name) => ({ name, scope: "workspace" })),
@@ -207,10 +245,10 @@ test("service defaults hydrate as workspace-local executor and resource snapshot
         assert.equal(registration?.scheme?.claims("/1/1/1"), false);
 
         const listed = await h.invoke(1, "workspace.mcp.list") as {
-            servers: Array<{ name: string; source: string; state: string }>;
+            servers: Array<{ alias: string; source: string; state: string }>;
         };
-        assert.deepEqual(listed.servers.map(({ name, source, state }) => ({ name, source, state })), [{
-            name: "echo",
+        assert.deepEqual(listed.servers.map(({ alias, source, state }) => ({ alias, source, state })), [{
+            alias: "echo",
             source: "service",
             state: "connected",
         }]);
@@ -226,25 +264,28 @@ test("service defaults hydrate as workspace-local executor and resource snapshot
     }
 });
 
-test("attach and detach change only the bound workspace and persist an unexpanded definition", async () => {
+test("add and remove change only the bound workspace and persist an unexpanded definition", async () => {
     const module = Module.init({ env: { ...floor, MCP_TOKEN: "secret" } });
     const h = harness();
     try {
         await module.setup(h.seam);
         await Promise.all([h.hydrate(1), h.hydrate(2)]);
-        const result = await h.invoke(1, "workspace.mcp.attach", {
-            server: echoDefinition({
+        const result = await h.invoke(1, "workspace.mcp.add", {
+            alias: "echo",
+            target: process.execPath,
+            options: {
+                args: [fixture],
                 env: { TOKEN: "${MCP_TOKEN}" },
                 tools: ["echo"],
                 read: ["echo"],
-            }),
+            },
         }) as { status: number };
         assert.equal(result.status, 201);
         assert.deepEqual(h.snapshots.get(1)?.map(({ decl }) => decl.name), ["echo"]);
         assert.deepEqual(h.snapshots.get(2), []);
         assert.match(JSON.stringify(h.durable.get(1)), /\$\{MCP_TOKEN\}/);
 
-        await h.invoke(1, "workspace.mcp.detach", { name: "echo" });
+        await h.invoke(1, "workspace.mcp.remove", { alias: "echo" });
         assert.deepEqual(h.snapshots.get(1), []);
         assert.equal(h.durable.get(1), null);
     } finally {
@@ -252,7 +293,7 @@ test("attach and detach change only the bound workspace and persist an unexpande
     }
 });
 
-test("{§mcp-management-actions} replace and reconnect publish one fresh complete attachment", async (t) => {
+test("{§mcp-management-actions} disable and enable retire then rebuild one complete attachment", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-replace-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const marker = join(root, "obsolete.closed");
@@ -261,51 +302,47 @@ test("{§mcp-management-actions} replace and reconnect publish one fresh complet
     try {
         await module.setup(h.seam);
         await h.hydrate(1);
-        await h.invoke(1, "workspace.mcp.attach", {
-            server: echoDefinition({
+        await h.invoke(1, "workspace.mcp.add", {
+            alias: "echo",
+            target: process.execPath,
+            options: {
+                args: [fixture],
                 env: { PLURNK_MCP_TEST_CLOSE_MARKER: marker },
                 tools: ["echo"],
                 read: ["echo"],
-            }),
+            },
         });
         const first = h.snapshots.get(1)?.[0];
         assert.deepEqual(first?.executor.toolRegistry().tools.map(({ target }) => target), ["echo"]);
 
-        const replaced = await h.invoke(1, "workspace.mcp.replace", {
-            server: echoDefinition({
-                env: { PLURNK_MCP_TEST_CLOSE_MARKER: marker },
-                tools: ["fail"],
-            }),
-        }) as { status: number };
-        assert.equal(replaced.status, 200);
-        const second = h.snapshots.get(1)?.[0];
-        assert.notEqual(second, first);
-        assert.deepEqual(second?.executor.toolRegistry().tools.map(({ target }) => target), ["fail"]);
-        assert.match(JSON.stringify(h.durable.get(1)), /"tools":\["fail"\]/);
+        const disabled = await h.invoke(1, "workspace.mcp.disable", { alias: "echo" }) as { status: number };
+        assert.equal(disabled.status, 200);
+        assert.deepEqual(h.snapshots.get(1), []);
         await waitForFile(marker);
 
         await rm(marker, { force: true });
-        const reconnected = await h.invoke(1, "workspace.mcp.reconnect", {
-            name: "echo",
+        const enabled = await h.invoke(1, "workspace.mcp.enable", {
+            alias: "echo",
         }) as { status: number };
-        assert.equal(reconnected.status, 200);
-        const third = h.snapshots.get(1)?.[0];
-        assert.notEqual(third, second);
-        assert.deepEqual(third?.executor.toolRegistry().tools.map(({ target }) => target), ["fail"]);
-        await waitForFile(marker);
+        assert.equal(enabled.status, 200);
+        const second = h.snapshots.get(1)?.[0];
+        assert.notEqual(second, first);
+        assert.deepEqual(second?.executor.toolRegistry().tools.map(({ target }) => target), ["echo"]);
     } finally {
         await module.close();
     }
 });
 
-test("{§mcp-setup} a workspace attachment reconstructs from its durable unexpanded definition", async () => {
+test("{§mcp-setup} a workspace-added server reconstructs from its durable unexpanded definition", async () => {
     const durable = new Map<number, unknown | null>();
     const first = Module.init({ env: floor });
     const firstHarness = harness(durable);
     await first.setup(firstHarness.seam);
     await firstHarness.hydrate(1);
-    await firstHarness.invoke(1, "workspace.mcp.attach", {
-        server: echoDefinition({ tools: ["echo"], read: ["echo"] }),
+    await firstHarness.invoke(1, "workspace.mcp.add", {
+        alias: "echo",
+        target: process.execPath,
+        options: { args: [fixture], tools: ["echo"], read: ["echo"] },
     });
     await first.close();
 
@@ -315,10 +352,10 @@ test("{§mcp-setup} a workspace attachment reconstructs from its durable unexpan
         await restored.setup(restoredHarness.seam);
         await restoredHarness.hydrate(1);
         const listed = await restoredHarness.invoke(1, "workspace.mcp.list") as {
-            servers: Array<{ name: string; source: string; state: string }>;
+            servers: Array<{ alias: string; source: string; state: string }>;
         };
-        assert.deepEqual(listed.servers.map(({ name, source, state }) => ({ name, source, state })), [{
-            name: "echo",
+        assert.deepEqual(listed.servers.map(({ alias, source, state }) => ({ alias, source, state })), [{
+            alias: "echo",
             source: "workspace",
             state: "connected",
         }]);
@@ -339,34 +376,49 @@ test("{§mcp-management-actions} management conflicts preserve exact Problems an
         await module.setup(h.seam);
         await h.hydrate(1);
         await rejectsManagementProblem(
-            () => h.invoke(1, "workspace.mcp.attach", { server: {} }),
+            () => h.invoke(1, "workspace.mcp.list", { server: "legacy-shape" }),
+            "parameters-invalid",
+            400,
+        );
+        await rejectsManagementProblem(
+            () => h.invoke(1, "workspace.mcp.add", {
+                alias: "echo",
+                target: process.execPath,
+                options: { transport: "stdio" },
+            }),
             "definition-invalid",
             400,
         );
         assert.deepEqual(h.snapshots.get(1), []);
 
-        await h.invoke(1, "workspace.mcp.attach", { server: echoDefinition() });
+        await h.invoke(1, "workspace.mcp.add", {
+            alias: "echo",
+            target: process.execPath,
+            options: { args: [fixture] },
+        });
         const priorState = structuredClone(h.durable.get(1));
         const priorRuntime = h.snapshots.get(1)?.[0];
         await rejectsManagementProblem(
-            () => h.invoke(1, "workspace.mcp.attach", { server: echoDefinition() }),
+            () => h.invoke(1, "workspace.mcp.add", {
+                alias: "echo",
+                target: process.execPath,
+                options: { args: [fixture] },
+            }),
             "server-exists",
             409,
         );
         await rejectsManagementProblem(
-            () => h.invoke(1, "workspace.mcp.replace", {
-                server: echoDefinition({ name: "missing" }),
-            }),
+            () => h.invoke(1, "workspace.mcp.enable", { alias: "missing" }),
             "server-not-found",
             404,
         );
         await rejectsManagementProblem(
-            () => h.invoke(1, "workspace.mcp.detach", { name: "missing" }),
+            () => h.invoke(1, "workspace.mcp.disable", { alias: "missing" }),
             "server-not-found",
             404,
         );
         await rejectsManagementProblem(
-            () => h.invoke(1, "workspace.mcp.reconnect", { name: "missing" }),
+            () => h.invoke(1, "workspace.mcp.remove", { alias: "missing" }),
             "server-not-found",
             404,
         );
@@ -426,11 +478,10 @@ test("OAuth completion rebases its target onto unrelated committed workspace cha
     try {
         await module.setup(h.seam);
         await h.hydrate(1);
-        const pending = await h.invoke(1, "workspace.mcp.attach", {
-            server: {
-                name: "oauth",
-                transport: "http",
-                url: served.url,
+        const pending = await h.invoke(1, "workspace.mcp.add", {
+            alias: "oauth",
+            target: served.url,
+            options: {
                 authorization: {
                     type: "oauth",
                     redirectUrl: `${origin}/callback`,
@@ -441,15 +492,17 @@ test("OAuth completion rebases its target onto unrelated committed workspace cha
         }) as { status: number; authorization: { url: string } };
         assert.equal(pending.status, 202);
 
-        await h.invoke(1, "workspace.mcp.attach", {
-            server: echoDefinition({ name: "local" }),
+        await h.invoke(1, "workspace.mcp.add", {
+            alias: "local",
+            target: process.execPath,
+            options: { args: [fixture] },
         });
         assert.deepEqual(h.snapshots.get(1)?.map(({ decl }) => decl.name), ["local"]);
 
         const state = new URL(pending.authorization.url).searchParams.get("state");
         assert.ok(state);
         const completed = await h.invoke(1, "workspace.mcp.oauth.complete", {
-            name: "oauth",
+            alias: "oauth",
             callbackUrl: `${origin}/callback?code=fixture-code&state=${encodeURIComponent(state)}&iss=${encodeURIComponent(origin)}`,
         }) as { status: number };
         assert.equal(completed.status, 200);
@@ -498,8 +551,9 @@ test("list change refreshes the workspace snapshot without replacing its connect
     try {
         await module.setup(h.seam);
         await h.hydrate(1);
-        await h.invoke(1, "workspace.mcp.attach", {
-            server: { name: "dynamic", transport: "http", url: served.url },
+        await h.invoke(1, "workspace.mcp.add", {
+            alias: "dynamic",
+            target: served.url,
         });
         assert.deepEqual(
             h.snapshots.get(1)?.[0]?.executor.toolRegistry().tools.map(({ target }) => target),
@@ -527,19 +581,20 @@ test("list change refreshes the workspace snapshot without replacing its connect
     }
 });
 
-test("detaching a service default writes a tombstone that survives module restart", async () => {
+test("disabling a service default writes a positive override that survives module restart", async () => {
     const env = {
         ...floor,
         PLURNK_MCP_ECHO: process.execPath,
         PLURNK_MCP_ECHO_ARGS: JSON.stringify([fixture]),
+        PLURNK_MCP_ENABLED: '["echo"]',
     };
     const durable = new Map<number, unknown | null>();
     const first = Module.init({ env });
     const firstHarness = harness(durable);
     await first.setup(firstHarness.seam);
     await firstHarness.hydrate(1);
-    await firstHarness.invoke(1, "workspace.mcp.detach", { name: "echo" });
-    assert.match(JSON.stringify(durable.get(1)), /"kind":"detached"/);
+    await firstHarness.invoke(1, "workspace.mcp.disable", { alias: "echo" });
+    assert.match(JSON.stringify(durable.get(1)), /"kind":"service","enabled":false/);
     await first.close();
 
     const restored = Module.init({ env });
@@ -549,33 +604,36 @@ test("detaching a service default writes a tombstone that survives module restar
         await restoredHarness.hydrate(1);
         assert.deepEqual(restoredHarness.snapshots.get(1), []);
         assert.deepEqual(
-            (await restoredHarness.invoke(1, "workspace.mcp.list") as { servers: unknown[] }).servers,
-            [],
+            (await restoredHarness.invoke(1, "workspace.mcp.list") as {
+                servers: Array<{ alias: string; enabled: boolean; state: string }>;
+            }).servers.map(({ alias, enabled, state }) => ({ alias, enabled, state })),
+            [{ alias: "echo", enabled: false, state: "disabled" }],
         );
     } finally {
         await restored.close();
     }
 });
 
-test("failed replacement leaves durable state, Registry, and prior connection authoritative", async () => {
-    const module = Module.init({ env: floor });
+test("failed enable leaves durable state and Registry authoritative", async () => {
+    const module = Module.init({
+        env: {
+            ...floor,
+            PLURNK_MCP_BROKEN: "/definitely/missing/plurnk-mcp-server",
+        },
+    });
     const h = harness();
     try {
         await module.setup(h.seam);
         await h.hydrate(1);
-        await h.invoke(1, "workspace.mcp.attach", { server: echoDefinition() });
         const priorState = structuredClone(h.durable.get(1));
-        const priorRuntime = h.snapshots.get(1)?.[0];
         const calls = h.replacementCalls();
         await assert.rejects(
-            () => h.invoke(1, "workspace.mcp.replace", {
-                server: echoDefinition({ command: "/definitely/missing/plurnk-mcp-server" }),
-            }),
-            /Configured MCP server 'echo' is unavailable/,
+            () => h.invoke(1, "workspace.mcp.enable", { alias: "broken" }),
+            /Configured MCP server 'broken' is unavailable/,
         );
         assert.equal(h.replacementCalls(), calls, "the failed candidate never reaches core commit");
         assert.deepEqual(h.durable.get(1), priorState);
-        assert.equal(h.snapshots.get(1)?.[0], priorRuntime);
+        assert.deepEqual(h.snapshots.get(1), []);
     } finally {
         await module.close();
     }
@@ -588,8 +646,10 @@ test("{§mcp-management-actions} a legacy endpoint is attributed at the public a
         await module.setup(h.seam);
         await h.hydrate(1);
         await assert.rejects(
-            () => h.invoke(1, "workspace.mcp.attach", {
-                server: echoDefinition({ args: [legacyFixture] }),
+            () => h.invoke(1, "workspace.mcp.add", {
+                alias: "echo",
+                target: process.execPath,
+                options: { args: [legacyFixture] },
             }),
             (error: unknown) => {
                 const problem = (error as { problem?: Record<string, unknown> }).problem;
@@ -625,6 +685,7 @@ test("partial multi-server hydration closes acquired candidates and publishes no
                 PLURNK_MCP_TEST_CLOSE_MARKER: marker,
             }),
             PLURNK_MCP_ZBROKEN: join(root, "missing-server"),
+            PLURNK_MCP_ENABLED: '["alpha","zbroken"]',
         },
     });
     const h = harness();
@@ -638,7 +699,7 @@ test("partial multi-server hydration closes acquired candidates and publishes no
     await module.close();
 });
 
-test("detach closes the exact workspace connection after the replacement commits", async (t) => {
+test("remove closes the exact workspace connection after the replacement commits", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-detach-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const marker = join(root, "echo.closed");
@@ -647,12 +708,15 @@ test("detach closes the exact workspace connection after the replacement commits
     try {
         await module.setup(h.seam);
         await h.hydrate(1);
-        await h.invoke(1, "workspace.mcp.attach", {
-            server: echoDefinition({
+        await h.invoke(1, "workspace.mcp.add", {
+            alias: "echo",
+            target: process.execPath,
+            options: {
+                args: [fixture],
                 env: { PLURNK_MCP_TEST_CLOSE_MARKER: marker },
-            }),
+            },
         });
-        await h.invoke(1, "workspace.mcp.detach", { name: "echo" });
+        await h.invoke(1, "workspace.mcp.remove", { alias: "echo" });
         await waitForFile(marker);
     } finally {
         await module.close();
@@ -669,8 +733,10 @@ test("a whitespace-bearing executable path remains one exact attachment command"
     try {
         await module.setup(h.seam);
         await h.hydrate(1);
-        await h.invoke(1, "workspace.mcp.attach", {
-            server: echoDefinition({ command }),
+        await h.invoke(1, "workspace.mcp.add", {
+            alias: "echo",
+            target: command,
+            options: { args: [fixture] },
         });
         assert.deepEqual(h.snapshots.get(1)?.map(({ decl }) => decl.name), ["echo"]);
     } finally {

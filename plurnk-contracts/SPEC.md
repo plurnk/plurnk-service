@@ -13,7 +13,7 @@ is the single code API for those contracts.
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
 | Client-owned interaction contract                                               | `ClientInteractionRequest`, `ClientInteractionProjection`, `ClientInteractionResolution` |
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
-| Workspace MCP server attachment                                                | `McpServerDefinition`                               |
+| Workspace MCP server definition and add options                                | `McpServerDefinition`, `McpServerOptions`           |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
 | Generated JSON result rendering                                                 | `renderJsonResult`                                  |
 | Local-model rails                                                               | `@plurnk/plurnk-contracts/plurnk.{gemma,qwen}.gbnf` |
@@ -967,13 +967,19 @@ model-language syntax or model packet teaching.
 
 ### §mcp-server-definition 13.8 MCP server definitions
 
-`McpServerDefinition` is the transport-neutral, client/daemon-shared definition
-of one workspace MCP server. It is a closed `stdio`/`http` union. The schema
+`McpServerDefinition` is the transport-neutral normalized definition of one
+workspace MCP server. It is a closed `stdio`/`http` union. The schema
 owns transport-specific fields, enabled/read tool sets, supported HTTP
 authorization choices, and symbolic credential references; it carries no
 workspace identifier, connection state, discovered catalog, or secret value.
-`Validator.assertMcpServerDefinition` is the admission boundary used by every
-client interface and the MCP host before persistence or connection work.
+`Validator.assertMcpServerDefinition` is the MCP host's admission boundary
+before persistence or connection work.
+
+§mcp-server-options `McpServerOptions` is the closed client/daemon-shared
+supplement accepted when adding an MCP server by alias and target. It reuses
+only `McpServerDefinition` option fields and cannot repeat identity, target, or
+transport. The target determines the transport; normalization through
+`McpServerDefinition` rejects options belonging to the other transport.
 
 Interactive OAuth always requires a callback URL. Its structurally exclusive
 identity modes are an HTTPS Client ID Metadata Document URL, a pre-registered

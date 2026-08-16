@@ -1,0 +1,36 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/McpServerOptions.json",
+    "title": "McpServerOptions",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "args": {
+            "title": "McpServerArguments",
+            "$ref": "https://schemas.plurnk.dev/v0/McpServerDefinition.json#/properties/args"
+        },
+        "cwd": {
+            "$ref": "https://schemas.plurnk.dev/v0/McpServerDefinition.json#/properties/cwd"
+        },
+        "env": {
+            "title": "McpServerEnvironment",
+            "$ref": "https://schemas.plurnk.dev/v0/McpServerDefinition.json#/properties/env"
+        },
+        "headers": {
+            "title": "McpServerHeaders",
+            "$ref": "https://schemas.plurnk.dev/v0/McpServerDefinition.json#/properties/headers"
+        },
+        "authorization": {
+            "title": "McpServerAuthorization",
+            "$ref": "https://schemas.plurnk.dev/v0/McpServerDefinition.json#/properties/authorization"
+        },
+        "tools": {
+            "title": "McpServerToolNames",
+            "$ref": "https://schemas.plurnk.dev/v0/McpServerDefinition.json#/properties/tools"
+        },
+        "read": {
+            "title": "McpServerReadTools",
+            "$ref": "https://schemas.plurnk.dev/v0/McpServerDefinition.json#/properties/read"
+        }
+    }
+}

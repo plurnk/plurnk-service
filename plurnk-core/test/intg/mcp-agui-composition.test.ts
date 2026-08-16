@@ -1,5 +1,5 @@
 // {§mcp-model-projection} {§agui-proposal-resolve} — the assembled daemon proof:
-// a client hot-attaches a current MCP server through AG-UI, ordinary Plurnk
+// a client hot-adds a current MCP server through AG-UI, ordinary Plurnk
 // resource discovery reaches its exact tools, read effects execute directly,
 // and host effects remain behind the standard terminate/resume review boundary.
 
@@ -85,7 +85,7 @@ const actionResult = (events: readonly Event[]): {
 const packet = (requests: PacketCapturingMock["requests"], index: number): string =>
     requests[index]?.map(({ content }) => content).join("\n\n") ?? "";
 
-test("AG-UI hot attachment composes MCP discovery, execution, review, failure, and recovery", { timeout: 30_000 }, async () => {
+test("AG-UI hot add composes MCP discovery, execution, review, failure, and recovery", { timeout: 30_000 }, async () => {
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     const provider = new PacketCapturingMock({
@@ -178,17 +178,16 @@ test("AG-UI hot attachment composes MCP discovery, execution, review, failure, a
         const port = (agui as AguiModule).address().port;
         const workspace = `mcp-composition-${crypto.randomUUID()}`;
 
-        const attached = actionResult(await post(port, runInput(workspace, "attach", {
+        const attached = actionResult(await post(port, runInput(workspace, "add", {
             forwardedProps: {
                 plurnk: {
                     workspace,
                     projectRoot,
                     action: {
-                        kind: "workspace.mcp.attach",
-                        server: {
-                            name: "fixture",
-                            transport: "stdio",
-                            command: process.execPath,
+                        kind: "workspace.mcp.add",
+                        alias: "fixture",
+                        target: process.execPath,
+                        options: {
                             args: [fixture],
                             tools: ["echo", "fail"],
                             read: ["echo"],
@@ -262,16 +261,15 @@ test("AG-UI hot attachment composes MCP discovery, execution, review, failure, a
             .join("");
         assert.match(recoveredSpeech, /reported its expected tool error; recovery is complete/);
 
-        const legacy = actionResult(await post(port, runInput(workspace, "legacy-attach", {
+        const legacy = actionResult(await post(port, runInput(workspace, "legacy-add", {
             forwardedProps: {
                 plurnk: {
                     workspace,
                     action: {
-                        kind: "workspace.mcp.attach",
-                        server: {
-                            name: "legacy",
-                            transport: "stdio",
-                            command: process.execPath,
+                        kind: "workspace.mcp.add",
+                        alias: "legacy",
+                        target: process.execPath,
+                        options: {
                             args: [legacyFixture],
                         },
                     },
@@ -434,17 +432,16 @@ test(
             const port = (agui as AguiModule).address().port;
             const workspace = `mcp-dogfood-${crypto.randomUUID()}`;
 
-            const kubernetes = actionResult(await post(port, runInput(workspace, "attach-kubernetes", {
+            const kubernetes = actionResult(await post(port, runInput(workspace, "add-kubernetes", {
                 forwardedProps: {
                     plurnk: {
                         workspace,
                         projectRoot,
                         action: {
-                            kind: "workspace.mcp.attach",
-                            server: {
-                                name: "kubernetes",
-                                transport: "stdio",
-                                command: "npx",
+                            kind: "workspace.mcp.add",
+                            alias: "kubernetes",
+                            target: "npx",
+                            options: {
                                 args: [
                                     "--yes",
                                     "kubernetes-mcp-server@0.0.66",
@@ -469,16 +466,15 @@ test(
             assert.deepEqual(kubernetesSummary?.enabledTools, ["configuration_view"]);
             assert.equal(kubernetesSummary?.tools?.length, 14, "the real server advertises a larger catalog");
 
-            const goji = actionResult(await post(port, runInput(workspace, "attach-goji", {
+            const goji = actionResult(await post(port, runInput(workspace, "add-goji", {
                 forwardedProps: {
                     plurnk: {
                         workspace,
                         action: {
-                            kind: "workspace.mcp.attach",
-                            server: {
-                                name: "goji",
-                                transport: "http",
-                                url: "https://mcp.goji.agency/mcp",
+                            kind: "workspace.mcp.add",
+                            alias: "goji",
+                            target: "https://mcp.goji.agency/mcp",
+                            options: {
                                 tools: ["goji_explain_term"],
                                 read: ["goji_explain_term"],
                             },
