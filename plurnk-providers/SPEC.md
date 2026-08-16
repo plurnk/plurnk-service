@@ -22,13 +22,17 @@ model prefix, context window, price, or vendor request shape into a PLURNK
 table. A missing or wrong catalog fact is fixed upstream, overridden through a
 provider declaration, or left explicitly unknown.
 
-§provider-runtime-neutral-accounting The public
-`@plurnk/plurnk-providers/accounting` subpath exposes provider-request
-aggregation and Models.dev cost estimation, plus their wire types, without
-evaluating Node-only provider discovery, filesystem defaults, or runtime
-construction. It re-exports the package's sole accounting implementation. The
-package root remains the Node provider-runtime composition surface and is not a
-Worker entrypoint.
+The package exposes two runtime-neutral public surfaces:
+
+| Surface | Contract |
+| --- | --- |
+| §provider-runtime-neutral-accounting `@plurnk/plurnk-providers/accounting` | Provider-request aggregation, Models.dev cost estimation, and their wire types. |
+| §provider-runtime-neutral-errors `@plurnk/plurnk-providers/errors` | Normalized `ProviderError`, `ProviderErrorKind`, and the types of its attempt, accounting, and capacity evidence. |
+
+Both surfaces re-export the package's sole implementations without evaluating
+Node-only provider discovery, filesystem defaults, or runtime construction.
+The package root remains the Node provider-runtime composition surface and is
+not a Worker entrypoint.
 
 ## §2 Provider interface
 

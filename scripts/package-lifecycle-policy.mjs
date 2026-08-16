@@ -12,6 +12,7 @@ const AUXILIARY_TEST_SCRIPTS = new Set([
     "test:providersPing",
     "test:llama",
     "test:installation",
+    "test:mcp:dogfood",
 ]);
 
 export const canonicalTestCommand = (scripts = {}) => TEST_TIERS

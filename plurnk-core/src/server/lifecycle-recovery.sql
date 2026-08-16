@@ -93,6 +93,12 @@ SET state = 'failed',
     deep_hash = NULL
 WHERE state = 'proposed';
 
+-- PREP: recovery_remove_ownerless_client_interactions
+-- The durable request can be re-presented only while its exact process-local
+-- awaiting owner exists. No response was recorded, so recovery removes the
+-- orphan instead of fabricating a cancellation or replaying its operation.
+DELETE FROM client_interactions;
+
 -- PREP: recovery_error_orphan_subscription_channels
 -- Every open subscription belonged to a callable in the prior process. Mark its
 -- active content terminal before closing the durable row, so an interruption

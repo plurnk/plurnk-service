@@ -4,8 +4,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import ExecutorRegistry from "./ExecutorRegistry.ts";
+import ExecutorRegistry, { type Executor } from "./ExecutorRegistry.ts";
 import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
+import type { SchemeManifest } from "./scheme-types.ts";
 
 const attributionContext = (attempt: number): PluginAttributionContext => ({
     workspaceId: "workspace",
@@ -58,6 +59,134 @@ class AlwaysAvailable {
     }
 }
 const loadAvailable = async () => ({ default: AlwaysAvailable });
+
+test("{§executor-tool-registry} validates and caches one snapshot for every consumer", () => {
+    let reads = 0;
+    const manifest: SchemeManifest = {
+        name: "family",
+        channels: { body: "application/json" },
+        defaultChannel: "body",
+        category: "data",
+        writableBy: ["model"],
+        volatile: true,
+        modelVisible: true,
+    };
+    const executor: Executor = {
+        runtime: "family",
+        glyph: "",
+        manifest,
+        defaultChannel: "body",
+        channels: { body: { mimetype: "application/json" } },
+        run: async () => ({ status: 200 }),
+        probe: async () => ({ available: true }),
+        effect: () => "host",
+        toolRegistry: () => {
+            reads += 1;
+            return {
+                tools: [{
+                    target: "issue_read",
+                    invocation: {
+                        body: { role: "JSON arguments", required: false },
+                        target: { role: "Read an issue", required: true, kind: "literal" },
+                        signature: '{"issue_number": integer}',
+                    },
+                }],
+                documentation: "# family",
+            };
+        },
+    };
+    const registry = new ExecutorRegistry(new Map([["family", {
+        executor,
+        namespaceOwner: { kind: "module", name: "fixture" },
+        glyph: "",
+        invocation: {
+            body: { role: "JSON arguments", required: false },
+            target: { role: "tool", required: true, kind: "literal" },
+            example: { target: "tool_name" },
+        },
+        documentation: "",
+        available: true,
+        detail: undefined,
+    }]]));
+
+    const first = registry.toolRegistry("family");
+    const second = registry.toolRegistry("family");
+    assert.equal(second, first);
+    assert.equal(reads, 1);
+});
+
+const workspaceEntry = (tag: string, owner: string) => {
+    const runtimeManifest: SchemeManifest = {
+        name: tag,
+        channels: { body: "text/plain" },
+        defaultChannel: "body",
+        category: "data",
+        writableBy: ["model"],
+        volatile: true,
+        modelVisible: true,
+    };
+    const executor: Executor = {
+        runtime: tag,
+        glyph: "",
+        manifest: runtimeManifest,
+        defaultChannel: "body",
+        channels: { body: { mimetype: "text/plain" } },
+        run: async () => ({ status: 200 }),
+        probe: async () => ({ available: true }),
+        effect: () => "host",
+    };
+    return {
+        executor,
+        namespaceOwner: { kind: "module", name: owner } as const,
+        glyph: "",
+        invocation: invocation(`${tag} input`, tag),
+        documentation: `# ${tag}`,
+        available: true,
+        detail: undefined,
+    };
+};
+
+test("{§module-workspace-capabilities} workspace runtime snapshots isolate equal names and replace atomically", () => {
+    const registry = new ExecutorRegistry(new Map([["sh", workspaceEntry("sh", "base")]]));
+    const commitOne = registry.prepareWorkspaceRegistrations(1, "mcp", [{
+        tag: "gitea",
+        entry: workspaceEntry("gitea", "mcp"),
+    }]);
+    const rollbackOne = commitOne();
+
+    assert.deepEqual(registry.availableRuntimes(1), ["gitea", "sh"]);
+    assert.deepEqual(registry.availableRuntimes(2), ["sh"]);
+    assert.equal(registry.entry("gitea", 1)?.executor.runtime, "gitea");
+    assert.equal(registry.entry("gitea", 2), undefined);
+
+    registry.prepareWorkspaceRegistrations(2, "mcp", [{
+        tag: "gitea",
+        entry: workspaceEntry("gitea", "mcp"),
+    }])();
+    assert.equal(registry.entry("gitea", 2)?.executor.runtime, "gitea");
+
+    const rollbackRemoval = registry.prepareWorkspaceRegistrations(1, "mcp", [])();
+    assert.equal(registry.entry("gitea", 1), undefined, "empty owner snapshot removes only that workspace face");
+    assert.ok(registry.entry("gitea", 2), "the equal name in another workspace remains");
+
+    rollbackRemoval();
+    assert.ok(registry.entry("gitea", 1), "a failed composed commit can restore the prior snapshot");
+    rollbackOne();
+    assert.equal(registry.entry("gitea", 1), undefined);
+});
+
+test("{§module-workspace-capabilities} workspace overlays cannot shadow base or peer owners", () => {
+    const registry = new ExecutorRegistry(new Map([["sh", workspaceEntry("sh", "base")]]));
+    assert.throws(
+        () => registry.prepareWorkspaceRegistrations(1, "mcp", [{ tag: "sh", entry: workspaceEntry("sh", "mcp") }]),
+        /already registered by daemon module runtime 'base'/,
+    );
+    registry.prepareWorkspaceRegistrations(1, "mcp-a", [{ tag: "gitea", entry: workspaceEntry("gitea", "mcp-a") }])();
+    assert.throws(
+        () => registry.prepareWorkspaceRegistrations(1, "mcp-b", [{ tag: "gitea", entry: workspaceEntry("gitea", "mcp-b") }]),
+        /already registered by daemon module runtime 'mcp-a'/,
+    );
+});
 
 // Native Git and the explicit isomorphic-git subset beside a non-Git runtime.
 const gitAndShell = async () => ({

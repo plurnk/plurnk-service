@@ -42,6 +42,11 @@
             "types": "./dist/accountingPublic.d.ts",
             "default": "./dist/accountingPublic.js"
         },
+        "./errors": {
+            "plurnk-dev": "./src/providerError.ts",
+            "types": "./dist/providerError.d.ts",
+            "default": "./dist/providerError.js"
+        },
         "./package.json": "./package.json"
     },
     "files": [
@@ -58,7 +63,7 @@
         "test:providersPing": "bash ../scripts/operator-environment.sh node --conditions=plurnk-dev --import=../plurnk-core/test/floor.ts --env-file-if-exists=../plurnk-core/.env.defaults --env-file-if-exists=$HOME/.plurnk/.env --env-file-if-exists=../plurnk-core/.env --env-file-if-exists=../plurnk-core/.env.test scripts/providers-ping.mjs",
         "probe:tokens": "bash ../scripts/operator-environment.sh node --conditions=plurnk-dev --import=../plurnk-core/test/floor.ts --env-file-if-exists=../plurnk-core/.env.defaults --env-file-if-exists=$HOME/.plurnk/.env --env-file-if-exists=../plurnk-core/.env --env-file-if-exists=../plurnk-core/.env.test scripts/token-envelope-probe.mjs",
         "test": "npm run test:lint && npm run test:unit",
-        "release:check": "node scripts/accounting-worker-smoke.mjs",
+        "release:check": "node scripts/runtime-neutral-worker-smoke.mjs",
         "prepublishOnly": "npm audit --audit-level=moderate && npm test && npm run build && npm run release:check",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",

@@ -103,7 +103,7 @@ shown. The current streak may ride first-party provider metadata
 | §mode-ask-read-only **mode** | `"ask" \| "act"`. Per-loop. Ask = read-only: the dispatch gate refuses every side-effecting op (a filesystem write — EDIT/COPY-dest/MOVE/KILL on the `file` scheme — or any EXEC invocation); reads of the workspace stay open. `act` = full surface. Ask never changes the world. |
 | **flag**                     | Per-loop value: `mode`, `noWeb`, and `noInteraction` shape scheme authority ({§manifest-flag-affinity}); `auto` and `noProposals` select proposal settlement. |
 | **proposal**                 | A deferred side-effecting action. State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). Its core-owned disposition says whether the client or loop owns resolution ({§proposal-disposition}). |
-| **resolution**               | Accept, reject, or cancel of a durable proposal. Client-owned authority enters core through `resolveProposal`; AG-UI carries it in standard resume entries ({§methods-proposal-resolve}, {§agui-proposal-resolve}). |
+| **resolution**               | A client decision delivered through a standard resume entry. Proposal resolutions accept, reject, or cancel ({§methods-proposal-resolve}); client-interaction resolutions return a payload or cancel ({§methods-client-interaction-resolve}, {§agui-proposal-resolve}). |
 
 ### §packet-terms Packet terms
 
@@ -669,7 +669,7 @@ boundary.
 - §worker-lifecycle-idle-is-concluded **An idle worker concludes; it does not park.** A loop is idle only when it has neither live obligations nor completed results awaiting their first packet. A live child or stream blocks a SEND signal `202` join; a completed stream, child result, or same-turn retrieval continues directly to the next packet where it is observed. Only after those sets are drained does signal `202` resolve like signal `200`. There is no held-open idle loop and no `loop/quiesced` soft signal. A concluded worker is durable working history and an addressed arrival reawakens it as a new loop.
 - §worker-lifecycle-no-lost-loop **A loop is never stranded by a drain's exit.** A drain relinquishes its registry slot only after a lock-held re-claim confirms the queue is empty; a loop enqueued during that teardown is either re-claimed by the exiting drain or claimed by a fresh drain that a later inject starts. The relinquish and the start are serialized, so neither the lost-loop hang nor a transient double-drain can occur.
 - §worker-lifecycle-durable-disposition **Durable disposition wins cancellation races.** At a turn boundary, the engine reads the loop's durable status before interpreting a process-local abort. A committed `202` park survives a later daemon-shutdown signal; only a loop still durably running at `102` can be terminalized by that cancellation.
-- §worker-lifecycle-restart-recovery **Restart is owner-loss reconciliation, not replay.** Before opening client transports, the service holds an exclusive database-adjacent daemon lock; a second live owner fails before touching SQLite, while a dead-PID crash claim is replaced atomically without a timeout lease. Boot preserves accepted `100` loops and restores their drains. A `102` loop belonged to a vanished drain/provider call, so it settles `500` with the interruption on its durable row—never replayed across an unknown effect boundary. Every pending physical provider request beneath that loop first settles as an error with absent usage and explicitly unknown cost, then its logical model call closes; recovery never fabricates zero evidence. Every durable proposed operation likewise lost its process-local resolution waiter and settles as a visible `500 owner_vanished` occurrence rather than an unresolvable interrupt ({§proposal-list}). Every durable-open subscription belonged to a vanished callable: active channels become errored and its row closes `500`. A `202` continuation survives only while a live child obligation remains; after reconciliation, an unblocked park requeues `202→100` and resumes in place. Child terminalization wakes its parked parent on every outcome, including provider exceptions, cancellation, and restart interruption, recursively through the durable parent edges. These operations are idempotent, so an interrupted recovery safely repeats.
+- §worker-lifecycle-restart-recovery **Restart is owner-loss reconciliation, not replay.** Before opening client transports, the service holds an exclusive database-adjacent daemon lock; a second live owner fails before touching SQLite, while a dead-PID crash claim is replaced atomically without a timeout lease. Boot preserves accepted `100` loops and restores their drains. A `102` loop belonged to a vanished drain/provider call, so it settles `500` with the interruption on its durable row—never replayed across an unknown effect boundary. Every pending physical provider request beneath that loop first settles as an error with absent usage and explicitly unknown cost, then its logical model call closes; recovery never fabricates zero evidence. Every durable proposed operation likewise lost its process-local resolution waiter and settles as a visible `500 owner_vanished` occurrence rather than an unresolvable interrupt ({§proposal-list}). A pending client interaction also lost its exact awaiting operation, so boot removes the orphan instead of replaying work or inventing a response ({§client-interactions}). Every durable-open subscription belonged to a vanished callable: active channels become errored and its row closes `500`. A `202` continuation survives only while a live child obligation remains; after reconciliation, an unblocked park requeues `202→100` and resumes in place. Child terminalization wakes its parked parent on every outcome, including provider exceptions, cancellation, and restart interruption, recursively through the durable parent edges. These operations are idempotent, so an interrupted recovery safely repeats.
 
 ---
 
@@ -1584,8 +1584,9 @@ the loop continue; repeated offenses terminate through the engine's 500.
 AST: `{ op: "EXEC", target (optional runtime-specific target), body: string | null (runtime-specific input), signal: string | null (runtime tag), lineMarker (timeout/poll) }`.
 
 §exec-target-routing Engine routes unconditionally to the `exec` scheme,
-resolves the runtime first, and enforces that runtime's required
-{§executor-invocation} declaration before effect admission. Core owns target
+resolves the runtime first, selects its static {§executor-invocation} or exact
+{§executor-tool-registry} entry, and enforces that declaration before effect
+admission. Core owns target
 realization; neither filesystem type nor body presence may invent a target role
 the selected runtime did not declare. With no declared directory override,
 `cwd` is the workspace's `project_root`, where the File scheme writes — never
@@ -1616,6 +1617,13 @@ its one declared role whether the body is empty or non-empty. Runtime selection,
 target validation, and body/target relation failures therefore occur before
 effect classification or proposal creation.
 
+A runtime with {§executor-tool-registry} admits only the snapshot's exact
+literal targets. An absent target is 400; a target outside that closed enabled
+set is 404; neither reaches effect classification or proposal creation. The
+selected entry's invocation—not the family's structural fallback—owns body
+requiredness and roles. The executor independently rejects an unregistered
+target at its run boundary.
+
 §exec-source-temporary A non-file `resource` target is materialized into one
 core-owned temporary file after acceptance. Core reparses the complete authored
 address and resolves one exact `<1,-1>` READ through
@@ -1644,14 +1652,23 @@ unchanged for proposal policy, application, stream registration, and
 effect-qualified hold policy. The post-acceptance materialization path never
 triggers reclassification.
 
-§exec-registry-resolves The runtime slot (`signal`) selects an executor,
-resolved against the boot-time `ExecutorRegistry`: siblings are discovered and
-probed at startup, and availability is cached. An absent or empty tag selects
+§exec-registry-resolves The runtime slot (`signal`) selects an executor from
+the current workspace snapshot. Installed siblings form the immutable base:
+they are discovered and probed at startup, and availability is cached.
+Workspace capability providers may atomically overlay additional names under
+{§module-workspace-capabilities}; a name has one owner within a workspace, while
+independent workspaces may use the same name. An absent or empty tag selects
 `sh`; a non-empty tag selects exactly that registered executable tool. Unknown
 tags are refused 501 with direction to use only the advertised catalogue or
 put a complete command in bare `EXEC`; they are never reinterpreted as shell
 command words. An unavailable runtime is also 501 and carries the probe
 `detail`.
+
+For a family runtime, `ExecutorRegistry.toolRegistry(tag, workspaceId)`
+validates the one executor-owned snapshot used by packet presentation,
+dispatch admission, and pull-document materialization. Core performs no
+protocol discovery while building a packet and has no alternate tool
+catalogue.
 
 Per-tool programs such as `go`, `cargo`, `make`, and `npm` do not earn executor tags merely because they are executables; they are complete shell commands under `## EXEC0` or `## EXEC0 [sh]`. Registered tags exist only for tools that own a distinct body, target, or output contract. {§exec-registry-resolves}
 
@@ -1769,6 +1786,23 @@ Core derives the contracts-owned `ProposalProjection` from the durable proposed 
 | `disposition`         | {§proposal-disposition}; the same value drives automatic settlement and client presentation                        |
 
 Workspace scope remains the event envelope / seam argument ({§notifications-envelope-carries-workspaceid}); it is not forged into `ProposalProjection`. Malformed durable JSON, target metadata, result envelopes, loop policy, or final projection fails at core with its cause; after insertion, core terminalizes that row as a 500 `policy_failed` before propagating the internal failure, so no waiter or durable stopped world is orphaned.
+
+### §client-interactions Client-owned interaction lifecycle
+
+A scheme or executor may pause its current operation on one
+`ClientInteractionRequest` ({§client-interaction-wire}). Core first inserts a
+pending-only `client_interactions` row bound to one exact
+workspace/worker/loop/turn ownership chain, then publishes the same validated
+`ClientInteractionProjection` through `loop/interaction` and reconnect
+discovery. The projection contains no workspace id or private upstream
+continuation state; those remain respectively in the event envelope and the
+awaiting operation owner.
+
+Only the live process-local waiter can make a durable row resolvable. Resolution
+validates one `ClientInteractionResolution`, deletes the pending row, then
+releases the owner exactly once. Owner abort deletes the row and rejects the
+waiter. Reconnect discovery intersects durable rows with live waiters; restart
+removes ownerless rows without fabricating cancellation, payload, or replay.
 
 ### §proposal-disposition Settlement authority and precedence
 
@@ -2121,10 +2155,11 @@ leak into another.
   {§executor-policy}. Keys are matched case-insensitively and must be
   `PLURNK_EXECS_ONLY` or `PLURNK_EXECS_<canonical-runtime-tag>`; MCP connection
   configuration and non-string values are rejected. The boot-discovered
-  registry is authoritative and the workspace layer only intersects it: it
-  cannot register or re-enable a runtime. A canonical key for a currently
-  absent tag is accepted as inert policy and applies if that tag later belongs
-  to the boot set. Dispatch, the model-facing capability sheet, and executor
+  effective workspace registry is authoritative and the settings layer only
+  intersects it: settings cannot register or re-enable a runtime. A canonical
+  key for a currently absent tag is accepted as inert policy and applies if a
+  workspace capability provider later publishes that tag. Dispatch, the
+  model-facing capability sheet, and executor
   document materialization use the same registered-set intersection and policy
   predicate, so a workspace-disabled tag is neither executable nor taught.
 
@@ -2148,7 +2183,7 @@ names, request validation, discovery result, and event projection.
 ```mermaid
 flowchart LR
     register["Daemon.registerModule"] --> setup["module.setup(ModuleSetupSeam)"]
-    setup --> capabilities["Register runtimes, schemes,<br/>and extension actions"]
+    setup --> capabilities["Register static capabilities,<br/>workspace providers, and actions"]
     capabilities --> ready["Schemes ready; docs published;<br/>durable lifecycle recovered"]
     ready --> start["module.start(CoreSeam)"]
     start --> interface["Module-owned listener<br/>and client protocol"]
@@ -2180,11 +2215,28 @@ flowchart LR
     wakes --> database[Release database]
 ```
 
-| Setup function                                                         | Contract |
-|------------------------------------------------------------------------|----------|
-| `registerRuntime({ decl, executor, availability, scheme? })`           | Admits one canonical tag under {§executor-runtime-declaration}, then adds its executor and optional claimed scheme facet atomically. |
-| `registerScheme(name, handler)`                                        | Adds one addressable scheme handler; scheme readiness and model-facing capability publication remain core-owned. |
-| §module-action-registration `registerModuleAction(name, handler)`      | Adds a non-empty, extension-unique name and a handler receiving only `Readonly<Record<string, unknown>>`. Core supplies no implicit workspace or transport context. A client-interface module decides whether and how that name becomes public, and owns collisions with its built-ins. |
+| Setup function | Contract |
+|---|---|
+| `registerRuntimes([{ decl, executor, availability, scheme? }, ...])` | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every process-wide executor and optional claimed scheme facet atomically. |
+| `registerScheme(name, handler)` | Adds one process-wide addressable scheme handler; scheme readiness and model-facing capability publication remain core-owned. |
+| §module-action-registration `registerModuleAction({ name, scope, handler })` | Adds one non-empty, extension-unique action. `scope` is exactly `worldless` or `workspace`; the handler receives validated params and a separate matching context. A workspace context contains the trusted bound `workspaceId`, never a client parameter. A client-interface module decides whether and how the name becomes public and owns collisions with its built-ins. |
+| §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique provider whose `hydrate(workspaceId)` reconstructs its effective snapshot. Core invokes every provider for existing workspaces before capability publication and for a new workspace before that workspace is returned or advertised. |
+| §module-workspace-state `readWorkspaceModuleState(workspaceId, namespaceOwner)` | Reads the provider's one nullable JSON state value. Core owns workspace isolation and storage; the provider owns and validates its schema. Secret values are forbidden when a durable symbolic reference can identify their authoritative source. |
+| §module-workspace-capabilities `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })` | Replaces one provider's complete durable state and runtime/scheme snapshot at a quiescent workspace boundary. Core validates base/peer namespace claims before mutation, blocks new turns, commits the snapshot, and reconciles pull docs as one operation. Failure restores the prior state and presentation. The empty runtime set removes that provider's workspace namespace. |
+
+§module-workspace-quiescence **A capability snapshot changes only between
+workspace operations.** A replacement attempt while a turn or another
+capability mutation owns the workspace fails 409 instead of waiting behind an
+unbounded proposal. Candidate discovery may occur before the gate, but the
+provider must re-check its old connection for active user work after acquiring
+the gate. Infrastructure-owned watches may be cancelled during replacement;
+an active request, input exchange, or Task keeps the old snapshot authoritative
+and makes replacement fail 409.
+
+The version-1 baseline table `workspace_module_state` stores one JSON value per
+`(workspace_id, namespace_owner)`. It is not an alternate registry: executable
+and resource presentation always comes from the in-memory snapshot reconstructed
+by the registered provider. Deleting a workspace cascades its module state.
 
 ### §methods CoreSeam function set
 
@@ -2197,6 +2249,8 @@ Its function names are transport-neutral library calls, not public wire names.
 | §methods-event-subscribe Events                   | `subscribeToEvents(handler) -> unsubscribe` | Subscribes to the raw event source in {§notifications}. A subscriber failure is logged and cannot re-enter engine control flow. |
 | §proposal-list Proposals                          | `pendingProposals(workspaceId)` | Intersects durable proposed rows with the lifecycle owner's live resolution waiters, then returns their validated {§proposal-projection}; persistence alone cannot advertise an unresolvable client interrupt. |
 | §methods-proposal-resolve Proposals               | `resolveProposal(logEntryId, resolution)` | Validates and delivers one accept, reject, or cancel decision to the engine. An unknown or already-resolved id fails; the client protocol owns how the decision arrived. |
+| §client-interaction-list Client interactions      | `pendingClientInteractions(workspaceId)` | Intersects durable interaction rows with their live operation waiters and returns the contracts-owned projection; a row alone is not a resumable interaction. |
+| §methods-client-interaction-resolve Client interactions | `resolveClientInteraction(interactionId, resolution)` | Validates and delivers one resolved payload or cancellation. Unknown, ownerless, and already-resolved identities fail before affecting an operation. |
 | §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, maxTurns?, flags?, openPaths?, alias?, model?, childAlias?, childModel? })` | Validates a model worker and provider policy, persists it with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
 | §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)` | Begins durable structured cancellation of the worker tree and reaps its process-local scopes. The boolean reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. |
 | §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, workerId, statements })` | Dispatches already-parsed grammar statements as one client action and one journal segment. Every statement is an ordered turn, and every committed `log/entry` is emitted before the action promise resolves; a proposal may keep that promise and segment open until resolution. Core exposes no per-op method family. |
@@ -2214,7 +2268,7 @@ Its function names are transport-neutral library calls, not public wire names.
 | Workspace metadata                                | `constrain(...)`, `unconstrain(...)`, `listConstraints(...)`, `listMembers(...)` | Owns the membership overlay and returns its resolved effects; clients do not reimplement constraint semantics. |
 | §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?)` | Returns nonempty loop-seed prompts from the workspace's model-origin root conversations, newest-first. The positive limit defaults to 100; spawned and forked child prompts are excluded. |
 | Workspace metadata                                | `listWorkspaces()`, `listWorkers(...)`, `workspaceDerivationStatus(...)` | Reads current workspace topology and derivation progress. |
-| Extension actions                                 | `listModuleActions()`, `invokeModuleAction(name, params)` | Lists setup-registered names in sorted order and invokes the exact registered handler. Missing names fail; handler values remain opaque to core. |
+| Extension actions | `listModuleActions()`, `invokeModuleAction(name, params, context)` | Lists setup-registered `{ name, scope }` descriptors in sorted order. Invocation requires a context matching the registered scope; missing names, forged scope, and missing workspace identity fail before the owner runs. Handler values remain opaque to core. |
 
 §methods-loop-run-fold-consistency **A folded prompt cannot silently reconfigure
 its loop.** When `runLoop` targets an active or 202-parked loop, core appends the
@@ -2305,6 +2359,7 @@ active lifecycle behind. LOOK text anchors resolve through the same
 | §notifications-log-entry-notify `log/entry`                  | `{ entry: LogEntry }` | A `log_entries` row is committed. |
 | §notifications-loop-terminated `loop/terminated`             | `{ workerId, loopId, result, hitMaxTurns, turnIds, usage: { accounting, curationWeight, curationBudget, contextTokens, contextCapacity, meta }, attributions }` | One loop reaches a terminal state. `result` is the exact universal operation result, including its RFC 9457 Problem Details on failure. `accounting` is the loop's contracts-owned {§provider-accounting}; the two curation facts and two physical-context facts follow {§tokenomics-client-gauge}; `meta` is that turn's opaque provider bag. `attributions` is the sorted union of exact provider-request evidence ({§attribution}), separate from accounting. Worker and loop are an inseparable owning coordinate. |
 | §notifications-loop-proposal `loop/proposal`                 | contracts-owned `ProposalProjection` | Dispatch pauses on a durable 202 proposal. `disposition` is the sole authority for whether a client presents review UI; live and reconnect share {§proposal-projection}. |
+| §notifications-loop-interaction `loop/interaction`           | contracts-owned `ClientInteractionProjection` | An operation is paused on client input. Live delivery and reconnect discovery share {§client-interactions}; workspace scope remains the event envelope. |
 | §notifications-workspace-created `workspace/created`         | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
 | §notifications-workspace-branch-batch `workspace/branch-batch` | Branch-batch lifecycle payload | A branch batch enters queued, running, completed, failed, or recovery-required state. |
 | §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, workerId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `workerId` is the entry owner and read perspective; `target` is its canonical URI. The optional coordinate is copied from schemes whose addresses carry one. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channel-mimetype}); the generic plugin notification capability does not require it. It carries metadata, not content; consumers read bytes from the stated worker perspective. |
@@ -3031,7 +3086,7 @@ turn.** It cannot execute operations or alter the audited history.
 
 ### §tools user.tools — the capability sheet
 
-§tools-capability-sheet The tools capability sheet renders under `## Registered Tools`, after the policy sections. One generated Markdown table is the closed set of valid executor selectors and states each runtime declaration's model-facing `(target)` role, body role, and exact canonical example. The compact legend leaves required inputs unmarked, marks optional inputs with `?`, pairs mutually exclusive alternatives with `↔`, marks refused buckets with `—`, and locates optional `<timeout,poll>` on the heading. The preface prefers purpose-built Plurnk operations over EXEC scripts. For a declaration with `target.directory: "cwd"`, the target cell distinguishes a local-directory working context from the plugin-authored non-directory target role. Optional non-EXEC operations render separately under `## Enabled Optional Operations` in a `plurnk` fence, so the catalogue remains truthful. `PacketBuilder.#collectTools` assembles both; a prose notice (e.g. the EXEC-disabled line) stays beside the table, and empty sections are omitted.
+§tools-capability-sheet The tools capability sheet renders under `## Registered Tools`, after the policy sections. One generated Markdown table is the closed set of valid executor selectors. Its columns state `[executor]`, the `(target)` role and any concrete target witness, the body role, and `Invocation`: a body example, a schema-derived signature, or `bodyless`. The Invocation cell never repeats the `## EXEC0 [executor] (target)` syntax already defined by the headers and columns. A runtime exposing {§executor-tool-registry} contributes exactly one row per enabled exact target instead of its general row; an empty exact registry contributes no row and has no fallback. The compact legend leaves required inputs unmarked, marks optional inputs with `?`, pairs mutually exclusive alternatives with `↔`, marks refused buckets with `—`, and locates optional `<timeout,poll>` on the heading. The preface prefers purpose-built Plurnk operations over EXEC scripts. For a declaration with `target.directory: "cwd"`, the target cell distinguishes a local-directory working context from the plugin-authored non-directory target role. Optional non-EXEC operations render separately under `## Enabled Optional Operations` in a `plurnk` fence, so the catalogue remains truthful. `PacketBuilder.#collectTools` assembles both; a prose notice (e.g. the EXEC-disabled line) stays beside the table, and empty sections are omitted.
 
 §tools-loop-affinity **The capability sheet describes the current loop.** The
 sheet filters registered capabilities through the same
@@ -3040,7 +3095,15 @@ registered executors exist but EXEC is inactive, their table is replaced by
 an explicit disabled notice rather than silent absence. The dispatch 403 remains
 the backstop and names the non-retryable loop restriction.
 
-**Contributors: the wired executor tags.** Every available executor tag contributes exactly one row derived from its required {§executor-invocation} declaration. Its doc is materialized at `worker://plurnk/docs/<tag>.md` and discovered via the turn-0 `## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, not linked inline. `PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's row and doc. The boot `ExecutorRegistry` probes availability per tag, so the table advertises runnable selectors instead of presuming a particular runtime exists.
+**Contributors: the workspace executor snapshot.** Every available executor tag
+contributes its general {§executor-invocation} row or the closed rows and
+documentation from its {§executor-tool-registry} snapshot. Its doc is
+materialized at `worker://plurnk/docs/<tag>.md` and discovered via the turn-0
+`## FIND0 [+init,+docs] (worker://plurnk/docs/**)` foist, not linked inline.
+`PLURNK_SERVICE_DOCS_EXCLUDE` drops a named tag's rows and doc. Installed
+executors are probed once; workspace providers publish only prepared runnable
+selectors, so the table never presumes that another workspace's capability is
+available here.
 
 ### §schemes user.schemes — the resource directory
 
@@ -3061,7 +3124,7 @@ surfaces with its cause and leaves no apparently initialized home.
 After that bootstrap the file is user-owned: edits and deletion persist, and a
 later boot never refreshes or recreates it.
 
-§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. `SchemeRegistry.teach()` renders the directory, `SchemeRegistry.docs()` resolves corpus-or-manifest documentation, and `docEntries()` materializes the result when core publishes capabilities for a workspace.
+§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. `SchemeRegistry.teach(workspaceId)` renders the effective directory, `SchemeRegistry.docs(workspaceId)` resolves corpus-or-manifest documentation, and `docEntries(workspaceId)` supplies the current pull-document set when core publishes capabilities for a workspace. Materialization reconciles `worker://plurnk/docs/` exactly under the workspace capability gate: vanished contributions are deleted before current documents are upserted, so an excluded, disabled, detached, or replaced capability cannot leave a stale model-facing contract.
 
 ### §packet-git-status The Git status section — compact repository state
 

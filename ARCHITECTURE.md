@@ -36,7 +36,7 @@ flowchart LR
     meta["plurnk-meta<br/>discovery + teaching"] --> core
     providers["Provider family"] --> core
     capabilities["Scheme / executor / mimetype families"] --> core
-    mcp["MCP daemon module<br/>contract deferred"] -.-> core
+    mcp["MCP host module<br/>tools · resources · prompts · tasks"] --> core
     hooks["plurnk-hooks<br/>exact command events"] --> core
     core["plurnk-service<br/>composed daemon"]
     core --> agui["plurnk-agui<br/>client interface"]
@@ -63,7 +63,7 @@ document does not restate their teaching.
 | Persistence, workers, turns, dispatch                     | `@plurnk/plurnk-service`                                     | [`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md)                                                                 |
 | External HTTP/SSE client protocol                         | `@plurnk/plurnk-agui`                                        | [`plurnk-agui/SPEC.md`](./plurnk-agui/SPEC.md)                                                                 |
 | Exact-command lifecycle hooks                             | `@plurnk/plurnk-hooks`                                       | [`plurnk-hooks/SPEC.md`](./plurnk-hooks/SPEC.md)                                                               |
-| MCP host module                                           | `@plurnk/plurnk-mcp`                                         | MCP epic deferred; this document makes no call-syntax claim.                                                   |
+| MCP host/client                                            | `@plurnk/plurnk-mcp`                                         | [`plurnk-mcp/SPEC.md`](./plurnk-mcp/SPEC.md)                                                                   |
 | CLI, TUI, Neovim, and web presentation                    | Separate open-client repositories                            | Consume AG-UI; they do not own daemon scheduling or persisted truth.                                           |
 
 Family packages define extension contracts. Installed adapters implement those
@@ -86,8 +86,10 @@ flowchart LR
 `@plurnk/plurnk-service` is the only long-running platform process. Plugin and
 module packages run inside it; a package boundary is not a security boundary.
 AG-UI owns client transport, while clients own presentation and explicit user
-decisions. MCP is an optional in-process module under core's
-`{§module-lifecycle}` seam; its detailed contract remains deferred.
+decisions. MCP is an optional in-process host/client under core's
+`{§module-lifecycle}` and `{§module-workspace-capabilities}` seams. MCP server
+attachments are workspace-shared capabilities; their tools and resources join
+the ordinary executor, scheme, proposal, entry, and client-action paths.
 
 ## Model-loop request flow
 
@@ -114,15 +116,16 @@ sequenceDiagram
         Core->>Store: commit result and durable evidence
     end
     Core->>Store: commit turn and loop state
-    Core-->>AGUI: lifecycle, proposal, result, and terminal events
+    Core-->>AGUI: lifecycle, proposal/interaction, result, and terminal events
     AGUI-->>Client: protocol projection
 ```
 
 Core owns packet assembly at `{§packet-assembly}` and durable result handling at
 `{§operation-results}`. Provider, capability, and AG-UI details remain in their
-own specifications. A proposal pauses the same durable loop until an explicit
-client decision or core-owned automatic policy resolves it; client convenience
-and daemon authority are not interchangeable.
+own specifications. A proposal or client interaction pauses its owning
+operation until an explicit client decision, while core-owned proposal policy
+may resolve only proposals automatically; client convenience and daemon
+authority are not interchangeable.
 
 ## State authority
 

@@ -24,6 +24,7 @@ const run = async (runtime: string, command: string, target: string | null = nul
         write: (_c, chunk) => { out = (out ?? "") + chunk; },
         setState: (_c, s) => states.push(s),
         emit: (e) => events.push(e),
+        interact: async () => ({ status: "cancelled" }),
     };
     const result = await new Wasm({ runtime, glyph: "🧩" }).run(args);
     return { result, out, states, events };
@@ -176,6 +177,7 @@ test("pre-aborted signal → 499 errored, nothing runs", async () => {
         write: () => { wrote = true; },
         setState: (_c, s) => states.push(s),
         emit: () => {},
+        interact: async () => ({ status: "cancelled" }),
     };
     const result = await new Wasm({ runtime: "wat", glyph: "🧩" }).run(args);
     assert.equal(result.status, 499);

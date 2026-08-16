@@ -6,6 +6,7 @@
 // The framework surface is `BaseExecutor.run()` + `discover()`.
 
 import type { SchemeResult } from "@plurnk/plurnk-schemes";
+import type { ClientInteractionRequest, ClientInteractionResolution } from "@plurnk/plurnk-contracts";
 import type { PackageAttributions } from "@plurnk/plurnk-meta";
 import type { Notice } from "./Notice.ts";
 
@@ -71,6 +72,10 @@ export interface ExecArgs {
     // engine's Notice channel; operation failures belong in the returned
     // ExecResult as RFC 9457 Problem Details.
     emit: (notice: Notice) => void;
+    // Await a standard client-owned interaction. Core owns durable identity,
+    // reconnect presentation, cancellation, and resolution; the executor owns
+    // only its request and interpretation of the returned payload.
+    interact: (request: ClientInteractionRequest) => Promise<ClientInteractionResolution>;
     // Optional materialization request ({§executor-entry-sink}). The consumer
     // owns acquisition, storage, tags, announcement, and the returned canonical
     // model-facing address. `content === null` requests consumer-sourced bytes.
@@ -122,11 +127,31 @@ export interface RuntimeInvocationExample {
     readonly target?: string;
 }
 
-export interface RuntimeInvocation {
+interface RuntimeInvocationShape {
     readonly body: RuntimeBodyDecl;
     readonly target?: RuntimeTargetDecl;
     readonly exclusive?: true;
-    readonly example: RuntimeInvocationExample;
+}
+
+export type RuntimeInvocation = RuntimeInvocationShape & (
+    | {
+        readonly example: RuntimeInvocationExample;
+        readonly signature?: never;
+    }
+    | {
+        readonly example?: never;
+        readonly signature: string;
+    }
+);
+
+export interface RuntimeRegisteredTool {
+    readonly target: string;
+    readonly invocation: RuntimeInvocation;
+}
+
+export interface RuntimeToolRegistry {
+    readonly tools: readonly RuntimeRegisteredTool[];
+    readonly documentation: string;
 }
 
 // One discovered runtime tag and the package that provides it.

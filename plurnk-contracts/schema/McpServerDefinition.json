@@ -1,0 +1,154 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/McpServerDefinition.json",
+    "title": "McpServerDefinition",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["name", "transport"],
+    "properties": {
+        "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "transport": {
+            "enum": ["stdio", "http"]
+        },
+        "command": {
+            "type": "string",
+            "minLength": 1
+        },
+        "args": {
+            "type": "array",
+            "items": { "type": "string" }
+        },
+        "cwd": {
+            "type": "string",
+            "minLength": 1
+        },
+        "env": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+        },
+        "url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https?://"
+        },
+        "headers": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+        },
+        "authorization": {
+            "oneOf": [
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["type", "token"],
+                    "properties": {
+                        "type": { "const": "bearer" },
+                        "token": { "$ref": "#/$defs/environmentReference" }
+                    }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["type", "redirectUrl", "clientMetadataUrl"],
+                    "properties": {
+                        "type": { "const": "oauth" },
+                        "redirectUrl": { "type": "string", "format": "uri" },
+                        "clientMetadataUrl": {
+                            "type": "string",
+                            "format": "uri",
+                            "pattern": "^https://.+/.+"
+                        },
+                        "scope": { "type": "string", "minLength": 1 }
+                    }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["type", "redirectUrl", "clientId", "clientSecret"],
+                    "properties": {
+                        "type": { "const": "oauth" },
+                        "redirectUrl": { "type": "string", "format": "uri" },
+                        "clientId": { "type": "string", "minLength": 1 },
+                        "clientSecret": { "$ref": "#/$defs/environmentReference" },
+                        "scope": { "type": "string", "minLength": 1 }
+                    }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["type", "redirectUrl"],
+                    "properties": {
+                        "type": { "const": "oauth" },
+                        "redirectUrl": { "type": "string", "format": "uri" },
+                        "scope": { "type": "string", "minLength": 1 }
+                    }
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["type", "clientId", "clientSecret"],
+                    "properties": {
+                        "type": { "const": "client-credentials" },
+                        "clientId": { "type": "string", "minLength": 1 },
+                        "clientSecret": { "$ref": "#/$defs/environmentReference" },
+                        "scope": { "type": "string", "minLength": 1 }
+                    }
+                }
+            ]
+        },
+        "tools": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1 }
+        },
+        "read": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1 }
+        }
+    },
+    "$defs": {
+        "environmentReference": {
+            "type": "string",
+            "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
+        }
+    },
+    "allOf": [
+        {
+            "if": {
+                "properties": { "transport": { "const": "stdio" } },
+                "required": ["transport"]
+            },
+            "then": {
+                "required": ["command"],
+                "not": {
+                    "anyOf": [
+                        { "required": ["url"] },
+                        { "required": ["headers"] },
+                        { "required": ["authorization"] }
+                    ]
+                }
+            }
+        },
+        {
+            "if": {
+                "properties": { "transport": { "const": "http" } },
+                "required": ["transport"]
+            },
+            "then": {
+                "required": ["url"],
+                "not": {
+                    "anyOf": [
+                        { "required": ["command"] },
+                        { "required": ["args"] },
+                        { "required": ["cwd"] },
+                        { "required": ["env"] }
+                    ]
+                }
+            }
+        }
+    ]
+}

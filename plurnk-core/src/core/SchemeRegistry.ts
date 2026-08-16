@@ -34,10 +34,23 @@ interface NamespaceClaim {
     readonly reserved: boolean;
 }
 
+interface RuntimeSchemeRegistration {
+    readonly tag: string;
+    readonly executor: Executor;
+    readonly owner: RuntimeNamespaceOwner;
+    readonly facet?: RuntimeSchemeFacet;
+}
+
+interface WorkspaceSchemeSnapshot {
+    readonly handlers: ReadonlyMap<string, object>;
+    readonly claims: ReadonlyMap<string, NamespaceClaim>;
+}
+
 export default class SchemeRegistry {
     // Handler store. Dispatcher supplies one context implementation to bundled
     // and discovered schemes alike.
     #handlers = new Map<string, object>();
+    #workspaceByOwner = new Map<number, Map<string, WorkspaceSchemeSnapshot>>();
     #readiness = new Map<object, Promise<void>>();
     #closures = new Map<object, Promise<void>>();
     #coreServices: CoreSchemeServices | undefined;
@@ -136,7 +149,7 @@ export default class SchemeRegistry {
 
     bindCore(services: CoreSchemeServices): void {
         this.#coreServices = services;
-        for (const handler of new Set(this.#handlers.values())) {
+        for (const handler of this.#allHandlers()) {
             const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
             if (typeof bindCore === "function") bindCore.call(handler, services);
         }
@@ -165,50 +178,169 @@ export default class SchemeRegistry {
         facet?: RuntimeSchemeFacet,
         sameOwnerRescan = false,
     ): void {
+        this.prepareRuntimeSchemes([{
+            tag,
+            executor,
+            owner,
+            facet,
+        }], sameOwnerRescan)();
+    }
+
+    // Validate and construct a complete set before exposing any scheme name.
+    // Returned commit mutates maps and sets only; all fallible manifest and
+    // core-binding work has already completed.
+    prepareRuntimeSchemes(
+        registrations: readonly RuntimeSchemeRegistration[],
+        sameOwnerRescan = false,
+    ): () => void {
         const exec = this.#handlers.get("exec");
         if (!(exec instanceof Exec)) throw new Error("registerRuntimeScheme: the exec handler is not registered");
-        const claim = SchemeRegistry.#runtimeClaim(owner);
-        if (this.#assertClaim(tag, claim, sameOwnerRescan) === "same") return;
-        this.#registerClaimed(tag, new ExecOutputScheme(executor, exec, facet), claim, sameOwnerRescan);
-        this.#runtimeSchemes.add(tag);
+        const tags = new Set<string>();
+        const prepared: Array<{
+            tag: string;
+            handler: ExecOutputScheme;
+            claim: NamespaceClaim;
+        }> = [];
+        for (const { tag, executor, owner, facet } of registrations) {
+            if (tags.has(tag)) {
+                throw new Error(`scheme name '${tag}' occurs more than once in one registration batch`);
+            }
+            tags.add(tag);
+            const claim = SchemeRegistry.#runtimeClaim(owner);
+            if (this.#assertClaim(tag, claim, sameOwnerRescan) === "same") continue;
+            const handler = new ExecOutputScheme(executor, exec, facet);
+            Manifest.of(handler, tag);
+            const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
+            if (this.#coreServices !== undefined && typeof bindCore === "function") {
+                bindCore.call(handler, this.#coreServices);
+            }
+            prepared.push({ tag, handler, claim });
+        }
+        return () => {
+            for (const { tag, handler, claim } of prepared) {
+                this.#handlers.set(tag, handler);
+                this.#claims.set(tag, claim);
+                this.#runtimeSchemes.add(tag);
+            }
+        };
     }
 
-    assertRuntimeClaim(tag: string, owner: RuntimeNamespaceOwner): void {
-        this.#assertClaim(tag, SchemeRegistry.#runtimeClaim(owner), false);
+    async prepareWorkspaceRuntimeSchemes(
+        workspaceId: number,
+        namespaceOwner: string,
+        registrations: readonly RuntimeSchemeRegistration[],
+    ): Promise<() => () => void> {
+        if (!Number.isSafeInteger(workspaceId) || workspaceId < 1) {
+            throw new Error("workspace scheme snapshot requires a positive workspace id");
+        }
+        if (namespaceOwner.length === 0) {
+            throw new Error("workspace scheme snapshot requires a non-empty namespace owner");
+        }
+        const exec = this.#handlers.get("exec");
+        if (!(exec instanceof Exec)) throw new Error("workspace runtime scheme: the exec handler is not registered");
+        const tags = new Set<string>();
+        const handlers = new Map<string, object>();
+        const claims = new Map<string, NamespaceClaim>();
+        const workspaceOwners = this.#workspaceByOwner.get(workspaceId);
+        for (const { tag, executor, owner, facet } of registrations) {
+            if (tags.has(tag)) {
+                throw new Error(`scheme name '${tag}' occurs more than once in one workspace snapshot`);
+            }
+            tags.add(tag);
+            if (owner.kind !== "module" || owner.name !== namespaceOwner) {
+                throw new Error(`workspace scheme '${tag}' must be owned by daemon module runtime '${namespaceOwner}'`);
+            }
+            const incoming = SchemeRegistry.#runtimeClaim(owner);
+            const base = this.#claims.get(tag);
+            if (base !== undefined) this.#throwClaimCollision(tag, base, incoming);
+            for (const [peerOwner, snapshot] of workspaceOwners ?? []) {
+                if (peerOwner === namespaceOwner) continue;
+                const peer = snapshot.claims.get(tag);
+                if (peer !== undefined) this.#throwClaimCollision(tag, peer, incoming);
+            }
+            const handler = new ExecOutputScheme(executor, exec, facet);
+            Manifest.of(handler, tag);
+            const bindCore = (handler as Partial<CoreSchemeAdapter>).bindCore;
+            if (this.#coreServices !== undefined && typeof bindCore === "function") {
+                bindCore.call(handler, this.#coreServices);
+            }
+            await this.#readyHandler(handler);
+            handlers.set(tag, handler);
+            claims.set(tag, incoming);
+        }
+        const next: WorkspaceSchemeSnapshot = { handlers, claims };
+        const previous = workspaceOwners?.get(namespaceOwner);
+        return () => {
+            const owners = this.#workspaceByOwner.get(workspaceId)
+                ?? new Map<string, WorkspaceSchemeSnapshot>();
+            if (handlers.size === 0) owners.delete(namespaceOwner);
+            else owners.set(namespaceOwner, next);
+            if (owners.size === 0) this.#workspaceByOwner.delete(workspaceId);
+            else this.#workspaceByOwner.set(workspaceId, owners);
+            let pending = true;
+            return () => {
+                if (!pending) return;
+                pending = false;
+                const current = this.#workspaceByOwner.get(workspaceId)
+                    ?? new Map<string, WorkspaceSchemeSnapshot>();
+                if (previous === undefined) current.delete(namespaceOwner);
+                else current.set(namespaceOwner, previous);
+                if (current.size === 0) this.#workspaceByOwner.delete(workspaceId);
+                else this.#workspaceByOwner.set(workspaceId, current);
+            };
+        };
     }
 
-    get(name: string): object | undefined { return this.#handlers.get(name); }
+    #throwClaimCollision(name: string, existing: NamespaceClaim, incoming: NamespaceClaim): never {
+        if (existing.reserved) {
+            throw new Error(`scheme name '${name}' is reserved by ${existing.label}; ${incoming.label} cannot claim it`);
+        }
+        throw new Error(`scheme name '${name}' is claimed by both ${existing.label} and ${incoming.label}`);
+    }
 
-    has(name: string): boolean { return this.#handlers.has(name); }
+    get(name: string, workspaceId?: number): object | undefined {
+        if (workspaceId !== undefined) {
+            for (const snapshot of this.#workspaceByOwner.get(workspaceId)?.values() ?? []) {
+                const handler = snapshot.handlers.get(name);
+                if (handler !== undefined) return handler;
+            }
+        }
+        return this.#handlers.get(name);
+    }
 
-    manifestFor(name: string): SchemeManifest | undefined {
-        const handler = this.#handlers.get(name);
+    has(name: string, workspaceId?: number): boolean { return this.get(name, workspaceId) !== undefined; }
+
+    manifestFor(name: string, workspaceId?: number): SchemeManifest | undefined {
+        const handler = this.get(name, workspaceId);
         return handler === undefined ? undefined : Manifest.of(handler, name);
     }
 
-    list(): string[] { return [...this.#handlers.keys()].toSorted(); }
+    list(workspaceId?: number): string[] {
+        return [...this.#effectiveHandlers(workspaceId).keys()].toSorted();
+    }
 
     // {§handler-lifecycle} — discovery proves importability; one successful
     // ready() per object identity proves advertised resources are usable.
     async ready(): Promise<void> {
-        const handlers = new Set(this.#handlers.values());
-        for (const handler of handlers) {
-            let readiness = this.#readiness.get(handler);
-            if (readiness === undefined) {
-                readiness = Promise.resolve().then(async () => {
-                    const ready = (handler as Partial<SchemeHandler>).ready;
-                    if (ready !== undefined) await ready.call(handler);
-                });
-                this.#readiness.set(handler, readiness);
-            }
-            await readiness;
+        for (const handler of this.#allHandlers()) await this.#readyHandler(handler);
+    }
+
+    #readyHandler(handler: object): Promise<void> {
+        let readiness = this.#readiness.get(handler);
+        if (readiness === undefined) {
+            readiness = Promise.resolve().then(async () => {
+                const ready = (handler as Partial<SchemeHandler>).ready;
+                if (ready !== undefined) await ready.call(handler);
+            });
+            this.#readiness.set(handler, readiness);
         }
+        return readiness;
     }
 
     // {§handler-lifecycle} — aliases may share a handler. Attempt and await every
     // unique close once, then surface all failures together.
     async close(): Promise<void> {
-        const closures = [...new Set(this.#handlers.values())].map((handler) => {
+        const closures = [...this.#allHandlers()].map((handler) => {
             let closure = this.#closures.get(handler);
             if (closure === undefined) {
                 closure = Promise.resolve().then(async () => {
@@ -230,8 +362,8 @@ export default class SchemeRegistry {
 
     // A scheme's default channel (manifest.defaultChannel) — the channel a fragment-less
     // address targets. Drives the manifest's address-keyed channels (note 4).
-    defaultChannelFor(scheme: string): string {
-        return this.manifestFor(scheme)?.defaultChannel ?? "body";
+    defaultChannelFor(scheme: string, workspaceId?: number): string {
+        return this.manifestFor(scheme, workspaceId)?.defaultChannel ?? "body";
     }
 
     // {§schemes-directory} The `schemes` packet section sits below tools. Language
@@ -243,13 +375,13 @@ export default class SchemeRegistry {
     // in that pull doc, not here: terse pushes, depth pulls. Unlike the executor
     // contract table, these are complete operation examples. Insertion order; a scheme with no example
     // (provisional, e.g. skill) is omitted. The doc's curation weight rides its manifest entry.
-    teach(): string {
+    teach(workspaceId?: number): string {
         const examples: string[] = [];
         const excluded = docsExcludeSet();
-        for (const name of this.#handlers.keys()) {
-            if (this.#runtimeSchemes.has(name)) continue; // {§exec} — runtime aliases route, but exec is taught once
+        for (const name of this.#effectiveHandlers(workspaceId).keys()) {
+            if (this.#isRuntimeScheme(name, workspaceId)) continue; // {§exec} — runtime aliases route, but exec is taught once
             if (excluded.has(name)) continue; // {§schemes-directory} — exclude drops the example and doc
-            const manifest = this.manifestFor(name);
+            const manifest = this.manifestFor(name, workspaceId);
             const example = manifest?.example;
             if (typeof example !== "string" || example.length === 0) continue;
             examples.push(example); // {§packet-operation-fences} — bare ops, fenced rather than bulleted
@@ -268,14 +400,14 @@ export default class SchemeRegistry {
 
     // {§teaching-corpus} — exact meta-owned sources are required; manifest-owned
     // documentation is the deliberately optional fallback for every other scheme.
-    async docs(): Promise<Array<{ name: string; content: string }>> {
+    async docs(workspaceId?: number): Promise<Array<{ name: string; content: string }>> {
         const schemeDocs = await this.#requiredSchemeDocs();
         const out: Array<{ name: string; content: string }> = [];
         const excluded = docsExcludeSet();
-        for (const name of this.#handlers.keys()) {
-            if (this.#runtimeSchemes.has(name)) continue; // {§exec} — runtime aliases share exec's doc, not their own
+        for (const name of this.#effectiveHandlers(workspaceId).keys()) {
+            if (this.#isRuntimeScheme(name, workspaceId)) continue; // {§exec} — runtime aliases share exec's doc, not their own
             if (excluded.has(name)) continue; // {§schemes-directory} — exclude drops the doc
-            const inline = this.manifestFor(name)?.documentation;
+            const inline = this.manifestFor(name, workspaceId)?.documentation;
             const content = schemeDocs.get(name) ?? (typeof inline === "string" && inline.length > 0 ? inline : undefined);
             if (content !== undefined && content.length > 0) out.push({ name, content });
         }
@@ -288,9 +420,9 @@ export default class SchemeRegistry {
     }
 
     // {§scheme-packet-transform} {§packet-plugin-transform}.
-    async transformSections(sections: PacketSectionDraft[]): Promise<PacketSectionDraft[]> {
+    async transformSections(sections: PacketSectionDraft[], workspaceId?: number): Promise<PacketSectionDraft[]> {
         let current = PacketSections.assertDrafts(sections, "core packet defaults");
-        for (const [name, handler] of this.#handlers) {
+        for (const [name, handler] of this.#effectiveHandlers(workspaceId)) {
             const transform = (handler as Partial<PacketSectionTransformer>).transformSections;
             if (typeof transform !== "function") continue;
             current = PacketSections.assertDrafts(
@@ -346,7 +478,36 @@ export default class SchemeRegistry {
 
     // Active set under the given loop flags (SPEC {§engine-rails}). Delegates to
     // the in-tree ResolveForLoop utility.
-    resolveForLoop(flags: LoopFlags): Set<string> {
-        return ResolveForLoop.resolveForLoop(this.#handlers, flags);
+    resolveForLoop(flags: LoopFlags, workspaceId?: number): Set<string> {
+        return ResolveForLoop.resolveForLoop(this.#effectiveHandlers(workspaceId), flags);
+    }
+
+    #effectiveHandlers(workspaceId?: number): Map<string, object> {
+        const handlers = new Map(this.#handlers);
+        if (workspaceId !== undefined) {
+            for (const snapshot of this.#workspaceByOwner.get(workspaceId)?.values() ?? []) {
+                for (const [name, handler] of snapshot.handlers) handlers.set(name, handler);
+            }
+        }
+        return handlers;
+    }
+
+    #isRuntimeScheme(name: string, workspaceId?: number): boolean {
+        if (this.#runtimeSchemes.has(name)) return true;
+        if (workspaceId === undefined) return false;
+        for (const snapshot of this.#workspaceByOwner.get(workspaceId)?.values() ?? []) {
+            if (snapshot.handlers.has(name)) return true;
+        }
+        return false;
+    }
+
+    #allHandlers(): Set<object> {
+        const handlers = new Set(this.#handlers.values());
+        for (const owners of this.#workspaceByOwner.values()) {
+            for (const snapshot of owners.values()) {
+                for (const handler of snapshot.handlers.values()) handlers.add(handler);
+            }
+        }
+        return handlers;
     }
 }

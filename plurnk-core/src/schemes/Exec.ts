@@ -274,9 +274,9 @@ export default class Exec extends CoreSchemeAdapterBase {
         // {§exec-registry-resolves} — a non-empty tag selects exactly one registered executable
         // tool. Unknown tags are not reinterpreted as shell command words: that would make the
         // executed command differ from the authored body. Bare EXEC remains the default-shell form.
-        const resolved = core.executors.entry(runtime);
+        const resolved = core.executors.entry(runtime, core.workspaceId);
         if (resolved === undefined) {
-            const available = core.executors.availableRuntimes()
+            const available = core.executors.availableRuntimes(core.workspaceId)
                 .filter((tag) => workspaceExecs === null || Policy.isEnabled(tag, workspaceExecs));
             return Results.failure(
                 "scheme:exec",
@@ -301,7 +301,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         // {§operator-config-workspace-execs} — the workspace layer only narrows
         // the registered set. Bare EXEC resolves to sh before the same gate.
         if (workspaceExecs !== null && !Policy.isEnabled(runtime, workspaceExecs)) {
-            const available = core.executors.availableRuntimes()
+            const available = core.executors.availableRuntimes(core.workspaceId)
                 .filter((tag) => Policy.isEnabled(tag, workspaceExecs));
             return Results.failure(
                 "scheme:exec",
@@ -334,7 +334,31 @@ export default class Exec extends CoreSchemeAdapterBase {
             ) as ExecResult;
         }
 
-        const invocation = resolved.invocation;
+        const registry = core.executors.toolRegistry(runtime, core.workspaceId);
+        const exactTarget = statement.target?.raw ?? null;
+        const registeredTool = registry?.tools.find((tool) => tool.target === exactTarget);
+        if (registry !== null && registeredTool === undefined) {
+            const availableTargets = registry.tools.map((tool) => tool.target);
+            return Results.failure(
+                "scheme:exec",
+                exactTarget === null ? "target-required" : "target-not-registered",
+                exactTarget === null ? 400 : 404,
+                exactTarget === null
+                    ? `Executable tool family '${runtime}' requires one registered tool target.`
+                    : `Executable tool family '${runtime}' has no registered target '${exactTarget}'.`,
+                {},
+                {
+                    runtime,
+                    availableTargets,
+                    recovery: availableTargets.length > 0
+                        ? `Select one registered target: ${availableTargets.join(", ")}.`
+                        : `Continue without executing '${runtime}'; it has no enabled targets.`,
+                    retryable: false,
+                },
+            ) as ExecResult;
+        }
+
+        const invocation = registeredTool?.invocation ?? resolved.invocation;
         const hasBody = body.length > 0;
         const hasTarget = statement.target !== null;
         const refuse = (
@@ -547,7 +571,7 @@ export default class Exec extends CoreSchemeAdapterBase {
         if (core.executors === undefined) {
             throw new InvalidOperationResultError("An accepted EXEC proposal has no executor registry.");
         }
-        const resolved = core.executors.entry(runtime);
+        const resolved = core.executors.entry(runtime, core.workspaceId);
         if (resolved === undefined) {
             throw new InvalidOperationResultError(`The '${runtime}' executor disappeared after its EXEC proposal.`);
         }
@@ -825,6 +849,12 @@ export default class Exec extends CoreSchemeAdapterBase {
                 const reported: ExecutorResult = await executor.run({
                     runtime, body, cwd, target, signal,
                     entry: entrySink,
+                    interact: (request) => {
+                        if (ctx.requestInteraction === undefined) {
+                            throw new Error("EXEC client interaction capability is unavailable.");
+                        }
+                        return ctx.requestInteraction(request);
+                    },
                     env: ExecEnv.scoped(),  // SPEC {§exec} {§exec-env-scoped} — never plurnk's own secrets
                     write: (channel, chunk, mimetype) => enqueue(() => ChannelWrite.appendToChannel(db, {
                         entryId, channel, chunk, mimetype, notify: ctx.streamEventNotify, coordinate,

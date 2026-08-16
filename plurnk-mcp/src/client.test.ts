@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import ServerConnection, { MCP_PROTOCOL_VERSION } from "./client.ts";
+import ServerConnection from "./client.ts";
+import { MCP_PROTOCOL_VERSION } from "./protocol.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const env = {
@@ -11,6 +12,7 @@ const env = {
 
 test("client pins the current MCP revision and exercises tools and resources", async () => {
     const connection = new ServerConnection({
+        name: "echo",
         transport: "stdio",
         command: process.execPath,
         args: [fixture],
@@ -30,8 +32,9 @@ test("client pins the current MCP revision and exercises tools and resources", a
             catalog.resources.map((resource) => resource.uri),
             ["fixture://document"],
         );
-        assert.equal(connection.readOnly("echo"), true);
-        assert.equal(connection.readOnly("fail"), false);
+        assert.deepEqual(catalog.prompts.map((prompt) => prompt.name), ["summarize"]);
+        assert.equal(catalog.tools.find((tool) => tool.name === "echo")?.annotations?.readOnlyHint, true);
+        assert.equal(catalog.tools.find((tool) => tool.name === "fail")?.annotations?.readOnlyHint, undefined);
 
         const result = await connection.callTool("echo", {
             message: "hello",
@@ -44,6 +47,44 @@ test("client pins the current MCP revision and exercises tools and resources", a
         const resource = await connection.readResource("fixture://document");
         assert.equal(resource.contents[0]?.uri, "fixture://document");
         assert.equal("text" in resource.contents[0]!, true);
+
+        const prompt = await connection.getPrompt("summarize", { topic: "MCP" });
+        assert.deepEqual(prompt.messages, [{
+            role: "user",
+            content: { type: "text", text: "Summarize MCP." },
+        }]);
+
+        const completion = await connection.complete({
+            ref: { type: "ref/prompt", name: "summarize" },
+            argument: { name: "topic", value: "p" },
+        });
+        assert.deepEqual(completion.completion.values, ["Plurnk", "protocol"]);
+    } finally {
+        await connection.close();
+    }
+});
+
+test("an active user request prevents connection replacement until it settles", async () => {
+    const connection = new ServerConnection({
+        name: "echo",
+        transport: "stdio",
+        command: process.execPath,
+        args: [fixture],
+        env: { PLURNK_MCP_TEST_EXTENDED: "1" },
+    }, env);
+    const controller = new AbortController();
+    try {
+        await connection.catalog();
+        const pending = connection.callTool("wait", {}, controller.signal);
+        assert.equal(connection.activeRequests, 1);
+        assert.throws(
+            () => connection.assertReplaceable(),
+            /has 1 active user request/,
+        );
+        controller.abort(new Error("test request settled"));
+        await assert.rejects(pending);
+        assert.equal(connection.activeRequests, 0);
+        assert.doesNotThrow(() => connection.assertReplaceable());
     } finally {
         await connection.close();
     }

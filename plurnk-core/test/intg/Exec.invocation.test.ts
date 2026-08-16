@@ -34,6 +34,11 @@ const INVOCATIONS: Readonly<Record<string, RuntimeInvocationDecl>> = {
         target: { role: "tool", required: true, kind: "literal" },
         example: { target: "fixture_tool", body: "{}" },
     },
+    familytool: {
+        body: { role: "JSON arguments", required: false },
+        target: { role: "registered tool", required: true, kind: "literal" },
+        example: { target: "tool_name" },
+    },
     bodyonly: {
         body: { role: "query", required: true },
         example: { body: "fixture query" },
@@ -100,6 +105,23 @@ const wire = async () => {
                 effects.set(runtime, runtimeEffects);
                 return "pure";
             },
+            ...(runtime === "familytool"
+                ? {
+                    toolRegistry() {
+                        return {
+                            tools: [{
+                                target: "enabled_tool",
+                                invocation: {
+                                    body: { role: "required JSON arguments", required: true },
+                                    target: { role: "Enabled fixture tool", required: true, kind: "literal" as const },
+                                    signature: '{"value": string}',
+                                },
+                            }],
+                            documentation: "# familytool\n\nEnabled fixture tool.",
+                        };
+                    },
+                }
+                : {}),
         };
         return [runtime, {
             executor,
@@ -125,6 +147,7 @@ const wire = async () => {
     let sequence = 0;
     return {
         db,
+        engine,
         runs,
         effects,
         workspaceId,
@@ -162,6 +185,40 @@ test("{§exec-target-routing} literal targets survive directory collisions witho
     } finally {
         await ctx.close();
         await rm(root, { recursive: true, force: true });
+    }
+});
+
+test("{§executor-tool-registry} exact tools own admission and their invocation contract", async () => {
+    const ctx = await wire();
+    try {
+        assert.deepEqual(
+            (await ctx.engine.docEntries(ctx.workspaceId)).find((doc) => doc.name === "familytool"),
+            { name: "familytool", content: "# familytool\n\nEnabled fixture tool." },
+        );
+        const missing = await ctx.dispatch(statement("familytool", null, "{}"));
+        assert.equal(missing.status, 400);
+        assert.match(missing.problem?.type ?? "", /target-required$/);
+
+        const disabled = await ctx.dispatch(statement("familytool", "disabled_tool", "{}"));
+        assert.equal(disabled.status, 404);
+        assert.match(disabled.problem?.type ?? "", /target-not-registered$/);
+        assert.deepEqual(disabled.problem?.availableTargets, ["enabled_tool"]);
+
+        const missingBody = await ctx.dispatch(statement("familytool", "enabled_tool", ""));
+        assert.equal(missingBody.status, 400);
+        assert.match(missingBody.problem?.type ?? "", /body-required$/);
+        assert.equal(ctx.effects.has("familytool"), false);
+
+        const accepted = await ctx.dispatch(statement("familytool", "enabled_tool", '{"value":"ok"}'));
+        assert.equal(accepted.status, 200);
+        assert.deepEqual(ctx.runs.get("familytool"), [{
+            body: '{"value":"ok"}',
+            cwd: null,
+            target: "enabled_tool",
+        }]);
+        assert.deepEqual(ctx.effects.get("familytool"), ["enabled_tool"]);
+    } finally {
+        await ctx.close();
     }
 });
 

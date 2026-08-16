@@ -11,7 +11,9 @@ is the single code API for those contracts.
 | Parser, AST, validators, Problems, results, Notices, text regions and extents   | `@plurnk/plurnk-contracts`                          |
 | Effective loop policy and its default                                           | `LoopFlags`, `DEFAULT_LOOP_FLAGS`                   |
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
+| Client-owned interaction contract                                               | `ClientInteractionRequest`, `ClientInteractionProjection`, `ClientInteractionResolution` |
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
+| Workspace MCP server attachment                                                | `McpServerDefinition`                               |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
 | Generated JSON result rendering                                                 | `renderJsonResult`                                  |
 | Local-model rails                                                               | `@plurnk/plurnk-contracts/plurnk.{gemma,qwen}.gbnf` |
@@ -86,6 +88,21 @@ The schemas own the runtime-neutral shapes; core owns their stateful values.
 | `ProviderAccounting`      | Ordered requests plus deterministic usage and exact-USD projections              | Derive loop, protocol, telemetry, and client reporting without a second authority        |
 
 `DEFAULT_LOOP_FLAGS` is the contracts-owned effective default value. A consumer may persist a partial object as an implementation detail, but it never exposes or acts on that partial representation as though it were the complete contract.
+
+### §client-interaction-wire Client-owned interaction wire
+
+The closed client-interaction schemas describe one operation asking its client
+for structured input without transferring private protocol continuation state.
+
+| Contract | Shape invariant |
+|---|---|
+| `ClientInteractionRequest` | Non-empty `toolName`, object `arguments`, optional non-empty `message`, and object `responseSchema` |
+| `ClientInteractionProjection` | Positive interaction, worker, loop, and turn identities plus the exact request; workspace scope remains the containing transport envelope |
+| `ClientInteractionResolution` | Exactly `{ status: "resolved", payload? }` or `{ status: "cancelled" }` |
+
+Opaque upstream request identities, retry state, credentials, and callbacks are
+not members of these schemas. The operation owner retains and interprets those
+facts; core and client interfaces carry only this standard interaction.
 
 §provider-usage `ProviderUsage` records only known non-negative safe-integer
 quantities. `inputTokens` includes every input category; cache reads and cache
@@ -947,6 +964,21 @@ modules expose this exact shape; clients own rendering, font support, theme,
 and identity fallback when `glyph` is absent. Empty framework sentinels are
 normalized to absence at composition. Display metadata is client state, never
 model-language syntax or model packet teaching.
+
+### §mcp-server-definition 13.8 MCP server definitions
+
+`McpServerDefinition` is the transport-neutral, client/daemon-shared definition
+of one workspace MCP server. It is a closed `stdio`/`http` union. The schema
+owns transport-specific fields, enabled/read tool sets, supported HTTP
+authorization choices, and symbolic credential references; it carries no
+workspace identifier, connection state, discovered catalog, or secret value.
+`Validator.assertMcpServerDefinition` is the admission boundary used by every
+client interface and the MCP host before persistence or connection work.
+
+Interactive OAuth always requires a callback URL. Its structurally exclusive
+identity modes are an HTTPS Client ID Metadata Document URL, a pre-registered
+client ID plus symbolic secret, or neither for server-advertised Dynamic Client
+Registration fallback. A definition cannot combine those identity modes.
 
 ## 14. Parse diagnostics
 

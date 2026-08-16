@@ -26,6 +26,8 @@ import {
     parsePath,
     Validator,
     type ClientDisplayCapabilities,
+    type ClientInteractionProjection,
+    type ClientInteractionResolution,
     type ClientEntryChannel,
     type EntryReadResult,
     type Notice,
@@ -57,10 +59,14 @@ import WorkspaceGate from "../core/WorkspaceGate.ts";
 import BranchBatches from "./BranchBatches.ts";
 import type {
     DaemonModule,
-    ModuleActionHandler,
+    ModuleActionContext,
+    ModuleActionDescriptor,
+    ModuleActionRegistration,
     ModuleSetupSeam,
     RuntimeRegistration,
     StartedModule,
+    WorkspaceCapabilityProvider,
+    WorkspaceCapabilityReplacement,
 } from "./DaemonModule.ts";
 import { observed, observedSync } from "../observe/spans.ts";
 
@@ -111,7 +117,8 @@ export default class Daemon {
     #capabilitiesPublished = false;
     #modules: Array<DaemonModule<CoreSeam>> = [];
     #moduleClosers: StartedModule[] = [];
-    #moduleActions = new Map<string, ModuleActionHandler>();
+    #moduleActions = new Map<string, ModuleActionRegistration>();
+    #workspaceCapabilityProviders = new Map<string, WorkspaceCapabilityProvider>();
     // {§methods-event-subscribe} — the broadcast's in-process event source. A transport
     // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never owns
     // client transport or connection state.
@@ -314,6 +321,10 @@ export default class Daemon {
             const { workspaceId, ...proposal } = event;
             this.#broadcast({ workspaceId }, "loop/proposal", proposal);
         });
+        this.#engine.onClientInteractionPending((event) => {
+            const { workspaceId, ...interaction } = event;
+            this.#broadcast({ workspaceId }, "loop/interaction", interaction);
+        });
     }
 
 
@@ -340,6 +351,31 @@ export default class Daemon {
         const checkedLogEntryId = ClientInput.assertId("resolveProposal", "logEntryId", logEntryId);
         const checkedResolution = ClientInput.assertProposalResolution("resolveProposal", resolution);
         this.#engine.resolveProposal(checkedLogEntryId, checkedResolution);
+    }
+
+    async pendingClientInteractions(workspaceId: number): Promise<ClientInteractionProjection[]> {
+        const checkedWorkspaceId = ClientInput.assertId(
+            "pendingClientInteractions",
+            "workspaceId",
+            workspaceId,
+        );
+        return this.#engine.pendingClientInteractions(checkedWorkspaceId);
+    }
+
+    async resolveClientInteraction(
+        interactionId: number,
+        resolution: ClientInteractionResolution,
+    ): Promise<void> {
+        const checkedInteractionId = ClientInput.assertId(
+            "resolveClientInteraction",
+            "interactionId",
+            interactionId,
+        );
+        const checkedResolution = ClientInput.assertClientInteractionResolution(
+            "resolveClientInteraction",
+            resolution,
+        );
+        await this.#engine.resolveClientInteraction(checkedInteractionId, checkedResolution);
     }
 
     // {§methods-loop-run} — drive/steer a loop. The module supplies only workspace/worker/prompt;
@@ -883,6 +919,9 @@ export default class Daemon {
                     await this.#db.crud_insert_workspace_constraint.run({ workspace_id: envelope.workspaceId, effect, glob });
                 }
                 if (constraints.length > 0) await GitMembership.resolveGitMembership(this.#db, envelope.workspaceId, undefined);
+                for (const provider of this.#workspaceCapabilityProviders.values()) {
+                    await provider.hydrate(envelope.workspaceId);
+                }
                 await LoopDocs.materialize(this.#engine, this.#db, envelope.workspaceId);
                 void this.#engine.warmWorkspaceDerivations(envelope.workspaceId).catch(() => {});
                 this.#broadcast("all", "workspace/created", { id: envelope.workspaceId, name: envelope.workspaceName, projectRoot: envelope.projectRoot });
@@ -1218,25 +1257,18 @@ export default class Daemon {
         return { workerId: branchWorkerId, workerName: branch?.name ?? null, parentWorkerId: workerId };
     }
 
-    async registerRuntime({ namespaceOwner, decl, executor, availability, scheme }: RuntimeRegistration): Promise<void> {
-        if (typeof namespaceOwner !== "string" || namespaceOwner.trim().length === 0) {
-            throw new Error("registerRuntime: namespaceOwner must be a non-empty string");
-        }
-        const runtime = RuntimeDeclaration.assert(decl, namespaceOwner);
-        this.#engine.registerRuntime(runtime.name, {
-            executor,
-            namespaceOwner: { kind: "module", name: namespaceOwner },
-            glyph: runtime.glyph ?? "",
-            invocation: runtime.invocation,
-            documentation: runtime.documentation ?? "",
-            available: availability.available,
-            detail: availability.detail,
-        } satisfies RegistryEntry, scheme);
+    async registerRuntimes(registrations: readonly RuntimeRegistration[]): Promise<void> {
+        const normalized = registrations.map((registration) => this.#normalizeRuntime(registration));
+        this.#engine.registerRuntimes(normalized);
         if (this.#capabilitiesPublished) {
             for (const workspace of await Envelope.listWorkspaces(this.#db)) {
                 await LoopDocs.materialize(this.#engine, this.#db, workspace.id);
             }
         }
+    }
+
+    async registerRuntime(registration: RuntimeRegistration): Promise<void> {
+        await this.registerRuntimes([registration]);
     }
 
     async registerScheme(name: string, handler: object): Promise<void> {
@@ -1249,20 +1281,220 @@ export default class Daemon {
         }
     }
 
-    registerModuleAction(name: string, handler: ModuleActionHandler): void {
+    #normalizeRuntime({ namespaceOwner, decl, executor, availability, scheme }: RuntimeRegistration): {
+        tag: string;
+        entry: RegistryEntry;
+        scheme: RuntimeRegistration["scheme"];
+    } {
+        if (typeof namespaceOwner !== "string" || namespaceOwner.trim().length === 0) {
+            throw new Error("runtime registration namespaceOwner must be a non-empty string");
+        }
+        const runtime = RuntimeDeclaration.assert(decl, namespaceOwner);
+        return {
+            tag: runtime.name,
+            entry: {
+                executor,
+                namespaceOwner: { kind: "module", name: namespaceOwner },
+                glyph: runtime.glyph ?? "",
+                invocation: runtime.invocation,
+                documentation: runtime.documentation ?? "",
+                available: availability.available,
+                detail: availability.detail,
+            },
+            scheme,
+        };
+    }
+
+    registerModuleAction(registration: ModuleActionRegistration): void {
+        const { name, scope, handler } = registration;
         if (name.length === 0) throw new Error("registerModuleAction: action name must not be empty");
+        if (scope !== "worldless" && scope !== "workspace") {
+            throw new Error(`module action '${name}' has invalid scope '${String(scope)}'`);
+        }
+        if (typeof handler !== "function") throw new Error(`module action '${name}' has no handler`);
         if (this.#moduleActions.has(name)) throw new Error(`module action '${name}' is already registered`);
-        this.#moduleActions.set(name, handler);
+        this.#moduleActions.set(name, registration);
     }
 
-    listModuleActions(): string[] {
-        return [...this.#moduleActions.keys()].toSorted();
+    listModuleActions(): ModuleActionDescriptor[] {
+        return [...this.#moduleActions.values()]
+            .map(({ name, scope }) => ({ name, scope }))
+            .toSorted((left, right) => left.name.localeCompare(right.name));
     }
 
-    async invokeModuleAction(name: string, params: Readonly<Record<string, unknown>>): Promise<unknown> {
-        const handler = this.#moduleActions.get(name);
-        if (handler === undefined) throw new Error(`module action '${name}' is not registered`);
-        return handler(params);
+    async invokeModuleAction(
+        name: string,
+        params: Readonly<Record<string, unknown>>,
+        context: ModuleActionContext,
+    ): Promise<unknown> {
+        const registration = this.#moduleActions.get(name);
+        if (registration === undefined) throw new Error(`module action '${name}' is not registered`);
+        if (registration.scope !== context.scope) {
+            throw new Error(
+                `module action '${name}' requires ${registration.scope} context, not ${context.scope}`,
+            );
+        }
+        if (context.scope === "workspace") {
+            ClientInput.assertId(`module action '${name}'`, "workspaceId", context.workspaceId);
+        }
+        return registration.handler(params, context);
+    }
+
+    registerWorkspaceCapabilityProvider(
+        namespaceOwner: string,
+        provider: WorkspaceCapabilityProvider,
+    ): void {
+        if (namespaceOwner.trim().length === 0) {
+            throw new Error("workspace capability provider requires a non-empty namespace owner");
+        }
+        if (this.#workspaceCapabilityProviders.has(namespaceOwner)) {
+            throw new Error(`workspace capability provider '${namespaceOwner}' is already registered`);
+        }
+        this.#workspaceCapabilityProviders.set(namespaceOwner, provider);
+    }
+
+    async readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null> {
+        const checkedWorkspaceId = ClientInput.assertId(
+            "workspace module state",
+            "workspaceId",
+            workspaceId,
+        );
+        if (namespaceOwner.trim().length === 0) {
+            throw new Error("workspace module state requires a non-empty namespace owner");
+        }
+        const row = await this.#db.workspace_module_state_get.get<{ state: string }>({
+            workspace_id: checkedWorkspaceId,
+            namespace_owner: namespaceOwner,
+        });
+        return row === undefined ? null : JSON.parse(row.state) as unknown;
+    }
+
+    async replaceWorkspaceCapabilities({
+        workspaceId,
+        namespaceOwner,
+        state,
+        runtimes,
+    }: WorkspaceCapabilityReplacement): Promise<void> {
+        const checkedWorkspaceId = ClientInput.assertId(
+            "workspace capability replacement",
+            "workspaceId",
+            workspaceId,
+        );
+        if (namespaceOwner.trim().length === 0) {
+            throw new Error("workspace capability replacement requires a non-empty namespace owner");
+        }
+        const workspace = await this.#db.envelope_get_workspace.get({ id: checkedWorkspaceId });
+        if (workspace === undefined) {
+            throw daemonFailure(
+                "daemon:workspace-capability",
+                "workspace-not-found",
+                404,
+                `Workspace ${checkedWorkspaceId} does not exist.`,
+                { workspaceId: checkedWorkspaceId, retryable: false },
+            );
+        }
+        const encoded = state === null ? null : JSON.stringify(state);
+        if (state !== null && encoded === undefined) {
+            throw daemonFailure(
+                "daemon:workspace-capability",
+                "state-not-json",
+                400,
+                "Workspace module state is not JSON-serializable.",
+                { namespaceOwner, retryable: false },
+            );
+        }
+        if (encoded !== null) JSON.parse(encoded);
+        const normalized = runtimes.map((registration) => {
+            if (registration.namespaceOwner !== namespaceOwner) {
+                throw new Error(
+                    `workspace runtime owner '${registration.namespaceOwner}' does not match '${namespaceOwner}'`,
+                );
+            }
+            return this.#normalizeRuntime(registration);
+        });
+        const gate = this.#workspaceGate.tryExclusive(checkedWorkspaceId);
+        if (gate === null) {
+            throw daemonFailure(
+                "daemon:workspace-capability",
+                "workspace-busy",
+                409,
+                `Workspace ${checkedWorkspaceId} is running an operation or another capability change.`,
+                {
+                    workspaceId: checkedWorkspaceId,
+                    namespaceOwner,
+                    recovery: "Settle the current operation and retry the capability change.",
+                    retryable: true,
+                },
+            );
+        }
+        await gate.acquired;
+        const prior = await this.#db.workspace_module_state_get.get<{ state: string }>({
+            workspace_id: checkedWorkspaceId,
+            namespace_owner: namespaceOwner,
+        });
+        let rollbackRuntimes: (() => void) | undefined;
+        let stateChanged = false;
+        try {
+            const commitRuntimes = await this.#engine.prepareWorkspaceRuntimes(
+                checkedWorkspaceId,
+                namespaceOwner,
+                normalized,
+            );
+            if (encoded === null) {
+                await this.#db.workspace_module_state_delete.run({
+                    workspace_id: checkedWorkspaceId,
+                    namespace_owner: namespaceOwner,
+                });
+            } else {
+                await this.#db.workspace_module_state_put.run({
+                    workspace_id: checkedWorkspaceId,
+                    namespace_owner: namespaceOwner,
+                    state: encoded,
+                });
+            }
+            stateChanged = true;
+            rollbackRuntimes = commitRuntimes();
+            if (this.#capabilitiesPublished) {
+                await LoopDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
+            }
+        } catch (cause) {
+            rollbackRuntimes?.();
+            const rollbackErrors: unknown[] = [];
+            if (stateChanged) {
+                try {
+                    if (prior === undefined) {
+                        await this.#db.workspace_module_state_delete.run({
+                            workspace_id: checkedWorkspaceId,
+                            namespace_owner: namespaceOwner,
+                        });
+                    } else {
+                        await this.#db.workspace_module_state_put.run({
+                            workspace_id: checkedWorkspaceId,
+                            namespace_owner: namespaceOwner,
+                            state: prior.state,
+                        });
+                    }
+                } catch (rollbackCause) {
+                    rollbackErrors.push(rollbackCause);
+                }
+                if (this.#capabilitiesPublished) {
+                    try {
+                        await LoopDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
+                    } catch (rollbackCause) {
+                        rollbackErrors.push(rollbackCause);
+                    }
+                }
+            }
+            if (rollbackErrors.length > 0) {
+                throw new AggregateError(
+                    [cause, ...rollbackErrors],
+                    "Workspace capability replacement and rollback failed",
+                );
+            }
+            throw cause;
+        } finally {
+            gate.release();
+        }
     }
     get engine(): Engine { return this.#engine; }
     get provider(): Provider | null { return this.#provider; }
@@ -1303,6 +1535,11 @@ export default class Daemon {
             if (module.close !== undefined) this.#moduleClosers.push(module as StartedModule);
             await module.setup?.(setupSeam);
         }
+        for (const workspace of await Envelope.listWorkspaces(this.#db)) {
+            for (const provider of this.#workspaceCapabilityProviders.values()) {
+                await provider.hydrate(workspace.id);
+            }
+        }
         await this.#schemes.ready();
 
         // Reconcile the kernel-published documentation surface once per existing workspace.
@@ -1330,6 +1567,7 @@ export default class Daemon {
         await this.#db.recovery_settle_open_provider_requests.run({});
         await this.#db.recovery_fail_open_model_calls.run({});
         await this.#db.recovery_fail_ownerless_proposals.run({});
+        await this.#db.recovery_remove_ownerless_client_interactions.run({});
         await this.#db.recovery_error_orphan_subscription_channels.run({});
         await this.#db.recovery_fail_orphan_subscriptions.run({});
         await this.#db.recovery_resume_unblocked_parks.run({});
@@ -1584,6 +1822,7 @@ export default class Daemon {
 export type CoreSeam = Pick<Daemon,
     | "subscribeToEvents"
     | "pendingProposals" | "resolveProposal"
+    | "pendingClientInteractions" | "resolveClientInteraction"
     | "runLoop" | "cancelDrain" | "dispatchClientAction" | "ensureModelWorker"
     | "readLog" | "readEntry" | "look"
     | "listProviders" | "listWorkspaces" | "listWorkers" | "listPrompts" | "listMembers" | "listConstraints" | "workspaceDerivationStatus"

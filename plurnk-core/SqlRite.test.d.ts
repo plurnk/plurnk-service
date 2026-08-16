@@ -135,6 +135,9 @@ export class SqlRiteSync {
 	find_open_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRiteSyncPreparedStatements;
 	find_exec_close_status: SqlRiteSyncPreparedStatements;
+	client_interaction_insert: SqlRiteSyncPreparedStatements;
+	client_interaction_list: SqlRiteSyncPreparedStatements;
+	client_interaction_delete: SqlRiteSyncPreparedStatements;
 	digest_workspaces: SqlRiteSyncPreparedStatements;
 	digest_workers: SqlRiteSyncPreparedStatements;
 	digest_loops: SqlRiteSyncPreparedStatements;
@@ -246,6 +249,7 @@ export class SqlRiteSync {
 	recovery_settle_open_provider_requests: SqlRiteSyncPreparedStatements;
 	recovery_fail_open_model_calls: SqlRiteSyncPreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRiteSyncPreparedStatements;
+	recovery_remove_ownerless_client_interactions: SqlRiteSyncPreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRiteSyncPreparedStatements;
 	recovery_fail_orphan_subscriptions: SqlRiteSyncPreparedStatements;
 	recovery_resume_unblocked_parks: SqlRiteSyncPreparedStatements;
@@ -265,6 +269,7 @@ export class SqlRiteSync {
 	log_derivation_rows: SqlRiteSyncPreparedStatements;
 	log_set_deep_hash: SqlRiteSyncPreparedStatements;
 	log_entry_by_id: SqlRiteSyncPreparedStatements;
+	loop_docs_materialized: SqlRiteSyncPreparedStatements;
 	lifecycle_park_loop: SqlRiteSyncPreparedStatements;
 	lifecycle_wake_loop: SqlRiteSyncPreparedStatements;
 	lifecycle_finish_loop: SqlRiteSyncPreparedStatements;
@@ -289,6 +294,9 @@ export class SqlRiteSync {
 	worker_name_count: SqlRiteSyncPreparedStatements;
 	worker_name_claim: SqlRiteSyncPreparedStatements;
 	worker_name_get_default_conversation: SqlRiteSyncPreparedStatements;
+	workspace_module_state_get: SqlRiteSyncPreparedStatements;
+	workspace_module_state_put: SqlRiteSyncPreparedStatements;
+	workspace_module_state_delete: SqlRiteSyncPreparedStatements;
 	test_insert_workspace: SqlRiteSyncPreparedStatements;
 	test_insert_worker: SqlRiteSyncPreparedStatements;
 	test_insert_loop: SqlRiteSyncPreparedStatements;
@@ -606,6 +614,9 @@ export default class SqlRite {
 	find_open_subscriptions_for_worker: SqlRitePreparedStatements;
 	find_open_turn_scoped_subscriptions_for_worker: SqlRitePreparedStatements;
 	find_exec_close_status: SqlRitePreparedStatements;
+	client_interaction_insert: SqlRitePreparedStatements;
+	client_interaction_list: SqlRitePreparedStatements;
+	client_interaction_delete: SqlRitePreparedStatements;
 	digest_workspaces: SqlRitePreparedStatements;
 	digest_workers: SqlRitePreparedStatements;
 	digest_loops: SqlRitePreparedStatements;
@@ -717,6 +728,7 @@ export default class SqlRite {
 	recovery_settle_open_provider_requests: SqlRitePreparedStatements;
 	recovery_fail_open_model_calls: SqlRitePreparedStatements;
 	recovery_fail_ownerless_proposals: SqlRitePreparedStatements;
+	recovery_remove_ownerless_client_interactions: SqlRitePreparedStatements;
 	recovery_error_orphan_subscription_channels: SqlRitePreparedStatements;
 	recovery_fail_orphan_subscriptions: SqlRitePreparedStatements;
 	recovery_resume_unblocked_parks: SqlRitePreparedStatements;
@@ -736,6 +748,7 @@ export default class SqlRite {
 	log_derivation_rows: SqlRitePreparedStatements;
 	log_set_deep_hash: SqlRitePreparedStatements;
 	log_entry_by_id: SqlRitePreparedStatements;
+	loop_docs_materialized: SqlRitePreparedStatements;
 	lifecycle_park_loop: SqlRitePreparedStatements;
 	lifecycle_wake_loop: SqlRitePreparedStatements;
 	lifecycle_finish_loop: SqlRitePreparedStatements;
@@ -760,6 +773,9 @@ export default class SqlRite {
 	worker_name_count: SqlRitePreparedStatements;
 	worker_name_claim: SqlRitePreparedStatements;
 	worker_name_get_default_conversation: SqlRitePreparedStatements;
+	workspace_module_state_get: SqlRitePreparedStatements;
+	workspace_module_state_put: SqlRitePreparedStatements;
+	workspace_module_state_delete: SqlRitePreparedStatements;
 	test_insert_workspace: SqlRitePreparedStatements;
 	test_insert_worker: SqlRitePreparedStatements;
 	test_insert_loop: SqlRitePreparedStatements;

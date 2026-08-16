@@ -1,5 +1,10 @@
 import { RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
-import type { PlurnkStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import type {
+    ClientInteractionProjection,
+    ClientInteractionResolution,
+    PlurnkStatement,
+    ParsedPath,
+} from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import Meta from "@plurnk/plurnk-meta";
@@ -10,7 +15,7 @@ import SearchIndex from "../schemes/_search-index.ts";
 import GitMembership from "./git-membership.ts";
 import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
-import type { RegistryEntry } from "./ExecutorRegistry.ts";
+import type { RegistryEntry, RuntimeRegistryRegistration } from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, BranchWorkerNotify, BranchCompletionGate, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
 import { promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
@@ -28,6 +33,7 @@ import StrikeRail from "./StrikeRail.ts";
 import PacketBuilder, { type ChatMessage } from "./PacketBuilder.ts";
 import ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
+import ClientInteractions, { type ClientInteractionPendingEvent } from "./ClientInteractions.ts";
 import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 import Dispatcher from "./Dispatcher.ts";
 import type { DispatchContext, DispatchResult, ResolvedClientEntryAddress } from "./Dispatcher.ts";
@@ -138,6 +144,7 @@ export default class Engine {
     #packets: PacketBuilder;
     readonly searchGate = new SearchGate();
     #proposals: ProposalLifecycle;
+    #interactions: ClientInteractions;
     #dispatcher: Dispatcher;
     #turnRunner: TurnRunner;
     readonly #liveSubscriptions = new LiveSubscriptions();
@@ -333,16 +340,19 @@ export default class Engine {
             schemes,
             executors,
         });
+        this.#interactions = new ClientInteractions(db);
         this.#proposals = new ProposalLifecycle({
             db, schemes, notices: this.#notices,
             streamEventNotify, wakeWorkerNotify,
             weigh: this.#weighContent, mimetypes: this.#mimetypes, executors, loopSignal,
             liveSubscriptions: this.#liveSubscriptions,
+            interactions: this.#interactions,
         });
         this.#dispatcher = new Dispatcher({ searchGate: this.searchGate,
             db, schemes, mimetypes: this.#mimetypes,
             weigh: this.#weighContent,
             notices: this.#notices, proposals: this.#proposals,
+            interactions: this.#interactions,
             executors, loopSignal,
             streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants,
             parkDeadlines: this.parkDeadlines,
@@ -364,6 +374,7 @@ export default class Engine {
             wakeWorkerNotify,
             executors,
             loopSignal,
+            interactions: this.#interactions,
             warmWorkspace: (context, invalidate, materialize) =>
                 this.#queueWorkspaceWarm(context, invalidate, materialize),
             dispatch: (context) => this.dispatch(context),
@@ -378,8 +389,9 @@ export default class Engine {
             wakeWorkerNotify,
             injectWorker,
             pushNotice: (workspaceId, loopId, notice) => this.#notices.push(workspaceId, loopId, notice),
-            defaultChannelFor: (scheme) => schemes.defaultChannelFor(scheme),
+            defaultChannelFor: (scheme, workspaceId) => schemes.defaultChannelFor(scheme, workspaceId),
             readExecSource: (statement, ctx) => this.#dispatcher.readExecSource(statement, ctx),
+            requestInteraction: (request, ids, signal) => this.#interactions.request(request, ids, signal),
             liveSubscriptions: this.#liveSubscriptions,
         });
     }
@@ -390,22 +402,94 @@ export default class Engine {
         this.#executors = executors;
     }
 
-    // Register a module-owned runtime on the same two registries as boot discovery.
-    // An optional same-name scheme handler lets one capability own both execution
-    // and addressable state without teaching core its protocol.
+    // Register a complete module-owned runtime set on the same two registries
+    // as boot discovery. Both owners prepare the complete set before either
+    // publishes a name. {§plugin-namespace-arbitration}
+    registerRuntimes(registrations: readonly {
+        readonly tag: string;
+        readonly entry: RegistryEntry;
+        readonly scheme?: RuntimeSchemeFacet;
+    }[]): void {
+        if (this.#executors === undefined) throw new Error("registerRuntimes: executor registry not wired yet");
+        const normalized = registrations.map(({ tag, entry, scheme }) => {
+            RuntimeTag.assert(tag, "module runtime");
+            return {
+                tag,
+                entry: {
+                    ...entry,
+                    invocation: RuntimeInvocation.assert(entry.invocation, entry.namespaceOwner.name, tag),
+                } satisfies RegistryEntry,
+                scheme,
+            };
+        });
+        const commitExecutors = this.#executors.prepareRegistrations(
+            normalized satisfies readonly RuntimeRegistryRegistration[],
+        );
+        const commitSchemes = this.#schemes.prepareRuntimeSchemes(
+            normalized.map(({ tag, entry, scheme }) => ({
+                tag,
+                executor: entry.executor,
+                owner: entry.namespaceOwner,
+                facet: scheme,
+            })),
+        );
+        commitSchemes();
+        commitExecutors();
+    }
+
     registerRuntime(tag: string, entry: RegistryEntry, scheme?: RuntimeSchemeFacet): void {
-        if (this.#executors === undefined) throw new Error("registerRuntime: executor registry not wired yet");
-        RuntimeTag.assert(tag, "module runtime");
-        const normalized = {
-            ...entry,
-            invocation: RuntimeInvocation.assert(entry.invocation, entry.namespaceOwner.name, tag),
-        } satisfies RegistryEntry;
-        // Preflight both owners before either write; synchronous registration
-        // then cannot leave a half-claimed namespace. {§plugin-namespace-arbitration}
-        this.#executors.assertCanRegister(tag, normalized.namespaceOwner);
-        this.#schemes.assertRuntimeClaim(tag, normalized.namespaceOwner);
-        this.#schemes.registerRuntimeScheme(tag, normalized.executor, normalized.namespaceOwner, scheme);
-        this.#executors.register(tag, normalized);
+        this.registerRuntimes([{ tag, entry, scheme }]);
+    }
+
+    async prepareWorkspaceRuntimes(
+        workspaceId: number,
+        namespaceOwner: string,
+        registrations: readonly {
+            readonly tag: string;
+            readonly entry: RegistryEntry;
+            readonly scheme?: RuntimeSchemeFacet;
+        }[],
+    ): Promise<() => () => void> {
+        if (this.#executors === undefined) {
+            throw new Error("prepareWorkspaceRuntimes: executor registry not wired yet");
+        }
+        const normalized = registrations.map(({ tag, entry, scheme }) => {
+            RuntimeTag.assert(tag, "workspace module runtime");
+            return {
+                tag,
+                entry: {
+                    ...entry,
+                    invocation: RuntimeInvocation.assert(entry.invocation, entry.namespaceOwner.name, tag),
+                } satisfies RegistryEntry,
+                scheme,
+            };
+        });
+        const commitExecutors = this.#executors.prepareWorkspaceRegistrations(
+            workspaceId,
+            namespaceOwner,
+            normalized satisfies readonly RuntimeRegistryRegistration[],
+        );
+        const commitSchemes = await this.#schemes.prepareWorkspaceRuntimeSchemes(
+            workspaceId,
+            namespaceOwner,
+            normalized.map(({ tag, entry, scheme }) => ({
+                tag,
+                executor: entry.executor,
+                owner: entry.namespaceOwner,
+                facet: scheme,
+            })),
+        );
+        return () => {
+            const rollbackSchemes = commitSchemes();
+            const rollbackExecutors = commitExecutors();
+            let pending = true;
+            return () => {
+                if (!pending) return;
+                pending = false;
+                rollbackExecutors();
+                rollbackSchemes();
+            };
+        };
     }
 
     // A lineage's no-parent root; a root worker resolves to itself. Fail hard
@@ -807,6 +891,21 @@ export default class Engine {
         return this.#proposals.list(workspaceId);
     }
 
+    onClientInteractionPending(listener: (event: ClientInteractionPendingEvent) => void): void {
+        this.#interactions.onPending(listener);
+    }
+
+    async pendingClientInteractions(workspaceId: number): Promise<ClientInteractionProjection[]> {
+        return this.#interactions.list(workspaceId);
+    }
+
+    async resolveClientInteraction(
+        interactionId: number,
+        resolution: ClientInteractionResolution,
+    ): Promise<void> {
+        await this.#interactions.resolve(interactionId, resolution);
+    }
+
     // Used by wake-on-completion (daemon side): "is there any loop in this
     // worker still accepting turns?" If yes, skip the wake — the active loop
     // will pick up the channel transition at its next turn boundary. If no,
@@ -829,7 +928,7 @@ export default class Engine {
             wakeWorkerNotify: this.#wakeWorkerNotify,
             weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
-            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
+            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workspaceId),
             pushNotice: (notice) => this.#notices.notify(workspaceId, 0, notice),
         };
         await this.#queueWorkspaceWarm(ctx); // materialize first; overlapping requests coalesce and rescan

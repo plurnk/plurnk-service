@@ -6,10 +6,10 @@
 // hook, pending) wrap this; the engine is testable against a mock seam today.
 
 import EventRouter from "./EventRouter.ts";
-import ProposalHitl from "./ProposalHitl.ts";
+import ProposalHitl, { type HitlBatch } from "./ProposalHitl.ts";
 import type { DaemonSeam } from "./DaemonSeam.ts";
 import { EventType, type AguiEvent } from "./types.ts";
-import type { ResumeEntry } from "@ag-ui/core";
+import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 
 interface Thread {
     workerId: number;
@@ -25,7 +25,16 @@ interface Thread {
 
 // The engine needs only the AG-UI Run-flow slice of the seam (workspace lifecycle and reads
 // belong to the Module edge above it) — declare exactly that.
-type PortalSeam = Pick<DaemonSeam, "subscribeToEvents" | "pendingProposals" | "resolveProposal" | "runLoop" | "cancelDrain">;
+type PortalSeam = Pick<
+    DaemonSeam,
+    | "subscribeToEvents"
+    | "pendingProposals"
+    | "resolveProposal"
+    | "pendingClientInteractions"
+    | "resolveClientInteraction"
+    | "runLoop"
+    | "cancelDrain"
+>;
 
 export default class Portal {
     #seam: PortalSeam;
@@ -33,11 +42,15 @@ export default class Portal {
     // all its open AG-UI Runs — concurrent action Runs must not clobber each other's gates.
     #threads = new Map<number, Set<Thread>>();
     #hitl: ProposalHitl;
+    #activeInterrupts = new Map<string, Interrupt>();
     #off: (() => void) | null = null;
 
     constructor(seam: PortalSeam) {
         this.#seam = seam;
-        this.#hitl = new ProposalHitl(seam, (workspaceId, workerId, events) => this.#emitToWorker(workspaceId, workerId, events));
+        this.#hitl = new ProposalHitl(
+            seam,
+            (workspaceId, workerId, batch) => this.#emitHitl(workspaceId, workerId, batch),
+        );
     }
 
     // One subscription for the whole module: render each event to its workspace's thread.
@@ -80,6 +93,27 @@ export default class Portal {
         for (const t of this.#threads.get(workspaceId) ?? []) {
             if (t.workerId === workerId) t.emit(events);
         }
+    }
+
+    #withHitl(batch: HitlBatch, emit: (events: AguiEvent[]) => void): void {
+        for (const interrupt of batch.interrupts) {
+            this.#activeInterrupts.set(interrupt.toolCallId ?? interrupt.id, interrupt);
+        }
+        try {
+            emit(batch.events);
+        } finally {
+            for (const interrupt of batch.interrupts) {
+                this.#activeInterrupts.delete(interrupt.toolCallId ?? interrupt.id);
+            }
+        }
+    }
+
+    #emitHitl(workspaceId: number, workerId: number, batch: HitlBatch): void {
+        this.#withHitl(batch, (events) => this.#emitToWorker(workspaceId, workerId, events));
+    }
+
+    interruptForToolCall(toolCallId: string): Interrupt | null {
+        return this.#activeInterrupts.get(toolCallId) ?? null;
     }
 
     // Bind a client's SSE to a workspace and AG-UI Run. The emit consumer ends its stream when it
@@ -143,8 +177,8 @@ export default class Portal {
     // subscription as loop/terminated). Re-surface any pending stopped-world first.
     async run(thread: unknown, args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean }; openPaths?: string[]; alias?: string; model?: string; childAlias?: string | null; childModel?: string }): Promise<{ loopId: number } | null> {
         const pending = await this.#hitl.resurface(args.workspaceId, args.workerId);
-        if (pending.length > 0) {
-            (thread as Thread).emit(pending);
+        if (pending.events.length > 0) {
+            this.#withHitl(pending, (events) => (thread as Thread).emit(events));
             return null;
         }
         const ack = await this.#seam.runLoop(args);

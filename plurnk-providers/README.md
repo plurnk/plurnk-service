@@ -21,16 +21,18 @@ reasoning activation, and estimated prices resolve independently
 ({§model-fact-resolution}). PLURNK does not fetch live per-token prices, and the
 local estimate is not an authoritative relay-settled charge.
 
-## Runtime-neutral accounting
+## Runtime-neutral contracts
 
-Browser and edge Workers import the accounting contract through its dedicated
-runtime-neutral subpath ({§provider-runtime-neutral-accounting}):
+Browser and edge Workers import accounting and normalized failures through
+their dedicated runtime-neutral subpaths
+({§provider-runtime-neutral-accounting}, {§provider-runtime-neutral-errors}):
 
 ```js
 import {
   aggregateProviderAccounting,
   estimateProviderCost,
 } from "@plurnk/plurnk-providers/accounting";
+import { ProviderError } from "@plurnk/plurnk-providers/errors";
 ```
 
 The package root composes the complete Node provider runtime, including plugin

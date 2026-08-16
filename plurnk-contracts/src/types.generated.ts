@@ -19,6 +19,35 @@ mimetype: string
 display: CapabilityDisplay
 }
 
+export interface ClientInteractionProjection {
+interactionId: number
+workerId: number
+loopId: number
+turnId: number
+request: ClientInteractionRequest
+}
+/**
+ * A runtime-neutral request for one client-owned interaction. The owner supplies the standard tool presentation and response contract; protocol-private continuation state is excluded.
+ */
+
+export interface ClientInteractionRequest {
+toolName: string
+arguments: {
+[k: string]: unknown
+}
+message?: string
+responseSchema: {
+[k: string]: unknown
+}
+}
+
+export type ClientInteractionResolution = ({
+status: "resolved"
+payload?: unknown
+} | {
+status: "cancelled"
+})
+
 export type ClientStatement = (PlurnkStatement | LookStatement | BuffStatement)
 /**
  * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, lineMarker, body, suffix, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
@@ -403,6 +432,51 @@ noWeb: boolean
 noInteraction: boolean
 noProposals: boolean
 }
+
+export type McpServerDefinition = ({
+[k: string]: unknown
+} & {
+name: string
+transport: ("stdio" | "http")
+command?: string
+args?: string[]
+cwd?: string
+env?: {
+[k: string]: string
+}
+url?: string
+headers?: {
+[k: string]: string
+}
+authorization?: ({
+type: "bearer"
+token: EnvironmentReference
+} | {
+type: "oauth"
+redirectUrl: string
+clientMetadataUrl: string
+scope?: string
+} | {
+type: "oauth"
+redirectUrl: string
+clientId: string
+clientSecret: EnvironmentReference
+scope?: string
+} | {
+type: "oauth"
+redirectUrl: string
+scope?: string
+} | {
+type: "client-credentials"
+clientId: string
+clientSecret: EnvironmentReference
+scope?: string
+})
+tools?: string[]
+read?: string[]
+})
+
+export type EnvironmentReference = string
 
 export interface Notice {
 /**

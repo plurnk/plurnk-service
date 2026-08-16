@@ -1,0 +1,16 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/ClientInteractionProjection.json",
+    "title": "ClientInteractionProjection",
+    "description": "The runtime-neutral client-interface projection of one pending client interaction. Live delivery and reconnect discovery expose this same shape.",
+    "type": "object",
+    "required": ["interactionId", "workerId", "loopId", "turnId", "request"],
+    "additionalProperties": false,
+    "properties": {
+        "interactionId": { "type": "integer", "minimum": 1 },
+        "workerId": { "type": "integer", "minimum": 1 },
+        "loopId": { "type": "integer", "minimum": 1 },
+        "turnId": { "type": "integer", "minimum": 1 },
+        "request": { "$ref": "https://schemas.plurnk.dev/v0/ClientInteractionRequest.json" }
+    }
+}

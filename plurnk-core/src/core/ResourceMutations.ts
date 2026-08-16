@@ -167,8 +167,8 @@ export default class ResourceMutations {
     readonly #schemes: SchemeRegistry;
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #run: RunOperation;
-    readonly #checkWritable: (statement: PlurnkStatement, origin: WriterTier) => DispatchResult | null;
-    readonly #checkFlagsGate: (statement: PlurnkStatement, loopId: number) => Promise<DispatchResult | null>;
+    readonly #checkWritable: (statement: PlurnkStatement, origin: WriterTier, workspaceId: number) => DispatchResult | null;
+    readonly #checkFlagsGate: (statement: PlurnkStatement, loopId: number, workspaceId: number) => Promise<DispatchResult | null>;
     readonly #editTargetIdentity: (
         statement: EditStatement,
         workspaceId: number,
@@ -203,8 +203,8 @@ export default class ResourceMutations {
         schemes: SchemeRegistry;
         liveSubscriptions: LiveSubscriptions;
         run: RunOperation;
-        checkWritable: (statement: PlurnkStatement, origin: WriterTier) => DispatchResult | null;
-        checkFlagsGate: (statement: PlurnkStatement, loopId: number) => Promise<DispatchResult | null>;
+        checkWritable: (statement: PlurnkStatement, origin: WriterTier, workspaceId: number) => DispatchResult | null;
+        checkFlagsGate: (statement: PlurnkStatement, loopId: number, workspaceId: number) => Promise<DispatchResult | null>;
         editTargetIdentity: (
             statement: EditStatement,
             workspaceId: number,
@@ -395,10 +395,10 @@ export default class ResourceMutations {
             const first = group[0];
             const schemeName = schemeNameOf(first.target);
             let initial: DispatchResult;
-            let denial = group.map((statement) => this.#checkWritable(statement, origin)).find((result) => result !== null) ?? null;
+            let denial = group.map((statement) => this.#checkWritable(statement, origin, workspaceId)).find((result) => result !== null) ?? null;
             if (denial === null) {
                 for (const statement of group) {
-                    denial = await this.#checkFlagsGate(statement, loopId);
+                    denial = await this.#checkFlagsGate(statement, loopId, workspaceId);
                     if (denial !== null) break;
                 }
             }
@@ -413,9 +413,9 @@ export default class ResourceMutations {
                     { retryable: false },
                 );
             } else {
-                const handler = this.#schemes.get(schemeName) as SchemeHandler | undefined;
+                const handler = this.#schemes.get(schemeName, workspaceId) as SchemeHandler | undefined;
                 const method = handler?.editBatch;
-                const manifest = this.#schemes.manifestFor(schemeName);
+                const manifest = this.#schemes.manifestFor(schemeName, workspaceId);
                 if (typeof method !== "function" || manifest === undefined) {
                     initial = ResourceMutations.#failure(
                         "operation-not-implemented",
@@ -641,8 +641,8 @@ export default class ResourceMutations {
                 },
             );
         }
-        const handler = this.#schemes.get(scheme);
-        const manifest = this.#schemes.manifestFor(scheme);
+        const handler = this.#schemes.get(scheme, ctx.workspaceId);
+        const manifest = this.#schemes.manifestFor(scheme, ctx.workspaceId);
         if (handler === undefined || manifest === undefined) {
             return ResourceMutations.#failure(
                 "scheme-not-found",
@@ -797,7 +797,7 @@ export default class ResourceMutations {
         ctx: PlurnkSchemeContext,
         operation: "COPY" | "MOVE",
     ): Promise<SelectedSource | DispatchResult> {
-        const handler = this.#schemes.get(selection.scheme) as SchemeHandler | undefined;
+        const handler = this.#schemes.get(selection.scheme, ctx.workspaceId) as SchemeHandler | undefined;
         if (handler === undefined) {
             throw new InvalidOperationResultError(
                 `Resolved COPY/MOVE source scheme '${selection.scheme}' is no longer registered.`,
@@ -1225,7 +1225,7 @@ export default class ResourceMutations {
         ctx: PlurnkSchemeContext,
         precondition: LineAnchorPrecondition | null = null,
     ): Promise<DispatchResult> {
-        const handler = this.#schemes.get(selection.scheme) as SchemeHandler | undefined;
+        const handler = this.#schemes.get(selection.scheme, ctx.workspaceId) as SchemeHandler | undefined;
         if (typeof handler?.editBatch !== "function") {
             return ResourceMutations.#failure(
                 "operation-not-implemented",

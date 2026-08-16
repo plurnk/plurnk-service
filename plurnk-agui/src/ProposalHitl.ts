@@ -1,53 +1,188 @@
-// {§agui-proposal-resolve} The in-process HITL core.
-// Subscribes to the daemon's event source, renders each stopped-world proposal as an
-// AG-UI tool-call (via AguiPlus), re-surfaces a workspace's pending proposals on
-// (re)connect, and maps standard resume entries back to resolveProposal. The
-// engine's pause/gate/applyResolution stay core; this is the view + the round-trip.
+// {§agui-proposal-resolve} The in-process client-owned HITL core. Proposals
+// and generic interactions share one render, reconnect, validation, and resume
+// path; their stateful semantics remain with their respective core owners.
 
-import type { AguiEvent, ProposalNotification } from "./types.ts";
+import type { Interrupt, ResumeEntry } from "@ag-ui/core";
+import {
+    Problems,
+    Validator,
+    type ClientInteractionProjection,
+    type ClientInteractionResolution,
+    type ProblemDetails,
+} from "@plurnk/plurnk-contracts";
+import {
+    interactionInterrupt,
+    interactionResolutionFromResume,
+    interactionToolCall,
+    proposalInterrupt,
+    proposalToolCall,
+    resolutionFromResume,
+} from "./AguiPlus.ts";
 import type { DaemonSeam } from "./DaemonSeam.ts";
-import { proposalToolCall, resolutionFromResume } from "./AguiPlus.ts";
-import type { ResumeEntry } from "@ag-ui/core";
-import { Problems, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import type { AguiEvent, ProposalNotification } from "./types.ts";
 
-// The HITL core needs only the proposal slice of the seam — declare exactly that.
-type HitlSeam = Pick<DaemonSeam, "subscribeToEvents" | "pendingProposals" | "resolveProposal">;
+type HitlSeam = Pick<
+    DaemonSeam,
+    | "subscribeToEvents"
+    | "pendingProposals"
+    | "resolveProposal"
+    | "pendingClientInteractions"
+    | "resolveClientInteraction"
+>;
 
-class ProposalInputError extends Error {
+export interface HitlBatch {
+    readonly events: AguiEvent[];
+    readonly interrupts: Interrupt[];
+}
+
+type PendingItem =
+    | {
+        readonly kind: "proposal";
+        readonly id: number;
+        readonly key: string;
+        readonly workerId: number;
+        readonly loopId: number;
+        readonly turnId: number;
+        readonly projection: ProposalNotification;
+    }
+    | {
+        readonly kind: "interaction";
+        readonly id: number;
+        readonly key: string;
+        readonly workerId: number;
+        readonly loopId: number;
+        readonly turnId: number;
+        readonly projection: ClientInteractionProjection;
+    };
+
+type ParsedResolution =
+    | {
+        readonly kind: "proposal";
+        readonly key: string;
+        readonly id: number;
+        readonly decision: "accept" | "reject" | "cancel";
+        readonly body?: string;
+    }
+    | {
+        readonly kind: "interaction";
+        readonly key: string;
+        readonly id: number;
+        readonly resolution: ClientInteractionResolution;
+    };
+
+class InterruptInputError extends Error {
     readonly problem: ProblemDetails;
 
     constructor(code: string, status: number, detail: string, extensions: Readonly<Record<string, unknown>>) {
-        const problem = Problems.create("agui:proposal", code, status, detail, {
-            stage: "proposal-resolution",
+        const problem = Problems.create("agui:interrupt", code, status, detail, {
+            stage: "interrupt-resolution",
             retryable: false,
             ...extensions,
         });
         super(problem.detail);
-        this.name = "ProposalInputError";
+        this.name = "InterruptInputError";
         this.problem = problem;
     }
 }
 
+const proposalItem = (value: ProposalNotification): PendingItem => {
+    const projection = Validator.assertProposalProjection(value);
+    return {
+        kind: "proposal",
+        id: projection.logEntryId,
+        key: `prop:${projection.logEntryId}`,
+        workerId: projection.workerId,
+        loopId: projection.loopId,
+        turnId: projection.turnId,
+        projection,
+    };
+};
+
+const interactionItem = (value: ClientInteractionProjection): PendingItem => {
+    const projection = Validator.assertClientInteractionProjection(value);
+    return {
+        kind: "interaction",
+        id: projection.interactionId,
+        key: `int:${projection.interactionId}`,
+        workerId: projection.workerId,
+        loopId: projection.loopId,
+        turnId: projection.turnId,
+        projection,
+    };
+};
+
+const comparePending = (left: PendingItem, right: PendingItem): number =>
+    left.workerId - right.workerId
+    || left.loopId - right.loopId
+    || left.turnId - right.turnId
+    || left.kind.localeCompare(right.kind)
+    || left.id - right.id;
+
+const render = (item: PendingItem): HitlBatch => item.kind === "proposal"
+    ? {
+        events: proposalToolCall(item.projection),
+        interrupts: [proposalInterrupt(item.id)],
+    }
+    : {
+        events: interactionToolCall(item.projection),
+        interrupts: [interactionInterrupt(item.projection)],
+    };
+
+const combine = (items: readonly PendingItem[]): HitlBatch => {
+    const batches = items.map(render);
+    return {
+        events: batches.flatMap(({ events }) => events),
+        interrupts: batches.flatMap(({ interrupts }) => interrupts),
+    };
+};
+
+const parseResolution = (entry: ResumeEntry): ParsedResolution | null => {
+    const proposal = resolutionFromResume(entry);
+    if (proposal !== null) {
+        return {
+            kind: "proposal",
+            key: entry.interruptId,
+            id: proposal.logEntryId,
+            decision: proposal.decision,
+            ...(proposal.body !== undefined ? { body: proposal.body } : {}),
+        };
+    }
+    const interaction = interactionResolutionFromResume(entry);
+    if (interaction === null) return null;
+    return {
+        kind: "interaction",
+        key: entry.interruptId,
+        id: interaction.interactionId,
+        resolution: interaction.resolution,
+    };
+};
+
 export default class ProposalHitl {
-    #seam: HitlSeam;
-    #emit: (workspaceId: number, workerId: number, events: AguiEvent[]) => void;
+    readonly #seam: HitlSeam;
+    readonly #emit: (workspaceId: number, workerId: number, batch: HitlBatch) => void;
     #off: (() => void) | null = null;
 
-    constructor(seam: HitlSeam, emit: (workspaceId: number, workerId: number, events: AguiEvent[]) => void) {
+    constructor(
+        seam: HitlSeam,
+        emit: (workspaceId: number, workerId: number, batch: HitlBatch) => void,
+    ) {
         this.#seam = seam;
         this.#emit = emit;
     }
 
-    // Subscribe to the event source; project each live stopped-world as a tool-call.
     start(): void {
         this.#off = this.#seam.subscribeToEvents((workspaceId, method, params) => {
-            if (method !== "loop/proposal" || workspaceId === null) return;
-            const proposal = params as ProposalNotification;
-            // Core's one disposition drives both settlement and presentation.
-            // A tool-call strictly means client-owned; loop-owned proposals
-            // settle in-process and the same AG-UI Run continues.
-            if (proposal.disposition.owner !== "client") return;
-            this.#emit(workspaceId, proposal.workerId, proposalToolCall(proposal));
+            if (workspaceId === null) return;
+            if (method === "loop/proposal") {
+                const item = proposalItem(params as ProposalNotification);
+                if (item.kind !== "proposal" || item.projection.disposition.owner !== "client") return;
+                this.#emit(workspaceId, item.workerId, render(item));
+                return;
+            }
+            if (method === "loop/interaction") {
+                const item = interactionItem(params as ClientInteractionProjection);
+                this.#emit(workspaceId, item.workerId, render(item));
+            }
         });
     }
 
@@ -56,50 +191,69 @@ export default class ProposalHitl {
         this.#off = null;
     }
 
-    // Re-surface a workspace's pending stopped-worlds on (re)connect — a days-old
-    // question is discoverable, not lost — each as a tool-call the frontend renders.
-    async resurface(workspaceId: number, workerId?: number): Promise<AguiEvent[]> {
-        const pending = (await this.#seam.pendingProposals(workspaceId))
-            .filter((proposal) => proposal.disposition.owner === "client")
-            .filter((proposal) => workerId === undefined || proposal.workerId === workerId);
-        return pending.flatMap((proposal) => proposalToolCall(proposal));
+    async #pending(workspaceId: number, workerId?: number): Promise<PendingItem[]> {
+        const [proposals, interactions] = await Promise.all([
+            this.#seam.pendingProposals(workspaceId),
+            this.#seam.pendingClientInteractions(workspaceId),
+        ]);
+        return [
+            ...proposals
+                .map(proposalItem)
+                .filter((item) => item.kind === "proposal" && item.projection.disposition.owner === "client"),
+            ...interactions.map(interactionItem),
+        ]
+            .filter((item) => workerId === undefined || item.workerId === workerId)
+            .sort(comparePending);
     }
 
-    // A standard AG-UI resume Run must address every pending interrupt for its
-    // exact worker before any proposal is released.
+    async resurface(workspaceId: number, workerId?: number): Promise<HitlBatch> {
+        return combine(await this.#pending(workspaceId, workerId));
+    }
+
     async resolve(workspaceId: number, entries: ResumeEntry[]): Promise<{ loopId: number; workerId: number }> {
-        const allPending = (await this.#seam.pendingProposals(workspaceId))
-            .filter((proposal) => proposal.disposition.owner === "client");
-        const resolutions = entries.map(resolutionFromResume);
-        if (resolutions.some((r) => r === null)) {
-            throw new ProposalInputError(
-                "interrupt-invalid",
+        const allPending = await this.#pending(workspaceId);
+        const entryKeys = entries.map(({ interruptId }) => interruptId);
+        if (new Set(entryKeys).size !== entryKeys.length) {
+            throw new InterruptInputError(
+                "interrupt-duplicate",
                 400,
-                "The resume contains an invalid proposal interrupt.",
-                { recovery: "Resume with the interrupt IDs and response shape supplied by the pending tool calls." },
-            );
-        }
-        const resolved = resolutions as Array<NonNullable<(typeof resolutions)[number]>>;
-        const received = new Set(resolved.map((r) => r.logEntryId));
-        const addressed = allPending.filter((p) => received.has(p.logEntryId));
-        if (addressed.length !== received.size) {
-            throw new ProposalInputError(
-                "proposal-not-pending",
-                409,
-                "The resume addresses a proposal that is not pending.",
+                "The resume contains the same interrupt more than once.",
                 {
-                    receivedProposalIds: [...received],
-                    pendingProposalIds: allPending.map(({ logEntryId }) => logEntryId),
-                    recovery: "Refresh pending proposals before resuming.",
+                    receivedInterruptIds: entryKeys,
+                    recovery: "Include each pending interrupt exactly once.",
                 },
             );
         }
-        const workerIds = new Set(addressed.map((p) => p.workerId));
+        const resolutions = entries.map(parseResolution);
+        if (resolutions.some((resolution) => resolution === null)) {
+            throw new InterruptInputError(
+                "interrupt-invalid",
+                400,
+                "The resume contains an invalid client interrupt.",
+                { recovery: "Resume with the interrupt IDs and response shapes supplied by the pending tool calls." },
+            );
+        }
+        const resolved = resolutions as ParsedResolution[];
+        const received = new Set(resolved.map(({ key }) => key));
+        const addressed = allPending.filter(({ key }) => received.has(key));
+        if (addressed.length !== received.size) {
+            throw new InterruptInputError(
+                "interrupt-not-pending",
+                409,
+                "The resume addresses an interrupt that is not pending.",
+                {
+                    receivedInterruptIds: [...received],
+                    pendingInterruptIds: allPending.map(({ key }) => key),
+                    recovery: "Refresh pending interrupts before resuming.",
+                },
+            );
+        }
+        const workerIds = new Set(addressed.map(({ workerId }) => workerId));
         if (workerIds.size !== 1) {
-            throw new ProposalInputError(
+            throw new InterruptInputError(
                 "worker-scope-invalid",
                 400,
-                "One resume must address proposals for exactly one worker.",
+                "One resume must address interrupts for exactly one worker.",
                 {
                     workerIds: [...workerIds],
                     recovery: "Resume each worker separately.",
@@ -107,30 +261,36 @@ export default class ProposalHitl {
             );
         }
         const workerId = [...workerIds][0];
-        const pending = allPending.filter((p) => p.workerId === workerId);
-        const expected = new Set(pending.map((p) => p.logEntryId));
-        if (expected.size !== received.size || [...expected].some((id) => !received.has(id))) {
-            throw new ProposalInputError(
-                "proposal-set-incomplete",
+        const pending = allPending.filter((item) => item.workerId === workerId);
+        const expected = new Set(pending.map(({ key }) => key));
+        if (expected.size !== received.size || [...expected].some((key) => !received.has(key))) {
+            throw new InterruptInputError(
+                "interrupt-set-incomplete",
                 409,
-                `The resume does not address every pending proposal for worker ${workerId}.`,
+                `The resume does not address every pending interrupt for worker ${workerId}.`,
                 {
                     workerId,
-                    receivedProposalIds: [...received],
-                    pendingProposalIds: [...expected],
-                    recovery: "Resolve every pending proposal for this worker in one resume.",
+                    receivedInterruptIds: [...received],
+                    pendingInterruptIds: [...expected],
+                    recovery: "Resolve every pending interrupt for this worker in one resume.",
                 },
             );
         }
-        const loopIds = new Set(pending.map((p) => p.loopId));
-        if (loopIds.size !== 1) throw new Error(`worker ${workerId} has pending interrupts across multiple loops`);
-        for (const res of resolved) {
-            this.#seam.resolveProposal(res.logEntryId, {
-                decision: res.decision,
-                ...(res.body !== undefined ? { body: res.body } : {}),
-            });
+        const loopIds = new Set(pending.map(({ loopId }) => loopId));
+        if (loopIds.size !== 1) {
+            throw new Error(`worker ${workerId} has pending interrupts across multiple loops`);
         }
+
+        await Promise.all(resolved.map(async (resolution) => {
+            if (resolution.kind === "proposal") {
+                this.#seam.resolveProposal(resolution.id, {
+                    decision: resolution.decision,
+                    ...(resolution.body !== undefined ? { body: resolution.body } : {}),
+                });
+                return;
+            }
+            await this.#seam.resolveClientInteraction(resolution.id, resolution.resolution);
+        }));
         return { loopId: [...loopIds][0], workerId };
     }
-
 }

@@ -27,6 +27,7 @@ const run = async (command: string, cwd: string, signal = new AbortController().
         write: (_channel, chunk) => { out = (out ?? "") + chunk; },
         setState: (_channel, state) => states.push(state),
         emit: () => {},
+        interact: async () => ({ status: "cancelled" }),
     };
     const result = await new Isogit({ runtime: "isogit", glyph: "git" }).run(args);
     return { result, out, states };

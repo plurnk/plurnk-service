@@ -243,8 +243,16 @@ export default class PacketBuilder {
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
         const weighContent = contentWeight;
         // {§tools-loop-affinity}: teaching and dispatch resolve the same loop flags.
-        const activeSchemes = this.#schemes.resolveForLoop(await LoopFlagsReader.read(this.#db, loopId));
-        const tools = this.#collectTools(await this.#workspaceEnabled(workspaceId), await WorkspaceSettings.questionsEnabled(this.#db, workspaceId), activeSchemes);
+        const activeSchemes = this.#schemes.resolveForLoop(
+            await LoopFlagsReader.read(this.#db, loopId),
+            workspaceId,
+        );
+        const tools = this.#collectTools(
+            workspaceId,
+            await this.#workspaceEnabled(workspaceId),
+            await WorkspaceSettings.questionsEnabled(this.#db, workspaceId),
+            activeSchemes,
+        );
         const curationBudget = this.curationBudgetFor(provider);
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
         const promptProjectionWeight = promptProjection === "withheld"
@@ -283,7 +291,7 @@ export default class PacketBuilder {
             ...(tools.optionalOperations.length > 0
                 ? [{ name: "optional-operations", slot: "system" as const, header: "Enabled Optional Operations", content: tools.optionalOperations }]
                 : []),
-            { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach() },
+            { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach(workspaceId) },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
             {
@@ -314,7 +322,7 @@ export default class PacketBuilder {
         ];
         // Plugin packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
-        let drafts = await this.#schemes.transformSections(defaults);
+        let drafts = await this.#schemes.transformSections(defaults, workspaceId);
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined && curationBudget !== null) {
             const content = BudgetReadout.resolve(budgetSection.content, curationBudget, (candidate) => {
@@ -344,6 +352,7 @@ export default class PacketBuilder {
 
     // The complete ## Registered Tools contract table. {§tools-capability-sheet}
     #collectTools(
+        workspaceId: number,
         workspaceEnabled: (tag: string) => boolean,
         questionsOn = false,
         activeSchemes?: Set<string>,
@@ -354,6 +363,7 @@ export default class PacketBuilder {
         const executorTools: Array<{
             runtime: string;
             invocation: NonNullable<ReturnType<ExecutorRegistry["entry"]>>["invocation"];
+            exactTarget?: string;
         }> = [];
         const notices: string[] = [];
         // {§send-300-choices} — the one-liner rides ONLY where questions are enabled (allowed +
@@ -364,7 +374,7 @@ export default class PacketBuilder {
         const executors = this.#executors();
         if (executors !== undefined) {
             const excluded = docsExcludeSet();
-            const runtimes = executors.availableRuntimes();
+            const runtimes = executors.availableRuntimes(workspaceId);
             // {§tools-capability-sheet} The table is keyed on the exec scheme (the op face,
             // excludedInAsk). When inactive, say so positively: plurnk.md
             // still teaches EXEC as language, and silent absence measurably invites confabulated runtimes.
@@ -375,8 +385,19 @@ export default class PacketBuilder {
                 for (const tag of runtimes) {
                     if (excluded.has(tag)) continue; // {§tools-capability-sheet} — exclude drops the row and doc
                     if (!workspaceEnabled(tag)) continue; // {§operator-config-workspace-execs}
-                    const entry = executors.entry(tag);
-                    if (entry !== undefined) executorTools.push({ runtime: tag, invocation: entry.invocation });
+                    const entry = executors.entry(tag, workspaceId);
+                    if (entry !== undefined) {
+                        const registry = executors.toolRegistry(tag, workspaceId);
+                        if (registry === null) {
+                            executorTools.push({ runtime: tag, invocation: entry.invocation });
+                        } else {
+                            executorTools.push(...registry.tools.map((tool) => ({
+                                runtime: tag,
+                                invocation: tool.invocation,
+                                exactTarget: tool.target,
+                            })));
+                        }
+                    }
                 }
             }
         }
@@ -390,7 +411,7 @@ export default class PacketBuilder {
     // materialized at worker://plurnk/docs/<name>.md by LoopDocs (like operator
     // docs) so the catalog can expose each doc's curation weight.
     async docEntries(workspaceId: number): Promise<Array<{ name: string; content: string }>> {
-        const out = await this.#schemes.docs(); // scheme docs already drop PLURNK_SERVICE_DOCS_EXCLUDE names
+        const out = await this.#schemes.docs(workspaceId); // scheme docs already drop PLURNK_SERVICE_DOCS_EXCLUDE names
         // {§send-300-choices} {§teaching-corpus} — the conditional teaching: questions.md
         // materializes ONLY for enabled workspaces — the same conditional-doc mechanism as the EXEC
         // plugin docs below. An un-enabled workspace is never taught the op it can't use.
@@ -402,10 +423,11 @@ export default class PacketBuilder {
         if (executors !== undefined) {
             const excluded = docsExcludeSet();
             const workspaceEnabled = await this.#workspaceEnabled(workspaceId); // {§operator-config-workspace-execs}
-            for (const tag of executors.availableRuntimes()) {
+            for (const tag of executors.availableRuntimes(workspaceId)) {
                 if (excluded.has(tag)) continue; // {§tools-capability-sheet} — exec docs honor the same exclude
                 if (!workspaceEnabled(tag)) continue;
-                const doc = executors.entry(tag)?.documentation;
+                const entry = executors.entry(tag, workspaceId);
+                const doc = executors.toolRegistry(tag, workspaceId)?.documentation ?? entry?.documentation;
                 if (doc !== undefined && doc.length > 0) out.push({ name: tag, content: doc });
             }
         }

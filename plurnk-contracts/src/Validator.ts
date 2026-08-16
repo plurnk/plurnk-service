@@ -18,7 +18,11 @@ import proposalProjectionSchema from "../schema/ProposalProjection.json" with { 
 import proposalDispositionSchema from "../schema/ProposalDisposition.json" with { type: "json" };
 import loopFlagsSchema from "../schema/LoopFlags.json" with { type: "json" };
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
-import type { ClientDisplayCapabilities, EntryReadResult, LoopFlags, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, TextRegion } from "./types.generated.ts";
+import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
+import clientInteractionRequestSchema from "../schema/ClientInteractionRequest.json" with { type: "json" };
+import clientInteractionProjectionSchema from "../schema/ClientInteractionProjection.json" with { type: "json" };
+import clientInteractionResolutionSchema from "../schema/ClientInteractionResolution.json" with { type: "json" };
+import type { ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, LoopFlags, McpServerDefinition, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, TextRegion } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
@@ -31,6 +35,10 @@ export class InvalidRangeExtentError extends TypeError {}
 export class InvalidLoopFlagsError extends TypeError {}
 export class InvalidProposalProjectionError extends TypeError {}
 export class InvalidClientDisplayCapabilitiesError extends TypeError {}
+export class InvalidMcpServerDefinitionError extends TypeError {}
+export class InvalidClientInteractionRequestError extends TypeError {}
+export class InvalidClientInteractionProjectionError extends TypeError {}
+export class InvalidClientInteractionResolutionError extends TypeError {}
 
 export default class Validator {
     static #position = new CfValidator(positionSchema as Schema, "2020-12");
@@ -77,6 +85,22 @@ export default class Validator {
     );
     static #clientDisplayCapabilities = new CfValidator(
         clientDisplayCapabilitiesSchema as Schema,
+        "2020-12",
+    );
+    static #mcpServerDefinition = new CfValidator(
+        mcpServerDefinitionSchema as unknown as Schema,
+        "2020-12",
+    );
+    static #clientInteractionRequest = new CfValidator(
+        clientInteractionRequestSchema as unknown as Schema,
+        "2020-12",
+    );
+    static #clientInteractionProjection = Validator.#withRefs(
+        clientInteractionProjectionSchema,
+        [clientInteractionRequestSchema],
+    );
+    static #clientInteractionResolution = new CfValidator(
+        clientInteractionResolutionSchema as unknown as Schema,
         "2020-12",
     );
 
@@ -174,6 +198,22 @@ export default class Validator {
 
     static validateClientDisplayCapabilities(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#clientDisplayCapabilities, value);
+    }
+
+    static validateMcpServerDefinition(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#mcpServerDefinition, value);
+    }
+
+    static validateClientInteractionRequest(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#clientInteractionRequest, value);
+    }
+
+    static validateClientInteractionProjection(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#clientInteractionProjection, value);
+    }
+
+    static validateClientInteractionResolution(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#clientInteractionResolution, value);
     }
 
     static assertNotice<T extends Notice>(value: T): T {
@@ -276,6 +316,46 @@ export default class Validator {
         if (!result.valid) {
             throw new InvalidClientDisplayCapabilitiesError(
                 `invalid ClientDisplayCapabilities: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        return value;
+    }
+
+    static assertMcpServerDefinition<T extends McpServerDefinition>(value: T): T {
+        const result = Validator.validateMcpServerDefinition(value);
+        if (!result.valid) {
+            throw new InvalidMcpServerDefinitionError(
+                `invalid MCP server definition: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        return value;
+    }
+
+    static assertClientInteractionRequest<T extends ClientInteractionRequest>(value: T): T {
+        const result = Validator.validateClientInteractionRequest(value);
+        if (!result.valid) {
+            throw new InvalidClientInteractionRequestError(
+                `invalid ClientInteractionRequest: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        return value;
+    }
+
+    static assertClientInteractionProjection<T extends ClientInteractionProjection>(value: T): T {
+        const result = Validator.validateClientInteractionProjection(value);
+        if (!result.valid) {
+            throw new InvalidClientInteractionProjectionError(
+                `invalid ClientInteractionProjection: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        return value;
+    }
+
+    static assertClientInteractionResolution<T extends ClientInteractionResolution>(value: T): T {
+        const result = Validator.validateClientInteractionResolution(value);
+        if (!result.valid) {
+            throw new InvalidClientInteractionResolutionError(
+                `invalid ClientInteractionResolution: ${JSON.stringify(result.errors)}`,
             );
         }
         return value;

@@ -19,6 +19,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import type ProposalLifecycle from "./ProposalLifecycle.ts";
+import type ClientInteractions from "./ClientInteractions.ts";
 import type { ProposalResolution } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import { entryPathnameOf, foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
@@ -156,6 +157,7 @@ export default class Dispatcher {
     #weighContent: (text: string) => number;
     #notices: NoticeChannel;
     #proposals: ProposalLifecycle;
+    #interactions: ClientInteractions;
     // Boot-discovered runtime executors, late-injected on Engine — thunked.
     #executors: () => ExecutorRegistry | undefined;
     // Per-loop abort signal, owned by Engine.runLoop — thunked.
@@ -177,13 +179,14 @@ export default class Dispatcher {
     #lifecycle: LoopLifecycle;
     #resourceMutations: ResourceMutations;
 
-    constructor({ db, schemes, mimetypes, weigh, notices, proposals, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, searchGate, parkDeadlines, joinTargets, liveSubscriptions }: {
+    constructor({ db, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, searchGate, parkDeadlines, joinTargets, liveSubscriptions }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
         weigh: (text: string) => number;
         notices: NoticeChannel;
         proposals: ProposalLifecycle;
+        interactions: ClientInteractions;
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
         streamEventNotify?: StreamEventNotify;
@@ -204,6 +207,7 @@ export default class Dispatcher {
         this.#weighContent = weigh;
         this.#notices = notices;
         this.#proposals = proposals;
+        this.#interactions = interactions;
         this.#executors = executors;
         this.#loopSignal = loopSignal;
         this.#streamEventNotify = streamEventNotify;
@@ -222,8 +226,8 @@ export default class Dispatcher {
             schemes,
             liveSubscriptions,
             run: (schemeName, statement, ctx) => this.#run(schemeName, statement, ctx),
-            checkWritable: (statement, origin) => this.#checkWritable(statement, origin),
-            checkFlagsGate: (statement, loopId) => this.#checkFlagsGate(statement, loopId),
+            checkWritable: (statement, origin, workspaceId) => this.#checkWritable(statement, origin, workspaceId),
+            checkFlagsGate: (statement, loopId, workspaceId) => this.#checkFlagsGate(statement, loopId, workspaceId),
             editTargetIdentity: (statement, workspaceId) => this.#editTargetIdentity(statement, workspaceId),
             canonicalFilePath: (pathname, workspaceId) => this.#canonicalFilePath(pathname, workspaceId),
             prepareDataRepresentation: (args) => this.#prepareDataRepresentation({
@@ -244,24 +248,24 @@ export default class Dispatcher {
     #rootCache = new Map<number, string | null>();
 
     #handlerContext(scheme: string, ctx: PlurnkSchemeContext): SchemeCtxImpl | null {
-        const manifest = this.#schemes.manifestFor(scheme);
+        const manifest = this.#schemes.manifestFor(scheme, ctx.workspaceId);
         return manifest === undefined ? null : new SchemeCtxImpl(ctx, scheme, manifest, this.#liveSubscriptions);
     }
 
     #entryContext(scheme: string, ctx: PlurnkSchemeContext): SchemeCtxImpl | null {
         const handlerCtx = this.#handlerContext(scheme, ctx);
-        return this.#schemes.manifestFor(scheme)?.category === "data" ? handlerCtx : null;
+        return this.#schemes.manifestFor(scheme, ctx.workspaceId)?.category === "data" ? handlerCtx : null;
     }
 
-    #coreCrud(scheme: string): CoreSchemeWithCrud | undefined {
-        const handler = this.#schemes.get(scheme);
+    #coreCrud(scheme: string, workspaceId: number): CoreSchemeWithCrud | undefined {
+        const handler = this.#schemes.get(scheme, workspaceId);
         return handler instanceof CoreSchemeAdapterBase
             ? handler as CoreSchemeAdapterBase & CoreSchemeWithCrud
             : undefined;
     }
 
     async #readEntry(scheme: string, pathname: string, ctx: PlurnkSchemeContext): Promise<ReadEntryResult> {
-        const handler = this.#coreCrud(scheme);
+        const handler = this.#coreCrud(scheme, ctx.workspaceId);
         const handlerCtx = this.#entryContext(scheme, ctx);
         if (typeof handler?.readEntry === "function" && handlerCtx !== null) {
             return Results.assert(await handler.readEntry(pathname, handlerCtx)) as ReadEntryResult;
@@ -297,7 +301,7 @@ export default class Dispatcher {
     }
 
     async #writeEntry(scheme: string, pathname: string, entry: EntryData, ctx: PlurnkSchemeContext): Promise<WriteEntryResult> {
-        const handler = this.#coreCrud(scheme);
+        const handler = this.#coreCrud(scheme, ctx.workspaceId);
         const handlerCtx = this.#entryContext(scheme, ctx);
         if (typeof handler?.writeEntry === "function" && handlerCtx !== null) {
             return Results.assert(await handler.writeEntry(pathname, entry, handlerCtx)) as WriteEntryResult;
@@ -321,7 +325,7 @@ export default class Dispatcher {
     }
 
     async #deleteEntry(scheme: string, pathname: string, ctx: PlurnkSchemeContext): Promise<DeleteEntryResult> {
-        const handler = this.#coreCrud(scheme);
+        const handler = this.#coreCrud(scheme, ctx.workspaceId);
         const handlerCtx = this.#entryContext(scheme, ctx);
         if (typeof handler?.deleteEntry === "function" && handlerCtx !== null) {
             return Results.assert(await handler.deleteEntry(pathname, handlerCtx)) as DeleteEntryResult;
@@ -350,7 +354,7 @@ export default class Dispatcher {
         channel: string,
         ctx: PlurnkSchemeContext,
     ): Promise<DeleteEntryResult> {
-        const handler = this.#coreCrud(scheme);
+        const handler = this.#coreCrud(scheme, ctx.workspaceId);
         const handlerCtx = this.#entryContext(scheme, ctx);
         if (typeof handler?.deleteChannel === "function" && handlerCtx !== null) {
             return Results.assert(await handler.deleteChannel(pathname, channel, handlerCtx)) as DeleteEntryResult;
@@ -400,7 +404,7 @@ export default class Dispatcher {
         statement: EditStatement,
         workspaceId: number,
     ): Promise<{ readonly key: string; readonly identity: string | null }> {
-        const target = this.#extractTarget(statement.target);
+        const target = this.#extractTarget(statement.target, workspaceId);
         await this.#canonColumns(target, workspaceId);
         return {
             key: JSON.stringify([
@@ -448,8 +452,8 @@ export default class Dispatcher {
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId, origin });
         let result: DispatchResult;
         let curationPlan: LogCurationPlan | null = null;
-        let denial = this.#checkWritable(statement, origin);
-        if (denial === null) denial = await this.#checkFlagsGate(statement, loopId);
+        let denial = this.#checkWritable(statement, origin, workspaceId);
+        if (denial === null) denial = await this.#checkFlagsGate(statement, loopId, workspaceId);
         if (denial !== null) {
             result = denial;
         } else {
@@ -621,7 +625,7 @@ export default class Dispatcher {
         if (statement.op !== "READ") throw new Error(`look resolves READ only; got ${statement.op}`);
         // turnId is a write-time FK only — a look writes no row, so 0 (no turn) is inert.
         const schemeCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId, turnId: 0, origin });
-        const denial = await this.#checkFlagsGate(statement, loopId);
+        const denial = await this.#checkFlagsGate(statement, loopId, workspaceId);
         if (denial !== null) return denial;
         return this.#run(schemeNameOf(statement.target), statement, schemeCtx);
     }
@@ -637,8 +641,8 @@ export default class Dispatcher {
         const { target, workspaceId, workerId } = context;
         const routedScheme = schemeNameOf(target);
         if (routedScheme === null) return null;
-        const handler = this.#schemes.get(routedScheme) as SchemeWithEntryAddress | undefined;
-        const manifest = this.#schemes.manifestFor(routedScheme);
+        const handler = this.#schemes.get(routedScheme, workspaceId) as SchemeWithEntryAddress | undefined;
+        const manifest = this.#schemes.manifestFor(routedScheme, workspaceId);
         if (handler === undefined || manifest?.category !== "data") return null;
 
         const addressedScheme = target.kind === "url" ? target.scheme : routedScheme;
@@ -809,7 +813,7 @@ export default class Dispatcher {
     // handler and addressed context as an authored READ. {§exec-target-routing}
     async readExecSource(statement: ReadStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         const schemeName = schemeNameOf(statement.target);
-        const manifest = schemeName === null ? undefined : this.#schemes.manifestFor(schemeName);
+        const manifest = schemeName === null ? undefined : this.#schemes.manifestFor(schemeName, ctx.workspaceId);
         if (manifest !== undefined && manifest.category !== "data") {
             return Dispatcher.#failure(
                 "exec-source-not-data",
@@ -839,6 +843,11 @@ export default class Dispatcher {
             mimetypes: this.#mimetypes,
             weigh: this.#weighContent,
             pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
+            requestInteraction: (request) => this.#interactions.request(
+                request,
+                { workspaceId, workerId, loopId, turnId },
+                this.#loopSignal(loopId),
+            ),
             executors: this.#executors(),
         };
     }
@@ -849,30 +858,30 @@ export default class Dispatcher {
     // - SEND broadcast (path=null) has no target scheme; not gated.
     // - COPY: dst scheme writableBy applies.
     // - MOVE: both src (delete) and dst (write) schemes' writableBy apply.
-    #checkWritable(statement: PlurnkStatement, origin: WriterTier): DispatchResult | null {
+    #checkWritable(statement: PlurnkStatement, origin: WriterTier, workspaceId: number): DispatchResult | null {
         if (!MUTATING_OPS.has(statement.op)) return null;
         if (statement.op === "SEND" && statement.target === null) return null;
 
         // EXEC's operation authority always belongs to the exec scheme;
         // runtime-specific resource authority is gated separately below.
         if (statement.op === "EXEC") {
-            return this.#denyIfDisallowed("exec", origin);
+            return this.#denyIfDisallowed("exec", origin, workspaceId);
         }
 
         // Worker control (FORK/WORK → worker://<name>, spawn or fork) is gated by worker://'s writableBy — its
         // body is a seed prompt, not a dst path, so the entry-COPY dst-parse below doesn't apply.
         // {§machine-processes}
-        if (this.#isWorkerControl(statement)) return this.#denyIfDisallowed("worker", origin);
+        if (this.#isWorkerControl(statement)) return this.#denyIfDisallowed("worker", origin, workspaceId);
 
         if (statement.op === "COPY" || statement.op === "MOVE") {
             const dst = statement.body?.target ?? null;
             const dstScheme = schemeNameOf(dst);
-            const dstDenial = this.#denyIfDisallowed(dstScheme, origin);
+            const dstDenial = this.#denyIfDisallowed(dstScheme, origin, workspaceId);
             if (dstDenial !== null) return dstDenial;
             if (statement.op === "MOVE") {
                 const srcScheme = schemeNameOf(statement.target);
                 if (srcScheme !== dstScheme) {
-                    const srcDenial = this.#denyIfDisallowed(srcScheme, origin);
+                    const srcDenial = this.#denyIfDisallowed(srcScheme, origin, workspaceId);
                     if (srcDenial !== null) return srcDenial;
                 }
             }
@@ -880,7 +889,7 @@ export default class Dispatcher {
         }
 
         const target = schemeNameOf(statement.target);
-        return this.#denyIfDisallowed(target, origin);
+        return this.#denyIfDisallowed(target, origin, workspaceId);
     }
 
     // {§search-gate} — gate only configured search runtimes; duplicates serve
@@ -923,11 +932,11 @@ export default class Dispatcher {
         return this.#run("exec", statement, ctx);
     }
 
-    #denyIfDisallowed(schemeName: string | null, origin: WriterTier): DispatchResult | null {
+    #denyIfDisallowed(schemeName: string | null, origin: WriterTier, workspaceId: number): DispatchResult | null {
         if (schemeName === null) return null;
-        const handler = this.#schemes.get(schemeName);
+        const handler = this.#schemes.get(schemeName, workspaceId);
         if (handler === undefined) return null;
-        const manifest = this.#schemes.manifestFor(schemeName);
+        const manifest = this.#schemes.manifestFor(schemeName, workspaceId);
         if (manifest === undefined) throw new Error(`registered scheme '${schemeName}' has no manifest`);
         if (manifest.writableBy.includes(origin)) return null;
         return Dispatcher.#failure(
@@ -950,7 +959,7 @@ export default class Dispatcher {
     // active set under the loop's persisted flags. A registered scheme outside
     // that set returns 403; unknown names continue to their operation owner for
     // the ordinary registration failure. Action-entry-as-outcome carries either.
-    async #checkFlagsGate(statement: PlurnkStatement, loopId: number): Promise<DispatchResult | null> {
+    async #checkFlagsGate(statement: PlurnkStatement, loopId: number, workspaceId: number): Promise<DispatchResult | null> {
         // Broadcast SEND has no scheme to gate.
         if (statement.op === "SEND" && statement.target === null) return null;
 
@@ -988,7 +997,7 @@ export default class Dispatcher {
             }
         }
 
-        const active = this.#schemes.resolveForLoop(flags);
+        const active = this.#schemes.resolveForLoop(flags, workspaceId);
         // {§tools-loop-affinity}: name the non-retryable restriction so the model changes course.
         const restriction = flags.mode === "ask"
             ? "this is an ask-mode (read-only) loop — you cannot run commands or take host actions here"
@@ -996,7 +1005,7 @@ export default class Dispatcher {
             : flags.noWeb ? "web access is disabled for this loop"
             : "interaction is disabled for this loop";
         const checkScheme = (scheme: string | null): DispatchResult | null => {
-            if (scheme === null || !this.#schemes.has(scheme)) return null;
+            if (scheme === null || !this.#schemes.has(scheme, workspaceId)) return null;
             if (active.has(scheme)) return null;
             return Dispatcher.#failure(
                 "scheme-unavailable",
@@ -1023,7 +1032,7 @@ export default class Dispatcher {
             if (operationDenial !== null) return operationDenial;
             const requested = typeof statement.signal === "string" ? statement.signal : "";
             const runtime = requested === "" ? "sh" : requested;
-            const targetKind = this.#executors()?.entry(runtime)?.invocation.target?.kind;
+            const targetKind = this.#executors()?.entry(runtime, workspaceId)?.invocation.target?.kind;
             if (targetKind !== "resource") return null;
             const sourceScheme = schemeNameOf(statement.target);
             return sourceScheme === null || sourceScheme === "file" ? null : checkScheme(sourceScheme);
@@ -1144,7 +1153,7 @@ export default class Dispatcher {
         // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
         // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
         // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. {§exec}
-        const killable = this.#schemes.get(schemeName) as { kill?: (pathname: string, signal: number | null, ctx: SchemeCtx, scheme?: string) => Promise<SchemeResult> } | undefined;
+        const killable = this.#schemes.get(schemeName, ctx.workspaceId) as { kill?: (pathname: string, signal: number | null, ctx: SchemeCtx, scheme?: string) => Promise<SchemeResult> } | undefined;
         if (killable !== undefined && typeof killable.kill === "function") {
             // Pass the model's OWN scheme so a stream-KILL error answers in the runtime tag the
             // model addressed (sh:///…), not the internal `exec` ({§fs-answer-in-canon}).
@@ -1192,7 +1201,7 @@ export default class Dispatcher {
             await this.#cancelWorker(workerId, "killed via worker:// KILL");
             return { status: 200 };
         }
-        if (!this.#schemes.has(schemeName)) {
+        if (!this.#schemes.has(schemeName, ctx.workspaceId)) {
             return Dispatcher.#failure(
                 "scheme-not-found",
                 501,
@@ -1638,7 +1647,7 @@ export default class Dispatcher {
                 }
             }
         }
-        const handler = this.#schemes.get(schemeName) as Partial<Record<keyof SchemeHandler, SchemeMethod>> | undefined;
+        const handler = this.#schemes.get(schemeName, ctx.workspaceId) as Partial<Record<keyof SchemeHandler, SchemeMethod>> | undefined;
         if (handler === undefined) {
             return Dispatcher.#failure(
                 "scheme-not-found",
@@ -1651,7 +1660,7 @@ export default class Dispatcher {
         const methodName = statement.op.toLowerCase() as keyof SchemeHandler;
         const method = handler[methodName];
         const addressedScheme = statement.target?.kind === "url" ? statement.target.scheme : null;
-        const manifest = this.#schemes.manifestFor(schemeName);
+        const manifest = this.#schemes.manifestFor(schemeName, ctx.workspaceId);
         if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
         const publishedChannel = statement.target?.kind === "url"
             ? statement.target.fragment ?? manifest.defaultChannel
@@ -1869,7 +1878,7 @@ export default class Dispatcher {
         modelCallId: number | null;
     }): Promise<number> {
         const durableStatement = DurableStatement.project(statement);
-        const target = this.#extractTarget(durableStatement.target);
+        const target = this.#extractTarget(durableStatement.target, workspaceId);
         await this.#canonColumns(target, workspaceId); // {§fs-answer-in-canon}
         const lineMarkerJson = "lineMarker" in durableStatement && durableStatement.lineMarker !== null
             ? JSON.stringify(durableStatement.lineMarker)
@@ -1979,7 +1988,7 @@ export default class Dispatcher {
     // inputs collapse to scheme=null in log target metadata because both render
     // as bare paths. Addressable file entries separately persist under the
     // reserved `file` identity scheme ({§entry-identity-no-null}).
-    #extractTarget(path: ParsedPath | null): {
+    #extractTarget(path: ParsedPath | null, workspaceId: number): {
         scheme: string | null; username: string | null; password: string | null;
         hostname: string | null; port: number | null; pathname: string | null;
         query: string | null; fragment: string | null;
@@ -1994,7 +2003,7 @@ export default class Dispatcher {
         const foldNs = scheme !== null
             && scheme !== "worker"
             && !NetworkAddress.supports(scheme)
-            && this.#schemes.has(scheme);
+            && this.#schemes.has(scheme, workspaceId);
         return {
             scheme, username: path.username, password: path.password,
             hostname: foldNs ? null : path.hostname, port: path.port,

@@ -32,8 +32,8 @@ test("act mode: no disabled line — the runtimes advertise normally", async () 
             const packet = JSON.parse(turn!.packet) as { sections?: Array<{ name?: string; header?: string }> };
             const tools = packetSection(packet as Parameters<typeof packetSection>[0], "tools");
             assert.match(tools, /YOU SHOULD use purpose-built Plurnk OPs/, "act mode carries the tool-choice policy");
-            assert.match(tools, /\| `\[node\]` \|.*`## EXEC0 \[node\]`/, "an available runtime contributes its declared example");
-            assert.match(tools, /\| `\[executor\]` \| `\(target\)` \| body \| example \|/, "tool buckets and examples use authored EXEC syntax");
+            assert.match(tools, /\| `\[node\]` \|.*`console\.log\(process\.version\);`/, "an available runtime contributes its body example");
+            assert.match(tools, /\| `\[executor\]` \| `\(target\)` \| body \| Invocation \|/, "tool buckets and invocations use the registered contract");
             assert.equal(packet.sections?.find((section) => section.name === "tools")?.header, "Registered Tools");
         } finally { ws.close(); }
     });

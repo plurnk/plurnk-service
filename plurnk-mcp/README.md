@@ -1,35 +1,74 @@
 # @plurnk/plurnk-mcp
 
 The current [Model Context Protocol](https://modelcontextprotocol.io/) host
-module for [Plurnk](https://github.com/plurnk/plurnk-service).
+module for [Plurnk](https://github.com/plurnk/plurnk-service). It projects
+trusted MCP servers through Plurnk's existing executor, resource, proposal,
+entry, Problem, lifecycle, and AG-UI contracts.
 
-Each configured MCP server becomes a model-facing executor and resource
-authority:
+The module accepts only protocol revision `2026-07-28`. A legacy endpoint is
+rejected with a `protocol-revision-unsupported` Problem that names the required
+revision and `server/discover`; Plurnk does not negotiate a downgrade.
 
-```plurnk
-## READ0 (github:///)
+## Attach a server
 
-## EXEC0 [github] (create_issue)
-{"title":"Bug"}
+Service environment variables provide optional defaults for every workspace.
+Users can also attach, replace, reconnect, or detach a server in one workspace
+without restarting the daemon. An existing AG-UI connection sends the ordinary
+management-action form under `forwardedProps.plurnk.action`:
 
-## FIND0 (github:///resources/**)
-
-## READ0 (github:///resources/https%3A%2F%2Fexample.test%2Fdocument)
+```json
+{
+  "forwardedProps": {
+    "plurnk": {
+      "workspace": "example",
+      "action": {
+        "kind": "workspace.mcp.attach",
+        "server": {
+          "name": "project",
+          "transport": "stdio",
+          "command": "/opt/mcp/current-server",
+          "args": ["--stdio"],
+          "env": { "PROJECT_TOKEN": "${PROJECT_TOKEN}" },
+          "tools": ["issue_read", "issue_write"],
+          "read": ["issue_read"]
+        }
+      }
+    }
+  }
+}
 ```
 
-The module requires protocol revision `2026-07-28`. It does not negotiate or
-fall back to a legacy revision.
+The standard `plurnk.action.result` event reports success or exact RFC 9457
+Problem Details. The definition is durable and workspace-shared; symbolic
+environment references remain unexpanded at rest.
 
-## Configuration
+Available workspace actions are:
 
-Configuration is daemon-owned. One `PLURNK_MCP_<server>` variable declares
-each server; the suffix case-folds to the executor and URI authority name.
+| Action | Parameters |
+|---|---|
+| `workspace.mcp.list` | none |
+| `workspace.mcp.attach` | `server` definition |
+| `workspace.mcp.replace` | `server` definition with the existing name |
+| `workspace.mcp.detach` | `name` |
+| `workspace.mcp.reconnect` | `name` |
+| `workspace.mcp.oauth.complete` | `name`, complete `callbackUrl` |
+| `workspace.mcp.complete` | `server`, completion `ref` and `argument`; optional `context` |
+
+The owning [specification](./SPEC.md) defines the complete action and server
+definition contracts.
+
+## Service defaults
+
+One `PLURNK_MCP_<server>` variable declares each default server. Its suffix
+case-folds to an `[a-z][a-z0-9-]*` executor and URI-authority name.
 
 Streamable HTTP:
 
 ```text
 PLURNK_MCP_github=https://example.test/mcp
-PLURNK_MCP_github_HEADERS={"Authorization":"Bearer ${GITHUB_TOKEN}"}
+PLURNK_MCP_github_BEARER=${GITHUB_TOKEN}
+PLURNK_MCP_github_TOOLS=["issue_read","issue_search"]
+PLURNK_MCP_github_READ=["issue_read","issue_search"]
 ```
 
 Stdio:
@@ -41,33 +80,59 @@ PLURNK_MCP_local_CWD=/absolute/working/directory
 PLURNK_MCP_local_ENV={"TOKEN":"${LOCAL_TOKEN}"}
 ```
 
-The stdio target is exactly one executable. Arguments are a JSON array; the
-module never parses or invokes a shell command. `${NAME}` references read the
-daemon's inherited environment at startup, so secrets do not need to be copied
-into Plurnk environment files.
+The stdio target is one exact executable path or name, including literal
+whitespace. Arguments are a JSON array; the module never parses or invokes a
+shell command. `${NAME}` references resolve from the daemon's inherited
+environment only while preparing a connection.
 
-Portable timeout defaults and complete examples live in
-[`.env.defaults`](./.env.defaults).
+`PLURNK_MCP_<server>_TOOLS` is an optional JSON array of exact names. Absence
+enables every listed server tool; an array enables exactly those names; `[]`
+enables none. `PLURNK_MCP_<server>_READ` is an exact enabled-tool subset whose
+calls use Plurnk's `read` effect. Every other enabled tool conservatively uses
+the proposal-gated `host` effect. Remote annotations never grant effect
+authority.
 
-## Current surface
+Portable timeouts and complete examples live in [`.env.defaults`](./.env.defaults).
 
-- `## READ0 (server:///)` returns the live tools, resources, resource templates, and
-  prompts catalog.
-- `## EXEC0 [server] (tool)` calls a tool with one JSON object in the body.
-- `server:///resources` exposes the resource catalog through ordinary Plurnk
-  `FIND` and `READ` sections.
-- `server:///resources/<encoded-uri>` reads a concrete MCP resource and stores
-  it as an ordinary entry, after which normal projection and slicing apply.
-- A tool's `readOnlyHint` selects Plurnk's read effect. Unknown or mutating
-  tools retain the host effect.
+## Plurnk projection
 
-Prompt retrieval, resource subscriptions, current multi-round-trip input,
-current task methods, and OAuth/OIDC authorization are not part of this
-vertical slice. They will use the same module and connection seams; no legacy
-protocol surface is retained as a fallback.
+| MCP surface | Plurnk surface |
+|---|---|
+| Enabled tool | Exact Registered Tools row and `## EXEC0 [server] (tool)` |
+| Tool schemas | `worker://plurnk/docs/<server>.md` |
+| Resource catalog | `server:///` or `server:///resources` |
+| Resource | `server:///resources/<encoded-uri>` through ordinary `FIND` and `READ` |
+| Prompt catalog | `server:///prompts` |
+| Prompt retrieval | `server:///prompts/<encoded-name>?argument=value` through ordinary `READ` |
+| Completion | Client-owned `workspace.mcp.complete` action |
+
+Tool results, resource bodies, prompt messages, and failures become ordinary
+Plurnk entries and channels. Disabled tools appear in neither teaching nor
+admission. There is no MCP-specific model discovery grammar.
+
+Current pagination, cache hints, unified subscriptions, progress,
+cancellation, multi-round-trip input, elicitation, and negotiated Tasks remain
+inside the owning operation. Client input uses the standard AG-UI interrupt and
+resume lifecycle; protocol continuation state is never exposed to the model or
+client.
+
+## Authorization
+
+HTTP definitions support bearer references, client credentials, and
+interactive OAuth. Stdio never receives OAuth. Interactive attachment returns
+`{ "status": 202, "authorization": { "url": "..." } }` without publishing a
+partial server. After the user completes that URL, the client submits its
+complete callback URL through `workspace.mcp.oauth.complete`. PKCE, issuer and
+resource validation, refresh, scope escalation, and credentials remain inside
+the host connection.
 
 ## Verification
 
-`npm test` type-checks the module and exercises exact current-version
-negotiation, configuration, tool calls, resource reads, runtime registration,
-and rejection of ambiguous shell and secret configuration.
+```sh
+npm test -w @plurnk/plurnk-mcp
+npm run test:mcp:dogfood -w @plurnk/plurnk-service
+```
+
+The package gate runs the exact current SDK and official conformance
+requirements. The opt-in dogfood gate composes representative current stdio
+and Streamable HTTP servers through the assembled daemon and AG-UI product.

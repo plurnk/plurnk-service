@@ -19,6 +19,7 @@ const run = async (tag: string, command: string): Promise<{ result: ExecResult; 
         signal: new AbortController().signal,
         write: (c, chunk) => { out[c] = (out[c] ?? "") + chunk; },
         setState: () => {}, emit: () => {},
+        interact: async () => ({ status: "cancelled" }),
     };
     const result = await make(tag).run(args);
     return { result, out };
@@ -69,6 +70,7 @@ test("a file target runs without +x; transient exec never mutates its mode", asy
             signal: new AbortController().signal,
             write: (_c, chunk) => { out.push(chunk); },
             setState: () => {}, emit: () => {},
+            interact: async () => ({ status: "cancelled" }),
         };
         const result = await make("sh").run(args);
         assert.equal(result.status, 200);

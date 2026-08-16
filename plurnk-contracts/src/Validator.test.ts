@@ -1,8 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Validator, {
+    InvalidClientInteractionProjectionError,
+    InvalidClientInteractionRequestError,
+    InvalidClientInteractionResolutionError,
     InvalidClientDisplayCapabilitiesError,
     InvalidLoopFlagsError,
+    InvalidMcpServerDefinitionError,
     InvalidNoticeError,
     InvalidOperationResultError,
     InvalidProblemDetailsError,
@@ -11,7 +15,156 @@ import Validator, {
     InvalidTextRegionError,
 } from "./Validator.ts";
 import Problems from "./Problems.ts";
-import type { ClientDisplayCapabilities, RangeExtent } from "./types.generated.ts";
+import type { ClientDisplayCapabilities, McpServerDefinition, RangeExtent } from "./types.generated.ts";
+
+test("client interactions carry one generic tool contract without owner-private continuation state", () => {
+    const request = {
+        toolName: "request_user_input",
+        arguments: { message: "Choose a repository.", choices: ["one", "two"] },
+        message: "The operation needs more information.",
+        responseSchema: {
+            type: "object",
+            required: ["repository"],
+            properties: { repository: { type: "string" } },
+        },
+    };
+    const projection = {
+        interactionId: 1,
+        workerId: 2,
+        loopId: 3,
+        turnId: 4,
+        request,
+    };
+    const resolution = { status: "resolved" as const, payload: { repository: "one" } };
+
+    assert.equal(Validator.assertClientInteractionRequest(request), request);
+    assert.equal(Validator.assertClientInteractionProjection(projection), projection);
+    assert.equal(Validator.assertClientInteractionResolution(resolution), resolution);
+    assert.equal(
+        Validator.assertClientInteractionResolution({ status: "cancelled" as const }).status,
+        "cancelled",
+    );
+
+    assert.throws(
+        () => Validator.assertClientInteractionRequest({ ...request, requestState: "private" } as never),
+        InvalidClientInteractionRequestError,
+    );
+    assert.throws(
+        () => Validator.assertClientInteractionProjection({ ...projection, workspaceId: 9 } as never),
+        InvalidClientInteractionProjectionError,
+    );
+    assert.throws(
+        () => Validator.assertClientInteractionResolution({ status: "cancelled", payload: {} } as never),
+        InvalidClientInteractionResolutionError,
+    );
+});
+
+test("{§mcp-server-definition}: MCP attachments are one closed transport shape with symbolic credentials", () => {
+    const definitions: McpServerDefinition[] = [
+        {
+            name: "local-tools",
+            transport: "stdio",
+            command: "/opt/mcp server/bin/server",
+            args: ["--stdio"],
+            cwd: "${WORKSPACE_ROOT}",
+            env: { TOKEN: "${MCP_TOKEN}" },
+            tools: ["read_issue"],
+            read: ["read_issue"],
+        },
+        {
+            name: "gitea",
+            transport: "http",
+            url: "https://example.test/mcp",
+            authorization: { type: "bearer", token: "${GITEA_TOKEN}" },
+        },
+        {
+            name: "interactive",
+            transport: "http",
+            url: "https://example.test/mcp",
+            authorization: {
+                type: "oauth",
+                redirectUrl: "http://127.0.0.1:3044/oauth/callback",
+                clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
+                scope: "issues:read",
+            },
+        },
+        {
+            name: "pre-registered",
+            transport: "http",
+            url: "https://example.test/mcp",
+            authorization: {
+                type: "oauth",
+                redirectUrl: "http://127.0.0.1:3044/oauth/callback",
+                clientId: "known-client",
+                clientSecret: "${KNOWN_CLIENT_SECRET}",
+            },
+        },
+        {
+            name: "dynamic-fallback",
+            transport: "http",
+            url: "https://example.test/mcp",
+            authorization: {
+                type: "oauth",
+                redirectUrl: "http://127.0.0.1:3044/oauth/callback",
+            },
+        },
+    ];
+    for (const definition of definitions) {
+        assert.equal(Validator.assertMcpServerDefinition(definition), definition);
+    }
+
+    for (const invalid of [
+        { name: "Bad_Name", transport: "stdio", command: "mcp" },
+        { name: "mixed", transport: "stdio", command: "mcp", url: "https://example.test/mcp" },
+        { name: "mixed", transport: "http", url: "https://example.test/mcp", command: "mcp" },
+        { name: "missing", transport: "stdio" },
+        { name: "missing", transport: "http" },
+        {
+            name: "copied-secret",
+            transport: "http",
+            url: "https://example.test/mcp",
+            authorization: { type: "bearer", token: "secret-value" },
+        },
+        {
+            name: "stdio-oauth",
+            transport: "stdio",
+            command: "mcp",
+            authorization: {
+                type: "oauth",
+                redirectUrl: "http://127.0.0.1/callback",
+                clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
+            },
+        },
+        {
+            name: "mixed-oauth-identity",
+            transport: "http",
+            url: "https://example.test/mcp",
+            authorization: {
+                type: "oauth",
+                redirectUrl: "http://127.0.0.1/callback",
+                clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
+                clientId: "known-client",
+                clientSecret: "${KNOWN_CLIENT_SECRET}",
+            },
+        },
+        {
+            name: "incomplete-pre-registration",
+            transport: "http",
+            url: "https://example.test/mcp",
+            authorization: {
+                type: "oauth",
+                redirectUrl: "http://127.0.0.1/callback",
+                clientId: "known-client",
+            },
+        },
+        { name: "extra", transport: "stdio", command: "mcp", workspaceId: 7 },
+    ]) {
+        assert.throws(
+            () => Validator.assertMcpServerDefinition(invalid as never),
+            InvalidMcpServerDefinitionError,
+        );
+    }
+});
 
 test("ClientDisplayCapabilities admits only discriminated client display metadata", () => {
     const capabilities: ClientDisplayCapabilities = [

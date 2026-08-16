@@ -11,7 +11,7 @@ test("registered tools render as a closed, titled contract table; omitted when e
         { name: "definition", slot: "user", header: null, content: "...plurnk.md...", weight: 0 },
         { name: "tools", slot: "user", header: "Registered Tools", content: tools, weight: 0 },
     ];
-    const withTools = PacketWire.renderSlot(userSections("| `[executor]` | `(target)` | body | example |\n| --- | --- | --- | --- |\n| `[node]` | script | JavaScript | `## EXEC0 [node]`<br>`console.log(1);` |"), "user");
+    const withTools = PacketWire.renderSlot(userSections("| `[executor]` | `(target)` | body | Invocation |\n| --- | --- | --- | --- |\n| `[node]` | script | JavaScript | `console.log(1);` |"), "user");
     assert.match(withTools, /\| `\[node\]` \| script \| JavaScript \|/, "the registered executable contract renders");
     assert.match(withTools, /## Registered Tools/, "the heading defines the table as registered selectors");
     const toolsIdx = withTools.indexOf("`[node]`");

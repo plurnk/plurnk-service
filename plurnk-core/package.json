@@ -43,6 +43,7 @@
         "test:lint": "npm run types:sqlrite:check && tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
         "test:unit": "node --conditions=plurnk-dev --import=./test/setup.ts --env-file-if-exists=.env.defaults --test --test-timeout=30000 scripts/*.test.mjs src/**/*.test.ts",
         "test:intg": "PLURNK_SERVICE_FILES_ITEMS=0 node --conditions=plurnk-dev --import=./test/setup.ts --env-file-if-exists=.env.defaults --test --test-concurrency=8 --test-timeout=30000 test/intg/*.test.ts",
+        "test:mcp:dogfood": "PLURNK_MCP_DOGFOOD=1 node --conditions=plurnk-dev --import=./test/setup.ts --env-file-if-exists=.env.defaults --test --test-concurrency=1 --test-timeout=120000 test/intg/mcp-agui-composition.test.ts",
         "build:rail": "npm run build:gbnf -w @plurnk/plurnk-contracts",
         "pretest:live": "npm run build:rail",
         "test:live": "bash ../scripts/operator-environment.sh node --conditions=plurnk-dev scripts/live.mjs",

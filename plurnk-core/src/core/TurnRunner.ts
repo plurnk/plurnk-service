@@ -40,6 +40,7 @@ import TerminalResult from "./TerminalResult.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
 import JournalTurn from "./JournalTurn.ts";
 import LogBody from "./LogBody.ts";
+import type ClientInteractions from "./ClientInteractions.ts";
 
 // TurnRunner owns one durable model turn; Engine retains the surrounding loop
 // lifecycle and public facade.
@@ -272,6 +273,7 @@ export default class TurnRunner {
     readonly #wakeWorkerNotify: WakeWorkerNotify | undefined;
     readonly #executors: () => ExecutorRegistry | undefined;
     readonly #loopSignal: (loopId: number) => AbortSignal | undefined;
+    readonly #interactions: ClientInteractions;
     readonly #warmWorkspace: WarmWorkspace;
     readonly #dispatch: TurnDispatch;
     readonly #resolveWorkerProviderIdentity: (workerId: number) => Promise<{
@@ -295,6 +297,7 @@ export default class TurnRunner {
         wakeWorkerNotify,
         executors,
         loopSignal,
+        interactions,
         warmWorkspace,
         dispatch,
         resolveWorkerProviderIdentity,
@@ -313,6 +316,7 @@ export default class TurnRunner {
         wakeWorkerNotify?: WakeWorkerNotify;
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
+        interactions: ClientInteractions;
         warmWorkspace: WarmWorkspace;
         dispatch: TurnDispatch;
         resolveWorkerProviderIdentity: (workerId: number) => Promise<{
@@ -334,6 +338,7 @@ export default class TurnRunner {
         this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#executors = executors;
         this.#loopSignal = loopSignal;
+        this.#interactions = interactions;
         this.#warmWorkspace = warmWorkspace;
         this.#dispatch = dispatch;
         this.#resolveWorkerProviderIdentity = resolveWorkerProviderIdentity;
@@ -641,8 +646,13 @@ export default class TurnRunner {
             wakeWorkerNotify: this.#wakeWorkerNotify,
             weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
-            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),
+            defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workspaceId),
             pushNotice: (notice) => this.#notices.push(workspaceId, loopId, notice),
+            requestInteraction: (request) => this.#interactions.request(
+                request,
+                { workspaceId, workerId, loopId, turnId },
+                this.#loopSignal(loopId),
+            ),
         };
 
         // Pre-model writes. Each prompt the model has not seen yet becomes an
@@ -874,7 +884,7 @@ export default class TurnRunner {
         // the subsequent turn. The terminal output then surfaces born-OPEN via the stream-delta path.
         await this.#reapTurnScopedStreams(workerId);
         nextActionIndex += await this.#materializeEnvironmentDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
-        nextActionIndex += await this.#materializeStreamDeltas({ workerId, loopId, turnId, fromSequence: nextActionIndex });
+        nextActionIndex += await this.#materializeStreamDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
 
         // The post-reconciliation Git snapshot above is threaded into the packet
         // and every budget rebuild; overflow never shells again.
@@ -1840,9 +1850,9 @@ export default class TurnRunner {
 
 
     async #materializeStreamDeltas(args: {
-        workerId: number; loopId: number; turnId: number; fromSequence: number;
+        workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;
     }): Promise<number> {
-        const { workerId, loopId, turnId, fromSequence } = args;
+        const { workspaceId, workerId, loopId, turnId, fromSequence } = args;
         const channels = await this.#db.engine_worker_stream_channels.all<{
             subscription_id: number; runtime: string; coord: string; channel: string; content: string;
             mimetype: string; state: string; close_status: number | null; close_result: string | null; published_channel: string | null;
@@ -1854,7 +1864,7 @@ export default class TurnRunner {
             // ordinary address to the model; only an explicitly non-default
             // channel earns a fragment in the log.
             const visibleFragment = ch.published_channel !== null
-                && ch.channel === this.#schemes.defaultChannelFor(ch.runtime)
+                && ch.channel === this.#schemes.defaultChannelFor(ch.runtime, workspaceId)
                 ? null
                 : ch.channel;
             const prior = await this.#db.engine_stream_cursor.get<{ attrs: string }>({

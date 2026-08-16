@@ -51,6 +51,7 @@ const invoke = async (
         write: (channel, chunk) => writes.push({ channel, chunk }),
         setState: (channel, state) => states.push({ channel, state }),
         emit: (event) => events.push(event),
+        interact: async () => ({ status: "cancelled" }),
         ...(opts.entry ? { entry: opts.entry } : {}),
     };
     const result = await new Search({ runtime, glyph: "🔎" }).run(args);

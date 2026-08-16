@@ -5,7 +5,14 @@
 // consumer injects their implementation.
 
 import type { WriterTier } from "./types.ts";
-import type { FindStatement, RangeExtent, ReadStatement, SendStatement } from "@plurnk/plurnk-contracts";
+import type {
+    ClientInteractionRequest,
+    ClientInteractionResolution,
+    FindStatement,
+    RangeExtent,
+    ReadStatement,
+    SendStatement,
+} from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "./edit-statement.ts";
 import type { ChannelProducerResult, MatchEvidence, SchemeResult } from "./Results.ts";
@@ -189,6 +196,15 @@ export interface ProjectionCaps {
     parseIssues(content: string, mimetype: string): Promise<number | undefined>;
 }
 
+// ── client interactions ─────────────────────────────────────────────────
+// A handler may await one client-owned response without knowing how a client
+// transport presents or resumes it. Core owns identity, reconnect discovery,
+// cancellation, and settlement; owner-private continuation state stays in the
+// awaiting handler rather than crossing this boundary.
+export interface InteractionCaps {
+    request(request: ClientInteractionRequest): Promise<ClientInteractionResolution>;
+}
+
 // ── subscriptions ────────────────────────────────────────────────────────
 // The one retainable capability returned by subscription acquisition. It is
 // still the composed AbortSignal used by existing streaming schemes, while its
@@ -253,6 +269,7 @@ export interface SchemeCtx {
     readonly channels: ChannelCaps;
     readonly notify: NotifyCaps;
     readonly projection: ProjectionCaps;
+    readonly interactions: InteractionCaps;
     readonly subscriptions: SubscriptionCaps;
 }
 

@@ -56,6 +56,7 @@ test("external, release, and forensic test commands remain explicitly classified
         "test:providersPing": "node scripts/providers-ping.js",
         "test:llama": "node --test test/llama/*.test.js",
         "test:installation": "node scripts/test-installation.js",
+        "test:mcp:dogfood": "node --test test/intg/mcp-dogfood.test.js",
     };
     assert.deepEqual(packageLifecycleViolations("classified", { scripts }), []);
 });

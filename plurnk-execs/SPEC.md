@@ -42,6 +42,7 @@ abstract class BaseExecutor {
     abstract run(args: ExecArgs): Promise<ExecResult>;
     probe(signal?: AbortSignal): Promise<RuntimeAvailability>;
     effect(target: string | null): Effect;
+    toolRegistry?(): RuntimeToolRegistry;
 }
 
 interface ChannelDecl {
@@ -59,6 +60,7 @@ interface ExecArgs {
     write(channel: string, chunk: string, mimetype?: string): void;
     setState(channel: string, state: ChannelState): void;
     emit(notice: Notice): void;
+    interact(request: ClientInteractionRequest): Promise<ClientInteractionResolution>;
     entry?(
         path: string,
         content: string | null,
@@ -95,6 +97,7 @@ surface.
 | `write`    | Append to a declared channel. An optional mimetype replaces that channel's per-call output type.        |
 | `setState` | Move a declared channel from `active` to terminal `closed` or `errored`.                                |
 | `emit`     | Publish a transient, nonterminal Notice.                                                                |
+| §executor-interaction-sink `interact` | Await one contracts-owned client interaction ({§client-interaction-wire}). Core owns identity, pending-state durability, client presentation, and cancellation; the executor owns the request and returned payload's meaning. |
 | `entry`    | Optionally request consumer-owned entry materialization and receive its canonical model-facing address. |
 
 The executor receives callbacks, never a database, subscription registry,
@@ -276,9 +279,10 @@ at boot; changing package membership or configuration requires a restart.
 | `packageName`   | Package that owns and default-exports the executor implementation.                                 |
 
 The framework carries invocation metadata and documentation content unchanged
-after validating the invocation. The consumer derives its complete always-on
-tools directory, including one concise invocation example per selector, from
-that metadata; detailed instruction remains in on-demand documentation. A
+after validation. The consumer derives its complete always-on tools directory
+from either the static invocation or the executor's exact
+{§executor-tool-registry}; detailed instruction remains in on-demand
+documentation. A
 multi-tag package appears at most once in `Discovery.packageAttributions`, and
 only when at least one of its tags survives discovery policy. An instantiated
 executor may add attempt-time tags through the shared runtime hook
@@ -296,7 +300,8 @@ executor may add attempt-time tags through the shared runtime hook
 | `target.kind`      | One of the structural realization modes below.                                                            |
 | `target.directory` | Optional `"cwd"`: only a local directory becomes `cwd`; every non-directory remains the declared target. |
 | `exclusive`        | Optional `true`: body and target are alternative inputs and supplying both is refused.                    |
-| `example`          | Required concise invocation witness with a one-line `body`, `target`, or both as the declared shape permits. |
+| `example`          | Concise executable witness with a one-line `body`, `target`, or both as the declared shape permits. |
+| `signature`        | One-line structural body signature for a schema-backed invocation; no fabricated argument values. |
 
 | Target kind | Consumer realization                                                                                                           |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -307,15 +312,47 @@ executor may add attempt-time tags through the shared runtime hook
 Every EXEC must supply at least a body or target even when neither field is
 independently required. A target's meaning never changes because the body is
 empty or non-empty. `exclusive` requires a target declaration; `directory` is
-valid only for `path` and `resource` target kinds. The example must satisfy the
-same required, refused, and exclusive buckets and parse as exactly one EXEC
-section for the runtime. An invocation declaration
+valid only for `path` and `resource` target kinds. Exactly one of `example` or
+`signature` is present. An example must satisfy the same required, refused,
+and exclusive buckets and parse as exactly one EXEC section for the runtime. A
+signature is presentation, not an executable example; dispatch still enforces
+the invocation's body and target declarations. An invocation declaration
 with a missing field, unknown field, invalid combination, multiline role, or
 wrong primitive type is a fail-hard plugin contract violation before
 registration. Static, dynamic-hook, and module-owned runtimes use this same
 validation path. The enclosing runtime declaration is closed to `name`,
 `glyph`, `invocation`, and `documentation`; unknown or mistyped metadata is a
 contract violation rather than silently ignored teaching.
+
+§executor-tool-registry A runtime representing a finite family of exact tools
+may implement `toolRegistry()` and return one immutable snapshot:
+
+```ts
+interface RuntimeToolRegistry {
+    tools: readonly {
+        target: string;
+        invocation: RuntimeInvocation;
+    }[];
+    documentation: string;
+}
+```
+
+Each entry owns one canonical literal target and its complete invocation
+contract. Its invocation declares that target bucket as required and
+`literal`; duplicate targets, divergent example targets, or malformed
+invocations fail the plugin boundary. The exact target must round-trip through
+the language's canonical target-slot escaping. The closed `tools` set replaces the
+runtime's generic declaration for model presentation and dispatch admission:
+an empty set exposes and admits no target, with no generic fallback. Core uses
+the selected entry's invocation for bucket validation before calling
+`effect()`.
+
+The same snapshot owns the runtime's generated pull document. Its
+`documentation` replaces static runtime documentation, so enabled Registry
+rows, admitted targets, effect classification inputs, and detailed contracts
+cannot describe different tool sets. The hook is synchronous and
+side-effect-free; a protocol executor refreshes its cached snapshot at its own
+I/O boundary rather than making packet assembly perform network discovery.
 
 Runtime-name admission is one identity contract:
 
