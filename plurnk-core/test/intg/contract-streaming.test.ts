@@ -95,7 +95,7 @@ test("SEND[499] resolves the registry to the owning scheme + stored handle and t
         const engine = new Engine({ db, schemes });
         const opened = await engine.dispatch({
             statement: {
-                op: "READ", suffix: "", signal: null, target: urlPath("fakestream", "/feed/x"),
+                op: "READ", annotation: null, suffix: "", signal: null, target: urlPath("fakestream", "/feed/x"),
                 lineMarker: null, body: null, position: { line: 1, column: 1 },
             },
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
@@ -170,7 +170,7 @@ test("a public streaming READ returns its 102 row before detached subscription w
         const engine = new Engine({ db, schemes });
         const opened = await engine.dispatch({
             statement: {
-                op: "READ", suffix: "", signal: null, target: urlPath("detached", "/feed"),
+                op: "READ", annotation: null, suffix: "", signal: null, target: urlPath("detached", "/feed"),
                 lineMarker: null, body: null, position: { line: 1, column: 1 },
             },
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",

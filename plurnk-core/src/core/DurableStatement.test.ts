@@ -20,6 +20,7 @@ test("DurableStatement projects URL credential slots without mutating execution 
     const statement: ReadStatement = {
         op: "READ",
         suffix: "",
+        annotation: null,
         signal: null,
         target,
         lineMarker: null,
@@ -48,6 +49,7 @@ test("DurableStatement applies the same projection to a COPY destination", () =>
     const statement: CopyStatement = {
         op: "COPY",
         suffix: "",
+        annotation: null,
         signal: null,
         target: url("worker:///source"),
         lineMarker: null,
@@ -73,6 +75,7 @@ test("DurableStatement leaves query text, authored bodies, and local targets exa
     const statement: EditStatement = {
         op: "EDIT",
         suffix: "",
+        annotation: null,
         signal: null,
         target: url("https://example.test/path?authored=query-secret{Authorization: header-secret}"),
         lineMarker: null,

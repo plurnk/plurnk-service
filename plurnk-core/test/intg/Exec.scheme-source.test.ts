@@ -48,6 +48,7 @@ const urlTarget = (raw: string): UrlPath => {
 
 const execStatement = (target: string, body: string): ExecStatement => ({
     op: "EXEC",
+    annotation: null,
     suffix: "",
     signal: "tool",
     target: urlTarget(target),
@@ -223,6 +224,31 @@ test("EXEC source READ preserves the complete authored scheme address (#163)", a
         );
     } finally {
         await ctx.close();
+    }
+});
+
+test("{§exec-source-temporary} independent spawns never reuse one temporary identity", async () => {
+    const first = await wire();
+    const second = await wire();
+    try {
+        for (const [ctx, content] of [[first, "first"], [second, "second"]] as const) {
+            ctx.schemes.register("source", {
+                manifest: schemeManifest("source"),
+                async prepareRepresentation(request, schemeCtx) {
+                    return materializeSource(request, schemeCtx, content);
+                },
+            } satisfies SchemeHandler);
+            const result = await ctx.dispatch(ctx.root, "source:///item");
+            assert.equal(result.status, 200);
+        }
+
+        assert.notEqual(
+            first.runs[0]?.target,
+            second.runs[0]?.target,
+            "identical database coordinates in separate daemon instances cannot alias in the host temporary directory",
+        );
+    } finally {
+        await Promise.all([first.close(), second.close()]);
     }
 });
 

@@ -70,6 +70,7 @@ test("network query and channel coordinates remain distinct cycle fingerprints",
     const statement = (raw: string): ReadStatement => ({
         op: "READ",
         suffix: "",
+        annotation: null,
         signal: null,
         target: parsePath(raw),
         lineMarker: null,
@@ -87,6 +88,7 @@ test("distinct BARE prompts remain distinct cycle activities", () => {
     const statement = (body: string): BareStatement => ({
         op: "BARE",
         suffix: "0",
+        annotation: null,
         signal: null,
         target: null,
         lineMarker: null,

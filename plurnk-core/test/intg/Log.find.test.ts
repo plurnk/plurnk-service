@@ -18,12 +18,12 @@ import { urlPath, findStmt } from "./_dsl.ts";
 import { matchLocations } from "./_find.ts";
 
 const editStmt = (pathname: string, content: string): EditStatement => ({
-    op: "EDIT", suffix: "", signal: null,
+    op: "EDIT", annotation: null, suffix: "", signal: null,
     target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null } as UrlPath,
     lineMarker: null, body: content, position: { line: 1, column: 1 },
 });
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
-    op: "READ", suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 },
+    op: "READ", annotation: null, suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 const resources = (result: FindResult): CatalogResource[] =>
     result.results.filter((item): item is CatalogResource => Array.isArray(item));

@@ -282,6 +282,7 @@ export default class ResourceMutations {
         const current = await this.#run(schemeName, {
             op: "READ",
             suffix: first.suffix,
+            annotation: null,
             signal: null,
             target: first.target,
             lineMarker: { marks: [1, -1] },
@@ -1242,6 +1243,7 @@ export default class ResourceMutations {
         const statements: ResolvedEditStatement[] = edits.map(({ marker, body, position }) => ({
             op: "EDIT",
             suffix: "",
+            annotation: null,
             signal: null,
             target: selection.target,
             lineMarker: marker,

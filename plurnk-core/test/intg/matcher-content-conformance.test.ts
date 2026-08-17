@@ -24,12 +24,12 @@ const url = (pathname: string): UrlPath => ({
 });
 
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
-    op: "EDIT", suffix: "", signal: null, target, lineMarker: null, body,
+    op: "EDIT", annotation: null, suffix: "", signal: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
 const findStmt = (target: UrlPath, body: MatcherBody | null, lineMarker: LineMarker | null = null): FindStatement => ({
-    op: "FIND", suffix: "", signal: null, target, lineMarker, body,
+    op: "FIND", annotation: null, suffix: "", signal: null, target, lineMarker, body,
     position: { line: 1, column: 1 },
 });
 
@@ -86,7 +86,7 @@ test("{§scope-slot}: READ <L> slices by line via the marker slot, not the body"
     const { db, workspaceId, workerId } = await setup();
     try {
         await seed(db, workspaceId, workerId, [["lines", "alpha\nbeta\ngamma"]]);
-        const stmt: ReadStatement = { op: "READ", suffix: "", signal: null, target: url("lines"), lineMarker: { marks: [2, 2] }, body: null, position: { line: 1, column: 1 } };
+        const stmt: ReadStatement = { op: "READ", annotation: null, suffix: "", signal: null, target: url("lines"), lineMarker: { marks: [2, 2] }, body: null, position: { line: 1, column: 1 } };
         const r = await lookThroughScheme("worker", null, stmt, makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.match(r.content ?? "", /beta/);

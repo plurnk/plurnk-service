@@ -98,16 +98,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "## READ0 (worker://plurnk/tools/fixture.md) <1,-1>",
                 "",
                 "## SEND0 [102]",
-                "Discover the exact tools from the family contract.",
-            ].join("\n")),
-            makeMockResponse([
-                "# PLAN0",
-                "Discover the fixture family's exact tools.",
-                "",
-                "## FIND0 (worker://plurnk/tools/fixture/*.md) <1,-1>",
-                "",
-                "## SEND0 [102]",
-                "Select and inspect the echo contract.",
+                "Select and inspect the echo contract linked from the family document.",
             ].join("\n")),
             makeMockResponse([
                 "# PLAN0",
@@ -196,8 +187,9 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
             },
         })));
         assert.equal(listed.ok, true, JSON.stringify(listed.problem));
+        if (listed.result === undefined) throw new Error("workspace.mcp.list returned no result");
         assert.deepEqual(
-            (listed.result?.servers as Array<{
+            (listed.result.servers as Array<{
                 alias: string;
                 source: string;
                 state: string;
@@ -240,17 +232,14 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.match(firstPacket, /worker:\/\/plurnk\/tools\/fixture\.md/);
         assert.match(firstPacket, /Use enabled tools from the fixture MCP server\./);
         assert.doesNotMatch(firstPacket, /worker:\/\/plurnk\/tools\/fixture\/echo\.md/, "Turn0 surveys only family documents");
-        assert.match(packet(provider.requests, 1), /worker:\/\/plurnk\/tools\/fixture\/\*\.md/, "the family document directs exact-tool discovery");
-        const exactCatalog = packet(provider.requests, 2);
-        assert.match(exactCatalog, /worker:\/\/plurnk\/tools\/fixture\/echo\.md/);
-        assert.match(exactCatalog, /Echo one message\./);
-        assert.match(exactCatalog, /worker:\/\/plurnk\/tools\/fixture\/fail\.md/);
-        assert.match(exactCatalog, /Return a deterministic tool error\./);
-        const echoContract = packet(provider.requests, 3);
+        const familyContract = packet(provider.requests, 1);
+        assert.match(familyContract, /## EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. \(details: worker:\/\/plurnk\/tools\/fixture\/echo\.md\) -->/);
+        assert.match(familyContract, /## EXEC0 \[fixture\] \(fail\) <!-- Return a deterministic tool error\. \(details: worker:\/\/plurnk\/tools\/fixture\/fail\.md\) -->/);
+        const echoContract = packet(provider.requests, 2);
         assert.match(echoContract, /## EXEC0 \[fixture\] \(echo\)/);
         assert.match(echoContract, /Signature: `\{"message": string\}`/);
         assert.doesNotMatch(echoContract, /output schema/i);
-        assert.match(packet(provider.requests, 4), /hello from MCP/, "the remote result entered the next model packet");
+        assert.match(packet(provider.requests, 3), /hello from MCP/, "the remote result entered the next model packet");
         const observedSpeech = observed
             .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
             .map((event) => String(event.delta ?? ""))
@@ -280,10 +269,10 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         }));
         assert.equal(resumed.at(-1)?.type, "RUN_FINISHED");
         assert.equal((resumed.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
-        const failContract = packet(provider.requests, 6);
+        const failContract = packet(provider.requests, 5);
         assert.match(failContract, /Return a deterministic tool error\./);
         assert.match(failContract, /## EXEC0 \[fixture\] \(fail\)/);
-        const recoveryPacket = packet(provider.requests, 7);
+        const recoveryPacket = packet(provider.requests, 6);
         assert.match(recoveryPacket, /tool-reported-error/);
         assert.match(recoveryPacket, /MCP tool 'fail' on 'fixture' reported an error\./);
         const recoveredSpeech = resumed
@@ -343,16 +332,7 @@ test(
                     "## READ0 (worker://plurnk/tools/kubernetes.md) <1,-1>",
                     "",
                     "## SEND0 [102]",
-                    "Discover the exact Kubernetes tools from the family contract.",
-                ].join("\n")),
-                makeMockResponse([
-                    "# PLAN0",
-                    "Discover the enabled Kubernetes tools.",
-                    "",
-                    "## FIND0 (worker://plurnk/tools/kubernetes/*.md) <1,-1>",
-                    "",
-                    "## SEND0 [102]",
-                    "Select the configuration tool.",
+                    "Select the configuration tool linked from the family document.",
                 ].join("\n")),
                 makeMockResponse([
                     "# PLAN0",
@@ -381,16 +361,7 @@ test(
                     "## READ0 (worker://plurnk/tools/goji.md) <1,-1>",
                     "",
                     "## SEND0 [102]",
-                    "Discover the exact GOJI tools from the family contract.",
-                ].join("\n")),
-                makeMockResponse([
-                    "# PLAN0",
-                    "Discover the enabled GOJI tools.",
-                    "",
-                    "## FIND0 (worker://plurnk/tools/goji/*.md) <1,-1>",
-                    "",
-                    "## SEND0 [102]",
-                    "Select the terminology tool.",
+                    "Select the terminology tool linked from the family document.",
                 ].join("\n")),
                 makeMockResponse([
                     "# PLAN0",
@@ -527,14 +498,13 @@ test(
             assert.match(familyCatalog, /worker:\/\/plurnk\/tools\/kubernetes\.md/);
             assert.match(familyCatalog, /worker:\/\/plurnk\/tools\/goji\.md/);
             assert.doesNotMatch(familyCatalog, /configuration_view/, "Turn0 surveys only family documents");
-            assert.match(packet(provider.requests, 1), /worker:\/\/plurnk\/tools\/kubernetes\/\*\.md/);
-            const kubernetesCatalog = packet(provider.requests, 2);
-            assert.match(kubernetesCatalog, /worker:\/\/plurnk\/tools\/kubernetes\/configuration_view\.md/);
-            assert.doesNotMatch(kubernetesCatalog, /pods_list/, "disabled remote tools stay out of exact-tool discovery");
-            const kubernetesContract = packet(provider.requests, 3);
+            const kubernetesFamily = packet(provider.requests, 1);
+            assert.match(kubernetesFamily, /worker:\/\/plurnk\/tools\/kubernetes\/configuration_view\.md/);
+            assert.doesNotMatch(kubernetesFamily, /pods_list/, "disabled remote tools stay out of the family contract");
+            const kubernetesContract = packet(provider.requests, 2);
             assert.match(kubernetesContract, /## EXEC0 \[kubernetes\] \(configuration_view\)/);
             assert.doesNotMatch(kubernetesContract, /pods_list/, "one exact document carries only its selected tool contract");
-            assert.match(packet(provider.requests, 4), /current-context: specimen/);
+            assert.match(packet(provider.requests, 3), /current-context: specimen/);
 
             const gojiRun = await post(port, runInput(workspace, "call-goji", {
                 messages: [{
@@ -544,10 +514,9 @@ test(
                 }],
             }));
             assert.equal((gojiRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
-            assert.match(packet(provider.requests, 6), /worker:\/\/plurnk\/tools\/goji\/\*\.md/);
-            assert.match(packet(provider.requests, 7), /worker:\/\/plurnk\/tools\/goji\/goji_explain_term\.md/);
-            assert.match(packet(provider.requests, 8), /## EXEC0 \[goji\] \(goji_explain_term\)/);
-            const remoteResults = packet(provider.requests, 9);
+            assert.match(packet(provider.requests, 5), /worker:\/\/plurnk\/tools\/goji\/goji_explain_term\.md/);
+            assert.match(packet(provider.requests, 6), /## EXEC0 \[goji\] \(goji_explain_term\)/);
+            const remoteResults = packet(provider.requests, 7);
             assert.match(remoteResults, /Answer Engine Optimisation/);
             assert.match(remoteResults, /Melbourne-based full-service digital agency/);
             const speech = gojiRun

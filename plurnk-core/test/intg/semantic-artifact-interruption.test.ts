@@ -15,7 +15,7 @@ const target: UrlPath = {
     pathname: "/interrupted.md", query: null, fragment: null,
 };
 const statement: ResolvedEditStatement = {
-    op: "EDIT", suffix: "", signal: null, target, lineMarker: null,
+    op: "EDIT", annotation: null, suffix: "", signal: null, target, lineMarker: null,
     body: "an interrupted derivation must never attach", position: { line: 1, column: 1 },
 };
 

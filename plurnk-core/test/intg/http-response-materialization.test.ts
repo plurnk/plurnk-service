@@ -40,6 +40,7 @@ const statement = (
     };
     return {
         op: "READ",
+        annotation: null,
         suffix: "READ",
         signal: null,
         target,
@@ -68,6 +69,7 @@ const readablePdf = () => new Uint8Array(Buffer.from(
 
 const emptyStatement = (): ReadStatement => ({
     op: "READ",
+    annotation: null,
     suffix: "READ",
     signal: null,
     target: {
@@ -89,6 +91,7 @@ const emptyStatement = (): ReadStatement => ({
 
 const legacyTextStatement = (): ReadStatement => ({
     op: "READ",
+    annotation: null,
     suffix: "READ",
     signal: null,
     target: {

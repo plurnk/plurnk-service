@@ -13,7 +13,7 @@ const url = (pathname: string): UrlPath => ({
     pathname: `/${pathname}`, query: null, fragment: null,
 });
 const taggedEdit = (target: UrlPath, body: string, tags: string[]): ResolvedEditStatement => ({
-    op: "EDIT", suffix: "", signal: tags, target, lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "EDIT", annotation: null, suffix: "", signal: tags, target, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 test("the manifest catalog does not project operation signals as resource metadata", async () => {

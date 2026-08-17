@@ -23,12 +23,12 @@ const url = (pathname: string): UrlPath => ({
 
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({
-    op: "EDIT", suffix: "", signal: null, target, lineMarker: marker, body,
+    op: "EDIT", annotation: null, suffix: "", signal: null, target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
 
 const findStmt = (target: UrlPath, body: MatcherBody): FindStatement => ({
-    op: "FIND", suffix: "", signal: null, target, lineMarker: null, body,
+    op: "FIND", annotation: null, suffix: "", signal: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 

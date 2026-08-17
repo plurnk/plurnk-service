@@ -5,12 +5,12 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 
 const sendStmt = (status: number, body: string): SendStatement => ({
-    op: "SEND", suffix: "", signal: status, target: null, lineMarker: null,
+    op: "SEND", annotation: null, suffix: "", signal: status, target: null, lineMarker: null,
     body: { raw: body, json: null }, position: { line: 1, column: 1 },
 });
 
 const editStmt = (target: string, body: string): EditStatement => ({
-    op: "EDIT", suffix: "", signal: null,
+    op: "EDIT", annotation: null, suffix: "", signal: null,
     target: { kind: "url", raw: `worker:///${target}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${target}`, query: null, fragment: null },
     lineMarker: null, body, position: { line: 1, column: 1 },
 });

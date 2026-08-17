@@ -221,13 +221,13 @@ test("an empty workspace executes all five orienting FINDs and preserves empty-s
                 const finds = rows.filter((r) => r.op === "FIND");
                 assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
                     { scheme: "worker", hostname: "plurnk", pathname: "/tools/*.md" },
+                    { scheme: "worker", hostname: "plurnk", pathname: "/docs/**" },
                     { scheme: null, hostname: null, pathname: "*" },
                     { scheme: "worker", hostname: null, pathname: "/*" },
                     { scheme: "worker", hostname: "~", pathname: "/*" },
-                    { scheme: "worker", hostname: "plurnk", pathname: "/docs/**" },
                 ], "the five surveys execute in their taught order");
                 assert.deepEqual(finds.map(({ signal }) => JSON.parse(signal ?? "null")), [
-                    ["+init", "+tools"], ["+init"], ["+init"], ["+init"], ["+init", "+docs"],
+                    ["+init", "+tools"], ["+init", "+docs"], ["+init"], ["+init"], ["+init"],
                 ]);
                 const orientations = [
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true],
@@ -249,6 +249,12 @@ test("an empty workspace executes all five orienting FINDs and preserves empty-s
                     ?? (toolResult.content === undefined ? [] : JSON.parse(toolResult.content) as unknown[])) as Array<Array<{ path: string; summary?: string }>>;
                 const shell = toolItems.flat().find(({ path }) => path === "worker://plurnk/tools/sh.md");
                 assert.equal(shell?.summary, "Run POSIX shell commands and scripts.", "Turn 0 carries the family summary without its invocation body");
+                const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "worker" && row.hostname === "plurnk" && row.pathname === "/tools/sh.md");
+                assert.equal(shellSample?.status_rx, 200, "Turn 0 pulls the enabled sh family as its one worked tool-document example");
+                const shellContent = (JSON.parse(shellSample!.rx) as { content: string }).content;
+                assert.equal(shellContent.split("\n").length, 17, "the worked sample stops after the complete invocation example");
+                assert.match(shellContent, /```plurnk\n## EXEC0 \[sh\] <!-- Run POSIX shell commands and scripts\. -->\npwd\n```$/);
+                assert.doesNotMatch(shellContent, /A shell command line/, "the deep shell reference stays pull-only");
                 const exemplar = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 const content = (JSON.parse(exemplar!.rx) as { content: string }).content;
                 assert.equal(content, `# PLAN0
@@ -256,13 +262,15 @@ test("an empty workspace executes all five orienting FINDs and preserves empty-s
 
 ## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>
 
+## READ0 [+init,+tools] (worker://plurnk/tools/sh.md) <1,17>
+
+## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>
+
 ## FIND0 [+init] (*)
 
 ## FIND0 [+init] (worker:///*)
 
 ## FIND0 [+init] (worker://~/*)
-
-## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>
 
 ## SEND0 [102]
 Next, address the prompt.`);
@@ -274,8 +282,10 @@ Next, address the prompt.`);
                     tagsBySequence.get(sequence)?.push(tag);
                 }
                 assert.deepEqual(finds.map(({ sequence }) => tagsBySequence.get(sequence)), [
-                    ["init", "tools"], ["init"], ["init"], ["init"], ["docs", "init"],
+                    ["init", "tools"], ["docs", "init"], ["init"], ["init"], ["init"],
                 ], "each FIND classifies its own durable log item; docs and tools retain the shared init set");
+                const shellTags = logTags.filter(({ coordinate }) => Number(coordinate.split("/")[2]) === shellSample?.sequence).map(({ tag }) => tag);
+                assert.deepEqual(shellTags, ["init", "tools"], "the worked tool-document READ belongs to the same init/tools set");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }
