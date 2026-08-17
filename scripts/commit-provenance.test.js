@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { validateCommit } from "./commit-provenance.mjs";
+import { ALLOWED_AUTHORS, validateCommit } from "./commit-provenance.mjs";
 
 const valid = {
     sha: "a".repeat(40),
@@ -12,9 +12,15 @@ const valid = {
 };
 
 describe("commit provenance", () => {
-    it("accepts the registered agent or operator as author", () => {
-        assert.deepEqual(validateCommit(valid), []);
-        assert.deepEqual(validateCommit({ ...valid, authorName: "wikitopian", authorEmail: "wikitopian@pm.me" }), []);
+    it("accepts every allowlisted author", () => {
+        for (const entry of ALLOWED_AUTHORS) {
+            const [authorName, authorEmail] = entry.split("\0");
+            assert.deepEqual(
+                validateCommit({ ...valid, authorName, authorEmail }),
+                [],
+                `${authorName} <${authorEmail}> must be accepted`,
+            );
+        }
     });
 
     it("rejects unregistered and generic agent authors", () => {
