@@ -381,6 +381,7 @@ export class SqlRiteSync {
 	test_cosine: SqlRiteSyncPreparedStatements;
 	test_all_loops: SqlRiteSyncPreparedStatements;
 	test_workers_with_parent: SqlRiteSyncPreparedStatements;
+	test_workers_with_model: SqlRiteSyncPreparedStatements;
 	test_edit_states: SqlRiteSyncPreparedStatements;
 	test_all_packets: SqlRiteSyncPreparedStatements;
 	test_deep_hash: SqlRiteSyncPreparedStatements;
@@ -868,6 +869,7 @@ export default class SqlRite {
 	test_cosine: SqlRitePreparedStatements;
 	test_all_loops: SqlRitePreparedStatements;
 	test_workers_with_parent: SqlRitePreparedStatements;
+	test_workers_with_model: SqlRitePreparedStatements;
 	test_edit_states: SqlRitePreparedStatements;
 	test_all_packets: SqlRitePreparedStatements;
 	test_deep_hash: SqlRitePreparedStatements;

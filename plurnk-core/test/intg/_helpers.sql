@@ -360,6 +360,10 @@ SELECT id, worker_id, flags, model_route_id, spawn_model_route_id, status FROM l
 -- Deterministic topology identity: real child workers, their names, and their parent edge.
 SELECT id, name, parent_worker_id, origin FROM workers ORDER BY id;
 
+-- PREP: test_workers_with_model
+-- {§worker-model-selection} — every worker's durable model and persistent spawn override.
+SELECT id, name, model_route_id, spawn_model_route_id FROM workers ORDER BY id;
+
 -- PREP: test_edit_states
 -- {§worker-delegation-inherits-flags} — EDIT rows' proposal states: a delegated child's EDIT
 -- must land resolved (inherited auto), never proposed/cancelled into the void.

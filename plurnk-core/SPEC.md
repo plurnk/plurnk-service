@@ -2326,26 +2326,45 @@ creation. A client therefore cannot forge or resume an internal worker, insert
 a non-mintable spelling, or make the client registry diverge from model worker
 control.
 
-§methods-loop-run-model **Per-loop model selection.** Optional `model`
-(client-resolved `<provider>/<model>`, wins) or `alias` (a declared
-`PLURNK_MODEL_<alias>`) overrides the boot default for a newly created loop.
-The fully resolved provider identity is persisted on that loop and remains
-immutable through turns, parks, wakes, and restart. Injecting into an existing
-loop with a conflicting selection fails before work is accepted. An omitted
-selector is not a selection: a continuation keeps the loop's durable provider
-rather than re-resolving to the boot default. Provider
-instances are cached; no resume path substitutes a boot default for missing or
-malformed durable selection.
+§worker-model-selection **Worker-owned model selection.** Every model worker
+owns one durable model, persisted as a nullable `model_routes` foreign key.
+The root conversation worker is seeded once — from an explicit selection, else
+the daemon default — and never re-seeded from a later default change. A
+deliberately modelless daemon leaves the worker unset and rejects model work
+until an explicit selection. Starting a loop snapshots the worker's resolved
+model onto the loop; inject, park, wake, retry, reconnect, and restart
+continue from the loop snapshot and never re-resolve through the alias
+cascade. A WORK/FORK child copies the spawning loop's effective spawn model
+(spawn override ?? model) onto the new worker by value at creation; it retains
+no live link and begins with no override, so a later parent change affects
+only that worker's future loops and descendants. Client journal actors and
+Plurnk-owned bookkeeping workers run no model loops and own no model
+selection.
+
+§methods-loop-run-model **Per-loop model selection.** `runLoop` accepts
+optional `model` (client-resolved `<provider>/<model>`, wins) or `alias` (a
+declared `PLURNK_MODEL_<alias>`). An explicit selection persists onto the
+addressed worker before the loop snapshots it; an omitted selector is not a
+selection and continues the worker's durable model
+({§worker-model-selection}). The fully resolved provider identity is persisted
+on the loop and remains immutable through turns, parks, wakes, and restart.
+Injecting into an existing loop with a conflicting explicit selection fails
+before work is accepted. Provider instances are cached; no resume path
+substitutes a boot default for missing or malformed durable selection.
 
 §methods-loop-run-child-provider **Child-provider selection is one durable
 subcall policy.** Optional `childModel` (client-resolved `<provider>/<model>`, wins) or
-`childAlias` selects the provider for every WORK/FORK descendant and BARE inference; omitted uses
-`PLURNK_MODEL_CHILD`, while explicit `childAlias: null` means inherit. Core
-persists the resolved policy on each loop. A child runs on that provider and
-carries the same policy deeper; inherit uses the spawning loop's provider and
-remains inherit. BARE consumes the selection without spawning a child. Packet admission is unchanged: a smaller WORK is valid when
-its packet fits, and an oversized inherited FORK terminates through the ordinary
-child-loop result without preflight assembly or provider fallback.
+`childAlias` selects the spawn override for every WORK/FORK descendant and BARE inference; omitted uses
+`PLURNK_MODEL_CHILD`, while explicit `childAlias: null` means inherit. An
+explicit override persists onto the addressed worker before the loop
+snapshots it; an omitted selector continues the worker's durable override
+({§worker-model-selection}). Core persists the resolved policy on each loop. A
+child runs on the spawning loop's effective spawn model and carries the same
+policy deeper; inherit uses the spawning loop's provider and remains inherit.
+BARE consumes the selection without spawning a child. Packet admission is
+unchanged: a smaller WORK is valid when its packet fits, and an oversized
+inherited FORK terminates through the ordinary child-loop result without
+preflight assembly or provider fallback.
 
 §methods-log-coordinate **Log coordinate.** Every `LogEntry` returned by
 `readLog` or emitted through `log/entry` carries `loop_seq` and `turn_seq`

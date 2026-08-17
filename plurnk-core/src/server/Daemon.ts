@@ -179,6 +179,13 @@ export default class Daemon {
                         origin,
                     }))?.id;
                 if (workerId === undefined) throw new Error("Branch worker insert returned no row");
+                // {§worker-model-selection} — lineage inheritance by value: the branch
+                // child begins with the spawning loop's effective spawn model.
+                await this.#db.worker_model_route_update.run({
+                    id: workerId,
+                    model_route_id: await routeForSpec(this.#db, providerSpec),
+                    spawn_model_route_id: null,
+                });
                 const loopId = await this.#drains.enqueueFreshLoop({
                     workerId,
                     prompt,
