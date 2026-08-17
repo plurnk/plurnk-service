@@ -182,7 +182,7 @@ test("{§scheme-catalog-summary} catalog projects a bounded summary on only its 
             scheme: "worker",
             pathname: "/tool.md",
             channel: "body",
-            content: `# Tool\n\n## Summary\n\n${long}\n\n## Invocation\n\nDetails.`,
+            content: `# Tool\n\n## Summary\n\n${long}\n\n## Example\n\nDetails.`,
             mimetype: "text/markdown",
         });
         await db.test_seed_channel.run({

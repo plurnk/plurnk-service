@@ -12,7 +12,7 @@
 //   signal  — classifies the durable FIND log item; never filters resources
 //   <L>     — result pagination: resource or match-location positions N..M
 
-import { DEFAULT_RETRIEVAL_LIMIT, PathSyntax, renderJsonResult, type FindStatement, type RangeExtent } from "@plurnk/plurnk-contracts";
+import { DEFAULT_RETRIEVAL_LIMIT, PathSyntax, renderJsonResult, type FindStatement, type RangeExtent, type TextRegion } from "@plurnk/plurnk-contracts";
 import { LineMarkerOps } from "../content/index.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
@@ -38,7 +38,7 @@ export type CatalogScope = {
     region?: never;
 };
 export type CatalogMatch = [
-    CatalogDefaultChannel & { items?: never; locator?: never; region?: never },
+    CatalogDefaultChannel & { items?: never; locator?: string; region?: TextRegion; matchLocationCount?: number },
     ...CatalogChannel[],
 ];
 export type CatalogScopeGroup = [CatalogScope];
@@ -155,12 +155,20 @@ export const projectFindResult = (
         completeItems = uniqueMatchLocations(resources.flatMap(({ match }) => match.matches));
     } else {
         const resourceItems: CatalogResource[] = [
-            ...resources.map(({ item, match }): CatalogMatch => statement.body === null
-                ? item
-                : [
-                    { ...item[0], matchLocationCount: uniqueMatchLocations(match.matches).length },
+            ...resources.map(({ item, match }): CatalogMatch => {
+                if (statement.body === null) return item;
+                const locations = uniqueMatchLocations(match.matches);
+                const single = locations.length === 1 ? locations[0] : undefined;
+                return [
+                    {
+                        ...item[0],
+                        matchLocationCount: locations.length,
+                        ...(single?.locator === undefined ? {} : { locator: single.locator }),
+                        ...(single?.region === undefined ? {} : { region: single.region }),
+                    },
                     ...item.slice(1),
-                ]),
+                ];
+            }),
             ...scopes.map((item): CatalogScopeGroup => [item]),
         ];
         if (scopes.length > 0) {

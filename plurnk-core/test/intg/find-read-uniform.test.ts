@@ -169,7 +169,7 @@ test("broad @graph FIND returns selected resource channel groups", async () => {
     } finally { await db.close(); }
 });
 
-test("broad @graph FIND reports each resource's location count without nesting coordinates", async () => {
+test("broad @graph FIND reports each resource's location count without nesting coordinates on multi-match rows", async () => {
     const { db, workspaceId, workerId, mimetypes, ctx, loopId, turnId } = await setup();
     try {
         await seedRaw(ctx, "a.ts", "export function foo() {}\n");
@@ -178,8 +178,9 @@ test("broad @graph FIND reports each resource's location count without nesting c
         const r = await new Worker().find(parseOp<FindStatement>("## FIND0 (worker:///**)\n@<foo", "FIND"), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         assert.equal(r.status, 200);
         assert.ok(r.results.length >= 1);
-        assert.ok(resourceGroups(r).every(([item]) => item.matchLocationCount !== undefined && item.matchLocationCount >= 1));
-        assert.ok(resourceGroups(r).every(([item]) => !("matches" in item)));
+        const rows = resourceGroups(r).map(([item]) => item);
+        assert.ok(rows.every((item) => item.matchLocationCount !== undefined && item.matchLocationCount >= 1));
+        assert.ok(rows.every((item) => (item.matchLocationCount ?? 0) <= 1 || item.region === undefined), "a multi-match resource keeps only its count, never nesting regions");
         assert.equal(r.range?.unit, "resource");
     } finally { await db.close(); }
 });
@@ -231,10 +232,31 @@ test("broad matcher FIND emits one item per resource with a complete location co
         assert.equal(r.results.length, 1);
         assert.equal(resourceGroups(r)[0]?.[0].path, "worker:///log.md");
         assert.equal(resourceGroups(r)[0]?.[0].matchLocationCount, 2);
-        assert.equal("matches" in (resourceGroups(r)[0]?.[0] ?? {}), false);
+        assert.equal("region" in (resourceGroups(r)[0]?.[0] ?? {}), false, "a multi-match resource never nests its regions");
+        assert.equal("locator" in (resourceGroups(r)[0]?.[0] ?? {}), false, "a multi-match resource never nests its locator");
         assert.equal(r.matchingPathCount, 1);
         assert.equal(r.matchLocationCount, 2);
         assert.equal(r.range?.unit, "resource");
+    } finally { await db.close(); }
+});
+
+test("broad matcher FIND promotes a resource's locator/region when it matches exactly once", async () => {
+    const { db, workspaceId, workerId, ctx } = await setup();
+    try {
+        await seedRaw(ctx, "one.md", "alpha\ntarget\nbeta");
+        await seedRaw(ctx, "two.md", "target\nand target again\n");
+        const r = await new Worker().find(
+            parseOp<FindStatement>("## FIND0 (worker:///**)\n*target*", "FIND"),
+            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
+        );
+        assert.equal(r.status, 200);
+        const byPath = new Map(resourceGroups(r).map(([item]) => [item.path, item]));
+        const one = byPath.get("worker:///one.md");
+        const two = byPath.get("worker:///two.md");
+        assert.equal(one?.matchLocationCount, 1);
+        assert.ok(one?.region !== undefined, "exactly one match → the region is promoted to the resource row");
+        assert.equal(two?.matchLocationCount, 2);
+        assert.equal(two?.region, undefined, "two matches → count only, no region");
     } finally { await db.close(); }
 });
 

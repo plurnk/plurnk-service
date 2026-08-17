@@ -832,9 +832,9 @@ export default class TurnRunner {
                         statement: {
                             op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+tools"],
                             target: { kind: "url", raw: "worker://plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/tools/*.md", query: null, fragment: null },
-                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                            body: { dialect: "xpath", raw: "//heading[text()=\"Example\"]" }, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>",
+                        exemplar: "## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>\n//heading[text()=\"Example\"]",
                     },
                     {
                         statement: {

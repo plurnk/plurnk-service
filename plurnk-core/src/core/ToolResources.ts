@@ -84,7 +84,7 @@ const renderInvocation = (
     exactTarget?: string,
     annotation?: string,
 ): string[] => [
-    "## Invocation",
+    "## Example",
     "",
     ...invocationRows(invocation, exactTarget),
     "",
@@ -154,7 +154,7 @@ export default class ToolResources {
         const family = renderDocument(
             source.runtime,
             source.summary,
-            familyInvocations,
+            ["## Example", "", ...familyInvocations],
             source.details,
         );
         const toolResources = tools.map((tool): ToolResource => ({

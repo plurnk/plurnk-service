@@ -262,6 +262,7 @@ test("an empty workspace executes all five orienting FINDs and preserves empty-s
 
 ## READ0 [+init,+tools] (worker://plurnk/tools/sh.md) <1,17>
 ## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>
+//heading[text()="Example"]
 ## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>
 ## FIND0 [+init] (*)
 ## FIND0 [+init] (worker:///*)

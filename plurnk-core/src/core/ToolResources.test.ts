@@ -18,7 +18,7 @@ test("{§tools-resource-discovery} renders a general runtime as one self-describ
     const content = resources[0]?.content ?? "";
     assert.match(content, /^# search$/m);
     assert.match(content, /^## Summary\n\nSearch the web through the configured SearXNG service\.$/m);
-    assert.match(content, /^## Invocation$/m);
+    assert.match(content, /^## Example$/m);
     assert.match(content, /^\| body \| required: search query \|$/m);
     assert.match(content, /```plurnk\n## EXEC0 \[search\] <!-- Search the web through the configured SearXNG service\. -->\ncapital of indiana in 1816\n```/);
     assert.match(content, /^## Scope$/m);
