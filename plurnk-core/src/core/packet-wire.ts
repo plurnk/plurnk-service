@@ -219,10 +219,15 @@ export default class PacketWire {
     // the model line refs for free (`## READ0 (...) <42-46>`), while the absence of any separator means a
     // reproduced line has nothing between `N:` and the content to copy — the hard-tab separator used
     // to leak into edit bodies and corrupt indentation. The content's OWN leading whitespace is
-    // content, preserved verbatim. Generated FIND rows may left-pad N to the
-    // complete result-set width so every page keeps one stable content column.
+    // content, preserved verbatim. `N` is left-padded to the body's line-range width so every body
+    // keeps one stable content column; FIND rows pass the complete result-set width so their pages
+    // share a column with the whole set.
     static #numberLines(body: string, start = 1, width = 0): string {
         let line = start;
+        if (width <= 0) {
+            const breaks = body.match(/(\r\n|\r(?!\n)|\n)(?=[\s\S])/g)?.length ?? 0;
+            width = String(start + breaks).length;
+        }
         const prefix = (): string => `${String(line++).padStart(width, " ")}:`;
         return `${prefix()}${body.replace(
             /(\r\n|\r(?!\n)|\n)(?=[\s\S])/g,
@@ -258,12 +263,16 @@ export default class PacketWire {
         try { return JSON.parse(s); } catch { return null; }
     }
 
-    // Stable JSON: keys sorted alphabetically so the same meta produces the
+    // Stable JSON: `path` leads (it is the row's identity, {§jsonplurnk}), then
+    // the remaining keys are sorted alphabetically so the same meta produces the
     // same string across turns — prefix-cache friendly.
     static #canonicalJson(obj: Record<string, unknown>): string {
         const keys = Object.keys(obj).sort();
         const sorted: Record<string, unknown> = {};
-        for (const k of keys) sorted[k] = obj[k];
+        if (Object.hasOwn(obj, "path")) sorted.path = obj.path;
+        for (const k of keys) {
+            if (k !== "path") sorted[k] = obj[k];
+        }
         return JSON.stringify(sorted);
     }
 

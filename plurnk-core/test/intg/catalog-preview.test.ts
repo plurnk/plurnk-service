@@ -260,16 +260,11 @@ test("an empty workspace executes all five orienting FINDs and preserves empty-s
                 assert.equal(content, `# PLAN0
 * Discover the tooling available and survey the workspace file root.
 
-## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>
-
 ## READ0 [+init,+tools] (worker://plurnk/tools/sh.md) <1,17>
-
+## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>
 ## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>
-
 ## FIND0 [+init] (*)
-
 ## FIND0 [+init] (worker:///*)
-
 ## FIND0 [+init] (worker://~/*)
 
 ## SEND0 [102]

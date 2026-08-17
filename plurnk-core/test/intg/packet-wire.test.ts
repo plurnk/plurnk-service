@@ -78,7 +78,7 @@ test("log entry: a no-body row renders explicit display:none and body:\"\" — p
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /\{"body":"","display":"none","origin":"model","path":"log:\/\/\/1\/1\/1\/EDIT","status":200,"target":"out\.txt","tokens":0\}/, "jsonplurnk object; display:none carries body:\"\"; path owns the log identity and operation; target = action operand; tokens:0");
+    assert.match(out, /\{"path":"log:\/\/\/1\/1\/1\/EDIT","body":"","display":"none","origin":"model","status":200,"target":"out\.txt","tokens":0\}/, "jsonplurnk object; display:none carries body:\"\"; path leads and owns the log identity and operation; target = action operand; tokens:0");
     assert.doesNotMatch(out, /"op":"EDIT"/, "the canonical path does not duplicate its operation in metadata");
 });
 
@@ -1004,7 +1004,7 @@ test("a folded model-emission row renders meta-only without inventing an operati
         attrs: { kind: "model_emission" },
         rx: { content: "# PLAN0\nInitialize\n\n## SEND0 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /\{"display":"folded","kind":"model_emission","lines":5,"origin":"model","path":"log:\/\/\/1\/1\/1"/, "the actionless row has an undecorated coordinate and explicit kind");
+    assert.match(out, /\{"path":"log:\/\/\/1\/1\/1","display":"folded","kind":"model_emission","lines":5,"origin":"model"/, "the actionless row has an undecorated coordinate and explicit kind, with path leading");
     assert.doesNotMatch(out, /"op":"model"/, "an emission artifact never masquerades as a grammar operation");
     assert.doesNotMatch(out, /Initialize/, "the verbatim body stays hidden while folded — budget-neutral");
 });

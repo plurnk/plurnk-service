@@ -801,8 +801,8 @@ export default class TurnRunner {
         await this.#warmWorkspace(systemCtx, true, false);
 
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
-        // Five FIND surveys foisted into the worker's first model turn establish the executable-tool,
-        // documentation, project, commons, and private surfaces in that order. Their
+        // One READ exemplar followed by five FIND surveys foisted into the worker's first model turn establish
+        // the executable-tool, documentation, project, commons, and private surfaces in that order. Their
         // `init` classification lets the model curate this opening survey as one log set.
         if (seq === 1) {
             // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
@@ -820,14 +820,6 @@ export default class TurnRunner {
                     pathname: "/tools/sh.md",
                 });
                 const surveys: Array<{ statement: FindStatement | ReadStatement; exemplar: string }> = [
-                    {
-                        statement: {
-                            op: "FIND", suffix: "", annotation: null, signal: ["+init", "+tools"],
-                            target: { kind: "url", raw: "worker://plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/tools/*.md", query: null, fragment: null },
-                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-                        },
-                        exemplar: "## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>",
-                    },
                     ...(shellSample === undefined ? [] : [{
                         statement: {
                             op: "READ" as const, suffix: "", annotation: null, signal: ["+init", "+tools"],
@@ -836,6 +828,14 @@ export default class TurnRunner {
                         },
                         exemplar: "## READ0 [+init,+tools] (worker://plurnk/tools/sh.md) <1,17>",
                     }]),
+                    {
+                        statement: {
+                            op: "FIND", suffix: "", annotation: null, signal: ["+init", "+tools"],
+                            target: { kind: "url", raw: "worker://plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/tools/*.md", query: null, fragment: null },
+                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                        },
+                        exemplar: "## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>",
+                    },
                     {
                         statement: {
                             op: "FIND", suffix: "", annotation: null, signal: ["+init", "+docs"],
@@ -877,14 +877,15 @@ export default class TurnRunner {
                     turnZeroMoves.push(exemplar);
                 }
             }
-            // {§worker-initialization-entry} — write the kernel's turn-0 initialization OPEN at sequence 1: PLAN → the FINDs actually
-            // foisted above (real, their results already in the log) → SEND signal 102. Dynamic — it reflects
-            // the true survey, never a frozen print — and OPEN: the worked example the model orients on,
-            // so the grammar can stay thin.
+            // {§worker-initialization-entry} — write the kernel's turn-0 initialization OPEN at sequence 1: PLAN → the orienting
+            // READ/FIND surveys actually foisted above (real, their results already in the log) → SEND signal 102.
+            // The bodyless surveys render on consecutive lines ({§empty-section}); PLAN and SEND keep their bodies.
+            // Dynamic — it reflects the true survey, never a frozen print — and OPEN: the worked example the
+            // model orients on, so the grammar can stay thin.
             if (workerFirstLoop) {
                 const initialization = [
                     "# PLAN0\n* Discover the tooling available and survey the workspace file root.",
-                    ...turnZeroMoves,
+                    ...(turnZeroMoves.length > 0 ? [turnZeroMoves.join("\n")] : []),
                     "## SEND0 [102]\nNext, address the prompt.",
                 ].join("\n\n");
                 await this.#dispatcher.writeInitializationEntry({ verbatim: initialization, workerId, loopId, turnId, sequence: 1 });
@@ -1938,8 +1939,9 @@ export default class TurnRunner {
                 // content and the auto-OPEN terminal observation never fired — the model was never shown
                 // the conclusion of a stream whose result it already holds folded. The same
                 // observation is required when the channel produced no publishable content:
-                // completion is information independently of payload. Text streams retain their
-                // terse marker; structured channels emit a bodyless typed conclusion.
+                // completion is information independently of payload. A text stream that delivered
+                // content retains its terse revisit marker; an empty text stream and every structured
+                // channel emit a bodyless typed conclusion.
                 if (closed && priorAttrs.terminal !== true) {
                     const streamTarget = renderTarget({
                         scheme: ch.runtime,
@@ -1947,12 +1949,9 @@ export default class TurnRunner {
                         fragment: visibleFragment,
                     });
                     if (streamTarget === null) throw new Error(`stream ${ch.subscription_id} has no renderable address`);
-                    const pointer = cursor > 0
-                        ? `full output already delivered above; READ ${streamTarget} to revisit`
-                        : "stream produced no output";
                     const sequence = fromSequence + written;
-                    const content = baseMimetype(ch.mimetype).startsWith("text/")
-                        ? `[ stream closed (${ch.close_status ?? 200}) - ${pointer} ]`
+                    const content = cursor > 0 && baseMimetype(ch.mimetype).startsWith("text/")
+                        ? `[ stream closed (${ch.close_status ?? 200}) - full output already delivered above; READ ${streamTarget} to revisit ]`
                         : "";
                     const rx = JSON.stringify(await terminalResult({
                         content,
