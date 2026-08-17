@@ -256,12 +256,17 @@ export default class Daemon {
                 workerId,
                 loopId,
                 providerSpec,
+                providerSpecExplicit,
                 childProviderSpec,
                 turnCeiling,
                 flags,
             }) => {
                 await this.#assertFoldPosture(workerId, flags, loopId);
-                await this.#assertLoopProvider(loopId, providerSpec);
+                // An omitted selector keeps the loop's durable provider; only an
+                // explicit selection is checked against it (a deliberate switch).
+                if (providerSpecExplicit !== false) {
+                    await this.#assertLoopProvider(loopId, providerSpec);
+                }
                 if (childProviderSpec !== undefined) {
                     await this.#assertLoopChildProvider(loopId, childProviderSpec);
                 }
@@ -406,6 +411,9 @@ export default class Daemon {
         // switch takes effect turn-to-turn. `model` (client-resolved <provider>/<model>) wins
         // over `alias`; neither → the boot default. Instantiation is cached, so ping-ponging
         // between two models is cheap, and an unresolvable alias/model fails loud here.
+        // An OMITTED selector is not an explicit selection: a continuation keeps the loop's
+        // durable provider rather than re-resolving to the boot default ({§methods-loop-run-model}).
+        const selectorExplicit = alias !== undefined || model !== undefined;
         const selection = await this.#resolveLoopProvider(alias, model);
         if (selection === null) {
             throw new OperationFailureError(Results.failure(
@@ -487,6 +495,7 @@ export default class Daemon {
             ...(openPaths !== undefined ? { openPaths } : {}),
             turnCeiling,
             providerSpec: selection,
+            providerSpecExplicit: selectorExplicit,
             childProviderSpec: childSelection,
             systemPrompt,
         });

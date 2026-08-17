@@ -109,6 +109,62 @@ test("{§methods-loop-run-model}: an async wake resumes with the loop's durable 
     }
 });
 
+test("{§methods-loop-run-model}: a selector-less continuation resumes the loop's durable provider, never the boot default", async () => {
+    const releaseDir = await mkdtemp(join(tmpdir(), "plurnk-wake-default-"));
+    const releasePath = join(releaseDir, "release");
+    const boot = new Mock({
+        contextWindow: 16384,
+        responses: [mockResponse("## SEND0 [500]\nboot provider must never run this loop")],
+    });
+    const selected = new Mock({
+        contextWindow: 16384,
+        responses: [
+            mockResponse(execDsl(`while [ ! -f '${releasePath}' ]; do sleep 0.05; done; echo selected`)),
+            mockResponse("## SEND0 [102]\nawaiting the exec before concluding"),
+            mockResponse("## SEND0 [200]\nresumed on selected provider"),
+        ],
+    });
+    const selectedSpec = { alias: "wakedefault", provider: "openai", model: "wake-provider-b" } as const;
+    const prior = process.env.PLURNK_MODEL_wakedefault;
+    process.env.PLURNK_MODEL_wakedefault = "openai/wake-provider-b";
+    ProviderInstantiate.registerInstance(selected, selectedSpec);
+
+    try {
+        await withDaemon(boot, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-default-identity" });
+                const started = await rpcCall(ws, 2, "loop.run", {
+                    prompt: "run on B, park, then resume on B without a selector",
+                    alias: "wakedefault",
+                    model: "openai/wake-provider-b",
+                    flags: { auto: true },
+                });
+                const loopId = (started.result as { loopId: number }).loopId;
+
+                await waitForDb(
+                    async () => (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status,
+                    (status) => status === 202,
+                );
+
+                // THE DEFECT: a selector-less continuation re-resolves to the boot default and
+                // collides with the loop's durable provider (a false 409). It must resume on B.
+                const resumed = await rpcCall(ws, 3, "loop.run", {
+                    prompt: "resume the parked loop without naming a model",
+                    flags: { auto: true },
+                });
+                const resumedResult = resumed.result as { problem?: { type?: string }; action?: string } | undefined;
+                assert.equal(resumedResult?.problem, undefined, "selector-less continuation must not conflict");
+                assert.equal(resumedResult?.action, "injected_next_turn", "the parked loop resumes in place");
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_MODEL_wakedefault;
+        else process.env.PLURNK_MODEL_wakedefault = prior;
+        await rm(releaseDir, { recursive: true });
+    }
+});
+
 test("{§methods-loop-run-model}: a parked loop retains its provider across daemon restart", async () => {
     const boot = new Mock({
         contextWindow: 16384,

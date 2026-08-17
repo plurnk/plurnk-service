@@ -35,6 +35,10 @@ export type DrainInjectionArgs = {
     workerId: number;
     prompt: string;
     providerSpec: ProviderAlias;
+    // False = the client omitted a selector; a continuation must keep the loop's
+    // durable provider rather than compare against a re-resolved boot default.
+    // Absent/true = an explicit selection, so the compatibility check applies.
+    providerSpecExplicit?: boolean;
     systemPrompt: string;
     childProviderSpec?: ProviderAlias | null;
     turnCeiling?: TurnCeilingSelection;
@@ -63,7 +67,7 @@ type CompletionWakeGate = {
 
 type InjectionCompatibility = Pick<
     DrainInjectionArgs,
-    "workerId" | "providerSpec" | "childProviderSpec" | "turnCeiling" | "flags"
+    "workerId" | "providerSpec" | "providerSpecExplicit" | "childProviderSpec" | "turnCeiling" | "flags"
 > & { loopId: number };
 
 type RunLoop = (args: {
@@ -216,6 +220,7 @@ export default class DrainSupervisor {
                     workerId,
                     loopId: active.id,
                     providerSpec: args.providerSpec,
+                    providerSpecExplicit: args.providerSpecExplicit,
                     ...(args.childProviderSpec === undefined ? {} : { childProviderSpec: args.childProviderSpec }),
                     ...(args.turnCeiling === undefined ? {} : { turnCeiling: args.turnCeiling }),
                     ...(args.flags === undefined ? {} : { flags: args.flags }),
@@ -236,6 +241,7 @@ export default class DrainSupervisor {
                     workerId,
                     loopId: slept.id,
                     providerSpec: args.providerSpec,
+                    providerSpecExplicit: args.providerSpecExplicit,
                     ...(args.childProviderSpec === undefined ? {} : { childProviderSpec: args.childProviderSpec }),
                     ...(args.turnCeiling === undefined ? {} : { turnCeiling: args.turnCeiling }),
                     ...(args.flags === undefined ? {} : { flags: args.flags }),

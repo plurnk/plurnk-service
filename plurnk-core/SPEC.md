@@ -2329,7 +2329,9 @@ control.
 `PLURNK_MODEL_<alias>`) overrides the boot default for a newly created loop.
 The fully resolved provider identity is persisted on that loop and remains
 immutable through turns, parks, wakes, and restart. Injecting into an existing
-loop with a conflicting selection fails before work is accepted. Provider
+loop with a conflicting selection fails before work is accepted. An omitted
+selector is not a selection: a continuation keeps the loop's durable provider
+rather than re-resolving to the boot default. Provider
 instances are cached; no resume path substitutes a boot default for missing or
 malformed durable selection.
 
