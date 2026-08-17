@@ -76,6 +76,36 @@ composes service, durable workspace, client, and optional command-file fields
 in that order, prepares the connection, then persists the complete unexpanded
 workspace specialization. Arrays and maps replace rather than append or merge.
 
+## Demo fixtures
+
+Web discovery is an ordinary MCP attachment ({§web-search-retrieval}); the demo
+tier exercises search through a documented fixture rather than an owned
+runtime. Two service-owned definitions are permitted to participate in demos
+of MCP and model behavior — Gitea (above) and Brave Search:
+
+```text
+# ~/.plurnk/.env, read by the service — demo fixtures; never default-enabled
+PLURNK_MCP_BRAVE=npx
+PLURNK_MCP_BRAVE_ARGS=["-y","@brave/brave-search-mcp-server@2.1.0"]
+PLURNK_MCP_BRAVE_ENV={"BRAVE_API_KEY":"${BRAVE_API_KEY}"}
+PLURNK_MCP_BRAVE_TOOLS=["brave_web_search","brave_news_search"]
+PLURNK_MCP_BRAVE_READ=["brave_web_search","brave_news_search"]
+PLURNK_MCP_ENABLED=[]
+```
+
+The credential is one symbolic reference — the authoritative `BRAVE_API_KEY`
+environment value is expanded only while preparing the connection, never
+copied. The fixture admits exactly the web/news search tools and classifies
+them read-only; the rest of the vendor catalog is not admitted.
+
+**Pinned release and revision.** `@brave/brave-search-mcp-server@2.1.0`
+(stdio) pins `@modelcontextprotocol/sdk@1.29.0`, whose latest protocol
+revision is `2025-11-25` and which does not implement `server/discover`. The
+host's pinned revision is `2026-07-28` ({§mcp-authority}), so the pinned
+release is not connectable yet — the daemon publishes it as `unavailable`.
+Enable the fixture once a Brave release ships a compliant SDK; the demo story
+`{§web-search-retrieval}` then exercises it and skips meanwhile.
+
 ## Service defaults
 
 One `PLURNK_MCP_<server>` variable declares each available server. Its suffix
