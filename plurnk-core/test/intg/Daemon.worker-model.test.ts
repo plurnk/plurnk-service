@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock, type ProviderAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
+import Daemon from "../../src/server/Daemon.ts";
 import type { Db } from "../../src/core/Db.ts";
+import { openMigrated } from "./_helpers.ts";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 
 const provider = (name: string, model: string): ProviderAlias => ({
@@ -188,5 +190,69 @@ test("{§worker-model-selection}: a redeclared alias does not rewrite the worker
     } finally {
         if (priorDeclaration === undefined) delete process.env[declaration];
         else process.env[declaration] = priorDeclaration;
+    }
+});
+
+test("{§worker-model-selection}: the worker's durable model and spawn override survive daemon restart", async () => {
+    const spec = provider("restart-durable", "restart-durable-model");
+    const childSpec = provider("restart-child", "restart-child-model");
+    const mock = new Mock({
+        contextWindow: 16_384,
+        responses: [
+            makeMockResponse("## SEND0 [200]\nbefore restart"),
+            makeMockResponse("## WORK0 (worker://kid)\ndelegate\n\n## SEND0 [202] <-1>\nwaiting"),
+            makeMockResponse("## SEND0 [200]\nafter restart"),
+        ],
+    });
+    const child = new Mock({ contextWindow: 8_192, responses: [makeMockResponse("## SEND0 [200]\nkid done")] });
+    ProviderInstantiate.registerInstance(mock, spec);
+    ProviderInstantiate.registerInstance(child, childSpec);
+
+    const db = await openMigrated();
+    let first: Daemon | undefined;
+    let second: Daemon | undefined;
+    try {
+        first = new Daemon({ db, provider: null });
+        await first.start();
+        const envelope = await first.createWorkspace({ name: `worker-model-restart-${crypto.randomUUID()}`, projectRoot: null });
+        const workerId = await first.ensureModelWorker(envelope.workspaceId);
+        await first.setWorkerModel({ workspaceId: envelope.workspaceId, workerId, alias: spec.alias, model: `${spec.provider}/${spec.model}` });
+        await first.setWorkerSpawnModel({ workspaceId: envelope.workspaceId, workerId, alias: childSpec.alias, model: `${childSpec.provider}/${childSpec.model}` });
+        const before = await first.runLoop({ workspaceId: envelope.workspaceId, workerId, prompt: "before restart", flags: { auto: true } });
+        assert.equal(before.status, 100);
+        const terminated: Array<{ loopId: number; result: { status: number } }> = [];
+        first.subscribeToEvents((_workspaceId, method, params) => {
+            if (method === "loop/terminated") terminated.push(params as { loopId: number; result: { status: number } });
+        });
+        for (let i = 0; i < 100 && !terminated.some((t) => t.loopId === before.loopId); i++) {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        assert.equal(terminated.some((t) => t.loopId === before.loopId && t.result.status === 200), true, "the pre-restart loop completed");
+        await first.stop();
+        first = undefined;
+
+        second = new Daemon({ db, provider: null });
+        await second.start();
+        const after = await second.runLoop({ workspaceId: envelope.workspaceId, workerId, prompt: "after restart, no selector" });
+        const settled: Array<{ loopId: number; result: { status: number } }> = [];
+        second.subscribeToEvents((_workspaceId, method, params) => {
+            if (method === "loop/terminated") settled.push(params as { loopId: number; result: { status: number } });
+        });
+        for (let i = 0; i < 100 && !settled.some((t) => t.loopId === after.loopId); i++) {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        assert.equal(settled.some((t) => t.loopId === after.loopId && t.result.status === 200), true, "the selector-less post-restart loop completed");
+        assert.equal(mock.remaining, 0, "every turn ran on the worker's durable model");
+        assert.equal(child.remaining, 0, "the post-restart delegation ran on the worker's durable spawn override");
+        const workers = await db.test_workers_with_model.all<WorkerRow>({});
+        const root = workers.find(({ id }) => id === workerId);
+        const kid = workers.find(({ name }) => name === "kid");
+        assert.deepEqual(await routeSpec(db, root?.model_route_id ?? null), spec, "the durable model survived restart");
+        assert.deepEqual(await routeSpec(db, root?.spawn_model_route_id ?? null), childSpec, "the durable spawn override survived restart");
+        assert.deepEqual(await routeSpec(db, kid?.model_route_id ?? null), childSpec, "the child began with the effective spawn model after restart");
+    } finally {
+        if (first !== undefined) await first.stop();
+        if (second !== undefined) await second.stop();
+        await db.close();
     }
 });
