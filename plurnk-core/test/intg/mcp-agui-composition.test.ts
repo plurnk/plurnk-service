@@ -1,5 +1,5 @@
 // {§mcp-model-projection} {§agui-proposal-resolve} — the assembled daemon proof:
-// a client hot-adds a current MCP server through AG-UI, ordinary Plurnk
+// a client specializes and enables a cold MCP server through AG-UI, ordinary Plurnk
 // resource discovery reaches its exact tools, read effects execute directly,
 // and host effects remain behind the standard terminate/resume review boundary.
 
@@ -85,7 +85,7 @@ const actionResult = (events: readonly Event[]): {
 const packet = (requests: PacketCapturingMock["requests"], index: number): string =>
     requests[index]?.map(({ content }) => content).join("\n\n") ?? "";
 
-test("AG-UI hot add composes MCP discovery, execution, review, failure, and recovery", { timeout: 30_000 }, async () => {
+test("AG-UI configuration cascade composes MCP discovery, execution, review, failure, and recovery", { timeout: 30_000 }, async () => {
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     const provider = new PacketCapturingMock({
@@ -160,6 +160,7 @@ test("AG-UI hot add composes MCP discovery, execution, review, failure, and reco
         env: {
             PLURNK_MCP_CONNECT_TIMEOUT: "30000",
             PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+            PLURNK_MCP_FIXTURE: process.execPath,
         },
     }));
     const aguiRegistration = AguiModule.init({ host: "127.0.0.1", port: 0 });
@@ -178,17 +179,47 @@ test("AG-UI hot add composes MCP discovery, execution, review, failure, and reco
         const port = (agui as AguiModule).address().port;
         const workspace = `mcp-composition-${crypto.randomUUID()}`;
 
-        const attached = actionResult(await post(port, runInput(workspace, "add", {
+        const listed = actionResult(await post(port, runInput(workspace, "list", {
             forwardedProps: {
                 plurnk: {
                     workspace,
                     projectRoot,
                     action: {
-                        kind: "workspace.mcp.add",
+                        kind: "workspace.mcp.list",
+                        overlay: {
+                            PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixture]),
+                            "PLURNK_MCP_CLIENT-ONLY": process.execPath,
+                            "PLURNK_MCP_CLIENT-ONLY_ARGS": JSON.stringify([fixture]),
+                        },
+                    },
+                },
+            },
+        })));
+        assert.equal(listed.ok, true, JSON.stringify(listed.problem));
+        assert.deepEqual(
+            (listed.result?.servers as Array<{
+                alias: string;
+                source: string;
+                state: string;
+            }>).map(({ alias, source, state }) => ({ alias, source, state })),
+            [
+                { alias: "client-only", source: "client", state: "disabled" },
+                { alias: "fixture", source: "service", state: "disabled" },
+            ],
+        );
+
+        const attached = actionResult(await post(port, runInput(workspace, "enable", {
+            forwardedProps: {
+                plurnk: {
+                    workspace,
+                    projectRoot,
+                    action: {
+                        kind: "workspace.mcp.enable",
                         alias: "fixture",
-                        target: process.execPath,
+                        overlay: {
+                            PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixture]),
+                        },
                         options: {
-                            args: [fixture],
                             tools: ["echo", "fail"],
                             read: ["echo"],
                         },
@@ -197,7 +228,7 @@ test("AG-UI hot add composes MCP discovery, execution, review, failure, and reco
             },
         })));
         assert.equal(attached.ok, true, JSON.stringify(attached.problem));
-        assert.equal(attached.result?.status, 201);
+        assert.equal(attached.result?.status, 200);
 
         const observed = await post(port, runInput(workspace, "read-tool", {
             messages: [{ id: "prompt-read", role: "user", content: "Use the attached echo tool, then report its result." }],

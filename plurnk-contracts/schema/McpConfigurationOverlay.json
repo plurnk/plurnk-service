@@ -1,0 +1,25 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/McpConfigurationOverlay.json",
+    "title": "McpConfigurationOverlay",
+    "type": "object",
+    "propertyNames": {
+        "allOf": [
+            {
+                "pattern": "^PLURNK_MCP_[A-Za-z0-9_.+-]+$"
+            },
+            {
+                "not": {
+                    "enum": [
+                        "PLURNK_MCP_CONNECT_TIMEOUT",
+                        "PLURNK_MCP_REQUEST_TIMEOUT",
+                        "PLURNK_MCP_ENABLED"
+                    ]
+                }
+            }
+        ]
+    },
+    "additionalProperties": {
+        "type": "string"
+    }
+}

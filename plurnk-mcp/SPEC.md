@@ -172,11 +172,25 @@ credentials; a restart reconstructs the attachment as authorization-required
 instead of writing secrets into SQLite.
 
 The contracts-owned `McpServerOptions` schema is the closed supplement accepted
-by `workspace.mcp.add`. It may contain `args`, `cwd`, `env`, `headers`,
-`authorization`, `tools`, and `read`; it cannot repeat alias, target, or
-transport. An absolute HTTP(S) target selects Streamable HTTP. Every other
-target is one exact stdio executable. The normalized definition rejects
+by `workspace.mcp.add` and customized enable. It may contain `args`, `cwd`,
+`env`, `headers`, `authorization`, `tools`, and `read`; it cannot repeat alias,
+target, or transport. An absolute HTTP(S) target selects Streamable HTTP. Every
+other target is one exact stdio executable. The normalized definition rejects
 transport-inapplicable options before any connection work.
+
+§mcp-configuration-cascade MCP server configuration has one field-wise
+precedence order: service environment, durable workspace specialization,
+client configuration overlay, then explicit action options. Arrays and maps
+replace their lower value instead of appending or merging. A client-supplied
+target replaces the complete lower definition before its companion variables
+apply; a companion without a client target specializes the lower definition.
+The contracts-owned `{§mcp-configuration-overlay}` is parsed by the same owner
+and path as service environment declarations. It carries no service controls,
+does not activate a server, and is never persisted as raw environment syntax.
+A successful customized enable persists one complete, normalized, unexpanded
+workspace definition. Thus later enablement needs neither the originating
+client nor its configuration file, and symbolic credentials remain resolvable
+only by the service at connection preparation.
 
 ### §mcp-management-actions Workspace management
 
@@ -186,11 +200,11 @@ workspace identifier in params.
 
 | Action | Parameters | Result / effect |
 |---|---|---|
-| `workspace.mcp.list` | none | Sorted available server summaries: alias, source, target, transport, enabledness, connection/authorization/unavailable state, unavailable Problem, negotiated identity/capabilities, enabled tools, and read subset. No credential values. |
+| `workspace.mcp.list` | optional `overlay: McpConfigurationOverlay` | Sorted available server summaries: alias, source, target, transport, enabledness, connection/authorization/unavailable state, unavailable Problem, negotiated identity/capabilities, enabled tools, and read subset. A client-only definition is shown disabled with source `client`; carrying configuration neither connects nor persists it. No credential values. |
 | `workspace.mcp.add` | `alias`, `target`; optional `options: McpServerOptions` | Adds and enables a workspace-owned alias absent from the available set. Preparation completes before publication. |
-| `workspace.mcp.enable` | `alias` | Enables an available alias for this workspace. Successful preparation precedes the durable override and capability publication. Already connected is a no-op; already enabled but unavailable retries preparation. |
+| `workspace.mcp.enable` | `alias`; optional `overlay: McpConfigurationOverlay`, `options: McpServerOptions` | Resolves the alias through {§mcp-configuration-cascade} and enables it for this workspace. A definition differing from the service baseline becomes the durable workspace specialization. Successful preparation precedes persistence and capability publication. Already connected with the same definition is a no-op; already enabled but unavailable retries preparation. |
 | `workspace.mcp.disable` | `alias` | Disables an available alias, retaining it for client discovery while removing its connection and complete model-facing capability set. Already disabled is a no-op. |
-| `workspace.mcp.remove` | `alias` | Removes a workspace-owned definition. Service-owned definitions reject removal and direct the client to disable them. |
+| `workspace.mcp.remove` | `alias` | Removes a workspace specialization. A same-named service definition is revealed disabled; a workspace-only alias disappears. Service definitions without a specialization reject removal and direct the client to disable them. |
 | `workspace.mcp.oauth.complete` | `alias`, `callbackUrl` | State- and issuer-validates one pending interactive callback through the SDK, completes connection preparation, then performs the originally requested add or enable. |
 | `workspace.mcp.complete` | `server`, `ref`, `argument`; optional `context` | Requests negotiated prompt/resource-template argument completion for a client-owned interaction. |
 

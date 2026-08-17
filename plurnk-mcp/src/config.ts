@@ -1,5 +1,6 @@
 import {
     Validator,
+    type McpConfigurationOverlay,
     type McpServerDefinition,
 } from "@plurnk/plurnk-contracts";
 
@@ -46,7 +47,10 @@ const assertServerName = (name: string, variable: string): void => {
     }
 };
 
-const parseEnvironment = (environ: NodeJS.ProcessEnv): ParsedEnvironment => {
+const parseEnvironment = (
+    environ: NodeJS.ProcessEnv,
+    allowOrphanCompanions = false,
+): ParsedEnvironment => {
     const targets = new Map<string, EnvironmentVariable>();
     const companions = new Map<string, Map<CompanionSuffix, EnvironmentVariable>>();
     for (const [key, value] of Object.entries(environ)) {
@@ -93,12 +97,14 @@ const parseEnvironment = (environ: NodeJS.ProcessEnv): ParsedEnvironment => {
         }
         targets.set(folded, { key, value });
     }
-    for (const [name, fields] of companions) {
-        if (targets.has(name)) continue;
-        const variables = [...fields.values()].map(({ key }) => key).join(", ");
-        throw new Error(
-            `${variables} has no MCP server target ${PREFIX}${name.toUpperCase()}.`,
-        );
+    if (!allowOrphanCompanions) {
+        for (const [name, fields] of companions) {
+            if (targets.has(name)) continue;
+            const variables = [...fields.values()].map(({ key }) => key).join(", ");
+            throw new Error(
+                `${variables} has no MCP server target ${PREFIX}${name.toUpperCase()}.`,
+            );
+        }
     }
     return { targets, companions };
 };
@@ -167,54 +173,80 @@ const jsonRecord = (
 export const serverNames = (environ: NodeJS.ProcessEnv = process.env): string[] =>
     [...parseEnvironment(environ).targets.keys()].toSorted();
 
-export const serverDefinition = (
+const definitionFromEnvironment = (
     name: string,
-    environ: NodeJS.ProcessEnv = process.env,
+    parsed: ParsedEnvironment,
+    base?: McpServerDefinition,
 ): McpServerDefinition | null => {
-    const { targets, companions } = parseEnvironment(environ);
     const folded = name.toLowerCase();
-    const target = targets.get(folded);
-    if (target === undefined) return null;
-    if (target.value.length === 0) throw new Error(`${target.key} must not be empty.`);
-    const fields = companions.get(folded);
+    const target = parsed.targets.get(folded);
+    if (target === undefined && base === undefined) {
+        const orphaned = parsed.companions.get(folded);
+        if (orphaned === undefined) return null;
+        const variables = [...orphaned.values()].map(({ key }) => key).join(", ");
+        throw new Error(
+            `${variables} has no MCP server target ${PREFIX}${folded.toUpperCase()}.`,
+        );
+    }
+    if (base !== undefined && base.name !== folded) {
+        throw new Error(`MCP base definition '${base.name}' cannot configure alias '${folded}'.`);
+    }
+    if (target?.value.length === 0) throw new Error(`${target.key} must not be empty.`);
+    const lower = target === undefined ? base : undefined;
+    const fields = parsed.companions.get(folded);
     const fieldName = (suffix: CompanionSuffix): string =>
         fields?.get(suffix)?.key ?? `${PREFIX}${folded.toUpperCase()}${suffix.toUpperCase()}`;
     const configuredTools = fields?.get("_tools");
+    const inheritedTools = lower?.tools;
+    const tools = configuredTools === undefined
+        ? structuredClone(inheritedTools)
+        : toolNames(configuredTools.value, configuredTools.key);
     const policy = {
-        ...(configuredTools === undefined
-            ? {}
-            : { tools: toolNames(configuredTools.value, configuredTools.key) }),
-        read: toolNames(fields?.get("_read")?.value, fieldName("_read")),
+        ...(tools === undefined ? {} : { tools }),
+        read: fields?.has("_read")
+            ? toolNames(fields.get("_read")?.value, fieldName("_read"))
+            : structuredClone(lower?.read ?? []),
     };
-    if (/^https?:\/\//i.test(target.value)) {
+    const transport = target === undefined
+        ? lower?.transport
+        : /^https?:\/\//iu.test(target.value) ? "http" : "stdio";
+    if (transport === "http") {
         const invalid = (["_args", "_cwd", "_env"] as const)
             .flatMap((suffix) => fields?.get(suffix)?.key ?? []);
         if (invalid.length > 0) {
             throw new Error(
-                `${invalid.join(", ")} cannot accompany HTTP MCP server target ${target.key}; transport-neutral _TOOLS/_READ and HTTP _HEADERS are valid.`,
+                `${invalid.join(", ")} cannot accompany HTTP MCP server target ${target?.key ?? folded}; transport-neutral _TOOLS/_READ and HTTP _HEADERS are valid.`,
             );
         }
-        const headers = jsonRecord(
-            fields?.get("_headers")?.value,
-            fieldName("_headers"),
-        );
+        const inheritedHeaders = lower?.transport === "http"
+            ? structuredClone(lower.headers)
+            : undefined;
+        const headers = fields?.has("_headers")
+            ? jsonRecord(fields.get("_headers")?.value, fieldName("_headers"))
+            : inheritedHeaders;
         const bearer = fields?.get("_bearer");
+        const inheritedAuthorization = lower?.transport === "http"
+            ? structuredClone(lower.authorization)
+            : undefined;
+        const authorization = bearer === undefined
+            ? inheritedAuthorization
+            : { type: "bearer" as const, token: bearer.value };
         const authorizationHeader = Object.keys(headers ?? {}).find(
             (key) => key.toLowerCase() === "authorization",
         );
-        if (bearer !== undefined && authorizationHeader !== undefined) {
+        if (authorization?.type === "bearer" && authorizationHeader !== undefined) {
             throw new Error(
-                `${bearer.key} conflicts with Authorization in the server's _HEADERS map.`,
+                `${bearer?.key ?? "Bearer authorization"} conflicts with Authorization in the server's _HEADERS map.`,
             );
         }
+        const url = target?.value ?? (lower?.transport === "http" ? lower.url : undefined);
+        if (url === undefined) throw new Error(`HTTP MCP server '${folded}' has no target.`);
         return Validator.assertMcpServerDefinition({
             name: folded,
             transport: "http",
-            url: target.value,
+            url,
             ...(headers === undefined ? {} : { headers }),
-            ...(bearer === undefined
-                ? {}
-                : { authorization: { type: "bearer" as const, token: bearer.value } }),
+            ...(authorization === undefined ? {} : { authorization }),
             ...policy,
         });
     }
@@ -222,20 +254,56 @@ export const serverDefinition = (
         .flatMap((suffix) => fields?.get(suffix)?.key ?? []);
     if (httpOnly.length > 0) {
         throw new Error(
-            `${httpOnly.join(", ")} cannot accompany stdio MCP server target ${target.key}.`,
+            `${httpOnly.join(", ")} cannot accompany stdio MCP server target ${target?.key ?? folded}.`,
         );
     }
-    const cwd = fields?.get("_cwd")?.value;
-    const stdioEnvironment = jsonRecord(fields?.get("_env")?.value, fieldName("_env"));
+    const inheritedStdio = lower?.transport === "stdio" ? lower : undefined;
+    const cwd = fields?.has("_cwd")
+        ? fields.get("_cwd")?.value
+        : inheritedStdio?.cwd;
+    const stdioEnvironment = fields?.has("_env")
+        ? jsonRecord(fields.get("_env")?.value, fieldName("_env"))
+        : structuredClone(inheritedStdio?.env);
+    const args = fields?.has("_args")
+        ? jsonStrings(fields.get("_args")?.value, fieldName("_args"))
+        : structuredClone(inheritedStdio?.args ?? []);
+    const command = target?.value ?? inheritedStdio?.command;
+    if (command === undefined) throw new Error(`Stdio MCP server '${folded}' has no target.`);
     return Validator.assertMcpServerDefinition({
         name: folded,
         transport: "stdio",
-        command: target.value,
-        args: jsonStrings(fields?.get("_args")?.value, fieldName("_args")),
+        command,
+        args,
         ...(cwd === undefined ? {} : { cwd }),
         ...(stdioEnvironment === undefined ? {} : { env: stdioEnvironment }),
         ...policy,
     });
+};
+
+export const serverDefinition = (
+    name: string,
+    environ: NodeJS.ProcessEnv = process.env,
+): McpServerDefinition | null => definitionFromEnvironment(
+    name,
+    parseEnvironment(environ),
+);
+
+export const overlayServerDefinitions = (
+    overlay: McpConfigurationOverlay,
+    bases: ReadonlyMap<string, McpServerDefinition> = new Map(),
+): Map<string, McpServerDefinition> => {
+    const validated = Validator.assertMcpConfigurationOverlay(structuredClone(overlay));
+    const parsed = parseEnvironment(validated, true);
+    const names = new Set([...parsed.targets.keys(), ...parsed.companions.keys()]);
+    return new Map(
+        [...names]
+            .toSorted()
+            .map((name) => {
+                const definition = definitionFromEnvironment(name, parsed, bases.get(name));
+                if (definition === null) throw new Error(`MCP overlay server '${name}' disappeared.`);
+                return [name, definition];
+            }),
+    );
 };
 
 export const serviceDefinitions = (

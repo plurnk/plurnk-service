@@ -12,6 +12,7 @@ import type {
 import {
     Problems,
     Validator,
+    type McpConfigurationOverlay,
     type McpServerDefinition,
     type McpServerOptions,
     type ProblemDetails,
@@ -21,7 +22,11 @@ import {
     SdkErrorCode,
 } from "@modelcontextprotocol/client";
 import ServerConnection, { AuthorizationRequiredError } from "./client.ts";
-import { serviceDefinitions, serviceEnabledNames } from "./config.ts";
+import {
+    overlayServerDefinitions,
+    serviceDefinitions,
+    serviceEnabledNames,
+} from "./config.ts";
 import McpExecutor, { runtimeDecl } from "./McpExecutor.ts";
 import McpResources from "./McpResources.ts";
 import { MCP_PROTOCOL_VERSION } from "./protocol.ts";
@@ -405,8 +410,8 @@ export default class Module {
             ) => unknown | Promise<unknown>,
         ): void => seam.registerModuleAction({ name, scope: "workspace", handler });
         action("workspace.mcp.list", async (params, context) => {
-            assertActionKeys(params, []);
-            return this.#list(workspaceIdOf(context));
+            assertActionKeys(params, ["overlay"]);
+            return this.#list(workspaceIdOf(context), params.overlay);
         });
         action("workspace.mcp.add", async (params, context) =>
             this.#add(workspaceIdOf(context), params));
@@ -457,9 +462,6 @@ export default class Module {
                 const configured = available.get(name);
                 if (configured !== undefined) available.set(name, { ...configured, enabled: value.enabled });
                 continue;
-            }
-            if (available.has(name)) {
-                throw new Error(`Workspace MCP server '${name}' conflicts with a service-owned definition.`);
             }
             available.set(name, {
                 definition: structuredClone(value.definition),
@@ -725,7 +727,11 @@ export default class Module {
 
     #summary(
         alias: string,
-        available: AvailableDefinition,
+        available: AvailableDefinition | {
+            readonly definition: McpServerDefinition;
+            readonly source: "client";
+            readonly enabled: false;
+        },
         attachment?: Attachment,
     ): Record<string, unknown> {
         const definition = available.definition;
@@ -765,12 +771,56 @@ export default class Module {
         };
     }
 
-    #list(workspaceId: number): { servers: Record<string, unknown>[] } {
+    #overlayDefinitions(
+        state: WorkspaceState,
+        value: unknown,
+    ): Map<string, McpServerDefinition> {
+        if (value === undefined) return new Map();
+        try {
+            const bases = new Map(
+                [...this.#available(state)]
+                    .map(([alias, { definition }]) => [alias, definition]),
+            );
+            return overlayServerDefinitions(
+                structuredClone(value) as McpConfigurationOverlay,
+                bases,
+            );
+        } catch (cause) {
+            throw actionError(
+                "configuration-invalid",
+                400,
+                "Client MCP configuration is invalid.",
+                { retryable: false },
+                cause,
+            );
+        }
+    }
+
+    #list(
+        workspaceId: number,
+        overlay: unknown,
+    ): { servers: Record<string, unknown>[] } {
         const snapshot = this.#snapshot(workspaceId);
+        const available = this.#available(snapshot.state);
+        const configured = this.#overlayDefinitions(snapshot.state, overlay);
+        const summaries = new Map<string, Record<string, unknown>>(
+            [...available].map(([alias, definition]) => [
+                alias,
+                this.#summary(alias, definition, snapshot.attachments.get(alias)),
+            ]),
+        );
+        for (const [alias, definition] of configured) {
+            if (available.has(alias)) continue;
+            summaries.set(alias, this.#summary(alias, {
+                definition,
+                source: "client",
+                enabled: false,
+            }));
+        }
         return {
-            servers: [...this.#available(snapshot.state)]
-                .map(([alias, available]) =>
-                    this.#summary(alias, available, snapshot.attachments.get(alias))),
+            servers: [...summaries]
+                .toSorted(([left], [right]) => left.localeCompare(right))
+                .map(([, summary]) => summary),
         };
     }
 
@@ -877,17 +927,74 @@ export default class Module {
         return next;
     }
 
+    #stateWithDefinition(
+        state: WorkspaceState,
+        alias: string,
+        definition: McpServerDefinition,
+        enabled: boolean,
+    ): WorkspaceState {
+        const next = cloneState(state);
+        (next.servers as Record<string, ServerState>)[alias] = this.#definitionSource(
+            alias,
+            definition,
+        ) === "service"
+            ? { kind: "service", enabled }
+            : {
+                kind: "workspace",
+                definition: structuredClone(definition),
+                enabled,
+            };
+        return next;
+    }
+
+    #definitionSource(
+        alias: string,
+        definition: McpServerDefinition,
+    ): DefinitionSource {
+        const service = this.#defaults.get(alias);
+        return service !== undefined && sameDefinition(service, definition)
+            ? "service"
+            : "workspace";
+    }
+
+    #definitionWithOptions(
+        definition: McpServerDefinition,
+        value: unknown,
+    ): McpServerDefinition {
+        if (value === undefined) return structuredClone(definition);
+        try {
+            const options = structuredClone(
+                Validator.assertMcpServerOptions(value as McpServerOptions),
+            );
+            return structuredClone(Validator.assertMcpServerDefinition({
+                ...definition,
+                ...options,
+            } as McpServerDefinition));
+        } catch (cause) {
+            throw actionError(
+                "definition-invalid",
+                400,
+                `MCP server '${definition.name}' has invalid enable options.`,
+                { alias: definition.name, retryable: false },
+                cause,
+            );
+        }
+    }
+
     async #setEnabled(
         workspaceId: number,
         params: Readonly<Record<string, unknown>>,
         enabled: boolean,
     ): Promise<Record<string, unknown>> {
         return this.#serialize(workspaceId, async () => {
-            assertActionKeys(params, ["alias"]);
+            assertActionKeys(params, enabled ? ["alias", "overlay", "options"] : ["alias"]);
             const alias = requiredString(params, "alias");
             const snapshot = this.#snapshot(workspaceId);
-            const available = this.#available(snapshot.state).get(alias);
-            if (available === undefined) {
+            const current = this.#available(snapshot.state).get(alias);
+            const configured = enabled
+                ? this.#overlayDefinitions(snapshot.state, params.overlay).get(alias)
+                : undefined;
+            if (current === undefined && configured === undefined) {
                 throw actionError(
                     "server-not-found",
                     404,
@@ -895,22 +1002,38 @@ export default class Module {
                     { workspaceId, alias, retryable: false },
                 );
             }
+            if (current === undefined && !enabled) throw new Error("Disabled MCP target is absent.");
+            const candidate = configured ?? current?.definition;
+            if (candidate === undefined) throw new Error("Enabled MCP target is absent.");
+            const definition = enabled
+                ? this.#definitionWithOptions(candidate, params.options)
+                : structuredClone(candidate);
             const attachment = snapshot.attachments.get(alias);
             const retryUnavailable = enabled
-                && available.enabled
+                && current?.enabled === true
+                && sameDefinition(current.definition, definition)
                 && attachment?.kind === "unavailable";
-            if (available.enabled === enabled && !retryUnavailable) {
+            const definitionChanged = current === undefined
+                || !sameDefinition(current.definition, definition);
+            if (current?.enabled === enabled && !definitionChanged && !retryUnavailable) {
                 if (attachment?.kind === "authorization-required") {
                     return {
                         status: 202,
                         authorization: { url: attachment.authorizationUrl },
                     };
                 }
-                return { status: 200, server: this.#summary(alias, available, attachment) };
+                return { status: 200, server: this.#summary(alias, current, attachment) };
             }
             const state = retryUnavailable
                 ? cloneState(snapshot.state)
-                : this.#stateWithEnabled(snapshot.state, alias, available, enabled);
+                : enabled
+                    ? this.#stateWithDefinition(snapshot.state, alias, definition, true)
+                    : this.#stateWithEnabled(
+                        snapshot.state,
+                        alias,
+                        current as AvailableDefinition,
+                        false,
+                    );
             const result = await this.#applyState(workspaceId, state, {
                 ...(retryUnavailable ? { force: new Set([alias]) } : {}),
                 authorizationDisposition: "defer-mutation",
@@ -920,11 +1043,11 @@ export default class Module {
                 await this.#setPending(workspaceId, alias, {
                     operation: "enable",
                     expectedState: structuredClone(snapshot.state.servers[alias] ?? null),
-                    expectedDefinition: structuredClone(available.definition),
-                    expectedEnabled: available.enabled,
+                    expectedDefinition: structuredClone(current?.definition ?? null),
+                    expectedEnabled: current?.enabled ?? false,
                     definition: {
-                        definition: structuredClone(available.definition),
-                        source: available.source,
+                        definition: structuredClone(definition),
+                        source: this.#definitionSource(alias, definition),
                     },
                     connection: result.authorization.connection,
                     authorizationUrl: result.authorization.authorizationUrl,
@@ -936,11 +1059,11 @@ export default class Module {
             }
             await this.#clearPending(workspaceId, alias);
             const committed = this.#snapshot(workspaceId);
-            const current = this.#available(committed.state).get(alias);
-            if (current === undefined) throw new Error("Committed MCP definition is absent.");
+            const committedDefinition = this.#available(committed.state).get(alias);
+            if (committedDefinition === undefined) throw new Error("Committed MCP definition is absent.");
             return {
                 status: 200,
-                server: this.#summary(alias, current, committed.attachments.get(alias)),
+                server: this.#summary(alias, committedDefinition, committed.attachments.get(alias)),
             };
         });
     }
@@ -971,7 +1094,15 @@ export default class Module {
                 );
             }
             const state = cloneState(snapshot.state);
-            delete (state.servers as Record<string, ServerState>)[alias];
+            const service = this.#defaults.get(alias);
+            if (service === undefined) {
+                delete (state.servers as Record<string, ServerState>)[alias];
+            } else {
+                (state.servers as Record<string, ServerState>)[alias] = {
+                    kind: "service",
+                    enabled: false,
+                };
+            }
             await this.#applyState(workspaceId, state, {
                 authorizationDisposition: "defer-mutation",
                 preparationFailureDisposition: "reject",
@@ -1017,10 +1148,12 @@ export default class Module {
             };
             return state;
         }
-        if (available === undefined) throw new Error("Pending MCP enable target is absent.");
-        return available.enabled
-            ? cloneState(snapshot.state)
-            : this.#stateWithEnabled(snapshot.state, alias, available, true);
+        return this.#stateWithDefinition(
+            snapshot.state,
+            alias,
+            pending.definition.definition,
+            true,
+        );
     }
 
     async #completeOAuth(

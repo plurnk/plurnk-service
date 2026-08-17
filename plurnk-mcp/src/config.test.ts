@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+    overlayServerDefinitions,
     connectTimeoutMs,
     requestTimeoutMs,
     serverDefinition,
@@ -292,6 +293,80 @@ test("tool policy uses absence for all, an exact array to narrow, and rejects am
             PLURNK_MCP_ATLAS_READ: '["echo","echo"]',
         }),
         /READ.*duplicate tool name 'echo'/,
+    );
+});
+
+test("{§mcp-configuration-cascade} client companions replace complete fields over normalized service or workspace definitions", () => {
+    const base = serverDefinition("gitea", {
+        ...floor,
+        PLURNK_MCP_GITEA: "gitea-mcp",
+        PLURNK_MCP_GITEA_ARGS: '["serve"]',
+        PLURNK_MCP_GITEA_ENV: '{"TENANT":"main","TRACE":"off"}',
+        PLURNK_MCP_GITEA_TOOLS: '["issue_read"]',
+    });
+    assert.ok(base);
+    const definitions = overlayServerDefinitions({
+        PLURNK_MCP_GITEA_ARGS: '["plurnk_pk"]',
+        PLURNK_MCP_GITEA_ENV: '{"TENANT":"project"}',
+    }, new Map([["gitea", base]]));
+    assert.deepEqual(definitions.get("gitea"), {
+        name: "gitea",
+        transport: "stdio",
+        command: "gitea-mcp",
+        args: ["plurnk_pk"],
+        env: { TENANT: "project" },
+        tools: ["issue_read"],
+        read: [],
+    });
+});
+
+test("{§mcp-configuration-cascade} a client target replaces the lower definition before its companions apply", () => {
+    const base = serverDefinition("atlas", {
+        ...floor,
+        PLURNK_MCP_ATLAS: "atlas-mcp",
+        PLURNK_MCP_ATLAS_ARGS: '["serve"]',
+        PLURNK_MCP_ATLAS_CWD: "/srv/atlas",
+        PLURNK_MCP_ATLAS_ENV: '{"MODE":"service"}',
+    });
+    assert.ok(base);
+    const definitions = overlayServerDefinitions({
+        PLURNK_MCP_ATLAS: "https://atlas.example.test/mcp",
+        PLURNK_MCP_ATLAS_HEADERS: '{"X-Tenant":"project"}',
+    }, new Map([["atlas", base]]));
+    assert.deepEqual(definitions.get("atlas"), {
+        name: "atlas",
+        transport: "http",
+        url: "https://atlas.example.test/mcp",
+        headers: { "X-Tenant": "project" },
+        read: [],
+    });
+});
+
+test("{§mcp-configuration-cascade} client-only definitions are complete and incomplete fragments fail at the parser boundary", () => {
+    assert.deepEqual(
+        overlayServerDefinitions({
+            PLURNK_MCP_LOCAL: process.execPath,
+            PLURNK_MCP_LOCAL_ARGS: '["server.mjs"]',
+        }).get("local"),
+        {
+            name: "local",
+            transport: "stdio",
+            command: process.execPath,
+            args: ["server.mjs"],
+            read: [],
+        },
+    );
+    assert.throws(
+        () => overlayServerDefinitions({
+            PLURNK_MCP_LOCAL_ARGS: '["server.mjs"]',
+        }),
+        /PLURNK_MCP_LOCAL_ARGS.*PLURNK_MCP_LOCAL/,
+    );
+    assert.throws(
+        () => overlayServerDefinitions({
+            PLURNK_MCP_ENABLED: '["local"]',
+        } as never),
+        /invalid MCP configuration overlay/,
     );
 });
 

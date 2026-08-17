@@ -8,6 +8,7 @@ import Validator, {
     InvalidLoopFlagsError,
     InvalidMcpServerDefinitionError,
     InvalidMcpServerOptionsError,
+    InvalidMcpConfigurationOverlayError,
     InvalidNoticeError,
     InvalidOperationResultError,
     InvalidProblemDetailsError,
@@ -16,7 +17,7 @@ import Validator, {
     InvalidTextRegionError,
 } from "./Validator.ts";
 import Problems from "./Problems.ts";
-import type { ClientDisplayCapabilities, McpServerDefinition, McpServerOptions, RangeExtent } from "./types.generated.ts";
+import type { ClientDisplayCapabilities, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, RangeExtent } from "./types.generated.ts";
 
 test("client interactions carry one generic tool contract without owner-private continuation state", () => {
     const request = {
@@ -195,6 +196,25 @@ test("{§mcp-server-options}: MCP add options are a closed definition supplement
         assert.throws(
             () => Validator.assertMcpServerOptions(invalid as never),
             InvalidMcpServerOptionsError,
+        );
+    }
+});
+
+test("{§mcp-configuration-overlay}: clients carry declarations, never service controls", () => {
+    const overlay: McpConfigurationOverlay = {
+        PLURNK_MCP_GITEA_ARGS: "[\"plurnk_pk\"]",
+        PLURNK_MCP_BRAVE: "https://mcp.example/brave",
+    };
+    assert.equal(Validator.assertMcpConfigurationOverlay(overlay), overlay);
+    for (const invalid of [
+        { OPENAI_API_KEY: "nope" },
+        { PLURNK_MCP_ENABLED: "[\"gitea\"]" },
+        { PLURNK_MCP_CONNECT_TIMEOUT: "1" },
+        { PLURNK_MCP_GITEA_ARGS: ["plurnk_pk"] },
+    ]) {
+        assert.throws(
+            () => Validator.assertMcpConfigurationOverlay(invalid as never),
+            InvalidMcpConfigurationOverlayError,
         );
     }
 });

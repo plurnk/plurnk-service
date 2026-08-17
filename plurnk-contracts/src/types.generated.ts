@@ -433,6 +433,10 @@ noInteraction: boolean
 noProposals: boolean
 }
 
+export interface McpConfigurationOverlay {
+[k: string]: string
+}
+
 export type McpServerDefinition = ({
 [k: string]: unknown
 } & {

@@ -46,9 +46,9 @@ Available workspace actions are:
 
 | Action | Parameters |
 |---|---|
-| `workspace.mcp.list` | none |
+| `workspace.mcp.list` | optional client `overlay` |
 | `workspace.mcp.add` | `alias`, `target`; optional `options` |
-| `workspace.mcp.enable` | `alias` |
+| `workspace.mcp.enable` | `alias`; optional client `overlay` and explicit `options` |
 | `workspace.mcp.disable` | `alias` |
 | `workspace.mcp.remove` | `alias` |
 | `workspace.mcp.oauth.complete` | `alias`, complete `callbackUrl` |
@@ -56,6 +56,25 @@ Available workspace actions are:
 
 The owning [specification](./SPEC.md) defines the complete action and server
 definition contracts.
+
+Client and project configuration can specialize a cold service definition
+without copying it or restarting the daemon. For example, a service catalog
+can provide the executable while one project's `.env` supplies its identity:
+
+```text
+# ~/.plurnk/.env, read by the service
+PLURNK_MCP_GITEA=/usr/local/bin/possumtech-gitea-mcp
+PLURNK_MCP_ENABLED=[]
+
+# <project>/.env, read by the client
+PLURNK_MCP_GITEA_ARGS=["plurnk_pk"]
+```
+
+The client carries its raw declarations while listing and enabling. Listing is
+inert. `/mcp enable gitea` (or `plurnk mcp enable gitea` in a named workspace)
+composes service, durable workspace, client, and optional command-file fields
+in that order, prepares the connection, then persists the complete unexpanded
+workspace specialization. Arrays and maps replace rather than append or merge.
 
 ## Service defaults
 

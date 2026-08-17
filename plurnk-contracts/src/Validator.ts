@@ -20,10 +20,11 @@ import loopFlagsSchema from "../schema/LoopFlags.json" with { type: "json" };
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
 import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
 import mcpServerOptionsSchema from "../schema/McpServerOptions.json" with { type: "json" };
+import mcpConfigurationOverlaySchema from "../schema/McpConfigurationOverlay.json" with { type: "json" };
 import clientInteractionRequestSchema from "../schema/ClientInteractionRequest.json" with { type: "json" };
 import clientInteractionProjectionSchema from "../schema/ClientInteractionProjection.json" with { type: "json" };
 import clientInteractionResolutionSchema from "../schema/ClientInteractionResolution.json" with { type: "json" };
-import type { ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, LoopFlags, McpServerDefinition, McpServerOptions, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, TextRegion } from "./types.generated.ts";
+import type { ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, LoopFlags, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, TextRegion } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
@@ -38,6 +39,7 @@ export class InvalidProposalProjectionError extends TypeError {}
 export class InvalidClientDisplayCapabilitiesError extends TypeError {}
 export class InvalidMcpServerDefinitionError extends TypeError {}
 export class InvalidMcpServerOptionsError extends TypeError {}
+export class InvalidMcpConfigurationOverlayError extends TypeError {}
 export class InvalidClientInteractionRequestError extends TypeError {}
 export class InvalidClientInteractionProjectionError extends TypeError {}
 export class InvalidClientInteractionResolutionError extends TypeError {}
@@ -96,6 +98,10 @@ export default class Validator {
     static #mcpServerOptions = Validator.#withRefs(
         mcpServerOptionsSchema,
         [mcpServerDefinitionSchema],
+    );
+    static #mcpConfigurationOverlay = new CfValidator(
+        mcpConfigurationOverlaySchema as unknown as Schema,
+        "2020-12",
     );
     static #clientInteractionRequest = new CfValidator(
         clientInteractionRequestSchema as unknown as Schema,
@@ -212,6 +218,10 @@ export default class Validator {
 
     static validateMcpServerOptions(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#mcpServerOptions, value);
+    }
+
+    static validateMcpConfigurationOverlay(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#mcpConfigurationOverlay, value);
     }
 
     static validateClientInteractionRequest(value: unknown): ValidationResult {
@@ -346,6 +356,16 @@ export default class Validator {
         if (!result.valid) {
             throw new InvalidMcpServerOptionsError(
                 `invalid MCP server options: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        return value;
+    }
+
+    static assertMcpConfigurationOverlay<T extends McpConfigurationOverlay>(value: T): T {
+        const result = Validator.validateMcpConfigurationOverlay(value);
+        if (!result.valid) {
+            throw new InvalidMcpConfigurationOverlayError(
+                `invalid MCP configuration overlay: ${JSON.stringify(result.errors)}`,
             );
         }
         return value;

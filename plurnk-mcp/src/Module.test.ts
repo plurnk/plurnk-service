@@ -206,6 +206,147 @@ test("{§mcp-management-actions} cold service definitions remain available while
     }
 });
 
+test("{§mcp-configuration-cascade} listing projects client-only definitions without connecting or persisting them", async () => {
+    const module = Module.init({
+        env: {
+            ...floor,
+            PLURNK_MCP_GITEA: "gitea-mcp",
+        },
+    });
+    const h = harness();
+    try {
+        await module.setup(h.seam);
+        await h.hydrate(1);
+        const calls = h.replacementCalls();
+        const listed = await h.invoke(1, "workspace.mcp.list", {
+            overlay: {
+                PLURNK_MCP_GITEA_ARGS: '["plurnk_pk"]',
+                PLURNK_MCP_LOCAL: process.execPath,
+                PLURNK_MCP_LOCAL_ARGS: JSON.stringify([fixture]),
+            },
+        }) as {
+            servers: Array<{
+                alias: string;
+                source: string;
+                enabled: boolean;
+                state: string;
+            }>;
+        };
+        assert.deepEqual(
+            listed.servers.map(({ alias, source, enabled, state }) => ({
+                alias,
+                source,
+                enabled,
+                state,
+            })),
+            [
+                { alias: "gitea", source: "service", enabled: false, state: "disabled" },
+                { alias: "local", source: "client", enabled: false, state: "disabled" },
+            ],
+        );
+        assert.equal(h.replacementCalls(), calls);
+        assert.deepEqual(h.snapshots.get(1), []);
+        assert.equal(h.durable.get(1), null);
+    } finally {
+        await module.close();
+    }
+});
+
+test("{§mcp-configuration-cascade} customized enable persists one shadowing definition and remove reveals its service baseline disabled", async () => {
+    const env = {
+        ...floor,
+        PLURNK_MCP_GITEA: process.execPath,
+    };
+    const durable = new Map<number, unknown | null>();
+    const first = Module.init({ env });
+    const firstHarness = harness(durable);
+    await first.setup(firstHarness.seam);
+    await firstHarness.hydrate(1);
+    const enabled = await firstHarness.invoke(1, "workspace.mcp.enable", {
+        alias: "gitea",
+        overlay: { PLURNK_MCP_GITEA_ARGS: '["discarded-by-options"]' },
+        options: { args: [fixture], tools: ["echo"], read: ["echo"] },
+    }) as { server: { source: string; state: string } };
+    assert.equal(enabled.server.source, "workspace");
+    assert.equal(enabled.server.state, "connected");
+    assert.deepEqual(firstHarness.snapshots.get(1)?.map(({ decl }) => decl.name), ["gitea"]);
+    assert.deepEqual(durable.get(1), {
+        version: 1,
+        servers: {
+            gitea: {
+                kind: "workspace",
+                definition: {
+                    name: "gitea",
+                    transport: "stdio",
+                    command: process.execPath,
+                    args: [fixture],
+                    tools: ["echo"],
+                    read: ["echo"],
+                },
+                enabled: true,
+            },
+        },
+    });
+    await first.close();
+
+    const restored = Module.init({ env });
+    const restoredHarness = harness(durable);
+    try {
+        await restored.setup(restoredHarness.seam);
+        await restoredHarness.hydrate(1);
+        const before = await restoredHarness.invoke(1, "workspace.mcp.list") as {
+            servers: Array<{ alias: string; source: string; state: string }>;
+        };
+        assert.deepEqual(
+            before.servers.map(({ alias, source, state }) => ({ alias, source, state })),
+            [{ alias: "gitea", source: "workspace", state: "connected" }],
+        );
+
+        await restoredHarness.invoke(1, "workspace.mcp.remove", { alias: "gitea" });
+        const after = await restoredHarness.invoke(1, "workspace.mcp.list") as {
+            servers: Array<{ alias: string; source: string; enabled: boolean; state: string }>;
+        };
+        assert.deepEqual(after.servers, [{
+            alias: "gitea",
+            source: "service",
+            transport: "stdio",
+            target: process.execPath,
+            enabled: false,
+            state: "disabled",
+            enabledTools: null,
+            read: [],
+        }]);
+        assert.deepEqual(durable.get(1), {
+            version: 1,
+            servers: { gitea: { kind: "service", enabled: false } },
+        });
+    } finally {
+        await restored.close();
+    }
+});
+
+test("{§mcp-configuration-cascade} enable admits a complete client-only definition", async () => {
+    const module = Module.init({ env: floor });
+    const h = harness();
+    try {
+        await module.setup(h.seam);
+        await h.hydrate(1);
+        const result = await h.invoke(1, "workspace.mcp.enable", {
+            alias: "local",
+            overlay: {
+                PLURNK_MCP_LOCAL: process.execPath,
+                PLURNK_MCP_LOCAL_ARGS: JSON.stringify([fixture]),
+            },
+        }) as { server: { alias: string; source: string; state: string } };
+        assert.equal(result.server.alias, "local");
+        assert.equal(result.server.source, "workspace");
+        assert.equal(result.server.state, "connected");
+        assert.match(JSON.stringify(h.durable.get(1)), /"kind":"workspace"/u);
+    } finally {
+        await module.close();
+    }
+});
+
 test("service defaults hydrate as workspace-local executor and resource snapshots", async () => {
     const module = Module.init({
         env: {
@@ -381,6 +522,13 @@ test("{§mcp-management-actions} management conflicts preserve exact Problems an
             400,
         );
         await rejectsManagementProblem(
+            () => h.invoke(1, "workspace.mcp.list", {
+                overlay: { PLURNK_MCP_ENABLED: '["echo"]' },
+            }),
+            "configuration-invalid",
+            400,
+        );
+        await rejectsManagementProblem(
             () => h.invoke(1, "workspace.mcp.add", {
                 alias: "echo",
                 target: process.execPath,
@@ -429,7 +577,7 @@ test("{§mcp-management-actions} management conflicts preserve exact Problems an
     }
 });
 
-test("OAuth completion rebases its target onto unrelated committed workspace changes", async (t) => {
+test("OAuth completion rebases add and customized enable onto current workspace state", async (t) => {
     let origin = "";
     const served = await serveMcpHttp(t, httpHandler(), (request) => {
         const url = new URL(request.url);
@@ -473,13 +621,18 @@ test("OAuth completion rebases its target onto unrelated committed workspace cha
         return new Response("not found", { status: 404 });
     });
     origin = new URL(served.url).origin;
-    const module = Module.init({ env: floor });
+    const module = Module.init({
+        env: {
+            ...floor,
+            PLURNK_MCP_OAUTH: served.url,
+        },
+    });
     const h = harness();
     try {
         await module.setup(h.seam);
         await h.hydrate(1);
         const pending = await h.invoke(1, "workspace.mcp.add", {
-            alias: "oauth",
+            alias: "added-oauth",
             target: served.url,
             options: {
                 authorization: {
@@ -502,16 +655,43 @@ test("OAuth completion rebases its target onto unrelated committed workspace cha
         const state = new URL(pending.authorization.url).searchParams.get("state");
         assert.ok(state);
         const completed = await h.invoke(1, "workspace.mcp.oauth.complete", {
-            alias: "oauth",
+            alias: "added-oauth",
             callbackUrl: `${origin}/callback?code=fixture-code&state=${encodeURIComponent(state)}&iss=${encodeURIComponent(origin)}`,
         }) as { status: number };
         assert.equal(completed.status, 200);
         assert.deepEqual(
             h.snapshots.get(1)?.map(({ decl }) => decl.name).toSorted(),
-            ["local", "oauth"],
+            ["added-oauth", "local"],
         );
         assert.match(JSON.stringify(h.durable.get(1)), /"local"/);
-        assert.match(JSON.stringify(h.durable.get(1)), /"oauth"/);
+        assert.match(JSON.stringify(h.durable.get(1)), /"added-oauth"/);
+
+        await h.hydrate(2);
+        const specialized = await h.invoke(2, "workspace.mcp.enable", {
+            alias: "oauth",
+            options: {
+                authorization: {
+                    type: "oauth",
+                    redirectUrl: `${origin}/callback`,
+                    clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
+                    scope: "mcp:read",
+                },
+                tools: ["echo"],
+                read: ["echo"],
+            },
+        }) as { status: number; authorization: { url: string } };
+        assert.equal(specialized.status, 202);
+        const specializedState = new URL(specialized.authorization.url).searchParams.get("state");
+        assert.ok(specializedState);
+        await h.invoke(2, "workspace.mcp.oauth.complete", {
+            alias: "oauth",
+            callbackUrl: `${origin}/callback?code=fixture-code&state=${encodeURIComponent(specializedState)}&iss=${encodeURIComponent(origin)}`,
+        });
+        assert.deepEqual(h.snapshots.get(2)?.map(({ decl }) => decl.name), ["oauth"]);
+        assert.match(
+            JSON.stringify(h.durable.get(2)),
+            /"kind":"workspace".*"authorization".*"tools":\["echo"\]/u,
+        );
     } finally {
         await module.close();
     }

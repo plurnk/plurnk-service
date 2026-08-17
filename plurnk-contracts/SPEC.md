@@ -13,7 +13,7 @@ is the single code API for those contracts.
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
 | Client-owned interaction contract                                               | `ClientInteractionRequest`, `ClientInteractionProjection`, `ClientInteractionResolution` |
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
-| Workspace MCP server definition and add options                                | `McpServerDefinition`, `McpServerOptions`           |
+| Workspace MCP configuration                                                    | `McpServerDefinition`, `McpServerOptions`, `McpConfigurationOverlay` |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
 | Generated JSON result rendering                                                 | `renderJsonResult`                                  |
 | Local-model rails                                                               | `@plurnk/plurnk-contracts/plurnk.{gemma,qwen}.gbnf` |
@@ -985,6 +985,16 @@ Interactive OAuth always requires a callback URL. Its structurally exclusive
 identity modes are an HTTPS Client ID Metadata Document URL, a pre-registered
 client ID plus symbolic secret, or neither for server-advertised Dynamic Client
 Registration fallback. A definition cannot combine those identity modes.
+
+§mcp-configuration-overlay `McpConfigurationOverlay` is the bounded raw
+configuration projection a client may carry to MCP list and enable actions. It
+contains only string-valued `PLURNK_MCP_*` server declaration variables;
+service-owned connection/request timeouts and default enabledness are excluded.
+The client does not interpret this map. The MCP host composes it over the
+lower normalized definition through the same parser that admits service
+environment declarations, then validates the resulting
+`McpServerDefinition`. Carrying the overlay does not connect, persist, or
+expand credentials by itself.
 
 ## 14. Parse diagnostics
 
