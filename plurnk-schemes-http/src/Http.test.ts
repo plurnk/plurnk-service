@@ -4,8 +4,11 @@
 // subscription lifecycle (open → notifyChunk → close) and the SEND verb
 // dispatch without a network or a database.
 
-import test, { after, beforeEach, mock } from "node:test";
+import test, { after, before, beforeEach, mock } from "node:test";
 import { strict as assert } from "node:assert";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import MaterializerRegistry from "./Materializer.ts";
 import {
     MimetypeClassifier,
     NetworkAddress,
@@ -37,26 +40,24 @@ import Http from "./Http.ts";
 import Guard from "./Guard.ts";
 import WebFetcher, {
     CACHE_VARIANT_HEADER,
+    MATERIALIZER_ENV,
     MATERIALIZER_ID_HEADER,
-    TAVILY_CREDITS_HEADER,
-    TAVILY_REQUEST_ID_HEADER,
 } from "./WebFetcher.ts";
 
-const originalTavilyKey = process.env.TAVILY_API_KEY;
-const originalTavilyDepth = process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH;
-const originalTavilyTimeout = process.env.PLURNK_SCHEMES_HTTP_TAVILY_TIMEOUT_MS;
+const STUB_DIR = resolve(import.meta.dirname, "..", "test", "fixtures", "materializer-stub");
+
+const originalMaterializer = process.env[MATERIALIZER_ENV];
+before(async () => {
+    await MaterializerRegistry.current().discover({
+        packageDirs: [{ dir: STUB_DIR, name: "@plurnk/test-materializer-stub" }],
+    });
+});
 beforeEach(() => {
-    delete process.env.TAVILY_API_KEY;
-    process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH = "basic";
-    process.env.PLURNK_SCHEMES_HTTP_TAVILY_TIMEOUT_MS = "30000";
+    delete process.env[MATERIALIZER_ENV];
 });
 after(() => {
-    if (originalTavilyKey === undefined) delete process.env.TAVILY_API_KEY;
-    else process.env.TAVILY_API_KEY = originalTavilyKey;
-    if (originalTavilyDepth === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH;
-    else process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH = originalTavilyDepth;
-    if (originalTavilyTimeout === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TAVILY_TIMEOUT_MS;
-    else process.env.PLURNK_SCHEMES_HTTP_TAVILY_TIMEOUT_MS = originalTavilyTimeout;
+    if (originalMaterializer === undefined) delete process.env[MATERIALIZER_ENV];
+    else process.env[MATERIALIZER_ENV] = originalMaterializer;
 });
 
 const projectionCaps = (overrides: Partial<ProjectionCaps> = {}): ProjectionCaps => ({
@@ -310,20 +311,22 @@ test("manifest: documentation is loaded verbatim from docs/http.md", async () =>
     assert.match(Http.manifest.documentation ?? "", /^# http\(s\):\/\//);
 });
 
-test("ready validates Tavily depth and timeout without making a provider request", async () => {
-    process.env.TAVILY_API_KEY = "tvly-test";
+test("ready validates the fetch ceiling without making a provider request", async () => {
+    const originalTimeout = process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT;
     let calls = 0;
-    await withFetch((async () => {
-        calls += 1;
-        throw new Error("readiness must not call Tavily");
-    }) as typeof fetch, async () => {
-        process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH = "automatic";
-        await assert.rejects(new Http().ready(), /must be "basic" or "advanced"/);
-        process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH = "basic";
-        process.env.PLURNK_SCHEMES_HTTP_TAVILY_TIMEOUT_MS = "0";
-        await assert.rejects(new Http().ready(), /must be a positive integer/);
-    });
-    assert.equal(calls, 0);
+    try {
+        await withFetch((async () => {
+            calls += 1;
+            throw new Error("readiness must not call the materializer");
+        }) as typeof fetch, async () => {
+            process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = "0";
+            await assert.rejects(new Http().ready(), /must be a positive integer/);
+        });
+        assert.equal(calls, 0);
+    } finally {
+        if (originalTimeout === undefined) delete process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT;
+        else process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = originalTimeout;
+    }
 });
 
 test("exact FIND preparation materializes an exact URL through the checked readable path", async () => {
@@ -343,18 +346,20 @@ test("exact FIND preparation materializes an exact URL through the checked reada
 });
 
 test("exact FIND preparation preserves a provider-only page's unavailable HTML channel", async () => {
-    process.env.TAVILY_API_KEY = "tvly-test";
+    process.env[MATERIALIZER_ENV] = "stub";
+    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
+    __stub.set({
+        eligible: () => "stub-extract:v1",
+        extract: async () => ({
+            outcome: "success",
+            body: "provider body",
+            identity: "stub-extract:v1",
+            evidence: [{ name: "x-plurnk-stub-request-id", value: "req-provider-only" }],
+        }),
+    });
     const { ctx, inspect } = makeCtx();
     const target = urlTarget("https://example.com/provider-only", "/provider-only");
-    await withFetch((async (input) => {
-        if (String(input) === "https://api.tavily.com/extract") {
-            return new Response(JSON.stringify({
-                results: [{ url: target.raw, raw_content: "provider body" }],
-                failed_results: [],
-                request_id: "req-provider-only",
-                usage: { credits: 1 },
-            }), { status: 200, headers: { "content-type": "application/json" } });
-        }
+    await withFetch((async () => {
         throw new Error("origin unavailable");
     }) as typeof fetch, async () => {
         const prepared = await prepareExactFind(new Http(), findStmt(target), ctx);
@@ -1230,30 +1235,38 @@ test("READ: a present empty HTML projection succeeds and retains its HTML eviden
     assert.equal(inspect().closed, null);
 });
 
-test("READ: public HTML uses Tavily Markdown and retains origin, request, and credit evidence", async () => {
-    process.env.TAVILY_API_KEY = "tvly-test";
+test("READ: public HTML uses the materializer Markdown and retains origin, request, and credit evidence ({§http-materializer-plugins})", async () => {
+    process.env[MATERIALIZER_ENV] = "stub";
+    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
+    __stub.set({
+        eligible: () => "stub-extract:v1",
+        extract: async () => ({
+            outcome: "success",
+            body: "# Stub body",
+            identity: "stub-extract:v1",
+            evidence: [
+                { name: "x-plurnk-stub-request-id", value: "req-direct" },
+                { name: "x-plurnk-stub-credits", value: "0.2" },
+            ],
+        }),
+    });
     const projection = projectionCaps({
         async readable() {
-            throw new Error("the local floor must not run after successful Tavily extraction");
+            throw new Error("the local floor must not run after successful materialization");
         },
     });
     const { ctx, inspect } = makeCtx(null, { projection });
     const html = "<html><body><h1>Origin</h1></body></html>";
-    await withFetch((async (input) => String(input) === "https://api.tavily.com/extract"
-        ? new Response(JSON.stringify({
-            results: [{ url: "https://example.com/tavily", raw_content: "# Tavily body" }],
-            request_id: "req-direct",
-            usage: { credits: 0.2 },
-        }), { status: 200, headers: { "content-type": "application/json" } })
-        : new Response(html, { status: 200, statusText: "OK", headers: { "content-type": "application/xhtml+xml" } })) as typeof fetch, async () => {
+    await withFetch((async () =>
+        new Response(html, { status: 200, statusText: "OK", headers: { "content-type": "application/xhtml+xml" } })) as typeof fetch, async () => {
         const result = await prepareRepresentation(new Http(),
-            readStmt(urlTarget("https://example.com/tavily", "/tavily")),
+            readStmt(urlTarget("https://example.com/stub", "/stub")),
             ctx,
         );
         assert.equal(result.status, 200);
     });
     assert.deepEqual(inspect().wrote?.entry.channels.body, {
-        content: "# Tavily body",
+        content: "# Stub body",
         mimetype: "text/markdown",
     });
     assert.deepEqual(inspect().wrote?.entry.channels.html, {
@@ -1262,19 +1275,16 @@ test("READ: public HTML uses Tavily Markdown and retains origin, request, and cr
     });
     const header = inspect().wrote?.entry.channels.header?.content ?? "";
     assert.match(header, /^HTTP 200 OK/m);
-    assert.match(header, /^x-plurnk-materializer-id: tavily-extract:v1:basic$/m);
-    assert.match(header, /^x-plurnk-tavily-request-id: req-direct$/m);
-    assert.match(header, /^x-plurnk-tavily-credits: 0\.2$/m);
+    assert.match(header, /^x-plurnk-materializer-id: stub-extract:v1$/m);
+    assert.match(header, /^x-plurnk-stub-request-id: req-direct$/m);
+    assert.match(header, /^x-plurnk-stub-credits: 0\.2$/m);
 });
 
-test("READ: negotiated origin Markdown is authoritative and acquires auxiliary server HTML without Tavily", async () => {
-    process.env.TAVILY_API_KEY = "tvly-test";
+test("READ: negotiated origin Markdown is authoritative and acquires auxiliary server HTML without the materializer", async () => {
+    process.env[MATERIALIZER_ENV] = "stub";
     const { ctx, inspect } = makeCtx();
     const accepts: string[] = [];
     await withFetch((async (input, init) => {
-        if (String(input) === "https://api.tavily.com/extract") {
-            throw new Error("origin Markdown must bypass Tavily");
-        }
         const accept = new Headers(init?.headers).get("accept") ?? "";
         accepts.push(accept);
         return accept === "text/html"
@@ -1304,21 +1314,26 @@ test("READ: negotiated origin Markdown is authoritative and acquires auxiliary s
 });
 
 for (const selected of ["body", "html", "header"] as const) {
-    test(`preparation with authored #${selected} persists independent Tavily channel outcomes`, async () => {
-        process.env.TAVILY_API_KEY = "tvly-test";
+    test(`preparation with authored #${selected} persists independent materializer channel outcomes`, async () => {
+        process.env[MATERIALIZER_ENV] = "stub";
+        const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
+        __stub.set({
+            eligible: () => "stub-extract:v1",
+            extract: async () => ({
+                outcome: "hard",
+                identity: "stub-extract:v1",
+                evidence: [],
+                problem: { status: 502, code: "stub-authentication-failed", detail: "The stub rejected the configured credentials.", retryable: false },
+            }),
+        });
         const projection = projectionCaps({
             async readable() { throw new Error("hard provider failure must not use the local floor"); },
         });
         const { ctx, inspect } = makeCtx(null, { projection });
-        await withFetch((async (input) => String(input) === "https://api.tavily.com/extract"
-            ? new Response(JSON.stringify({ detail: "invalid key" }), {
-                status: 401,
-                headers: { "content-type": "application/json" },
-            })
-            : new Response("<html><body>Durable source</body></html>", {
-                status: 200,
-                headers: { "content-type": "text/html" },
-            })) as typeof fetch, async () => {
+        await withFetch((async () => new Response("<html><body>Durable source</body></html>", {
+            status: 200,
+            headers: { "content-type": "text/html" },
+        })) as typeof fetch, async () => {
             const result = await prepareRepresentation(new Http(),
                 readStmt(urlTarget(
                     "https://example.com/hard-provider",
@@ -1337,8 +1352,18 @@ for (const selected of ["body", "html", "header"] as const) {
     });
 }
 
-test("READ: recoverable Tavily failure uses the local floor with explicit terminal 203", async () => {
-    process.env.TAVILY_API_KEY = "tvly-test";
+test("READ: recoverable materializer outcome uses the local floor with explicit terminal 203", async () => {
+    process.env[MATERIALIZER_ENV] = "stub";
+    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
+    __stub.set({
+        eligible: () => "stub-extract:v1",
+        extract: async () => ({
+            outcome: "recoverable",
+            reason: "not extractable",
+            identity: "stub-extract:v1",
+            evidence: [{ name: "x-plurnk-stub-request-id", value: "req-recover" }],
+        }),
+    });
     const projection = projectionCaps({
         async readable(_content, mimetype) {
             return {
@@ -1350,16 +1375,10 @@ test("READ: recoverable Tavily failure uses the local floor with explicit termin
         },
     });
     const { ctx, inspect } = makeCtx(null, { projection });
-    await withFetch((async (input) => String(input) === "https://api.tavily.com/extract"
-        ? new Response(JSON.stringify({
-            failed_results: [{ url: "https://example.com/recover", error: "not extractable" }],
-            request_id: "req-recover",
-            usage: { credits: 0 },
-        }), { status: 200, headers: { "content-type": "application/json" } })
-        : new Response("<html><body>Origin</body></html>", {
-            status: 200,
-            headers: { "content-type": "text/html" },
-        })) as typeof fetch, async () => {
+    await withFetch((async () => new Response("<html><body>Origin</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+    })) as typeof fetch, async () => {
         const result = await prepareRepresentation(new Http(),
             readStmt(urlTarget("https://example.com/recover", "/recover")),
             ctx,
@@ -1369,21 +1388,25 @@ test("READ: recoverable Tavily failure uses the local floor with explicit termin
     assert.equal(inspect().wrote?.entry.channels.body?.content, "local floor");
     assert.equal(inspect().wrote?.entry.channels.body?.producerResult?.status, 203);
     const header = inspect().wrote?.entry.channels.header?.content ?? "";
-    assert.match(header, /^x-plurnk-tavily-reason: failed-result$/m);
+    assert.match(header, /^x-plurnk-stub-request-id: req-recover$/m);
 });
 
 for (const selected of ["body", "html"] as const) {
-    test(`READ #${selected}: Tavily body may survive admitted origin transport failure`, async () => {
-        process.env.TAVILY_API_KEY = "tvly-test";
+    test(`READ #${selected}: the materializer body may survive admitted origin transport failure`, async () => {
+        process.env[MATERIALIZER_ENV] = "stub";
+        const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
+        __stub.set({
+            eligible: () => "stub-extract:v1",
+            extract: async () => ({
+                outcome: "success",
+                body: "provider-only body",
+                identity: "stub-extract:v1",
+                evidence: [],
+            }),
+        });
         const { ctx, inspect } = makeCtx();
-        await withFetch((async (input) => {
-            if (String(input) !== "https://api.tavily.com/extract") throw new Error("origin reset");
-            return new Response(JSON.stringify({
-                results: [{ url: "https://example.com/provider-only", raw_content: "provider-only body" }],
-                failed_results: [],
-                request_id: "req-provider-only",
-                usage: { credits: 1 },
-            }), { status: 200, headers: { "content-type": "application/json" } });
+        await withFetch((async () => {
+            throw new Error("origin reset");
         }) as typeof fetch, async () => {
             const result = await prepareRepresentation(new Http(),
                 readStmt(urlTarget(
@@ -1627,7 +1650,6 @@ test("READ: target {…} headers are threaded into the fetch", async () => {
 });
 
 test("READ: headers reach direct fetch on an HTML GET (authed page requests authed)", async () => {
-    process.env.TAVILY_API_KEY = "tvly-test";
     const { ctx, inspect } = makeCtx();
     const target = urlTarget("https://app.x/dash", "/dash", [["Authorization", "Bearer T"]]);
     let seenAuth = "";
@@ -1640,7 +1662,7 @@ test("READ: headers reach direct fetch on an HTML GET (authed page requests auth
         await prepareRepresentation(new Http(), readStmt(target), ctx);
     });
     assert.equal(seenAuth, "Bearer T");
-    assert.deepEqual(seenUrls, ["https://app.x/dash"], "explicit request metadata never authorizes Tavily");
+    assert.deepEqual(seenUrls, ["https://app.x/dash"], "explicit request metadata never authorizes the materializer");
     const header = inspect().storedEntry?.channels.header?.content ?? "";
     assert.match(header, /^x-plurnk-materializer-id: local-projection:v1:ineligible$/m);
 });
@@ -1865,24 +1887,26 @@ test("exact FIND preparation reuses only a derived representation produced by th
     }
 });
 
-test("stale Tavily HTML-page materialization performs full reacquisition without origin validators", async () => {
-    process.env.TAVILY_API_KEY = "tvly-test";
+test("stale materializer HTML-page materialization performs full reacquisition without origin validators", async () => {
+    process.env[MATERIALIZER_ENV] = "stub";
+    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
+    __stub.set({
+        eligible: () => "stub-extract:v1",
+        extract: async () => ({
+            outcome: "success",
+            body: "fresh page",
+            identity: "stub-extract:v1",
+            evidence: [{ name: "x-plurnk-stub-request-id", value: "req-fresh" }],
+        }),
+    });
     const { ctx, inspect } = makeCtx(priorEntry(
         "cached page",
         "text/markdown",
-        `${stampedHeader(500_000, '\ncontent-type: text/html\netag: "v1"')}\n${MATERIALIZER_ID_HEADER}: tavily-extract:v1:basic\n${TAVILY_REQUEST_ID_HEADER}: req-cached\n${TAVILY_CREDITS_HEADER}: 0.2`,
+        `${stampedHeader(500_000, '\ncontent-type: text/html\netag: "v1"')}\n${MATERIALIZER_ID_HEADER}: stub-extract:v1\nx-plurnk-stub-request-id: req-cached`,
         "<html>cached page</html>",
     ));
     let conditional = false;
     const probe = async (input: string | URL | Request, init?: RequestInit) => {
-        if (String(input) === "https://api.tavily.com/extract") {
-            return new Response(JSON.stringify({
-                results: [{ url: "https://example.com/p", raw_content: "fresh page" }],
-                failed_results: [],
-                request_id: "req-fresh",
-                usage: { credits: 1 },
-            }), { status: 200, headers: { "content-type": "application/json" } });
-        }
         conditional = new Headers(init?.headers).has("if-none-match");
         return new Response("<html>fresh page</html>", {
             status: 200,
@@ -1898,12 +1922,22 @@ test("stale Tavily HTML-page materialization performs full reacquisition without
     assert.equal(inspect().storedEntry?.channels.body?.content, "fresh page");
     assert.equal(inspect().storedEntry?.channels.html?.content, "<html>fresh page</html>");
     const header = inspect().storedEntry?.channels.header?.content ?? "";
-    assert.match(header, /^x-plurnk-materializer-id: tavily-extract:v1:basic$/m);
-    assert.match(header, /^x-plurnk-tavily-request-id: req-fresh$/m);
+    assert.match(header, /^x-plurnk-materializer-id: stub-extract:v1$/m);
+    assert.match(header, /^x-plurnk-stub-request-id: req-fresh$/m);
 });
 
-test("TTL: enabling Tavily invalidates a locally materialized HTML body and its validators", async () => {
-    process.env.TAVILY_API_KEY = "tvly-test";
+test("TTL: enabling a materializer invalidates a locally materialized HTML body and its validators", async () => {
+    process.env[MATERIALIZER_ENV] = "stub";
+    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
+    __stub.set({
+        eligible: () => "stub-extract:v1",
+        extract: async () => ({
+            outcome: "success",
+            body: "# Current stub body",
+            identity: "stub-extract:v1",
+            evidence: [],
+        }),
+    });
     const storedHeader = `${stampedHeader(
         1000,
         '\ncontent-type: text/html\netag: "local-v1"',
@@ -1918,13 +1952,6 @@ test("TTL: enabling Tavily invalidates a locally materialized HTML body and its 
     let conditional = false;
     await withTtl("60000", async () => {
         await withFetch((async (input, init) => {
-            if (String(input) === "https://api.tavily.com/extract") {
-                return new Response(JSON.stringify({
-                    results: [{ url: "https://example.com/page", markdown: "# Current Tavily body" }],
-                    request_id: "req-current",
-                    usage: { credits: 1 },
-                }), { status: 200, headers: { "content-type": "application/json" } });
-            }
             originFetched = true;
             conditional = new Headers(init?.headers).has("if-none-match");
             return new Response("<html>current source</html>", {
@@ -1940,7 +1967,7 @@ test("TTL: enabling Tavily invalidates a locally materialized HTML body and its 
     });
     assert.equal(originFetched, true);
     assert.equal(conditional, false, "old validators cannot certify a different materializer route");
-    assert.equal(inspect().storedEntry?.channels.body?.content, "# Current Tavily body");
+    assert.equal(inspect().storedEntry?.channels.body?.content, "# Current stub body");
 });
 
 for (const {

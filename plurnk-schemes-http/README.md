@@ -45,9 +45,10 @@ projection ceiling returns `413`.
 - WebFetcher checks automatic byte targets and redirects; direct HTTP and
   WebSocket retain their explicit-target authority.
 - Generic GETs negotiate origin Markdown first. When the origin returns HTML,
-  configured Tavily produces `body`; otherwise the installed HTML reader is the
-  local route. Recoverable Tavily failures use that same reader as a `203`
-  recovery floor. Hard provider failures do not silently change producers.
+  a selected materializer plugin ({§http-materializer-plugins}) produces
+  `body`; otherwise the installed HTML reader is the local route. Recoverable
+  materializer failures use that same reader as a `203` recovery floor. Hard
+  provider failures do not silently change producers.
 - `body`, `header`, and `html` settle independently. The selected channel
   determines operation success, so raw server source and evidence remain usable
   when body production fails, and a provider body can survive origin transport
@@ -79,11 +80,11 @@ plurnk start
 ```
 
 The shipped `.env.defaults` is the canonical operator configuration registry.
-To enable Tavily Extract for generic public HTML materialization, set
-`TAVILY_API_KEY` in `.env`. Depth and client timeout are controlled by
-`PLURNK_SCHEMES_HTTP_TAVILY_DEPTH` and
-`PLURNK_SCHEMES_HTTP_TAVILY_TIMEOUT_MS`. Without Tavily,
-`@plurnk/plurnk-mimetypes-text-html` supplies the local body.
+To select a page-materializer plugin for generic public HTML materialization,
+install it and set `PLURNK_SCHEMES_HTTP_MATERIALIZER=<id>` in `.env` (the
+`@plurnk/plurnk-schemes-http-tavily` showcase plugin supplies `tavily-extract`).
+Without a selection, `@plurnk/plurnk-mimetypes-text-html` supplies the local
+body.
 
 ## Verify
 

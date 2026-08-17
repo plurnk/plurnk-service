@@ -66,12 +66,13 @@ installed capabilities; they never manufacture package existence.
 family. A package may declare multiple named capabilities inside its one
 family-owned collection.
 
-| `plurnk.kind` | Family-owned names                                       |
-| ------------- | -------------------------------------------------------- |
-| `"exec"`      | `runtimes[]`                                             |
-| `"mimetype"`  | `handlers[]`                                             |
-| `"provider"`  | singular `name`                                          |
-| `"scheme"`    | `schemes[]`; singular `name` is the one-scheme shorthand |
+| `plurnk.kind`     | Family-owned names                                       |
+| ----------------- | -------------------------------------------------------- |
+| `"exec"`          | `runtimes[]`                                             |
+| `"mimetype"`      | `handlers[]`                                             |
+| `"provider"`      | singular `name`                                          |
+| `"scheme"`        | `schemes[]`; singular `name` is the one-scheme shorthand |
+| `"http-materializer"` | `materializers[]` ({§http-materializer-plugins})     |
 
 Coordinated capabilities spanning families use explicit daemon-module
 composition ({§module-lifecycle}); a multi-kind manifest is not a parallel

@@ -35,8 +35,6 @@ import WebFetcher, {
     CACHE_VARIANT_HEADER,
     MATERIALIZER_ID_HEADER,
     PROJECTION_ID_HEADER,
-    TAVILY_CREDITS_HEADER,
-    TAVILY_REQUEST_ID_HEADER,
     cacheVariantEvidence,
     classifyCacheVariant,
     WebMaterializationError,
@@ -1082,9 +1080,9 @@ export default class Http implements SchemeHandler {
         const isHtml = MimetypeClassifier.isHtml(sourceMimetype);
         const materializerIdentity = Http.#materializerIdentity(header);
         if (materializerIdentity !== undefined) {
-            if (!WebFetcher.materializerCurrent(materializerIdentity)) return false;
-            if (materializerIdentity.startsWith("tavily-extract:")
-                || materializerIdentity === "origin-markdown:v1") return true;
+            // {§http-materializer-plugins} — a stored body produced by the current
+            // configured materializer (or the built-in producers) is current.
+            return WebFetcher.materializerCurrent(materializerIdentity);
         }
         if (isHtml && materializerIdentity === undefined) return false;
         const storedIdentity = Http.#projectionIdentity(header);
@@ -1111,15 +1109,33 @@ export default class Http implements SchemeHandler {
             ...retained.map(({ name, value }) => [name, value] as const),
             ...updates,
         ];
-        const packageEvidence = [
-            MATERIALIZER_ID_HEADER,
-            PROJECTION_ID_HEADER,
-            TAVILY_REQUEST_ID_HEADER,
-            TAVILY_CREDITS_HEADER,
-        ].flatMap((field) => {
+        // Materializer/provider evidence headers are plugin-owned (unknown names);
+        // a 304 does not re-materialize the stored body, so its evidence is
+        // retained verbatim beside the rebuilt framework fields. Framework-owned
+        // x-plurnk-* fields (cache-variant, materializer/projection ids, method,
+        // fetched-at stamp) are rebuilt or omitted, never duplicated stale.
+        const rebuilt = [MATERIALIZER_ID_HEADER, PROJECTION_ID_HEADER].flatMap((field) => {
             const value = Http.#packageHeaderValue(header, field);
             return value === undefined ? [] : [`${field}: ${value}`];
         });
+        const frameworkOwned = new Set([
+            CACHE_VARIANT_HEADER.toLowerCase(),
+            MATERIALIZER_ID_HEADER.toLowerCase(),
+            PROJECTION_ID_HEADER.toLowerCase(),
+            REQUEST_METHOD.toLowerCase(),
+            FETCHED_AT.toLowerCase(),
+        ]);
+        const packageEvidence = [
+            ...rebuilt,
+            ...lines.slice(1).filter((line) => {
+                const colon = line.indexOf(":");
+                if (colon <= 0) return false;
+                const name = line.slice(0, colon).toLowerCase();
+                return name.startsWith("x-plurnk-")
+                    && !frameworkOwned.has(name)
+                    && !updatedNames.has(name);
+            }),
+        ];
         return [
             lines[0] ?? "HTTP 200 OK",
             ...retained.map(({ line }) => line),

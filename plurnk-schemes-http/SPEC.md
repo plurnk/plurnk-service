@@ -1,8 +1,9 @@
 # plurnk-schemes-http — Specification
 
 This package owns the `http(s)://` request/response scheme, the `ws(s)://`
-full-duplex scheme, plus automatic entry-acquisition, Tavily Extract, and local
-HTML projection foundations. Both handlers implement the DB-free `SchemeCtx` author contract.
+full-duplex scheme, plus automatic entry-acquisition, pluggable page
+materializers, and the local HTML projection foundation. Both handlers implement
+the DB-free `SchemeCtx` author contract.
 
 ## §http-manifest §1 HTTP manifest
 
@@ -66,13 +67,13 @@ flowchart TD
     origin -->|text/markdown| markdown["Use origin Markdown as body<br/>and request an HTML variant"]
     origin -->|server HTML| source["Retain exact server HTML"]
     origin -->|transport unavailable<br/>after public admission| noSource["No HTML source"]
-    source --> eligible{"Generic public request<br/>with Tavily configured?"}
+    source --> eligible{"Generic public request<br/>with a materializer selected?"}
     noSource --> eligible
     eligible -->|no| local["Installed HTML projection"]
-    eligible -->|yes| tavily["Tavily Extract Markdown"]
-    tavily -->|success| providerBody["Tavily body"]
-    tavily -->|recoverable failure<br/>and source exists| recovery["Local projection; body 203"]
-    tavily -->|hard failure or<br/>no recovery source| bodyError["Body errored"]
+    eligible -->|yes| mat["Materializer Markdown"]
+    mat -->|success| providerBody["Materializer body"]
+    mat -->|recoverable failure<br/>and source exists| recovery["Local projection; body 203"]
+    mat -->|hard failure or<br/>no recovery source| bodyError["Body errored"]
     local -->|present, including empty| localBody["Local body"]
     local -->|absent or no source| bodyError
     markdown --> settle["Write complete canonical channels<br/>and durable producer results"]
@@ -93,7 +94,7 @@ but cold and warm representations pass through the same core projection.
 | Response                                | `body`                                                   | Auxiliary materialization                                 | Completion                                  |
 | --------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------- |
 | Negotiated origin Markdown              | Exact origin Markdown                                    | Independently acquired server source in `html` when found | Static representation, then core projection |
-| HTML-page production                    | Tavily Markdown, local Markdown, or independent error    | Exact server source in `html` when origin supplied it     | Static representation, then core projection |
+| HTML-page production                    | Materializer Markdown, local Markdown, or independent error | Exact server source in `html` when origin supplied it     | Static representation, then core projection |
 | `text/event-stream`                     | One `data` value plus newline per `text/plain` chunk     | Initial response in `header`                              | `102`; origin close settles subscription    |
 | No response body                        | Present empty text                                       | Response and package metadata in `header`                 | Static representation; body READ is `204`   |
 | Origin HTTP `4xx`/`5xx`                 | Preserve available origin or independently produced text | Exact response evidence; origin-backed channels errored   | Selected channel's durable outcome          |
@@ -138,52 +139,51 @@ mutation responses retain incremental streaming.
 | Configured binary with reader               | Apply the bounded byte projection           | Derived Unicode plus source type and identity                       |
 | Configured binary without reader            | Cancel without retaining bytes              | `null`; the consumer applies its absence policy                    |
 | Binary input exceeds the common bound       | Cancel and preserve the typed cause         | `WebMaterializationError` caused by `ProjectionInputLimitError`     |
-| Negotiated origin `text/markdown`           | Accept it without Tavily                    | Exact Markdown in `body`; independently requested source in `html`  |
-| Eligible HTML with Tavily configured        | Use Tavily as the body producer             | Tavily Markdown in `body`; origin server source in `html`           |
-| Ineligible HTML or Tavily not configured    | Use the installed HTML projection           | Local Markdown in `body`; origin server source in `html`            |
-| Recoverable Tavily failure with source HTML | Use the installed projection as recovery    | Local Markdown in `body` with terminal `203`; source in `html`       |
-| Hard Tavily failure                         | Preserve evidence; do not run local recovery | `body` errored; independently successful `html`/`header` survive    |
-| Tavily success after origin transport loss  | Preserve provider body and origin failure   | `body` static; `html` errored                                       |
+| Negotiated origin `text/markdown`           | Accept it without the materializer          | Exact Markdown in `body`; independently requested source in `html`  |
+| Eligible HTML with a materializer selected  | Use the materializer as the body producer   | Materializer Markdown in `body`; origin server source in `html`     |
+| Ineligible HTML or no materializer selected | Use the installed HTML projection           | Local Markdown in `body`; origin server source in `html`            |
+| Recoverable materializer failure with HTML  | Use the installed projection as recovery    | Local Markdown in `body` with terminal `203`; source in `html`       |
+| Hard materializer failure                   | Preserve evidence; do not run local recovery | `body` errored; independently successful `html`/`header` survive    |
+| Materializer success after origin loss      | Preserve provider body and origin failure   | `body` static; `html` errored                                       |
 | Projection implementation throws            | Stop and preserve the cause                 | `WebMaterializationError` with stage `projection`                   |
 
 A projection object is present even when its content is `""`; only `null`
 denotes absence. A materialization exception retains its original `cause`; it
 never enters the absence channel.
 
-#### §tavily-extract Tavily Extract boundary
+#### §http-materializer-plugins Materializer plugins
 
-Tavily is eligible only for a credential-free generic request whose target has
-been admitted as public. Authored request metadata—including an authored
-`Accept` field—makes the request ineligible. The package-generated Markdown
-negotiation, browser-compatible `User-Agent`, and conditional cache fields are
-transport mechanics, not authored metadata. No target headers or origin
-credentials cross the provider boundary.
+`PLURNK_SCHEMES_HTTP_MATERIALIZER` selects one discovered `http-materializer`
+plugin by id; unset means the installed HTML projection is the only body
+producer. A materializer package declares
+`plurnk: { kind: "http-materializer", materializers: [{ id, module }] }` and
+exports one `HttpMaterializer` per entry under the executor family's
+discovery, trust, and one-flat-id-namespace rules ({§plugin-discovery}). The
+selected materializer is consulted only for a credential-free generic request
+whose target has been admitted as public. Authored request metadata—including
+an authored `Accept` field—makes the request ineligible. The package-generated
+Markdown negotiation, browser-compatible `User-Agent`, and conditional cache
+fields are transport mechanics, not authored metadata. No target headers or
+origin credentials cross the materializer boundary.
 
 When no `Accept` is authored, origin acquisition offers
 `text/markdown, text/html;q=0.9, */*;q=0.1`. An origin `text/markdown`
-representation wins and Tavily is skipped; a second origin request with
-`Accept: text/html` may populate `html`. An authored `Accept` value is sent
-unchanged and makes any returned HTML use the local projection route.
+representation wins and the materializer is skipped; a second origin request
+with `Accept: text/html` may populate `html`. An authored `Accept` value is
+sent unchanged and makes any returned HTML use the local projection route.
 
-One provider request is `POST https://api.tavily.com/extract` with bearer
-authentication and exactly one URL, configured `basic` or `advanced` depth,
-`format: "markdown"`, and `include_usage: true`. A package-owned abort timeout
-bounds the call. Success requires Markdown plus `request_id` and
-`usage.credits`; those facts remain durable in `header`.
+The materializer's `eligible(url)` returns its identity string when it will
+serve the URL (its credentials and supported targets are its own); `extract`
+returns `success` (its sanitized Markdown body plus its own evidence headers),
+`recoverable` (local projection fallback with the materializer's evidence and
+terminal `203`), or `hard` (an exact materializer-owned Problem; no local
+recovery). A materializer `extract` throw is the materialization failure, never
+a silent fallback. A selected id with no installed provider fails hard rather
+than degrading silently.
 
-| Provider outcome                         | Classification | Body behavior when server HTML exists                  |
-| ---------------------------------------- | -------------- | ------------------------------------------------------ |
-| Success with required evidence           | Success        | Use Tavily Markdown                                    |
-| Caller cancellation                      | Cancelled      | Return exact `499`; no recovery                        |
-| Client timeout or transport failure      | Recoverable    | Local projection, terminal `203`                       |
-| `429`, `5xx`, or `failed_results`        | Recoverable    | Local projection, terminal `203`                       |
-| `401` or `403`                           | Hard           | `tavily-authentication-failed`; no local projection    |
-| Other `4xx`                              | Hard           | `tavily-provider-rejected`; no local projection        |
-| Malformed success or missing evidence    | Hard           | `tavily-invalid-response`; no local projection         |
-
-Without server HTML, no local recovery input exists. A Tavily success can still
-close `body`, but every Tavily failure remains the body failure and `html`
-closes errored.
+Without server HTML, no local recovery input exists. A materializer success can
+still close `body`, but every materializer failure remains the body failure and
+`html` closes errored.
 
 #### §http-channel-outcomes Channel outcomes
 
@@ -201,7 +201,7 @@ representation. A missing source variant is an explicit empty `errored`
 channel, never an absent fact that later cache use can reinterpret as successful
 empty content. A direct non-success HTTP response likewise remains available as
 evidence, while each origin-backed channel carries an exact
-`http-response-status` producer Problem. A Tavily-produced body and the
+`http-response-status` producer Problem. A materializer-produced body and the
 acquisition `header` remain independent of an unavailable origin source.
 
 ## §http-status §4 HTTP status mapping
@@ -214,7 +214,7 @@ acquisition `header` remain independent of an unavailable origin source.
 | Selected origin-backed channel received HTTP `4xx`/`5xx`      | Exact durable `http-response-status` Problem             |
 | Selected HTML-page channel fails                              | That channel's exact durable producer Problem            |
 | Local HTML projection is absent                               | `422` (`no-readable-projection`)                         |
-| Recoverable Tavily failure uses local projection              | Readable body with durable status `203`                  |
+| Recoverable materializer failure uses local projection        | Readable body with durable status `203`                  |
 | Finite textual or projected-binary response                   | Universal READ result                                    |
 | Finite empty text response                                    | `204`                                                    |
 | Finite binary response has no readable projection             | `415` (`binary-response-unsupported`)                    |
@@ -235,8 +235,8 @@ acquisition `header` remain independent of an unavailable origin source.
 An HTTP error status is still a successfully acquired direct response: its
 content and response evidence are preserved, and origin-backed channels carry
 that exact status as durable producer evidence. HTML still enters page
-production, so a successful Tavily `body` can remain readable while the origin
-`html` records the HTTP error. Automatic WebFetcher acquisition instead treats
+production, so a successful materializer `body` can remain readable while the
+origin `html` records the HTTP error. Automatic WebFetcher acquisition instead treats
 a non-2xx response as unavailable. Handler failures use RFC 9457 Problem Details.
 Caught direct-acquisition diagnostics are bounded by
 `PLURNK_SCHEMES_HTTP_ERROR_DETAIL_LIMIT` in model-facing detail while complete
@@ -260,7 +260,7 @@ handler does not sniff or guess unknown bytes.
 | ----------------- | --------------------------------------------------------------------------------------------------------- |
 | Platform          | Node ≥26 native fetch, streams, abort signals, decoding, DNS, and `WebSocket`                             |
 | SSE               | `eventsource-parser` for bounded WHATWG event-stream framing                                              |
-| Tavily Extract    | Optional Tavily Extract API primitive when `TAVILY_API_KEY` is present                                    |
+| Materializer plugins | Discovered `http-materializer` packages selected by `PLURNK_SCHEMES_HTTP_MATERIALIZER` {§http-materializer-plugins} |
 
 ### §http-config Operator configuration
 
@@ -268,9 +268,7 @@ handler does not sniff or guess unknown bytes.
 | --------------------- | -------------------------------------------------------------------------------------------------------- |
 | Canonical registry    | Shipped `.env.defaults`; the daemon assembles it as a set-if-unset floor {§operator-config-env-defaults} |
 | Required values       | Missing or invalid required values fail at readiness/owning read; code carries no hidden fallback        |
-| Tavily API Key        | Optional `# TAVILY_API_KEY=`; enables Tavily Extract for eligible public HTML                            |
-| Tavily Extract Depth  | `PLURNK_SCHEMES_HTTP_TAVILY_DEPTH=basic`; only `basic` or `advanced`                                     |
-| Tavily client timeout | Positive `PLURNK_SCHEMES_HTTP_TAVILY_TIMEOUT_MS=30000`                                                   |
+| Materializer selection | `PLURNK_SCHEMES_HTTP_MATERIALIZER=` names a discovered materializer id; unset = local projection only |
 
 ### §automatic-fetch-check Automatic acquisition URL check
 
@@ -279,7 +277,7 @@ acquisition, it accepts credential-free HTTP(S) targets only when every
 resolved address is ordinary globally reachable unicast, and repeats the check
 before every manually followed redirect. A refused or unresolvable target is
 the ordinary unavailable `null` result. A transport failure after public
-admission may still enter Tavily page production.
+admission may still enter materializer page production.
 
 Direct HTTP operations and WebSocket connections do not use this check. Loopback,
 private, and link-local destinations are therefore valid explicit targets.
@@ -296,12 +294,12 @@ check therefore makes no DNS-rebinding or total-egress claim.
 
 | Concern        | Contract                                                                                                   |
 | -------------- | ---------------------------------------------------------------------------------------------------------- |
-| Direct gate    | Explicit targets use native origin transport; only a generic public request grants Tavily authority          |
+| Direct gate    | Explicit targets use native origin transport; only a generic public request grants materializer authority          |
 | Automatic gate | Target and redirects require public admission; accepted generic HTML follows the same page producer       |
-| Body owner     | Origin Markdown wins; otherwise configured eligible Tavily is structural, with one local projection floor  |
+| Body owner     | Origin Markdown wins; otherwise the configured eligible materializer is structural, with one local projection floor  |
 | Source owner   | `html` is exact server-source HTML; it is never provider-generated or DOM-generated                         |
 | Projection     | A present projection, including `""`, becomes `body`; `null` alone means absence                           |
-| Cancellation   | One caller signal spans origin, auxiliary origin, projection, and Tavily work                              |
+| Cancellation   | One caller signal spans origin, auxiliary origin, projection, and materializer work                              |
 
 ### §host-rewrite Acquisition target rewrite
 
@@ -317,7 +315,7 @@ are checked under {§automatic-fetch-check} only when `WebFetcher` acquires them
 Acquired responses append package-owned `x-plurnk-request-method`,
 `x-plurnk-fetched-at`, and `x-plurnk-cache-variant` fields after origin headers.
 Page bodies append `x-plurnk-materializer-id`; local projections append
-`x-plurnk-projection-id`; Tavily appends status, route, request, usage, timing,
+`x-plurnk-projection-id`; The materializer appends its own evidence headers;
 and bounded failure evidence. Only package metadata after the acquisition stamp
 is authoritative.
 Plurnk stores one representation per canonical URL rather than a variant set:
@@ -388,16 +386,16 @@ different source representation.
 
 A stored derived representation requires the current projection identity. A
 stored page body also requires its current route: negotiated origin Markdown,
-local projection while Tavily is unconfigured, metadata-ineligible local
-projection, configured Tavily depth/version, or the corresponding recoverable
-local-fallback route. Enabling Tavily or changing depth invalidates the affected
-route.
+local projection while no materializer is selected, metadata-ineligible local
+projection, the configured materializer id, or the corresponding recoverable
+local-fallback route. Selecting or changing the materializer invalidates the
+affected route.
 
 Once a page representation leaves its fresh window, Plurnk performs complete
 reacquisition without old origin validators. Origin `304` can certify origin
-bytes, but it cannot certify a composite that may also contain a fresh Tavily
-extraction, a newly negotiated Markdown representation, or an independently
-acquired HTML variant. Projection or materializer mismatch likewise invalidates
+bytes, but it cannot certify a composite that may also contain a fresh
+materializer extraction, a newly negotiated Markdown representation, or an
+independently acquired HTML variant. Projection or materializer mismatch likewise invalidates
 body, TTL, and validators together.
 
 POST, PUT, and DELETE responses retain their method marker but cannot satisfy a
@@ -435,7 +433,8 @@ operation is cancelled.
 Top-level `null` is an automatic-acquisition liveness value rather than a thrown
 failure. Caller cancellation is not liveness: a pre-aborted caller fails before
 acquisition and a caller abort wins with its exact reason. Package-owned origin
-and Tavily timeouts are ordinary classified acquisition outcomes. WebFetcher
+timeouts are ordinary classified acquisition outcomes; materializer timeouts
+are the materializer's own classified outcomes. WebFetcher
 owns no entry identity, registry selection, selected-channel policy, or query
 policy; its consumers supply those boundaries and the projection capability.
 

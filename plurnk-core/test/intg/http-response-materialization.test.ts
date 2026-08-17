@@ -7,6 +7,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser, type ReadStatement, type UrlPath } from "@plurnk/plurnk-contracts";
 import Http from "@plurnk/plurnk-schemes-http";
+import MaterializerRegistry from "@plurnk/plurnk-schemes-http/materializer";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
     openMigrated,
     insertWorkspace,
@@ -216,21 +219,37 @@ test("a direct textual response durably preserves Fetch UTF-8 normalization and 
 test("{§http-channel-outcomes}: a hard page-body failure preserves readable server HTML", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
-    const originalKey = process.env.TAVILY_API_KEY;
+    const originalMaterializer = process.env.PLURNK_SCHEMES_HTTP_MATERIALIZER;
     const http = new Http();
     try {
-        process.env.TAVILY_API_KEY = "tvly-composed-test";
+        process.env.PLURNK_SCHEMES_HTTP_MATERIALIZER = "stub";
+        const fixture = resolve(import.meta.dirname, "../../../plurnk-schemes-http/test/fixtures/materializer-stub");
+        await MaterializerRegistry.current().discover({
+            packageDirs: [{ dir: fixture, name: "@plurnk/test-materializer-stub" }],
+        });
+        const { __stub } = (await import(pathToFileURL(resolve(fixture, "materializer.js")).href)) as unknown as {
+            __stub: { set: (b: unknown) => void };
+        };
+        __stub.set({
+            eligible: () => "stub-extract:v1",
+            extract: async () => ({
+                outcome: "hard",
+                identity: "stub-extract:v1",
+                evidence: [],
+                problem: {
+                    status: 502,
+                    code: "stub-authentication-failed",
+                    detail: "The stub rejected the configured credentials.",
+                    retryable: false,
+                },
+            }),
+        });
         const source = "<html><body><h1>Preserved source</h1></body></html>";
-        globalThis.fetch = async (input) => String(input) === "https://api.tavily.com/extract"
-            ? new Response(JSON.stringify({ detail: "invalid test key" }), {
-                status: 401,
-                headers: { "content-type": "application/json" },
-            })
-            : new Response(source, {
-                status: 200,
-                statusText: "OK",
-                headers: { "content-type": "text/html" },
-            });
+        globalThis.fetch = async () => new Response(source, {
+            status: 200,
+            statusText: "OK",
+            headers: { "content-type": "text/html" },
+        });
         const workspaceId = await insertWorkspace(db, `http-channel-outcomes-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
@@ -241,7 +260,7 @@ test("{§http-channel-outcomes}: a hard page-body failure preserves readable ser
         assert.equal(acquired.status, 502);
         assert.equal(
             acquired.problem?.type,
-            "https://problems.plurnk.dev/scheme/http/tavily-authentication-failed",
+            "https://problems.plurnk.dev/scheme/http/stub-authentication-failed",
         );
 
         const stored = await handlerCtx.entries.read(pathname);
@@ -266,8 +285,8 @@ test("{§http-channel-outcomes}: a hard page-body failure preserves readable ser
         assert.equal(reread.mimetype, "text/markdown", "scoped text follows the universal text-primitive contract");
     } finally {
         globalThis.fetch = originalFetch;
-        if (originalKey === undefined) delete process.env.TAVILY_API_KEY;
-        else process.env.TAVILY_API_KEY = originalKey;
+        if (originalMaterializer === undefined) delete process.env.PLURNK_SCHEMES_HTTP_MATERIALIZER;
+        else process.env.PLURNK_SCHEMES_HTTP_MATERIALIZER = originalMaterializer;
         await db.close();
     }
 });

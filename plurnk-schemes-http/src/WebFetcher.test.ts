@@ -1,30 +1,40 @@
 // WebFetcher contract coverage {§prefetch}. Hermetic: mocked global fetch,
 // and IP literals or explicit guard mocks (no DNS). Env from --env-file=.env.defaults.
 
-import test, { after, beforeEach } from "node:test";
+import test, { after, before, beforeEach } from "node:test";
 import { strict as assert } from "node:assert";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import Guard from "./Guard.ts";
+import MaterializerRegistry from "./Materializer.ts";
 import WebFetcher, {
     MARKDOWN_ACCEPT,
+    MATERIALIZER_ENV,
     MATERIALIZER_ID_HEADER,
-    TAVILY_REASON_HEADER,
     WebMaterializationError,
 } from "./WebFetcher.ts";
 import { MimetypeClassifier, type ProjectionCaps } from "@plurnk/plurnk-schemes";
 
 const PUB = "https://93.184.216.34/x";
+const STUB_DIR = resolve(import.meta.dirname, "..", "test", "fixtures", "materializer-stub");
 
-const originalApiKey = process.env.TAVILY_API_KEY;
-const originalDepth = process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH;
-beforeEach(() => {
-    delete process.env.TAVILY_API_KEY;
-    process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH = "basic";
+const originalMaterializer = process.env[MATERIALIZER_ENV];
+before(async () => {
+    // Hermetic discovery: the stub fixture is the only materializer package the
+    // registry sees; the singleton scan caches across the file.
+    await MaterializerRegistry.current().discover({
+        packageDirs: [{ dir: STUB_DIR, name: "@plurnk/test-materializer-stub" }],
+    });
+});
+beforeEach(async () => {
+    delete process.env[MATERIALIZER_ENV];
+    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void; calls: unknown[] } };
+    __stub.set({ eligible: () => null, extract: async () => { throw new Error("stub: no behavior"); } });
+    __stub.calls.length = 0;
 });
 after(() => {
-    if (originalApiKey === undefined) delete process.env.TAVILY_API_KEY;
-    else process.env.TAVILY_API_KEY = originalApiKey;
-    if (originalDepth === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH;
-    else process.env.PLURNK_SCHEMES_HTTP_TAVILY_DEPTH = originalDepth;
+    if (originalMaterializer === undefined) delete process.env[MATERIALIZER_ENV];
+    else process.env[MATERIALIZER_ENV] = originalMaterializer;
 });
 
 const projectionCaps = (overrides: Partial<ProjectionCaps> = {}): ProjectionCaps => ({
@@ -104,8 +114,7 @@ test("GitHub blob acquisition uses one source target for byte fetch", async (t) 
     assert.deepEqual(seen, [raw]);
 });
 
-test("HTML → byte response materializes local floor projection when Tavily is unconfigured", async () => {
-    delete process.env.TAVILY_API_KEY;
+test("HTML → byte response materializes local floor projection when no materializer is selected", async () => {
     const projection = projectionCaps({
         async readable(content, mimetype) {
             return {
@@ -131,37 +140,49 @@ test("HTML → byte response materializes local floor projection when Tavily is 
     });
 });
 
-test("HTML → materializes Tavily Extract Markdown when TAVILY_API_KEY is configured", async () => {
-    process.env.TAVILY_API_KEY = "tvly-test";
+test("HTML → materializes the configured materializer's Markdown ({§http-materializer-plugins})", async () => {
+    process.env[MATERIALIZER_ENV] = "stub";
+    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
+    __stub.set({
+        eligible: () => "stub-extract:v1",
+        extract: async () => ({
+            outcome: "success",
+            body: "# Stub Extracted Page",
+            identity: "stub-extract:v1",
+            evidence: [
+                { name: "x-plurnk-stub-request-id", value: "req-777" },
+                { name: "x-plurnk-stub-credits", value: "0.2" },
+            ],
+        }),
+    });
     const projection = projectionCaps({
         async readable() {
             return { content: "local floor", mimetype: "text/markdown", sourceMimetype: "text/html", projectionIdentity: "floor" };
         },
     });
-    await withFetch((async (url, init) => {
-        if (String(url) === "https://api.tavily.com/extract") {
-            return resp(JSON.stringify({
-                results: [{ url: PUB, markdown: "# Tavily Extracted Page" }],
-                request_id: "req-777",
-                usage: { credits: 0.2 },
-            }), 200, { "content-type": "application/json" });
-        }
-        return resp("<html><body>Original</body></html>", 200, { "content-type": "text/html" });
-    }) as typeof fetch, async () => {
+    await withFetch((async () =>
+        resp("<html><body>Original</body></html>", 200, { "content-type": "text/html" })) as typeof fetch, async () => {
         const fetched = await new WebFetcher().fetch(PUB);
         assert.ok(fetched !== null);
         const materialized = await WebFetcher.materialize(fetched, projection);
-        assert.equal(materialized?.body?.content, "# Tavily Extracted Page");
+        assert.equal(materialized?.body?.content, "# Stub Extracted Page");
         assert.equal(materialized?.body?.mimetype, "text/markdown");
         assert.equal(materialized?.html?.content, "<html><body>Original</body></html>");
-        assert.match(materialized?.header ?? "", /x-plurnk-materializer-id: tavily-extract:v1:basic/);
-        assert.match(materialized?.header ?? "", /x-plurnk-tavily-request-id: req-777/);
-        assert.match(materialized?.header ?? "", /x-plurnk-tavily-credits: 0\.2/);
+        assert.match(materialized?.header ?? "", /x-plurnk-materializer-id: stub-extract:v1/);
+        assert.match(materialized?.header ?? "", /x-plurnk-stub-request-id: req-777/);
+        assert.match(materialized?.header ?? "", /x-plurnk-stub-credits: 0\.2/);
     });
 });
 
-test("supplied HTML never grants Tavily authority", async () => {
-    process.env.TAVILY_API_KEY = "tvly-test";
+test("supplied HTML never consults the materializer", async () => {
+    process.env[MATERIALIZER_ENV] = "stub";
+    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void; calls: unknown[] } };
+    __stub.set({
+        eligible: () => "stub-extract:v1",
+        extract: async () => {
+            throw new Error("supplied content must not spend or refetch");
+        },
+    });
     const projection = projectionCaps({
         async readable(_content, mimetype) {
             return {
@@ -182,16 +203,30 @@ test("supplied HTML never grants Tavily authority", async () => {
             body: "<html><body>Supplied</body></html>",
             mimetype: "text/html",
             header: "HTTP 200 OK",
-            allowTavily: false,
+            allowConfiguredMaterializer: false,
         }, projection);
         assert.equal(materialized?.body?.content, "local supplied content");
         assert.match(materialized?.header ?? "", /x-plurnk-materializer-id: local-projection:v1:ineligible/);
     });
     assert.equal(calls, 0);
+    assert.equal(__stub.calls.length, 0, "the materializer was never consulted");
 });
 
-test("Tavily failure uses an identified local floor", async () => {
-    process.env.TAVILY_API_KEY = "tvly-test";
+test("a recoverable materializer outcome uses an identified local floor", async () => {
+    process.env[MATERIALIZER_ENV] = "stub";
+    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
+    __stub.set({
+        eligible: () => "stub-extract:v1",
+        extract: async () => ({
+            outcome: "recoverable",
+            reason: "provider unavailable",
+            identity: "stub-extract:v1",
+            evidence: [
+                { name: "x-plurnk-stub-request-id", value: "req-fallback" },
+                { name: "x-plurnk-stub-credits", value: "0.4" },
+            ],
+        }),
+    });
     const projection = projectionCaps({
         async readable(_content, mimetype) {
             return {
@@ -202,32 +237,45 @@ test("Tavily failure uses an identified local floor", async () => {
             };
         },
     });
-    await withFetch((async () => resp(JSON.stringify({
-        failed_results: [{ url: PUB, error: "provider unavailable" }],
-        request_id: "req-fallback",
-        usage: { credits: 0.4 },
-    }), 200, { "content-type": "application/json" })) as typeof fetch, async () => {
+    await withFetch((async () => resp("<html><body>Origin</body></html>", 200, {
+        "content-type": "text/html",
+    })) as typeof fetch, async () => {
         const materialized = await WebFetcher.materialize({
             url: PUB,
             body: "<html><body>Origin</body></html>",
             mimetype: "text/html",
             header: "HTTP 200 OK",
-            allowTavily: true,
+            allowConfiguredMaterializer: true,
         }, projection);
         assert.equal(materialized?.body?.content, "local fallback");
         assert.equal(materialized?.bodyOutcome.status, 203);
         assert.match(
             materialized?.header ?? "",
-            /x-plurnk-materializer-id: local-fallback:tavily-extract:v1:basic/,
+            /x-plurnk-materializer-id: local-fallback:stub-extract:v1/,
         );
-        assert.match(materialized?.header ?? "", /x-plurnk-tavily-request-id: req-fallback/);
-        assert.match(materialized?.header ?? "", /x-plurnk-tavily-credits: 0\.4/);
+        assert.match(materialized?.header ?? "", /x-plurnk-stub-request-id: req-fallback/);
+        assert.match(materialized?.header ?? "", /x-plurnk-stub-credits: 0\.4/);
         assert.match(materialized?.header ?? "", /x-plurnk-projection-id: floor-v1/);
     });
 });
 
-test("a hard Tavily authentication failure preserves HTML but does not bless a local body", async () => {
-    process.env.TAVILY_API_KEY = "tvly-test";
+test("a hard materializer failure preserves HTML but does not bless a local body", async () => {
+    process.env[MATERIALIZER_ENV] = "stub";
+    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
+    __stub.set({
+        eligible: () => "stub-extract:v1",
+        extract: async () => ({
+            outcome: "hard",
+            identity: "stub-extract:v1",
+            evidence: [{ name: "x-plurnk-stub-reason", value: "authentication" }],
+            problem: {
+                status: 502,
+                code: "stub-authentication-failed",
+                detail: "The stub rejected the configured credentials.",
+                retryable: false,
+            },
+        }),
+    });
     let projectionCalls = 0;
     const projection = projectionCaps({
         async readable() {
@@ -235,52 +283,60 @@ test("a hard Tavily authentication failure preserves HTML but does not bless a l
             return { content: "must not publish", mimetype: "text/markdown", sourceMimetype: "text/html", projectionIdentity: "floor" };
         },
     });
-    await withFetch((async () => resp(JSON.stringify({ detail: "invalid key" }), 401, {
-        "content-type": "application/json",
+    await withFetch((async () => resp("<html><body>Origin</body></html>", 200, {
+        "content-type": "text/html",
     })) as typeof fetch, async () => {
         const materialized = await WebFetcher.materialize({
             url: PUB,
             body: "<html><body>Origin</body></html>",
             mimetype: "text/html",
             header: "HTTP 200 OK",
-            allowTavily: true,
+            allowConfiguredMaterializer: true,
         }, projection);
         assert.equal(materialized?.body, undefined);
         assert.equal(materialized?.html?.content, "<html><body>Origin</body></html>");
-        assert.equal(materialized?.bodyOutcome.failure?.code, "tavily-authentication-failed");
+        assert.equal(materialized?.bodyOutcome.failure?.code, "stub-authentication-failed");
         assert.equal(materialized?.htmlOutcome?.status, 200);
-        assert.match(materialized?.header ?? "", new RegExp(`^${TAVILY_REASON_HEADER}: authentication$`, "m"));
+        assert.match(materialized?.header ?? "", new RegExp(`^x-plurnk-stub-reason: authentication$`, "m"));
     });
     assert.equal(projectionCalls, 0);
 });
 
-test("a malformed successful Tavily payload is a hard provider-boundary failure", async () => {
-    process.env.TAVILY_API_KEY = "tvly-test";
-    await withFetch((async () => resp(JSON.stringify({
-        results: [{ raw_content: "ambiguous" }],
-        request_id: "req-without-usage",
-    }), 200, { "content-type": "application/json" })) as typeof fetch, async () => {
-        const materialized = await WebFetcher.materialize({
-            url: PUB,
-            body: "<html><body>Origin</body></html>",
-            mimetype: "text/html",
-            header: "HTTP 200 OK",
-            allowTavily: true,
-        }, PROJECTION);
-        assert.equal(materialized?.body, undefined);
-        assert.equal(materialized?.bodyOutcome.failure?.code, "tavily-invalid-response");
-        assert.equal(materialized?.htmlOutcome?.status, 200);
+test("a materializer extraction throw surfaces as the scheme failure, not a silent fallback", async () => {
+    process.env[MATERIALIZER_ENV] = "stub";
+    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
+    __stub.set({
+        eligible: () => "stub-extract:v1",
+        extract: async () => { throw new Error("stub exploded"); },
+    });
+    await withFetch((async () => resp("<html><body>Origin</body></html>", 200, {
+        "content-type": "text/html",
+    })) as typeof fetch, async () => {
+        const fetched = await new WebFetcher().fetch(PUB);
+        assert.ok(fetched !== null);
+        await assert.rejects(
+            WebFetcher.materialize(fetched, PROJECTION),
+            /stub exploded/,
+            "the plugin's throw is the materialization failure",
+        );
     });
 });
 
-test("Tavily may produce the body after admitted origin transport failure while HTML stays failed", async () => {
-    process.env.TAVILY_API_KEY = "tvly-test";
-    await withFetch((async () => resp(JSON.stringify({
-        results: [{ url: PUB, raw_content: "# Provider-only body" }],
-        failed_results: [],
-        request_id: "req-provider-only",
-        usage: { credits: 1 },
-    }), 200, { "content-type": "application/json" })) as typeof fetch, async () => {
+test("the materializer may produce the body after admitted origin transport failure while HTML stays failed", async () => {
+    process.env[MATERIALIZER_ENV] = "stub";
+    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
+    __stub.set({
+        eligible: () => "stub-extract:v1",
+        extract: async () => ({
+            outcome: "success",
+            body: "# Provider-only body",
+            identity: "stub-extract:v1",
+            evidence: [],
+        }),
+    });
+    await withFetch((async () => resp("<html>unused</html>", 200, {
+        "content-type": "text/html",
+    })) as typeof fetch, async () => {
         const materialized = await WebFetcher.materialize(
             WebFetcher.unavailable(PUB, new Error("origin reset"), true),
             PROJECTION,
@@ -293,15 +349,17 @@ test("Tavily may produce the body after admitted origin transport failure while 
     });
 });
 
-test("origin Markdown is authoritative, negotiates one HTML variant, and never calls Tavily", async () => {
-    process.env.TAVILY_API_KEY = "tvly-test";
+test("origin Markdown is authoritative, negotiates one HTML variant, and never consults the materializer", async () => {
+    process.env[MATERIALIZER_ENV] = "stub";
+    const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void; calls: unknown[] } };
+    __stub.set({
+        eligible: () => "stub-extract:v1",
+        extract: async () => { throw new Error("origin Markdown must bypass the materializer"); },
+    });
     const calls: Array<{ url: string; accept: string }> = [];
     await withFetch((async (input, init) => {
         const accept = new Headers(init?.headers).get("accept") ?? "";
         calls.push({ url: String(input), accept });
-        if (String(input) === "https://api.tavily.com/extract") {
-            throw new Error("origin Markdown must bypass Tavily");
-        }
         return accept === "text/html"
             ? resp("<html><body>Source</body></html>", 200, { "content-type": "text/html" })
             : resp("# Origin Markdown", 200, { "content-type": "text/markdown", vary: "Accept" });
@@ -317,6 +375,7 @@ test("origin Markdown is authoritative, negotiates one HTML variant, and never c
         assert.equal(materialized?.htmlOutcome?.status, 200);
     });
     assert.deepEqual(calls.map(({ accept }) => accept), [MARKDOWN_ACCEPT, "text/html"]);
+    assert.equal(__stub.calls.length, 0, "origin Markdown never consults the materializer");
 });
 
 test("an authored Accept value is honored exactly", async () => {
@@ -352,7 +411,6 @@ test("an authored Markdown Accept does not authorize a package-generated HTML va
 });
 
 test("materialization preserves a projection exception and identifies its stage", async () => {
-    delete process.env.TAVILY_API_KEY;
     const cause = new Error("reader implementation failed");
     const projection = projectionCaps({
         async readable() {

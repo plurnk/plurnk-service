@@ -8,13 +8,7 @@ import {
 } from "@plurnk/plurnk-schemes";
 import Guard, { GuardBlockedError } from "./Guard.ts";
 import { responseMimetype } from "./ContentType.ts";
-import {
-    tavilyConfiguration,
-    tavilyExtract,
-    tavilyExtractIdentity,
-    type TavilyExtractFailure,
-    type TavilyExtractResult,
-} from "./TavilyExtract.ts";
+import MaterializerRegistry, { type HttpMaterializer, type MaterializerResult } from "./Materializer.ts";
 import { requirePositiveIntegerEnv } from "./Config.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 
@@ -24,14 +18,10 @@ export const MARKDOWN_ACCEPT = "text/markdown, text/html;q=0.9, */*;q=0.1";
 export const PROJECTION_ID_HEADER = "x-plurnk-projection-id";
 export const CACHE_VARIANT_HEADER = "x-plurnk-cache-variant";
 export const MATERIALIZER_ID_HEADER = "x-plurnk-materializer-id";
-export const TAVILY_REQUEST_ID_HEADER = "x-plurnk-tavily-request-id";
-export const TAVILY_CREDITS_HEADER = "x-plurnk-tavily-credits";
-export const TAVILY_STATUS_HEADER = "x-plurnk-tavily-status";
-export const TAVILY_REASON_HEADER = "x-plurnk-tavily-reason";
-export const TAVILY_RETRY_AFTER_HEADER = "x-plurnk-tavily-retry-after";
-export const TAVILY_ELAPSED_HEADER = "x-plurnk-tavily-elapsed-ms";
-export const TAVILY_ERROR_HEADER = "x-plurnk-tavily-error";
-export const TAVILY_SOURCE_URL_HEADER = "x-plurnk-tavily-source-url";
+// The operator's materializer selection ({§http-materializer-plugins}): a
+// discovered materializer id; unset/empty means the built-in local projection
+// is the only body producer.
+export const MATERIALIZER_ENV = "PLURNK_SCHEMES_HTTP_MATERIALIZER";
 const ORIGIN_MARKDOWN_MATERIALIZER_ID = "origin-markdown:v1";
 const LOCAL_UNCONFIGURED_MATERIALIZER_ID = "local-projection:v1:unconfigured";
 const LOCAL_INELIGIBLE_MATERIALIZER_ID = "local-projection:v1:ineligible";
@@ -88,7 +78,7 @@ export interface WebFetchResult {
     readonly html?: { readonly content: string; readonly mimetype: string };
     readonly htmlFailure?: WebChannelFailure;
     readonly originFailure?: WebChannelFailure;
-    readonly allowTavily?: boolean;
+    readonly allowConfiguredMaterializer?: boolean;
     readonly originUnavailable?: boolean;
 }
 
@@ -143,10 +133,30 @@ const replaceHeader = (
 export default class WebFetcher {
     static validateConfiguration(): void {
         requirePositiveIntegerEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT");
-        tavilyConfiguration();
+        if (WebFetcher.#materializerConfigured()) {
+            void MaterializerRegistry.current().discover();
+        }
     }
 
-    static unavailable(url: string, cause: unknown, allowTavily: boolean): WebFetchResult {
+    static #materializerConfigured(): boolean {
+        return (process.env[MATERIALIZER_ENV]?.trim() ?? "").length > 0;
+    }
+
+    // {§http-materializer-plugins} — resolve the operator-selected materializer
+    // and consult its per-request eligibility; null → built-in projection.
+    static async #selectedMaterializer(url: string, signal?: AbortSignal): Promise<{ materializer: HttpMaterializer; identity: string } | null> {
+        const id = (process.env[MATERIALIZER_ENV]?.trim() ?? "");
+        if (id.length === 0) return null;
+        const registry = await MaterializerRegistry.current().discover();
+        const materializer = registry.materializerFor(id);
+        if (materializer === null) {
+            throw new Error(`${MATERIALIZER_ENV} names '${id}', but no installed http-materializer package provides it.`);
+        }
+        const identity = await materializer.eligible(url, { signal });
+        return identity === null ? null : { materializer, identity };
+    }
+
+    static unavailable(url: string, cause: unknown, allowConfiguredMaterializer: boolean): WebFetchResult {
         const detail = ErrorDetail.preview(cause, ErrorDetail.configuredLimit());
         const originFailure = {
             status: 502,
@@ -166,7 +176,7 @@ export default class WebFetcher {
                 `x-plurnk-origin-error: ${safeEvidence(detail)}`,
             ].join("\n"),
             requestHeaders: [],
-            allowTavily,
+            allowConfiguredMaterializer: allowConfiguredMaterializer,
             originUnavailable: true,
             originFailure,
         };
@@ -255,7 +265,7 @@ export default class WebFetcher {
 
     static async materialize(
         fetched: Pick<WebFetchResult,
-            "url" | "body" | "mimetype" | "status" | "statusText" | "header" | "html" | "htmlFailure" | "originFailure" | "allowTavily" | "originUnavailable">,
+            "url" | "body" | "mimetype" | "status" | "statusText" | "header" | "html" | "htmlFailure" | "originFailure" | "allowConfiguredMaterializer" | "originUnavailable">,
         projection: ProjectionCaps,
         signal?: AbortSignal,
     ): Promise<WebMaterializedResult | null> {
@@ -324,7 +334,7 @@ export default class WebFetcher {
 
     static async #materializeHtml(
         fetched: Pick<WebFetchResult,
-            "url" | "body" | "mimetype" | "status" | "statusText" | "header" | "originFailure" | "allowTavily" | "originUnavailable">,
+            "url" | "body" | "mimetype" | "status" | "statusText" | "header" | "originFailure" | "allowConfiguredMaterializer" | "originUnavailable">,
         projection: ProjectionCaps,
         signal?: AbortSignal,
     ): Promise<WebMaterializedResult | null> {
@@ -332,22 +342,22 @@ export default class WebFetcher {
             ? undefined
             : { content: fetched.body as string, mimetype: fetched.mimetype };
         const originOutcome = WebFetcher.#originOutcome(fetched);
-        const tavilyIdentity = fetched.allowTavily === true
-            ? tavilyExtractIdentity()
+        const selected = fetched.allowConfiguredMaterializer === true
+            ? await WebFetcher.#selectedMaterializer(fetched.url, signal)
             : null;
-        if (tavilyIdentity !== null) {
-            const tavily = await tavilyExtract(fetched.url, { signal });
-            if (tavily === null) throw new Error("Tavily configuration disappeared during materialization.");
+        if (selected !== null) {
+            const { materializer, identity } = selected;
+            const result = await materializer.extract(fetched.url, { signal });
             const evidence = [
-                WebFetcher.materializerEvidence(tavily.outcome === "success"
-                    ? tavilyIdentity
-                    : `local-fallback:${tavilyIdentity}`),
-                ...WebFetcher.#tavilyEvidence(tavily),
+                WebFetcher.materializerEvidence(result.outcome === "success"
+                    ? identity
+                    : `local-fallback:${identity}`),
+                ...result.evidence.map(({ name, value }) => `${name}: ${value}`),
             ];
-            if (tavily.outcome === "success") {
+            if (result.outcome === "success") {
                 const header = WebFetcher.#appendEvidence(fetched.header, evidence);
                 return {
-                    body: { content: tavily.markdown, mimetype: "text/markdown" },
+                    body: { content: result.body, mimetype: "text/markdown" },
                     ...(html === undefined ? {} : { html }),
                     ...(header === undefined ? {} : { header }),
                     bodyOutcome: success(),
@@ -356,15 +366,28 @@ export default class WebFetcher {
                         : originOutcome,
                 };
             }
-            if (tavily.outcome === "hard" || html === undefined) {
+            if (result.outcome === "hard" || html === undefined) {
                 const header = WebFetcher.#appendEvidence(fetched.header, [
-                    WebFetcher.materializerEvidence(tavilyIdentity),
-                    ...WebFetcher.#tavilyEvidence(tavily),
+                    WebFetcher.materializerEvidence(identity),
+                    ...result.evidence.map(({ name, value }) => `${name}: ${value}`),
                 ]);
+                const problem = result.outcome === "hard"
+                    ? result.problem
+                    : (result.problem ?? {
+                        status: 502,
+                        code: "materializer-recoverable",
+                        detail: `The materializer could not extract ${fetched.url} (${result.reason}).`,
+                        retryable: true,
+                    });
                 return {
                     ...(html === undefined ? {} : { html }),
                     ...(header === undefined ? {} : { header }),
-                    bodyOutcome: WebFetcher.#tavilyFailure(fetched.url, tavily),
+                    bodyOutcome: failure(
+                        problem.status,
+                        problem.code,
+                        problem.detail,
+                        problem.retryable,
+                    ),
                     htmlOutcome: html === undefined
                         ? failure(502, "html-unavailable", `Server-source HTML for ${fetched.url} was unavailable.`, true)
                         : originOutcome,
@@ -375,7 +398,19 @@ export default class WebFetcher {
                 return {
                     html,
                     header: WebFetcher.#appendEvidence(fetched.header, evidence),
-                    bodyOutcome: WebFetcher.#tavilyFailure(fetched.url, tavily),
+                    bodyOutcome: result.problem === undefined
+                        ? failure(
+                            502,
+                            "materializer-recoverable",
+                            `The materializer could not extract ${fetched.url} (${result.reason}) and no local projection was possible.`,
+                            true,
+                        )
+                        : failure(
+                            result.problem.status,
+                            result.problem.code,
+                            result.problem.detail,
+                            result.problem.retryable,
+                        ),
                     htmlOutcome: originOutcome,
                 };
             }
@@ -384,8 +419,8 @@ export default class WebFetcher {
                 {
                     html,
                     header: fetched.header,
-                    materializerIdentity: `local-fallback:${tavilyIdentity}`,
-                    additionalEvidence: WebFetcher.#tavilyEvidence(tavily),
+                    materializerIdentity: `local-fallback:${identity}`,
+                    additionalEvidence: result.evidence.map(({ name, value }) => `${name}: ${value}`),
                     bodyOutcome: originOutcome.failure === undefined
                         ? success(203)
                         : originOutcome,
@@ -404,7 +439,7 @@ export default class WebFetcher {
             };
         }
         const projected = await WebFetcher.#project(html, projection);
-        const materializerIdentity = fetched.allowTavily === true
+        const materializerIdentity = fetched.allowConfiguredMaterializer === true
             ? LOCAL_UNCONFIGURED_MATERIALIZER_ID
             : LOCAL_INELIGIBLE_MATERIALIZER_ID;
         if (projected === null) {
@@ -450,50 +485,6 @@ export default class WebFetcher {
                 ...(statusText === "" ? {} : { originStatusText: statusText }),
             },
         );
-    }
-
-    static #tavilyFailure(url: string, result: TavilyExtractFailure): WebChannelOutcome {
-        const facts = {
-            provider: "tavily",
-            reason: result.reason,
-            ...(result.status === undefined ? {} : { providerStatus: result.status }),
-            ...(result.requestId === undefined ? {} : { requestId: result.requestId }),
-            ...(result.retryAfter === undefined ? {} : { retryAfter: result.retryAfter }),
-        };
-        if (result.reason === "rate-limit") {
-            return failure(429, "tavily-rate-limited", `Tavily Extract rate-limited ${url}.`, true, facts);
-        }
-        if (result.reason === "timeout") {
-            return failure(504, "tavily-timeout", `Tavily Extract timed out for ${url}.`, true, facts);
-        }
-        if (result.reason === "authentication") {
-            return failure(502, "tavily-authentication-failed", "Tavily rejected the configured API credentials.", false, facts);
-        }
-        if (result.reason === "malformed-response") {
-            return failure(502, "tavily-invalid-response", "Tavily returned an invalid Extract response.", false, facts);
-        }
-        if (result.reason === "provider-rejection") {
-            return failure(502, "tavily-provider-rejected", `Tavily rejected extraction for ${url}.`, false, facts);
-        }
-        return failure(502, `tavily-${result.reason}`, `Tavily Extract failed for ${url}.`, true, facts);
-    }
-
-    static #tavilyEvidence(result: TavilyExtractResult): string[] {
-        return [
-            `${TAVILY_STATUS_HEADER}: ${result.status ?? "transport-failure"}`,
-            `${TAVILY_ELAPSED_HEADER}: ${result.elapsedMs}`,
-            result.requestId === undefined ? null : `${TAVILY_REQUEST_ID_HEADER}: ${safeEvidence(result.requestId)}`,
-            result.credits === undefined ? null : `${TAVILY_CREDITS_HEADER}: ${result.credits}`,
-            result.outcome === "success" || result.retryAfter === undefined
-                ? null
-                : `${TAVILY_RETRY_AFTER_HEADER}: ${safeEvidence(result.retryAfter)}`,
-            result.outcome === "success"
-                ? result.sourceUrl === undefined ? null : `${TAVILY_SOURCE_URL_HEADER}: ${safeEvidence(result.sourceUrl)}`
-                : `${TAVILY_REASON_HEADER}: ${result.reason}`,
-            result.outcome === "success" || result.error === undefined
-                ? null
-                : `${TAVILY_ERROR_HEADER}: ${safeEvidence(result.error)}`,
-        ].filter((line): line is string => line !== null);
     }
 
     static async classifyBinary(
@@ -608,13 +599,13 @@ export default class WebFetcher {
     }
 
     static materializerCurrent(storedIdentity: string): boolean {
-        const tavilyIdentity = tavilyExtractIdentity();
+        const materializerId = process.env[MATERIALIZER_ENV]?.trim() ?? "";
         if (storedIdentity === ORIGIN_MARKDOWN_MATERIALIZER_ID
             || storedIdentity === LOCAL_INELIGIBLE_MATERIALIZER_ID) return true;
-        if (storedIdentity === LOCAL_UNCONFIGURED_MATERIALIZER_ID) return tavilyIdentity === null;
-        return tavilyIdentity !== null
-            && (storedIdentity === tavilyIdentity
-                || storedIdentity === `local-fallback:${tavilyIdentity}`);
+        if (storedIdentity === LOCAL_UNCONFIGURED_MATERIALIZER_ID) return materializerId.length === 0;
+        return materializerId.length > 0
+            && (storedIdentity === materializerId
+                || storedIdentity === `local-fallback:${materializerId}`);
     }
 
     async fetch(url: string, opts?: {
@@ -663,10 +654,10 @@ export default class WebFetcher {
             if (opts?.signal?.aborted === true) throw opts.signal.reason;
             if (cause instanceof GuardBlockedError) return null;
             const publiclyAdmitted = guarded || await Guard.isPublicUrl(target);
-            const allowTavily = requestHeaders.length === 0 && publiclyAdmitted;
-            return (allowTavily && tavilyExtractIdentity() !== null)
+            const allowConfiguredMaterializer = requestHeaders.length === 0 && publiclyAdmitted;
+            return (allowConfiguredMaterializer && WebFetcher.#materializerConfigured())
                 || opts?.preserveUnavailable === true
-                ? WebFetcher.unavailable(url, cause, allowTavily)
+                ? WebFetcher.unavailable(url, cause, allowConfiguredMaterializer)
                 : null;
         }
 
@@ -676,11 +667,11 @@ export default class WebFetcher {
         }
         const responseHeaders = [...response.headers];
         const mimetype = responseMimetype(response.headers.get("content-type"));
-        const tavilyConfigured = tavilyExtractIdentity() !== null;
+        const materializerConfigured = WebFetcher.#materializerConfigured();
         const publiclyAdmitted = guarded
-            || !tavilyConfigured
+            || !materializerConfigured
             || (requestHeaders.length === 0 && await Guard.isPublicUrl(target));
-        const allowTavily = requestHeaders.length === 0 && publiclyAdmitted;
+        const allowConfiguredMaterializer = requestHeaders.length === 0 && publiclyAdmitted;
         const header = WebFetcher.#header(response, requestHeaders, url);
         const common = {
             url,
@@ -691,12 +682,12 @@ export default class WebFetcher {
             response,
             header,
             requestHeaders,
-            allowTavily,
+            allowConfiguredMaterializer: allowConfiguredMaterializer,
         };
         const unavailableAfterResponse = (cause: unknown): WebFetchResult | null => {
             if (opts?.signal?.aborted === true) throw opts.signal.reason;
-            if (!(allowTavily && tavilyConfigured) && opts?.preserveUnavailable !== true) return null;
-            const unavailable = WebFetcher.unavailable(url, cause, allowTavily);
+            if (!(allowConfiguredMaterializer && WebFetcher.#materializerConfigured()) && opts?.preserveUnavailable !== true) return null;
+            const unavailable = WebFetcher.unavailable(url, cause, allowConfiguredMaterializer);
             const detail = unavailable.originFailure?.detail ?? `HTTP GET ${url} failed.`;
             return {
                 ...common,

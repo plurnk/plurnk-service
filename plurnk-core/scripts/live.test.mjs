@@ -6,7 +6,7 @@ import { collectLiveTestNames } from "../test/live-test.ts";
 test("the live catalog contains every registered specimen exactly once", async () => {
     const files = await liveFiles();
     const names = await collectLiveTestNames(files);
-    assert.equal(names.length, 15);
+    assert.equal(names.length, 14);
     assert.equal(new Set(names).size, names.length);
 });
 

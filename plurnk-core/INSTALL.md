@@ -92,7 +92,7 @@ Each mirrors a `# --- section ---` in the floor; consult the floor for exact def
   of that provider-derived curation gauge.
 - **Plugins** — bare `PLURNK_PLUGINS_TRUSTED_ONLY` (0/unset = load all installed; a value = `@plurnk/*` plus an allowlist).
 - **Semantic search** — `PLURNK_SERVICE_SEMANTIC_CHUNK_TOKENS`/`_CHUNK_OVERLAP` (service-side chunking), `PLURNK_SERVICE_EMBED_DISABLE` (FTS-only), `PLURNK_MIMETYPES_EMBED_WORKERS` (the embedder's pool — mimetypes-owned).
-- **Schemes: http** — `PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT`, `_TTL_MS`, optional `# TAVILY_API_KEY=`, and `PLURNK_SCHEMES_HTTP_TAVILY_DEPTH`/`_TAVILY_TIMEOUT_MS`.
+- **Schemes: http** — `PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT`, `_TTL_MS`, optional `# PLURNK_SCHEMES_HTTP_MATERIALIZER=` (a materializer plugin id).
 - **Execs** — `PLURNK_EXECS_<runtime>=0` disables a runtime; web discovery is an MCP attachment (`PLURNK_MCP_<server>`), not an executor.
 - **Hooks** — `PLURNK_HOOKS_COMMAND` plus JSON `PLURNK_HOOKS_ARGS` invokes one exact no-shell command for the core events selected by `PLURNK_HOOKS_EVENTS`; see `@plurnk/plurnk-hooks/README.md`.
 - **Observability** — standard `OTEL_*` env ({§observability-boundary}):

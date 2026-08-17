@@ -49,6 +49,11 @@
             "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
         },
+        "./materializer": {
+            "plurnk-dev": "./src/Materializer.ts",
+            "types": "./dist/Materializer.d.ts",
+            "default": "./dist/Materializer.js"
+        },
         "./package.json": "./package.json"
     },
     "files": [

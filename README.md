@@ -56,8 +56,8 @@ is a documented demo fixture) and its tools participate exactly like every
 other MCP tool — admission, read-effect classification, and packet projection
 are identical. See [`@plurnk/plurnk-mcp`](./plurnk-mcp/README.md) for the
 service-owned attachment contract and the [HTTP scheme](./plurnk-schemes-http/README.md)
-for page materialization; optionally set `TAVILY_API_KEY` for Tavily Extract
-page extraction of eligible public HTML.
+for page materialization; the optional `@plurnk/plurnk-schemes-http-tavily`
+showcase plugin supplies Tavily Extract for eligible public HTML.
 
 ## Lifecycle hooks
 

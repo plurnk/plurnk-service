@@ -23,19 +23,19 @@ Caller cancellation of an exact acquisition returns `499 cancelled`.
 | Response                             | `body`                                              | Other channel                                  |
 | ------------------------------------ | --------------------------------------------------- | ---------------------------------------------- |
 | Negotiated origin Markdown           | Exact origin Markdown                               | Independently requested server HTML in `#html` |
-| GET HTML                             | Tavily Markdown or local HTML-reader projection     | Original server HTML in `#html`                |
+| GET HTML                             | Materializer Markdown or local HTML-reader projection | Original server HTML in `#html`                |
 | GET `text/event-stream`              | Event `data` chunks after READ `102`                 | Initial response in `#header`                  |
 | Configured textual response          | Complete Fetch-decoded text under its declared type | Status and headers in `#header`                |
 | Origin HTTP `4xx`/`5xx`              | Preserve available origin or independently produced text | Exact status on each origin-backed channel |
 | Binary with a readable projection    | Derived Unicode under the projection output type    | Origin type and projection ID in `#header`     |
 | Binary without a readable projection | No fabricated text representation                   | Exact `415` Problem                            |
 
-Generic public HTML uses configured Tavily as its body producer. A recoverable
+Generic public HTML uses the selected materializer as its body producer. A recoverable
 timeout, transport error, `429`, `5xx`, or per-URL extraction failure uses the
 local HTML reader and records terminal body status `203`. Authentication,
 provider rejection, and malformed provider responses are hard failures and do
 not silently switch producers. Any authored target metadata makes HTML use the
-local reader directly. Origin Markdown always wins without Tavily.
+local reader directly. Origin Markdown always wins without the materializer.
 
 Projection presence is structural: a returned projection is accepted even
 when its content is empty. `422 no-readable-projection` means the local route
@@ -50,15 +50,15 @@ without fabricating an entry. Input above the configured byte ceiling returns
 owns lifecycle evidence in `#header`; do not retry a mutation solely to
 retrieve its binary body.
 
-`#header` contains origin and package acquisition evidence. A Tavily attempt
+`#header` contains origin and package acquisition evidence. A materializer attempt
 adds its route, status, timing, any reported request ID and credits, and bounded
 failure evidence. `body`, `header`, and `html` carry independent durable
 producer outcomes; the selected channel determines success. Thus `#html` or
-`#header` can remain readable after a body failure, while a Tavily body can
+`#header` can remain readable after a body failure, while a materializer body can
 succeed without fabricating unavailable server HTML. A SEND signal is never the
 remote HTTP status. A direct non-success origin response is still materialized:
 origin-backed channels carry its exact durable `http-response-status` Problem,
-while independently produced Tavily content and acquisition headers retain
+while independently produced materializer content and acquisition headers retain
 their own outcomes.
 
 For SSE, the response and persisted `#header` establish acquisition. READ then
@@ -79,7 +79,7 @@ ETag or Last-Modified value identifies the nominated representation; otherwise
 acquisition fails without serving the stored body. Responses to POST, PUT, and
 DELETE are not reused as later GET representations. A projected GET is reused
 only while the installed reader has the same projection identity. Page bodies
-likewise require the same origin-Markdown, local, Tavily depth/version, or
+likewise require the same origin-Markdown, local, materializer-id, or
 local-fallback route. Once stale, a page composite is fully reacquired without
 old validators; an origin 304 cannot certify provider or auxiliary material.
 
@@ -101,9 +101,9 @@ blocks, one header per block:
 Percent-encode `)`, `<`, and `}` inside a header value.
 An exact FIND forwards these headers when it must acquire the URL, but the
 result remains intentionally ineligible for later cache reuse. Target headers
-are never forwarded to Tavily, so HTML requests carrying any explicit metadata
-use the local HTML-reader projection. Executor-supplied HTML also stays local;
-only generic web acquisition grants Tavily spending authority.
+are never forwarded to the materializer, so HTML requests carrying any explicit
+metadata use the local HTML-reader projection. Executor-supplied HTML also
+stays local; only generic web acquisition grants materializer authority.
 
 GET acquisition of a GitHub `…/blob/…` URL uses its
 `raw.githubusercontent.com` source. The addressed GitHub URL remains entry
