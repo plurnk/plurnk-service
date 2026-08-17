@@ -685,7 +685,7 @@ Three current entry points:
 - §provider-surface-capacity `provider.assessRequestCapacity(messages, maxOutputTokens?, signal?)` — provider-owned intersection of request-shaped token evidence and every known physical input limit. It admits, rejects only a proven exact overflow, or defers ambiguity to upstream ({§tokenomics-context-envelope-admission}). `generate` performs this assessment for its exact request and preserves the evidence on success and capacity failure.
 - §provider-surface-prompt-measurement `provider.countPromptTokens(messages, signal)` — the cancellable complete-request measurement primitive used by provider capacity assessment, with `exact`, `upper_bound`, `estimate`, or `unavailable` provenance. Core never substitutes this physical fact for its curation ruler.
 
-§provider-surface-identity Provider capacity and identity are immutable for one instance. `contextWindow`, `maxInputTokens`, and `maxOutputTokens` carry known model limits; `outputBudget` is the total generation envelope, optional `reasoningBudget` is its strict subset, and `inputCapacity` is the stable intersection of known input constraints ({§tokenomics}). Unknown facts remain `null`. `model` identifies persisted turn/provider evidence. Local GBNF boot verification also consumes `constrainsOutput` ({§grammar-enforcement-verified-at-boot}).
+§provider-surface-identity Provider capacity and identity are immutable for one instance. `contextWindow`, `maxInputTokens`, and `maxOutputTokens` carry known model limits; `outputBudget` is the total generation envelope, optional `reasoningBudget` is its strict subset, and `inputCapacity` is the stable intersection of known input constraints ({§tokenomics}). Unknown facts remain `null`. `model` identifies persisted turn/provider evidence. Local GBNF admission also consumes `constrainsOutput` ({§grammar-configuration-admission}).
 
 §meta-passthrough **Metadata passthrough (provider → client).** `generate` may return an open `meta: Record<string, unknown>` bag. The service stores it unenforced per turn (`turns.meta`, `json_valid` only — no schema) and forwards the latest turn's blob in `loop/terminated.usage` ({§notifications}). The service never reads a field within it. Providers own their metadata shapes; monetary values carry an explicit amount and currency rather than an implied unit. Absent → `{}`. The mirror direction (client → provider, the self-identified `client` id) rides `generate({client})` ({§attribution}).
 
@@ -761,22 +761,23 @@ verification. Cataloged providers use Models.dev metadata and official AI SDK
 bindings; an operator declaration covers an uncataloged compatible endpoint;
 plugin discovery is the last protocol-extension seam.
 
-§grammar-enforcement-verified-at-boot **Optional local GBNF is verified at boot.**
+§grammar-configuration-admission **Optional local GBNF is admitted without model generation.**
 The ANTLR grammar always defines and validates the PLURNK language. Separately,
 an operator may configure `PLURNK_PROVIDERS_GBNF_<alias>` for a local
-llama-server. The provider must advertise GBNF transport and satisfy a forcing
-probe whose sampled sentence and pre-projection response match the selected
-rail's template boundary followed by the `PLURNK-RAILS-LIVE` sentinel, or boot
-fails. The setting is resolved
-per alias and is unset by default. Configuring it on a cloud or endpoint-managed
-provider is an error, not a request for best-effort filtering.
-Alias-scoped `PLURNK_PROVIDERS_GBNF_DEBUG` deliberately withholds transport, so
-boot skips the enforcement probe while real requests retain the configured rail
-for local syntax validation and the engine's withheld-rail verdict.
-Runtime injection uses the provider's registered alias, falling back only to
-the process's active alias. Suffixed rail settings with neither identity fail
-instead of guessing. A configured package variant or explicit path that cannot
-be loaded also fails; it never silently becomes unconstrained.
+llama-server. Startup requires the provider to advertise GBNF transport and a
+reasoning-compatible configuration, but daemon lifecycle grants no inference
+or spending authority and therefore generates no verification tokens. The
+setting is resolved per alias and is unset by default. Configuring it on a cloud
+or endpoint-managed provider is an error, not a request for best-effort
+filtering. Every user-authorized constrained generation proves transport through
+its exact pre-projection evidence ({§rail-truth-engine-verdict}). Alias-scoped
+`PLURNK_PROVIDERS_GBNF_DEBUG` is the explicit exception: it deliberately
+withholds transport while retaining local grammar validation and the engine's
+withheld-rail verdict. Runtime injection uses the provider's registered alias,
+falling back only to the process's active alias. Suffixed rail settings with
+neither identity fail instead of guessing. A configured package variant or
+explicit path that cannot be loaded also fails; it never silently becomes
+unconstrained.
 
 §gbnf-requires-reasoning Both shipped PLURNK rails require reasoning. The same alias-scoped configuration
 must resolve reasoning to `adaptive` or `on`; `off` with GBNF is rejected before
@@ -787,9 +788,9 @@ is configured.
 For a configured local GBNF, the provider returns the pre-projection sentence as
 `grammarEvidence` under `plurnk-providers` {§gbnf-response-observation}. The engine
 requires that evidence, independently validates `grammarEvidence.input` with the
-artifact's declared response root, and
-stamps `railsAttached: "client"` when transported or `"withheld"` in debug mode
-plus `railsVerdict`; it never validates projected
+artifact's declared response root, and requires `transported: true` unless the
+operator explicitly enabled debug mode. It stamps `railsAttached: "client"`
+when transported or `"withheld"` in debug mode plus `railsVerdict`; it never validates projected
 `assistant.content` as though the required reasoning enclosure were still
 present. A non-accept verdict emits one `grammar_unenforced` notice. A raw
 position at or after `contentStart` is translated to a content offset; a failure

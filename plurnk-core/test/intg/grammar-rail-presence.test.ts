@@ -1,4 +1,4 @@
-// {§grammar-enforcement-verified-at-boot}, {§rail-truth-engine-verdict},
+// {§grammar-configuration-admission}, {§rail-truth-engine-verdict},
 // and {§gbnf-response-observation} across a real core turn.
 
 import test from "node:test";
@@ -269,11 +269,16 @@ test("raw rail positions map only from content, and debug evidence is stamped wi
     await writeFile(contentPath, `root ::= ${JSON.stringify(`${prefix}${content.replace("ok", "ox")}`)}\n`);
     await writeFile(reasoningPath, `root ::= ${JSON.stringify(input.replace("thought", "analysis"))}\n`);
     const db = await openMigrated();
-    const keys = ["PLURNK_PROVIDERS_GBNF_contentreject", "PLURNK_PROVIDERS_GBNF_reasoningreject"] as const;
+    const keys = [
+        "PLURNK_PROVIDERS_GBNF_contentreject",
+        "PLURNK_PROVIDERS_GBNF_reasoningreject",
+        "PLURNK_PROVIDERS_GBNF_DEBUG_contentreject",
+    ] as const;
     const prior = keys.map((key) => process.env[key]);
     try {
         process.env[keys[0]] = contentPath;
         process.env[keys[1]] = reasoningPath;
+        process.env[keys[2]] = "1";
         const broadcasts: Array<{ notice: Record<string, unknown> }> = [];
         const engine = new Engine({
             db,
@@ -333,6 +338,34 @@ test("a configured grammar fails hard when the provider omits its observation ev
         await assert.rejects(
             () => engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 }),
             /configured GBNF response omitted grammar evidence/,
+        );
+    } finally {
+        if (prior === undefined) delete process.env[key]; else process.env[key] = prior;
+        await db.close(); await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("a configured grammar fails hard when transport is withheld outside debug mode", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rail-"));
+    const gbnfPath = join(dir, "withheld.gbnf");
+    const content = "# PLAN0\n\n## SEND0 [200]\nok";
+    await writeFile(gbnfPath, `root ::= ${JSON.stringify(content)}\n`);
+    const db = await openMigrated();
+    const key = "PLURNK_PROVIDERS_GBNF_withheld";
+    const prior = process.env[key];
+    try {
+        process.env[key] = gbnfPath;
+        const provider = staticProvider({
+            assistant: { content, reasoning: null, finishReason: "stop", model: "fake" },
+            assistantRaw: null,
+            grammarEvidence: { input: content, contentStart: 0, transported: false },
+        });
+        ProviderInstantiate.registerAlias(provider, "withheld");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const { workspaceId, workerId, loopId } = await envelope(db);
+        await assert.rejects(
+            () => engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 }),
+            /configured GBNF was not transported outside explicit debug mode/,
         );
     } finally {
         if (prior === undefined) delete process.env[key]; else process.env[key] = prior;

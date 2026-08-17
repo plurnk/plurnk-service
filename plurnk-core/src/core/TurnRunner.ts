@@ -179,6 +179,10 @@ type GrammarConstraint = {
     response: string;
 };
 
+type ResolvedGrammarConstraint = GrammarConstraint & {
+    allowWithheld: boolean;
+};
+
 // A generated rail may constrain only the sampled continuation while the chat
 // template contributes a prefix that llama-server preserves in its response.
 // The artifact names the alternate root that composes those bytes for evidence
@@ -353,7 +357,7 @@ export default class TurnRunner {
         process.stderr.write(`plurnk-engine: rail verdict unavailable — the configured grammar did not parse in @plurnk/gbnf (${message})\n`);
     }
 
-    static #requireGrammarEvidence(response: ProviderResponse): GrammarEvidence {
+    static #requireGrammarEvidence(response: ProviderResponse, allowWithheld: boolean): GrammarEvidence {
         const evidence = response.grammarEvidence;
         if (evidence === undefined) {
             throw new Error("provider contract violation: configured GBNF response omitted grammar evidence");
@@ -366,24 +370,34 @@ export default class TurnRunner {
             || input.slice(evidence.contentStart).join("") !== response.assistant.content) {
             throw new Error("provider contract violation: grammar evidence does not map exactly to assistant.content");
         }
+        if (!allowWithheld && !evidence.transported) {
+            throw new Error("provider contract violation: configured GBNF was not transported outside explicit debug mode");
+        }
         return evidence;
     }
 
 
-    async #grammarConstraint(provider: Provider): Promise<GrammarConstraint | undefined> {
+    async #grammarConstraint(provider: Provider): Promise<ResolvedGrammarConstraint | undefined> {
         // Resolve through the registered or active alias; ambiguity and load
         // failures never degrade to unconstrained generation.
-        // {§grammar-enforcement-verified-at-boot}
+        // {§grammar-configuration-admission}
         const registered = ProviderInstantiate.aliasOf(provider);
         const fallback = registered === undefined ? resolveActiveAlias(process.env)?.alias : undefined;
         if (registered === undefined && fallback === undefined && Object.keys(process.env).some((k) => k.startsWith("PLURNK_PROVIDERS_GBNF_"))) {
             throw new Error("GBNF constraint: provider has no registered alias and no active alias resolves, while per-alias PLURNK_PROVIDERS_GBNF_* constraints are configured");
         }
         const alias = registered ?? fallback ?? "";
-        const variant = scopeEnvToAlias(process.env, alias, ["PLURNK_PROVIDERS_GBNF"]).PLURNK_PROVIDERS_GBNF;
+        const scoped = scopeEnvToAlias(process.env, alias, [
+            "PLURNK_PROVIDERS_GBNF",
+            "PLURNK_PROVIDERS_GBNF_DEBUG",
+        ]);
+        const variant = scoped.PLURNK_PROVIDERS_GBNF;
         if (variant === undefined || variant === "" || variant === "0") return undefined;
+        const allowWithheld = scoped.PLURNK_PROVIDERS_GBNF_DEBUG !== undefined
+            && scoped.PLURNK_PROVIDERS_GBNF_DEBUG !== ""
+            && scoped.PLURNK_PROVIDERS_GBNF_DEBUG !== "0";
         const hit = this.#gbnfCache.get(variant);
-        if (hit !== undefined) return hit;
+        if (hit !== undefined) return { ...hit, allowWithheld };
         const path = variant.startsWith("/") || variant.startsWith(".")
             ? variant
             : fileURLToPath(import.meta.resolve(`@plurnk/plurnk-contracts/${variant}`));
@@ -391,7 +405,7 @@ export default class TurnRunner {
         const constraint = grammarConstraint(text);
         this.#gbnfCache.set(variant, constraint);
         process.stderr.write(`plurnk-engine: GBNF constraint: ${alias || "(bare)"} → ${variant} (${text.length} chars)\n`);
-        return constraint;
+        return { ...constraint, allowWithheld };
     }
 
     // A lineage's no-parent root; a root worker resolves to itself. Fail hard
@@ -945,6 +959,7 @@ export default class TurnRunner {
         let splitResponse: SplitProviderResponse | undefined;
         let railGrammar: string | undefined;
         let railResponseGrammar: string | undefined;
+        let railAllowWithheld = false;
         let railEvidence: GrammarEvidence | undefined;
         let emissionAttempts = 0;
         let providerCallInFlight = false;
@@ -1007,6 +1022,7 @@ export default class TurnRunner {
             const railConstraint = await this.#grammarConstraint(provider);
             railGrammar = railConstraint?.transport;
             railResponseGrammar = railConstraint?.response;
+            railAllowWithheld = railConstraint?.allowWithheld ?? false;
             const attemptLimit = readEmissionAttempts();
             const strikeStreak = this.#strikes.streak(loopId);
             for (let attempt = 1; attempt <= attemptLimit;) {
@@ -1111,7 +1127,7 @@ export default class TurnRunner {
                 await currentModelCall.observeResponse(completedResponse);
                 railEvidence = railGrammar === undefined
                     ? undefined
-                    : TurnRunner.#requireGrammarEvidence(completedResponse);
+                    : TurnRunner.#requireGrammarEvidence(completedResponse, railAllowWithheld);
                 splitResponse = this.#splitResponse(completedResponse);
                 await classifyProviderAttempt(
                     attemptRow.id,

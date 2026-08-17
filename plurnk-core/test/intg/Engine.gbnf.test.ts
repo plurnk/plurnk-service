@@ -23,7 +23,7 @@ const runOneTurn = async (mock: Mock, name: string): Promise<void> => {
     });
 };
 
-// {§grammar-enforcement-verified-at-boot}: configuration selects a grammar
+// {§grammar-configuration-admission}: configuration selects a grammar
 // variant per alias; empty or zero disables it.
 test("the active alias's GBNF setting wins over the bare fallback", async () => {
     // The daemon test's active alias (whatever the local .env selects) decides via its suffixed
