@@ -443,7 +443,7 @@ test("{§exec-entry-sink}: content:null materializes a live page and prunes an u
         );
 
         // {§exec-entry-sink} {§web-search-retrieval}: the sink rejects an unavailable URL,
-        // creates no HTTP entry, and lets the search executor prune that candidate.
+        // creates no HTTP entry, and lets the executor prune that candidate.
         const dead = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/example.org/dead" });
         assert.equal(dead, undefined, "a null fetch rejects the sink so no page body materializes");
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }

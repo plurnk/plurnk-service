@@ -1,5 +1,5 @@
 // Runtime executor contract. Each `@plurnk/plurnk-execs-*` sibling declares
-// one or more runtime tags (`sh`, `bash`, `python`, `search`, `news`) in
+// one or more runtime tags (`sh`, `bash`, `python`, `jq`, …) in
 // its `package.json` `plurnk.runtimes[]` block, and provides a BaseExecutor
 // subclass implementing the dispatch for those tags.
 //
@@ -34,15 +34,13 @@ export interface ExecutorMetadata {
 // ({§executor-role}). The executor writes output, drives channel state, emits
 // notices, and honors `signal`.
 export interface ExecArgs {
-    // The matched runtime tag. Multi-tag executors branch on it (e.g. the
-    // search sibling maps `search`/`news` → SearXNG `categories=`).
+    // The matched runtime tag. Multi-tag executors branch on it.
     runtime: string;
     // The authored EXEC body; its role comes from the runtime invocation declaration.
     body: string;
     // Process working directory — the workspace workspace. Filesystem-touching
     // runtimes resolve relative paths (including `target`) against it; subprocess
-    // runtimes spawn in it. null for logical runtimes (search) that touch no
-    // filesystem.
+    // runtimes spawn in it. null for logical runtimes that touch no filesystem.
     cwd: string | null;
     // The parsed EXEC `(target)` slot — a referenced file or entry, interpreted
     // according to the runtime's invocation declaration. The framework has
@@ -94,7 +92,7 @@ export interface ExecResult extends SchemeResult {
 // proposal-gating policy ({§executor-effect}). The executor declares the fact; the
 // consumer owns the *policy* (effect → propose/auto map, deployment-tunable):
 //   - host  : runs code / mutates the host (subprocess, file-backed sqlite) → propose
-//   - read  : observes external state, no host mutation (search)            → auto
+//   - read  : observes external state, no host mutation                     → auto
 //   - pure  : no observable side effect (sqlite :memory:, transforms)        → auto
 export type Effect = "pure" | "read" | "host";
 

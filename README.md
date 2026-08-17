@@ -49,17 +49,15 @@ and request flow.
 
 ## Recommended web setup
 
-PLURNK defaults to no proprietary web provider. For capable web research, we
-strongly recommend two complementary operator choices:
-
-- enable the [Brave API engine](https://docs.searxng.org/dev/engines/online/brave.html)
-  in SearXNG and set `PLURNK_EXECS_SEARCH_SEARXNG_URL` for discovery;
-- set `TAVILY_API_KEY` for Tavily Extract page materialization.
-
-Brave finds candidate pages; Tavily turns eligible public HTML into structural
-Markdown. Either may remain unconfigured. See the
-[search executor](./plurnk-execs-search/README.md) and
-[HTTP scheme](./plurnk-schemes-http/README.md) for the owned configuration.
+PLURNK owns no web search runtime. Discovery is an ordinary MCP concern: attach
+any search-capable MCP server (Brave Search's official
+[`@brave/brave-search-mcp-server`](https://github.com/brave/brave-search-mcp-server)
+is a documented demo fixture) and its tools participate exactly like every
+other MCP tool — admission, read-effect classification, and packet projection
+are identical. See [`@plurnk/plurnk-mcp`](./plurnk-mcp/README.md) for the
+service-owned attachment contract and the [HTTP scheme](./plurnk-schemes-http/README.md)
+for page materialization; optionally set `TAVILY_API_KEY` for Tavily Extract
+page extraction of eligible public HTML.
 
 ## Lifecycle hooks
 

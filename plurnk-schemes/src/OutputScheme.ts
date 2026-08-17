@@ -3,7 +3,7 @@
 // executor authors NO SchemeManifest: its `plurnk.runtimes[]` entry already
 // carries name / glyph / example / output-channels, and everything else is the shared
 // read-only-output default. So EXEC runtime `sh` gets `sh://` for free, and a multi-tag
-// executor (search/news/images) derives a distinct manifest per tag.
+// executor derives a distinct manifest per tag.
 
 import type { SchemeManifest } from "./types.ts";
 

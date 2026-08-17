@@ -90,7 +90,6 @@ type InjectPrompt = (
 type AssertInjectionCompatibility = (args: InjectionCompatibility) => Promise<void>;
 type ReconcilePrompts = (workerId: number, endedLoopId: number) => Promise<void>;
 type TakeParkDeadline = (loopId: number) => number | undefined;
-type SettleSearch = (target: string, status: number) => void;
 type EmitEvent = (workspaceId: number, method: string, params: unknown) => void;
 
 // Owns the worker-local queue consumer and every process-local edge that may
@@ -106,7 +105,6 @@ export default class DrainSupervisor {
     readonly #loopUsage: (loopId: number) => Promise<LoopUsage>;
     readonly #loopAttributions: (loopId: number) => Promise<string[]>;
     readonly #takeParkDeadline: TakeParkDeadline;
-    readonly #settleSearch: SettleSearch;
     readonly #cancelSubscription: (subscriptionId: number) => Promise<boolean>;
     readonly #hasActiveStreams: (workerId: number) => boolean;
     readonly #readSystemPrompt: () => Promise<string>;
@@ -140,7 +138,6 @@ export default class DrainSupervisor {
         loopUsage,
         loopAttributions,
         takeParkDeadline,
-        settleSearch,
         cancelSubscription,
         hasActiveStreams,
         readSystemPrompt,
@@ -156,7 +153,6 @@ export default class DrainSupervisor {
         loopUsage: (loopId: number) => Promise<LoopUsage>;
         loopAttributions: (loopId: number) => Promise<string[]>;
         takeParkDeadline: TakeParkDeadline;
-        settleSearch: SettleSearch;
         cancelSubscription: (subscriptionId: number) => Promise<boolean>;
         hasActiveStreams: (workerId: number) => boolean;
         readSystemPrompt: () => Promise<string>;
@@ -172,7 +168,6 @@ export default class DrainSupervisor {
         this.#loopUsage = loopUsage;
         this.#loopAttributions = loopAttributions;
         this.#takeParkDeadline = takeParkDeadline;
-        this.#settleSearch = settleSearch;
         this.#cancelSubscription = cancelSubscription;
         this.#hasActiveStreams = hasActiveStreams;
         this.#readSystemPrompt = readSystemPrompt;
@@ -754,9 +749,6 @@ export default class DrainSupervisor {
     async #handleWakeWorker(payload: WakeWorkerPayload): Promise<void> {
         const { entryOwnerId, ...wake } = payload;
         const conclusion = { ...wake, workerId: entryOwnerId };
-        // {§search-gate} — settle the dedup registration: promote on a 200 conclusion, drop on
-        // failure (a dead search must never serve as a duplicate). No-op for non-search streams.
-        this.#settleSearch(payload.target.replace(/^[a-z+.-]+:\/\//, "/").replace(/^\/+/, "/"), payload.result.status);
         // Aborted streams don't wake — the abort was deliberate.
         if (payload.result.status === 499) {
             this.#emit(payload.workspaceId, "stream/concluded", {

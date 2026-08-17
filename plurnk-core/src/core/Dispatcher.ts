@@ -32,7 +32,6 @@ import LoopFlagsReader from "./LoopFlagsReader.ts";
 import ChannelWrite, { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type BranchWorkerNotify, type BranchCompletionGate, type CancelWorkerNotify, type CancelDescendantsNotify } from "./ChannelWrite.ts";
 import { ReadProjector } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
-import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryOps from "../schemes/_entry-ops.ts";
 import EntryFind from "../schemes/_entry-find.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
@@ -172,14 +171,13 @@ export default class Dispatcher {
     // {§send-premature-terminate}/SEND signal 202 with scope — the engine-owned park-deadline registry (loopId → seconds;
     // -1 = indefinite). The dispatcher WRITES at park; the daemon's drain park-exit consumes.
     #parkDeadlines: Map<number, number>;
-    readonly #searchGate: import("./search-gate.ts").default | undefined;
     // Per-turn running-worker READ obligations. {§join-blocking-collect}
     #joinTargets: Set<number>;
     #liveSubscriptions: LiveSubscriptions;
     #lifecycle: LoopLifecycle;
     #resourceMutations: ResourceMutations;
 
-    constructor({ db, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, searchGate, parkDeadlines, joinTargets, liveSubscriptions }: {
+    constructor({ db, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate,             cancelWorker, cancelDescendants, parkDeadlines, joinTargets, liveSubscriptions }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes: Mimetypes;
@@ -197,7 +195,6 @@ export default class Dispatcher {
         cancelWorker?: CancelWorkerNotify;
         cancelDescendants?: CancelDescendantsNotify;
         parkDeadlines?: Map<number, number>;
-        searchGate?: import("./search-gate.ts").default;
         joinTargets?: Set<number>;
         liveSubscriptions: LiveSubscriptions;
     }) {
@@ -218,7 +215,6 @@ export default class Dispatcher {
         this.#cancelWorker = cancelWorker;
         this.#cancelDescendants = cancelDescendants;
         this.#parkDeadlines = parkDeadlines ?? new Map();
-        this.#searchGate = searchGate;
         this.#joinTargets = joinTargets ?? new Set();
         this.#liveSubscriptions = liveSubscriptions;
         this.#lifecycle = new LoopLifecycle(db);
@@ -484,7 +480,7 @@ export default class Dispatcher {
                 } else if (statement.op === "EXEC") {
                     // EXEC routes unconditionally to its operation owner. The
                     // resolved runtime declaration owns body/target semantics.
-                    result = await this.#gatedExec(statement, schemeCtx, loopId, turnId);
+                    result = await this.#run("exec", statement, schemeCtx);
                 } else {
                     result = await this.#run(schemeNameOf(statement.target), statement, schemeCtx); // {§op-methods-op-dispatch}
                 }
@@ -524,14 +520,6 @@ export default class Dispatcher {
             curationPlan,
             modelCallId: null,
         });
-        // {§search-gate} — register successful searches AFTER #writeLog stamps the runtime
-        // entry's coordinate onto result.attrs.pathname (the gate's dedup serves from it).
-        if (statement.op === "EXEC" && result.status < 400) {
-            const rt = ("signal" in statement && typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
-            const body = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
-            const attrPath = (result.attrs as { pathname?: string } | undefined)?.pathname;
-            if (typeof attrPath === "string") this.#searchGate?.registerPending(loopId, turnId, rt, body, attrPath);
-        }
         onDispatch?.(logEntryId);
         // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}; {§proposal-202-pauses}). When a
         // side-effecting op returns status 202 (a broadcast SEND signal 202 park is model
@@ -890,46 +878,6 @@ export default class Dispatcher {
 
         const target = schemeNameOf(statement.target);
         return this.#denyIfDisallowed(target, origin, workspaceId);
-    }
-
-    // {§search-gate} — gate only configured search runtimes; duplicates serve
-    // the prior durable digest and the per-turn cap refuses without execution.
-    async #gatedExec(statement: PlurnkStatement, ctx: PlurnkSchemeContext, loopId: number, turnId: number): Promise<DispatchResult> {
-        const runtime = ("signal" in statement && typeof statement.signal === "string" && statement.signal.length > 0) ? statement.signal : "sh";
-        const body = ("body" in statement && typeof statement.body === "string") ? statement.body : "";
-        const verdict = this.#searchGate?.check(loopId, turnId, runtime, body) ?? { verdict: "pass" as const };
-        if (verdict.verdict === "capped") {
-            return Dispatcher.#failure(
-                "search-limit-reached",
-                429,
-                `This turn already used its ${verdict.cap} permitted searches.`,
-                {},
-                {
-                    searchLimit: verdict.cap,
-                    stage: "search-admission",
-                    recovery: "Continue without another search in this turn.",
-                    retryable: false,
-                },
-            );
-        }
-        if (verdict.verdict === "duplicate") {
-            // {§stream-owner-scoped} — the prior ranked digest is the CALLER's own stream entry.
-            const prior = await EntryCrud.readEntry(verdict.priorPathname, ctx, runtime, ctx.workerId);
-            const raw = prior.entry?.channels["#results"]?.content ?? "";
-            let results: unknown = raw;
-            try { results = JSON.parse(raw); } catch { /* non-JSON results serve verbatim */ }
-            return Dispatcher.#failure(
-                "duplicate-search",
-                409,
-                "This search already ran in the current loop; the prior results are attached.",
-                { results },
-                {
-                    recovery: "Use the attached prior results.",
-                    retryable: false,
-                },
-            );
-        }
-        return this.#run("exec", statement, ctx);
     }
 
     #denyIfDisallowed(schemeName: string | null, origin: WriterTier, workspaceId: number): DispatchResult | null {

@@ -325,7 +325,6 @@ export default class Daemon {
                 this.#engine.parkDeadlines.delete(loopId);
                 return deadline;
             },
-            settleSearch: (target, status) => this.#engine.searchGate.settle(target, status),
             cancelSubscription: (subscriptionId) => this.#engine.cancelSubscription(subscriptionId),
             hasActiveStreams: (workerId) => this.#workerHasActiveStreams(workerId),
             readSystemPrompt: () => readFile(Paths.instructionsSystem, "utf8"),

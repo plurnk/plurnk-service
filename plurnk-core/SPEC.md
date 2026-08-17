@@ -190,7 +190,7 @@ Composed daemon internals + admin CLI. Four plug points:
 - **Providers** ({§provider}) — LLM transports. Engine sends a turn's messages, receives raw content + usage; engine parses the content into `PlurnkStatement[]`.
 - **Schemes** ({§scheme}) — addressed capabilities. A scheme handler interprets targets under its prefix and owns its storage substrate.
 - **Mimetypes** ({§mimetype}) — content interpretation. Render-time handlers consume channel content; framework owns the dispatch.
-- **Executors** ({§exec} / {§bundled-set}) — EXEC runtime dispatch for subprocess, search, data, and pure-computation runtimes.
+- **Executors** ({§exec} / {§bundled-set}) — EXEC runtime dispatch for subprocess, data, and pure-computation runtimes; web discovery rides the ordinary MCP surface.
 
 Core's internal owners compose without becoming new package or public seams:
 
@@ -1989,7 +1989,7 @@ freshness remains the owning family's concern.
 | Mimetypes | `@plurnk/plurnk-mimetypes`         | `application-ipynb`, `application-json`, `application-jsonl`, `application-pdf`, and `application-xml` format leaves.             |
 |           |                                    | `text-csv`, `text-diff`, `text-dotenv`, `text-html`, `text-ini`, `text-markdown`, and `text-plain` format leaves.                 |
 |           |                                    | Fixed `embeddings` and `tokenizers` artifacts. All names use the `@plurnk/plurnk-mimetypes-*` prefix.                             |
-| Executors | `@plurnk/plurnk-execs`             | `common`, `git`, `jq`, `search`, `sqlite`, and `wasm` leaves under the `@plurnk/plurnk-execs-*` prefix.                            |
+| Executors | `@plurnk/plurnk-execs`             | `common`, `git`, `jq`, `sqlite`, and `wasm` leaves under the `@plurnk/plurnk-execs-*` prefix.                            |
 
 **Providers:** `@plurnk/plurnk-providers` resolves the Models.dev catalog,
 operator declarations, local adapters, and finally installed AI SDK provider
@@ -2568,7 +2568,7 @@ flowchart LR
 | Internal entries   | Workspace or worker entries are canonical store state. Writing one never implies a project-file write.                                      |
 | Authority          | Service flags set the membership ceiling; workspace constraints narrow it; client or loop auto resolves proposals. `origin` is attribution. |
 
-§web-search-retrieval **Web search and retrieval are one first-class composition.** A search runtime enumerates a configured maximum of candidate URLs and hands each to the engine as a `content: null` `entry()` request ({§exec-entry-sink}): the guarded `WebFetcher` sink fetches candidates in parallel, off the write-serialization chain, and materializes successful bodies as ordinary HTTP entries. SearXNG owns membership and rank; Plurnk does not rerank or classify sources. Every candidate whose `entry()` call rejects, regardless of failure reason, is mechanically omitted from the model-facing result directory; survivors retain upstream order. The compact directory carries `title/url/snippet/publishedDate/materialized`; it locates readable resources and is not a substitute for their contents. Without an entry sink the executor cannot test materialization and omits the verdict.
+§web-search-retrieval **Web discovery is an ordinary MCP concern; retrieval is a first-class composition.** PLURNK owns no search runtime: a search-capable MCP server (e.g. Brave Search) participates through the ordinary MCP contract — admission, read-effect classification, tool documentation, and packet projection are identical to every other MCP tool ({§mcp-tool-presentation}). An executor that wants to materialize discovered pages uses the generic `content: null` `entry()` request ({§exec-entry-sink}): the guarded `WebFetcher` sink fetches candidates in parallel, off the write-serialization chain, and materializes successful bodies as ordinary HTTP entries. Every candidate whose `entry()` call rejects, regardless of failure reason, is mechanically omitted from the model-facing result directory; survivors retain upstream order. Without an entry sink the executor cannot test materialization and omits the verdict.
 
 Search prefetch and direct HTTP READ materialize the same resource contract:
 protocol + canonical authority (including a non-default port) + path + serialized
@@ -2579,12 +2579,9 @@ normal
 `## READ0 (https://host/path?query)` therefore publishes only the sanitized body
 under that exact URL—never raw HTML, response headers, or a channel-selection
 lesson. FIND and embeddings consume the addressed stored channel representation
-and never re-fetch a match. Because the search family is in
-`PLURNK_SERVICE_EXEC_HOLD`, the cycle holds until acquisition concludes
-({§exec-hold-until-concluded}), so the next packet contains final
-materialization verdicts and folded ambient rows for every acquired page.
+and never re-fetch a match.
 
-§search-gate Coverage protects the composition at distinct seams: HTTP unit tests pin fragmentless-body publication and explicit auxiliary selection; integration tests pin search→materialize→FIND and persistence/publication separation. Model web demos run the live composition end to end — real SearXNG, real pages; stubbed acquisition is confined to unit and integration seams and never appears in a demo. A live positive-control demo requires a materialized HTTPS body and a substantive answer from a real sanitized page. Live discovery demos remain diagnostic and may expose model judgment failures without weakening these assertions. **The search gates** are rail-family accounting — in-memory per-loop state cleaned at the same seam as strikes, restart-drop accepted (a post-restart duplicate re-fetches; the TTL makes it cheap): an IDENTICAL duplicate (same runtime + query in one loop) **strikes and serves** — status 409 (the strike rail counts the turn failure) carrying the prior ranked digest re-read live from the original exec entry, no re-fetch, no provenance prose; the per-turn CAP (`PLURNK_SERVICE_SEARCH_MAX_PER_TURN`) is flood control — 429 with a legible steer, nothing served.
+§web-retrieval-live Coverage protects the composition at distinct seams: HTTP unit tests pin fragmentless-body publication and explicit auxiliary selection; integration tests pin materialize→FIND and persistence/publication separation. A live positive-control demo requires a materialized HTTPS body and a substantive answer from a real sanitized page; live discovery demos remain diagnostic and may expose model judgment failures without weakening these assertions.
 
 **Git is the substrate and the repository is the boundary:**
 
@@ -3080,7 +3077,6 @@ retain distinct contracts and lifetimes.
 | `grammar_unenforced` | engine rail verdict, or a forwarded provider transport anomaly such as a discarded-channel escape | content-offset when the observed position maps into content; none for a reasoning-prefix divergence |
 | `parse_advisory` | grammar parser — recoverable near-miss which did not invalidate the parsed statements | content-offset into the model's emission |
 | `embed_progress` | repository materialization/indexing lifecycle ({§mimetype-surface}); structured phase, count, and percent; `level: info` except terminal failure | none |
-| `search_progress` | aggregate search-page acquisition lifecycle; structured phase, counts, and percent; never candidate URLs or per-result notices | none |
 
 §notice-level **Severity on the wire (`level`, required).** Every `Notice` carries `level: "error" | "warn" | "info"`, set by the **producer** at the emit site. The level is client presentation, not operation status: even an `error` notice cannot terminalize work or substitute for a durable Problem. A forwarded `grammar_unenforced` is `warn`; ordinary lifecycle and progress notices are `info`. Clients color straight off `level` without interpreting the open `kind` vocabulary.
 

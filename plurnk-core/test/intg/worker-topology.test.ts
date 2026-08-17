@@ -152,8 +152,8 @@ test("wake propagates UP a grandchild chain (parent→child→grandchild)", asyn
 });
 
 test("a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
-    // 16384: the static packet and initialization log grew with execs-search 0.3.0's category
-    // tags — the same teaching-growth budget-edge the delegation test hit at the FORK/WORK adopt.
+    // 16384: the parent's woken turn carries the whole child history; generous headroom over the
+    // static packet so the wake budget edge is the subtree, not the tool teaching.
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("## WORK0 (worker://w1)\nfirst job\n\n## SEND0 [202] <-1>\nawaiting w1", 10), // parent t1
         makeMockResponse("## SEND0 [200]\nw1 done", 10),                                       // w1

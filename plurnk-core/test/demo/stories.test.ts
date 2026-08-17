@@ -144,43 +144,27 @@ test("story: find a single value in a JSON config", { timeout: TIMEOUT }, async 
     } finally { await story.cleanup(); }
 });
 
-test("{§search-gate} story: answer a question through live web search and retrieval", { timeout: TIMEOUT }, async () => {
-    // The whole composition in one story, live end to end: EXEC[search] → a real
-    // SearXNG → survivor pages materialized as ordinary https:// entries → the model
-    // answers from what it retrieved. The subject is release-current, so weights
-    // alone can't answer it honestly — the tool is the path of least resistance,
-    // not a scripted op. A materialized HTTPS body and a substantive answer from a
-    // real page are the positive control; a model that can't close is honestly red.
+test("{§web-search-retrieval} story: answer a question through an attached search MCP tool", { timeout: TIMEOUT }, async () => {
+    // Web discovery is an ordinary MCP attachment ({§web-search-retrieval}): the operator
+    // declares the documented Brave fixture (PLURNK_MCP_BRAVE, demo tier only), and the model
+    // researches through it exactly like any other MCP tool. Without the fixture the story
+    // skips — search is not an owned concern anymore.
+    if (process.env.PLURNK_MCP_BRAVE === undefined) {
+        test.skip("PLURNK_MCP_BRAVE is not declared in the operator environment — the search-MCP demo fixture is absent");
+        return;
+    }
     const story = await runStory({
-        label: "web-search",
+        label: "web-search-mcp",
         prompt: "Search the web for the latest stable Node.js version and tell me in one sentence.",
         maxTurns: 8,
     });
     try {
-        const searchEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "search" });
-        const ok = story.finalStatus === 200 && (searchEntries?.n ?? 0) > 0 && /\d{2}/.test(story.lastContent);
+        const braveEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "brave" });
+        const ok = story.finalStatus === 200 && (braveEntries?.n ?? 0) > 0 && /\d{2}/.test(story.lastContent);
         if (!ok) await story.dump();
-        assert.ok((searchEntries?.n ?? 0) > 0, "a search results entry exists — the model actually reached for the tool");
-        await assertMaterializedWebPage(story);
+        assert.ok((braveEntries?.n ?? 0) > 0, "a brave:// output entry exists — the model reached for the MCP tool");
         assert.equal(story.finalStatus, 200);
         assert.match(story.lastContent, /\d{2}/, `the answer carries a version number; got: ${story.lastContent.slice(0, 200)}`);
-    } finally { await story.cleanup(); }
-});
-
-test("{§search-gate} story: answer a question through live web discovery", { timeout: TIMEOUT }, async () => {
-    // Live discovery: a breaking release-current question not present in static training
-    // weights — the story diagnoses research judgment against the real web.
-    // Its benchmark artifact remains available for autopsy. {§test-artifact-retention}
-    const story = await runStory({
-        label: "web-search-live",
-        prompt: "Who is the current United States Federal Reserve Chairman?",
-        maxTurns: 8,
-    });
-    try {
-        const ok = story.finalStatus === 200 && /Warsh/i.test(story.lastContent);
-        if (!ok) await story.dump();
-        assert.equal(story.finalStatus, 200);
-        assert.match(story.lastContent, /Warsh/i, `the answer names Warsh; got: ${story.lastContent.slice(0, 200)}`);
     } finally { await story.cleanup(); }
 });
 

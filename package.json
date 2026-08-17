@@ -35,7 +35,6 @@
         "plurnk-schemes-http",
         "plurnk-execs",
         "plurnk-execs-common",
-        "plurnk-execs-search",
         "plurnk-mcp",
         "plurnk-hooks",
         "plurnk-execs-git",

@@ -122,7 +122,7 @@ const SELF_CONTAINED = ["sh", "bash", "node", "awk", "bc", "perl", "python", "jq
 // search is exercised in the live tier; wasm needs a compiled module (its compile+run path is
 // covered inline via `wat`). Protocol modules register their configured tags through the daemon
 // module seam and are covered by module-runtime.test.ts rather than this installed-plugin census.
-const RESOURCE_GATED = ["wasm", "search"] as const;
+const RESOURCE_GATED = ["wasm"] as const;
 
 test("execs batteries: coverage census — every self-contained default-install tag is exercised", async () => {
     const reg = await testExecutors();

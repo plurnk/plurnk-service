@@ -79,7 +79,13 @@ test("live and demo load the shared profile and retain their exact policy owner"
     assert.equal(live.env.PLURNK_SERVICE_POLICY, "../plurnk-meta/PLURNK_PERSONALITY.md");
     assert.equal(pkg.scripts["test:live:zeropin"], "PLURNK_ZERO_PIN=1 npm run test:live");
 
-    for (const name of ["test:live", "test:live:specimen", "test:demo", "test:demo:zeropin"]) {
+    const { demoInvocation } = await import("../plurnk-core/scripts/demo.mjs");
+    const demo = await demoInvocation();
+    assert.ok(demo.args.includes("--env-file-if-exists=.env.test"), "the demo driver loads the shared profile");
+    assert.equal(demo.env.PLURNK_SERVICE_POLICY, "../plurnk-meta/PLURNK_PERSONALITY.md", "the demo driver selects the gate policy");
+    assert.equal(demo.env.PLURNK_SERVICE_EMBED_DISABLE, undefined, "the demo driver does not duplicate the shared semantic posture");
+
+    for (const name of ["test:live", "test:live:specimen", "test:demo", "test:demo:specimen"]) {
         assert.match(
             pkg.scripts[name],
             /^bash \.\.\/scripts\/operator-environment\.sh /,
@@ -87,11 +93,12 @@ test("live and demo load the shared profile and retain their exact policy owner"
         );
     }
 
-    for (const name of ["test:demo", "test:demo:zeropin"]) {
-        const script = pkg.scripts[name];
-        assert.match(script, /--env-file-if-exists=\.env\.test(?:\s|$)/, `${name} loads the shared profile`);
-        assert.match(script, /PLURNK_SERVICE_POLICY=\.\.\/plurnk-meta\/PLURNK_PERSONALITY\.md/, `${name} selects the gate policy`);
-        assert.doesNotMatch(script, /PLURNK_SERVICE_EMBED_DISABLE=/, `${name} does not duplicate the shared semantic posture`);
+    for (const name of ["test:live:zeropin", "test:demo:zeropin"]) {
+        assert.match(
+            pkg.scripts[name],
+            /^PLURNK_ZERO_PIN=1 npm run test:(live|demo)$/,
+            `${name} delegates to the operator-environment entrypoint`,
+        );
     }
 });
 

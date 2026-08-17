@@ -31,7 +31,6 @@ const supervisor = (
     loopUsage: async () => ({} as never),
     loopAttributions: async () => [],
     takeParkDeadline: () => undefined,
-    settleSearch: () => {},
     cancelSubscription: async () => false,
     hasActiveStreams: () => false,
     readSystemPrompt,

@@ -4,23 +4,23 @@ import ToolResources from "./ToolResources.ts";
 
 test("{§tools-resource-discovery} renders a general runtime as one self-describing resource", () => {
     const resources = ToolResources.render({
-        runtime: "search",
-        summary: "Search the web through the configured SearXNG service.",
+        runtime: "example",
+        summary: "Compute a thing.",
         invocation: {
-            body: { role: "search query", required: true },
-            example: { body: "capital of indiana in 1816" },
+            body: { role: "query", required: true },
+            example: { body: "something" },
         },
-        details: "## Scope\n\nSearch is read-only.",
+        details: "## Scope\n\nRead-only.",
         registry: null,
     });
 
-    assert.deepEqual(resources.map(({ pathname }) => pathname), ["/tools/search.md"]);
+    assert.deepEqual(resources.map(({ pathname }) => pathname), ["/tools/example.md"]);
     const content = resources[0]?.content ?? "";
-    assert.match(content, /^# search$/m);
-    assert.match(content, /^## Summary\n\nSearch the web through the configured SearXNG service\.$/m);
+    assert.match(content, /^# example$/m);
+    assert.match(content, /^## Summary\n\nCompute a thing\.$/m);
     assert.match(content, /^## Example$/m);
-    assert.match(content, /^\| body \| required: search query \|$/m);
-    assert.match(content, /```plurnk\n## EXEC0 \[search\] <!-- Search the web through the configured SearXNG service\. -->\ncapital of indiana in 1816\n```/);
+    assert.match(content, /^\| body \| required: query \|$/m);
+    assert.match(content, /```plurnk\n## EXEC0 \[example\] <!-- Compute a thing\. -->\nsomething\n```/);
     assert.match(content, /^## Scope$/m);
 });
 

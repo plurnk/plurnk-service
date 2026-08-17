@@ -19,7 +19,6 @@ import type { RegistryEntry, RuntimeRegistryRegistration } from "./ExecutorRegis
 import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, BranchWorkerNotify, BranchCompletionGate, CancelWorkerNotify, CancelDescendantsNotify } from "./ChannelWrite.ts";
 import { promptPathname, promptLoopPrefix } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
-import SearchGate from "./search-gate.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -142,7 +141,6 @@ export default class Engine {
     #problems: ProblemLog;
     #strikes: StrikeRail;
     #packets: PacketBuilder;
-    readonly searchGate = new SearchGate();
     #proposals: ProposalLifecycle;
     #interactions: ClientInteractions;
     #dispatcher: Dispatcher;
@@ -348,7 +346,7 @@ export default class Engine {
             liveSubscriptions: this.#liveSubscriptions,
             interactions: this.#interactions,
         });
-        this.#dispatcher = new Dispatcher({ searchGate: this.searchGate,
+        this.#dispatcher = new Dispatcher({
             db, schemes, mimetypes: this.#mimetypes,
             weigh: this.#weighContent,
             notices: this.#notices, proposals: this.#proposals,
@@ -637,7 +635,6 @@ export default class Engine {
             }
             this.#loopAborts.delete(loopId);
             this.#strikes.delete(loopId);
-            this.searchGate.cleanup(loopId);
             this.#notices.delete(loopId);
         };
 

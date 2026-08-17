@@ -1,16 +1,18 @@
 // NETWORK-gated web functionality (the `live` tier — deliberately run, never CI; non-deterministic,
 // specific-thing tests, not e2e stories). Proves the boot-DISCOVERED web stack works end-to-end:
 //   - http://  (@plurnk/plurnk-schemes-http) — a real fetch, no API key.
-//   - exec[search] (@plurnk/plurnk-execs-search) — a real SearXNG query using
-//     the operator's normal environment.
+//   - Tavily Extract — a real HTML READ when the operator provides TAVILY_API_KEY.
+//
+// Web discovery is an ordinary MCP attachment ({§web-search-retrieval}); the search-MCP
+// live exercise lives with the demo-tier fixture (test/demo).
 //
 // NO-MOCK: the http test dispatches a parsed READ straight through a real Engine against the real
 // http scheme and real network, then inspects the canonical entry. Nothing is mocked — no
-// provider, no db mock, no model turn. The search test fires through the daemon.
+// provider, no db mock, no model turn.
 //
 //  - http: a finite GET writes its complete canonical representation before READ returns 200;
 //    genuine event streams retain the subscription lifecycle ({§scheme-subscriptions}).
-//  - search: REQUIRED in this tier. An unavailable endpoint fails the live gate.
+//  - Tavily: REQUIRED in this tier. An unavailable key fails the live gate.
 
 import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
@@ -18,8 +20,6 @@ import { PlurnkParser } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
-import type Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "../intg/_helpers.ts";
 
 // A stable NON-HTML URL: text/plain uses raw fetch (an HTML target routes through the
@@ -54,60 +54,6 @@ test("live web: a discovered http:// READ atomically materializes a real URL (no
             assert.ok(body?.content.startsWith(String(r.content)), "READ projects from the stored canonical prefix");
             assert.ok((body?.content.split("\n").length ?? 0) > 16, "the entry retains content beyond the markerless preview");
             assert.deepEqual((r.range as { returned?: readonly number[] } | undefined)?.returned, [1, 16]);
-        } finally { await schemes.close(); await db.close(); }
-    });
-
-test("live web: exec[search] queries a real SearXNG instance into a results entry (no model, no mock)",
-    async () => {
-        assert.ok(
-            process.env.PLURNK_EXECS_SEARCH_SEARXNG_URL?.trim(),
-            "live search coverage requires PLURNK_EXECS_SEARCH_SEARXNG_URL in the operator environment",
-        );
-        // search is an EXEC runtime (in-tree exec scheme + ctx.executors), effect="read" → auto-runs,
-        // streaming its SearXNG JSON into the `results` channel of a search:/// output entry. We dispatch
-        // a real EXEC[search] through a real Engine + ExecutorRegistry and read the results back — no mock.
-        const db = await openMigrated();
-        const schemes = new SchemeRegistry();
-        try {
-            const exec = schemes.get("exec") as Exec;
-            const executors = await ExecutorRegistry.build({ defaultRuntime: "sh", cwd: process.cwd() });
-            const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
-            engine.setExecutors(executors);
-            schemes.registerRuntimeSchemes(executors);   // mint the search:// output scheme
-            const workspaceId = await insertWorkspace(db, `web-search-${crypto.randomUUID()}`);
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1, "search");
-            const turnId = await insertTurn(db, loopId, 1, 102);
-
-            const parsed = PlurnkParser.parse("# PLAN0\n\n## EXEC0 [search]\nplurnk agent runtime");
-            const item = parsed.items.find((i: { kind: string; statement?: PlurnkStatement }) => i.kind === "statement" && i.statement?.op === "EXEC") as { statement: PlurnkStatement } | undefined;
-            if (item === undefined) throw new Error("parse produced no statement");
-
-            let logEntryId = -1;
-            await engine.dispatch({
-                statement: item.statement, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
-                onDispatch: (id: number) => { logEntryId = id; },
-            });
-            await exec.idle();   // the backgrounded search spawn settles
-
-            const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
-            const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
-            const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "search", pathname });
-            assert.ok(entry, "a search:/// output entry was created");
-            const results = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "results" });
-            const rows = JSON.parse(results?.content ?? "[]") as Array<{ url?: string; materialized?: boolean }>;
-            assert.ok(Array.isArray(rows) && rows.length > 0, "the SearXNG query returned a non-empty JSON results array");
-            const survivor = rows.find((row) => row.materialized === true && typeof row.url === "string");
-            assert.ok(survivor?.url, "live search materialized at least one discovered page");
-            const url = new URL(survivor.url);
-            const page = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
-                scheme: url.protocol.slice(0, -1),
-                pathname: `/${url.hostname}${url.pathname}`,
-            });
-            assert.ok(page, "the materialized verdict names a real, addressable web entry");
-            const pageBody = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: page.id, name: "body" });
-            assert.ok((pageBody?.content.length ?? 0) > 0, "the discovered page has a non-empty model-facing body");
-            assert.notEqual(pageBody?.mimetype, "text/html", "raw HTML never occupies the decisive body channel");
         } finally { await schemes.close(); await db.close(); }
     });
 
