@@ -65,6 +65,50 @@ helpers under their test or bench owner rather than compiling them into `dist`.
 When runtime code loads a module by exact path instead of through an export,
 assert that path in the root packed-artifact projection.
 
+## Configuration cascade and test tiers
+
+Environment layers highest-precedence-first. `loadEnvFile` is set-if-unset, so a
+value already set earlier (or in the shell) is never overwritten; among the
+repeatable `--env-file-if-exists` flags the LAST flag wins. The live/demo tier
+(`plurnk-core` `test:demo`) layers, highest first:
+
+1. the operator's shell env — `scripts/operator-environment.sh` sources `~/.bashrc`
+   before running, so the `<PROVIDER>_API_KEY` credentials (e.g. `DEEPSEEK_API_KEY`)
+   are present and `PLURNK_MODEL=<alias>` here overrides the committed gate default,
+2. `plurnk-core/.env.test` — the committed real-model gate profile
+   (`PLURNK_MODEL=turboderp`, `PLURNK_SERVICE_FILES_ITEMS=-1`,
+   `PLURNK_SERVICE_GIT_AUTO=1`, `PLURNK_SERVICE_EMBED_DISABLE=0`),
+3. `./.env`, then `~/.plurnk/.env` — operator files. `~/.plurnk/.env` declares the
+   model aliases (`PLURNK_MODEL_<alias>=<provider>/<model>`, e.g.
+   `PLURNK_MODEL_deepdumb=deepseek/deepseek-v4-flash`); both are operator-owned and
+   never committed,
+4. per-package `.env.defaults` — committed safe defaults plus the authoritative env docs,
+5. `test/floor.ts` — the assembled `.env.defaults` of every installed package,
+   applied set-if-unset so it only fills genuinely-unset knobs.
+
+Model selection: `PLURNK_MODEL=<alias>` selects the active alias;
+`PLURNK_MODEL_<alias>=<provider>/<model>` declares it (provider ids in
+`plurnk-models/src/providers.json`). Resolution is `resolveActiveAlias()`
+(plurnk-aliases) then `loadActiveProvider()` (plurnk-providers). Declare an alias
+once in `~/.plurnk/.env` and select it per run with `PLURNK_MODEL=<alias>`; never
+redeclare it inline. The repo ships only the `turboderp` gate default, never a
+credential.
+
+Test tiers: `test:lint` / `test:unit` / `test:intg` run per package against the
+Mock-tier bootstrap (`node --import=./test/setup.ts` — a fake `mocktest` alias with
+fixture-scaled reserves). The **demo** tier drives a REAL model through the prod
+loop via `test/_live-harness.ts` (`liveWorkspace` + `liveLoop`) and uses the floor
+bootstrap (`--import=./test/floor.ts`) instead; it boots a fresh sandbox workspace,
+never the host repo, and is not part of `npm test`. The `test:demo` script already
+layers the full cascade (operator-environment.sh → floor.ts → `.env.defaults`,
+`~/.plurnk/.env`, `./.env`, `.env.test`); just select a model and run it from
+`plurnk-core`:
+
+```sh
+PLURNK_MODEL=<alias> npm run test:demo
+PLURNK_MODEL=<alias> npm run test:demo -- --test-name-pattern='<story>'
+```
+
 ## Monorepo contracts
 
 - JSON Schema is authoritative for shared wire shapes.
