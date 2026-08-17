@@ -139,6 +139,7 @@ export default class AstBuilder {
         return {
             op: "FIND",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_FIND().getText(), "FIND"),
+            annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
             position,
@@ -165,6 +166,7 @@ export default class AstBuilder {
         return {
             op: "LOOK",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_LOOK().getText(), "LOOK"),
+            annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
             position,
@@ -178,6 +180,7 @@ export default class AstBuilder {
         return {
             op: "BUFF",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_BUFF().getText(), "BUFF"),
+            annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
             position,
@@ -206,6 +209,7 @@ export default class AstBuilder {
             return {
                 op: "FIND",
                 suffix: AstBuilder.#splitSuffix(ctx.OPEN_READ().getText(), "READ"),
+                annotation: AstBuilder.#annotationOf(ctx),
                 ...findSlots,
                 body: hasMatcher ? AstBuilder.#parseMatcherBody(raw, position) : null,
                 position,
@@ -214,6 +218,7 @@ export default class AstBuilder {
         return {
             op: "READ",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_READ().getText(), "READ"),
+            annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: null,
             position,
@@ -236,6 +241,7 @@ export default class AstBuilder {
         return {
             op: "OPEN",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_OPEN().getText(), "OPEN"),
+            annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
             position,
@@ -258,6 +264,7 @@ export default class AstBuilder {
         return {
             op: "FOLD",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_FOLD().getText(), "FOLD"),
+            annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
             position,
@@ -271,6 +278,7 @@ export default class AstBuilder {
         return {
             op: "EDIT",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_EDIT().getText(), "EDIT"),
+            annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
             position,
@@ -285,6 +293,7 @@ export default class AstBuilder {
         return {
             op: "COPY",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_COPY().getText(), "COPY"),
+            annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw === null ? null : AstBuilder.parseResourceSelection(raw, position),
             position,
@@ -299,6 +308,7 @@ export default class AstBuilder {
         return {
             op: "MOVE",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_MOVE().getText(), "MOVE"),
+            annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.parseResourceSelection(raw, position) : null,
             position,
@@ -312,6 +322,7 @@ export default class AstBuilder {
         return {
             op: "SEND",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_SEND().getText(), "SEND"),
+            annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             // Preserve a terminal wait scope; the dispatcher owns which disposition
             // accepts it. Only the terminal rule carries a marker (midSend → null).
@@ -327,6 +338,7 @@ export default class AstBuilder {
         return {
             op: "EXEC",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_EXEC().getText(), "EXEC"),
+            annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
             position,
@@ -340,6 +352,7 @@ export default class AstBuilder {
         return {
             op: "BARE",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_BARE().getText(), "BARE"),
+            annotation: AstBuilder.#annotationOf(ctx),
             signal,
             target: null,
             lineMarker: null,
@@ -354,6 +367,7 @@ export default class AstBuilder {
         return {
             op: "PLAN",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_PLAN().getText(), "PLAN"),
+            annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
             position,
@@ -366,6 +380,7 @@ export default class AstBuilder {
         return {
             op: "KILL",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_KILL().getText(), "KILL"),
+            annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             lineMarker: null,
             body: AstBuilder.#bodyTextOf(ctx),
@@ -379,6 +394,7 @@ export default class AstBuilder {
         return {
             op: "WORK",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_WORK().getText(), "WORK"),
+            annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             lineMarker: null,
             body: AstBuilder.#requiredBodyTextOf(ctx),
@@ -392,6 +408,7 @@ export default class AstBuilder {
         return {
             op: "FORK",
             suffix: AstBuilder.#splitSuffix(ctx.OPEN_FORK().getText(), "FORK"),
+            annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             lineMarker: null,
             body: AstBuilder.#requiredBodyTextOf(ctx),
@@ -539,6 +556,11 @@ export default class AstBuilder {
     static #positionOf(ctx: { start: { line: number; column: number } | null }): Position {
         const start = ctx.start;
         return { line: start?.line ?? 0, column: start?.column ?? 0 };
+    }
+
+    static #annotationOf(ctx: ParserRuleContext): string | null {
+        const token = AstBuilder.#findToken(ctx, plurnkLexer.ANNOTATION);
+        return token === null ? null : token.slice("<!--".length, -"-->".length).trim();
     }
 
     static #bodyTextOf(ctx: ParserRuleContext): string | null {

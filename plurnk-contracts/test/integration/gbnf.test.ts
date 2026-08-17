@@ -448,6 +448,26 @@ test("GBNF BARE, EXEC, WORK, and FORK retain their operation-specific slots and 
     assert.equal(derives("statement", mid("FORK", " (worker://child)")), false);
 });
 
+// {§operation-annotation}
+test("GBNF permits one canonical trailing operation annotation", () => {
+    assert.equal(derives(
+        "statement",
+        "## EXEC0 [gitea] (list_issues) <!-- Lists issues -->\n{}\n\n",
+    ), true);
+    assert.equal(derives(
+        "statement",
+        "## EXEC0 <!-- Lists issues --> [gitea] (list_issues)\n{}\n\n",
+    ), false);
+    assert.equal(derives(
+        "statement",
+        "## EXEC0 [gitea] (list_issues) <!-- Lists\nissues -->\n{}\n\n",
+    ), false);
+    assert.equal(derivesTurn(
+        "# PLAN0 <!-- Keep the reasoning inventory current -->\nreason\n\n"
+        + "## SEND0 [200] <!-- Return the answer -->\ndone",
+    ), true);
+});
+
 test("GBNF PLAN is a nonempty slotless H1 lane-0 anchor only", () => {
     assert.equal(derivesTurn(turn("intent", [], 200, "done")), true);
     assert.equal(derivesTurn(`# PLAN0 [tag]\nintent\n\n${terminal(200, "done")}`), false);
@@ -543,7 +563,7 @@ test("100 seeded turn derivations preserve the PLAN-through-terminal-SEND frame"
         const generated = sample("root-gemma", mulberry32(seed));
         assert.equal(derives("root-gemma", generated), true, `seed ${seed}`);
         assert.ok(generated.startsWith(CHANNEL_OPEN), `seed ${seed}`);
-        assert.ok(generated.includes("# PLAN0\n"), `seed ${seed}`);
+        assert.ok(generated.includes("# PLAN0"), `seed ${seed}`);
         const projected = generated.slice(generated.indexOf(CHANNEL_CLOSE) + CHANNEL_CLOSE.length).trimStart();
         const result = PlurnkParser.parse(projected);
         assert.equal(result.unparsedTail, undefined, `seed ${seed}`);
