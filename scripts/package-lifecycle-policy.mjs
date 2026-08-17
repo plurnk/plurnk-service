@@ -7,6 +7,7 @@ const AUXILIARY_TEST_SCRIPTS = new Set([
     "test:live:specimen",
     "test:live:zeropin",
     "test:demo",
+    "test:demo:specimen",
     "test:demo:zeropin",
     "test:benchlet",
     "test:providersPing",

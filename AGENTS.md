@@ -99,14 +99,17 @@ Mock-tier bootstrap (`node --import=./test/setup.ts` — a fake `mocktest` alias
 fixture-scaled reserves). The **demo** tier drives a REAL model through the prod
 loop via `test/_live-harness.ts` (`liveWorkspace` + `liveLoop`) and uses the floor
 bootstrap (`--import=./test/floor.ts`) instead; it boots a fresh sandbox workspace,
-never the host repo, and is not part of `npm test`. The `test:demo` script already
-layers the full cascade (operator-environment.sh → floor.ts → `.env.defaults`,
-`~/.plurnk/.env`, `./.env`, `.env.test`); just select a model and run it from
-`plurnk-core`:
+never the host repo, and is not part of `npm test`. Both tiers route through
+driver scripts (`scripts/live.mjs`, `scripts/demo.mjs`) that layer the full
+cascade (operator-environment.sh → floor.ts → `.env.defaults`, `~/.plurnk/.env`,
+`./.env`, `.env.test`) and place `--test-name-pattern` *before* the file list
+(node ignores it after the files). Run from `plurnk-core`, selecting a model:
 
 ```sh
-PLURNK_MODEL=<alias> npm run test:demo
-PLURNK_MODEL=<alias> npm run test:demo -- --test-name-pattern='<story>'
+PLURNK_MODEL=<alias> npm run test:demo               # every demo story
+PLURNK_MODEL=<alias> npm run test:demo:specimen -- <name-substring>   # one story
+PLURNK_MODEL=<alias> npm run test:live                # every live specimen
+PLURNK_MODEL=<alias> npm run test:live:specimen -- <exact name>       # one specimen
 ```
 
 ## Monorepo contracts
