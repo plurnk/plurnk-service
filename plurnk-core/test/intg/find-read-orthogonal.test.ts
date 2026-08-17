@@ -19,18 +19,18 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
-    op: "READ", suffix: "", signal: null, target,
+    op: "READ", annotation: null, suffix: "", signal: null, target,
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
 const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null, lineMarker: FindStatement["lineMarker"] = null): FindStatement => ({
-    op: "FIND", suffix: "", signal: null, target,
+    op: "FIND", annotation: null, suffix: "", signal: null, target,
     lineMarker, body, position: { line: 1, column: 1 },
 });
 
 const seed = async (db: Db, workspaceId: number, workerId: number, mimetypes: Mimetypes, path: string, content: string): Promise<void> => {
     await new Worker().edit(
-        { op: "EDIT", suffix: "", signal: null, target: urlPath("worker", path), lineMarker: null, body: content, position: { line: 1, column: 1 } },
+        { op: "EDIT", annotation: null, suffix: "", signal: null, target: urlPath("worker", path), lineMarker: null, body: content, position: { line: 1, column: 1 } },
         makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
     );
 };

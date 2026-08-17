@@ -82,6 +82,26 @@ test("log entry: a no-body row renders explicit display:none and body:\"\" — p
     assert.doesNotMatch(out, /"op":"EDIT"/, "the canonical path does not duplicate its operation in metadata");
 });
 
+test("{§jsonplurnk}: a present operation annotation materializes and absence costs no metadata", () => {
+    const annotated = PacketWire.renderLog([{
+        coordinate: "1/1/1",
+        origin: "model",
+        op: "EXEC",
+        status: 200,
+        tx: { annotation: "Lists issues", body: null },
+    }], tok);
+    assert.match(annotated, /"annotation":"Lists issues"/);
+
+    const absent = PacketWire.renderLog([{
+        coordinate: "1/1/2",
+        origin: "model",
+        op: "EXEC",
+        status: 200,
+        tx: { annotation: null, body: null },
+    }], tok);
+    assert.doesNotMatch(absent, /"annotation":/);
+});
+
 test("log entry: durable folksonomic tags remain visible when the body is folded", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",

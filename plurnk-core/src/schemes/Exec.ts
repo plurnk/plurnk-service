@@ -533,6 +533,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             const read = await this.readExecSource({
                 op: "READ",
                 suffix: "",
+                annotation: null,
                 signal: null,
                 target: sourceTarget,
                 lineMarker: { marks: [1, -1] },
@@ -557,8 +558,8 @@ export default class Exec extends CoreSchemeAdapterBase {
                     },
                 );
             }
-            tempPath = join(tmpdir(), `plurnk-exec-${core.workspaceId}-${pathname.replace(/[^a-zA-Z0-9]/g, "-")}`);
-            await writeFile(tempPath, content, "utf8");
+            tempPath = join(tmpdir(), `plurnk-exec-${crypto.randomUUID()}`);
+            await writeFile(tempPath, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
             target = tempPath;
         }
         if (body.length === 0 && target === null) {

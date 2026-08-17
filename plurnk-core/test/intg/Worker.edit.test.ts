@@ -12,6 +12,7 @@ const editStatement = (opts: {
     lineMarker?: LineMarker | null; suffix?: string;
 }): ResolvedEditStatement => ({
     op: "EDIT",
+    annotation: null,
     suffix: opts.suffix ?? "",
     signal: opts.tags ?? null,
     target: opts.target ?? null,
@@ -22,6 +23,7 @@ const editStatement = (opts: {
 
 const readStatement = (opts: { target?: ParsedPath | null }): ReadStatement => ({
     op: "READ",
+    annotation: null,
     suffix: "",
     signal: null,
     target: opts.target ?? null,

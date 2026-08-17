@@ -91,9 +91,10 @@ const optionalBodySection = (
     header: GSeq,
     bodyRule: string,
 ): void => {
+    const annotated = [...header, opt(ref("annotation-slot"))];
     model.set(name, [
-        [...header, lit("\n\n")],
-        [...header, lit("\n"), ref(`${bodyRule}-ne`), lit("\n\n")],
+        [...annotated, lit("\n\n")],
+        [...annotated, lit("\n"), ref(`${bodyRule}-ne`), lit("\n\n")],
     ]);
 };
 
@@ -103,11 +104,11 @@ const requiredBodySection = (
     header: GSeq,
     bodyRule = "section-body",
 ): void => {
-    model.set(name, [[...header, lit("\n"), ref(`${bodyRule}-ne`), lit("\n\n")]]);
+    model.set(name, [[...header, opt(ref("annotation-slot")), lit("\n"), ref(`${bodyRule}-ne`), lit("\n\n")]]);
 };
 
 const emptySection = (model: GModel, name: string, header: GSeq): void => {
-    model.set(name, [[...header, lit("\n\n")]]);
+    model.set(name, [[...header, opt(ref("annotation-slot")), lit("\n\n")]]);
 };
 
 export const buildModel = (): GModel => {
@@ -118,6 +119,7 @@ export const buildModel = (): GModel => {
     // language for intentional alternate-lane literals.
     const structuralHeadings = ["# PLAN", ...OPS.map((op) => `## ${op}`)];
     forbidLiterals(model, "section-body", structuralHeadings);
+    forbidLiterals(model, "annotation-body", ["-->"], true);
 
     // Matcher bodies are single-line on the rail. `:` and `#` are excluded only
     // in first position: colon retains the existing typo sieve, while hash would
@@ -168,8 +170,8 @@ export const buildModel = (): GModel => {
         [lit("## SEND0"), opt(ref("target-slot"))],
     ];
     model.set("send-mid", sendMidHeaders.flatMap((header): GRule => [
-        [...header, lit("\n\n")],
-        [...header, lit("\n"), ref("section-body-ne"), lit("\n\n")],
+        [...header, opt(ref("annotation-slot")), lit("\n\n")],
+        [...header, opt(ref("annotation-slot")), lit("\n"), ref("section-body-ne"), lit("\n\n")],
     ]));
 
     const final = (name: string, signal: string, park: boolean): void => {
@@ -177,6 +179,7 @@ export const buildModel = (): GModel => {
             lit(`## SEND0 [${signal}]`),
             opt(ref("target-slot")),
             ...(park ? [opt(ref("park-slot"))] : []),
+            opt(ref("annotation-slot")),
             lit("\n"),
             ref("section-body-ne"),
         ]]);
@@ -240,6 +243,7 @@ export const buildModel = (): GModel => {
     model.set("kill-slot", [[lit(" "), ref("kill-sig")]]);
     model.set("status-mid-slot", [[lit(" ["), ref("status-mid"), lit("]")]]);
     model.set("park-slot", [[lit(" "), ref("park")]]);
+    model.set("annotation-slot", [[lit(" <!-- "), ref("annotation-body-ne"), lit(" -->")]]);
 
     model.set("status-mid", [
         [cls([R("0", "0"), R("5", "9")]), DIGIT, DIGIT],

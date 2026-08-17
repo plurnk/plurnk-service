@@ -70,23 +70,25 @@ midStatement
     | killStatement
     ;
 
-findStatement : OPEN_FIND tagOpModifiers? statementEnd ;
-readStatement : OPEN_READ tagOpModifiers? statementEnd ;
-editStatement : OPEN_EDIT tagOpModifiers? statementEnd ;
-copyStatement : OPEN_COPY tagOpModifiers? statementEnd ;
-moveStatement : OPEN_MOVE tagOpModifiers? statementEnd ;
-openStatement : OPEN_OPEN curationModifiers? statementEnd ;
-foldStatement : OPEN_FOLD curationModifiers? statementEnd ;
-sendStatement : OPEN_SEND termModifiers statementEnd ;
-midSend       : OPEN_SEND midModifiers? statementEnd ;
-execStatement : OPEN_EXEC execModifiers? statementEnd ;
-bareStatement : OPEN_BARE tagSignal? statementEnd ;
-workStatement : OPEN_WORK branchModifiers? statementEnd ;
-forkStatement : OPEN_FORK branchModifiers? statementEnd ;
-killStatement : OPEN_KILL intOpModifiers? statementEnd ;
-planStatement : OPEN_PLAN tagOpModifiers? statementEnd ;
-lookStatement : OPEN_LOOK tagOpModifiers? statementEnd ;
-buffStatement : OPEN_BUFF tagOpModifiers? statementEnd ;
+findStatement : OPEN_FIND tagOpModifiers? opAnnotation? statementEnd ;
+readStatement : OPEN_READ tagOpModifiers? opAnnotation? statementEnd ;
+editStatement : OPEN_EDIT tagOpModifiers? opAnnotation? statementEnd ;
+copyStatement : OPEN_COPY tagOpModifiers? opAnnotation? statementEnd ;
+moveStatement : OPEN_MOVE tagOpModifiers? opAnnotation? statementEnd ;
+openStatement : OPEN_OPEN curationModifiers? opAnnotation? statementEnd ;
+foldStatement : OPEN_FOLD curationModifiers? opAnnotation? statementEnd ;
+sendStatement : OPEN_SEND termModifiers opAnnotation? statementEnd ;
+midSend       : OPEN_SEND midModifiers? opAnnotation? statementEnd ;
+execStatement : OPEN_EXEC execModifiers? opAnnotation? statementEnd ;
+bareStatement : OPEN_BARE tagSignal? opAnnotation? statementEnd ;
+workStatement : OPEN_WORK branchModifiers? opAnnotation? statementEnd ;
+forkStatement : OPEN_FORK branchModifiers? opAnnotation? statementEnd ;
+killStatement : OPEN_KILL intOpModifiers? opAnnotation? statementEnd ;
+planStatement : OPEN_PLAN tagOpModifiers? opAnnotation? statementEnd ;
+lookStatement : OPEN_LOOK tagOpModifiers? opAnnotation? statementEnd ;
+buffStatement : OPEN_BUFF tagOpModifiers? opAnnotation? statementEnd ;
+
+opAnnotation : ANNOTATION ;
 
 // A direct next heading, an ordinary section body, or EOF after a bodyless
 // heading all normalize through the same AST path. {§empty-section}

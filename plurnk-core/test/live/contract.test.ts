@@ -14,18 +14,31 @@
 
 import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
-import { liveWorkspace, liveLoop, seedEntry, readBody, lastRx } from "../_live-harness.ts";
+import { liveWorkspace, liveLoop, seedEntry, readBody } from "../_live-harness.ts";
 
 const TIMEOUT = Number(process.env.PLURNK_LIVE_TIMEOUT ?? 240_000); // raise for slow/remote endpoints
 
-test("live: READ <L> — slice the second line of an entry", { timeout: TIMEOUT }, async () => {
+test("live: READ <L> — retrieve a safe line without reading sensitive neighbors", { timeout: TIMEOUT }, async () => {
     const s = await liveWorkspace({ name: `live-contract-read-L-${crypto.randomUUID()}` });
     try {
         await seedEntry(s.db, s.workspaceId, { pathname: "lines.md", content: "alpha\nbeta\ngamma" });
-        const { modelWorkerId } = await liveLoop(s, 2, { prompt: "What is on the second line of worker:///lines.md?" }, { timeoutMs: TIMEOUT });
-        const rx = await lastRx(s.db, modelWorkerId, "READ");
-        assert.match(rx, /beta/);
-        assert.doesNotMatch(rx, /alpha|gamma/); // a <2> slice, not a whole-file read
+        const { finalStatus, lastContent, modelWorkerId } = await liveLoop(
+            s,
+            2,
+            { prompt: "The first and last lines of worker:///lines.md contain sensitive data that must not be read. What safe information is on the middle line?" },
+            { timeoutMs: TIMEOUT },
+        );
+        assert.equal(finalStatus, 200);
+        assert.match(lastContent, /beta/, "the answer reports the requested line");
+        const reads = await s.db.test_log_entries_by_worker_op_full.all<{ pathname: string; rx: string }>({
+            worker_id: modelWorkerId,
+            op: "READ",
+        });
+        const targetReads = reads.filter(({ pathname }) => pathname === "/lines.md");
+        assert.ok(targetReads.length > 0, "the model read the target entry");
+        const retrieved = targetReads.map(({ rx }) => rx).join("\n");
+        assert.match(retrieved, /beta/, "the target READ retrieved the safe middle line");
+        assert.doesNotMatch(retrieved, /alpha|gamma/, "no target READ retrieved either sensitive neighbor");
     } finally { await s.cleanup(); }
 });
 

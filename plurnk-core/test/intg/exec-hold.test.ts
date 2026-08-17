@@ -18,7 +18,7 @@ import { sendStmt } from "./_dsl.ts";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
-    op: "EXEC", suffix: "", signal: runtime, target: null,
+    op: "EXEC", annotation: null, suffix: "", signal: runtime, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 

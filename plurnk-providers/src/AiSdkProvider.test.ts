@@ -1950,6 +1950,43 @@ test("streamed-body silence retries and returns the retry's complete output", as
     mock.restoreAll();
 });
 
+test("an Undici stream termination retries and returns the retry's complete output", async () => {
+    let calls = 0;
+    mock.method(globalThis, "fetch", async () => {
+        calls++;
+        if (calls === 1) {
+            return new Response(new ReadableStream({
+                start(controller) {
+                    controller.enqueue(new TextEncoder().encode(
+                        'data: {"id":"terminated","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}\n\n',
+                    ));
+                    const socket = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
+                    controller.error(new TypeError("terminated", { cause: socket }));
+                },
+            }), { status: 200 });
+        }
+        return new Response(sseStream([
+            { choices: [{ delta: { content: "recovered" }, finish_reason: "stop" }] },
+        ]), { status: 200 });
+    });
+    const p = testProvider({
+        model: "m",
+        url: "http://x/v1/chat/completions",
+        fetchTimeoutMs: 5000,
+        streamIdleTimeoutMs: 0,
+        temperature: 0.2,
+        repeatPenalty: 1.15,
+        reasoning: { mode: "off", budget: null },
+        retryAttempts: 1,
+        source: "provider:test",
+    });
+    const result = await p.generate({ workerId: "r", messages: [] });
+    assert.equal(result.assistant.content, "recovered", "the retry's complete output, not the terminated partial");
+    assert.equal(calls, 2, "the terminated stream retried once and the retry succeeded");
+    assert.deepEqual(result.accounting.map(({ outcome }) => outcome), ["error", "response"]);
+    mock.restoreAll();
+});
+
 test("streamed-body silence does not replay when retries are disabled", async () => {
     let calls = 0;
     mock.method(globalThis, "fetch", async () => {

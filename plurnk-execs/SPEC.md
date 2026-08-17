@@ -363,14 +363,15 @@ side-effect-free; a protocol executor refreshes its cached snapshot at its own
 I/O boundary rather than making packet assembly perform network discovery.
 
 §executor-tool-document **Tool documents are the model-facing executor
-directory.** The consumer renders one Markdown document with exact H2
-`Summary` and `Invocation` sections from each declaration. A general runtime's
-document carries its executable witness; an exact tool's document carries its
-literal target and schema signature. Supplemental `details` follows those
-framework-owned sections and cannot own either fact. The consumer chooses the
-resource address, materializes the documents, and exposes their Summary through
-ordinary FIND metadata. No executor table or executor-specific discovery
-protocol exists.
+directory.** A general runtime's document carries exact H2 `Summary` and
+`Invocation` sections plus its executable witness. An exact registry instead
+renders one compact family document containing every exact annotated EXEC
+heading and signature, plus one child document per tool with its H2 `Summary`,
+literal target, signature, and supplemental input details. Supplemental
+`details` follows framework-owned sections and cannot own identity, invocation,
+or admission. The consumer chooses resource addresses, materializes the
+documents, and exposes each Summary through ordinary FIND metadata. No executor
+table or executor-specific discovery protocol exists.
 
 Runtime-name admission is one identity contract:
 

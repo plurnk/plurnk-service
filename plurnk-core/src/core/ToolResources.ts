@@ -35,6 +35,12 @@ const escapeCell = (value: string): string => value.replaceAll("|", "\\|");
 const summaryParagraph = (value: string): string =>
     /^(?:[>#+*`~-]|\d+[.)]\s|<)/u.test(value) ? `\\${value}` : value;
 
+const annotationText = (value: string): string => {
+    const normalized = value.replaceAll(/\s+/gu, " ").trim().replaceAll("--", "—");
+    const safeStart = /^(?:>|->)/u.test(normalized) ? `Description: ${normalized}` : normalized;
+    return safeStart.endsWith("-") ? `${safeStart}.` : safeStart;
+};
+
 const requirement = (required: boolean): string => required ? "required" : "optional";
 
 const invocationRows = (
@@ -62,9 +68,11 @@ const exampleSource = (
     runtime: string,
     invocation: RuntimeInvocationDecl,
     exactTarget?: string,
+    annotation?: string,
 ): string => {
     const target = exactTarget ?? invocation.example?.target;
-    const heading = `## EXEC0 [${runtime}]${target === undefined ? "" : ` (${PathSyntax.escapeTarget(target)})`}`;
+    const heading = `## EXEC0 [${runtime}]${target === undefined ? "" : ` (${PathSyntax.escapeTarget(target)})`}`
+        + (annotation === undefined ? "" : ` <!-- ${annotationText(annotation)} -->`);
     return invocation.example?.body === undefined
         ? heading
         : `${heading}\n${invocation.example.body}`;
@@ -74,15 +82,16 @@ const renderInvocation = (
     runtime: string,
     invocation: RuntimeInvocationDecl,
     exactTarget?: string,
+    annotation?: string,
 ): string[] => [
     "## Invocation",
     "",
     ...invocationRows(invocation, exactTarget),
     "",
     ...(invocation.signature === undefined
-        ? [fence("plurnk", exampleSource(runtime, invocation, exactTarget))]
+        ? [fence("plurnk", exampleSource(runtime, invocation, exactTarget, annotation))]
         : [
-            inlineCode(exampleSource(runtime, invocation, exactTarget)),
+            inlineCode(exampleSource(runtime, invocation, exactTarget, annotation)),
             "",
             `Signature: ${inlineCode(invocation.signature)}`,
         ]),
@@ -117,40 +126,49 @@ export default class ToolResources {
                 content: renderDocument(
                     source.runtime,
                     source.summary,
-                    renderInvocation(source.runtime, source.invocation),
+                    renderInvocation(source.runtime, source.invocation, undefined, source.summary),
                     source.details,
                 ),
             }];
         }
         if (source.registry.tools.length === 0) return [];
 
-        const familyPattern = `worker://plurnk/tools/${source.runtime}/*.md`;
+        const tools = source.registry.tools
+            .toSorted((left, right) => left.target.localeCompare(right.target));
+        const familyInvocations = tools.flatMap((tool, index): string[] => {
+            const segment = ToolResources.targetSegment(tool.target);
+            const details = `worker://plurnk/tools/${source.runtime}/${segment}.md`;
+            const heading = exampleSource(
+                source.runtime,
+                tool.invocation,
+                tool.target,
+                `${tool.summary} (details: ${details})`,
+            ).split("\n", 1)[0]!;
+            const input = tool.invocation.signature ?? tool.invocation.example?.body;
+            return [
+                ...(index === 0 ? [] : [""]),
+                heading,
+                ...(input === undefined ? [] : [input]),
+            ];
+        });
         const family = renderDocument(
             source.runtime,
             source.summary,
-            [
-                "## Invocation",
-                "",
-                "FIND this family's exact tools, then READ the selected invocation contract.",
-                "",
-                fence("plurnk", `## FIND0 (${familyPattern})`),
-            ],
+            familyInvocations,
             source.details,
         );
-        const tools = source.registry.tools
-            .toSorted((left, right) => left.target.localeCompare(right.target))
-            .map((tool): ToolResource => ({
-                pathname: `/tools/${source.runtime}/${ToolResources.targetSegment(tool.target)}.md`,
-                content: renderDocument(
-                    `${source.runtime} / ${inlineCode(tool.target)}`,
-                    tool.summary,
-                    renderInvocation(source.runtime, tool.invocation, tool.target),
-                    tool.details ?? "",
-                ),
-            }));
+        const toolResources = tools.map((tool): ToolResource => ({
+            pathname: `/tools/${source.runtime}/${ToolResources.targetSegment(tool.target)}.md`,
+            content: renderDocument(
+                `${source.runtime} / ${inlineCode(tool.target)}`,
+                tool.summary,
+                renderInvocation(source.runtime, tool.invocation, tool.target, tool.summary),
+                tool.details ?? "",
+            ),
+        }));
         return [
             { pathname: `/tools/${source.runtime}.md`, content: family },
-            ...tools,
+            ...toolResources,
         ];
     }
 }

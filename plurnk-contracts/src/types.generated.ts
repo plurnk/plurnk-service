@@ -50,7 +50,7 @@ status: "cancelled"
 
 export type ClientStatement = (PlurnkStatement | LookStatement | BuffStatement)
 /**
- * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, lineMarker, body, suffix, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
+ * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, lineMarker, annotation, body, suffix, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
  */
 
 export type PlurnkStatement = (FindStatement | ReadStatement | OpenStatement | FoldStatement | EditStatement | CopyStatement | MoveStatement | SendStatement | ExecStatement | BareStatement | WorkStatement | ForkStatement | KillStatement | PlanStatement)
@@ -65,6 +65,8 @@ export type ParsedPath = (LocalPath | UrlPath)
 
 export type MatcherBody = (XPathBody | RegexBody | JsonPathBody | SemanticBody | GraphBody | GlobBody)
 
+export type AnnotationOrNull = (string | null)
+
 export type TagSignal = (string[] | null)
 
 export type PathOrNull = (ParsedPath | null)
@@ -78,6 +80,7 @@ export type LineMarkerOrNull = (LineMarker | null)
 export interface FindStatement {
 op: "FIND"
 suffix: string
+annotation: (string | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
@@ -187,6 +190,7 @@ column: number
 export interface ReadStatement {
 op: "READ"
 suffix: string
+annotation: (string | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
@@ -207,6 +211,7 @@ marks: [(number | string), ...((number | string))[]]
 export interface OpenStatement {
 op: "OPEN"
 suffix: string
+annotation: (string | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: null
@@ -217,6 +222,7 @@ position: Position
 export interface FoldStatement {
 op: "FOLD"
 suffix: string
+annotation: (string | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: null
@@ -227,6 +233,7 @@ position: Position
 export interface EditStatement {
 op: "EDIT"
 suffix: string
+annotation: (string | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
@@ -237,6 +244,7 @@ position: Position
 export interface CopyStatement {
 op: "COPY"
 suffix: string
+annotation: (string | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
@@ -255,6 +263,7 @@ lineMarker: (TextLineMarker | null)
 export interface MoveStatement {
 op: "MOVE"
 suffix: string
+annotation: (string | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
@@ -265,6 +274,7 @@ position: Position
 export interface SendStatement {
 op: "SEND"
 suffix: string
+annotation: (string | null)
 signal: (number | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
@@ -283,6 +293,7 @@ json: unknown
 export interface ExecStatement {
 op: "EXEC"
 suffix: string
+annotation: (string | null)
 signal: (string | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
@@ -293,6 +304,7 @@ position: Position
 export interface BareStatement {
 op: "BARE"
 suffix: string
+annotation: (string | null)
 signal: (string[] | null)
 target: null
 lineMarker: null
@@ -303,6 +315,7 @@ position: Position
 export interface WorkStatement {
 op: "WORK"
 suffix: string
+annotation: (string | null)
 signal: (string | null)
 target: (ParsedPath | null)
 lineMarker: null
@@ -313,6 +326,7 @@ position: Position
 export interface ForkStatement {
 op: "FORK"
 suffix: string
+annotation: (string | null)
 signal: (string | null)
 target: (ParsedPath | null)
 lineMarker: null
@@ -323,6 +337,7 @@ position: Position
 export interface KillStatement {
 op: "KILL"
 suffix: string
+annotation: (string | null)
 signal: (number | null)
 target: (ParsedPath | null)
 lineMarker: null
@@ -333,6 +348,7 @@ position: Position
 export interface PlanStatement {
 op: "PLAN"
 suffix: string
+annotation: (string | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
@@ -343,6 +359,7 @@ position: Position
 export interface LookStatement {
 op: "LOOK"
 suffix: string
+annotation: AnnotationOrNull
 signal: TagSignal
 target: PathOrNull
 lineMarker: TextLineMarkerOrNull
@@ -353,6 +370,7 @@ position: Position
 export interface BuffStatement {
 op: "BUFF"
 suffix: string
+annotation: AnnotationOrNull
 signal: TagSignal
 target: PathOrNull
 lineMarker: LineMarkerOrNull

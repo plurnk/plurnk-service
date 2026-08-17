@@ -59,6 +59,7 @@ interface ActionTarget {
 // The durable statement supplies operand identity and bodies without asking the
 // packet mirror to re-serialize the model's complete emission tag.
 interface StatementTx {
+    annotation?: unknown;
     target?: ActionTarget | null;
     lineMarker?: unknown;
     body?: string | {
@@ -551,6 +552,7 @@ export default class PacketWire {
                 if (tags.length > 0) meta.tags = tags;
             }
             const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
+            if (typeof tx?.annotation === "string") meta.annotation = tx.annotation;
             const target = PacketWire.#renderActionTarget(e.target);
             if (op === "COPY" || op === "MOVE") {
                 const source = PacketWire.#renderSelection(

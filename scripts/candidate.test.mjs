@@ -26,6 +26,11 @@ test("candidate SIGTERM stops its client and daemon, writes the digest, and pres
     };
     delete env.PLURNK_CANDIDATE_MODEL;
     delete env.PLURNK_MODEL;
+    for (const key of Object.keys(env)) {
+        if (key === "PLURNK_PROVIDERS_GBNF" || key.startsWith("PLURNK_PROVIDERS_GBNF_")) delete env[key];
+    }
+    env.PLURNK_PROVIDERS_GBNF = "0";
+    env.PLURNK_PROVIDERS_GBNF_turboderp = "0";
 
     const child = spawn(process.execPath, ["scripts/candidate.mjs"], {
         cwd: root,

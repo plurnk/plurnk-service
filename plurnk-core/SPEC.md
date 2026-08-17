@@ -302,7 +302,7 @@ the `plurnk` worker's log; the model sees the shared entry through its own READ.
 Client-provided workspace documents union with the operator set at the same
 entry surface.
 
-§actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS` foists turn-0 FINDs into the worker's first turn, so a worker opens with a navigable map instead of blank. An enabled preview executes exactly five orienting surveys in order: executable tool families (`## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>`), project files (`## FIND0 [+init] (*)`), workspace commons (`## FIND0 [+init] (worker:///*)`), the worker's own space (`## FIND0 [+init] (worker://~/*)`), and kernel docs (`## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>`). Their log classifications make the opening survey one `init` set while retaining `docs` and `tools` on their respective rows ({§log-item-tags}). A shallow result renders direct entries normally and every deeper first-segment directory as an actionable `dir/**` summary with its recursive `items` and `tokens`; tool-family rows also carry the concise `{§scheme-catalog-summary}` that drives on-demand capability discovery. Ordinary surveys use FIND's markerless first-16 page, whose range metadata reports the requested and returned page against the complete result total; only the small curated kernel-doc and tool-family surfaces explicitly select all. The opening exemplar therefore demonstrates both `*` and `**` without normalizing an all-results override. Every survey executes even when empty because zero results are useful orientation. A positive `N` explicitly caps only the file map's rendered rows, using the map's actual direct-entry-plus-directory count; `-1` enables the ordinary markerless page; unset / `0` disables previews. `log://` is absent because the current worker's log already renders in present mode.
+§actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS` foists turn-0 discovery into the worker's first turn, so a worker opens with a navigable map instead of blank. An enabled preview executes exactly five orienting surveys in order: executable tool families (`## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>`), kernel docs (`## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>`), project files (`## FIND0 [+init] (*)`), workspace commons (`## FIND0 [+init] (worker:///*)`), and the worker's own space (`## FIND0 [+init] (worker://~/*)`). When the enabled tool surface contains `worker://plurnk/tools/sh.md`, one `## READ0 [+init,+tools] (worker://plurnk/tools/sh.md) <1,17>` immediately follows the tool survey as a compact worked example containing its complete summary, invocation contract, and example; its absence adds no arbitrary replacement. Their log classifications make the opening discovery one `init` set while retaining `docs` and `tools` on their respective rows ({§log-item-tags}). A shallow result renders direct entries normally and every deeper first-segment directory as an actionable `dir/**` summary with its recursive `items` and `tokens`; tool-family rows also carry the concise `{§scheme-catalog-summary}` that drives on-demand capability discovery. Ordinary surveys use FIND's markerless first-16 page, whose range metadata reports the requested and returned page against the complete result total; only the small curated kernel-doc and tool-family surfaces explicitly select all. The opening exemplar therefore demonstrates both `*` and `**` without normalizing an all-results override. Every survey executes even when empty because zero results are useful orientation. A positive `N` explicitly caps only the file map's rendered rows, using the map's actual direct-entry-plus-directory count; `-1` enables the ordinary markerless page; unset / `0` disables previews. `log://` is absent because the current worker's log already renders in present mode.
 
 §worker-initialization-entry **Worker initialization is not model output.** A worker's first loop begins with one born-OPEN actionless row at `log:///1/1/1`: `origin="plurnk"`, `op` null, and `attrs.kind="initialization"`. Its `text/vnd.plurnk` body dynamically mirrors the turn-zero PLAN, the orienting operations actually dispatched, and terminal `SEND0 [102]`. The PLAN states the concrete opening work: `* Discover the tooling available and survey the workspace file root.`; SEND hands off with `Next, address the prompt.`
 
@@ -1352,7 +1352,7 @@ OPEN/FOLD operate on the **log** (`log:///`) - the model's context-curation surf
 
 ### §jsonplurnk The Log's wire format
 
-The `## Log` section renders as a fixed three-backtick `jsonplurnk` fence - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw multiline string. Its opening JSON quote is followed by a physical newline, every content line begins with an optionally left-padded numeric `N:` or anchored `@hash N:` coordinate prefix whose separator is one or more ASCII spaces, and its closing quote appears at column zero before either the object close or a following member. Source quotes, braces, fences, and headings cannot collide with either boundary because source text never occupies column zero after projection; source backticks therefore cannot form a CommonMark closing fence. The fixed opener keeps the packet prefix stable across content changes. The carve-out is localized to `body`, so the strip-parser recognizes `"body":"` followed by a newline, consumes one or more coordinate-prefixed lines, and replaces the raw multiline value with an escaped JSON string while preserving following members to recover strict JSON. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":"\n<coordinate>...\n"` with it shown. `path` is the complete model-facing log identity: when a projected operation exists it ends in `/OP`, and no separate `op` field duplicates it. Nonempty `tags` is the row's complete deduplicated, sorted folksonomy; an untagged row omits it. When an OPEN bounded projection differs from the canonical body, it appends `"chunk":"showing <selected> of <complete>"` after `body`; otherwise it omits `chunk`. Complete-line extents use inclusive two-coordinate line regions. A cut inside a line uses four-coordinate, start-inclusive and end-exclusive regions with 1-based Unicode code-point columns. The row's `path` remains the canonical READ target. The block is data only - no prose leads the fence. `tokens` is the model-facing projection of the row's curation weight: the room OPEN adds and FOLD saves. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page has a different weight. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/coordinate-prefixed bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
+The `## Log` section renders as a fixed three-backtick `jsonplurnk` fence - a JSON array of entry objects, otherwise-valid JSON with **exactly one** deviation: an open, nonempty `body` is a raw multiline string. Its opening JSON quote is followed by a physical newline, every content line begins with an optionally left-padded numeric `N:` or anchored `@hash N:` coordinate prefix whose separator is one or more ASCII spaces, and its closing quote appears at column zero before either the object close or a following member. Source quotes, braces, fences, and headings cannot collide with either boundary because source text never occupies column zero after projection; source backticks therefore cannot form a CommonMark closing fence. The fixed opener keeps the packet prefix stable across content changes. The carve-out is localized to `body`, so the strip-parser recognizes `"body":"` followed by a newline, consumes one or more coordinate-prefixed lines, and replaces the raw multiline value with an escaped JSON string while preserving following members to recover strict JSON. The body shape is a strict three-state invariant: `"display":"none","body":""` for no body, `"display":"folded"` with the ordinary projection withheld, and `"display":"open","body":"\n<coordinate>...\n"` with it shown. `path` is the complete model-facing log identity: when a projected operation exists it ends in `/OP`, and no separate `op` field duplicates it. A present authored operation annotation appears as `annotation`; its absence omits the field. Nonempty `tags` is the row's complete deduplicated, sorted folksonomy; an untagged row omits it. When an OPEN bounded projection differs from the canonical body, it appends `"chunk":"showing <selected> of <complete>"` after `body`; otherwise it omits `chunk`. Complete-line extents use inclusive two-coordinate line regions. A cut inside a line uses four-coordinate, start-inclusive and end-exclusive regions with 1-based Unicode code-point columns. The row's `path` remains the canonical READ target. The block is data only - no prose leads the fence. `tokens` is the model-facing projection of the row's curation weight: the room OPEN adds and FOLD saves. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page has a different weight. These are curation weights, not dollars. The invariants bind regardless of shape ({§packet}): addressability (`path`/`target`/`#channel`/coordinate-prefixed bodies), weighability (per-item `tokens`), honesty (every 4xx/5xx row and the exact body/display state). {§jsonplurnk} {§packet-jsonplurnk-exception}
 
 ### §retrieval-packet-metadata READ/FIND packet metadata
 
@@ -1638,10 +1638,12 @@ target at its run boundary.
 core-owned temporary file after acceptance. Core reparses the complete authored
 address and resolves one exact `<1,-1>` READ through
 {§universal-read-composition}; internal source consumption never borrows the
-model-facing 16-line preview. The file lives through the executor run and core
-removes it after the subscription's terminal result has settled. A removal
-failure is reported to daemon diagnostics with its complete cause; it cannot
-rewrite the execution result, stream state, or completion wake.
+model-facing 16-line preview. Each spawn creates its file with an exclusive,
+process- and database-coordinate-independent identity. The file lives through
+the executor run and core removes it after the subscription's terminal result
+has settled. A removal failure is reported to daemon diagnostics with its
+complete cause; it cannot rewrite the execution result, stream state, or
+completion wake.
 
 Loop-flag authority follows the selected runtime's declaration:
 
@@ -3103,19 +3105,23 @@ available, workspace-enabled runtime with an admitted invocation materializes on
 `worker://plurnk/tools/<runtime>.md`. A general runtime's document contains its
 {§executor-tool-document}; a runtime with an exact
 {§executor-tool-registry} instead materializes one child document per enabled
-target at `worker://plurnk/tools/<runtime>/<encoded-target>.md`. Its family
-document summarizes the server or runtime and directs discovery into that
-folder without advertising a generic invocation that dispatch would reject.
+target at `worker://plurnk/tools/<runtime>/<encoded-target>.md`. Its compact
+family document summarizes the server or runtime and lists every enabled target
+as a directly copyable `## EXEC0` heading with its input signature. Each heading
+uses {§operation-annotation} for the target summary and an exact child-document
+address; it never advertises a generic invocation that dispatch would reject.
 Target filenames use one deterministic percent-encoded path segment; the child
-document retains the exact unencoded target as invocation authority.
+document retains the exact unencoded target as invocation authority and carries
+the richer input-side contract. Tool-result/output schemas remain ordinary
+evidence and never enter these documents.
 
 ```mermaid
 flowchart LR
     Survey["Turn 0 FIND<br/>tools/*.md"] --> Families["family paths + summaries"]
-    Families --> Drill["FIND<br/>tools/runtime/*.md"]
-    Drill --> Tools["tool paths + summaries"]
-    Tools --> Read["READ selected document"]
-    Read --> Exec["EXEC declared invocation"]
+    Families --> Read["READ selected family"]
+    Read --> Exec["EXEC annotated invocation"]
+    Read --> Detail["READ exact child<br/>only when needed"]
+    Detail --> Exec
 ```
 
 §tools-resource-materialization The runtime registry, workspace executor

@@ -818,7 +818,7 @@ export default class Module {
                         );
                     }
                     const statement: ExecStatement = {
-                        op: "EXEC", suffix: "", signal: null, target: null,
+                        op: "EXEC", suffix: "", annotation: null, signal: null, target: null,
                         lineMarker: null, body: p.command, position: UNKNOWN_POSITION,
                     };
                     // Client ops journal as client-origin turns in the client worker (worker split:

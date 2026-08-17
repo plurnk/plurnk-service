@@ -15,14 +15,14 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const editStmt = (pathname: string, body: string, tags: string[] | null = null): EditStatement => ({
-    op: "EDIT", suffix: "", signal: tags,
+    op: "EDIT", annotation: null, suffix: "", signal: tags,
     target: urlPath("worker", pathname),
     lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
 const sendStmt = (status: number, body: string): SendStatement => ({
-    op: "SEND", suffix: "", signal: status, target: null, lineMarker: null,
+    op: "SEND", annotation: null, suffix: "", signal: status, target: null, lineMarker: null,
     body: { raw: body, json: null }, position: { line: 1, column: 1 },
 });
 
@@ -117,7 +117,7 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
     try {
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-multi");
         const readStmt = (pathname: string): PlurnkStatement => ({
-            op: "READ", suffix: "", signal: null,
+            op: "READ", annotation: null, suffix: "", signal: null,
             target: urlPath("worker", pathname),
             lineMarker: null, body: null,
             position: { line: 1, column: 1 },

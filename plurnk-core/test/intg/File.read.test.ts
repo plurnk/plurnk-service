@@ -20,14 +20,14 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const readStmt = (target: ParsedPath | null, opts: { lineMarker?: ReadStatement["lineMarker"]; tags?: string[] | null } = {}): ReadStatement => ({
-    op: "READ", suffix: "",
+    op: "READ", annotation: null, suffix: "",
     signal: opts.tags ?? null, target,
     lineMarker: opts.lineMarker ?? null, body: null,
     position: { line: 1, column: 1 },
 });
 
 const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null): FindStatement => ({
-    op: "FIND", suffix: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "FIND", annotation: null, suffix: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>

@@ -221,7 +221,7 @@ target resolution.
 # PLANsuffix
 body
 
-## OPsuffix [signal]? (path)? <scope>?
+## OPsuffix [signal]? (path)? <scope>? <!-- annotation -->?
 body?
 ```
 
@@ -244,6 +244,7 @@ section separator (or EOF) and normalizes to a null body.
 | `[signal]`   | Optional operation-specific signal, preceded by one space                  |
 | `(path)`     | Optional target slot, preceded by one space                                |
 | `<scope>`    | Optional numeric scope, preceded by one space                              |
+| `<!-- … -->` | Optional trailing operation annotation, preceded by one space               |
 | line ending  | Ends the single-line heading                                               |
 | `body`       | Zero or more characters of operation-specific, character-perfect content  |
 | blank line   | Canonical section separator; excluded from the preceding body              |
@@ -256,15 +257,25 @@ The following constraints are structural:
 - PLAN is the only H1 operation and every non-PLAN operation is H2.
 - A header occupies one physical line.
 - Each admitted signal, target, and scope slot appears at most once.
+- An annotation follows every present modifier and appears at most once.
 - OPEN, FOLD, BARE, WORK, FORK, and KILL do not admit a scope slot.
 - An ingested suffix is `[A-Za-z0-9_]*`; canonical teaching and the GBNF use `0`.
 
 §slot-order Canonical producers and the GBNF rail emit signal, then target, then
-scope, with one ASCII space before every present slot. Slot delimiters make
+scope, then annotation, with one ASCII space before every present slot. Slot delimiters make
 their boundaries unambiguous, so the tolerant ANTLR ingester accepts zero or
 more horizontal whitespace characters before each slot and any permutation of
 the slots admitted by that operation, at most once each. Accepted spacing and
 permutation are not second canonical spellings.
+
+§operation-annotation A heading may end with one single-line Markdown HTML
+comment. AstBuilder strips the delimiters and surrounding horizontal whitespace
+into the statement's fixed `annotation: string | null` field. The annotation is
+durable, model- and client-facing descriptive text but semantically inert: it
+does not alter operation identity, signal, target, scope, dispatch, effect,
+authorization, status, or body. An empty comment normalizes to the empty string.
+Text containing a newline or lacking the closing `-->` is not an annotation;
+`<!--` elsewhere remains ordinary body text.
 
 The ingester also accepts several bounded noncanonical forms so it can explain
 or safely execute understandable input:
@@ -287,6 +298,7 @@ or safely execute understandable input:
 | `[signal]`  | Operation-specific tags, identifier, branch, or integer            |
 | `(path)`    | Local path or scheme URL target; detailed in §5                    |
 | `<scope>`   | One or more signed integers or decimals; detailed in §7            |
+| annotation  | Optional trailing `<!-- … -->` descriptive text                    |
 | `body`      | Opaque section text before the next same-lane heading or EOF        |
 
 ## §op-shapes 4. Per-operation semantics
@@ -700,6 +712,7 @@ stateDiagram-v2
     TARGET --> TARGET: balanced literals / target escapes
     TARGET --> SLOTS: target close at depth zero
     SLOTS --> SLOTS: scope token
+    SLOTS --> SLOTS: trailing annotation
     SLOTS --> BODY: heading line end
     BODY --> DEFAULT: same-lane heading boundary
     BODY --> [*]: end of input
@@ -707,8 +720,9 @@ stateDiagram-v2
 
 The first H1 PLAN establishes the turn lane. DEFAULT recognizes only an H1
 PLAN or H2 minted operation carrying that exact lane. SLOTS admits
-operation-appropriate signal, target, and scope openers in any order; the parser
-grammar enforces at-most-once multiplicity. Signal submodes select tags, integer,
+operation-appropriate signal, target, and scope openers in any order, followed
+by an optional annotation; the parser grammar enforces at-most-once multiplicity.
+Signal submodes select tags, integer,
 or identifier tokens by operation family. TARGET preserves balanced inner
 parentheses and recognized target escapes. BODY emits opaque text until a
 same-lane heading boundary or EOF.
@@ -733,6 +747,8 @@ possible. EOF is a valid body boundary. An unfinished signal or target produces
 | Inside signal               | Adjacent values                       | Horizontal whitespace is ignored; newline is invalid      |
 | Inside target               | Path alias plus target escapes         | Balanced literals tolerated; newline is invalid           |
 | Inside scope                | Comma-separated numbers               | Dash separator and one post-comma space are also accepted |
+| Before annotation           | One ASCII space                        | Zero or more horizontal whitespace characters             |
+| Inside annotation           | One-line prose padded by one space     | Any single-line text through the first closing `-->`       |
 | Inside body                 | Character-perfect                     | Character-perfect                                         |
 | Between canonical sections  | One empty separator line              | A directly following structural heading is also admitted  |
 | Before the first PLAN       | Nothing                               | Whitespace or TEXT may surface as preamble items without requiring a separator before PLAN |
@@ -746,7 +762,8 @@ content emit an actual newline.
 break, and returns it as ordered text items without assigning semantics. Once
 a heading begins, all nonstructural text belongs to that section body.
 `parseStatements` and `parseClient` admit H2 statements;
-`parseLog` admits consecutive H1 PLAN turns. PLURNK defines no comment syntax.
+`parseLog` admits consecutive H1 PLAN turns. PLURNK defines no general comment
+syntax; only the trailing heading position gives `<!-- … -->` annotation meaning.
 
 ## §public-api 12. Public API
 

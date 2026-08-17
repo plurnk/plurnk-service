@@ -15,6 +15,9 @@
                 { "type": "null" }
             ]
         },
+        "AnnotationOrNull": {
+            "type": ["string", "null"]
+        },
         "PathOrNull": {
             "oneOf": [
                 { "$ref": "https://schemas.plurnk.dev/v0/ParsedPath.json" },
@@ -44,11 +47,12 @@
         },
         "LookStatement": {
             "type": "object",
-            "required": ["op", "suffix", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "LOOK" },
                 "suffix": { "type": "string" },
+                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": { "$ref": "#/$defs/TagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
@@ -58,11 +62,12 @@
         },
         "BuffStatement": {
             "type": "object",
-            "required": ["op", "suffix", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "BUFF" },
                 "suffix": { "type": "string" },
+                "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": { "$ref": "#/$defs/TagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
                 "lineMarker": { "$ref": "#/$defs/LineMarkerOrNull" },

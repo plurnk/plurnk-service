@@ -16,13 +16,13 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|B
 
 ```plurnk
 # PLANsuffix
-new reasoning conclusions, open inquiries, unresolved priorities
+new reasoning conclusions, learnings, open inquiries, unresolved priorities
 
-## OPsuffix [signal]? (path)? <scope>?
+## OPsuffix [signal]? (path)? <scope>? <!-- terse annotation -->?
 body?
 ```
 
-Each PLAN updates the running state with new or revised reasoning conclusions, open inquiries, and unresolved priorities.
+Each PLAN updates the running state with new or revised reasoning conclusions, learnings, open inquiries, and unresolved priorities.
 PLAN begins the turn as H1. Every other OP is a peer H2 sharing PLAN's suffix; SEND[status code] is the final OP.
 Nested OP headings in body content use a suffix different from the containing turn.
 A single blank line between sections is optional and is not body content; additional blank lines are body content.

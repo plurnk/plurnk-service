@@ -20,7 +20,7 @@ test("{§tools-resource-discovery} renders a general runtime as one self-describ
     assert.match(content, /^## Summary\n\nSearch the web through the configured SearXNG service\.$/m);
     assert.match(content, /^## Invocation$/m);
     assert.match(content, /^\| body \| required: search query \|$/m);
-    assert.match(content, /```plurnk\n## EXEC0 \[search\]\ncapital of indiana in 1816\n```/);
+    assert.match(content, /```plurnk\n## EXEC0 \[search\] <!-- Search the web through the configured SearXNG service\. -->\ncapital of indiana in 1816\n```/);
     assert.match(content, /^## Scope$/m);
 });
 
@@ -44,6 +44,7 @@ test("{§tools-resource-discovery} renders an exact registry as one family and o
                         target: { role: "MCP tool", required: true, kind: "literal" },
                         signature: '{"owner": string, "repo": string, "index": integer}',
                     },
+                    details: "## Inputs\n\n| Property | Required | Contract | Description |\n| --- | --- | --- | --- |\n| `owner` | yes | `string` | Repository owner. |",
                 },
                 {
                     target: "index",
@@ -63,13 +64,24 @@ test("{§tools-resource-discovery} renders an exact registry as one family and o
         "/tools/gitea/index.md",
         "/tools/gitea/issue%2Fread.md",
     ]);
-    assert.match(resources[0]?.content ?? "", /worker:\/\/plurnk\/tools\/gitea\/\*\.md/);
+    const family = resources[0]?.content ?? "";
+    assert.match(
+        family,
+        /^## EXEC0 \[gitea\] \(index\) <!-- List repository issues\. \(details: worker:\/\/plurnk\/tools\/gitea\/index\.md\) -->\n\{"owner"\?: string\}$/m,
+    );
+    assert.match(
+        family,
+        /^## EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. \(details: worker:\/\/plurnk\/tools\/gitea\/issue%2Fread\.md\) -->\n\{"owner": string, "repo": string, "index": integer\}$/m,
+    );
+    assert.doesNotMatch(family, /## FIND0/);
     assert.doesNotMatch(resources[0]?.content ?? "", /tool_name/, "the family document cannot advertise a rejected generic target");
 
     const issue = resources.find(({ pathname }) => pathname.endsWith("issue%2Fread.md"))?.content ?? "";
     assert.match(issue, /^## Summary\n\nRead one issue and its discussion\.$/m);
-    assert.match(issue, /`## EXEC0 \[gitea\] \(issue\/read\)`/);
+    assert.match(issue, /`## EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. -->`/);
     assert.match(issue, /^Signature: `\{"owner": string, "repo": string, "index": integer\}`$/m);
+    assert.match(issue, /^## Inputs$/m);
+    assert.match(issue, /^\| `owner` \| yes \| `string` \| Repository owner\. \|$/m);
     assert.doesNotMatch(issue, /output schema/i);
 });
 

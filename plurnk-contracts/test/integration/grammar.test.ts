@@ -75,6 +75,28 @@ test("protocol operations parse as Markdown sections", () => {
     }
 });
 
+// {§operation-annotation}
+test("trailing operation annotations are durable, single-line, and follow every modifier", () => {
+    const statement = oneStatement([
+        "## EXEC0 [gitea] (list_issues) <!-- Lists issues (details: worker://plurnk/tools/gitea/list_issues.md) -->",
+        '{"owner":"plurnk","repo":"plurnk-service"}',
+    ].join("\n"));
+    assert.equal(
+        statement.annotation,
+        "Lists issues (details: worker://plurnk/tools/gitea/list_issues.md)",
+    );
+    assert.equal(oneStatement("## READ0 (README.md)").annotation, null);
+    assert.equal(oneStatement("## READ0 (README.md) <!-- -->").annotation, "");
+
+    for (const input of [
+        "## EXEC0 <!-- Lists issues --> [gitea] (list_issues)\n{}",
+        "## EXEC0 [gitea] (list_issues) <!-- Lists\nissues -->\n{}",
+        "## EXEC0 [gitea] (list_issues) <!-- Lists issues\n{}",
+    ]) {
+        assert.ok(errorsOf(input).length > 0 || PlurnkParser.parseStatements(input).unparsedTail !== undefined, input);
+    }
+});
+
 test("balanced parentheses are ordinary target content", () => {
     const statement = oneStatement(section(
         "FIND",

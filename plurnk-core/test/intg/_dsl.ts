@@ -22,33 +22,33 @@ export const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
 export const fullReplace: LineMarker = { marks: [1, -1] };
 
 export const editStmt = (target: ParsedPath | null, body: string | null = null, tags: string[] | null = null, marker: LineMarker | null = null): ResolvedEditStatement => ({
-    op: "EDIT", suffix: "", signal: tags, target, lineMarker: marker, body,
+    op: "EDIT", annotation: null, suffix: "", signal: tags, target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
 
 export const readStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null): ReadStatement => ({
-    op: "READ", suffix: "", signal: null, target, lineMarker, body: null,
+    op: "READ", annotation: null, suffix: "", signal: null, target, lineMarker, body: null,
     position: { line: 1, column: 1 },
 });
 
 export const sendStmt = (status: number | null, recipient: ParsedPath | null = null, body: string | null = null): SendStatement => ({
-    op: "SEND", suffix: "", signal: status, target: recipient, lineMarker: null,
+    op: "SEND", annotation: null, suffix: "", signal: status, target: recipient, lineMarker: null,
     body: body === null ? null : { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
 
 export const openStmt = (target: ParsedPath | null): OpenStatement => ({
-    op: "OPEN", suffix: "", signal: null, target, lineMarker: null, body: null,
+    op: "OPEN", annotation: null, suffix: "", signal: null, target, lineMarker: null, body: null,
     position: { line: 1, column: 1 },
 });
 
 export const foldStmt = (target: ParsedPath | null): FoldStatement => ({
-    op: "FOLD", suffix: "", signal: null, target, lineMarker: null, body: null,
+    op: "FOLD", annotation: null, suffix: "", signal: null, target, lineMarker: null, body: null,
     position: { line: 1, column: 1 },
 });
 
 export const findStmt = (target: ParsedPath | null, body: MatcherBody | null = null, signal: string[] | null = null): FindStatement => ({
-    op: "FIND", suffix: "", signal, target, lineMarker: null, body,
+    op: "FIND", annotation: null, suffix: "", signal, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
@@ -59,7 +59,7 @@ export const copyStmt = (
     sourceMarker: TextLineMarker | null = null,
     destinationMarker: TextLineMarker | null = null,
 ): CopyStatement => ({
-    op: "COPY", suffix: "", signal: tags, target: src, lineMarker: sourceMarker,
+    op: "COPY", annotation: null, suffix: "", signal: tags, target: src, lineMarker: sourceMarker,
     body: { target: dst, lineMarker: destinationMarker },
     position: { line: 1, column: 1 },
 });
@@ -71,7 +71,7 @@ export const moveStmt = (
     sourceMarker: TextLineMarker | null = null,
     destinationMarker: TextLineMarker | null = null,
 ): MoveStatement => ({
-    op: "MOVE", suffix: "", signal: tags, target: src, lineMarker: sourceMarker,
+    op: "MOVE", annotation: null, suffix: "", signal: tags, target: src, lineMarker: sourceMarker,
     body: dst === null ? null : { target: dst, lineMarker: destinationMarker },
     position: { line: 1, column: 1 },
 });
@@ -79,7 +79,7 @@ export const moveStmt = (
 // EXEC carries its runtime in `signal`; target is an optional source, program,
 // or cwd, and body is the command.
 export const execStmt = (runtime: string, body: string | null = null, target: ParsedPath | null = null): ExecStatement => ({
-    op: "EXEC", suffix: "", signal: runtime, target, lineMarker: null, body,
+    op: "EXEC", annotation: null, suffix: "", signal: runtime, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 

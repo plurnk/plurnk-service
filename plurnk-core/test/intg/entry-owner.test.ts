@@ -14,12 +14,12 @@ import Envelope from "../../src/server/envelope.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
-    op: "EXEC", suffix: "", signal: runtime, target: null,
+    op: "EXEC", annotation: null, suffix: "", signal: runtime, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const streamRead = (scheme: string, hostname: string | null, pathname: string): ReadStatement => ({
-    op: "READ", suffix: "", signal: null,
+    op: "READ", annotation: null, suffix: "", signal: null,
     target: { kind: "url", raw: `${scheme}://${hostname ?? ""}${pathname}`, scheme, username: null, password: null, hostname, port: null, pathname, query: null, fragment: null } as UrlPath,
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
