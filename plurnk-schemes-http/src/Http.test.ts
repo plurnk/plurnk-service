@@ -205,24 +205,24 @@ const urlTarget = (raw: string, pathname: string, headers?: [string, string][], 
 };
 
 const readStmt = (target: UrlPath | null, lineMarker: ReadStatement["lineMarker"] = null): ReadStatement => ({
-    op: "READ", suffix: "READ", signal: null, target, lineMarker, body: null,
+    op: "READ", suffix: "READ", annotation: null, signal: null, target, lineMarker, body: null,
     position: { line: 0, column: 0 },
 });
 const sendStmt = (signal: number, target: UrlPath | null, body?: string): SendStatement => ({
-    op: "SEND", suffix: "SEND", signal, target, lineMarker: null,
+    op: "SEND", suffix: "SEND", annotation: null, signal, target, lineMarker: null,
     body: body === undefined ? null : { raw: body, json: null },
     position: { line: 0, column: 0 },
 });
 const editStmt = (target: UrlPath | null, body: string | null, lineMarker: ResolvedEditStatement["lineMarker"] = null): ResolvedEditStatement => ({
-    op: "EDIT", suffix: "EDIT", signal: null, target, lineMarker, body,
+    op: "EDIT", suffix: "EDIT", annotation: null, signal: null, target, lineMarker, body,
     position: { line: 0, column: 0 },
 });
 const killStmt = (target: UrlPath | null, body: string | null = null): KillStatement => ({
-    op: "KILL", suffix: "KILL", signal: null, target, lineMarker: null, body,
+    op: "KILL", suffix: "KILL", annotation: null, signal: null, target, lineMarker: null, body,
     position: { line: 0, column: 0 },
 });
 const findStmt = (target: UrlPath | null, body: FindStatement["body"] = null): FindStatement => ({
-    op: "FIND", suffix: "FIND", signal: null, target, lineMarker: null, body,
+    op: "FIND", suffix: "FIND", annotation: null, signal: null, target, lineMarker: null, body,
     position: { line: 0, column: 0 },
 });
 const prepareExactFind = (http: Http, statement: FindStatement, ctx: SchemeCtx) => {

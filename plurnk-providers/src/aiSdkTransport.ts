@@ -221,11 +221,32 @@ const transportTimeout = (
 
 const streamFailureValues = new WeakMap<object, readonly unknown[]>();
 
-const applyRetryDirective = (error: unknown): unknown => {
-    if (!APICallError.isInstance(error)) return error;
+const retainStreamFailureValues = <T extends object>(source: object, target: T): T => {
+    const values = streamFailureValues.get(source);
+    if (values !== undefined) streamFailureValues.set(target, values);
+    return target;
+};
+
+const normalizeRetryAttemptError = (error: unknown): unknown => {
+    if (!APICallError.isInstance(error)) {
+        // Node's Undici stream reader reports a peer-aborted HTTP/2 body as this
+        // raw TypeError after headers have arrived. Normalize it at the attempt
+        // boundary so the owned scheduler sees the same retryability that the
+        // public ProviderError contract would otherwise assign too late.
+        if (error instanceof TypeError && error.message.trim().toLowerCase() === "terminated") {
+            return retainStreamFailureValues(error, new APICallError({
+                message: error.message,
+                url: "model:generation",
+                requestBodyValues: {},
+                cause: error,
+                isRetryable: true,
+            }));
+        }
+        return error;
+    }
     const directed = retryDirective(error.statusCode, error.responseHeaders ?? {});
     if (directed === null || directed === error.isRetryable) return error;
-    return new APICallError({
+    return retainStreamFailureValues(error, new APICallError({
         message: error.message,
         url: error.url,
         requestBodyValues: error.requestBodyValues,
@@ -235,7 +256,7 @@ const applyRetryDirective = (error: unknown): unknown => {
         cause: error,
         isRetryable: directed,
         data: error.data,
-    });
+    }));
 };
 
 const executeModel = async (
@@ -246,7 +267,7 @@ const executeModel = async (
     } catch (cause) {
         if (request.signal?.aborted) throw request.signal.reason;
         const timeout = transportTimeout(cause, request);
-        if (timeout === null) throw applyRetryDirective(cause);
+        if (timeout === null) throw normalizeRetryAttemptError(cause);
         throw new APICallError({
             message: timeout.message,
             url: "model:generation",

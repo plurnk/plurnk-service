@@ -285,7 +285,7 @@ operation lifecycle; none becomes a hidden retry loop.
 | MCP surface | Plurnk surface |
 |---|---|
 | Server | One registered executor family, `worker://plurnk/tools/<server>.md`, and matching resource scheme |
-| Enabled tool | One exact `worker://plurnk/tools/<server>/<encoded-tool>.md` document and `## EXEC0 [<server>] (<tool>)` call |
+| Enabled tool | One annotated call in the compact family document plus one exact `worker://plurnk/tools/<server>/<encoded-tool>.md` input-contract document |
 | Tool survey | Ordinary FIND summary metadata from the standard executable-tool resource tree |
 | Resource catalog | `<server>:///` and `<server>:///resources` |
 | Resources | `<server>:///resources` and encoded resource-URI descendants |
@@ -298,9 +298,12 @@ exact target in {§executor-tool-registry}. Its standard
 requiredness derived from the input schema, and a deterministic one-line
 JSON-shaped invocation signature: quoted property names, `?` on optional
 properties, primitive type words, and literal unions—never fabricated argument
-data. A missing remote description receives a deterministic server-and-tool
-summary rather than an invented capability claim. Output schemas do not enter
-model teaching; the returned value remains ordinary evidence. Disabled names
+data. The compact family document projects those same facts into annotated,
+copyable EXEC headings; each exact child additionally projects property-level
+input descriptions and standard constraints such as defaults, formats, ranges,
+lengths, and patterns. A missing remote description receives a deterministic
+server-and-tool summary rather than an invented capability claim. Output schemas
+do not enter model teaching; the returned value remains ordinary evidence. Disabled names
 appear in neither discovery nor admission, and there is no MCP-specific FIND,
 READ, authority-root, or other model discovery mechanism for tools.
 

@@ -37,7 +37,7 @@ test("{§mcp-tool-presentation} derives exact summaries and invocations from the
         inputSchema: {
             type: "object",
             properties: {
-                owner: { type: "string" },
+                owner: { type: "string", description: "Repository owner.", minLength: 1 },
                 issue_number: { type: "integer" },
             },
             required: ["owner", "issue_number"],
@@ -56,6 +56,14 @@ test("{§mcp-tool-presentation} derives exact summaries and invocations from the
             target: { role: "MCP tool", required: true, kind: "literal" },
             signature: '{"owner": string, "issue_number": integer}',
         },
+        details: [
+            "## Inputs",
+            "",
+            "| Property | Required | Contract | Description |",
+            "| --- | --- | --- | --- |",
+            "| `owner` | yes | `string; minLength=1` | Repository owner. |",
+            "| `issue_number` | yes | `integer` |  |",
+        ].join("\n"),
     }]);
 });
 
