@@ -148,6 +148,9 @@ export class SqlRiteSync {
 	digest_log_entries: SqlRiteSyncPreparedStatements;
 	digest_worker_rollups: SqlRiteSyncPreparedStatements;
 	digest_worker_op_mix: SqlRiteSyncPreparedStatements;
+	model_route_lookup: SqlRiteSyncPreparedStatements;
+	model_route_create: SqlRiteSyncPreparedStatements;
+	model_route_by_id: SqlRiteSyncPreparedStatements;
 	drain_enqueue_loop: SqlRiteSyncPreparedStatements;
 	drain_claim_next_loop: SqlRiteSyncPreparedStatements;
 	drain_get_loop_max_turns: SqlRiteSyncPreparedStatements;
@@ -161,7 +164,7 @@ export class SqlRiteSync {
 	drain_enqueue_orphan_recovery_loop: SqlRiteSyncPreparedStatements;
 	drain_rehome_orphaned_prompt_frames: SqlRiteSyncPreparedStatements;
 	drain_find_slept_loop: SqlRiteSyncPreparedStatements;
-	drain_loop_provider_spec: SqlRiteSyncPreparedStatements;
+	drain_loop_route_ids: SqlRiteSyncPreparedStatements;
 	drain_worker_min_poll: SqlRiteSyncPreparedStatements;
 	worker_parent_id: SqlRiteSyncPreparedStatements;
 	engine_loop_status: SqlRiteSyncPreparedStatements;
@@ -630,6 +633,9 @@ export default class SqlRite {
 	digest_log_entries: SqlRitePreparedStatements;
 	digest_worker_rollups: SqlRitePreparedStatements;
 	digest_worker_op_mix: SqlRitePreparedStatements;
+	model_route_lookup: SqlRitePreparedStatements;
+	model_route_create: SqlRitePreparedStatements;
+	model_route_by_id: SqlRitePreparedStatements;
 	drain_enqueue_loop: SqlRitePreparedStatements;
 	drain_claim_next_loop: SqlRitePreparedStatements;
 	drain_get_loop_max_turns: SqlRitePreparedStatements;
@@ -643,7 +649,7 @@ export default class SqlRite {
 	drain_enqueue_orphan_recovery_loop: SqlRitePreparedStatements;
 	drain_rehome_orphaned_prompt_frames: SqlRitePreparedStatements;
 	drain_find_slept_loop: SqlRitePreparedStatements;
-	drain_loop_provider_spec: SqlRitePreparedStatements;
+	drain_loop_route_ids: SqlRitePreparedStatements;
 	drain_worker_min_poll: SqlRitePreparedStatements;
 	worker_parent_id: SqlRitePreparedStatements;
 	engine_loop_status: SqlRitePreparedStatements;

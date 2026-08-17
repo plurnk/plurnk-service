@@ -395,10 +395,10 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
             const promoted = ts.find((event) => event.loopId !== firstLoopId);
             assert.ok(promoted, "the orphaned frame was promoted into a distinct loop");
             const sourcePosture = await db.test_get_loop_posture.get<{
-                flags: string; provider_spec: string; max_turns: number;
+                flags: string; model_route_id: number | null; max_turns: number;
             }>({ id: firstLoopId });
             const promotedPosture = await db.test_get_loop_posture.get<{
-                flags: string; provider_spec: string; max_turns: number; orphan_source_loop_id: number | null;
+                flags: string; model_route_id: number | null; max_turns: number; orphan_source_loop_id: number | null;
             }>({ id: promoted.loopId });
             assert.deepEqual(
                 promotedPosture,

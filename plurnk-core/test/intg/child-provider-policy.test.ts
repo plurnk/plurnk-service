@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock, type ProviderAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
+import type { Db } from "../../src/core/Db.ts";
 import { connect, flush, makeMockResponse, rpcCall, runLoopToTerminal, subscribeNotifications, withDaemon } from "./_rpc.ts";
 
 const provider = (name: string, model: string): ProviderAlias => ({
@@ -13,9 +14,16 @@ const provider = (name: string, model: string): ProviderAlias => ({
 type LoopRow = {
     id: number;
     worker_id: number;
-    provider_spec: string;
-    child_provider_spec: string;
+    model_route_id: number | null;
+    spawn_model_route_id: number | null;
     status: number;
+};
+
+const routeSpec = async (db: Db, routeId: number | null): Promise<ProviderAlias | null> => {
+    if (routeId === null) return null;
+    const row = await db.model_route_by_id.get<{ alias: string; provider: string; model: string; base_url: string }>({ id: routeId });
+    if (row === undefined) throw new Error(`model_route ${routeId} is missing`);
+    return { alias: row.alias, provider: row.provider, model: row.model, ...(row.base_url === "" ? {} : { baseUrl: row.base_url }) };
 };
 
 const withConfiguredChild = async <T>(spec: ProviderAlias, run: () => Promise<T>): Promise<T> => {
@@ -76,15 +84,15 @@ test("{§methods-loop-run-child-provider}: a smaller WORK provider carries throu
             const second = workers.find(({ parent_worker_id: parentId }) => parentId === first?.id);
             assert.ok(root && first && second, "WORK created the complete root → child → grandchild topology");
 
-            const loops = (await db.test_all_loops.all<LoopRow>({})).filter(({ provider_spec }) => provider_spec !== "null");
+            const loops = (await db.test_all_loops.all<LoopRow>({})).filter(({ model_route_id }) => model_route_id !== null);
             const rootLoop = loops.find(({ worker_id: owner }) => owner === root.id);
             const childLoops = loops.filter(({ worker_id: owner }) => owner === first.id || owner === second.id);
-            assert.deepEqual(JSON.parse(rootLoop?.provider_spec ?? "null"), parentSpec, "only the client-started root uses the parent provider");
-            assert.deepEqual(JSON.parse(rootLoop?.child_provider_spec ?? "null"), childSpec, "the root persists its resolved spawn policy");
+            assert.deepEqual(await routeSpec(db, rootLoop?.model_route_id ?? null), parentSpec, "only the client-started root uses the parent provider");
+            assert.deepEqual(await routeSpec(db, rootLoop?.spawn_model_route_id ?? null), childSpec, "the root persists its resolved spawn policy");
             assert.equal(childLoops.length, 2);
             for (const loop of childLoops) {
-                assert.deepEqual(JSON.parse(loop.provider_spec), childSpec, "every descendant runs on the selected child provider");
-                assert.deepEqual(JSON.parse(loop.child_provider_spec), childSpec, "every descendant carries the same policy deeper");
+                assert.deepEqual(await routeSpec(db, loop.model_route_id), childSpec, "every descendant runs on the selected child provider");
+                assert.deepEqual(await routeSpec(db, loop.spawn_model_route_id), childSpec, "every descendant carries the same policy deeper");
             }
         } finally {
             ws.close();
@@ -121,11 +129,11 @@ test("{§methods-loop-run-child-provider}: the configured child alias supplies a
                     flags: { auto: true },
                 });
                 assert.equal(result.finalStatus, 200);
-                const loops = (await db.test_all_loops.all<LoopRow>({})).filter(({ provider_spec }) => provider_spec !== "null");
+                const loops = (await db.test_all_loops.all<LoopRow>({})).filter(({ model_route_id }) => model_route_id !== null);
                 const root = loops.find(({ id }) => id === result.loopId);
                 const descendant = loops.find(({ id }) => id !== result.loopId);
-                assert.deepEqual(JSON.parse(root?.child_provider_spec ?? "null"), childSpec);
-                assert.deepEqual(JSON.parse(descendant?.provider_spec ?? "null"), childSpec);
+                assert.deepEqual(await routeSpec(db, root?.spawn_model_route_id ?? null), childSpec);
+                assert.deepEqual(await routeSpec(db, descendant?.model_route_id ?? null), childSpec);
             } finally {
                 ws.close();
             }
@@ -202,11 +210,11 @@ test("{§methods-loop-run-child-provider}: explicit inherit overrides configurat
                     flags: { auto: true },
                 });
                 assert.equal(result.finalStatus, 200);
-                const loops = (await db.test_all_loops.all<LoopRow>({})).filter(({ provider_spec }) => provider_spec !== "null");
+                const loops = (await db.test_all_loops.all<LoopRow>({})).filter(({ model_route_id }) => model_route_id !== null);
                 assert.equal(loops.length, 2);
                 for (const loop of loops) {
-                    assert.deepEqual(JSON.parse(loop.provider_spec), spec);
-                    assert.equal(JSON.parse(loop.child_provider_spec), null, "inherit remains absence rather than becoming a sticky explicit alias");
+                    assert.deepEqual(await routeSpec(db, loop.model_route_id), spec);
+                    assert.equal(await routeSpec(db, loop.spawn_model_route_id), null, "inherit remains absence rather than becoming a sticky explicit alias");
                 }
             } finally {
                 ws.close();
@@ -245,7 +253,14 @@ test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinar
             assert.equal(result.finalStatus, 200, "the parent observes the failed child and can conclude normally");
             await flush();
             const loops = await db.test_all_loops.all<LoopRow>({});
-            const selectedChildLoop = loops.find(({ provider_spec }) => provider_spec === JSON.stringify(childSpec));
+            let selectedChildLoop: LoopRow | undefined;
+            for (const loop of loops) {
+                const loopSpec = await routeSpec(db, loop.model_route_id);
+                if (loopSpec?.alias === childSpec.alias) {
+                    selectedChildLoop = loop;
+                    break;
+                }
+            }
             assert.ok(selectedChildLoop, "FORK created a real child loop on the selected provider before admission");
             assert.equal(selectedChildLoop.status, 413, "universal packet admission, not preflight spawn logic, rejects the inherited packet");
             const event = (terminated() as Array<{ loopId: number; result: { status: number } }>).find(({ loopId }) => loopId === selectedChildLoop.id);

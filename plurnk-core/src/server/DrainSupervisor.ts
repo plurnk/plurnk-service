@@ -1,6 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderAlias } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
+import { routeForSpec } from "./model-route.ts";
 import type { WakeWorkerPayload } from "../core/ChannelWrite.ts";
 import ChannelWrite from "../core/ChannelWrite.ts";
 import type { Db } from "../core/Db.ts";
@@ -283,12 +284,16 @@ export default class DrainSupervisor {
         return this.#withDrainLock(args.workerId, async () => {
             const seqRow = await this.#db.loop_run_next_sequence.get<{ next: number }>({ worker_id: args.workerId });
             if (seqRow === undefined) throw new Error("enqueueFreshLoop: next-sequence query returned no row");
+            // {§worker-model-selection} — resolve the complete route before persistence;
+            // the loop snapshot stores the immutable route ids, never re-serialized JSON.
+            const modelRouteId = await routeForSpec(this.#db, args.providerSpec);
+            const spawnRouteId = await routeForSpec(this.#db, args.childProviderSpec);
             const loopRow = await this.#db.drain_enqueue_loop.get<{ id: number }>({
                 worker_id: args.workerId,
                 sequence: seqRow.next,
                 prompt: args.prompt,
-                provider_spec: JSON.stringify(args.providerSpec),
-                child_provider_spec: JSON.stringify(args.childProviderSpec),
+                model_route_id: modelRouteId,
+                spawn_model_route_id: spawnRouteId,
                 max_turns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
             });
             if (loopRow === undefined) throw new Error("enqueueFreshLoop: loop enqueue returned no row");

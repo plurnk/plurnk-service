@@ -5,6 +5,7 @@ import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
+import { routeForSpec } from "../../src/server/model-route.ts";
 import {
     insertWorker,
     insertWorkspace,
@@ -30,8 +31,8 @@ const enqueueLoop = async (
         worker_id: workerId,
         sequence,
         prompt,
-        provider_spec: JSON.stringify(providerSpec),
-        child_provider_spec: "null",
+        model_route_id: await routeForSpec(db, providerSpec),
+        spawn_model_route_id: null,
         max_turns: 50,
     });
     if (row === undefined) throw new Error("recovery fixture failed to enqueue loop");
@@ -161,8 +162,8 @@ test("{§prompt-loop-containment}: boot completes one partially staged orphan re
             sequence: 2,
             prompt: "first orphan",
             flags: "{}",
-            provider_spec: JSON.stringify(providerSpec),
-            child_provider_spec: "null",
+            model_route_id: await routeForSpec(db, providerSpec),
+            spawn_model_route_id: null,
             max_turns: 50,
             open_paths: "[]",
             orphan_source_loop_id: sourceLoopId,

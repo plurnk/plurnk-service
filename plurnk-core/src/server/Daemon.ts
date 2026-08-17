@@ -13,6 +13,7 @@ import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
 import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
+import { specForRoute } from "./model-route.ts";
 // {§notifications-envelope-carries-workspaceid}: "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
@@ -544,33 +545,19 @@ export default class Daemon {
         return spec;
     }
 
-    #parseProviderSpec(loopId: number, field: "provider_spec" | "child_provider_spec", encoded: string): ProviderAlias | null {
-        let parsed: Partial<ProviderAlias> | null;
-        try {
-            parsed = JSON.parse(encoded) as Partial<ProviderAlias> | null;
-        } catch {
-            throw new Error(`loop ${loopId}: persisted ${field} is malformed`);
-        }
-        if (parsed === null) return null;
-        if (typeof parsed.alias !== "string" || parsed.alias.length === 0
-            || typeof parsed.provider !== "string" || parsed.provider.length === 0
-            || typeof parsed.model !== "string" || parsed.model.length === 0
-            || (parsed.baseUrl !== undefined && typeof parsed.baseUrl !== "string")) {
-            throw new Error(`loop ${loopId}: persisted ${field} is invalid`);
-        }
-        return parsed as ProviderAlias;
-    }
-
+    // {§worker-model-selection} — the loop's durable snapshot is the immutable route ids,
+    // resolved through model_routes at the claim boundary; never re-resolved through the
+    // alias cascade (a changed alias declaration must not rewrite history).
     async #providerPolicyForLoop(loopId: number): Promise<{ providerSpec: ProviderAlias; childProviderSpec: ProviderAlias | null }> {
-        const row = await this.#db.drain_loop_provider_spec.get<{ provider_spec: string; child_provider_spec: string }>({ loop_id: loopId });
+        const row = await this.#db.drain_loop_route_ids.get<{ model_route_id: number | null; spawn_model_route_id: number | null }>({ loop_id: loopId });
         if (row === undefined) throw new Error(`loop ${loopId}: provider selection row is missing`);
-        const providerSpec = this.#parseProviderSpec(loopId, "provider_spec", row.provider_spec);
+        const providerSpec = await specForRoute(this.#db, row.model_route_id);
         if (providerSpec === null) {
-            throw new Error(`loop ${loopId}: persisted provider selection is missing or invalid — refusing boot-default substitution`);
+            throw new Error(`loop ${loopId}: persisted provider selection is missing — refusing boot-default substitution`);
         }
         return {
             providerSpec,
-            childProviderSpec: this.#parseProviderSpec(loopId, "child_provider_spec", row.child_provider_spec),
+            childProviderSpec: await specForRoute(this.#db, row.spawn_model_route_id),
         };
     }
 
@@ -1745,8 +1732,8 @@ export default class Daemon {
         const frames = await this.#db.drain_orphaned_prompts_for_loop.all<{
             body: string;
             flags: string;
-            provider_spec: string;
-            child_provider_spec: string;
+            model_route_id: number | null;
+            spawn_model_route_id: number | null;
             max_turns: number;
             open_paths: string | null;
         }>({ loop_id: endedLoopId, owner_id: workerId, pattern: `${prefix}%`, prefix_len: prefix.length });
@@ -1763,8 +1750,8 @@ export default class Daemon {
             sequence: seqRow.next,
             prompt: first.body,
             flags: first.flags,
-            provider_spec: first.provider_spec,
-            child_provider_spec: first.child_provider_spec,
+            model_route_id: first.model_route_id,
+            spawn_model_route_id: first.spawn_model_route_id,
             max_turns: first.max_turns,
             open_paths: first.open_paths ?? "[]",
             orphan_source_loop_id: endedLoopId,

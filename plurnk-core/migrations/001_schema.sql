@@ -30,6 +30,19 @@ CREATE TABLE IF NOT EXISTS workspace_module_state (
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 ) STRICT;
 
+-- model_routes — the immutable resolved model route ({§worker-model-selection}). One row per
+-- complete resolved tuple; append-only. `base_url` uses '' as the absent sentinel so the
+-- unique tuple works under SQLite (NULLs are distinct in UNIQUE).
+CREATE TABLE IF NOT EXISTS model_routes (
+    id         INTEGER NOT NULL PRIMARY KEY,
+    alias      TEXT    NOT NULL CHECK (length(alias) > 0),
+    provider   TEXT    NOT NULL CHECK (length(provider) > 0),
+    model      TEXT    NOT NULL CHECK (length(model) > 0),
+    base_url   TEXT    NOT NULL DEFAULT '',
+    created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    UNIQUE (alias, provider, model, base_url)
+) STRICT;
+
 -- workers
 CREATE TABLE IF NOT EXISTS workers (
     id              INTEGER NOT NULL PRIMARY KEY,
@@ -41,6 +54,11 @@ CREATE TABLE IF NOT EXISTS workers (
     -- independent databases reuse local integer ids.
     provider_identity TEXT NOT NULL DEFAULT (lower(hex(randomblob(16))))
         CHECK (length(provider_identity) = 32 AND provider_identity NOT GLOB '*[^0-9a-f]*'),
+    -- {§worker-model-selection}: the worker's durable resolved model, NULL for non-model
+    -- workers or a deliberately modelless unresolved worker. spawn_model_route_id is the
+    -- persistent spawn override; NULL means "use my model."
+    model_route_id       INTEGER          REFERENCES model_routes(id),
+    spawn_model_route_id INTEGER          REFERENCES model_routes(id),
     -- workers fork via parent_worker_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
     origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', 'plurnk')),
@@ -129,8 +147,10 @@ CREATE TABLE IF NOT EXISTS loops (
     status   INTEGER NOT NULL DEFAULT 102 CHECK (status IN (100, 102, 200, 202, 413, 429, 499, 500, 504, 508)),
     prompt   TEXT    NOT NULL,
     flags    TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(flags)),
-    provider_spec TEXT NOT NULL DEFAULT 'null' CHECK (json_valid(provider_spec)),
-    child_provider_spec TEXT NOT NULL DEFAULT 'null' CHECK (json_valid(child_provider_spec)),
+    -- {§worker-model-selection}: immutable loop snapshots of the resolved model route and the
+    -- effective spawn route (was provider_spec/child_provider_spec JSON).
+    model_route_id       INTEGER          REFERENCES model_routes(id),
+    spawn_model_route_id INTEGER          REFERENCES model_routes(id),
     max_turns INTEGER NOT NULL DEFAULT 50 CHECK (max_turns >= -1),
     -- {§methods-loop-run-open-paths}: the initial prompt frame's selected paths,
     -- held here until turn 1 materializes that frame (string[] JSON).
