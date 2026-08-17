@@ -395,7 +395,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             type: "https://problems.plurnk.dev/agui/action/parse-failed",
             title: "Parse failed",
             status: 400,
-            detail: "unexpected text before PLAN; expected PLAN heading `# PLANsuffix`, H2 operation heading `## OPsuffix`, or H2 client heading `## OPsuffix`",
+            detail: "unexpected text before PLAN; expected PLAN heading `# PLANdelimiter`, H2 operation heading `## OPdelimiter`, or H2 client heading `## OPdelimiter`",
             line: 1,
             column: 0,
             source: "parser",

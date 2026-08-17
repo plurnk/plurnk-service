@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.dev/v0/PlurnkStatement.json",
     "title": "PlurnkStatement",
-    "description": "The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, lineMarker, annotation, body, suffix, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.",
+    "description": "The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, lineMarker, annotation, body, delimiter, and source-position fields; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.",
     "oneOf": [
         { "$ref": "#/$defs/FindStatement" },
         { "$ref": "#/$defs/ReadStatement" },
@@ -94,11 +94,11 @@
         },
         "FindStatement": {
             "type": "object",
-            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "FIND" },
-                "suffix": { "type": "string" },
+                "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
@@ -109,11 +109,11 @@
         },
         "ReadStatement": {
             "type": "object",
-            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "READ" },
-                "suffix": { "type": "string" },
+                "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
@@ -124,11 +124,11 @@
         },
         "OpenStatement": {
             "type": "object",
-            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "OPEN" },
-                "suffix": { "type": "string" },
+                "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": { "$ref": "#/$defs/CurationTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
@@ -139,11 +139,11 @@
         },
         "FoldStatement": {
             "type": "object",
-            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "FOLD" },
-                "suffix": { "type": "string" },
+                "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": { "$ref": "#/$defs/CurationTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
@@ -154,11 +154,11 @@
         },
         "EditStatement": {
             "type": "object",
-            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "EDIT" },
-                "suffix": { "type": "string" },
+                "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
@@ -169,11 +169,11 @@
         },
         "CopyStatement": {
             "type": "object",
-            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "COPY" },
-                "suffix": { "type": "string" },
+                "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
@@ -184,11 +184,11 @@
         },
         "MoveStatement": {
             "type": "object",
-            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "MOVE" },
-                "suffix": { "type": "string" },
+                "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
@@ -199,11 +199,11 @@
         },
         "SendStatement": {
             "type": "object",
-            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "SEND" },
-                "suffix": { "type": "string" },
+                "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": {
                     "oneOf": [
@@ -219,11 +219,11 @@
         },
         "ExecStatement": {
             "type": "object",
-            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "EXEC" },
-                "suffix": { "type": "string" },
+                "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": { "type": ["string", "null"] },
                 "target": { "$ref": "#/$defs/PathOrNull" },
@@ -234,11 +234,11 @@
         },
         "BareStatement": {
             "type": "object",
-            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "BARE" },
-                "suffix": { "type": "string" },
+                "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": { "$ref": "#/$defs/AppliedTagSignal" },
                 "target": { "type": "null" },
@@ -249,11 +249,11 @@
         },
         "PlanStatement": {
             "type": "object",
-            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "PLAN" },
-                "suffix": { "type": "string" },
+                "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": { "$ref": "#/$defs/TagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
@@ -264,11 +264,11 @@
         },
         "KillStatement": {
             "type": "object",
-            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "KILL" },
-                "suffix": { "type": "string" },
+                "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": {
                     "oneOf": [
@@ -284,11 +284,11 @@
         },
         "WorkStatement": {
             "type": "object",
-            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "WORK" },
-                "suffix": { "type": "string" },
+                "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": {
                     "oneOf": [
@@ -304,11 +304,11 @@
         },
         "ForkStatement": {
             "type": "object",
-            "required": ["op", "suffix", "annotation", "signal", "target", "lineMarker", "body", "position"],
+            "required": ["op", "delimiter", "annotation", "signal", "target", "lineMarker", "body", "position"],
             "additionalProperties": false,
             "properties": {
                 "op": { "const": "FORK" },
-                "suffix": { "type": "string" },
+                "delimiter": { "type": "string" },
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": {
                     "oneOf": [

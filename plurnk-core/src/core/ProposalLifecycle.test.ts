@@ -112,7 +112,7 @@ test("workerApply invokes a discovered scheme through the public proposal contex
     });
     const statement = {
         op: "EDIT",
-        suffix: "",
+        delimiter: "",
         signal: null,
         target: {
             kind: "url",

@@ -156,14 +156,14 @@ test("parser roundtrip: real DSL preserves serialized query + fragment on opaque
 
 // Heading-lane invariance (SPEC.md {§lane-match}). Per plurnk.md,
 // `## EDITouter (...)\n...` is the same statement as `## EDIT0 (...)\n...`
-// except the suffix string itself. Verifying so
-// downstream code can rely on it without case analysis on `statement.suffix`.
+// except the delimiter string itself. Verifying so
+// downstream code can rely on it without case analysis on `statement.delimiter`.
 
 const stripVolatile = (stmt: PlurnkStatement): object => {
-    // `suffix` and `position` differ across input strings by construction;
+    // `delimiter` and `position` differ across input strings by construction;
     // strip both so deep-equal asserts the shape-invariance the contract
     // actually claims.
-    const { suffix: _suffix, position: _position, ...rest } = stmt as PlurnkStatement & { suffix: string; position: object };
+    const { delimiter: _suffix, position: _position, ...rest } = stmt as PlurnkStatement & { delimiter: string; position: object };
     return rest;
 };
 
@@ -172,7 +172,7 @@ test("parser: heading lane preserves statement AST (EDIT)", () => {
     const laneOuter = parseOne("## EDITouter [+france,+europe] (worker:///countries/france/capital)\nParis");
     assert.equal(laneOne.op, "EDIT");
     assert.equal(laneOuter.op, "EDIT");
-    assert.equal((laneOuter as { suffix: string }).suffix, "outer");
+    assert.equal((laneOuter as { delimiter: string }).delimiter, "outer");
     assert.deepEqual(stripVolatile(laneOne), stripVolatile(laneOuter));
 });
 
@@ -198,9 +198,9 @@ test("parser: an alternate heading lane remains literal section body", () => {
     const input = "## EDITouter (worker:///demo)\nquoted section:\n## EDIT0 (worker:///inner)\nhello";
     const stmts = parseAll(input);
     assert.equal(stmts.length, 1, "only the active-lane heading is structural");
-    const outer = stmts[0] as EditStatement & { suffix: string };
+    const outer = stmts[0] as EditStatement & { delimiter: string };
     assert.equal(outer.op, "EDIT");
-    assert.equal(outer.suffix, "outer");
+    assert.equal(outer.delimiter, "outer");
     assert.equal(outer.body, "quoted section:\n## EDIT0 (worker:///inner)\nhello");
 });
 
@@ -208,8 +208,8 @@ test("parser: a different numeric heading lane remains literal section body", ()
     const input = "## EDIT0 (worker:///demo)\nquoted section:\n## EDIT2 (worker:///inner)\nhello";
     const stmts = parseAll(input);
     assert.equal(stmts.length, 1, "only lane 0 is structural");
-    const outer = stmts[0] as EditStatement & { suffix: string };
+    const outer = stmts[0] as EditStatement & { delimiter: string };
     assert.equal(outer.op, "EDIT");
-    assert.equal(outer.suffix, "0");
+    assert.equal(outer.delimiter, "0");
     assert.equal(outer.body, "quoted section:\n## EDIT2 (worker:///inner)\nhello");
 });

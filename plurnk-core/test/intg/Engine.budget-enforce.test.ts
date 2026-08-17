@@ -14,7 +14,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, pa
 import { foldStmt, openStmt, readStmt, urlPath } from "./_dsl.ts";
 
 const sendStmt = (status: number, body: string): SendStatement => ({
-    op: "SEND", annotation: null, suffix: "", signal: status, target: null,
+    op: "SEND", annotation: null, delimiter: "", signal: status, target: null,
     lineMarker: null, body: { raw: body, json: null }, position: { line: 1, column: 1 },
 });
 const response = (ops: PlurnkStatement[]): MockResponse => ({
@@ -148,7 +148,7 @@ test("a PLAN row at the newest boundary survives the overflow fold", async () =>
         // Turn 1 emits PLAN + SEND under a WIDE ceiling — both land as open (expanded=1) log
         // rows. Turn 2 under TINY overflows: the grinder folds the boundary's WORK (the SEND)
         // while the PLAN — the model's orientation surface — stays OPEN, like errors + prompt.
-        const planStmt = { op: "PLAN", annotation: null, suffix: "", signal: null, target: null, lineMarker: null, body: "1. read the doc\n2. answer", position: { line: 1, column: 1 } } as PlurnkStatement;
+        const planStmt = { op: "PLAN", annotation: null, delimiter: "", signal: null, target: null, lineMarker: null, body: "1. read the doc\n2. answer", position: { line: 1, column: 1 } } as PlurnkStatement;
         const engine = plainEngine(db);
         const wideP = mockAt(4096, [response([planStmt, sendStmt(200, "ok")])]);
         const tinyP = mockAt(TINY, okSends(1), 4096, true);
@@ -198,7 +198,7 @@ test("{§grinder-layer1-rollback}: overflow rolls back only the exact older rows
         const seed = async (sequence: number, op: "READ" | "EDIT" | "PLAN", content: string): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: oldTurnId, sequence,
-                origin: "model", source: null, model_call_id: null, op, suffix: "", signal: null,
+                origin: "model", source: null, model_call_id: null, op, delimiter: "", signal: null,
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: `/old-${sequence}`, query: null, fragment: null, lineMarker: null,
                 tx: JSON.stringify({ op }), mimetype_tx: "application/json",
@@ -284,7 +284,7 @@ test("{§grinder-layer1-rollback}: a reopened target folded again before grindin
         const oldTurnId = await insertTurn(db, loopId, 1, 200);
         const target = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: oldTurnId, sequence: 1,
-            origin: "model", source: null, model_call_id: null, op: "READ", suffix: "", signal: null,
+            origin: "model", source: null, model_call_id: null, op: "READ", delimiter: "", signal: null,
             scheme: "worker", username: null, password: null, hostname: null, port: null,
             pathname: "/old", query: null, fragment: null, lineMarker: null,
             tx: "{}", mimetype_tx: "application/json",
@@ -391,7 +391,7 @@ test("{§grinder-layer1-rollback}: a huge current-turn engine row folds with the
         const turnId = await insertTurn(db, loopId, 2, 102);
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "plurnk", source: null, model_call_id: null, op: "READ", suffix: "", signal: null,
+            origin: "plurnk", source: null, model_call_id: null, op: "READ", delimiter: "", signal: null,
             scheme: "search", username: null, password: null, hostname: null, port: null,
             pathname: "/1/1/7", query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -550,7 +550,7 @@ test("negative ruler pressure preserves the ordinary operation contract", async 
         const read: PlurnkStatement = {
             op: "READ",
             annotation: null,
-            suffix: "",
+            delimiter: "",
             signal: null,
             target: {
                 kind: "url",

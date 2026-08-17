@@ -23,7 +23,7 @@ const setup = async (attrs = "{}") => {
             origin: "plurnk",
             source: null,
             model_call_id: null,
-        op: "EDIT", suffix: "",
+        op: "EDIT", delimiter: "",
         signal: null,
         scheme: "worker", username: null, password: null,
         hostname: null, port: null,
@@ -184,7 +184,7 @@ test("engine_render_log carries the delta source; self-authored entries stay nul
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId,
             sequence: 2, origin: "plurnk", source: "file", model_call_id: null,
-            op: "EDIT", suffix: "", signal: null,
+            op: "EDIT", delimiter: "", signal: null,
             scheme: "file", username: null, password: null, hostname: null, port: null,
             pathname: "/config.toml", query: null, fragment: null, lineMarker: null,
             tx: "## EDIT0 (file:///config.toml)", mimetype_tx: "text/vnd.plurnk",
@@ -204,7 +204,7 @@ test("FOLD and OPEN apply the same tag + matcher filter", async () => {
         const seedRead = async (sequence: number, content: string): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
-                origin: "model", source: null, model_call_id: null, op: "READ", suffix: "", signal: null,
+                origin: "model", source: null, model_call_id: null, op: "READ", delimiter: "", signal: null,
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: "/doc", query: null, fragment: null, lineMarker: null,
                 tx: "## READ0 (worker:///doc)", mimetype_tx: "text/vnd.plurnk",
@@ -289,7 +289,7 @@ test("KILL erases an op='error' log item exactly like any other — errors ARE n
         // Seed an actionless op='error' row at 1/1/2 (the errors-into-log shape).
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 2,
-            origin: "model", source: "grammar", model_call_id: null, op: "error", suffix: "", signal: null,
+            origin: "model", source: "grammar", model_call_id: null, op: "error", delimiter: "", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
@@ -361,7 +361,7 @@ test("FOLD[tag] and OPEN[tag] symmetrically filter ALL-tag classifications", asy
         const seedRead = async (sequence: number): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
-                origin: "model", source: null, model_call_id: null, op: "READ", suffix: "", signal: null,
+                origin: "model", source: null, model_call_id: null, op: "READ", delimiter: "", signal: null,
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: "/doc", query: null, fragment: null, lineMarker: null,
                 tx: "## READ0 (worker:///doc)", mimetype_tx: "text/vnd.plurnk",
@@ -454,7 +454,7 @@ test("FOLD/OPEN curate engine-minted error rows through the same operation coord
         // Curation must work identically on every log row.
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 2,
-            origin: "plurnk", source: "rail", model_call_id: null, op: "error", suffix: "", signal: null,
+            origin: "plurnk", source: "rail", model_call_id: null, op: "error", delimiter: "", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",

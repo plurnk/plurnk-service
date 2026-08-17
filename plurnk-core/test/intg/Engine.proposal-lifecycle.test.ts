@@ -50,7 +50,7 @@ class ProposingTest {
 }
 
 const editStmt = (pathname: string, body: string, tags: string[] | null = null): EditStatement => ({
-    op: "EDIT", annotation: null, suffix: "", signal: tags,
+    op: "EDIT", annotation: null, delimiter: "", signal: tags,
     target: { kind: "url", raw: `proposing-test://${pathname}`, scheme: "proposing-test",
         username: null, password: null, hostname: null, port: null,
         pathname, query: null, fragment: null },
@@ -61,7 +61,7 @@ const okSend = (): MockResponse => ({
     assistant: {
         content: "",
         ops: [{
-            op: "SEND", annotation: null, suffix: "", signal: 200, target: null,
+            op: "SEND", annotation: null, delimiter: "", signal: 200, target: null,
             lineMarker: null, body: { raw: "ok", json: null },
             position: { line: 1, column: 1 },
         } as SendStatement],

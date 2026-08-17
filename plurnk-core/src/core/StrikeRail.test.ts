@@ -69,7 +69,7 @@ test("multiple sources still count once per turn, and a clean turn resets the st
 test("network query and channel coordinates remain distinct cycle fingerprints", () => {
     const statement = (raw: string): ReadStatement => ({
         op: "READ",
-        suffix: "",
+        delimiter: "",
         annotation: null,
         signal: null,
         target: parsePath(raw),
@@ -87,7 +87,7 @@ test("network query and channel coordinates remain distinct cycle fingerprints",
 test("distinct BARE prompts remain distinct cycle activities", () => {
     const statement = (body: string): BareStatement => ({
         op: "BARE",
-        suffix: "0",
+        delimiter: "0",
         annotation: null,
         signal: null,
         target: null,

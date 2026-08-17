@@ -18,7 +18,7 @@ import { sendStmt } from "./_dsl.ts";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
-    op: "EXEC", annotation: null, suffix: "", signal: runtime, target: null,
+    op: "EXEC", annotation: null, delimiter: "", signal: runtime, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -110,20 +110,20 @@ test("a runtime OUTSIDE the hold set keeps the standard cycle — turn 2 sees th
     }
 });
 
-test("{§exec-hold-until-concluded}: a `:read` suffix holds a read-effect spawn", async () => {
+test("{§exec-hold-until-concluded}: a `:read` delimiter holds a read-effect spawn", async () => {
     const prior = process.env.PLURNK_SERVICE_EXEC_HOLD;
     try {
         const { elapsed, streams } = await driveLoop(400, 0, "read", ":read");
-        assert.ok(!/holdstub/.test(streams), "turn 2 woke to a finished world — the read-effect spawn was held by its :read suffix");
+        assert.ok(!/holdstub/.test(streams), "turn 2 woke to a finished world — the read-effect spawn was held by its :read delimiter");
         assert.ok(elapsed >= 350, "the cycle actually paused for the stream (held, not raced)");
     } finally { if (prior === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = prior; }
 });
 
-test("{§exec-hold-until-concluded}: a `:host` suffix does not hold a read-effect spawn", async () => {
+test("{§exec-hold-until-concluded}: a `:host` delimiter does not hold a read-effect spawn", async () => {
     const prior = process.env.PLURNK_SERVICE_EXEC_HOLD;
     try {
         const { result, streams } = await driveLoop(2000, 1, "read", ":host");
         assert.equal(result.result.status, 202, "the mismatched selector leaves the stream monitored");
-        assert.ok(/holdstub/.test(streams), "turn 2 saw the LIVE stream — a read spawn is not held by a :host suffix");
+        assert.ok(/holdstub/.test(streams), "turn 2 saw the LIVE stream — a read spawn is not held by a :host delimiter");
     } finally { if (prior === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = prior; }
 });

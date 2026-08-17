@@ -9,11 +9,11 @@ import { urlPath, fullReplace } from "./_dsl.ts";
 
 const editStatement = (opts: {
     target?: ParsedPath | null; tags?: string[] | null; body?: string | null;
-    lineMarker?: LineMarker | null; suffix?: string;
+    lineMarker?: LineMarker | null; delimiter?: string;
 }): ResolvedEditStatement => ({
     op: "EDIT",
     annotation: null,
-    suffix: opts.suffix ?? "",
+    delimiter: opts.delimiter ?? "",
     signal: opts.tags ?? null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
@@ -24,7 +24,7 @@ const editStatement = (opts: {
 const readStatement = (opts: { target?: ParsedPath | null }): ReadStatement => ({
     op: "READ",
     annotation: null,
-    suffix: "",
+    delimiter: "",
     signal: null,
     target: opts.target ?? null,
     lineMarker: null,
@@ -353,7 +353,7 @@ test("Worker.edit: line shorthand has the same meaning without a path suffix", a
     await mimetypes.ready();
     try {
         const k = new Worker();
-        // No suffix → text/markdown → line EDIT.
+        // No delimiter → text/markdown → line EDIT.
         await k.edit(editStatement({ target: urlPath("worker", "/notes"), body: "alpha\nbeta\ngamma" }), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         await k.edit(editStatement({ target: urlPath("worker", "/notes"), body: "BETA", lineMarker: { marks: [2] } }), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
         const noSuffixRead = await lookThroughScheme("worker", null, readStatement({ target: urlPath("worker", "/notes") }), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));

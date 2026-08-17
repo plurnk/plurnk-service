@@ -10,7 +10,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { sendStmt } from "./_dsl.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 
-const execStmt = (runtime: string): ExecStatement => ({ op: "EXEC", annotation: null, suffix: "", signal: runtime, target: null, lineMarker: null, body: "echo hi", position: { line: 1, column: 1 } });
+const execStmt = (runtime: string): ExecStatement => ({ op: "EXEC", annotation: null, delimiter: "", signal: runtime, target: null, lineMarker: null, body: "echo hi", position: { line: 1, column: 1 } });
 
 const runDisabled = async (execsPolicy: Record<string, string>, runtime: string) => {
     const db = await openMigrated();

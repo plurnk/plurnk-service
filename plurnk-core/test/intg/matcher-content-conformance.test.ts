@@ -24,12 +24,12 @@ const url = (pathname: string): UrlPath => ({
 });
 
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
-    op: "EDIT", annotation: null, suffix: "", signal: null, target, lineMarker: null, body,
+    op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
 const findStmt = (target: UrlPath, body: MatcherBody | null, lineMarker: LineMarker | null = null): FindStatement => ({
-    op: "FIND", annotation: null, suffix: "", signal: null, target, lineMarker, body,
+    op: "FIND", annotation: null, delimiter: "", signal: null, target, lineMarker, body,
     position: { line: 1, column: 1 },
 });
 
@@ -86,7 +86,7 @@ test("{§scope-slot}: READ <L> slices by line via the marker slot, not the body"
     const { db, workspaceId, workerId } = await setup();
     try {
         await seed(db, workspaceId, workerId, [["lines", "alpha\nbeta\ngamma"]]);
-        const stmt: ReadStatement = { op: "READ", annotation: null, suffix: "", signal: null, target: url("lines"), lineMarker: { marks: [2, 2] }, body: null, position: { line: 1, column: 1 } };
+        const stmt: ReadStatement = { op: "READ", annotation: null, delimiter: "", signal: null, target: url("lines"), lineMarker: { marks: [2, 2] }, body: null, position: { line: 1, column: 1 } };
         const r = await lookThroughScheme("worker", null, stmt, makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(r.status, 200);
         assert.match(r.content ?? "", /beta/);
@@ -133,7 +133,7 @@ test("{§find-glob-filter-on-content}: FIND glob selects entries by content, not
 test("{§find-source-agnostic}: FIND JSONPath selects JSON entries by content structure", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
-        // `.json` suffix → application/json mimetype → plugin's deep-json channel.
+        // `.json` delimiter → application/json mimetype → plugin's deep-json channel.
         await seed(db, workspaceId, workerId, [
             ["alice.json", '{"admin":true}'],
             ["bob.json", '{"guest":true}'],
@@ -147,7 +147,7 @@ test("{§find-source-agnostic}: FIND JSONPath selects JSON entries by content st
 test("{§find-source-agnostic}: FIND XPath selects XML entries by content structure", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
-        // `.xml` suffix → application/xml mimetype → plugin's deep-xml channel.
+        // `.xml` delimiter → application/xml mimetype → plugin's deep-xml channel.
         await seed(db, workspaceId, workerId, [
             ["a.xml", "<root><user>admin</user></root>"],
             ["b.xml", "<root><group>x</group></root>"],

@@ -9,7 +9,7 @@ type SqlValue = string | number | bigint | null;
 const minimalLog = async (db: Db, ctx: { workerId: number; loopId: number; turnId: number }, overrides: Record<string, SqlValue> = {}): Promise<number> => {
     const params: Record<string, SqlValue> = {
         worker_id: ctx.workerId, loop_id: ctx.loopId, turn_id: ctx.turnId,
-        sequence: 1, origin: "model", op: "EDIT", suffix: "",
+        sequence: 1, origin: "model", op: "EDIT", delimiter: "",
         source: null,
         signal: JSON.stringify(["+philosophy"]),
         scheme: "worker", pathname: "/meaning", port: null, query: null,
@@ -72,10 +72,10 @@ test("log_entries: minimal insert — defaults populate", async () => {
     try {
         const ctx = await seedEnvelope(db, "ws-log-defaults");
         const ins = await db.test_log_entries_insert_minimal.get<{ id: number }>({ worker_id: ctx.workerId, loop_id: ctx.loopId, turn_id: ctx.turnId });
-        const row = await db.test_log_entries_get_by_id.get<{ version: number; at: string; suffix: string; weight: number; signal: string | null; lineMarker: string | null }>({ id: ins?.id });
+        const row = await db.test_log_entries_get_by_id.get<{ version: number; at: string; delimiter: string; weight: number; signal: string | null; lineMarker: string | null }>({ id: ins?.id });
         assert.equal(row?.version, 0);
         assert.match(row?.at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-        assert.equal(row?.suffix, "");
+        assert.equal(row?.delimiter, "");
         assert.equal(row?.weight, 0);
         assert.equal(row?.signal, null);
         assert.equal(row?.lineMarker, null);

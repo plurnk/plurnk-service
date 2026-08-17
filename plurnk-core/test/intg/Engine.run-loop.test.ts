@@ -15,13 +15,13 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
-    op: "EDIT", annotation: null, suffix: "", signal: null,
+    op: "EDIT", annotation: null, delimiter: "", signal: null,
     target: urlPath("worker", pathname),
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
 const sendStmt = (status: number, body: string): SendStatement => ({
-    op: "SEND", annotation: null, suffix: "", signal: status, target: null,
+    op: "SEND", annotation: null, delimiter: "", signal: status, target: null,
     lineMarker: null, body: { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
@@ -238,7 +238,7 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const readStmt = (pathname: string) => ({
-            op: "READ" as const, annotation: null, suffix: "", signal: null,
+            op: "READ" as const, annotation: null, delimiter: "", signal: null,
             target: urlPath("worker", pathname),
             lineMarker: null, body: null,
             position: { line: 1, column: 1 },

@@ -16,7 +16,7 @@ import SearchIndex from "../../src/schemes/_search-index.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, DEFAULT_MIMETYPES, quiesceExecs, makeSchemeCtx } from "./_helpers.ts";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
-    op: "EXEC", annotation: null, suffix: "", signal: runtime, target: null,
+    op: "EXEC", annotation: null, delimiter: "", signal: runtime, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -193,7 +193,7 @@ test("entry() materializes an https resource and classifies each plurnk narratio
         // projects the machine-created entry as an ordinary system READ, carrying the honest OPEN
         // cost — real tokens + lines, no body riding. Durable storage remains the typed EDIT above.
         const view = (folded: boolean): object[] => [{
-            coordinate: "1/1/2", origin: "plurnk", op: "EDIT", suffix: "", signal: null,
+            coordinate: "1/1/2", origin: "plurnk", op: "EDIT", delimiter: "", signal: null,
             target: { scheme: "https", username: null, password: null, hostname: null, port: null, pathname: "/example.org/turkeys", query: null, fragment: null },
             status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
             folded, source: "worker://researcher", attrs: { kind: "entry_materialized" }, tags: ["second_query"],

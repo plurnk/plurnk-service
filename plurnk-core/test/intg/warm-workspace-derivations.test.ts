@@ -33,7 +33,7 @@ const url = (pathname: string): UrlPath => ({
     pathname: `/${pathname}`, query: null, fragment: null,
 });
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
-    op: "EDIT", annotation: null, suffix: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 },
+    op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 const fts = async (db: Db, workspaceId: number, query: string): Promise<string[]> => {
     const rows = await db.test_fts_search.all<{ pathname: string }>({ workspace_id: workspaceId, query });
@@ -154,7 +154,7 @@ test("a model turn joins an in-flight startup warm before calling its provider",
         const response: MockResponse = {
             assistant: {
                 content: "",
-                ops: [{ op: "SEND", annotation: null, suffix: "", signal: 200, target: null, lineMarker: null, body: { raw: "ready", json: null }, position: { line: 1, column: 1 } }],
+                ops: [{ op: "SEND", annotation: null, delimiter: "", signal: 200, target: null, lineMarker: null, body: { raw: "ready", json: null }, position: { line: 1, column: 1 } }],
                 reasoning: null,
             },
         };

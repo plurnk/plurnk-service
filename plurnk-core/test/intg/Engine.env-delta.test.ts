@@ -28,7 +28,7 @@ const execFileP = promisify(execFile);
 const okSend = (): MockResponse => ({
     assistant: {
         content: "",
-        ops: [{ op: "SEND", annotation: null, suffix: "", signal: 200, target: null, lineMarker: null, body: { raw: "ok", json: null }, position: { line: 1, column: 1 } } as SendStatement],
+        ops: [{ op: "SEND", annotation: null, delimiter: "", signal: 200, target: null, lineMarker: null, body: { raw: "ok", json: null }, position: { line: 1, column: 1 } } as SendStatement],
         reasoning: null,
     },
 });
@@ -82,7 +82,7 @@ const workerPath = (authority: string, pathname: string): UrlPath => ({
     pathname, query: null, fragment: null,
 });
 const editStmt = (target: UrlPath, body: string, tags: string[] | null = null): EditStatement => ({
-    op: "EDIT", annotation: null, suffix: "", signal: tags, target, lineMarker: null, body,
+    op: "EDIT", annotation: null, delimiter: "", signal: tags, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
@@ -346,7 +346,7 @@ test("a proposed shared EDIT publishes only on successful resolution", async () 
         const propose = async (sequence: number, pathname: string): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 worker_id: producer, loop_id: producerLoop, turn_id: producerTurn, sequence,
-                origin: "model", source: null, model_call_id: null, op: "EDIT", suffix: "", signal: null,
+                origin: "model", source: null, model_call_id: null, op: "EDIT", delimiter: "", signal: null,
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname, query: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain", rx: JSON.stringify({ status: 202 }),
@@ -573,7 +573,7 @@ test("an environment delta preserves typed source attributes for model-facing pr
         const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: plurnk, loop_id: plurnkLoop, turn_id: plurnkTurn, sequence: 1,
             origin: "plurnk", source: "worker://observer", model_call_id: null,
-            op: "EDIT", suffix: "", signal: JSON.stringify(["+query"]),
+            op: "EDIT", delimiter: "", signal: JSON.stringify(["+query"]),
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/page", query: null, fragment: null, lineMarker: null,
             tx: JSON.stringify({ op: "EDIT", body: "page" }), mimetype_tx: "application/json",

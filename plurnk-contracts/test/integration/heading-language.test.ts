@@ -27,7 +27,7 @@ test("{§canonical-statement}: H1 PLAN owns a lane and H2 operations retain exac
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     assert.equal(result.unparsedTail, undefined);
     const parsed = statements(input);
-    assert.deepEqual(parsed.map(({ op, suffix }) => [op, suffix]), [
+    assert.deepEqual(parsed.map(({ op, delimiter }) => [op, delimiter]), [
         ["PLAN", "0"],
         ["EDIT", "0"],
         ["READ", "0"],
@@ -45,7 +45,7 @@ test("{§section-boundary}: one separator line is structural and additional blan
     assert.equal(parsed[1].body, "alpha\n");
 });
 
-test("{§suffix-discipline}: differently suffixed headings remain character-perfect outer body text", () => {
+test("{§delimiter-discipline}: differently delimited headings remain character-perfect outer body text", () => {
     const quoted = [
         "# PLAN2",
         "Store a quoted turn.",
@@ -105,7 +105,7 @@ test("{§lane-match}: parseLog establishes a fresh lane after each terminal SEND
     const result = PlurnkParser.parseLog(input);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     assert.deepEqual(
-        result.items.flatMap((item) => item.kind === "statement" ? [[item.statement.op, item.statement.suffix]] : []),
+        result.items.flatMap((item) => item.kind === "statement" ? [[item.statement.op, item.statement.delimiter]] : []),
         [["PLAN", "outer"], ["SEND", "outer"], ["PLAN", "next"], ["SEND", "next"]],
     );
 });

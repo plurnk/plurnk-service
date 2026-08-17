@@ -382,7 +382,7 @@ test("a retrieval refusal grants no exemption from the ordinary idle-turn rail",
         const loopId = await insertLoop(db, workerId, 1, "go");
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/page.html", channel: "body", content: "<h1>Hi</h1>", mimetype: "text/html", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const planStmt = { op: "PLAN", annotation: null, suffix: "", signal: null, target: null, lineMarker: null, body: "waiting", position: { line: 1, column: 1 } } as const;
+        const planStmt = { op: "PLAN", annotation: null, delimiter: "", signal: null, target: null, lineMarker: null, body: "waiting", position: { line: 1, column: 1 } } as const;
         const idle = () => ({ assistant: { content: "", reasoning: null, ops: [planStmt, sendStmt(102, null, "waiting")] } });
         const provider = new Mock({ contextWindow: 100000, responses: [
             { assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/page.html")), sendStmt(200, null, "Hi")] } },

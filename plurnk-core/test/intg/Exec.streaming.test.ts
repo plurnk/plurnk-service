@@ -24,7 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const execStmt = (runtime: string, body: string): ExecStatement => ({
-    op: "EXEC", annotation: null, suffix: "", signal: runtime,
+    op: "EXEC", annotation: null, delimiter: "", signal: runtime,
     target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -243,7 +243,7 @@ test("an empty-body 0o644 script target survives acceptance and runs", async () 
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
-            statement: { op: "EXEC", annotation: null, suffix: "", signal: "sh", target: { kind: "local", raw: "demo_greet.sh" }, lineMarker: null, body: "", position: { line: 1, column: 1 } },
+            statement: { op: "EXEC", annotation: null, delimiter: "", signal: "sh", target: { kind: "local", raw: "demo_greet.sh" }, lineMarker: null, body: "", position: { line: 1, column: 1 } },
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });

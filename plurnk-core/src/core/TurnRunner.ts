@@ -702,7 +702,7 @@ export default class TurnRunner {
                     pathname: `/${doc.entryName}`, query: null, fragment: null,
                 };
                 const docRead: ReadStatement = {
-                    op: "READ", suffix: "", annotation: null, signal: null, target: docTarget,
+                    op: "READ", delimiter: "", annotation: null, signal: null, target: docTarget,
                     lineMarker: null, body: null, position: UNKNOWN_POSITION,
                 };
                 await this.#dispatch({
@@ -822,7 +822,7 @@ export default class TurnRunner {
                 const surveys: Array<{ statement: FindStatement | ReadStatement; exemplar: string }> = [
                     ...(shellSample === undefined ? [] : [{
                         statement: {
-                            op: "READ" as const, suffix: "", annotation: null, signal: ["+init", "+tools"],
+                            op: "READ" as const, delimiter: "", annotation: null, signal: ["+init", "+tools"],
                             target: { kind: "url" as const, raw: "worker://plurnk/tools/sh.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/tools/sh.md", query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, 17] as [number, number] }, position: UNKNOWN_POSITION,
                         },
@@ -830,7 +830,7 @@ export default class TurnRunner {
                     }]),
                     {
                         statement: {
-                            op: "FIND", suffix: "", annotation: null, signal: ["+init", "+tools"],
+                            op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+tools"],
                             target: { kind: "url", raw: "worker://plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/tools/*.md", query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
@@ -838,7 +838,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", suffix: "", annotation: null, signal: ["+init", "+docs"],
+                            op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+docs"],
                             target: { kind: "url", raw: "worker://plurnk/docs/**", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/docs/**", query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
@@ -846,7 +846,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", suffix: "", annotation: null, signal: ["+init"],
+                            op: "FIND", delimiter: "", annotation: null, signal: ["+init"],
                             target: { kind: "local", raw: "*" },
                             body: null,
                             lineMarker: fileCap === null ? null : { marks: [1, fileCap] },
@@ -856,7 +856,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", suffix: "", annotation: null, signal: ["+init"],
+                            op: "FIND", delimiter: "", annotation: null, signal: ["+init"],
                             target: { kind: "url", raw: "worker:///*", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
                         },
@@ -864,7 +864,7 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", suffix: "", annotation: null, signal: ["+init"],
+                            op: "FIND", delimiter: "", annotation: null, signal: ["+init"],
                             target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", query: null, fragment: null },
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
                         },
@@ -898,7 +898,7 @@ export default class TurnRunner {
         for (const raw of turnOpenPaths) {
             const pathname = raw.startsWith("/") ? raw : `/${raw}`;
             const fileRead: ReadStatement = {
-                op: "READ", suffix: "", annotation: null, signal: null, lineMarker: null,
+                op: "READ", delimiter: "", annotation: null, signal: null, lineMarker: null,
                 target: {
                     kind: "url", raw: `file://${pathname}`, scheme: "file",
                     username: null, password: null, hostname: null, port: null,
@@ -2034,7 +2034,7 @@ export default class TurnRunner {
             await this.#db.engine_insert_log_entry.get({
                 worker_id: worker.id, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
                 origin: "plurnk", source: "file", model_call_id: null,
-                op: "EDIT", suffix: "", signal: null,
+                op: "EDIT", delimiter: "", signal: null,
                 // Match Dispatcher.#extractTarget: a bare file address has NULL scheme
                 // only in log target metadata; its entry identity remains `file`.
                 scheme: null, username: null, password: null, hostname: null, port: null,
@@ -2082,7 +2082,7 @@ export default class TurnRunner {
             source: null,
             model_call_id: null,
             op: "prompt",
-            suffix: "",
+            delimiter: "",
             signal: null,
             scheme: target.scheme,
             username: target.username,

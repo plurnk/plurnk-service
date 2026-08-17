@@ -26,11 +26,11 @@ const url = (pathname: string): UrlPath => ({
     pathname: `/${pathname}`, query: null, fragment: null,
 });
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
-    op: "EDIT", annotation: null, suffix: "", signal: null, target, lineMarker: null, body,
+    op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 const semanticStmt = (target: UrlPath, query: string, k: number): FindStatement => ({
-    op: "FIND", annotation: null, suffix: "", signal: null, target,
+    op: "FIND", annotation: null, delimiter: "", signal: null, target,
     lineMarker: { marks: [1, k] }, body: { dialect: "semantic", raw: query } as MatcherBody,
     position: { line: 1, column: 1 },
 });
@@ -41,7 +41,7 @@ const thresholdStmt = (
     first: number | null = null,
     last: number | null = null,
 ): FindStatement => ({
-    op: "FIND", annotation: null, suffix: "", signal: null, target,
+    op: "FIND", annotation: null, delimiter: "", signal: null, target,
     lineMarker: {
         marks: first === null
             ? [threshold]

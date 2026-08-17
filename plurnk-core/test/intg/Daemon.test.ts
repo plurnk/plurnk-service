@@ -739,7 +739,7 @@ test("the client-interface seam does not manufacture a resolver from an ownerles
         const turnId = await insertTurn(db, loopId, 1, 102);
         const row = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "model", source: null, model_call_id: null, op: "EDIT", suffix: "", signal: null,
+            origin: "model", source: null, model_call_id: null, op: "EDIT", delimiter: "", signal: null,
             scheme: "worker", username: null, password: null, hostname: null, port: null,
             pathname: "/x", query: null, fragment: null, lineMarker: null,
             tx: "## EDIT0 (worker:///x)\nbody", mimetype_tx: "text/vnd.plurnk",

@@ -440,7 +440,7 @@ export default class PacketBuilder {
         // EDIT/READ delivery rows.
         const rows = await this.#db.engine_render_log.all<{
             id: number; loop_seq: number; turn_seq: number; sequence: number;
-            origin: string; op: string | null; suffix: string; signal: string | null;
+            origin: string; op: string | null; delimiter: string; signal: string | null;
             scheme: string | null; username: string | null; password: string | null;
             hostname: string | null; port: number | null; pathname: string | null;
             query: string | null; fragment: string | null;
@@ -483,7 +483,7 @@ export default class PacketBuilder {
                 coordinate: `${r.loop_seq}/${r.turn_seq}/${r.sequence}`,
                 origin: r.origin,
                 op: r.op,
-                suffix: r.suffix,
+                delimiter: r.delimiter,
                 signal: r.signal === null ? null : JSON.parse(r.signal),
                 target: {
                     scheme: r.scheme,

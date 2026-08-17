@@ -54,7 +54,7 @@ const wire = (db: Awaited<ReturnType<typeof openMigrated>>) => {
 const readStatement = (pathname: string): ReadStatement => ({
     op: "READ",
     annotation: null,
-    suffix: "",
+    delimiter: "",
     signal: null,
     target: {
         kind: "url",

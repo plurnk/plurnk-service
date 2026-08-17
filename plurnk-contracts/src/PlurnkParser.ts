@@ -232,7 +232,7 @@ export default class PlurnkParser {
                         st.position.line,
                         st.position.column,
                         "parser",
-                        `\`## ${st.op}${st.suffix}\` has no \`(target)\` - that path sits in the \`[…]\` tag slot; a target goes in \`(…)\`. Try \`## ${st.op}${st.suffix || "0"} (${path})\``,
+                        `\`## ${st.op}${st.delimiter}\` has no \`(target)\` - that path sits in the \`[…]\` tag slot; a target goes in \`(…)\`. Try \`## ${st.op}${st.delimiter || "0"} (${path})\``,
                         "warning",
                     ),
                 },

@@ -17,7 +17,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const editStmt = (opts: { target: ParsedPath; tags?: string[] | null; body?: string | null; marker?: TextLineMarker | null; annotation?: string | null }): EditStatement => ({
-    op: "EDIT", annotation: opts.annotation ?? null, suffix: "",
+    op: "EDIT", annotation: opts.annotation ?? null, delimiter: "",
     signal: opts.tags ?? null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
@@ -26,7 +26,7 @@ const editStmt = (opts: { target: ParsedPath; tags?: string[] | null; body?: str
 });
 
 const readStmt = (opts: { target: ParsedPath; tags?: string[] | null; marker?: ReadStatement["lineMarker"] }): ReadStatement => ({
-    op: "READ", annotation: null, suffix: "",
+    op: "READ", annotation: null, delimiter: "",
     signal: opts.tags ?? null,
     target: opts.target,
     lineMarker: opts.marker ?? null,
@@ -35,7 +35,7 @@ const readStmt = (opts: { target: ParsedPath; tags?: string[] | null; marker?: R
 });
 
 const killStmt = (opts: { target: ParsedPath; body?: string | null }): KillStatement => ({
-    op: "KILL", annotation: null, suffix: "",
+    op: "KILL", annotation: null, delimiter: "",
     signal: null,
     target: opts.target,
     lineMarker: null,
@@ -44,7 +44,7 @@ const killStmt = (opts: { target: ParsedPath; body?: string | null }): KillState
 });
 
 const planStmt = (opts: { body?: string | null }): PlanStatement => ({
-    op: "PLAN", annotation: null, suffix: "",
+    op: "PLAN", annotation: null, delimiter: "",
     signal: null,
     target: null,
     lineMarker: null,
@@ -53,12 +53,12 @@ const planStmt = (opts: { body?: string | null }): PlanStatement => ({
 });
 
 const openStmt = (opts: { target: ParsedPath | null; tags?: string[] }): OpenStatement => ({
-    op: "OPEN", annotation: null, suffix: "", signal: opts.tags ?? null, target: opts.target,
+    op: "OPEN", annotation: null, delimiter: "", signal: opts.tags ?? null, target: opts.target,
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
 const foldStmt = (opts: { target: ParsedPath | null; tags?: string[] }): FoldStatement => ({
-    op: "FOLD", annotation: null, suffix: "", signal: opts.tags ?? null, target: opts.target,
+    op: "FOLD", annotation: null, delimiter: "", signal: opts.tags ?? null, target: opts.target,
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
@@ -662,7 +662,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
         });
         const log = await db.test_first_log_entry_for_turn.get<{
             worker_id: number; loop_id: number; turn_id: number; sequence: number;
-            origin: string; op: string; suffix: string; signal: string | null;
+            origin: string; op: string; delimiter: string; signal: string | null;
             scheme: string | null; pathname: string | null;
             tx: string; mimetype_tx: string; rx: string; mimetype_rx: string; status_rx: number;
         }>({ turn_id: env.turnId });
@@ -673,7 +673,7 @@ test("Engine.dispatch: writes log_entry with statement + result fields", async (
         assert.equal(log.sequence, 1);
         assert.equal(log.origin, "model");
         assert.equal(log.op, "EDIT");
-        assert.equal(log.suffix, "");
+        assert.equal(log.delimiter, "");
         assert.equal(log.signal, null);
         assert.equal(log.scheme, "worker");
         assert.equal(log.pathname, "/x");
@@ -724,7 +724,7 @@ test("Engine.dispatch: null path on path-required op returns 400 and logs", asyn
     const { db, engine, env } = await setup();
     try {
         const stmt: EditStatement = {
-            op: "EDIT", annotation: null, suffix: "", signal: null, target: null, lineMarker: null, body: "y",
+            op: "EDIT", annotation: null, delimiter: "", signal: null, target: null, lineMarker: null, body: "y",
             position: { line: 1, column: 1 },
         };
         const result = await engine.dispatch({
@@ -952,7 +952,7 @@ test("Engine.dispatch: model SEND with null path (broadcast) is NOT gated", asyn
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: { op: "SEND", annotation: null, suffix: "", signal: 200, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
+            statement: { op: "SEND", annotation: null, delimiter: "", signal: 200, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } },
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -1039,7 +1039,7 @@ test("Engine.dispatch: COPY rejects a non-entry destination at resource resoluti
         // Attempt copy worker:///src → log:///dst — destination scheme rejects.
         const result = await engine.dispatch({
             statement: {
-                op: "COPY", annotation: null, suffix: "", signal: null,
+                op: "COPY", annotation: null, delimiter: "", signal: null,
                 target: urlPath("worker", "/src"),
                 lineMarker: null,
                 body: { target: urlPath("log", "/dst"), lineMarker: null },

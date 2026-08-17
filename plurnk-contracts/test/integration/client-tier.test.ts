@@ -72,7 +72,7 @@ test("client: a different-lane LOOK heading remains outer body text", () => {
     const stmts = clientStatementsOf("## LOOK0 (p)\nbody mentions\n\n## LOOK2 (nested)");
     assert.equal(stmts.length, 1);
     assert.equal(stmts[0].statement.op, "LOOK");
-    assert.equal(stmts[0].statement.suffix, "0");
+    assert.equal(stmts[0].statement.delimiter, "0");
     assert.equal((stmts[0].statement as any).body.raw, "body mentions\n\n## LOOK2 (nested)");
 });
 
@@ -129,7 +129,7 @@ test("Validator: ClientStatement accepts a protocol READ statement", () => {
 });
 
 test("Validator: ClientStatement rejects an unknown op", () => {
-    const s = { op: "PEEK", suffix: "", signal: null, target: null, lineMarker: null, body: null, position: { line: 0, column: 0 } };
+    const s = { op: "PEEK", delimiter: "", signal: null, target: null, lineMarker: null, body: null, position: { line: 0, column: 0 } };
     const { valid } = Validator.validateClientStatement(s);
     assert.equal(valid, false);
 });

@@ -41,7 +41,7 @@ const statement = (
     return {
         op: "READ",
         annotation: null,
-        suffix: "READ",
+        delimiter: "READ",
         signal: null,
         target,
         lineMarker,
@@ -70,7 +70,7 @@ const readablePdf = () => new Uint8Array(Buffer.from(
 const emptyStatement = (): ReadStatement => ({
     op: "READ",
     annotation: null,
-    suffix: "READ",
+    delimiter: "READ",
     signal: null,
     target: {
         kind: "url",
@@ -92,7 +92,7 @@ const emptyStatement = (): ReadStatement => ({
 const legacyTextStatement = (): ReadStatement => ({
     op: "READ",
     annotation: null,
-    suffix: "READ",
+    delimiter: "READ",
     signal: null,
     target: {
         kind: "url",

@@ -24,19 +24,19 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 const fullReplace: LineMarker = { marks: [1, -1] };
 
 const editStmt = (pathname: string, body: string, marker: LineMarker | null = fullReplace): EditStatement => ({
-    op: "EDIT", annotation: null, suffix: "", signal: null,
+    op: "EDIT", annotation: null, delimiter: "", signal: null,
     target: urlPath("worker", pathname),
     lineMarker: marker, body, position: { line: 1, column: 1 },
 });
 
 const sendStmt = (status: number, body: string): SendStatement => ({
-    op: "SEND", annotation: null, suffix: "", signal: status, target: null,
+    op: "SEND", annotation: null, delimiter: "", signal: status, target: null,
     lineMarker: null, body: { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
 
 const planStmt = (body: string): PlanStatement => ({
-    op: "PLAN", annotation: null, suffix: "", signal: null, target: null,
+    op: "PLAN", annotation: null, delimiter: "", signal: null, target: null,
     lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
@@ -400,9 +400,9 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
         // READ a missing worker:/// path → 404 (soft). With maxStrikes=2 and
         // 4 consecutive soft turns, no abandon should fire.
         // Vary path each turn to keep cycle detection orthogonal.
-        const readMissing = (suffix: string): ReadStatement => ({
-            op: "READ", annotation: null, suffix: "", signal: null,
-            target: urlPath("worker", `/not-there-${suffix}`),
+        const readMissing = (delimiter: string): ReadStatement => ({
+            op: "READ", annotation: null, delimiter: "", signal: null,
+            target: urlPath("worker", `/not-there-${delimiter}`),
             lineMarker: null, body: null, position: { line: 1, column: 1 },
         });
         const provider = new Mock({
@@ -430,12 +430,12 @@ test("Engine.runLoop: clean turn between hard failures resets the streak", async
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const denied = (): EditStatement => ({
-            op: "EDIT", annotation: null, suffix: "", signal: null,
+            op: "EDIT", annotation: null, delimiter: "", signal: null,
             target: urlPath("sealed", "/x"),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
         const goodEdit = (p: string): EditStatement => ({
-            op: "EDIT", annotation: null, suffix: "", signal: null,
+            op: "EDIT", annotation: null, delimiter: "", signal: null,
             target: urlPath("worker", p),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
@@ -468,7 +468,7 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const denied = (): EditStatement => ({
-            op: "EDIT", annotation: null, suffix: "", signal: null,
+            op: "EDIT", annotation: null, delimiter: "", signal: null,
             target: urlPath("sealed", "/x"),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
@@ -596,7 +596,7 @@ test("Engine.runTurn: the durable failure projection shows once, then ages out",
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const denied = (): EditStatement => ({
-            op: "EDIT", annotation: null, suffix: "", signal: null,
+            op: "EDIT", annotation: null, delimiter: "", signal: null,
             target: urlPath("sealed", "/x"),
             lineMarker: null, body: "v", position: { line: 1, column: 1 },
         });
@@ -709,7 +709,7 @@ test("Engine.runTurn: the first turn's log section contains the prompt entry", a
         assert.ok(prompt, "first-class prompt row logged against prompt:///1/1");
         assert.equal(prompt.origin, "plurnk");
         assert.equal(prompt.target, "prompt:///1/1");
-        assert.match(String(prompt.path), /\/prompt$/, "path owns the prompt operation suffix");
+        assert.match(String(prompt.path), /\/prompt$/, "path owns the prompt operation delimiter");
     } finally { await db.close(); }
 });
 
@@ -791,7 +791,7 @@ test("Errors pointers use the canonical projected operation of a materialization
         const turnId = await insertTurn(db, loopId, 1, 102);
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "plurnk", source: "test", model_call_id: null, op: "EDIT", suffix: "", signal: null,
+            origin: "plurnk", source: "test", model_call_id: null, op: "EDIT", delimiter: "", signal: null,
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/rejected", query: null, fragment: null, lineMarker: null,
             tx: "{}", mimetype_tx: "application/json",
@@ -811,7 +811,7 @@ test("Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors sec
     try {
         // Model attempts to EDIT sealed:/// — denied 403 (writableBy=['plurnk']).
         const denied: EditStatement = {
-            op: "EDIT", annotation: null, suffix: "", signal: null,
+            op: "EDIT", annotation: null, delimiter: "", signal: null,
             target: urlPath("sealed", "/illegal"),
             lineMarker: null, body: "x", position: { line: 1, column: 1 },
         };
@@ -838,7 +838,7 @@ test("Engine.runTurn: Errors includes only the immediately previous turn", async
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const denied: EditStatement = {
-            op: "EDIT", annotation: null, suffix: "", signal: null,
+            op: "EDIT", annotation: null, delimiter: "", signal: null,
             target: urlPath("sealed", "/a"),
             lineMarker: null, body: "x", position: { line: 1, column: 1 },
         };

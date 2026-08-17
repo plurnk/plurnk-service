@@ -784,7 +784,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- A SQL enum would be a hand-copy of grammar's op list that silently goes stale on every new verb
     -- (it did — FORK/WORK). Validity lives at the parse + type layer, not duplicated in DDL.
     op              TEXT,
-    suffix          TEXT    NOT NULL DEFAULT '',
+    delimiter          TEXT    NOT NULL DEFAULT '',
     signal          TEXT                       CHECK (signal IS NULL OR json_valid(signal)),
 
     scheme          TEXT                       CHECK (scheme IS NULL OR length(scheme) > 0),
@@ -1193,7 +1193,7 @@ END;
 CREATE TRIGGER IF NOT EXISTS log_entries_immutable_core
 BEFORE UPDATE OF
     worker_id, loop_id, turn_id, sequence, at, origin, source, model_call_id,
-    op, suffix, signal,
+    op, delimiter, signal,
     scheme, username, password, hostname,
     port, pathname, query, fragment,
     lineMarker, tx, mimetype_tx, mimetype_rx

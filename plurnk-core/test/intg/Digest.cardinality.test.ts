@@ -36,7 +36,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 origin, source: origin === "plurnk" ? "worker://researcher" : null, model_call_id: null,
-                op, suffix: "", signal: null,
+                op, delimiter: "", signal: null,
                 scheme, username: null, password: null, hostname, port,
                 pathname, query, fragment, lineMarker: null,
                 tx: "{}", mimetype_tx: "application/json",

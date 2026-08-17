@@ -19,7 +19,7 @@ const urlPath = (pathname: string): UrlPath => ({
 });
 
 const editStmt = (pathname: string, body: string): EditStatement => ({
-    op: "EDIT", annotation: null, suffix: "", signal: null,
+    op: "EDIT", annotation: null, delimiter: "", signal: null,
     target: urlPath(pathname), lineMarker: null, body,
     position: { line: 1, column: 1 },
 });

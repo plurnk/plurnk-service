@@ -6,7 +6,7 @@ import { pathScope } from "./_path-scope.ts";
 
 const statement: FindStatement = {
     op: "FIND",
-    suffix: "",
+    delimiter: "",
     annotation: null,
     signal: null,
     target: {

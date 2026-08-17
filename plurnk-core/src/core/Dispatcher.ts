@@ -1226,7 +1226,7 @@ export default class Dispatcher {
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
             origin, source: null, model_call_id: modelCallId,
-            op: null, suffix: "", signal: null,
+            op: null, delimiter: "", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/vnd.plurnk",
@@ -1952,7 +1952,7 @@ export default class Dispatcher {
             source: null,  // dispatch entries are self-authored; {§env-delta} deltas set this
             model_call_id: modelCallId,
             op: durableStatement.op,
-            suffix: durableStatement.suffix,
+            delimiter: durableStatement.delimiter,
             signal: this.#signalToJson(durableStatement.signal),
             scheme: target.scheme,
             username: target.username,

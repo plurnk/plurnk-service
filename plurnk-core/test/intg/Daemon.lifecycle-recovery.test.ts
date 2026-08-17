@@ -227,7 +227,7 @@ test("boot terminalizes a proposed occurrence whose process-local resolution own
             source: null,
             model_call_id: null,
             op: "EDIT",
-            suffix: "",
+            delimiter: "",
             signal: null,
             scheme: "worker",
             username: null,

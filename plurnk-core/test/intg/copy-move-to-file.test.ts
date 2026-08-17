@@ -68,7 +68,7 @@ const seedFileMember = async (ctx: Ctx, root: string, rel: string, content: stri
 const fileMember = async (ctx: Ctx, rel: string) =>
     ctx.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, owner_id: await Owner.commonsId(ctx.db, ctx.workspaceId), scheme: "file", pathname: `${rel}` });
 
-const killStmt = (target: ParsedPath): KillStatement => ({ op: "KILL", annotation: null, suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
+const killStmt = (target: ParsedPath): KillStatement => ({ op: "KILL", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 } });
 
 const proposeAndResolve = async (
     ctx: Ctx,

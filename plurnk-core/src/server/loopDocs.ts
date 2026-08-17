@@ -40,7 +40,7 @@ export default class LoopDocs {
     static async materialize(engine: Engine, db: Db, workspaceId: number): Promise<void> {
         const { mdDocs } = await WorkspaceSettings.read(db, workspaceId);
         const statements: PlurnkStatement[] = (await WorkspaceSettings.resolveDocs(mdDocs)).map((doc): EditStatement => ({
-            op: "EDIT", suffix: "", annotation: null, signal: null,
+            op: "EDIT", delimiter: "", annotation: null, signal: null,
             target: LoopDocs.#target(`/${doc.entryName}`),
             lineMarker: { marks: [1, -1] }, body: doc.content, position: UNKNOWN_POSITION,
         }));
@@ -56,14 +56,14 @@ export default class LoopDocs {
         for (const { pathname } of materializedDocs) {
             if (desiredDocs.has(pathname)) continue;
             statements.push({
-                op: "SEND", suffix: "", annotation: null, signal: 410,
+                op: "SEND", delimiter: "", annotation: null, signal: 410,
                 target: LoopDocs.#target(pathname),
                 lineMarker: null, body: null, position: UNKNOWN_POSITION,
             } satisfies SendStatement);
         }
         for (const [pathname, content] of desiredDocs) {
             statements.push({
-                op: "EDIT", suffix: "", annotation: null, signal: null,
+                op: "EDIT", delimiter: "", annotation: null, signal: null,
                 target: LoopDocs.#target(pathname),
                 lineMarker: { marks: [1, -1] }, body: content, position: UNKNOWN_POSITION,
             });

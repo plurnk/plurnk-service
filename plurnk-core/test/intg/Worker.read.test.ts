@@ -14,7 +14,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStatement = (opts: { target: ParsedPath; tags?: string[] | null; body?: string | null; lineMarker?: LineMarker | null }): ResolvedEditStatement => ({
-    op: "EDIT", annotation: null, suffix: "",
+    op: "EDIT", annotation: null, delimiter: "",
     signal: opts.tags ?? null,
     target: opts.target,
     lineMarker: opts.lineMarker ?? null,
@@ -25,7 +25,7 @@ const editStatement = (opts: { target: ParsedPath; tags?: string[] | null; body?
 const readStatement = (opts: {
     target?: ParsedPath | null; tags?: string[] | null; lineMarker?: LineMarker | null;
 }): ReadStatement => ({
-    op: "READ", annotation: null, suffix: "",
+    op: "READ", annotation: null, delimiter: "",
     signal: opts.tags ?? null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
@@ -36,7 +36,7 @@ const readStatement = (opts: {
 const findStatement = (opts: {
     target?: ParsedPath | null; tags?: string[] | null; body?: MatcherBody | null; lineMarker?: LineMarker | null;
 }): import("@plurnk/plurnk-contracts").FindStatement => ({
-    op: "FIND", annotation: null, suffix: "",
+    op: "FIND", annotation: null, delimiter: "",
     signal: opts.tags ?? null,
     target: opts.target ?? null,
     lineMarker: opts.lineMarker ?? null,
@@ -316,7 +316,7 @@ test("Worker: no path suffix → scheme default (text/markdown); <L> is line-bas
             editStatement({ target: urlPath("worker", "/users"), body: "alpha\nbeta\ngamma" }),
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
         );
-        // Without `.json` suffix, mimetype falls back to manifest default
+        // Without `.json` delimiter, mimetype falls back to manifest default
         // (text/markdown). <L><2> is line-based.
         const result = await lookThroughScheme("worker", null,
             readStatement({ target: urlPath("worker", "/users"), lineMarker: { marks: [2] } }),

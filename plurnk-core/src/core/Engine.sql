@@ -516,7 +516,7 @@ SELECT
     le.sequence,
     -- le.origin is attribution, never a render filter; the worker's actor — {§actor-boundary-origin-not-filter} {§machine-processes-worker-origin}
     le.origin,
-    le.op, le.suffix, le.signal,
+    le.op, le.delimiter, le.signal,
     le.scheme, le.username, le.password,
     le.hostname, le.port, le.pathname,
     le.query, le.fragment,
@@ -551,14 +551,14 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 -- via proposal resolution; entry transitions through engine_resolve_log_entry).
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
-    op, suffix, signal,
+    op, delimiter, signal,
     scheme, username, password, hostname, port,
     pathname, query, fragment, lineMarker,
     tx, mimetype_tx, rx, mimetype_rx, status_rx, weight,
     state, outcome, attrs
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, $origin, $source, $model_call_id,
-    $op, $suffix, $signal,
+    $op, $delimiter, $signal,
     $scheme, $username, $password, $hostname, $port,
     $pathname, $query, $fragment, $lineMarker,
     $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight,

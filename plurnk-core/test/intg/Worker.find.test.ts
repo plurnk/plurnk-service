@@ -15,12 +15,12 @@ const url = (pathname: string): UrlPath => ({
 });
 
 const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
-    op: "EDIT", annotation: null, suffix: "", signal: null, target, lineMarker: null, body,
+    op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
 const findStmt = (target: UrlPath, body: MatcherBody | null = null, signal: string[] | null = null): FindStatement => ({
-    op: "FIND", annotation: null, suffix: "", signal, target, lineMarker: null, body,
+    op: "FIND", annotation: null, delimiter: "", signal, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 

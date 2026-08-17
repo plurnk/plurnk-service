@@ -18,12 +18,12 @@ import { urlPath, findStmt } from "./_dsl.ts";
 import { matchLocations } from "./_find.ts";
 
 const editStmt = (pathname: string, content: string): EditStatement => ({
-    op: "EDIT", annotation: null, suffix: "", signal: null,
+    op: "EDIT", annotation: null, delimiter: "", signal: null,
     target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null } as UrlPath,
     lineMarker: null, body: content, position: { line: 1, column: 1 },
 });
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
-    op: "READ", annotation: null, suffix: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 },
+    op: "READ", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 const resources = (result: FindResult): CatalogResource[] =>
     result.results.filter((item): item is CatalogResource => Array.isArray(item));
@@ -89,7 +89,7 @@ test("an exact body-less log FIND returns 404 when the resource does not exist",
     } finally { await db.close(); }
 });
 
-test("an exact log FIND rejects a supplied /OP suffix that disagrees with an existing row", async () => {
+test("an exact log FIND rejects a supplied /OP delimiter that disagrees with an existing row", async () => {
     const { db, workerId } = await setup();
     try {
         const result = await new Log().find(
@@ -226,7 +226,7 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
             source: null,
             model_call_id: null,
             op: "PLAN",
-            suffix: "",
+            delimiter: "",
             signal: null,
             scheme: null,
             username: null,

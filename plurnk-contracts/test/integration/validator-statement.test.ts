@@ -152,7 +152,7 @@ test("PlurnkStatement: WORK and FORK require prompt bodies", () => {
 
 const baseFields = (op: string) => ({
     op,
-    suffix: "",
+    delimiter: "",
     annotation: null,
     signal: null,
     target: null,

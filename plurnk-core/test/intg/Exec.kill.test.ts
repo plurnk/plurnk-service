@@ -14,12 +14,12 @@ import { Results } from "@plurnk/plurnk-schemes";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel, testExecutors } from "./_helpers.ts";
 
 const execStmt = (command: string): ExecStatement => ({
-    op: "EXEC", annotation: null, suffix: "", signal: null, target: null,
+    op: "EXEC", annotation: null, delimiter: "", signal: null, target: null,
     lineMarker: null, body: command, position: { line: 1, column: 1 },
 });
 
 const killExec = (pathname: string): KillStatement => ({
-    op: "KILL", annotation: null, suffix: "", signal: null,
+    op: "KILL", annotation: null, delimiter: "", signal: null,
     target: {
         kind: "url", raw: `exec://${pathname}`, scheme: "exec",
         username: null, password: null, hostname: null, port: null,

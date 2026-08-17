@@ -49,7 +49,7 @@ const urlTarget = (raw: string): UrlPath => {
 const execStatement = (target: string, body: string): ExecStatement => ({
     op: "EXEC",
     annotation: null,
-    suffix: "",
+    delimiter: "",
     signal: "tool",
     target: urlTarget(target),
     lineMarker: null,

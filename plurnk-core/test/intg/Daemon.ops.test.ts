@@ -110,7 +110,7 @@ test("op.dispatch accepts a raw PlurnkStatement AST and dispatches it", async ()
             const statement = {
                 op: "EDIT" as const,
                 annotation: null,
-                suffix: "",
+                delimiter: "",
                 signal: null,
                 target: {
                     kind: "url" as const, raw: "worker:///hello",

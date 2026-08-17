@@ -281,7 +281,7 @@ export default class ResourceMutations {
         if (first === undefined) return { statements: [], precondition: null };
         const current = await this.#run(schemeName, {
             op: "READ",
-            suffix: first.suffix,
+            delimiter: first.delimiter,
             annotation: null,
             signal: null,
             target: first.target,
@@ -1242,7 +1242,7 @@ export default class ResourceMutations {
         }
         const statements: ResolvedEditStatement[] = edits.map(({ marker, body, position }) => ({
             op: "EDIT",
-            suffix: "",
+            delimiter: "",
             annotation: null,
             signal: null,
             target: selection.target,

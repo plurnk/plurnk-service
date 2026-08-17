@@ -20,7 +20,7 @@ export type LogEntryWire = {
     origin: string;
     source: string | null;
     op: string | null;
-    suffix: string;
+    delimiter: string;
     signal: unknown;
     scheme: string | null;
     username: string | null;
@@ -78,7 +78,7 @@ export default class LogEntry {
             origin: row.origin as string,
             source: row.source as string | null,
             op: row.op as string | null,
-            suffix: row.suffix as string,
+            delimiter: row.delimiter as string,
             signal: LogEntry.#parseJsonOrNull(row.signal),
             scheme: row.scheme as string | null,
             username: row.username as string | null,

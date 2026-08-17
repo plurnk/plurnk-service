@@ -63,7 +63,7 @@ flowchart LR
 | Shared wire data         | `schema/*.json`                     | Defines runtime-neutral data shapes projected into generated TypeScript         |
 | Stateful behavior        | consuming runtime                   | Resolves addresses, permissions, selection arithmetic, effects, and lifecycle   |
 
-ANTLR owns statement structure, suffix matching, slot multiplicity, accepted
+ANTLR owns statement structure, delimiter matching, slot multiplicity, accepted
 slot permutations, scope-number syntax, and interstatement text recognition.
 AstBuilder owns URL decomposition and deterministic matcher validation through
 WHATWG `URL`, ECMAScript `RegExp`, XPath 1.0, and RFC 9535 JSONPath parsers.
@@ -203,9 +203,9 @@ response roots plus the parser/AstBuilder result.
 
 §rail-heading-boundaries On the GBNF rail, PLAN and every operation use lane `0`.
 Every reserved PLAN or operation heading stem is structural, regardless of the
-suffix a model attempts next, so a non-`0` pseudo-heading cannot be swallowed as
+delimiter a model attempts next, so a non-`0` pseudo-heading cannot be swallowed as
 literal body text. Rail bodies therefore cannot quote reserved headings from any
-lane. This makes both the canonical suffix and section boundary structurally
+lane. This makes both the canonical delimiter and section boundary structurally
 available during constrained generation; ANTLR remains the wider language and
 accepts intentional alternate-lane literals during ingestion.
 
@@ -218,10 +218,10 @@ target resolution.
 ## §canonical-statement 2. Canonical statement form
 
 ```text
-# PLANsuffix
+# PLANdelimiter
 body
 
-## OPsuffix [signal]? (path)? <scope>? <!-- annotation -->?
+## OPdelimiter [signal]? (path)? <scope>? <!-- annotation -->?
 body?
 ```
 
@@ -240,7 +240,7 @@ section separator (or EOF) and normalizes to a null body.
 |--------------|---------------------------------------------------------------------------|
 | `# PLAN`     | Required level-one turn anchor                                             |
 | `## OP`      | Level-two protocol operation                                               |
-| `suffix`     | Heading lane, joined directly to PLAN or OP                                |
+| `delimiter`     | Heading lane, joined directly to PLAN or OP                                |
 | `[signal]`   | Optional operation-specific signal, preceded by one space                  |
 | `(path)`     | Optional target slot, preceded by one space                                |
 | `<scope>`    | Optional numeric scope, preceded by one space                              |
@@ -252,14 +252,14 @@ section separator (or EOF) and normalizes to a null body.
 The following constraints are structural:
 
 - §lane-match PLAN establishes one lane for the turn. A heading is structural
-  only when its suffix character-matches that lane; a different suffix remains
+  only when its delimiter character-matches that lane; a different delimiter remains
   ordinary body text.
 - PLAN is the only H1 operation and every non-PLAN operation is H2.
 - A header occupies one physical line.
 - Each admitted signal, target, and scope slot appears at most once.
 - An annotation follows every present modifier and appears at most once.
 - OPEN, FOLD, BARE, WORK, FORK, and KILL do not admit a scope slot.
-- An ingested suffix is `[A-Za-z0-9_]*`; canonical teaching and the GBNF use `0`.
+- An ingested delimiter is `[A-Za-z0-9_]*`; canonical teaching and the GBNF use `0`.
 
 §slot-order Canonical producers and the GBNF rail emit signal, then target, then
 scope, then annotation, with one ASCII space before every present slot. Slot delimiters make
@@ -294,7 +294,7 @@ or safely execute understandable input:
 | Element     | Accepted shape or role                                             |
 |-------------|--------------------------------------------------------------------|
 | `OP`        | `FIND READ EDIT COPY MOVE OPEN FOLD SEND EXEC BARE WORK FORK KILL PLAN` |
-| `suffix`    | `[A-Za-z0-9_]*`, adjacent to PLAN or OP                            |
+| `delimiter`    | `[A-Za-z0-9_]*`, adjacent to PLAN or OP                            |
 | `[signal]`  | Operation-specific tags, identifier, branch, or integer            |
 | `(path)`    | Local path or scheme URL target; detailed in §5                    |
 | `<scope>`   | One or more signed integers or decimals; detailed in §7            |
@@ -595,21 +595,21 @@ reinterpreting them. FIND owns a deterministic result order so the same
 inclusive range selects the same positions from unchanged state. The parser
 does not enforce either condition.
 
-## §suffix-discipline 8. Suffix Discipline
+## §delimiter-discipline 8. Delimiter Discipline
 
-The suffix is a turn-wide heading lane. A heading carrying the active lane
+The delimiter is a turn-wide heading lane. A heading carrying the active lane
 is structural; an otherwise valid PLURNK heading carrying another lane is body
 text. The lane therefore makes literal or nested PLURNK unambiguous.
 
-Suffix rules:
+Delimiter rules:
 
-- `suffix` is `[A-Za-z0-9_]*`, concatenated to PLAN or OP with no separator.
+- `delimiter` is `[A-Za-z0-9_]*`, concatenated to PLAN or OP with no separator.
 - The H1 PLAN establishes the lane; every real H2 operation heading in that
-  turn has the exact same suffix.
-- An empty suffix is accepted only by ANTLR ingestion. Canonical teaching and
+  turn has the exact same delimiter.
+- An empty delimiter is accepted only by ANTLR ingestion. Canonical teaching and
   the generated rail use `0` on PLAN and every operation.
-- A body may contain any heading whose suffix differs from the active lane.
-- To carry a nested turn written with lane `0`, choose another suffix for the
+- A body may contain any heading whose delimiter differs from the active lane.
+- To carry a nested turn written with lane `0`, choose another delimiter for the
   outer turn and repeat it on every outer heading.
 - The GBNF deliberately emits only lane `0`. It cannot emit body content that
   contains a same-lane structural heading; unconstrained producers use another
@@ -727,7 +727,7 @@ or identifier tokens by operation family. TARGET preserves balanced inner
 parentheses and recognized target escapes. BODY emits opaque text until a
 same-lane heading boundary or EOF.
 
-A differently suffixed heading stays BODY text. Multi-turn logs are plain
+A differently delimited heading stays BODY text. Multi-turn logs are plain
 sequences of independently lane-anchored PLAN turns. Complete native reasoning
 enclosures before PLAN remain one TEXT token so an operation drafted inside
 provider reasoning cannot become the turn anchor.
@@ -742,7 +742,7 @@ possible. EOF is a valid body boundary. An unfinished signal or target produces
 | Location                    | Canonical generation                  | Tolerant ANTLR ingestion                                  |
 |-----------------------------|---------------------------------------|-----------------------------------------------------------|
 | Heading marker              | `# PLAN0` or `## OP0` at column zero  | The initial PLAN may directly follow leading TEXT; subsequent headings retain exact depth and column |
-| Between OP and suffix       | Adjacent                              | Must remain adjacent                                      |
+| Between OP and delimiter       | Adjacent                              | Must remain adjacent                                      |
 | Before each header slot     | One ASCII space                       | Zero or more horizontal whitespace characters             |
 | Inside signal               | Adjacent values                       | Horizontal whitespace is ignored; newline is invalid      |
 | Inside target               | Path alias plus target escapes         | Balanced literals tolerated; newline is invalid           |

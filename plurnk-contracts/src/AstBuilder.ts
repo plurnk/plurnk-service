@@ -138,7 +138,7 @@ export default class AstBuilder {
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "FIND",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_FIND().getText(), "FIND"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_FIND().getText(), "FIND"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
@@ -165,7 +165,7 @@ export default class AstBuilder {
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "LOOK",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_LOOK().getText(), "LOOK"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_LOOK().getText(), "LOOK"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
@@ -179,7 +179,7 @@ export default class AstBuilder {
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "BUFF",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_BUFF().getText(), "BUFF"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_BUFF().getText(), "BUFF"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
@@ -208,7 +208,7 @@ export default class AstBuilder {
             const findSlots = slots as TagSlots;
             return {
                 op: "FIND",
-                suffix: AstBuilder.#splitSuffix(ctx.OPEN_READ().getText(), "READ"),
+                delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_READ().getText(), "READ"),
                 annotation: AstBuilder.#annotationOf(ctx),
                 ...findSlots,
                 body: hasMatcher ? AstBuilder.#parseMatcherBody(raw, position) : null,
@@ -217,7 +217,7 @@ export default class AstBuilder {
         }
         return {
             op: "READ",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_READ().getText(), "READ"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_READ().getText(), "READ"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: null,
@@ -240,7 +240,7 @@ export default class AstBuilder {
         }
         return {
             op: "OPEN",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_OPEN().getText(), "OPEN"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_OPEN().getText(), "OPEN"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
@@ -263,7 +263,7 @@ export default class AstBuilder {
         }
         return {
             op: "FOLD",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_FOLD().getText(), "FOLD"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_FOLD().getText(), "FOLD"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.#parseMatcherBody(raw, position) : null,
@@ -277,7 +277,7 @@ export default class AstBuilder {
         AstBuilder.#assertAppliedTags(slots.signal, position);
         return {
             op: "EDIT",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_EDIT().getText(), "EDIT"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_EDIT().getText(), "EDIT"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
@@ -292,7 +292,7 @@ export default class AstBuilder {
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "COPY",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_COPY().getText(), "COPY"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_COPY().getText(), "COPY"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw === null ? null : AstBuilder.parseResourceSelection(raw, position),
@@ -307,7 +307,7 @@ export default class AstBuilder {
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "MOVE",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_MOVE().getText(), "MOVE"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_MOVE().getText(), "MOVE"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: raw !== null ? AstBuilder.parseResourceSelection(raw, position) : null,
@@ -321,7 +321,7 @@ export default class AstBuilder {
         const raw = AstBuilder.#bodyTextOf(ctx);
         return {
             op: "SEND",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_SEND().getText(), "SEND"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_SEND().getText(), "SEND"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             // Preserve a terminal wait scope; the dispatcher owns which disposition
@@ -337,7 +337,7 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractExecSlots(ctx.execModifiers(), position);
         return {
             op: "EXEC",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_EXEC().getText(), "EXEC"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_EXEC().getText(), "EXEC"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
@@ -351,7 +351,7 @@ export default class AstBuilder {
         AstBuilder.#assertAppliedTags(signal, position);
         return {
             op: "BARE",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_BARE().getText(), "BARE"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_BARE().getText(), "BARE"),
             annotation: AstBuilder.#annotationOf(ctx),
             signal,
             target: null,
@@ -366,7 +366,7 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractTagSlots(ctx.tagOpModifiers(), position);
         return {
             op: "PLAN",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_PLAN().getText(), "PLAN"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_PLAN().getText(), "PLAN"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             body: AstBuilder.#bodyTextOf(ctx),
@@ -379,7 +379,7 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractIntSlots(ctx, position);
         return {
             op: "KILL",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_KILL().getText(), "KILL"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_KILL().getText(), "KILL"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             lineMarker: null,
@@ -393,7 +393,7 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractBranchSlots(ctx.branchModifiers(), position);
         return {
             op: "WORK",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_WORK().getText(), "WORK"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_WORK().getText(), "WORK"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             lineMarker: null,
@@ -407,7 +407,7 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractBranchSlots(ctx.branchModifiers(), position);
         return {
             op: "FORK",
-            suffix: AstBuilder.#splitSuffix(ctx.OPEN_FORK().getText(), "FORK"),
+            delimiter: AstBuilder.#splitDelimiter(ctx.OPEN_FORK().getText(), "FORK"),
             annotation: AstBuilder.#annotationOf(ctx),
             ...slots,
             lineMarker: null,
@@ -571,7 +571,7 @@ export default class AstBuilder {
         return AstBuilder.#bodyTextOf(ctx) ?? "";
     }
 
-    static #splitSuffix(headingText: string, op: PlurnkOp | ClientOp): string {
+    static #splitDelimiter(headingText: string, op: PlurnkOp | ClientOp): string {
         const marker = op === "PLAN" ? "# " : "## ";
         return headingText.slice(marker.length + op.length);
     }

@@ -19,7 +19,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 });
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): EditStatement => ({
-    op: "EDIT", annotation: null, suffix: "", signal: null, target, lineMarker: marker, body,
+    op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: marker, body,
     position: { line: 1, column: 1 },
 });
 
@@ -235,7 +235,7 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
             source: null,
             model_call_id: bareCall.id,
             op: "BARE",
-            suffix: "0",
+            delimiter: "0",
             signal: null,
             scheme: null,
             username: null,

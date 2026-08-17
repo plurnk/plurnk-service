@@ -23,18 +23,18 @@ const url = (scheme: string, pathname: string): UrlPath => ({
 });
 
 const sendStmt = (status: number, recipient: UrlPath | null = null, body: string | null = null): SendStatement => ({
-    op: "SEND", annotation: null, suffix: "", signal: status, target: recipient, lineMarker: null,
+    op: "SEND", annotation: null, delimiter: "", signal: status, target: recipient, lineMarker: null,
     body: body === null ? null : { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
 
 const editStmt = (target: UrlPath, body: string | null = null): ResolvedEditStatement => ({
-    op: "EDIT", annotation: null, suffix: "", signal: null, target, lineMarker: null, body,
+    op: "EDIT", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body,
     position: { line: 1, column: 1 },
 });
 
 const readStmt = (target: UrlPath): ReadStatement => ({
-    op: "READ", annotation: null, suffix: "", signal: null, target, lineMarker: null, body: null,
+    op: "READ", annotation: null, delimiter: "", signal: null, target, lineMarker: null, body: null,
     position: { line: 1, column: 1 },
 });
 

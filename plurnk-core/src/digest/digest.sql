@@ -60,7 +60,7 @@ ORDER BY w.id, l.sequence, t.sequence, mc.sequence, pr.sequence;
 
 -- PREP: digest_log_entries
 SELECT id, worker_id, loop_id, turn_id, sequence, at, origin, source, model_call_id,
-       op, suffix, signal,
+       op, delimiter, signal,
        scheme, hostname, port, pathname, query, fragment,
        rx, status_rx, mimetype_rx,
        state, outcome, attrs

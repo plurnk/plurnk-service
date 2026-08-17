@@ -532,7 +532,7 @@ export default class Exec extends CoreSchemeAdapterBase {
             }
             const read = await this.readExecSource({
                 op: "READ",
-                suffix: "",
+                delimiter: "",
                 annotation: null,
                 signal: null,
                 target: sourceTarget,
@@ -817,7 +817,7 @@ export default class Exec extends CoreSchemeAdapterBase {
                     // signal carries additive tag terms through the same slot a model's EDIT uses, so the
                     // ambient row renders its tags natively everywhere (packet meta line, digest).
                     origin: "plurnk", source: causalSource, model_call_id: null,
-                    op: "EDIT", suffix: "", signal: JSON.stringify(tagSignal),
+                    op: "EDIT", delimiter: "", signal: JSON.stringify(tagSignal),
                     scheme, username: null, password: null, hostname: null, port: null,
                     pathname, query: null, fragment: null, lineMarker: null,
                     tx, mimetype_tx: "application/json",

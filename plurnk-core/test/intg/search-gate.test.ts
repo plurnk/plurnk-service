@@ -56,7 +56,7 @@ const stubExecutor = (behavior: { fail?: boolean } = {}) => ({
 });
 
 const execStmt = (command: string): ExecStatement => ({
-    op: "EXEC", annotation: null, suffix: "", signal: "search", target: null, lineMarker: null, body: command, position: { line: 1, column: 1 },
+    op: "EXEC", annotation: null, delimiter: "", signal: "search", target: null, lineMarker: null, body: command, position: { line: 1, column: 1 },
 });
 
 const seed = async (db: Awaited<ReturnType<typeof openMigrated>>, opts: { fail?: boolean } = {}) => {

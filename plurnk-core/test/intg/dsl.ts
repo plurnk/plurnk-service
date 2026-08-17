@@ -48,12 +48,12 @@ interface OpExecParams {
 export default class Dsl {
     // Use the canonical lane unless the body contains a heading in that lane;
     // then deterministically choose the first lane that leaves the body opaque.
-    static #suffixFor(body: string): string {
+    static #delimiterFor(body: string): string {
         const h2Ops = PLURNK_OPS.filter((op) => op !== "PLAN").join("|");
         for (let lane = 1; ; lane++) {
-            const suffix = String(lane);
-            const structuralHeading = new RegExp(`^(?:# PLAN|## (?:${h2Ops}))${suffix}(?=$|[ \\t])`, "m");
-            if (!structuralHeading.test(body)) return suffix;
+            const delimiter = String(lane);
+            const structuralHeading = new RegExp(`^(?:# PLAN|## (?:${h2Ops}))${delimiter}(?=$|[ \\t])`, "m");
+            if (!structuralHeading.test(body)) return delimiter;
         }
     }
 
@@ -89,9 +89,9 @@ export default class Dsl {
         lineMarker: string;
         body: string;
     }): string {
-        const suffix = Dsl.#suffixFor(body);
+        const delimiter = Dsl.#delimiterFor(body);
         const modifiers = [signal, target, lineMarker].filter((value) => value.length > 0).join(" ");
-        const heading = `## ${op}${suffix}${modifiers.length > 0 ? ` ${modifiers}` : ""}`;
+        const heading = `## ${op}${delimiter}${modifiers.length > 0 ? ` ${modifiers}` : ""}`;
         return body.length === 0 ? heading : `${heading}\n${body}`;
     }
 

@@ -7,7 +7,7 @@ tokens {
 }
 
 @lexer::members {
-private activeSuffix: string | null = null;
+private activeDelimiter: string | null = null;
 private openOp: string = "";
 private openHeading: string = "";
 private openHeadingLine: number = 0;
@@ -24,7 +24,7 @@ private static readonly PROTOCOL_OPS = [
 ];
 private static readonly CLIENT_OPS = ["LOOK", "BUFF"];
 
-private isSuffixChar(c: number): boolean {
+    private isDelimiterChar(c: number): boolean {
     return (c >= 0x30 && c <= 0x39)
         || (c >= 0x41 && c <= 0x5A)
         || (c >= 0x61 && c <= 0x7A)
@@ -38,7 +38,7 @@ private matchesLiteral(offset: number, literal: string): boolean {
     return true;
 }
 
-private headingAt(offset: number): { level: 1 | 2; op: string; suffix: string } | null {
+    private headingAt(offset: number): { level: 1 | 2; op: string; delimiter: string } | null {
     let level: 1 | 2;
     let cursor = offset;
     if (this.matchesLiteral(cursor, "# PLAN")) {
@@ -59,9 +59,9 @@ private headingAt(offset: number): { level: 1 | 2; op: string; suffix: string } 
         cursor += op.length;
     }
 
-    let suffix = "";
-    while (this.isSuffixChar(this.inputStream.LA(cursor))) {
-        suffix += String.fromCharCode(this.inputStream.LA(cursor));
+    let delimiter = "";
+    while (this.isDelimiterChar(this.inputStream.LA(cursor))) {
+        delimiter += String.fromCharCode(this.inputStream.LA(cursor));
         cursor++;
     }
     const next = this.inputStream.LA(cursor);
@@ -71,15 +71,15 @@ private headingAt(offset: number): { level: 1 | 2; op: string; suffix: string } 
         || next === 0x0A || next === 0x0D;
     if (!headerContinues) return null;
     const startsNextTurn = level === 1 && op === "PLAN" && this.terminalSend;
-    if (this.activeSuffix !== null && suffix !== this.activeSuffix && !startsNextTurn) return null;
-    return { level, op, suffix };
+    if (this.activeDelimiter !== null && delimiter !== this.activeDelimiter && !startsNextTurn) return null;
+    return { level, op, delimiter };
 }
 
 private matchesHeading(level: 1 | 2, op: string): boolean {
     // The initial PLAN terminates tolerated provider preamble text, even when
     // the provider omitted a separating newline. Once PLAN establishes the
     // lane, every heading retains the ordinary column-zero boundary.
-    const initialPlan = level === 1 && op === "PLAN" && this.activeSuffix === null;
+    const initialPlan = level === 1 && op === "PLAN" && this.activeDelimiter === null;
     if (this.column !== 0 && !initialPlan) return false;
     const heading = this.headingAt(1);
     return heading !== null && heading.level === level && heading.op === op;
@@ -87,9 +87,9 @@ private matchesHeading(level: 1 | 2, op: string): boolean {
 
 private open(level: 1 | 2, op: string): void {
     const prefixLength = (level === 1 ? "# " : "## ").length + op.length;
-    const suffix = this.text.slice(prefixLength);
+    const delimiter = this.text.slice(prefixLength);
     const startsNextTurn = level === 1 && op === "PLAN" && this.terminalSend;
-    if (this.activeSuffix === null || startsNextTurn) this.activeSuffix = suffix;
+    if (this.activeDelimiter === null || startsNextTurn) this.activeDelimiter = delimiter;
     this.openOp = op;
     this.openHeading = this.text;
     this.openHeadingLine = (this as any).currentTokenStartLine;
@@ -141,7 +141,7 @@ private fenceAfterDirectEol(): boolean {
     return after !== null && this.matchesLiteral(after, "```");
 }
 
-public getOpenTag(): string { return this.openOp + (this.activeSuffix ?? ""); }
+public getOpenTag(): string { return this.openOp + (this.activeDelimiter ?? ""); }
 public getOpenTagLine(): number { return this.openHeadingLine; }
 public getOpenTagColumn(): number { return this.openHeadingColumn; }
 public getOpenHeading(): string { return this.openHeading; }
@@ -154,7 +154,7 @@ private isTextCoordinateOp(): boolean {
 private isKillOp(): boolean { return this.openOp === "KILL"; }
 }
 
-fragment SUFFIX    : [A-Za-z0-9_]+ ;
+fragment DELIMITER    : [A-Za-z0-9_]+ ;
 fragment NUM       : '-'? [0-9]+ ('.' [0-9]+)? ;
 fragment L_PATTERN : '<' NUM (('-' | ',' ' '?) NUM)* '>' ;
 fragment LINE_ANCHOR : '@' [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] ;
@@ -166,23 +166,23 @@ fragment COMBINED_TEXT_L_PATTERN : '<' COMBINED_TEXT_COORD (',' ' '? COMBINED_TE
 fragment EOL       : '\r'? '\n' ;
 
 // PLAN alone is H1. Protocol and client operations are H2. The first heading
-// establishes the lane; later rules fire only for the exact same suffix.
-OPEN_PLAN : { this.matchesHeading(1, "PLAN") }? '# PLAN' SUFFIX? { this.open(1, "PLAN"); } -> mode(SLOTS) ;
-OPEN_FIND : { this.matchesHeading(2, "FIND") }? '## FIND' SUFFIX? { this.open(2, "FIND"); } -> mode(SLOTS) ;
-OPEN_READ : { this.matchesHeading(2, "READ") }? '## READ' SUFFIX? { this.open(2, "READ"); } -> mode(SLOTS) ;
-OPEN_EDIT : { this.matchesHeading(2, "EDIT") }? '## EDIT' SUFFIX? { this.open(2, "EDIT"); } -> mode(SLOTS) ;
-OPEN_COPY : { this.matchesHeading(2, "COPY") }? '## COPY' SUFFIX? { this.open(2, "COPY"); } -> mode(SLOTS) ;
-OPEN_MOVE : { this.matchesHeading(2, "MOVE") }? '## MOVE' SUFFIX? { this.open(2, "MOVE"); } -> mode(SLOTS) ;
-OPEN_OPEN : { this.matchesHeading(2, "OPEN") }? '## OPEN' SUFFIX? { this.open(2, "OPEN"); } -> mode(SLOTS) ;
-OPEN_FOLD : { this.matchesHeading(2, "FOLD") }? '## FOLD' SUFFIX? { this.open(2, "FOLD"); } -> mode(SLOTS) ;
-OPEN_SEND : { this.matchesHeading(2, "SEND") }? '## SEND' SUFFIX? { this.open(2, "SEND"); } -> mode(SLOTS) ;
-OPEN_EXEC : { this.matchesHeading(2, "EXEC") }? '## EXEC' SUFFIX? { this.open(2, "EXEC"); } -> mode(SLOTS) ;
-OPEN_BARE : { this.matchesHeading(2, "BARE") }? '## BARE' SUFFIX? { this.open(2, "BARE"); } -> mode(SLOTS) ;
-OPEN_WORK : { this.matchesHeading(2, "WORK") }? '## WORK' SUFFIX? { this.open(2, "WORK"); } -> mode(SLOTS) ;
-OPEN_FORK : { this.matchesHeading(2, "FORK") }? '## FORK' SUFFIX? { this.open(2, "FORK"); } -> mode(SLOTS) ;
-OPEN_KILL : { this.matchesHeading(2, "KILL") }? '## KILL' SUFFIX? { this.open(2, "KILL"); } -> mode(SLOTS) ;
-OPEN_LOOK : { this.matchesHeading(2, "LOOK") }? '## LOOK' SUFFIX? { this.open(2, "LOOK"); } -> mode(SLOTS) ;
-OPEN_BUFF : { this.matchesHeading(2, "BUFF") }? '## BUFF' SUFFIX? { this.open(2, "BUFF"); } -> mode(SLOTS) ;
+// establishes the lane; later rules fire only for the exact same delimiter.
+OPEN_PLAN : { this.matchesHeading(1, "PLAN") }? '# PLAN' DELIMITER? { this.open(1, "PLAN"); } -> mode(SLOTS) ;
+OPEN_FIND : { this.matchesHeading(2, "FIND") }? '## FIND' DELIMITER? { this.open(2, "FIND"); } -> mode(SLOTS) ;
+OPEN_READ : { this.matchesHeading(2, "READ") }? '## READ' DELIMITER? { this.open(2, "READ"); } -> mode(SLOTS) ;
+OPEN_EDIT : { this.matchesHeading(2, "EDIT") }? '## EDIT' DELIMITER? { this.open(2, "EDIT"); } -> mode(SLOTS) ;
+OPEN_COPY : { this.matchesHeading(2, "COPY") }? '## COPY' DELIMITER? { this.open(2, "COPY"); } -> mode(SLOTS) ;
+OPEN_MOVE : { this.matchesHeading(2, "MOVE") }? '## MOVE' DELIMITER? { this.open(2, "MOVE"); } -> mode(SLOTS) ;
+OPEN_OPEN : { this.matchesHeading(2, "OPEN") }? '## OPEN' DELIMITER? { this.open(2, "OPEN"); } -> mode(SLOTS) ;
+OPEN_FOLD : { this.matchesHeading(2, "FOLD") }? '## FOLD' DELIMITER? { this.open(2, "FOLD"); } -> mode(SLOTS) ;
+OPEN_SEND : { this.matchesHeading(2, "SEND") }? '## SEND' DELIMITER? { this.open(2, "SEND"); } -> mode(SLOTS) ;
+OPEN_EXEC : { this.matchesHeading(2, "EXEC") }? '## EXEC' DELIMITER? { this.open(2, "EXEC"); } -> mode(SLOTS) ;
+OPEN_BARE : { this.matchesHeading(2, "BARE") }? '## BARE' DELIMITER? { this.open(2, "BARE"); } -> mode(SLOTS) ;
+OPEN_WORK : { this.matchesHeading(2, "WORK") }? '## WORK' DELIMITER? { this.open(2, "WORK"); } -> mode(SLOTS) ;
+OPEN_FORK : { this.matchesHeading(2, "FORK") }? '## FORK' DELIMITER? { this.open(2, "FORK"); } -> mode(SLOTS) ;
+OPEN_KILL : { this.matchesHeading(2, "KILL") }? '## KILL' DELIMITER? { this.open(2, "KILL"); } -> mode(SLOTS) ;
+OPEN_LOOK : { this.matchesHeading(2, "LOOK") }? '## LOOK' DELIMITER? { this.open(2, "LOOK"); } -> mode(SLOTS) ;
+OPEN_BUFF : { this.matchesHeading(2, "BUFF") }? '## BUFF' DELIMITER? { this.open(2, "BUFF"); } -> mode(SLOTS) ;
 
 FENCE_OPEN : { this.column === 0 && !this.inDocumentFence() }? '```plurnk' EOL { this.openDocumentFence(); } ;
 FENCE_CLOSE : { this.column === 0 && this.inDocumentFence() }? '```' EOL? { this.closeDocumentFence(); } ;

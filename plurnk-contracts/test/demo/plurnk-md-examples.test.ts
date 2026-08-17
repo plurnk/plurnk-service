@@ -45,7 +45,7 @@ test("complete plurnk.md turn specimens parse cleanly", () => {
 test("plurnk.md retains broad language coverage without pinning prose", () => {
     assert.ok(
         fences.some((body) => /^# PLAN([A-Za-z0-9_]+)\n[\s\S]*^## OP\1(?: |$)/m.test(body)),
-        "syntax specimen teaches H1 PLAN and same-suffix H2 operations",
+        "syntax specimen teaches H1 PLAN and same-delimiter H2 operations",
     );
     for (const operation of operations) {
         assert.match(plurnkMd, new RegExp(`^\\| ${operation} \\|`, "m"), `operation table is missing ${operation}`);

@@ -22,7 +22,7 @@ export interface LogEntryNotification {
         coordinate?: string;
         op: string | null;
         origin: string;
-        suffix?: string;
+        delimiter?: string;
         signal?: unknown;
         scheme?: string | null;
         pathname?: string | null;

@@ -131,7 +131,7 @@ test("LineAnchors: a rare target-local collision fails as ambiguous", () => {
 test("LineAnchors: unresolved model syntax fails hard at the scheme boundary", () => {
     const statement: EditStatement = {
         op: "EDIT",
-        suffix: "0",
+        delimiter: "0",
         annotation: null,
         signal: null,
         target: null,

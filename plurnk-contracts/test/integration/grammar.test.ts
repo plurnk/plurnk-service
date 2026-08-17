@@ -11,9 +11,9 @@ import {
 type Op = "PLAN" | "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "OPEN" | "FOLD"
     | "SEND" | "EXEC" | "BARE" | "WORK" | "FORK" | "KILL";
 
-const section = (op: Op, slots = "", body?: string, suffix = "0"): string => {
+const section = (op: Op, slots = "", body?: string, delimiter = "0"): string => {
     const level = op === "PLAN" ? "#" : "##";
-    const heading = `${level} ${op}${suffix}${slots}`;
+    const heading = `${level} ${op}${delimiter}${slots}`;
     return body === undefined ? heading : `${heading}\n${body}`;
 };
 
@@ -71,7 +71,7 @@ test("protocol operations parse as Markdown sections", () => {
     for (const [op, slots, body] of cases) {
         const statement = oneStatement(section(op, slots, body));
         assert.equal(statement.op, op, op);
-        assert.equal(statement.suffix, "0", op);
+        assert.equal(statement.delimiter, "0", op);
     }
 });
 
@@ -331,10 +331,10 @@ test("a malformed signal produces one bounded lexer diagnostic", () => {
     assert.match(errors[0]!.message, /timeout\/poll ride the `<scope>` slot/);
 });
 
-test("AST extracts suffix, target, raw body, and position", () => {
+test("AST extracts delimiter, target, raw body, and position", () => {
     const statement = oneStatement("## EDITouter (p)\nhello");
     assert.equal(statement.op, "EDIT");
-    assert.equal(statement.suffix, "outer");
+    assert.equal(statement.delimiter, "outer");
     assert.deepEqual(statement.target, { kind: "local", raw: "p" });
     assert.equal(statement.body, "hello");
     assert.equal(statement.signal, null);

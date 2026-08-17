@@ -34,7 +34,7 @@ test("input capacity subtracts the total output budget once; reasoning is only i
 });
 
 const sendStmt = (status: number, body: string): SendStatement => ({
-    op: "SEND", annotation: null, suffix: "", signal: status, target: null,
+    op: "SEND", annotation: null, delimiter: "", signal: status, target: null,
     lineMarker: null, body: { raw: body, json: null },
     position: { line: 1, column: 1 },
 });
