@@ -333,8 +333,10 @@ pending item's persisted `loopId` before resolving it. Only that loop's
 The custom event preserves the daemon's exact universal `result`; failures use
 the Problem `type` as the AG-UI error code and `detail` as its message. The
 module never reconstructs a failure from a status, summary, or exception text.
-Stopped-world tool calls and interrupt outcomes route only to their owning worker;
-interrupting sibling AG-UI Runs would violate AG-UI Run identity. Terminations
+Stopped-world tool calls and interrupt outcomes first route to open Runs bound to
+their persisted loop. When no Run owns that loop, they route to their owning
+worker's Runs so an action-produced interrupt can settle its initiating Run. They
+never interrupt a concurrent Run while an exact loop owner is live. Terminations
 that race ahead of the `runLoop` acknowledgement are held until
 the loop identity is known. A sibling, child, or concurrent loop can therefore
 remain visible as topology without ending or relabelling this AG-UI Run.

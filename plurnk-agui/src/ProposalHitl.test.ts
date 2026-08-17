@@ -77,8 +77,12 @@ const mockSeam = (
     };
 };
 
-const emitted: Array<{ workspaceId: number; workerId: number; batch: HitlBatch }> = [];
-const collect = () => { emitted.length = 0; return (workspaceId: number, workerId: number, batch: HitlBatch) => emitted.push({ workspaceId, workerId, batch }); };
+const emitted: Array<{ workspaceId: number; workerId: number; loopId: number; batch: HitlBatch }> = [];
+const collect = () => {
+    emitted.length = 0;
+    return (workspaceId: number, workerId: number, loopId: number, batch: HitlBatch) =>
+        emitted.push({ workspaceId, workerId, loopId, batch });
+};
 
 test("start(): a loop/proposal event → a tool-call fanned to that workspace", () => {
     const m = mockSeam();
@@ -89,6 +93,7 @@ test("start(): a loop/proposal event → a tool-call fanned to that workspace", 
     assert.equal(emitted.length, 1);
     assert.equal(emitted[0].workspaceId, 7, "fanned to the event's workspace");
     assert.equal(emitted[0].workerId, 9, "addressed to the proposal's owning worker");
+    assert.equal(emitted[0].loopId, 1, "addressed to the proposal's owning loop");
     assert.equal(emitted[0].batch.events[0].type, "TOOL_CALL_START");
     assert.equal((emitted[0].batch.events[0] as { toolCallId: string }).toolCallId, "prop:42");
     // an unrelated event is ignored
@@ -105,6 +110,7 @@ test("start(): a generic loop/interaction uses the requested tool name and schem
     m.fire(7, "loop/interaction", interaction({ interactionId: 40, workerId: 9 }));
 
     assert.equal(emitted.length, 1);
+    assert.equal(emitted[0].loopId, 1, "addressed to the interaction's owning loop");
     assert.deepEqual(emitted[0].batch.events, [
         { type: "TOOL_CALL_START", toolCallId: "int:40", toolCallName: "select_repository" },
         { type: "TOOL_CALL_ARGS", toolCallId: "int:40", delta: JSON.stringify({ owner: "plurnk" }) },

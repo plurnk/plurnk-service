@@ -159,12 +159,12 @@ const parseResolution = (entry: ResumeEntry): ParsedResolution | null => {
 
 export default class ProposalHitl {
     readonly #seam: HitlSeam;
-    readonly #emit: (workspaceId: number, workerId: number, batch: HitlBatch) => void;
+    readonly #emit: (workspaceId: number, workerId: number, loopId: number, batch: HitlBatch) => void;
     #off: (() => void) | null = null;
 
     constructor(
         seam: HitlSeam,
-        emit: (workspaceId: number, workerId: number, batch: HitlBatch) => void,
+        emit: (workspaceId: number, workerId: number, loopId: number, batch: HitlBatch) => void,
     ) {
         this.#seam = seam;
         this.#emit = emit;
@@ -176,12 +176,12 @@ export default class ProposalHitl {
             if (method === "loop/proposal") {
                 const item = proposalItem(params as ProposalNotification);
                 if (item.kind !== "proposal" || item.projection.disposition.owner !== "client") return;
-                this.#emit(workspaceId, item.workerId, render(item));
+                this.#emit(workspaceId, item.workerId, item.loopId, render(item));
                 return;
             }
             if (method === "loop/interaction") {
                 const item = interactionItem(params as ClientInteractionProjection);
-                this.#emit(workspaceId, item.workerId, render(item));
+                this.#emit(workspaceId, item.workerId, item.loopId, render(item));
             }
         });
     }

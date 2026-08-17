@@ -49,7 +49,7 @@ export default class Portal {
         this.#seam = seam;
         this.#hitl = new ProposalHitl(
             seam,
-            (workspaceId, workerId, batch) => this.#emitHitl(workspaceId, workerId, batch),
+            (workspaceId, workerId, loopId, batch) => this.#emitHitl(workspaceId, workerId, loopId, batch),
         );
     }
 
@@ -88,11 +88,17 @@ export default class Portal {
         this.#off = null;
     }
 
-    #emitToWorker(workspaceId: number, workerId: number, events: AguiEvent[]): void {
+    #emitInterrupt(
+        workspaceId: number,
+        workerId: number,
+        loopId: number,
+        events: AguiEvent[],
+    ): void {
         if (events.length === 0) return;
-        for (const t of this.#threads.get(workspaceId) ?? []) {
-            if (t.workerId === workerId) t.emit(events);
-        }
+        const workerThreads = [...(this.#threads.get(workspaceId) ?? [])]
+            .filter((thread) => thread.workerId === workerId);
+        const loopThreads = workerThreads.filter((thread) => thread.loopId === loopId);
+        for (const thread of loopThreads.length > 0 ? loopThreads : workerThreads) thread.emit(events);
     }
 
     #withHitl(batch: HitlBatch, emit: (events: AguiEvent[]) => void): void {
@@ -108,8 +114,11 @@ export default class Portal {
         }
     }
 
-    #emitHitl(workspaceId: number, workerId: number, batch: HitlBatch): void {
-        this.#withHitl(batch, (events) => this.#emitToWorker(workspaceId, workerId, events));
+    #emitHitl(workspaceId: number, workerId: number, loopId: number, batch: HitlBatch): void {
+        this.#withHitl(
+            batch,
+            (events) => this.#emitInterrupt(workspaceId, workerId, loopId, events),
+        );
     }
 
     interruptForToolCall(toolCallId: string): Interrupt | null {

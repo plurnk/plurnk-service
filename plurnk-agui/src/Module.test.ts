@@ -692,6 +692,109 @@ test("an action failure preserves its originating Problem instead of rebuilding 
     } finally { await mod.close(); }
 });
 
+test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run", async () => {
+    const { seam, emit } = mockSeam();
+    const conversationStarted = Promise.withResolvers<void>();
+    const injectionStarted = Promise.withResolvers<void>();
+    const releaseInjection = Promise.withResolvers<void>();
+    let runs = 0;
+    seam.createWorkspace = async () => ({
+        workspaceId: 3,
+        workspaceName: "interrupt-ownership",
+        projectRoot: null,
+        workerId: 10,
+        workerName: "client-1",
+    });
+    seam.runLoop = async () => {
+        runs += 1;
+        if (runs === 1) {
+            conversationStarted.resolve();
+            return { status: 100, action: "enqueued_new_loop", loopId: 9 };
+        }
+        injectionStarted.resolve();
+        await releaseInjection.promise;
+        return { status: 100, action: "injected_next_turn", loopId: 9, turnSeq: 2 };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const port = mod.address().port;
+        const conversation = openStream(port, {
+            threadId: "interrupt-ownership",
+            runId: "conversation-run",
+            messages: [{ role: "user", content: "research the project" }],
+            forwardedProps: { plurnk: { workspace: "interrupt-ownership" } },
+        });
+        await waitForFixture(
+            conversationStarted.promise,
+            () => "the conversation Run never reached runLoop",
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+
+        const injection = openStream(port, {
+            threadId: "interrupt-ownership",
+            runId: "injection-run",
+            forwardedProps: {
+                plurnk: {
+                    workspace: "interrupt-ownership",
+                    action: { kind: "loop.inject", prompt: "I am plurnk_pk" },
+                },
+            },
+        });
+        await waitForFixture(
+            injectionStarted.promise,
+            () => "the injection action never reached runLoop",
+        );
+
+        emit(3, "loop/proposal", {
+            logEntryId: 42,
+            workerId: 20,
+            loopId: 9,
+            turnId: 1,
+            op: "EXEC",
+            target: { scheme: "gitea", pathname: "search_repos" },
+            body: "{}",
+            attrs: {},
+            flags: DEFAULT_LOOP_FLAGS,
+            staleClobberRisk: false,
+            disposition: { owner: "client" },
+        });
+        releaseInjection.resolve();
+
+        const [conversationEvents, injectionEvents] = await Promise.all([
+            conversation,
+            injection,
+        ]);
+        assert.equal(
+            (conversationEvents.at(-1) as { outcome?: { type?: string } }).outcome?.type,
+            "interrupt",
+            "the proposal still interrupts its owning conversation Run",
+        );
+        assert.equal(
+            injectionEvents.some((event) => event.type.startsWith("TOOL_CALL")),
+            false,
+            "the loop-owned proposal does not leak into the concurrent action Run",
+        );
+        const result = injectionEvents.find((event) => event.type === "CUSTOM"
+            && (event as { name?: string }).name === "plurnk.action.result") as {
+            value?: { kind?: string; ok?: boolean; result?: { action?: string } };
+        } | undefined;
+        assert.deepEqual(result?.value, {
+            kind: "loop.inject",
+            ok: true,
+            result: {
+                status: 100,
+                action: "injected_next_turn",
+                loopId: 9,
+                turnSeq: 2,
+            },
+        });
+        assert.equal(injectionEvents.at(-1)?.type, "RUN_FINISHED");
+    } finally {
+        releaseInjection.resolve();
+        await mod.close();
+    }
+});
+
 test("an unexpected action exception becomes one generic Problem without leaking its message", async () => {
     const { seam } = mockSeam();
     seam.readEntry = async () => { throw new Error("private adapter detail"); };

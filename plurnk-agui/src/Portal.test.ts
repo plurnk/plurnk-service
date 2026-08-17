@@ -137,6 +137,43 @@ test("a worker without pending interrupts drives the loop, then live events fan 
     portal.stop();
 });
 
+test("live stopped-worlds select their exact loop Run before the worker fallback", async () => {
+    const m = mockSeam();
+    const owningSeen: AguiEvent[] = [];
+    const concurrentSeen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const owning = portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        threadId: "conversation",
+        emit: (events) => owningSeen.push(...events),
+    });
+    await portal.run(owning, { workspaceId: 3, workerId: 10, prompt: "go" });
+    portal.openThread({
+        workspaceId: 3,
+        workerId: 10,
+        threadId: "concurrent-action",
+        emit: (events) => concurrentSeen.push(...events),
+    });
+
+    m.fire(3, "loop/proposal", proposal({ logEntryId: 42, loopId: 77 }));
+    assert.ok(
+        owningSeen.some((event) => event.type === "TOOL_CALL_END"),
+        "the proposal reaches its loop-bound Run",
+    );
+    assert.equal(concurrentSeen.length, 0, "the proposal does not interrupt an unbound action Run");
+
+    owningSeen.length = 0;
+    m.fire(3, "loop/interaction", interaction({ interactionId: 43, loopId: 77 }));
+    assert.ok(
+        owningSeen.some((event) => event.type === "TOOL_CALL_END"),
+        "the generic interaction reaches its loop-bound Run",
+    );
+    assert.equal(concurrentSeen.length, 0, "the interaction does not interrupt an unbound action Run");
+    portal.stop();
+});
+
 test("a terminal arriving before the loop acknowledgement settles only its matching AG-UI Run", async () => {
     const m = mockSeam();
     const entered = Promise.withResolvers<void>();
