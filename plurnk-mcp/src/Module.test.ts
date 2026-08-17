@@ -672,7 +672,7 @@ test("{§mcp-management-actions} a legacy endpoint is attributed at the public a
     }
 });
 
-test("partial multi-server hydration closes acquired candidates and publishes nothing", async (t) => {
+test("{§mcp-hydration-isolation} partial hydration publishes healthy servers and isolates unavailable ones", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-partial-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const marker = join(root, "alpha.closed");
@@ -689,14 +689,107 @@ test("partial multi-server hydration closes acquired candidates and publishes no
         },
     });
     const h = harness();
-    await module.setup(h.seam);
-    await assert.rejects(
-        () => h.hydrate(1),
-        /Configured MCP server 'zbroken' is unavailable/,
-    );
-    assert.equal(h.replacementCalls(), 0);
+    try {
+        await module.setup(h.seam);
+        await h.hydrate(1);
+        assert.equal(h.replacementCalls(), 1);
+        assert.deepEqual(h.snapshots.get(1)?.map(({ decl }) => decl.name), ["alpha"]);
+        const listed = await h.invoke(1, "workspace.mcp.list") as {
+            servers: Array<{
+                alias: string;
+                state: string;
+                problem?: { status?: number; retryable?: boolean };
+            }>;
+        };
+        assert.deepEqual(
+            listed.servers.map(({ alias, state }) => ({ alias, state })),
+            [
+                { alias: "alpha", state: "connected" },
+                { alias: "zbroken", state: "unavailable" },
+            ],
+        );
+        assert.equal(listed.servers[1]?.problem?.status, 502);
+        assert.equal(listed.servers[1]?.problem?.retryable, true);
+
+        await h.invoke(1, "workspace.mcp.disable", { alias: "zbroken" });
+        const disabled = await h.invoke(1, "workspace.mcp.list") as {
+            servers: Array<{ alias: string; state: string }>;
+        };
+        assert.equal(disabled.servers.find(({ alias }) => alias === "zbroken")?.state, "disabled");
+    } finally {
+        await module.close();
+    }
     await waitForFile(marker);
-    await module.close();
+});
+
+test("{§mcp-hydration-isolation} workspace-owned unavailable servers can be removed or explicitly retried", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-retry-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const retryTarget = join(root, "retry-node");
+    const removeTarget = join(root, "remove-node");
+    const durable = new Map<number, unknown | null>([[1, {
+        version: 1,
+        servers: {
+            remove: {
+                kind: "workspace",
+                definition: {
+                    name: "remove",
+                    transport: "stdio",
+                    command: removeTarget,
+                    args: [fixture],
+                },
+                enabled: true,
+            },
+            retry: {
+                kind: "workspace",
+                definition: {
+                    name: "retry",
+                    transport: "stdio",
+                    command: retryTarget,
+                    args: [fixture],
+                },
+                enabled: true,
+            },
+        },
+    }]]);
+    const module = Module.init({ env: floor });
+    const h = harness(durable);
+    try {
+        await module.setup(h.seam);
+        await h.hydrate(1);
+        const initial = await h.invoke(1, "workspace.mcp.list") as {
+            servers: Array<{ alias: string; state: string }>;
+        };
+        assert.deepEqual(
+            initial.servers.map(({ alias, state }) => ({ alias, state })),
+            [
+                { alias: "remove", state: "unavailable" },
+                { alias: "retry", state: "unavailable" },
+            ],
+        );
+
+        await h.invoke(1, "workspace.mcp.remove", { alias: "remove" });
+        await assert.rejects(
+            () => h.invoke(1, "workspace.mcp.enable", { alias: "retry" }),
+            /Configured MCP server 'retry' is unavailable/,
+        );
+        const preserved = await h.invoke(1, "workspace.mcp.list") as {
+            servers: Array<{ alias: string; state: string }>;
+        };
+        assert.deepEqual(
+            preserved.servers.map(({ alias, state }) => ({ alias, state })),
+            [{ alias: "retry", state: "unavailable" }],
+        );
+
+        await symlink(process.execPath, retryTarget);
+        const retried = await h.invoke(1, "workspace.mcp.enable", { alias: "retry" }) as {
+            server: { state: string };
+        };
+        assert.equal(retried.server.state, "connected");
+        assert.deepEqual(h.snapshots.get(1)?.map(({ decl }) => decl.name), ["retry"]);
+    } finally {
+        await module.close();
+    }
 });
 
 test("remove closes the exact workspace connection after the replacement commits", async (t) => {

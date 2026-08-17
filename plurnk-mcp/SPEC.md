@@ -116,6 +116,16 @@ service definition's enabledness or own an added definition and its enabledness.
 Disabled definitions remain client-visible but contribute no connection,
 Registry, documentation, or resource authority.
 
+§mcp-hydration-isolation **Cold endpoint failure is capability-local.** Invalid
+service configuration or durable state fails admission, but an enabled server
+that cannot connect or complete discovery during workspace hydration remains
+enabled and client-visible as `unavailable`. It publishes no runtime, tools,
+resources, or documentation and cannot prevent other capabilities or the daemon
+from starting. Enabling that already-enabled alias is an explicit reconnect
+attempt; failure preserves the unavailable snapshot, while success atomically
+replaces it. Interactive add and enable mutations continue to reject an
+unavailable candidate without changing durable state.
+
 | Variable | Contract |
 |---|---|
 | `PLURNK_MCP_<server>` | HTTP(S) URL or exact stdio executable |
@@ -176,9 +186,9 @@ workspace identifier in params.
 
 | Action | Parameters | Result / effect |
 |---|---|---|
-| `workspace.mcp.list` | none | Sorted available server summaries: alias, source, target, transport, enabledness, connection/authorization state, negotiated identity/capabilities, enabled tools, and read subset. No credential values. |
+| `workspace.mcp.list` | none | Sorted available server summaries: alias, source, target, transport, enabledness, connection/authorization/unavailable state, unavailable Problem, negotiated identity/capabilities, enabled tools, and read subset. No credential values. |
 | `workspace.mcp.add` | `alias`, `target`; optional `options: McpServerOptions` | Adds and enables a workspace-owned alias absent from the available set. Preparation completes before publication. |
-| `workspace.mcp.enable` | `alias` | Enables an available alias for this workspace. Successful preparation precedes the durable override and capability publication. Already enabled is a no-op. |
+| `workspace.mcp.enable` | `alias` | Enables an available alias for this workspace. Successful preparation precedes the durable override and capability publication. Already connected is a no-op; already enabled but unavailable retries preparation. |
 | `workspace.mcp.disable` | `alias` | Disables an available alias, retaining it for client discovery while removing its connection and complete model-facing capability set. Already disabled is a no-op. |
 | `workspace.mcp.remove` | `alias` | Removes a workspace-owned definition. Service-owned definitions reject removal and direct the client to disable them. |
 | `workspace.mcp.oauth.complete` | `alias`, `callbackUrl` | State- and issuer-validates one pending interactive callback through the SDK, completes connection preparation, then performs the originally requested add or enable. |

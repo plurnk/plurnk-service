@@ -111,7 +111,16 @@ interface AuthorizationAttachment extends Omit<AvailableDefinition, "enabled"> {
     readonly authorizationUrl: string;
 }
 
-type Attachment = ActiveAttachment | AuthorizationAttachment;
+interface UnavailableAttachment extends Omit<AvailableDefinition, "enabled"> {
+    readonly kind: "unavailable";
+    readonly problem: ProblemDetails;
+}
+
+type ConnectedAttachment = ActiveAttachment | AuthorizationAttachment;
+type Attachment = ConnectedAttachment | UnavailableAttachment;
+
+const attachmentConnection = (attachment: Attachment): ServerConnection | undefined =>
+    attachment.kind === "unavailable" ? undefined : attachment.connection;
 
 interface WorkspaceSnapshot {
     readonly state: WorkspaceState;
@@ -384,6 +393,7 @@ export default class Module {
                 const state = parseState(await seam.readWorkspaceModuleState(workspaceId, OWNER));
                 await this.#applyState(workspaceId, state, {
                     authorizationDisposition: "publish-required",
+                    preparationFailureDisposition: "publish-unavailable",
                 });
             }),
         });
@@ -532,6 +542,7 @@ export default class Module {
             readonly force?: ReadonlySet<string>;
             readonly prepared?: ReadonlyMap<string, ActiveAttachment>;
             readonly authorizationDisposition: "defer-mutation" | "publish-required";
+            readonly preparationFailureDisposition: "reject" | "publish-unavailable";
         },
     ): Promise<{ authorization?: AuthorizationAttachment }> {
         const seam = this.#seam;
@@ -545,11 +556,11 @@ export default class Module {
                 next === undefined
                 || force.has(name)
                 || !sameDefinition(attachment.definition, next.definition)
-            ) attachment.connection.assertReplaceable();
+            ) attachmentConnection(attachment)?.assertReplaceable();
         }
 
         const next = new Map<string, Attachment>();
-        const fresh: Attachment[] = [];
+        const fresh: ConnectedAttachment[] = [];
         try {
             for (const [name, definition] of effective) {
                 const existing = current?.attachments.get(name);
@@ -562,9 +573,26 @@ export default class Module {
                     continue;
                 }
                 const supplied = options.prepared?.get(name);
-                const attachment = supplied ?? await this.#prepareAttachment(workspaceId, definition);
+                let attachment: Attachment;
+                try {
+                    attachment = supplied ?? await this.#prepareAttachment(workspaceId, definition);
+                } catch (cause) {
+                    if (options.preparationFailureDisposition === "reject") throw cause;
+                    const failure = cause instanceof ModuleActionError
+                        ? cause
+                        : preparationError(definition.definition, cause);
+                    attachment = {
+                        kind: "unavailable",
+                        ...definition,
+                        problem: structuredClone(failure.problem),
+                    };
+                    console.error(
+                        `MCP server '${name}' unavailable during workspace hydration: ${failure.problem.detail}`,
+                        failure.cause ?? failure,
+                    );
+                }
                 next.set(name, attachment);
-                fresh.push(attachment);
+                if (attachment.kind !== "unavailable") fresh.push(attachment);
             }
         } catch (cause) {
             const cleanup = await Promise.allSettled(fresh.map(({ connection }) => connection.close()));
@@ -606,9 +634,11 @@ export default class Module {
         }
 
         this.#workspaces.set(workspaceId, { state: cloneState(state), attachments: next });
-        const retained = new Set([...next.values()].map(({ connection }) => connection));
+        const retained = new Set(
+            [...next.values()].flatMap((attachment) => attachmentConnection(attachment) ?? []),
+        );
         const obsolete = [...current?.attachments.values() ?? []]
-            .map(({ connection }) => connection)
+            .flatMap((attachment) => attachmentConnection(attachment) ?? [])
             .filter((connection) => !retained.has(connection));
         if (obsolete.length > 0) {
             try {
@@ -706,13 +736,20 @@ export default class Module {
             target: definition.transport === "http" ? definition.url : definition.command,
             enabled: available.enabled,
             state: available.enabled
-                ? attachment?.kind === "active" ? "connected" : "authorization-required"
+                ? attachment?.kind === "active"
+                    ? "connected"
+                    : attachment?.kind === "authorization-required"
+                        ? "authorization-required"
+                        : "unavailable"
                 : "disabled",
             enabledTools: definition.tools ?? null,
             read: definition.read ?? [],
         };
         if (attachment?.kind === "authorization-required") {
             return { ...base, authorization: { url: attachment.authorizationUrl } };
+        }
+        if (attachment?.kind === "unavailable") {
+            return { ...base, problem: structuredClone(attachment.problem) };
         }
         if (attachment?.kind !== "active") return base;
         const catalog = attachment.executor.catalog;
@@ -792,6 +829,7 @@ export default class Module {
             };
             const result = await this.#applyState(workspaceId, state, {
                 authorizationDisposition: "defer-mutation",
+                preparationFailureDisposition: "reject",
             });
             if (result.authorization !== undefined) {
                 await this.#setPending(workspaceId, alias, {
@@ -810,7 +848,9 @@ export default class Module {
             }
             const committed = this.#snapshot(workspaceId);
             const attached = committed.attachments.get(alias);
-            if (attached === undefined) throw new Error("Committed MCP attachment is absent.");
+            if (attached === undefined || attached.kind === "unavailable") {
+                throw new Error("Committed MCP attachment is absent.");
+            }
             await this.#clearPending(workspaceId, alias, attached.connection);
             const available = this.#available(committed.state).get(alias);
             if (available === undefined) throw new Error("Committed MCP definition is absent.");
@@ -855,8 +895,11 @@ export default class Module {
                     { workspaceId, alias, retryable: false },
                 );
             }
-            if (available.enabled === enabled) {
-                const attachment = snapshot.attachments.get(alias);
+            const attachment = snapshot.attachments.get(alias);
+            const retryUnavailable = enabled
+                && available.enabled
+                && attachment?.kind === "unavailable";
+            if (available.enabled === enabled && !retryUnavailable) {
                 if (attachment?.kind === "authorization-required") {
                     return {
                         status: 202,
@@ -865,16 +908,20 @@ export default class Module {
                 }
                 return { status: 200, server: this.#summary(alias, available, attachment) };
             }
-            const state = this.#stateWithEnabled(snapshot.state, alias, available, enabled);
+            const state = retryUnavailable
+                ? cloneState(snapshot.state)
+                : this.#stateWithEnabled(snapshot.state, alias, available, enabled);
             const result = await this.#applyState(workspaceId, state, {
+                ...(retryUnavailable ? { force: new Set([alias]) } : {}),
                 authorizationDisposition: "defer-mutation",
+                preparationFailureDisposition: "reject",
             });
             if (result.authorization !== undefined) {
                 await this.#setPending(workspaceId, alias, {
                     operation: "enable",
                     expectedState: structuredClone(snapshot.state.servers[alias] ?? null),
                     expectedDefinition: structuredClone(available.definition),
-                    expectedEnabled: false,
+                    expectedEnabled: available.enabled,
                     definition: {
                         definition: structuredClone(available.definition),
                         source: available.source,
@@ -927,6 +974,7 @@ export default class Module {
             delete (state.servers as Record<string, ServerState>)[alias];
             await this.#applyState(workspaceId, state, {
                 authorizationDisposition: "defer-mutation",
+                preparationFailureDisposition: "reject",
             });
             await this.#clearPending(workspaceId, alias);
             return { status: 200, alias, removed: true };
@@ -1020,11 +1068,14 @@ export default class Module {
                 force: new Set([alias]),
                 prepared: new Map([[alias, pending.prepared]]),
                 authorizationDisposition: "defer-mutation",
+                preparationFailureDisposition: "reject",
             });
             this.#pending.delete(key);
             const committed = this.#snapshot(workspaceId);
             const attached = committed.attachments.get(alias);
-            if (attached === undefined) throw new Error("Authorized MCP attachment is absent.");
+            if (attached === undefined || attached.kind !== "active") {
+                throw new Error("Authorized MCP attachment is absent.");
+            }
             const available = this.#available(committed.state).get(alias);
             if (available === undefined) throw new Error("Authorized MCP definition is absent.");
             return { status: 200, server: this.#summary(alias, available, attached) };
@@ -1134,7 +1185,8 @@ export default class Module {
         const connections = new Set<ServerConnection>();
         for (const snapshot of this.#workspaces.values()) {
             for (const attachment of snapshot.attachments.values()) {
-                connections.add(attachment.connection);
+                const connection = attachmentConnection(attachment);
+                if (connection !== undefined) connections.add(connection);
             }
         }
         for (const pending of this.#pending.values()) connections.add(pending.connection);
