@@ -13,7 +13,7 @@ import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
 import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
-import { specForRoute } from "./model-route.ts";
+import { routeForSpec, specForRoute } from "./model-route.ts";
 // {§notifications-envelope-carries-workspaceid}: "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
@@ -228,6 +228,13 @@ export default class Daemon {
                     ? resolveActiveAlias()
                     : parentPolicy.childProviderSpec ?? parentPolicy.providerSpec;
                 if (providerSpec === null) throw new Error("injectWorker: active provider has no resolvable alias");
+                // {§worker-model-selection} — lineage inheritance by value: the child worker
+                // begins with the spawning loop's effective spawn model, no inherited override.
+                await this.#db.worker_model_route_update.run({
+                    id: workerId,
+                    model_route_id: await routeForSpec(this.#db, providerSpec),
+                    spawn_model_route_id: null,
+                });
                 const { action, loopId } = await this.inject({
                     workspaceId,
                     workerId,
@@ -408,20 +415,18 @@ export default class Daemon {
             );
         }
         const flags = ClientInput.normalizeLoopFlags("runLoop", args.flags) as Partial<LoopFlags> | undefined;
-        // {§methods-loop-run-model} — a client sends alias/model on every loop, so a
-        // switch takes effect turn-to-turn. `model` (client-resolved <provider>/<model>) wins
-        // over `alias`; neither → the boot default. Instantiation is cached, so ping-ponging
-        // between two models is cheap, and an unresolvable alias/model fails loud here.
-        // An OMITTED selector is not an explicit selection: a continuation keeps the loop's
-        // durable provider rather than re-resolving to the boot default ({§methods-loop-run-model}).
+        // {§worker-model-selection} — the worker owns the model. An explicit selector
+        // persists onto the worker; an omitted selector resolves the worker's durable model
+        // (seeded once from the daemon default). The loop then snapshots the resolved route.
+        // A continuation's omitted selector must still keep the loop's durable provider.
         const selectorExplicit = alias !== undefined || model !== undefined;
-        const selection = await this.#resolveLoopProvider(alias, model);
+        const selection = await this.#resolveWorkerModel(workerId, alias, model);
         if (selection === null) {
             throw new OperationFailureError(Results.failure(
                 "daemon:provider",
                 "not-configured",
                 501,
-                "No provider is configured for this loop.",
+                "No provider is configured for this worker.",
                 {},
                 {
                     stage: "provider-selection",
@@ -430,14 +435,8 @@ export default class Daemon {
                 },
             ));
         }
-        // {§methods-loop-run-child-provider}
-        const configuredChildAlias = childAlias === undefined && childModel === undefined
-            ? process.env.PLURNK_MODEL_CHILD
-            : childAlias;
-        const childSelection = configuredChildAlias === null
-            || (configuredChildAlias === undefined && childModel === undefined)
-            ? null
-            : await this.#resolveLoopProvider(configuredChildAlias, childModel);
+        // {§methods-loop-run-child-provider} — the worker's persistent spawn override.
+        const childSelection = await this.#resolveWorkerSpawnModel(workerId, childAlias, childModel);
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
         // {§machine-processes} — the model NEVER runs in a client-origin worker (its packets would carry
         // client-action rows). The module resolves the model worker via ensureModelWorker and passes it (or a
@@ -541,6 +540,67 @@ export default class Daemon {
                     retryable: false,
                 },
             );
+        }
+        return spec;
+    }
+
+    // {§worker-model-selection} — a model worker owns one durable model. An explicit
+    // selector persists onto the worker; an omitted selector resolves the worker's
+    // durable model, seeded once from the daemon default. A deliberately modelless
+    // daemon leaves the worker unset until an explicit selection arrives.
+    async #resolveWorkerModel(workerId: number, alias: string | undefined, model: string | undefined): Promise<ProviderAlias | null> {
+        const worker = await this.#db.worker_model_route_read.get<{ model_route_id: number | null; spawn_model_route_id: number | null }>({ id: workerId });
+        if (worker === undefined) throw new Error(`worker ${workerId}: model route row missing`);
+        if (alias !== undefined || model !== undefined) {
+            const spec = await this.#resolveLoopProvider(alias, model);
+            await this.#db.worker_model_route_update.run({
+                id: workerId,
+                model_route_id: spec === null ? null : await routeForSpec(this.#db, spec),
+                spawn_model_route_id: worker.spawn_model_route_id,
+            });
+            return spec;
+        }
+        if (worker.model_route_id !== null) return specForRoute(this.#db, worker.model_route_id);
+        if (this.#provider === null) return null;
+        const spec = resolveActiveAlias();
+        if (spec !== null) {
+            await this.#db.worker_model_route_update.run({
+                id: workerId,
+                model_route_id: await routeForSpec(this.#db, spec),
+                spawn_model_route_id: worker.spawn_model_route_id,
+            });
+        }
+        return spec;
+    }
+
+    // {§worker-model-selection} — the persistent spawn override. An explicit child
+    // selector persists onto the worker (null clears it back to inherit); an omitted
+    // selector resolves the persisted override, seeded once from the operator's
+    // PLURNK_MODEL_CHILD default.
+    async #resolveWorkerSpawnModel(workerId: number, childAlias: string | null | undefined, childModel: string | undefined): Promise<ProviderAlias | null> {
+        const worker = await this.#db.worker_model_route_read.get<{ model_route_id: number | null; spawn_model_route_id: number | null }>({ id: workerId });
+        if (worker === undefined) throw new Error(`worker ${workerId}: model route row missing`);
+        if (childAlias !== undefined || childModel !== undefined) {
+            const spec = childAlias === null && childModel === undefined
+                ? null
+                : await this.#resolveLoopProvider(childAlias ?? undefined, childModel);
+            await this.#db.worker_model_route_update.run({
+                id: workerId,
+                model_route_id: worker.model_route_id,
+                spawn_model_route_id: spec === null ? null : await routeForSpec(this.#db, spec),
+            });
+            return spec;
+        }
+        if (worker.spawn_model_route_id !== null) return specForRoute(this.#db, worker.spawn_model_route_id);
+        const configured = process.env.PLURNK_MODEL_CHILD;
+        if (configured === undefined || configured.length === 0) return null;
+        const spec = await this.#resolveLoopProvider(configured, undefined);
+        if (spec !== null) {
+            await this.#db.worker_model_route_update.run({
+                id: workerId,
+                model_route_id: worker.model_route_id,
+                spawn_model_route_id: await routeForSpec(this.#db, spec),
+            });
         }
         return spec;
     }

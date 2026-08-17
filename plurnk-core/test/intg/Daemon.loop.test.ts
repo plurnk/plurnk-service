@@ -254,7 +254,7 @@ test("loop.run without provider returns 501", async () => {
             const result = response.result as { status: number; problem?: { type?: string; detail?: string } };
             assert.equal(result.status, 501);
             assert.equal(result.problem?.type, "https://problems.plurnk.dev/daemon/provider/not-configured");
-            assert.equal(result.problem?.detail, "No provider is configured for this loop.");
+            assert.equal(result.problem?.detail, "No provider is configured for this worker.");
         } finally { ws.close(); }
     });
 });

@@ -226,6 +226,8 @@ export class SqlRiteSync {
 	envelope_get_worker_by_id: SqlRiteSyncPreparedStatements;
 	envelope_get_worker_by_name: SqlRiteSyncPreparedStatements;
 	envelope_list_workers_for_workspace: SqlRiteSyncPreparedStatements;
+	worker_model_route_read: SqlRiteSyncPreparedStatements;
+	worker_model_route_update: SqlRiteSyncPreparedStatements;
 	envelope_list_workspace_prompts: SqlRiteSyncPreparedStatements;
 	envelope_insert_client_loop: SqlRiteSyncPreparedStatements;
 	envelope_close_client_loop: SqlRiteSyncPreparedStatements;
@@ -711,6 +713,8 @@ export default class SqlRite {
 	envelope_get_worker_by_id: SqlRitePreparedStatements;
 	envelope_get_worker_by_name: SqlRitePreparedStatements;
 	envelope_list_workers_for_workspace: SqlRitePreparedStatements;
+	worker_model_route_read: SqlRitePreparedStatements;
+	worker_model_route_update: SqlRitePreparedStatements;
 	envelope_list_workspace_prompts: SqlRitePreparedStatements;
 	envelope_insert_client_loop: SqlRitePreparedStatements;
 	envelope_close_client_loop: SqlRitePreparedStatements;

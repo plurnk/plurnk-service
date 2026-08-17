@@ -45,6 +45,18 @@ FROM workers
 WHERE workspace_id = $workspace_id
 ORDER BY created_at DESC;
 
+-- PREP: worker_model_route_read
+-- {§worker-model-selection} — the worker's durable resolved model and spawn override.
+SELECT model_route_id, spawn_model_route_id FROM workers WHERE id = $id;
+
+-- PREP: worker_model_route_update
+UPDATE workers
+SET model_route_id = $model_route_id,
+    spawn_model_route_id = $spawn_model_route_id,
+    version = version + 1
+WHERE id = $id
+RETURNING id;
+
 -- PREP: envelope_list_workspace_prompts
 -- {§methods-workspace-prompts}: nonempty model-root loop seeds, newest-first;
 -- spawned and forked children are not workspace-level user prompt history.
