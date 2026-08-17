@@ -19,12 +19,31 @@ const fakeProvider = (
     countPromptTokens: async () => ({ kind: "exact", tokens: 1, source: "test:exact" }),
 }) as unknown as Provider;
 
-test("configured GBNF admission performs no model generation", () => {
+test("configured GBNF startup performs no model generation", async () => {
     const calls: string[] = [];
-    ProviderInstantiate.validateGrammarConfiguration(fakeProvider(calls), {
-        PLURNK_PROVIDERS_GBNF: "plurnk.gemma.gbnf",
-    });
-    assert.deepEqual(calls, [], "daemon admission has no authority to generate tokens");
+    const provider = fakeProvider(calls);
+    const alias = {
+        alias: "startupguard",
+        provider: "fake",
+        model: "fake",
+    };
+    const env = {
+        PLURNK_MODEL: alias.alias,
+        PLURNK_MODEL_startupguard: `${alias.provider}/${alias.model}`,
+        PLURNK_PROVIDERS_GBNF_startupguard: "plurnk.gemma.gbnf",
+    };
+    const prior = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, env);
+    ProviderInstantiate.registerInstance(provider, alias);
+    try {
+        assert.equal(await ProviderInstantiate.loadActiveProvider(), provider);
+        assert.deepEqual(calls, [], "daemon startup has no authority to generate tokens");
+    } finally {
+        for (const [key, value] of Object.entries(prior)) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+    }
 });
 
 test("GBNF with reasoning explicitly off is an invalid composed PLURNK configuration", () => {
