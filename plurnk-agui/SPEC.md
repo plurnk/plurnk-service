@@ -222,7 +222,20 @@ successfully transported management Run; it does not turn the Run into
 | `workspace.members`      | Workspace | none                                                 | `CoreSeam.listMembers`.                                                                                            |
 | `op.look`                | Workspace | `text`                                               | Admits one LOOK under {§agui-op-look}, rewrites it to READ, and calls core's no-log `look` projection.              |
 | `run.fork`               | Workspace | `name?`                                              | `CoreSeam.forkWorker` from the thread's conversation worker.                                                       |
+| `worker.model.get`       | Workspace | none                                                 | `CoreSeam.readWorkerModel` on the thread's conversation worker; returns `{ model, spawnModel }` as resolved specs or `null`. |
+| `worker.model.set`       | Workspace | `alias?`, `model?`                                   | `CoreSeam.setWorkerModel` on the thread's conversation worker; persists the resolved selection and returns it.        |
+| `worker.child.set`       | Workspace | `alias?`, `model?`                                   | `CoreSeam.setWorkerSpawnModel` on the thread's conversation worker; persists the override (`alias: null` means inherit) and returns it. |
 | Registered module action | Owner-declared | owner-defined | `CoreSeam.invokeModuleAction`; AG-UI passes either a worldless context or the already-bound workspace context outside supplied params. The owner validates params and owns the result. |
+
+§agui-worker-model-actions **Worker model selection is server-backed.**
+`worker.model.get`, `worker.model.set`, and `worker.child.set` operate on the
+thread's bound conversation worker under {§worker-model-selection}. They are
+the client's durable `/model` and `/child`; a client must not reassert a
+model on every loop. The get action returns the worker's resolved durable
+model and spawn override (`null` for an unset worker or inherit); the set
+actions resolve and persist before returning, failing with the owning
+problem when the selector is unresolvable or the daemon is deliberately
+modelless.
 
 §agui-module-action-scope **An extension action uses the same management plane,
 not a private endpoint.** `CoreSeam.listModuleActions()` returns its exact

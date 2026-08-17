@@ -153,6 +153,7 @@ export default class Module {
         "workspace.workers", "log.read", "loop.inject", "loop.cancel", "workspace.prompts", "workspace.rename",
         "workspace.constrain", "workspace.unconstrain", "workspace.constraints", "entry.read",
         "workspace.derivation", "op.exec", "op.parse", "workspace.members", "op.look", "run.fork",
+        "worker.model.get", "worker.model.set", "worker.child.set",
     ]));
     static #BUILTIN_ACTIONS = Object.freeze(new Set([
         ...this.#CONTROL_ACTIONS,
@@ -942,6 +943,45 @@ export default class Module {
                     return operationOutcome(await this.#seam.look({ workspaceId: env.workspaceId, workerId: env.workerId, statement }));
                 }
                 case "run.fork": return { ok: true, result: await this.#seam.forkWorker({ workspaceId: env.workspaceId, workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId), ...(typeof p.name === "string" ? { name: p.name } : {}) }) };
+                case "worker.model.get": {
+                    const { model, spawnModel } = await this.#seam.readWorkerModel({
+                        workspaceId: env.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                    });
+                    return { ok: true, result: { model, spawnModel } };
+                }
+                case "worker.model.set": {
+                    if (!Object.hasOwn(p, "alias") && !Object.hasOwn(p, "model")) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "worker.model.set requires an alias or model.",
+                            400,
+                            { recovery: "Provide alias or model." },
+                        );
+                    }
+                    return { ok: true, result: await this.#seam.setWorkerModel({
+                        workspaceId: env.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                        ...(typeof p.alias === "string" ? { alias: p.alias } : {}),
+                        ...(typeof p.model === "string" ? { model: p.model } : {}),
+                    }) };
+                }
+                case "worker.child.set": {
+                    if (!Object.hasOwn(p, "alias") && !Object.hasOwn(p, "model")) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "worker.child.set requires an alias or model.",
+                            400,
+                            { recovery: "Provide alias or model; alias null means inherit." },
+                        );
+                    }
+                    return { ok: true, result: await this.#seam.setWorkerSpawnModel({
+                        workspaceId: env.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                        ...(Object.hasOwn(p, "alias") ? { alias: p.alias as string | null } : {}),
+                        ...(typeof p.model === "string" ? { model: p.model } : {}),
+                    }) };
+                }
                 default: return actionFailure(
                     "unknown-action",
                     `Action '${a.kind}' is not registered.`,

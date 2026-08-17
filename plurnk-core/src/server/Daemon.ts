@@ -714,6 +714,71 @@ export default class Daemon {
         );
     }
 
+    // {§worker-model-selection} — project a worker's durable model and spawn override
+    // for a client-interface get/set surface. Ownership is checked at this boundary.
+    async readWorkerModel(args: { workspaceId: number; workerId: number }): Promise<{ model: ProviderAlias | null; spawnModel: ProviderAlias | null }> {
+        const workspaceId = ClientInput.assertId("worker.model.get", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.model.get", "workerId", args.workerId);
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        const row = await this.#db.worker_model_route_read.get<{ model_route_id: number | null; spawn_model_route_id: number | null }>({ id: workerId });
+        if (row === undefined) throw new Error(`worker ${workerId}: model route row missing`);
+        return {
+            model: await specForRoute(this.#db, row.model_route_id),
+            spawnModel: await specForRoute(this.#db, row.spawn_model_route_id),
+        };
+    }
+
+    // {§worker-model-selection} — persist an explicit model selection onto the worker
+    // and return the resolved spec. An unresolvable selector fails loud here.
+    async setWorkerModel(args: { workspaceId: number; workerId: number; alias?: string; model?: string }): Promise<ProviderAlias> {
+        const workspaceId = ClientInput.assertId("worker.model.set", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.model.set", "workerId", args.workerId);
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        const spec = await this.#resolveWorkerModel(workerId, args.alias, args.model);
+        if (spec === null) {
+            throw new OperationFailureError(Results.failure(
+                "daemon:provider",
+                "not-configured",
+                501,
+                "No provider is configured for this worker.",
+                {},
+                { stage: "provider-selection", recovery: "Select a configured model provider.", retryable: false },
+            ));
+        }
+        return spec;
+    }
+
+    // {§worker-model-selection} — persist the worker's spawn override; `alias: null`
+    // with no model means inherit (clears the override).
+    async setWorkerSpawnModel(args: { workspaceId: number; workerId: number; alias?: string | null; model?: string }): Promise<ProviderAlias | null> {
+        const workspaceId = ClientInput.assertId("worker.child.set", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.child.set", "workerId", args.workerId);
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        return this.#resolveWorkerSpawnModel(workerId, args.alias, args.model);
+    }
+
+    async #assertWorkerOwned(workspaceId: number, workerId: number): Promise<void> {
+        const owner = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
+        if (owner === undefined) {
+            throw daemonFailure(
+                "daemon:worker",
+                "worker-not-found",
+                404,
+                `Worker ${workerId} does not exist.`,
+                { workerId },
+            );
+        }
+        if (owner.workspace_id !== workspaceId) {
+            throw daemonFailure(
+                "daemon:worker",
+                "workspace-mismatch",
+                409,
+                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
+                { workerId, workspaceId, actualWorkspaceId: owner.workspace_id },
+            );
+        }
+    }
+
     // {§methods-op-mirror} — execute parsed ops on behalf of a client, journaled as a
     // client-origin turn (the log is core's, a client op is a first-class citizen), dispatched through
     // the engine, then emitted as log/entry on the event source. One seam op backs the whole op_*
@@ -1888,6 +1953,7 @@ export type CoreSeam = Pick<Daemon,
     | "pendingProposals" | "resolveProposal"
     | "pendingClientInteractions" | "resolveClientInteraction"
     | "runLoop" | "cancelDrain" | "dispatchClientAction" | "ensureModelWorker"
+    | "readWorkerModel" | "setWorkerModel" | "setWorkerSpawnModel"
     | "readLog" | "readEntry" | "look"
     | "listProviders" | "listWorkspaces" | "listWorkers" | "listPrompts" | "listMembers" | "listConstraints" | "workspaceDerivationStatus"
     | "listClientDisplayCapabilities"

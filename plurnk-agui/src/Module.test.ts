@@ -13,6 +13,7 @@ import { loopUsage } from "../test/accounting-fixture.ts";
 const mockSeam = () => {
     const resolves: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
     const loopRuns: Array<{ alias?: string; model?: string; childAlias?: string | null; childModel?: string; prompt: string }> = [];
+    const modelSets: Array<{ alias?: string; model?: string; childAlias?: string | null; childModel?: string }> = [];
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
     const seam: DaemonSeam = {
         listClientDisplayCapabilities: async () => [],
@@ -55,10 +56,19 @@ const mockSeam = () => {
         createConversationWorker: async (a) => ({ workerId: 77, workerName: a.name ?? "model-fresh" }),
         listMembers: async () => ({ members: [{ path: "a.ts", effect: "member" }], hidden: [] }),
         look: async () => ({ status: 200, content: "looked" }),
+        readWorkerModel: async () => ({ model: null, spawnModel: null }),
+        setWorkerModel: async ({ alias, model }) => {
+            modelSets.push({ ...(alias !== undefined ? { alias } : {}), ...(model !== undefined ? { model } : {}) });
+            return { alias: alias ?? "mocktest", provider: "openai", model: model ?? "mocktest" };
+        },
+        setWorkerSpawnModel: async ({ alias, model }) => {
+            modelSets.push({ ...(alias !== undefined ? { childAlias: alias } : {}), ...(model !== undefined ? { childModel: model } : {}) });
+            return alias === null ? null : ({ alias: alias ?? "mocktest", provider: "openai", model: model ?? "mocktest" });
+        },
     };
     const finish = (workspaceId: number | null) => setImmediate(() => handlers.forEach((h) => h(workspaceId, "loop/terminated", { loopId: 9, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) })));
     const emit = (workspaceId: number | null, method: string, params: unknown) => handlers.forEach((h) => h(workspaceId, method, params));
-    return { seam, resolves, loopRuns, finish, emit };
+    return { seam, resolves, loopRuns, modelSets, finish, emit };
 };
 
 const standardInput = (body: Record<string, unknown>): Record<string, unknown> => ({
@@ -173,6 +183,37 @@ test("a management-action AG-UI Run executes via the seam: result custom + RUN_F
         assert.equal(err.value.problem.recovery, "Use an action advertised by discover.");
         assert.equal(err.value.problem.retryable, false);
         assert.doesNotMatch(err.value.problem.detail, /seam surface/, "no internal jargon leaks to the client");
+    } finally { await mod.close(); }
+});
+
+test("{§agui-worker-model-actions}: worker model get/set reach the seam and child null means inherit", async () => {
+    const { seam, modelSets } = mockSeam();
+    seam.readWorkerModel = async () => ({ model: { alias: "opus", provider: "anthropic", model: "claude" }, spawnModel: { alias: "tiny", provider: "openai", model: "mini" } });
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const port = mod.address().port;
+        const get = await post(port, { threadId: "t1", workerId: "r1", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.model.get" } } } });
+        const got = get.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as {
+            value: { ok: boolean; result: { model: { alias: string } | null; spawnModel: { alias: string } | null } };
+        };
+        assert.equal(got.value.ok, true);
+        assert.equal(got.value.result.model?.alias, "opus");
+        assert.equal(got.value.result.spawnModel?.alias, "tiny");
+
+        const set = await post(port, { threadId: "t1", workerId: "r2", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.model.set", alias: "fresh" } } } });
+        assert.equal(set[set.length - 1].type, "RUN_FINISHED");
+        assert.deepEqual(modelSets, [{ alias: "fresh" }]);
+
+        const child = await post(port, { threadId: "t1", workerId: "r3", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.child.set", alias: null } } } });
+        assert.equal(child[child.length - 1].type, "RUN_FINISHED");
+        assert.deepEqual(modelSets, [{ alias: "fresh" }, { childAlias: null }], "child alias null forwards as inherit");
+
+        const noSelector = await post(port, { threadId: "t1", workerId: "r4", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.model.set" } } } });
+        const refused = noSelector.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as {
+            value: { ok: boolean; problem: { type: string; status: number } };
+        };
+        assert.equal(refused.value.ok, false);
+        assert.equal(refused.value.problem.status, 400, "a selectorless set is an invalid action, not a silent no-op");
     } finally { await mod.close(); }
 });
 
@@ -1215,6 +1256,9 @@ test("discover returns the exact public action and notification membership", asy
             "ping",
             "providers.list",
             "run.fork",
+            "worker.child.set",
+            "worker.model.get",
+            "worker.model.set",
             "workspace.attach",
             "workspace.constrain",
             "workspace.constraints",

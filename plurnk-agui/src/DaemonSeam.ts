@@ -111,6 +111,11 @@ export interface DaemonSeam {
     // conversation over the same world. ensureModelWorker = the stable default,
     // forkWorker = branch with history, createConversationWorker = fresh thread.
     createConversationWorker(args: { workspaceId: number; name?: string }): Promise<{ workerId: number; workerName: string }>;
+    // {§agui-worker-model-actions} — the worker's durable model and spawn override,
+    // resolved specs or null (unset / inherit).
+    readWorkerModel(args: { workspaceId: number; workerId: number }): Promise<{ model: { alias: string; provider: string; model: string } | null; spawnModel: { alias: string; provider: string; model: string } | null }>;
+    setWorkerModel(args: { workspaceId: number; workerId: number; alias?: string; model?: string }): Promise<{ alias: string; provider: string; model: string }>;
+    setWorkerSpawnModel(args: { workspaceId: number; workerId: number; alias?: string | null; model?: string }): Promise<{ alias: string; provider: string; model: string } | null>;
 }
 
 // The envelope a workspace-lifecycle call returns (core's shape, verbatim).
