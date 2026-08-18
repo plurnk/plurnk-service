@@ -238,6 +238,62 @@ test("MCP executor keeps elicitation on its generic client interaction sink", as
     }
 });
 
+test("{§mcp-result-content} every passive content variant is preserved losslessly as channel evidence", async () => {
+    const connection = new ServerConnection({
+        name: "rich",
+        transport: "stdio",
+        command: process.execPath,
+        args: [fixture],
+        env: { PLURNK_MCP_TEST_EXTENDED: "1" },
+        tools: ["rich"],
+    }, {
+        PLURNK_MCP_CONNECT_TIMEOUT: "30000",
+        PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+    });
+    const executor = new McpExecutor(
+        { runtime: "rich", glyph: "🔌" },
+        connection,
+        { tools: ["rich"] },
+    );
+    try {
+        await executor.requireAvailable();
+        const h = harness({ runtime: "rich", target: "rich" });
+        const result = await executor.run(h.args);
+        assert.equal(result.status, 200);
+        assert.deepEqual(
+            (JSON.parse(h.writes[0] ?? "{}") as { content: unknown }).content,
+            [
+                    { type: "text", text: "prose" },
+                    { type: "image", data: "aW1hZ2U=", mimeType: "image/png" },
+                    { type: "audio", data: "YXVkaW8=", mimeType: "audio/wav" },
+                    {
+                        type: "resource_link",
+                        uri: "fixture://document",
+                        name: "Linked document",
+                    },
+                    {
+                        type: "resource",
+                        resource: {
+                            uri: "fixture://embedded",
+                            mimeType: "text/plain",
+                            text: "embedded text",
+                        },
+                    },
+                    {
+                        type: "resource",
+                        resource: {
+                            uri: "fixture://binary",
+                            mimeType: "application/octet-stream",
+                            blob: "YmxvYg==",
+                        },
+                    },
+                ],
+        );
+    } finally {
+        await connection.close();
+    }
+});
+
 test("MCP progress and cancellation remain on the owning EXEC lifecycle over stdio", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-exec-lifecycle-"));
     t.after(() => rm(root, { recursive: true, force: true }));

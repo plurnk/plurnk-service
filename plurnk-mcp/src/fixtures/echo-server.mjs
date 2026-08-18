@@ -61,6 +61,41 @@ const factory = () => {
     );
     if (process.env.PLURNK_MCP_TEST_EXTENDED === "1") {
         server.registerTool(
+            "rich",
+            {
+                description: "Return one of every passive content variant.",
+                inputSchema: z.object({}),
+            },
+            async () => ({
+                content: [
+                    { type: "text", text: "prose" },
+                    { type: "image", data: "aW1hZ2U=", mimeType: "image/png" },
+                    { type: "audio", data: "YXVkaW8=", mimeType: "audio/wav" },
+                    {
+                        type: "resource_link",
+                        uri: "fixture://document",
+                        name: "Linked document",
+                    },
+                    {
+                        type: "resource",
+                        resource: {
+                            uri: "fixture://embedded",
+                            mimeType: "text/plain",
+                            text: "embedded text",
+                        },
+                    },
+                    {
+                        type: "resource",
+                        resource: {
+                            uri: "fixture://binary",
+                            mimeType: "application/octet-stream",
+                            blob: "YmxvYg==",
+                        },
+                    },
+                ],
+            }),
+        );
+        server.registerTool(
             "progress",
             {
                 description: "Report deterministic progress.",

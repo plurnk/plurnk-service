@@ -382,6 +382,20 @@ pending client-owned interaction exactly as proposal review does. MRTR round
 limits, request timeout, cancellation, and Task terminal state are one
 operation lifecycle; none becomes a hidden retry loop.
 
+## §mcp-result-content Passive result content
+
+Every passive content variant the modern revision defines — text, image,
+audio, resource links, and embedded text/blob resources — is preserved
+losslessly into the EXEC channel as one JSON value
+({§json-result-rendering}), the durable evidence path. Plurnk does not claim
+first-class client rendering of non-text variants and adds no MCP-only media
+envelopes: presentation is a client concern over ordinary typed
+entries/resources, and a text-only client degrades by rendering the JSON. A
+standalone `blob` content block is not a modern `tools/call` content member
+(blobs ride inside embedded blob resources) and is rejected as
+protocol-invalid. Size limits and MIME trust remain ordinary channel and
+entry policy, not MCP-specific rules.
+
 ## §mcp-model-projection Model-facing projection
 
 | MCP surface | Plurnk surface |

@@ -154,6 +154,18 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         note: "Driven from the owning Plurnk abort signal; settles the same operation.",
     },
     {
+        id: "result-content",
+        surface: "Passive rich content in tool and resource results: text, image, audio, resource link, embedded text/blob resource",
+        authority: "core",
+        authorityRef: "2026-07-28 @ 5f5440bb26a62e2cf3440b92da5a667efa03b267",
+        advertised: "never",
+        interactive: false,
+        disposition: "partial",
+        composed: false,
+        evidence: ["{§mcp-result-content}", "{§json-result-rendering}", "plurnk-mcp McpExecutor '{§mcp-result-content} every passive content variant is preserved losslessly as channel evidence'"],
+        note: "Lossless JSON preservation into the evidence channel; first-class non-text client rendering is not claimed.",
+    },
+    {
         id: "mrtr",
         surface: "input_required on tools/call, resources/read, or prompts/get",
         authority: "core",
