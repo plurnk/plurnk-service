@@ -172,7 +172,6 @@ export default class SkillDocs {
 
     static async materialize(engine: Engine, db: Db, workspaceId: number): Promise<void> {
         const scanned = await SkillDocs.#scan(workspaceId, db);
-        console.error("DEBUG scan:", scanned.skills.map((x) => `${x.name}:${x.body.slice(0, 14)}`).join(" | "));
         await SkillDocs.#materialize(engine, db, workspaceId, scanned);
         SkillDocs.#signatures.set(workspaceId, scanned.signature);
     }
