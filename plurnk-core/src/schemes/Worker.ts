@@ -1,5 +1,6 @@
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import LoopFlagsReader from "../core/LoopFlagsReader.ts";
+import WorkerSettingsReader from "../core/worker-settings.ts";
 import EntryOps from "./_entry-ops.ts";
 import type { EditResult } from "./_entry-ops.ts";
 import EntryFind from "./_entry-find.ts";
@@ -417,8 +418,17 @@ export default class Worker extends CoreSchemeAdapterBase {
                 retryable: false,
             }) as FindResult;
         }
+        // {§worker-tool-admission} — per-worker tool visibility: the reserved
+        // plurnk tree's question doc exists only for a worker whose own rules
+        // request user input. The predicate drops it before matching and
+        // rendering, so counts, weights, and the catalog text all agree.
+        const questionVisible = authority !== "plurnk"
+            ? undefined
+            : async (pathname: string): Promise<boolean> => pathname !== "/tools/question.md"
+                || await WorkerSettingsReader.requestUserInputEnabled(core.db, core.workerId);
         const found = await EntryFind.findWorkspaceEntries(Worker.#stripAuthority(statement), core, Worker.manifest, {
             ownerId: resolved.ownerId,
+            ...(questionVisible === undefined ? {} : { visible: questionVisible }),
         });
         // The catalog renders the empty-authority form; a non-empty queried authority re-applies —
         // in results AND the serialized content the packet renders — so every path the model sees
@@ -435,7 +445,21 @@ export default class Worker extends CoreSchemeAdapterBase {
     // The entry-copy seam ({§worker-authority-carving}) — pathname-keyed, COMMONS-scoped: the
     // dispatcher refuses a non-empty authority upstream, so these faces only ever see worker:///….
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {
-        return EntryCrud.readEntry(pathname, this.coreContext(ctx), Worker.manifest.name);
+        const core = this.coreContext(ctx);
+        // {§worker-tool-admission} — the question doc does not exist for a
+        // non-interactive worker; a guessed path finds nothing.
+        if (pathname === "/tools/question.md"
+            && !(await WorkerSettingsReader.requestUserInputEnabled(core.db, core.workerId))) {
+            return Results.failure(
+                "scheme:worker",
+                "tool-not-available",
+                404,
+                "The question tool is not available to this worker.",
+                { content: null, mimetype: null },
+                { recovery: "This worker does not request user input.", retryable: false },
+            ) as ReadEntryResult;
+        }
+        return EntryCrud.readEntry(pathname, core, Worker.manifest.name);
     }
 
     async writeEntry(pathname: string, entry: EntryData, ctx: CoreSchemeCallContext): Promise<WriteEntryResult> {

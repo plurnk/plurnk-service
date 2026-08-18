@@ -77,6 +77,10 @@ export interface FindProjectionResource {
 interface FindAddress {
     readonly ownerId?: number;
     readonly pathname?: string;
+    // {§worker-tool-admission} — per-asker visibility: a candidate is dropped
+    // when this predicate returns false. Counts and weights stay consistent
+    // because the filter runs before matching and rendering.
+    readonly visible?: (pathname: string) => boolean | Promise<boolean>;
 }
 
 export const emptyFindFields = (): FindFields => ({
@@ -369,6 +373,12 @@ export default class EntryFind {
                     },
                 };
             }
+        }
+        if (address.visible !== undefined) {
+            candidates = (await Promise.all(candidates.map(async (candidate) => ({
+                candidate,
+                visible: await address.visible!(candidate.pathname),
+            })))).filter(({ visible }) => visible).map(({ candidate }) => candidate);
         }
         if (scope?.kind === "exact" && candidates.length === 0) {
             const target = EntryFind.#targetPath(scheme, scope.pathname, fragment);

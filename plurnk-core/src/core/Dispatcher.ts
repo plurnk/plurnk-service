@@ -41,6 +41,7 @@ import TerminalResult from "./TerminalResult.ts";
 import Results from "./results.ts";
 import { OperationFailureError } from "./results.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
+import WorkerSettingsReader from "./worker-settings.ts";
 import {
     CoreSchemeAdapterBase,
     type CoreEntryAddress,
@@ -478,9 +479,27 @@ export default class Dispatcher {
                 } else if (statement.op === "PLAN") {
                     result = this.#handlePlan(statement);
                 } else if (statement.op === "EXEC") {
-                    // EXEC routes unconditionally to its operation owner. The
-                    // resolved runtime declaration owns body/target semantics.
-                    result = await this.#run("exec", statement, schemeCtx);
+                    // {§worker-tool-admission} — the question runtime is admitted
+                    // per worker: a worker whose own rules don't request user input
+                    // gets the explicit not-available outcome, never a parked loop.
+                    if (("signal" in statement && statement.signal === "question")
+                        && !(await WorkerSettingsReader.requestUserInputEnabled(this.#db, schemeCtx.workerId))) {
+                        result = Dispatcher.#failure(
+                            "question-tool-unavailable",
+                            404,
+                            "The question tool is not available to this worker.",
+                            {},
+                            {
+                                stage: "tool-admission",
+                                recovery: "This worker does not request user input; continue from the available evidence.",
+                                retryable: false,
+                            },
+                        );
+                    } else {
+                        // EXEC routes unconditionally to its operation owner. The
+                        // resolved runtime declaration owns body/target semantics.
+                        result = await this.#run("exec", statement, schemeCtx);
+                    }
                 } else {
                     result = await this.#run(schemeNameOf(statement.target), statement, schemeCtx); // {§op-methods-op-dispatch}
                 }

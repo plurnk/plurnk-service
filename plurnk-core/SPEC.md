@@ -2381,6 +2381,15 @@ Effect `read`: the tool observes the human's answer and is never
 proposal-gated. Admission is per-worker under {§worker-settings}: the tool
 exists for a worker only when that worker's `requestUserInput` rule is set.
 
+§worker-tool-admission **Per-worker tool admission.** A runtime may be
+admitted per worker through the reserved tool tree's visibility rule: the
+find/read faces of the worker scheme drop a tool doc for an asking worker
+whose own rules don't admit it, before matching and rendering, so counts,
+weights, and the catalog text all agree — the tool does not exist for that
+worker's FIND. Dispatch enforces the same boundary with an explicit
+not-available outcome. Admission reads the worker's behavioral rules
+({§worker-settings}) at the operation boundary, never at registration.
+
 §worker-model-selection **Worker-owned model selection.** Every model worker
 owns one durable model, persisted as a nullable `model_routes` foreign key.
 The root conversation worker is seeded once — from an explicit selection, else

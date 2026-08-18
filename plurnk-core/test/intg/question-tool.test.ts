@@ -38,6 +38,7 @@ test("{§question-tool}: a dispatched question pauses on the shared lifecycle an
     try {
         const workspaceId = await insertWorkspace(db, `question-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
+        await db.worker_settings_update.run({ id: workerId, settings: JSON.stringify({ requestUserInput: true }) });
         const loopId = await insertLoop(db, workerId, 1, "question");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
