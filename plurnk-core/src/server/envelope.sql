@@ -45,6 +45,17 @@ FROM workers
 WHERE workspace_id = $workspace_id
 ORDER BY created_at DESC;
 
+-- PREP: worker_settings_read
+-- {§worker-settings} — the worker's own behavioral-rules bag.
+SELECT settings FROM workers WHERE id = $id;
+
+-- PREP: worker_settings_update
+UPDATE workers
+SET settings = $settings,
+    version = version + 1
+WHERE id = $id
+RETURNING id;
+
 -- PREP: worker_model_route_read
 -- {§worker-model-selection} — the worker's durable resolved model and spawn override.
 SELECT model_route_id, spawn_model_route_id FROM workers WHERE id = $id;

@@ -2355,6 +2355,18 @@ creation. A client therefore cannot forge or resume an internal worker, insert
 a non-mintable spelling, or make the client registry diverge from model worker
 control.
 
+§worker-settings **The worker carries its own behavioral rules.** The
+workspace is the world — how things are; each worker is an actor inside it,
+carrying the rules its loops obey. Those rules live in one JSON bag
+(`workers.settings`), declared by the client at worker creation and mutable
+between loops through `readWorkerSettings`/`setWorkerSettings`; the bag is
+validated at the client-input boundary against a closed known-key set, and
+unknown keys never persist. A fork begins with the default empty bag — no
+inherited rules, no live link. Readers are permissive: malformed persisted
+JSON yields the default rules, never a read failure. There is no servicewide
+or workspace ceiling on a worker's own rules; each client decides for its own
+workers.
+
 §worker-model-selection **Worker-owned model selection.** Every model worker
 owns one durable model, persisted as a nullable `model_routes` foreign key.
 The root conversation worker is seeded once — from an explicit selection, else

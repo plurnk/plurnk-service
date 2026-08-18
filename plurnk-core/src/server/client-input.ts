@@ -617,4 +617,61 @@ export default class ClientInput {
         }
         return JSON.stringify(out);
     }
+
+    // {§worker-settings} — validate and serialize a worker's behavioral-rules bag.
+    // Closed known-key set, validated here; unknown keys never persist. The worker
+    // is an actor inside the workspace's world; these are its own rules.
+    static parseWorkerSettings(raw: unknown): string {
+        if (raw === undefined || raw === null) return "{}";
+        let parsed: unknown = raw;
+        if (typeof raw === "string") {
+            try {
+                parsed = JSON.parse(raw) as unknown;
+            } catch {
+                ClientInput.#invalid(
+                    "worker.settings",
+                    "settings-invalid",
+                    "worker settings is not valid JSON.",
+                    { field: "settings", recovery: "Provide a JSON object." },
+                );
+            }
+        }
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+            ClientInput.#invalid(
+                "worker.settings",
+                "settings-invalid",
+                "worker settings is not an object.",
+                { field: "settings", recovery: "Provide a settings object." },
+            );
+        }
+        const r = parsed as { requestUserInput?: unknown };
+        const supported = new Set(["requestUserInput"]);
+        for (const key of Object.keys(r)) {
+            if (!supported.has(key)) {
+                ClientInput.#invalid(
+                    "worker.settings",
+                    "setting-not-supported",
+                    `settings.${key} is not supported.`,
+                    {
+                        field: `settings.${key}`,
+                        supportedSettings: [...supported],
+                        recovery: "Remove the unsupported setting.",
+                    },
+                );
+            }
+        }
+        const out: { requestUserInput?: boolean } = {};
+        if (r.requestUserInput !== undefined) {
+            if (typeof r.requestUserInput !== "boolean") {
+                ClientInput.#invalid(
+                    "worker.settings",
+                    "setting-invalid",
+                    "settings.requestUserInput is not boolean.",
+                    { field: "settings.requestUserInput", recovery: "Use true or false for settings.requestUserInput." },
+                );
+            }
+            out.requestUserInput = r.requestUserInput;
+        }
+        return JSON.stringify(out);
+    }
 }

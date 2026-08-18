@@ -65,6 +65,12 @@ CREATE TABLE IF NOT EXISTS workers (
     -- {§methods-model-worker}: durable identity for the workspace's stable
     -- default conversation; unrelated to its human-facing, reclaimable name.
     default_conversation INTEGER NOT NULL DEFAULT 0 CHECK (default_conversation IN (0, 1)),
+    -- {§worker-settings}: the worker's own behavioral rules inside the workspace's
+    -- world — the workspace is how things are; each worker carries the rules its
+    -- loops obey. Client-declared at worker creation, mutable between loops,
+    -- validated at the client-input boundary (closed known-key set; unknown keys
+    -- never persist).
+    settings TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(settings)),
     -- {§env-delta-log-pull}: monotonic observation progress, not a private world snapshot.
     -- NULL means the worker has not established its first-turn baseline yet.
     ambient_event_cursor INTEGER      CHECK (ambient_event_cursor IS NULL OR ambient_event_cursor >= 0),

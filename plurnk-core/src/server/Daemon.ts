@@ -15,6 +15,7 @@ import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
 import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 import { routeForSpec, specForRoute } from "./model-route.ts";
 import { discoverDaemonModules } from "./module-discovery.ts";
+import WorkerSettingsReader from "../core/worker-settings.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
 // {§notifications-envelope-carries-workspaceid}: "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped.
@@ -708,11 +709,44 @@ export default class Daemon {
 
     // {§methods-model-worker} — the workspace's model worker (created on first use), distinct from the client
     // worker so the model's packets never carry client-action rows. The module binds its threads to this.
-    ensureModelWorker(workspaceId: number): Promise<number> {
-        return Envelope.ensureModelWorker(
-            this.#db,
-            ClientInput.assertId("worker.ensure-model", "workspaceId", workspaceId),
-        );
+    // Optional worker settings ({§worker-settings}) ride the client's per-run declaration: merged in on
+    // creation AND on every subsequent ensure, so a client can change its mind between loops.
+    async ensureModelWorker(workspaceId: number, settings?: { requestUserInput?: boolean }): Promise<number> {
+        const checked = ClientInput.assertId("worker.ensure-model", "workspaceId", workspaceId);
+        const created = await Envelope.ensureModelWorker(this.#db, checked);
+        if (settings !== undefined) await this.#mergeWorkerSettings(created, settings);
+        return created;
+    }
+
+    // {§worker-settings} — merge known keys into the worker's behavioral-rules bag.
+    // Validated at the boundary; unprovided keys keep their durable value.
+    async #mergeWorkerSettings(workerId: number, settings: { requestUserInput?: boolean }): Promise<void> {
+        const current = await WorkerSettingsReader.read(this.#db, workerId);
+        const merged = {
+            requestUserInput: settings.requestUserInput ?? current.requestUserInput,
+        };
+        await this.#db.worker_settings_update.run({ id: workerId, settings: JSON.stringify(merged) });
+    }
+
+    // {§worker-settings} — project the worker's behavioral rules for a client-interface surface.
+    async readWorkerSettings(args: { workspaceId: number; workerId: number }): Promise<{ requestUserInput: boolean }> {
+        const workspaceId = ClientInput.assertId("worker.settings.get", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.settings.get", "workerId", args.workerId);
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        const settings = await WorkerSettingsReader.read(this.#db, workerId);
+        return { requestUserInput: settings.requestUserInput };
+    }
+
+    // {§worker-settings} — persist known behavioral-rule keys; unknown keys are
+    // rejected at the input boundary, never persisted.
+    async setWorkerSettings(args: { workspaceId: number; workerId: number; settings: { requestUserInput?: boolean } }): Promise<{ requestUserInput: boolean }> {
+        const workspaceId = ClientInput.assertId("worker.settings.set", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.settings.set", "workerId", args.workerId);
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        ClientInput.parseWorkerSettings(args.settings);
+        await this.#mergeWorkerSettings(workerId, args.settings);
+        const settings = await WorkerSettingsReader.read(this.#db, workerId);
+        return { requestUserInput: settings.requestUserInput };
     }
 
     // {§worker-model-selection} — project a worker's durable model and spawn override
@@ -1332,7 +1366,7 @@ export default class Daemon {
 
     // {§methods-conversation-worker}: a fresh conversation is a model-origin root worker with an empty private log.
     // AG-UI threads map to these workers while the workspace world remains shared ({§machine-processes}).
-    async createConversationWorker(args: { workspaceId: number; name?: string }): Promise<{ workerId: number; workerName: string }> {
+    async createConversationWorker(args: { workspaceId: number; name?: string; settings?: { requestUserInput?: boolean } }): Promise<{ workerId: number; workerName: string }> {
         const workspaceId = ClientInput.assertId("worker.create", "workspaceId", args.workspaceId);
         const name = ClientInput.assertOptionalWorkerName("worker.create", "name", args.name);
         const workspace = await this.#db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId });
@@ -1358,6 +1392,9 @@ export default class Daemon {
             }
         }
         const worker = await Envelope.createModelWorker(this.#db, workspaceId, name);
+        if (args.settings !== undefined) {
+            await this.#mergeWorkerSettings(worker.id, args.settings);
+        }
         return { workerId: worker.id, workerName: worker.name };
     }
 
@@ -1989,6 +2026,7 @@ export type CoreSeam = Pick<Daemon,
     | "pendingClientInteractions" | "resolveClientInteraction"
     | "runLoop" | "cancelDrain" | "dispatchClientAction" | "ensureModelWorker"
     | "readWorkerModel" | "setWorkerModel" | "setWorkerSpawnModel"
+    | "readWorkerSettings" | "setWorkerSettings"
     | "readLog" | "readEntry" | "look"
     | "listProviders" | "listWorkspaces" | "listWorkers" | "listPrompts" | "listMembers" | "listConstraints" | "workspaceDerivationStatus"
     | "listClientDisplayCapabilities"

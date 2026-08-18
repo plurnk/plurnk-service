@@ -57,6 +57,8 @@ const mockSeam = () => {
         listMembers: async () => ({ members: [{ path: "a.ts", effect: "member" }], hidden: [] }),
         look: async () => ({ status: 200, content: "looked" }),
         readWorkerModel: async () => ({ model: null, spawnModel: null }),
+        readWorkerSettings: async () => ({ requestUserInput: false }),
+        setWorkerSettings: async ({ settings }) => ({ requestUserInput: settings?.requestUserInput === true }),
         setWorkerModel: async ({ alias, model }) => {
             modelSets.push({ ...(alias !== undefined ? { alias } : {}), ...(model !== undefined ? { model } : {}) });
             return { alias: alias ?? "mocktest", provider: "openai", model: model ?? "mocktest" };
@@ -1259,6 +1261,8 @@ test("discover returns the exact public action and notification membership", asy
             "worker.child.set",
             "worker.model.get",
             "worker.model.set",
+            "worker.settings.get",
+            "worker.settings.set",
             "workspace.attach",
             "workspace.constrain",
             "workspace.constraints",

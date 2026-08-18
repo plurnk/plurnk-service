@@ -154,6 +154,7 @@ export default class Module {
         "workspace.constrain", "workspace.unconstrain", "workspace.constraints", "entry.read",
         "workspace.derivation", "op.exec", "op.parse", "workspace.members", "op.look", "run.fork",
         "worker.model.get", "worker.model.set", "worker.child.set",
+        "worker.settings.get", "worker.settings.set",
     ]));
     static #BUILTIN_ACTIONS = Object.freeze(new Set([
         ...this.#CONTROL_ACTIONS,
@@ -335,14 +336,19 @@ export default class Module {
     }
 
     // Resolve the thread's conversation worker within its world. Cached per threadId;
-    // worker names are immutable so the binding can't rot.
-    async #conversationWorker(threadId: string, env: ClientEnvelope): Promise<number> {
+    // worker names are immutable so the binding can't rot. {§worker-settings} — the
+    // client's per-run declaration (forwardedProps.plurnk.requestUserInput) rides the
+    // resolution, so a client can change its mind between loops.
+    async #conversationWorker(threadId: string, env: ClientEnvelope, settings?: { requestUserInput?: boolean }): Promise<number> {
         const cached = this.#threadWorkers.get(threadId);
-        if (cached !== undefined) return cached;
+        if (cached !== undefined) {
+            if (settings !== undefined) await this.#seam.setWorkerSettings({ workspaceId: env.workspaceId, workerId: cached, settings });
+            return cached;
+        }
         const workerId = threadId === env.workspaceName
-            ? await this.#seam.ensureModelWorker(env.workspaceId)
+            ? await this.#seam.ensureModelWorker(env.workspaceId, settings)
             : (await this.#seam.listWorkers(env.workspaceId)).find((r) => r.name === threadId)?.id
-                ?? (await this.#seam.createConversationWorker({ workspaceId: env.workspaceId, name: threadId })).workerId;
+                ?? (await this.#seam.createConversationWorker({ workspaceId: env.workspaceId, name: threadId, ...(settings === undefined ? {} : { settings }) })).workerId;
         this.#threadWorkers.set(threadId, workerId);
         return workerId;
     }
@@ -407,7 +413,13 @@ export default class Module {
         // world. threadId == workspace name binds the model worker (the default conversation);
         // a distinct threadId names its own worker: found by name, else minted via
         // createConversationWorker. The name is the identity at BOTH levels.
-        const workerId = await this.#conversationWorker(input.threadId, env);
+        const plurnk = forwarded?.plurnk as Record<string, unknown> | undefined;
+        const requestUserInput = plurnk?.requestUserInput;
+        const workerId = await this.#conversationWorker(
+            input.threadId,
+            env,
+            typeof requestUserInput === "boolean" ? { requestUserInput } : undefined,
+        );
 
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         let finished = false;
@@ -980,6 +992,27 @@ export default class Module {
                         workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
                         ...(Object.hasOwn(p, "alias") ? { alias: p.alias as string | null } : {}),
                         ...(typeof p.model === "string" ? { model: p.model } : {}),
+                    }) };
+                }
+                case "worker.settings.get": {
+                    return { ok: true, result: await this.#seam.readWorkerSettings({
+                        workspaceId: env.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                    }) };
+                }
+                case "worker.settings.set": {
+                    if (typeof p.settings !== "object" || p.settings === null || Array.isArray(p.settings)) {
+                        return actionFailure(
+                            "invalid-action-parameters",
+                            "worker.settings.set requires a settings object.",
+                            400,
+                            { recovery: "Provide a settings object, e.g. { requestUserInput: true }." },
+                        );
+                    }
+                    return { ok: true, result: await this.#seam.setWorkerSettings({
+                        workspaceId: env.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
+                        settings: p.settings as { requestUserInput?: boolean },
                     }) };
                 }
                 default: return actionFailure(

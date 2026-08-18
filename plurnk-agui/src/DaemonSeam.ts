@@ -69,7 +69,7 @@ export interface DaemonSeam {
     ): Promise<void>;
     // Worker split ({§machine-processes}): model loops live in the workspace's model worker, never the
     // client worker (connection scratch). Resolve it here — created on first use.
-    ensureModelWorker(workspaceId: number): Promise<number>;
+    ensureModelWorker(workspaceId: number, settings?: { requestUserInput?: boolean }): Promise<number>;
     // Loop control — drive/steer a loop on the model worker (runLoop refuses a client-origin
     // worker loudly). Returns immediately; the outcome arrives on the event source.
     runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean }; openPaths?: string[]; alias?: string; model?: string; childAlias?: string | null; childModel?: string }): Promise<OperationResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }>;
@@ -110,12 +110,16 @@ export interface DaemonSeam {
     // {§agui-thread-binding} A named, empty-log, model-origin root worker — a fresh
     // conversation over the same world. ensureModelWorker = the stable default,
     // forkWorker = branch with history, createConversationWorker = fresh thread.
-    createConversationWorker(args: { workspaceId: number; name?: string }): Promise<{ workerId: number; workerName: string }>;
+    createConversationWorker(args: { workspaceId: number; name?: string; settings?: { requestUserInput?: boolean } }): Promise<{ workerId: number; workerName: string }>;
     // {§agui-worker-model-actions} — the worker's durable model and spawn override,
     // resolved specs or null (unset / inherit).
     readWorkerModel(args: { workspaceId: number; workerId: number }): Promise<{ model: { alias: string; provider: string; model: string } | null; spawnModel: { alias: string; provider: string; model: string } | null }>;
     setWorkerModel(args: { workspaceId: number; workerId: number; alias?: string; model?: string }): Promise<{ alias: string; provider: string; model: string }>;
     setWorkerSpawnModel(args: { workspaceId: number; workerId: number; alias?: string | null; model?: string }): Promise<{ alias: string; provider: string; model: string } | null>;
+    // {§worker-settings} — the worker's own behavioral rules (closed known-key
+    // bag), mutable between loops.
+    readWorkerSettings(args: { workspaceId: number; workerId: number }): Promise<{ requestUserInput: boolean }>;
+    setWorkerSettings(args: { workspaceId: number; workerId: number; settings: { requestUserInput?: boolean } }): Promise<{ requestUserInput: boolean }>;
 }
 
 // The envelope a workspace-lifecycle call returns (core's shape, verbatim).
