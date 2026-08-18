@@ -1,0 +1,20 @@
+{
+    "extends": "../tsconfig.base.json",
+    "compilerOptions": {
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "verbatimModuleSyntax": false,
+        "lib": [
+            "ES2024"
+        ]
+    },
+    "include": [
+        "src/**/*.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ]
+}

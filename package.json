@@ -42,6 +42,7 @@
         "plurnk-execs-jq",
         "plurnk-execs-sqlite",
         "plurnk-execs-wasm",
+        "plurnk-execs-skills",
         "plurnk-providers",
         "plurnk-agui",
         "plurnk-core"

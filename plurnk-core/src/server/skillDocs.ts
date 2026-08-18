@@ -5,6 +5,7 @@
 // kernel-owned worker://plurnk/skills/<name>.md entry; the index entry always
 // exists so turn-0 discovery shows the surface — and where skills would have
 // been — even when none are installed.
+import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -104,7 +105,11 @@ const renderIndex = (skills: readonly SkillDoc[], projectRoot: string | null): s
 };
 
 export default class SkillDocs {
-    static async materialize(engine: Engine, db: Db, workspaceId: number): Promise<void> {
+    // {§skills-materialization} — the materialized surface tracks the skill
+    // folders' signature so a per-turn refresh dispatches only on real drift.
+    static #signatures = new Map<number, string>();
+
+    static async #scan(workspaceId: number, db: Db): Promise<{ skills: SkillDoc[]; projectRoot: string | null; signature: string }> {
         const workspace = await db.envelope_get_workspace.get<{ project_root: string | null }>({
             id: workspaceId,
         });
@@ -121,7 +126,35 @@ export default class SkillDocs {
                 skills.push(parseSkill(folder.name, raw));
             }
         }
+        const signature = createHash("sha256")
+            .update(skills.map((skill) => `${skill.name}\u0000${skill.description ?? ""}\u0000${skill.body}`).join("\u0001"))
+            .digest("hex");
+        return { skills, projectRoot, signature };
+    }
 
+    // The model-facing EXEC[skills] runtime mutates the skills folders during a
+    // turn; the turn-completion hook refreshes the surface so an added or
+    // removed skill is discoverable from the next turn onward.
+    static async refreshIfChanged(engine: Engine, db: Db, workspaceId: number): Promise<void> {
+        const scanned = await SkillDocs.#scan(workspaceId, db);
+        if (SkillDocs.#signatures.get(workspaceId) === scanned.signature) return;
+        await SkillDocs.#materialize(engine, db, workspaceId, scanned);
+        SkillDocs.#signatures.set(workspaceId, scanned.signature);
+    }
+
+    static async materialize(engine: Engine, db: Db, workspaceId: number): Promise<void> {
+        const scanned = await SkillDocs.#scan(workspaceId, db);
+        await SkillDocs.#materialize(engine, db, workspaceId, scanned);
+        SkillDocs.#signatures.set(workspaceId, scanned.signature);
+    }
+
+    static async #materialize(
+        engine: Engine,
+        db: Db,
+        workspaceId: number,
+        scanned: { skills: SkillDoc[]; projectRoot: string | null; signature: string },
+    ): Promise<void> {
+        const { skills, projectRoot } = scanned;
         const statements: PlurnkStatement[] = [];
         const desired = new Map<string, string>([
             ["index.md", renderIndex(skills, projectRoot)],
