@@ -310,7 +310,7 @@ test("a catalog provider with unknown model metadata never falls through to plug
             "cloudflare",
             {
                 CLOUDFLARE_ACCOUNT_ID: "account",
-                CLOUDFLARE_API_TOKEN: "token",
+                CLOUDFLARE_API_KEY: "token",
             },
             "vendor/model-outside-snapshot",
             async () => { throw new Error("plugin import must not run"); },
@@ -334,7 +334,7 @@ test("explicit metadata constructs an out-of-snapshot Cloudflare model in the co
         "cloudflare",
         {
             CLOUDFLARE_ACCOUNT_ID: "account",
-            CLOUDFLARE_API_TOKEN: "token",
+            CLOUDFLARE_API_KEY: "token",
             PLURNK_PROVIDERS_CONTEXT_WINDOW: "128000",
         },
         "vendor/model-outside-snapshot",
@@ -382,7 +382,7 @@ test("{§provider-tagged-reasoning} a Cloudflare model alias carries its explici
         {
             ...fullEnv,
             CLOUDFLARE_ACCOUNT_ID: "account",
-            CLOUDFLARE_API_TOKEN: "token",
+            CLOUDFLARE_API_KEY: "token",
             PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE: "verbatim",
             PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE_cfds1: "think-tags",
         },

@@ -348,12 +348,18 @@ implementation. xAI uses its documented OpenAI-compatible response directly
 because that wire includes exact cost ticks the corresponding AI SDK projection
 omits.
 
-Provider declarations configure facts, not credentials:
+§provider-fact-authority Provider declarations configure facts, not
+credentials, and Models.dev is authoritative for cataloged providers: package
+defaults never redefine a cataloged provider's NPM package, endpoint, or
+credential names, and one declaration's `API_KEY_ENV` holds exactly one
+environment name — an ordered fallback list would paper over an
+operator/catalog naming mismatch instead of reconciling it at its owning
+boundary. A comma-separated value is rejected at construction.
 
 ```dotenv
 PLURNK_PROVIDERS_PROVIDER_ACME_NPM=@ai-sdk/openai-compatible
 PLURNK_PROVIDERS_PROVIDER_ACME_BASE_URL=https://api.acme.example/v1
-PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV=ACME_API_KEY,ACME_TOKEN
+PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV=ACME_API_KEY
 ```
 
 The named secret remains in the operator environment. `${ENV_NAME}` inside a

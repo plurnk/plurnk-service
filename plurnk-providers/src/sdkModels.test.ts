@@ -2,17 +2,24 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import { configuredProviderInfo, createSdkModel } from "./sdkModels.ts";
 
-test("configuredProviderInfo translates one env declaration into provider facts", () => {
+test("{§provider-fact-authority} one env declaration holds one credential name", () => {
     assert.deepEqual(configuredProviderInfo("acme-cloud", {
         PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_NPM: "@ai-sdk/openai-compatible",
         PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_BASE_URL: "https://api.acme.test/v1",
-        PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_API_KEY_ENV: "ACME_API_KEY, ACME_TOKEN",
+        PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_API_KEY_ENV: "ACME_API_KEY",
     }), {
         id: "acme-cloud",
         npm: "@ai-sdk/openai-compatible",
-        env: ["ACME_API_KEY", "ACME_TOKEN"],
+        env: ["ACME_API_KEY"],
         api: "https://api.acme.test/v1",
     });
+    assert.throws(
+        () => configuredProviderInfo("acme-cloud", {
+            PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_NPM: "@ai-sdk/openai-compatible",
+            PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_API_KEY_ENV: "ACME_API_KEY,ACME_TOKEN",
+        }),
+        /one exact name, never an ordered fallback/,
+    );
 });
 
 test("createSdkModel uses Models.dev provider facts and operator credentials", () => {
@@ -61,18 +68,47 @@ test("createSdkModel attaches DeepInfra's documented response-cost normalizer", 
     });
 });
 
-test("createSdkModel expands catalog endpoint variables without treating them as credentials", () => {
+test("{§provider-fact-authority} catalog credential names are law without any package or operator alias", () => {
     const sdk = createSdkModel("cloudflare", "@cf/google/gemma-4-26b-a4b-it", {
         CLOUDFLARE_ACCOUNT_ID: "account",
-        CLOUDFLARE_API_TOKEN: "token",
-        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_API_KEY_ENV: "CLOUDFLARE_API_TOKEN,CLOUDFLARE_API_KEY",
+        CLOUDFLARE_API_KEY: "key",
     });
     assert.equal(sdk?.languageModel, undefined);
     assert.deepEqual(sdk?.compatible, {
         url: "https://api.cloudflare.com/client/v4/accounts/account/ai/v1/chat/completions",
-        headers: { Authorization: "Bearer token" },
+        headers: { Authorization: "Bearer key" },
     });
     assert.deepEqual(sdk?.cacheAffinity, { target: "header", name: "x-session-affinity" });
+});
+
+test("{§provider-fact-authority} an operator credential override holds one exact name", () => {
+    const sdk = createSdkModel("cloudflare", "@cf/google/gemma-4-26b-a4b-it", {
+        CLOUDFLARE_ACCOUNT_ID: "account",
+        MY_ORG_CLOUDFLARE_KEY: "key",
+        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_API_KEY_ENV: "MY_ORG_CLOUDFLARE_KEY",
+    });
+    assert.deepEqual(sdk?.compatible, {
+        url: "https://api.cloudflare.com/client/v4/accounts/account/ai/v1/chat/completions",
+        headers: { Authorization: "Bearer key" },
+    });
+});
+
+test("{§provider-fact-authority} ordered credential fallbacks are rejected at construction", () => {
+    assert.throws(
+        () => createSdkModel("cloudflare", "@cf/google/gemma-4-26b-a4b-it", {
+            CLOUDFLARE_ACCOUNT_ID: "account",
+            CLOUDFLARE_API_TOKEN: "token",
+            PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_API_KEY_ENV: "CLOUDFLARE_API_TOKEN,CLOUDFLARE_API_KEY",
+        }),
+        /one exact name, never an ordered fallback/,
+    );
+    assert.throws(
+        () => createSdkModel("acme", "model", {
+            PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@ai-sdk/openai-compatible",
+            PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV: "ACME_API_KEY,ACME_TOKEN",
+        }),
+        /one exact name, never an ordered fallback/,
+    );
 });
 
 test("catalog routes own their documented cache-affinity request projection", () => {

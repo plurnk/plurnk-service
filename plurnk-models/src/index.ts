@@ -80,13 +80,20 @@ export const lookupProvider = (provider: string): ProviderInfo | null => {
 // model picker). Read-only; do not mutate.
 export const catalogSnapshot = (): Readonly<Record<string, Readonly<Record<string, ModelInfo>>>> => data;
 
+// PLURNK provider name → Models.dev provider id, for consumers that must
+// reconcile a declaration or default against the authoritative catalog.
+export const providerIdMap = (): Readonly<Record<string, string>> => PROVIDER_IDS;
+
 export const providerCatalogSnapshot = (): Readonly<Record<string, ProviderInfo>> => providerData;
 
 // models.dev's `env` mixes credentials with non-secret endpoint coordinates
 // such as AWS_REGION and CLOUDFLARE_ACCOUNT_ID. Only conventional credential
-// names belong in a subprocess denylist.
+// names are credentials; a coordinate is never one.
+export const isProviderCredentialName = (name: string): boolean =>
+    /(?:API_KEY|TOKEN|SECRET|ACCESS_KEY_ID|PASSWORD|CREDENTIAL)/.test(name);
+
 export const providerCredentialEnvNames = (): readonly string[] =>
     [...new Set(Object.values(providerData)
         .flatMap((provider) => provider.env)
-        .filter((name) => /(?:API_KEY|TOKEN|SECRET|ACCESS_KEY_ID|PASSWORD|CREDENTIAL)/.test(name)))]
+        .filter(isProviderCredentialName))]
         .toSorted();

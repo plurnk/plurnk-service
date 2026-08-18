@@ -9,7 +9,11 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createTogetherAI } from "@ai-sdk/togetherai";
 import { createXai } from "@ai-sdk/xai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { lookupProvider, type ProviderInfo } from "@plurnk/plurnk-models";
+import {
+    isProviderCredentialName,
+    lookupProvider,
+    type ProviderInfo,
+} from "@plurnk/plurnk-models";
 import type { LanguageModel } from "ai";
 import { providerCostNormalizer } from "./accounting.ts";
 import type { AiSdkProviderOptions, CacheAffinity } from "./AiSdkProvider.ts";
@@ -34,6 +38,20 @@ const cacheControl = { type: "ephemeral" as const };
 const envPrefix = (provider: string): string =>
     provider.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase();
 
+// {§provider-fact-authority} — one credential declaration holds exactly one
+// name. An ordered fallback list would paper over an operator/catalog naming
+// mismatch; that mismatch belongs at its owning boundary instead.
+const singleCredentialName = (provider: string, value: string): string => {
+    const name = value.trim();
+    if (name.length === 0) throw new Error(`${provider} provider: API_KEY_ENV must name one environment variable.`);
+    if (name.includes(",")) {
+        throw new Error(
+            `${provider} provider: API_KEY_ENV holds one exact name, never an ordered fallback; reconcile the operator environment with the Models.dev contract instead.`,
+        );
+    }
+    return name;
+};
+
 export const configuredProviderInfo = (
     provider: string,
     env: NodeJS.ProcessEnv,
@@ -41,10 +59,10 @@ export const configuredProviderInfo = (
     const prefix = `PLURNK_PROVIDERS_PROVIDER_${envPrefix(provider)}`;
     const npm = env[`${prefix}_NPM`];
     if (npm === undefined || npm.length === 0) return null;
-    const keyNames = env[`${prefix}_API_KEY_ENV`]
-        ?.split(",")
-        .map((name) => name.trim())
-        .filter(Boolean) ?? [];
+    const declared = env[`${prefix}_API_KEY_ENV`];
+    const keyNames = declared === undefined
+        ? []
+        : [singleCredentialName(provider, declared)];
     const api = env[`${prefix}_BASE_URL`];
     return {
         id: provider,
@@ -70,7 +88,7 @@ const configuredKeyNames = (
     const configured = env[`PLURNK_PROVIDERS_PROVIDER_${envPrefix(provider)}_API_KEY_ENV`];
     return configured === undefined || configured.length === 0
         ? catalog.env
-        : configured.split(",").map((name) => name.trim()).filter(Boolean);
+        : [singleCredentialName(provider, configured)];
 };
 
 const expandEnv = (value: string, env: NodeJS.ProcessEnv, provider: string): string =>
@@ -89,6 +107,10 @@ const baseUrl = (
     override?: string,
 ): string | undefined => {
     const prefix = envPrefix(provider);
+    // {§provider-fact-authority} — distinct sources, one precedence: the PLURNK
+    // knob, then the provider-native convention (OPENAI_BASE_URL etc.), then
+    // the catalog. This is not an alias fallback: each source is a different
+    // owner, and the catalog remains the last authority.
     const configured = env[`PLURNK_PROVIDERS_PROVIDER_${prefix}_BASE_URL`]
         ?? env[`${prefix}_BASE_URL`]
         ?? catalog.api;
@@ -102,8 +124,12 @@ const requireApiKey = (
     catalog: ProviderInfo,
 ): string => {
     const names = configuredKeyNames(provider, env, catalog);
-    const key = firstSet(env, names);
-    if (key === undefined) throw new Error(`${provider} provider: ${names.join(" or ")} must be set`);
+    // {§provider-fact-authority} — a catalog `env` list mixes credentials with
+    // non-secret coordinates; the credential is the credential-named one.
+    const credentialNames = names.filter(isProviderCredentialName);
+    const candidates = credentialNames.length > 0 ? credentialNames : names;
+    const key = firstSet(env, candidates);
+    if (key === undefined) throw new Error(`${provider} provider: ${candidates.join(" or ")} must be set`);
     return key;
 };
 
