@@ -15,6 +15,7 @@ import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
 import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 import { routeForSpec, specForRoute } from "./model-route.ts";
 import { discoverDaemonModules } from "./module-discovery.ts";
+import EffectPolicy from "../schemes/EffectPolicy.ts";
 // {§notifications-envelope-carries-workspaceid}: "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
@@ -1652,6 +1653,8 @@ export default class Daemon {
         // shell is the default runtime, so its executor must boot usable.
         const executors = await ExecutorRegistry.build({ defaultRuntime: "sh", cwd: this.#discoveryCwd });
         this.#engine.setExecutors(executors);
+        // {§effect-policy-tunable} — invalid operator policy fails boot, not the first EXEC.
+        EffectPolicy.validateConfiguration();
         // {§exec} — mint a scheme per runtime tag so exec output entries address by tag
         // authority (sh:///l/t/s). The "exec" scheme stays for the EXEC op dispatch.
         this.#schemes.registerRuntimeSchemes(executors);
