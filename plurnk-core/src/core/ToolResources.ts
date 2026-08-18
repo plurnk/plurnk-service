@@ -122,7 +122,7 @@ export default class ToolResources {
     static render(source: ToolSource): ToolResource[] {
         if (source.registry === null) {
             return [{
-                pathname: `/tools/${source.runtime}.md`,
+                pathname: `/skills/plurnk/${source.runtime}.md`,
                 content: renderDocument(
                     source.runtime,
                     source.summary,
@@ -137,7 +137,7 @@ export default class ToolResources {
             .toSorted((left, right) => left.target.localeCompare(right.target));
         const familyInvocations = tools.flatMap((tool, index): string[] => {
             const segment = ToolResources.targetSegment(tool.target);
-            const details = `worker://plurnk/tools/${source.runtime}/${segment}.md`;
+            const details = `worker://plurnk/skills/plurnk/${source.runtime}/${segment}.md`;
             const heading = exampleSource(
                 source.runtime,
                 tool.invocation,
@@ -158,7 +158,7 @@ export default class ToolResources {
             source.details,
         );
         const toolResources = tools.map((tool): ToolResource => ({
-            pathname: `/tools/${source.runtime}/${ToolResources.targetSegment(tool.target)}.md`,
+            pathname: `/skills/plurnk/${source.runtime}/${ToolResources.targetSegment(tool.target)}.md`,
             content: renderDocument(
                 `${source.runtime} / ${inlineCode(tool.target)}`,
                 tool.summary,
@@ -167,7 +167,7 @@ export default class ToolResources {
             ),
         }));
         return [
-            { pathname: `/tools/${source.runtime}.md`, content: family },
+            { pathname: `/skills/plurnk/${source.runtime}.md`, content: family },
             ...toolResources,
         ];
     }

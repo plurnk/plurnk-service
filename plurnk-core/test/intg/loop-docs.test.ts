@@ -32,22 +32,22 @@ test("{§schemes-self-doc-materialization} kernel documentation materialization 
         });
 
         engine.documents = [
-            { pathname: "/docs/retired.md", content: "# Retired" },
-            { pathname: "/tools/retired.md", content: "# Retired tool" },
+            { pathname: "/skills/plurnk/retired.md", content: "# Retired" },
+            { pathname: "/skills/plurnk/tool-retired.md", content: "# Retired tool" },
         ];
         await LoopDocs.materialize(engine, db, workspaceId);
-        assert.notEqual(await entry("/docs/retired.md"), undefined);
-        assert.notEqual(await entry("/tools/retired.md"), undefined);
+        assert.notEqual(await entry("/skills/plurnk/retired.md"), undefined);
+        assert.notEqual(await entry("/skills/plurnk/tool-retired.md"), undefined);
 
         engine.documents = [
-            { pathname: "/docs/current.md", content: "# Current" },
-            { pathname: "/tools/current.md", content: "# Current tool" },
+            { pathname: "/skills/plurnk/current.md", content: "# Current" },
+            { pathname: "/skills/plurnk/tool-current.md", content: "# Current tool" },
         ];
         await LoopDocs.materialize(engine, db, workspaceId);
-        assert.equal(await entry("/docs/retired.md"), undefined);
-        assert.equal(await entry("/tools/retired.md"), undefined);
-        assert.notEqual(await entry("/docs/current.md"), undefined);
-        assert.notEqual(await entry("/tools/current.md"), undefined);
+        assert.equal(await entry("/skills/plurnk/retired.md"), undefined);
+        assert.equal(await entry("/skills/plurnk/tool-retired.md"), undefined);
+        assert.notEqual(await entry("/skills/plurnk/current.md"), undefined);
+        assert.notEqual(await entry("/skills/plurnk/tool-current.md"), undefined);
     } finally {
         await db.close();
     }

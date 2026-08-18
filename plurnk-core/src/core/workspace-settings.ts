@@ -1,21 +1,12 @@
 // {§operator-config} — a workspace's client-chosen open context: the per-workspace overrides a client
 // user legitimately sets at workspace.create, read at turn-0 with precedence over env.
-// Two knobs with deliberately different compose semantics:
-//   - filesItems: REPLACE — a single scalar; the client value wins outright over
-//     PLURNK_SERVICE_FILES_ITEMS (0=off / -1=markerless first page / N=file-map first-N).
-//   - mdDocs: UNION — the server env docs (PLURNK_SERVICE_MD_*) and the client's docs ride
-//     together; the systemwide policy doc survives unless the client shadows its alias.
-// Storage is a JSON bag on workspaces.settings (the env mdDocs live in process.env, never
-// the DB, so the union is a TS set-merge regardless — normalizing the column buys nothing).
+// filesItems REPLACES the env value; the other knobs compose per their own tags.
+// Storage is a JSON bag on workspaces.settings.
 
-import { readFile } from "node:fs/promises";
-import Paths from "../Paths.ts";
 import type { Db } from "./Db.ts";
 
-export type ClientMdDoc = { alias: string; content: string };
 export type WorkspaceOpenContext = {
     filesItems: number | null; // {§operator-config-workspace-files-items} — replace env; null = unset
-    mdDocs: ClientMdDoc[];     // {§operator-config-workspace-md-docs} — union with env PLURNK_SERVICE_MD_*
     maxCommands: number | null; // {§operator-config-workspace-max-commands} — min() with env; null = unset
     git: boolean | null;       // {§operator-config-workspace-git} — env AND workspace; null = unset
     client: string | null;     // {§client-metadata} — workspace-stable frontend id; null = unset
@@ -27,39 +18,13 @@ export default class WorkspaceSettings {
     // bag never reaches here — workspace.create validates before persisting.
     static async read(db: Db, workspaceId: number): Promise<WorkspaceOpenContext> {
         const row = await db.workspace_get_settings.get<{ settings: string }>({ workspace_id: workspaceId });
-        const bag = row?.settings !== undefined ? (JSON.parse(row.settings) as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown; execs?: unknown }) : {};
+        const bag = row?.settings !== undefined ? (JSON.parse(row.settings) as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; client?: unknown; execs?: unknown }) : {};
         const filesItems = typeof bag.filesItems === "number" ? bag.filesItems : null;
         const maxCommands = typeof bag.maxCommands === "number" ? bag.maxCommands : null;
         const git = typeof bag.git === "boolean" ? bag.git : null;
         const client = typeof bag.client === "string" ? bag.client : null;
         const execs = (typeof bag.execs === "object" && bag.execs !== null && !Array.isArray(bag.execs)) ? (bag.execs as Record<string, string>) : null;
-        const mdDocs = Array.isArray(bag.mdDocs)
-            ? bag.mdDocs.filter((d): d is ClientMdDoc => typeof (d as ClientMdDoc)?.alias === "string" && typeof (d as ClientMdDoc)?.content === "string")
-            : [];
-        return { filesItems, mdDocs, maxCommands, git, client, execs };
+        return { filesItems, maxCommands, git, client, execs };
     }
 
-    // The turn-0 reference-doc set: server env docs (PLURNK_SERVICE_MD_*, read from disk) UNION the
-    // workspace's client docs (content), keyed by `<alias>.md`. On alias collision the client
-    // wins before I/O — a shadowed operator path is not selected. An unshadowed configured
-    // path is required and fails causally if unreadable ({§operator-config-workspace-md-docs}).
-    // The set is the single source for BOTH materialization and the Engine turn-0 READ foist.
-    static async resolveDocs(clientDocs: ReadonlyArray<ClientMdDoc>): Promise<Array<{ entryName: string; content: string }>> {
-        const clientByEntry = new Map(clientDocs.map(({ alias, content }) => [`${alias}.md`, content]));
-        const byEntry = new Map<string, string>();
-        for (const { entryName, path } of Paths.docs()) {
-            const clientContent = clientByEntry.get(entryName);
-            if (clientContent !== undefined) {
-                byEntry.set(entryName, clientContent);
-                continue;
-            }
-            try {
-                byEntry.set(entryName, await readFile(path, "utf8"));
-            } catch (cause) {
-                throw new Error(`configured operator reference doc '${entryName}' could not be read`, { cause });
-            }
-        }
-        for (const [entryName, content] of clientByEntry) byEntry.set(entryName, content);
-        return [...byEntry].map(([entryName, content]) => ({ entryName, content }));
-    }
 }

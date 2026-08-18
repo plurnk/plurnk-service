@@ -1,10 +1,8 @@
-// PLURNK_SERVICE_MD_<ALIAS> doc injection (self-hosting keystone, {§actor-boundary}). An operator
-// doc declared via env is materialized as a worker://plurnk/<ALIAS>.md entry by the
-// plurnk worker (DispatchAsPlurnk) and foisted as a READ into the model's turn 0.
-// The model sees only the READ; the materializing EDIT lives in the plurnk worker.
-//
-// NOTE: sets a process-global env var, so run this file in isolation (the env
-// is daemon-wide by design — every model worker gets the docs).
+// Project AGENTS.md turn-0 stunt ({§turn0-agents-stunt}). The project's
+// AGENTS.md is materialized as worker://plurnk/agents.md by the plurnk worker
+// (DispatchAsPlurnk) and foisted as a READ into the model's turn 0. The model
+// sees only the READ; the materializing EDIT lives in the plurnk worker.
+// Global policy stays in the system prompt; nothing else is force-read.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -14,120 +12,84 @@ import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-test("PLURNK_SERVICE_MD_<ALIAS>: doc is materialized by the plurnk worker + READ into the model's turn 0", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "plurnk-md-"));
-    const docPath = join(dir, "agents.md");
+test("{§turn0-agents-stunt}: the project AGENTS.md is materialized by the plurnk worker + READ into the model's turn 0", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-agents-"));
     const docBody = "# Project rules\nBe excellent.\n";
-    await writeFile(docPath, docBody, "utf8");
-
-    const prev = process.env.PLURNK_SERVICE_MD_AGENTS;
-    process.env.PLURNK_SERVICE_MD_AGENTS = docPath;
+    await writeFile(join(dir, "AGENTS.md"), docBody, "utf8");
     try {
-        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
+        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("# PLAN0\ncurate:\n\n## SEND0 [200]\ndone", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "workspace.create", { name: "md-doc" });
+                await rpcCall(ws, 1, "workspace.create", { name: "agents-doc", projectRoot: dir });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
 
-                // The model's turn-0 log carries a READ of worker://plurnk/AGENTS.md.
                 const rows = await db.test_log_entries_by_loop.all<{
                     op: string; pathname: string; scheme: string; status_rx: number;
                 }>({ loop_id: loopId });
-                const docRead = rows.find((r) => r.op === "READ" && r.scheme === "worker" && r.pathname === "/AGENTS.md");
-                assert.ok(docRead !== undefined, "model turn-0 should carry a READ of worker://plurnk/AGENTS.md");
-                assert.equal(docRead!.status_rx, 200, "the doc entry was materialized by the plurnk worker — the READ hits it, not a 404");
+                const docRead = rows.find((r) => r.op === "READ" && r.scheme === "worker" && r.pathname === "/agents.md");
+                assert.ok(docRead !== undefined, "model turn-0 carries a READ of worker://plurnk/agents.md");
+                assert.equal(docRead!.status_rx, 200, "the stunt READ hits the materialized entry, not a 404");
 
-                // The materializing EDIT must NOT be in the model loop's log.
-                const editInModel = rows.find((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/AGENTS.md");
+                const editInModel = rows.find((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/agents.md");
                 assert.equal(editInModel, undefined, "the materializing EDIT lives in the plurnk worker, not the model's log");
 
-                // The materialized entry body equals the host file content.
                 const body = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-                    pathname: "/AGENTS.md", scheme: "worker", name: "body",
+                    pathname: "/agents.md", scheme: "worker", name: "body",
                 });
-                assert.equal(body?.content, docBody, "the kernel doc body mirrors the host file");
+                assert.equal(body?.content, docBody, "the kernel entry mirrors the project file");
             } finally { ws.close(); }
         });
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_SERVICE_MD_AGENTS; else process.env.PLURNK_SERVICE_MD_AGENTS = prev;
         await rm(dir, { recursive: true, force: true });
     }
 });
 
-// {§actor-boundary-doc-injection}: operator docs are not gated by the catalog-preview switch.
-// With PLURNK_SERVICE_FILES_ITEMS=0 (preview off) the operator doc is STILL foisted into
-// turn 0 — it overrides/bypasses the cap rather than riding it.
-test("PLURNK_MD docs foist at turn 0 even when PLURNK_SERVICE_FILES_ITEMS=0 — the preview off-switch never gates operator docs", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "plurnk-md-0-"));
-    const docPath = join(dir, "policy.md");
-    await writeFile(docPath, "# Policy\nObey.\n", "utf8");
-    const prevMd = process.env.PLURNK_SERVICE_MD_POLICY;
-    const prevItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
-    process.env.PLURNK_SERVICE_MD_POLICY = docPath;
-    process.env.PLURNK_SERVICE_FILES_ITEMS = "0"; // catalog preview OFF
+test("{§turn0-agents-stunt}: the stunt is never gated by the catalog-preview switch", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-agents-"));
+    await writeFile(join(dir, "AGENTS.md"), "# Repo\nTerse.\n", "utf8");
+    const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
+    process.env.PLURNK_SERVICE_FILES_ITEMS = "0";
     try {
-        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
+        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("# PLAN0\ncurate:\n\n## SEND0 [200]\ndone", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "workspace.create", { name: "md-zero" });
+                await rpcCall(ws, 1, "workspace.create", { name: "agents-preview-off", projectRoot: dir });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
-                const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; scheme: string; status_rx: number }>({ loop_id: loopId });
-                const docRead = rows.find((r) => r.op === "READ" && r.scheme === "worker" && r.pathname === "/POLICY.md");
-                assert.ok(docRead !== undefined && docRead.status_rx === 200, "PLURNK_MD doc is materialized + READ at turn 0 even with the preview off");
-                assert.equal(rows.find((r) => r.op === "FIND"), undefined, "the catalog preview stays off at =0 — the doc foist is independent of it, not capped by it");
+                const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; scheme: string }>({ loop_id: loopId });
+                assert.ok(
+                    rows.some((r) => r.op === "READ" && r.scheme === "worker" && r.pathname === "/agents.md"),
+                    "the AGENTS stunt fires even when the catalog preview is off",
+                );
             } finally { ws.close(); }
         });
     } finally {
-        if (prevMd === undefined) delete process.env.PLURNK_SERVICE_MD_POLICY; else process.env.PLURNK_SERVICE_MD_POLICY = prevMd;
-        if (prevItems === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prevItems;
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
         await rm(dir, { recursive: true, force: true });
     }
 });
 
-// {§operator-config-workspace-md-docs} — client settings.mdDocs union with server PLURNK_SERVICE_MD_*
-// docs: the operator's policy doc rides into every workspace, the client adds its own on
-// top, and on an alias collision the client deliberately shadows the server's.
-test("workspace.create settings.mdDocs UNIONs with env PLURNK_SERVICE_MD_* — env rides, client adds, client wins a collision", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "plurnk-md-union-"));
-    const policyPath = join(dir, "policy.md");
-    const guidePath = join(dir, "guide.md");
-    await writeFile(guidePath, "# Server guide\nRefer.\n", "utf8");
-    const prevPolicy = process.env.PLURNK_SERVICE_MD_POLICY;
-    const prevGuide = process.env.PLURNK_SERVICE_MD_GUIDE;
-    process.env.PLURNK_SERVICE_MD_POLICY = policyPath; // deliberately absent — the client shadows it before I/O
-    process.env.PLURNK_SERVICE_MD_GUIDE = guidePath;   // operator doc the client leaves alone — must survive
+test("{§turn0-agents-stunt}: no AGENTS.md means no stunt — nothing 404s and nothing is fabricated", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-agents-"));
     try {
-        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
+        const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("# PLAN0\ncurate:\n\n## SEND0 [200]\ndone", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "workspace.create", { name: "md-union", settings: { mdDocs: [
-                    { alias: "REPO", content: "# Repo guide\nlocal.\n" },
-                    { alias: "POLICY", content: "# Client policy\noverride.\n" },
-                ] } });
+                await rpcCall(ws, 1, "workspace.create", { name: "agents-absent", projectRoot: dir });
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
-                const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; scheme: string; status_rx: number }>({ loop_id: loopId });
-                const read = (p: string) => rows.filter((r) => r.op === "READ" && r.scheme === "worker" && r.pathname === p);
-                const bodyOf = (p: string) => db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: p, scheme: "worker", name: "body" });
-
-                // the env doc the client didn't touch rides along (UNION, not replace)
-                assert.equal(read("/GUIDE.md")[0]?.status_rx, 200, "the uncollided server doc survives the union");
-                assert.match((await bodyOf("/GUIDE.md"))?.content ?? "", /Server guide/, "GUIDE keeps the server content");
-                // the client's new doc is added
-                assert.equal(read("/REPO.md")[0]?.status_rx, 200, "the client's REPO doc is materialized + READ at turn 0");
-                // collision → client wins, exactly once
-                assert.equal(read("/POLICY.md").length, 1, "POLICY.md foisted once — no duplicate on collision");
-                assert.match((await bodyOf("/POLICY.md"))?.content ?? "", /Client policy/, "on alias collision the client content wins, shadowing the server policy doc");
+                const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; scheme: string }>({ loop_id: loopId });
+                assert.ok(
+                    !rows.some((r) => r.scheme === "worker" && r.pathname === "/agents.md"),
+                    "no stunt row without a project AGENTS.md",
+                );
             } finally { ws.close(); }
         });
     } finally {
-        if (prevPolicy === undefined) delete process.env.PLURNK_SERVICE_MD_POLICY; else process.env.PLURNK_SERVICE_MD_POLICY = prevPolicy;
-        if (prevGuide === undefined) delete process.env.PLURNK_SERVICE_MD_GUIDE; else process.env.PLURNK_SERVICE_MD_GUIDE = prevGuide;
         await rm(dir, { recursive: true, force: true });
     }
 });

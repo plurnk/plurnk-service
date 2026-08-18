@@ -52,12 +52,12 @@ test("{§operator-config-workspace-execs} one effective set filters executable-t
         const workspaceId = await insertWorkspace(db, `sp-render-${crypto.randomUUID()}`);
         // Baseline: node's doc is present with no workspace policy.
         const before = await engine.referenceEntries(workspaceId);
-        assert.ok(before.some((d) => d.pathname === "/tools/node.md"), "baseline: node's tool resource renders");
+        assert.ok(before.some((d) => d.pathname === "/skills/plurnk/node.md"), "baseline: node's tool resource renders");
         // Disable node for the workspace → its doc drops.
         await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ execs: { PLURNK_EXECS_NODE: "0" } }) });
         const after = await engine.referenceEntries(workspaceId);
-        assert.ok(!after.some((d) => d.pathname === "/tools/node.md"), "node disabled by workspace policy → no resource materialized");
-        assert.ok(after.some((d) => d.pathname === "/tools/sh.md"), "other tool resources survive the filter");
+        assert.ok(!after.some((d) => d.pathname === "/skills/plurnk/node.md"), "node disabled by workspace policy → no resource materialized");
+        assert.ok(after.some((d) => d.pathname === "/skills/plurnk/sh.md"), "other tool resources survive the filter");
 
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "policy teaching");

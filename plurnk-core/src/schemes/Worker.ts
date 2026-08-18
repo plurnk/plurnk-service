@@ -424,7 +424,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         // rendering, so counts, weights, and the catalog text all agree.
         const questionVisible = authority !== "plurnk"
             ? undefined
-            : async (pathname: string): Promise<boolean> => pathname !== "/tools/question.md"
+            : async (pathname: string): Promise<boolean> => pathname !== "/skills/plurnk/question.md"
                 || await WorkerSettingsReader.requestUserInputEnabled(core.db, core.workerId);
         const found = await EntryFind.findWorkspaceEntries(Worker.#stripAuthority(statement), core, Worker.manifest, {
             ownerId: resolved.ownerId,
@@ -448,7 +448,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         const core = this.coreContext(ctx);
         // {§worker-tool-admission} — the question doc does not exist for a
         // non-interactive worker; a guessed path finds nothing.
-        if (pathname === "/tools/question.md"
+        if (pathname === "/skills/plurnk/question.md"
             && !(await WorkerSettingsReader.requestUserInputEnabled(core.db, core.workerId))) {
             return Results.failure(
                 "scheme:worker",

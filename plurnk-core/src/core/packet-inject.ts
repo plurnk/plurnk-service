@@ -31,10 +31,5 @@ export const readSystemPolicy = async (): Promise<string | null> => {
     return readPolicy(env ? resolveInjectPath(env) : join(homedir(), ".plurnk", "AGENTS.md"), !!env);
 };
 
-// Project Policy: PLURNK_SERVICE_PROJECT (relative to projectRoot, ~-expanded) or <projectRoot>/AGENTS.md.
-export const readProjectPolicy = async (projectRoot: string | null): Promise<string | null> => {
-    const env = process.env.PLURNK_SERVICE_PROJECT?.trim();
-    if (!env && projectRoot === null) return null; // headless, no workspace + no override
-    const base = projectRoot ?? process.cwd();
-    return readPolicy(env ? resolve(base, resolveInjectPath(env)) : join(base, "AGENTS.md"), !!env);
-};
+// Project policy is retired from the system slot: the project AGENTS.md now
+// rides turn 0 as the foisted agents.md entry ({§turn0-agents-stunt}).

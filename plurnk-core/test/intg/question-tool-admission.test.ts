@@ -13,11 +13,11 @@ import LoopDocs from "../../src/server/loopDocs.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const findStatement = (): FindStatement => ({
-    op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+tools"],
+    op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+skills"],
     target: {
-        kind: "url", raw: "worker://plurnk/tools/*.md", scheme: "worker",
+        kind: "url", raw: "worker://plurnk/skills/plurnk/*.md", scheme: "worker",
         username: null, password: null, hostname: "plurnk", port: null,
-        pathname: "/tools/*.md", query: null, fragment: null,
+        pathname: "/skills/plurnk/*.md", query: null, fragment: null,
     },
     body: { dialect: "xpath", raw: '//heading[text()="Example"]' },
     lineMarker: { marks: [1, -1] }, position: { line: 1, column: 1 },

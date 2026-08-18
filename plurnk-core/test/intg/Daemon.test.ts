@@ -405,16 +405,16 @@ test("Daemon: workspace capability providers hydrate, isolate, detach, and recon
     }
 });
 
-test("Daemon boot reconciles documentation for existing workspaces once", async () => {
+test("Daemon boot reconciles the generated skills surface for existing workspaces once", async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `boot-docs-${crypto.randomUUID()}`);
     const daemon = new Daemon({ db, provider: null });
     try {
         await daemon.start();
-        const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "worker", prefix: "/docs/%" });
-        assert.ok(docs.length > 0, "boot publishes the current installed documentation surface into an existing workspace");
+        const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "worker", prefix: "/skills/plurnk/%" });
+        assert.ok(docs.length > 0, "boot publishes the current installed skills surface into an existing workspace");
         assert.equal(
-            docs.some(({ pathname }) => pathname === "/docs/log.md" || pathname === "/docs/prompt.md"),
+            docs.some(({ pathname }) => pathname === "/skills/plurnk/log.md" || pathname === "/skills/plurnk/prompt.md"),
             false,
             "self-evident log and prompt schemes do not materialize redundant pull documentation",
         );
@@ -775,8 +775,8 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             const events: Array<{ method: string; params: unknown }> = [];
             daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });
 
-            const docsAtCreation = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: created.id, scheme: "worker", prefix: "/docs/%" });
-            assert.ok(docsAtCreation.length > 0, "workspace creation publishes worker://plurnk/docs/*.md before any model worker or loop exists");
+            const docsAtCreation = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: created.id, scheme: "worker", prefix: "/skills/plurnk/%" });
+            assert.ok(docsAtCreation.length > 0, "workspace creation publishes worker://plurnk/skills/plurnk/*.md before any model worker or loop exists");
             const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: created.id, name: "plurnk" });
             assert.ok(plurnkWorker !== undefined);
             const docEdits = await db.test_log_entries_by_worker_op_full.all<{ tx: string }>({ worker_id: plurnkWorker!.id, op: "EDIT" });
@@ -813,9 +813,9 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             assert.equal((terminals[0].params as { result: { status: number } }).result.status, 200, "the loop runLoop started ran to conclusion (200) — driven and observed through the seam, no socket");
 
             // The marquee first-turn feature holds on the seam path: workspace creation materialized
-            // the teaching docs before the model loop, so FIND(worker://plurnk/docs/**) finds them.
-            const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: created.id, scheme: "worker", prefix: "/docs/%" });
-            assert.deepEqual(docs, docsAtCreation, "model startup consumes the existing documentation surface without republishing it");
+            // the teaching skills before the model loop, so FIND(worker://plurnk/skills/**) finds them.
+            const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: created.id, scheme: "worker", prefix: "/skills/plurnk/%" });
+            assert.deepEqual(docs, docsAtCreation, "model startup consumes the existing skills surface without republishing it");
 
             const second = await daemon.runLoop({ workspaceId: created.id, workerId: modelWorkerId, prompt: "go again" });
             const secondTerminals = await waitFor(
@@ -826,8 +826,8 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             assert.equal((secondTerminals[0].params as { result: { status: number } }).result.status, 200, "reattaching to the workspace runs normally");
 
             const afterTwoLoops = await publicationRows();
-            assert.equal(afterTwoLoops.length, publishedCount, "model loops never repeat workspace documentation publication");
-            assert.equal(afterTwoLoops.filter((row) => row.op === "EDIT" && row.status_rx >= 400).length, 0, "workspace documentation publication produces no error rows");
+            assert.equal(afterTwoLoops.length, publishedCount, "model loops never repeat workspace skills publication");
+            assert.equal(afterTwoLoops.filter((row) => row.op === "EDIT" && row.status_rx >= 400).length, 0, "workspace skills publication produces no error rows");
         } finally { ws.close(); }
     });
 });

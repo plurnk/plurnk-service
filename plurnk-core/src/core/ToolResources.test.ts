@@ -14,7 +14,7 @@ test("{§tools-resource-discovery} renders a general runtime as one self-describ
         registry: null,
     });
 
-    assert.deepEqual(resources.map(({ pathname }) => pathname), ["/tools/example.md"]);
+    assert.deepEqual(resources.map(({ pathname }) => pathname), ["/skills/plurnk/example.md"]);
     const content = resources[0]?.content ?? "";
     assert.match(content, /^# example$/m);
     assert.match(content, /^## Summary\n\nCompute a thing\.$/m);
@@ -60,18 +60,18 @@ test("{§tools-resource-discovery} renders an exact registry as one family and o
     });
 
     assert.deepEqual(resources.map(({ pathname }) => pathname), [
-        "/tools/gitea.md",
-        "/tools/gitea/index.md",
-        "/tools/gitea/issue%2Fread.md",
+        "/skills/plurnk/gitea.md",
+        "/skills/plurnk/gitea/index.md",
+        "/skills/plurnk/gitea/issue%2Fread.md",
     ]);
     const family = resources[0]?.content ?? "";
     assert.match(
         family,
-        /^## EXEC0 \[gitea\] \(index\) <!-- List repository issues\. \(details: worker:\/\/plurnk\/tools\/gitea\/index\.md\) -->\n\{"owner"\?: string\}$/m,
+        /^## EXEC0 \[gitea\] \(index\) <!-- List repository issues\. \(details: worker:\/\/plurnk\/skills\/plurnk\/gitea\/index\.md\) -->\n\{"owner"\?: string\}$/m,
     );
     assert.match(
         family,
-        /^## EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. \(details: worker:\/\/plurnk\/tools\/gitea\/issue%2Fread\.md\) -->\n\{"owner": string, "repo": string, "index": integer\}$/m,
+        /^## EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. \(details: worker:\/\/plurnk\/skills\/plurnk\/gitea\/issue%2Fread\.md\) -->\n\{"owner": string, "repo": string, "index": integer\}$/m,
     );
     assert.doesNotMatch(family, /## FIND0/);
     assert.doesNotMatch(resources[0]?.content ?? "", /tool_name/, "the family document cannot advertise a rejected generic target");

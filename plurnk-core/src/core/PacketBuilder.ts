@@ -8,7 +8,7 @@ import { contentWeight } from "./content-weight.ts";
 import { Policy } from "@plurnk/plurnk-execs";
 import WorkspaceSettings from "./workspace-settings.ts";
 import LoopFlagsReader from "./LoopFlagsReader.ts";
-import { readPacketInject, readSystemPolicy, readProjectPolicy } from "./packet-inject.ts";
+import { readPacketInject, readSystemPolicy } from "./packet-inject.ts";
 import { readFile } from "node:fs/promises";
 import Paths from "../Paths.ts";
 import { readTeachingSource } from "./teaching-corpus.ts";
@@ -256,9 +256,9 @@ export default class PacketBuilder {
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
         const inject = await readPacketInject(); // {§packet-inject} — per-turn; a broken configured path fails hard
-        const workspaceRoot = (await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId }))?.project_root ?? null;
-        const systemPolicy = await readSystemPolicy();              // ~/.plurnk/AGENTS.md (or PLURNK_SERVICE_POLICY)
-        const projectPolicy = await readProjectPolicy(workspaceRoot); // <projectRoot>/AGENTS.md (or PLURNK_SERVICE_PROJECT)
+        const systemPolicy = await readSystemPolicy(); // ~/.plurnk/AGENTS.md (or PLURNK_SERVICE_POLICY)
+        // {§turn0-agents-stunt} — the PROJECT AGENTS.md rides turn 0 as a foisted
+        // READ (LoopDocs → worker://plurnk/agents.md), not the system prompt.
         // {§packet-git-status}/{§worker-branch-batch-return} — only the direct,
         // currently running branch-batch child receives the transaction's
         // commit-and-clean return condition. Ordinary Git state remains purely
@@ -277,7 +277,7 @@ export default class PacketBuilder {
             // Stable privileged policy leads capability teaching for
             // prefix-cache locality. Empty policy sections simply disappear.
             { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
-            { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "" },
+
             { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach(workspaceId) },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
@@ -341,7 +341,7 @@ export default class PacketBuilder {
     // one reserved reference set, materialized by LoopDocs.
     async referenceEntries(workspaceId: number): Promise<Array<{ pathname: string; content: string }>> {
         const out = (await this.#schemes.docs(workspaceId)).map(({ name, content }) => ({
-            pathname: `/docs/${name}.md`,
+            pathname: `/skills/plurnk/${name}.md`,
             content,
         }));
         const executors = this.#executors();

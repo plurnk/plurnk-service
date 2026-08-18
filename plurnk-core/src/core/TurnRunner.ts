@@ -706,30 +706,34 @@ export default class TurnRunner {
         const turnZeroMoves: string[] = [];
         if (seq === 1) {
             if (workerFirstLoop) nextActionIndex = 2;  // reserve sequence 1 for initialization
-            // Operator doc READs (PLURNK_SERVICE_MD_<ALIAS>, {§actor-boundary-doc-injection}). The docs were materialized
-            // as worker://plurnk/<entry> entries by the plurnk worker (LoopDocs, via the
-            // {§actor-boundary} keystone); foist a READ of each into THIS turn-0 so the model
-            // reads them inline. It sees only the READ — the materializing EDIT
-            // lives in the plurnk worker's log, never the model's.
-            // {§operator-config-workspace-md-docs} — env docs union the workspace's client docs; foist a READ of
-            // each materialized worker://plurnk/<alias>.md (LoopDocs materialized the same set).
-            const { mdDocs } = await WorkspaceSettings.read(this.#db, workspaceId);
-            // {§actor-boundary-doc-injection} — operator docs appear on the worker's first loop.
-            for (const doc of workerFirstLoop ? await WorkspaceSettings.resolveDocs(mdDocs) : []) {
-                const docTarget: UrlPath = {
-                    kind: "url", raw: `worker://plurnk/${doc.entryName}`, scheme: "worker",
-                    username: null, password: null, hostname: "plurnk", port: null,
-                    pathname: `/${doc.entryName}`, query: null, fragment: null,
-                };
-                const docRead: ReadStatement = {
-                    op: "READ", delimiter: "", annotation: null, signal: null, target: docTarget,
-                    lineMarker: null, body: null, position: UNKNOWN_POSITION,
-                };
-                await this.#dispatch({
-                    statement: docRead, workspaceId, workerId, loopId, turnId,
-                    sequence: nextActionIndex, origin: "plurnk", onDispatch,
+            // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
+            // worker://plurnk/agents.md) gets one foisted READ on the worker's first
+            // loop, so local repo guidance is visible turn-0 content. Global policy
+            // stays in the system prompt; nothing else is force-read.
+            if (workerFirstLoop) {
+                const kernelId = await Owner.kernelId(this.#db, workspaceId);
+                const agentsEntry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
+                    workspace_id: workspaceId,
+                    owner_id: kernelId,
+                    scheme: "worker",
+                    pathname: "/agents.md",
                 });
-                nextActionIndex++;
+                if (agentsEntry !== undefined) {
+                    const agentsTarget: UrlPath = {
+                        kind: "url", raw: "worker://plurnk/agents.md", scheme: "worker",
+                        username: null, password: null, hostname: "plurnk", port: null,
+                        pathname: "/agents.md", query: null, fragment: null,
+                    };
+                    const agentsRead: ReadStatement = {
+                        op: "READ", delimiter: "", annotation: null, signal: ["+init", "+policy"], target: agentsTarget,
+                        lineMarker: null, body: null, position: UNKNOWN_POSITION,
+                    };
+                    await this.#dispatch({
+                        statement: agentsRead, workspaceId, workerId, loopId, turnId,
+                        sequence: nextActionIndex, origin: "plurnk", onDispatch,
+                    });
+                    nextActionIndex++;
+                }
             }
             const promptRow = loopRow; // {§prompt-entry} — per-loop; fires every loop's turn 1
             if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
@@ -821,9 +825,9 @@ export default class TurnRunner {
         await this.#warmWorkspace(systemCtx, true, false);
 
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
-        // One READ exemplar followed by six FIND surveys foisted into the worker's first model turn establish
-        // the executable-tool, skills, documentation, project, commons, and private surfaces in that order. Their
-        // `init` classification lets the model curate this opening survey as one log set.
+        // One worked-skills READ exemplar followed by five FIND surveys foisted into the worker's first model turn
+        // establish the skills tree (authored and Plurnk-generated families), project, commons, and private
+        // surfaces in that order. Their `init` classification lets the model curate this opening survey as one log set.
         if (seq === 1) {
             // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
             const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
@@ -837,40 +841,32 @@ export default class TurnRunner {
                     workspace_id: workspaceId,
                     owner_id: kernelId,
                     scheme: "worker",
-                    pathname: "/tools/sh.md",
+                    pathname: "/skills/plurnk/sh.md",
                 });
                 const surveys: Array<{ statement: FindStatement | ReadStatement; exemplar: string }> = [
                     ...(shellSample === undefined ? [] : [{
                         statement: {
-                            op: "READ" as const, delimiter: "", annotation: null, signal: ["+init", "+tools"],
-                            target: { kind: "url" as const, raw: "worker://plurnk/tools/sh.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/tools/sh.md", query: null, fragment: null },
+                            op: "READ" as const, delimiter: "", annotation: null, signal: ["+init", "+skills"],
+                            target: { kind: "url" as const, raw: "worker://plurnk/skills/plurnk/sh.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/skills/plurnk/sh.md", query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, 17] as [number, number] }, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## READ0 [+init,+tools] (worker://plurnk/tools/sh.md) <1,17>",
+                        exemplar: "## READ0 [+init,+skills] (worker://plurnk/skills/plurnk/sh.md) <1,17>",
                     }]),
-                    {
-                        statement: {
-                            op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+tools"],
-                            target: { kind: "url", raw: "worker://plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/tools/*.md", query: null, fragment: null },
-                            body: { dialect: "xpath", raw: "//heading[text()=\"Example\"]" }, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-                        },
-                        exemplar: "## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>\n//heading[text()=\"Example\"]",
-                    },
                     {
                         statement: {
                             op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+skills"],
                             target: { kind: "url", raw: "worker://plurnk/skills/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/skills/*.md", query: null, fragment: null },
-                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                            body: { dialect: "xpath", raw: "//heading[text()=\"Example\"]" }, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+init,+skills] (worker://plurnk/skills/*.md) <1,-1>",
+                        exemplar: "## FIND0 [+init,+skills] (worker://plurnk/skills/*.md) <1,-1>\n//heading[text()=\"Example\"]",
                     },
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+docs"],
-                            target: { kind: "url", raw: "worker://plurnk/docs/**", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/docs/**", query: null, fragment: null },
-                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                            op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+skills"],
+                            target: { kind: "url", raw: "worker://plurnk/skills/plurnk/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/skills/plurnk/*.md", query: null, fragment: null },
+                            body: { dialect: "xpath", raw: "//heading[text()=\"Example\"]" }, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>",
+                        exemplar: "## FIND0 [+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>\n//heading[text()=\"Example\"]",
                     },
                     {
                         statement: {

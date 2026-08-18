@@ -216,10 +216,10 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.match(log, /"path":"log:\/\/\/[^"]+\/FIND"/, "the catalog foist appears as a FIND op in the log address");
         assert.match(
             log,
-            /\d+:## FIND0 \[\+init,\+tools\] \(worker:\/\/plurnk\/tools\/\*\.md\) <1,-1>\n ?\d+:\/\/heading\[text\(\)="Example"\]\n ?\d+:## FIND0 \[\+init,\+skills\] \(worker:\/\/plurnk\/skills\/\*\.md\) <1,-1>\n ?\d+:## FIND0 \[\+init,\+docs\] \(worker:\/\/plurnk\/docs\/\*\*\) <1,-1>\n ?\d+:## FIND0 \[\+init\] \(\*\)/,
-            "without an enabled sh document, turn-0 omits the sample, crams its bodyless surveys, and keeps reference discovery before workspace discovery",
+            /\d+:## FIND0 \[\+init,\+skills\] \(worker:\/\/plurnk\/skills\/\*\.md\) <1,-1>\n ?\d+:\/\/heading\[text\(\)="Example"\]\n ?\d+:## FIND0 \[\+init,\+skills\] \(worker:\/\/plurnk\/skills\/plurnk\/\*\.md\) <1,-1>\n ?\d+:\/\/heading\[text\(\)="Example"\]\n ?\d+:## FIND0 \[\+init\] \(\*\)/,
+            "without an enabled sh skill, turn-0 omits the sample, crams its bodyless surveys, and keeps reference discovery before workspace discovery",
         );
-        assert.doesNotMatch(log, /worker:\/\/plurnk\/tools\/sh\.md/, "an unavailable sh document is never fabricated as an orientation sample");
+        assert.doesNotMatch(log, /worker:\/\/plurnk\/skills\/plurnk\/sh\.md/, "an unavailable sh skill is never fabricated as an orientation sample");
 
     } finally {
         await db.close();
@@ -353,7 +353,7 @@ test("the default wire preserves canonical order and projects the Recap override
         // {§packet-cache-monotone}: trusted control-plane sections precede the user slot;
         // append-mostly log precedes per-turn status, active prompt pointers, and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
-        assert.deepEqual(slot("system"), ["definition", "system-policy", "project-policy", "schemes"], "stable privileged policy leads the resource directory");
+        assert.deepEqual(slot("system"), ["definition", "system-policy", "schemes"], "stable privileged policy leads the resource directory");
         assert.deepEqual(slot("user"), ["log", "child-streams", "child-workers", "errors", "notices", "git", "budget", "prompt", "requirements"], "user slot: log -> status clump -> active prompt paths -> Recap");
         assert.equal(packet.sections.find((section) => section.name === "prompt")?.header, "Active User Prompts");
         assert.equal(packet.sections.at(-1)?.header, "Recap");
@@ -383,7 +383,7 @@ test("the default Recap projects the meta-owned teaching source", async () => {
     } finally { await db.close(); }
 });
 
-test("assembled packet: the docs foist — FIND(worker://plurnk/docs/**) surfaces materialized docs into the log", async () => {
+test("assembled packet: the skills foist — FIND(worker://plurnk/skills/**) surfaces materialized skills into the log", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     const db = await openMigrated();
@@ -394,7 +394,7 @@ test("assembled packet: the docs foist — FIND(worker://plurnk/docs/**) surface
         // A materialized scheme doc (what loop_run writes in production — the demo's runLoop doesn't) —
         // kernel-owned at worker://plurnk/docs/… ({§entry-owner}).
         const Owner = (await import("../../src/core/Owner.ts")).default;
-        await seedEntryWithChannel(db, { workspaceId, ownerId: await Owner.kernelId(db, workspaceId), scheme: "worker", pathname: "/docs/worker.md", channel: "body", content: "# worker\nYour shared blackboard.", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, ownerId: await Owner.kernelId(db, workspaceId), scheme: "worker", pathname: "/skills/plurnk/worker.md", channel: "body", content: "# worker\nYour shared blackboard.\n\n## Example\n\n## EDIT0 (worker:///notes.md)\nNotes.", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
@@ -402,15 +402,15 @@ test("assembled packet: the docs foist — FIND(worker://plurnk/docs/**) surface
 
         // The kernel surface is scoped to its docs subtree, and the FIND renders its result —
         // the materialized doc reaches the model via FIND, not an inline link ({§schemes-directory}).
-        assert.match(log, /"target":"worker:\/\/plurnk\/docs\/\*\*"/, "the foist scopes the kernel surface to the docs subtree");
-        assert.match(log, /worker:\/\/plurnk\/docs\/worker\.md/, "the materialized doc surfaces in the foist's rendered result");
+        assert.match(log, /"target":"worker:\/\/plurnk\/skills\/plurnk\/\*\.md"/, "the foist scopes the kernel surface to the skills tree");
+        assert.match(log, /worker:\/\/plurnk\/skills\/plurnk\/worker\.md/, "the materialized skill surfaces in the foist's rendered result");
     } finally {
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
     }
 });
 
-test("assembled packet: the kernel docs FIND executes successfully when no docs are materialized", async () => {
+test("assembled packet: the kernel skills FIND executes successfully when no skills are materialized", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "2";
     const db = await openMigrated();
@@ -423,30 +423,26 @@ test("assembled packet: the kernel docs FIND executes successfully when no docs 
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
 
         const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string | null; hostname: string | null; pathname: string; status_rx: number; rx: string }>({ loop_id: loopId });
-        const docs = rows.find((row) => row.op === "FIND" && row.scheme === "worker" && row.hostname === "plurnk" && row.pathname === "/docs/**");
-        assert.ok(docs !== undefined, "the kernel docs FIND executes without relying on materialized docs");
-        assert.equal(docs.status_rx, 200, "an empty kernel docs survey succeeds");
+        const docs = rows.find((row) => row.op === "FIND" && row.scheme === "worker" && row.hostname === "plurnk" && row.pathname === "/skills/plurnk/*.md");
+        assert.ok(docs !== undefined, "the kernel skills FIND executes without relying on materialized skills");
+        assert.equal(docs.status_rx, 204, "an empty matcher survey reports zero matches");
         const result = JSON.parse(docs.rx) as { content?: string; results?: unknown[] };
         const items = result.results ?? (result.content !== undefined ? JSON.parse(result.content) as unknown[] : []);
-        assert.deepEqual(items, [], "the empty kernel docs survey preserves its zero-result response");
+        assert.deepEqual(items, [], "the empty kernel skills survey preserves its zero-result response");
     } finally {
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
     }
 });
 
-test("assembled packet: PLURNK_SERVICE_POLICY + PLURNK_SERVICE_PROJECT render as privileged system-slot policy sections", async () => {
+test("assembled packet: PLURNK_SERVICE_POLICY renders the single privileged system-slot policy section", async () => {
     const priorPolicy = process.env.PLURNK_SERVICE_POLICY;
-    const priorProject = process.env.PLURNK_SERVICE_PROJECT;
     const dir = await mkdtemp(join(tmpdir(), "plurnk-policy-"));
     const db = await openMigrated();
     try {
         const sysPath = join(dir, "system-AGENTS.md");
-        const projPath = join(dir, "project-AGENTS.md");
         await writeFile(sysPath, "# House rules\nNEVER guess a file path.");
-        await writeFile(projPath, "# Project rules\nThe budget is law.");
         process.env.PLURNK_SERVICE_POLICY = sysPath;
-        process.env.PLURNK_SERVICE_PROJECT = projPath;
 
         const workspaceId = await insertWorkspace(db, `pkt-policy-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
@@ -456,17 +452,16 @@ test("assembled packet: PLURNK_SERVICE_POLICY + PLURNK_SERVICE_PROJECT render as
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
-        // Policy is the client's foot in the privileged zone — both sections ride the SYSTEM slot
-        // (not user, not a curatable READable entry), carrying the operator's authoritative rules.
+        // Policy is the client's foot in the privileged zone — the system slot
+        // carries the operator's authoritative rules. Project guidance now
+        // rides turn 0 as the foisted agents.md entry ({§turn0-agents-stunt}).
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.ok(slot("system").includes("system-policy"), "PLURNK_SERVICE_POLICY rides the system slot — privileged, not a READable entry");
-        assert.ok(slot("system").includes("project-policy"), "PLURNK_SERVICE_PROJECT rides the system slot");
+        assert.ok(!slot("system").includes("project-policy"), "the retired project-policy section never renders");
         assert.match(packetSection(packet, "system-policy"), /NEVER guess a file path/, "the system policy content reaches the model");
-        assert.match(packetSection(packet, "project-policy"), /budget is law/, "the project policy content reaches the model");
     } finally {
         await db.close();
         if (priorPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = priorPolicy;
-        if (priorProject === undefined) delete process.env.PLURNK_SERVICE_PROJECT; else process.env.PLURNK_SERVICE_PROJECT = priorProject;
         await rm(dir, { recursive: true, force: true });
     }
 });

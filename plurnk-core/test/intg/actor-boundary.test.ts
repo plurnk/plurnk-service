@@ -132,20 +132,18 @@ test("an idle worker wakes on an inject (voice), never on a delta (a sibling's s
 });
 
 test("runtime-owned entry work uses the durable plurnk worker and an ephemeral loop", async () => {
-    // PLURNK_SERVICE_MD_<ALIAS> is operation-shaped runtime work, so it uses
-    // DispatchAsPlurnk. The EDIT belongs to the reserved worker's fresh loop;
-    // the model reaches only the resulting shared entry through its own READ.
+    // The AGENTS stunt ({§turn0-agents-stunt}) is operation-shaped runtime work,
+    // so it uses DispatchAsPlurnk. The EDIT belongs to the reserved worker's
+    // fresh loop; the model reaches only the resulting shared entry through
+    // its own READ.
     const dir = await mkdtemp(join(tmpdir(), "plurnk-selfhost-"));
-    const docPath = join(dir, "selfhost.md");
-    await writeFile(docPath, "# Self-hosting\nThe runtime is an actor.\n", "utf8");
-    const prev = process.env.PLURNK_SERVICE_MD_SELFHOST;
-    process.env.PLURNK_SERVICE_MD_SELFHOST = docPath;
+    await writeFile(join(dir, "AGENTS.md"), "# Self-hosting\nThe runtime is an actor.\n", "utf8");
     try {
         const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                const workspaceId = ((await rpcCall(ws, 1, "workspace.create", { name: "selfhost" })).result as { id: number }).id;
+                const workspaceId = ((await rpcCall(ws, 1, "workspace.create", { name: "selfhost", projectRoot: dir })).result as { id: number }).id;
                 const { loopId } = (await runLoopToTerminal(ws, 2, { prompt: "go" })) as { loopId: number };
                 const modelWorkerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
 
@@ -158,22 +156,21 @@ test("runtime-owned entry work uses the durable plurnk worker and an ephemeral l
                 const plurnkLoopStatus = await db.test_get_loop_status.get<{ status: number }>({ id: plurnkLoop?.id });
                 assert.equal(plurnkLoopStatus?.status, 200, "the runtime actor's ephemeral loop is terminal after its batch");
                 const plurnkLog = await db.engine_render_log.all<{ op: string; scheme: string; pathname: string; origin: string }>({ worker_id: plurnkWorker.id });
-                const matEdit = plurnkLog.find((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/SELFHOST.md");
+                const matEdit = plurnkLog.find((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/agents.md");
                 assert.ok(matEdit !== undefined, "the materializing EDIT is IN the plurnk worker's log — an op, not a privileged engine pathway");
                 assert.equal(matEdit!.origin, "plurnk", "the op is attributed to the plurnk actor (origin=plurnk)");
 
                 // 2. The model worker's log NEVER carries that EDIT — isolation by worker holds; nothing privileged leaked in.
                 const modelLog = await db.engine_render_log.all<{ op: string; scheme: string; pathname: string; status_rx: number }>({ worker_id: modelWorkerId });
-                assert.ok(!modelLog.some((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/SELFHOST.md"), "the model worker never sees the plurnk actor's EDIT — only the resulting entry, through the env door");
+                assert.ok(!modelLog.some((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/agents.md"), "the model worker never sees the plurnk actor's EDIT — only the resulting entry, through the env door");
 
                 // 3. The environment door: the model worker reaches the entry the plurnk actor produced (a 200 READ),
                 //    exactly as it reaches any sibling's edit to the shared filesystem. Dogfooding, not a back channel.
-                const docRead = modelLog.find((r) => r.op === "READ" && r.scheme === "worker" && r.pathname === "/SELFHOST.md");
+                const docRead = modelLog.find((r) => r.op === "READ" && r.scheme === "worker" && r.pathname === "/agents.md");
                 assert.ok(docRead !== undefined && docRead.status_rx === 200, "the model worker reaches the plurnk actor's entry through the shared filesystem (env door)");
             } finally { ws.close(); }
         });
     } finally {
-        if (prev === undefined) delete process.env.PLURNK_SERVICE_MD_SELFHOST; else process.env.PLURNK_SERVICE_MD_SELFHOST = prev;
         await rm(dir, { recursive: true, force: true });
     }
 });

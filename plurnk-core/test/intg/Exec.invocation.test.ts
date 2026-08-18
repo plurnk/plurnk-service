@@ -194,8 +194,8 @@ test("{§executor-tool-registry} exact tools own admission and their invocation 
     const ctx = await wire();
     try {
         assert.deepEqual(
-            (await ctx.engine.referenceEntries(ctx.workspaceId)).find((doc) => doc.pathname === "/tools/familytool/enabled_tool.md")?.pathname,
-            "/tools/familytool/enabled_tool.md",
+            (await ctx.engine.referenceEntries(ctx.workspaceId)).find((doc) => doc.pathname === "/skills/plurnk/familytool/enabled_tool.md")?.pathname,
+            "/skills/plurnk/familytool/enabled_tool.md",
         );
         const missing = await ctx.dispatch(statement("familytool", null, "{}"));
         assert.equal(missing.status, 400);

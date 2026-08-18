@@ -29,14 +29,14 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
         git: false,
         client: "plurnk.test/1",
         execs: { PLURNK_EXECS_GIT: "0", "PLURNK_EXECS_ALIAS.TOOL": "false" },
-        mdDocs: [{ alias: "guide.md", content: "Hello" }],
+
     })), {
         filesItems: 3,
         maxCommands: 2,
         git: false,
         client: "plurnk.test/1",
         execs: { PLURNK_EXECS_GIT: "0", "PLURNK_EXECS_ALIAS.TOOL": "false" },
-        mdDocs: [{ alias: "guide.md", content: "Hello" }],
+
     });
     assert.deepEqual(JSON.parse(ClientInput.parseSettings("{\"git\":false}")), { git: false });
     assert.equal(ClientInput.assertPrompt("loop.run", "continue"), "continue");
@@ -101,12 +101,6 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
             code: "setting-invalid",
             context: "workspace.create",
             field: "settings.filesItems",
-        },
-        {
-            run: () => ClientInput.parseSettings({ mdDocs: [null] }),
-            code: "setting-invalid",
-            context: "workspace.create",
-            field: "settings.mdDocs[0]",
         },
         {
             run: () => ClientInput.parseSettings({

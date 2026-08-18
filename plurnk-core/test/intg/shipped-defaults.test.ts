@@ -27,9 +27,6 @@ const shippedEnv = async (): Promise<Map<string, string>> => {
 
 test("the template ships no double policy, no active model, ONLY service-owned knobs", async () => {
     const env = await shippedEnv();
-    // Policy is a privileged section; shipping the same content as an MD entry would duplicate it.
-    const mdKeys = [...env.keys()].filter((k) => k.startsWith("PLURNK_SERVICE_MD_"));
-    assert.deepEqual(mdKeys, [], `no active PLURNK_SERVICE_MD_* doc default ships; got ${mdKeys.join(", ")}`);
     // {§operator-config-shipped-defaults}: model selection belongs to the operator.
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
     // {§operator-config-env-defaults} — a knob has exactly one owner, and this file declares ONLY
@@ -53,11 +50,9 @@ test("the template ships no double policy, no active model, ONLY service-owned k
 
 test("under the shipped policy wiring, the personality renders in the packet exactly once", async () => {
     // Mirror a fresh install: PLURNK_SERVICE_POLICY → the seed file itself (ensureHome copies
-    // PLURNK_PERSONALITY.md to ~/.plurnk/AGENTS.md); no PLURNK_SERVICE_MD_* docs.
+    // PLURNK_PERSONALITY.md to ~/.plurnk/AGENTS.md).
     const prevPolicy = process.env.PLURNK_SERVICE_POLICY;
-    const prevMd = process.env.PLURNK_SERVICE_MD_POLICY;
     process.env.PLURNK_SERVICE_POLICY = Paths.personality;
-    delete process.env.PLURNK_SERVICE_MD_POLICY;
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `shipped-${crypto.randomUUID()}`);
@@ -97,7 +92,6 @@ test("under the shipped policy wiring, the personality renders in the packet exa
         assert.ok(!rows.some((r) => r.op === "READ" && (r.pathname ?? "").includes("POLICY")), "no foisted worker://plurnk/POLICY.md READ");
     } finally {
         if (prevPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = prevPolicy;
-        if (prevMd !== undefined) process.env.PLURNK_SERVICE_MD_POLICY = prevMd;
         await db.close();
     }
 });

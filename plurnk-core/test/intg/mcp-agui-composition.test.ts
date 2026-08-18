@@ -95,7 +95,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "# PLAN0",
                 "Inspect the newly attached tool family.",
                 "",
-                "## READ0 (worker://plurnk/tools/fixture.md) <1,-1>",
+                "## READ0 (worker://plurnk/skills/plurnk/fixture.md) <1,-1>",
                 "",
                 "## SEND0 [102]",
                 "Select and inspect the echo contract linked from the family document.",
@@ -104,7 +104,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "# PLAN0",
                 "Read the selected echo invocation contract.",
                 "",
-                "## READ0 (worker://plurnk/tools/fixture/echo.md) <1,-1>",
+                "## READ0 (worker://plurnk/skills/plurnk/fixture/echo.md) <1,-1>",
                 "",
                 "## SEND0 [102]",
                 "Invoke the documented observation tool.",
@@ -124,7 +124,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 "# PLAN0",
                 "Inspect the reviewed host tool before exercising it.",
                 "",
-                "## READ0 (worker://plurnk/tools/fixture/fail.md) <1,-1>",
+                "## READ0 (worker://plurnk/skills/plurnk/fixture/fail.md) <1,-1>",
                 "",
                 "## SEND0 [102]",
                 "Invoke the documented host tool.",
@@ -229,12 +229,12 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.equal((observed.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
         const firstPacket = packet(provider.requests, 0);
         assert.doesNotMatch(firstPacket, /## Registered Tools/);
-        assert.match(firstPacket, /worker:\/\/plurnk\/tools\/fixture\.md/);
+        assert.match(firstPacket, /worker:\/\/plurnk\/skills\/plurnk\/fixture\.md/);
         assert.match(firstPacket, /Use enabled tools from the fixture MCP server\./);
-        assert.doesNotMatch(firstPacket, /worker:\/\/plurnk\/tools\/fixture\/echo\.md/, "Turn0 surveys only family documents");
+        assert.doesNotMatch(firstPacket, /worker:\/\/plurnk\/skills\/plurnk\/fixture\/echo\.md/, "Turn0 surveys only family documents");
         const familyContract = packet(provider.requests, 1);
-        assert.match(familyContract, /## EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. \(details: worker:\/\/plurnk\/tools\/fixture\/echo\.md\) -->/);
-        assert.match(familyContract, /## EXEC0 \[fixture\] \(fail\) <!-- Return a deterministic tool error\. \(details: worker:\/\/plurnk\/tools\/fixture\/fail\.md\) -->/);
+        assert.match(familyContract, /## EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. \(details: worker:\/\/plurnk\/skills\/plurnk\/fixture\/echo\.md\) -->/);
+        assert.match(familyContract, /## EXEC0 \[fixture\] \(fail\) <!-- Return a deterministic tool error\. \(details: worker:\/\/plurnk\/skills\/plurnk\/fixture\/fail\.md\) -->/);
         const echoContract = packet(provider.requests, 2);
         assert.match(echoContract, /## EXEC0 \[fixture\] \(echo\)/);
         assert.match(echoContract, /Signature: `\{"message": string\}`/);
@@ -337,7 +337,7 @@ test(
                     "# PLAN0",
                     "Inspect the enabled Kubernetes tool family.",
                     "",
-                    "## READ0 (worker://plurnk/tools/kubernetes.md) <1,-1>",
+                    "## READ0 (worker://plurnk/skills/plurnk/kubernetes.md) <1,-1>",
                     "",
                     "## SEND0 [102]",
                     "Select the configuration tool linked from the family document.",
@@ -346,7 +346,7 @@ test(
                     "# PLAN0",
                     "Inspect the selected Kubernetes tool contract before calling it.",
                     "",
-                    "## READ0 (worker://plurnk/tools/kubernetes/configuration_view.md) <1,-1>",
+                    "## READ0 (worker://plurnk/skills/plurnk/kubernetes/configuration_view.md) <1,-1>",
                     "",
                     "## SEND0 [102]",
                     "Use the exact contract after reading it.",
@@ -366,7 +366,7 @@ test(
                     "# PLAN0",
                     "Inspect the remote HTTP tool family.",
                     "",
-                    "## READ0 (worker://plurnk/tools/goji.md) <1,-1>",
+                    "## READ0 (worker://plurnk/skills/plurnk/goji.md) <1,-1>",
                     "",
                     "## SEND0 [102]",
                     "Select the terminology tool linked from the family document.",
@@ -375,7 +375,7 @@ test(
                     "# PLAN0",
                     "Inspect the selected GOJI tool contract.",
                     "",
-                    "## READ0 (worker://plurnk/tools/goji/goji_explain_term.md) <1,-1>",
+                    "## READ0 (worker://plurnk/skills/plurnk/goji/goji_explain_term.md) <1,-1>",
                     "",
                     "## SEND0 [102]",
                     "Use the documented tool and resource.",
@@ -503,11 +503,11 @@ test(
             }));
             assert.equal((kubernetesRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
             const familyCatalog = packet(provider.requests, 0);
-            assert.match(familyCatalog, /worker:\/\/plurnk\/tools\/kubernetes\.md/);
-            assert.match(familyCatalog, /worker:\/\/plurnk\/tools\/goji\.md/);
+            assert.match(familyCatalog, /worker:\/\/plurnk\/skills\/plurnk\/kubernetes\.md/);
+            assert.match(familyCatalog, /worker:\/\/plurnk\/skills\/plurnk\/goji\.md/);
             assert.doesNotMatch(familyCatalog, /configuration_view/, "Turn0 surveys only family documents");
             const kubernetesFamily = packet(provider.requests, 1);
-            assert.match(kubernetesFamily, /worker:\/\/plurnk\/tools\/kubernetes\/configuration_view\.md/);
+            assert.match(kubernetesFamily, /worker:\/\/plurnk\/skills\/plurnk\/kubernetes\/configuration_view\.md/);
             assert.doesNotMatch(kubernetesFamily, /pods_list/, "disabled remote tools stay out of the family contract");
             const kubernetesContract = packet(provider.requests, 2);
             assert.match(kubernetesContract, /## EXEC0 \[kubernetes\] \(configuration_view\)/);
@@ -522,7 +522,7 @@ test(
                 }],
             }));
             assert.equal((gojiRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
-            assert.match(packet(provider.requests, 5), /worker:\/\/plurnk\/tools\/goji\/goji_explain_term\.md/);
+            assert.match(packet(provider.requests, 5), /worker:\/\/plurnk\/skills\/plurnk\/goji\/goji_explain_term\.md/);
             assert.match(packet(provider.requests, 6), /## EXEC0 \[goji\] \(goji_explain_term\)/);
             const remoteResults = packet(provider.requests, 7);
             assert.match(remoteResults, /Answer Engine Optimisation/);

@@ -49,7 +49,7 @@ test("resource directory: the packet's `schemes` section is a terse directory af
         // The `schemes` section is the terse directory: worker's canonical example, no inline doc-link.
         assert.ok(schemes.startsWith("```plurnk"), "the resource directory is a fenced plurnk catalogue, not bullets");
         assert.match(schemes, /## EDIT0 \(worker:\/\/\/notes\.md\)\nInvestigation notes\./, "the directory lists `worker` with its canonical example section");
-        assert.doesNotMatch(schemes, /\(docs:/, "no inline doc-link — docs are discovered through worker://plurnk/docs/**");
+        assert.doesNotMatch(schemes, /\(docs:/, "no inline doc-link — skills are discovered through worker://plurnk/skills/**");
         assert.doesNotMatch(schemes, /Channels: |Writable by: /, "the verbose channel/writableBy prose is gone from the hot path");
         assert.match(schemes, /glyph-test:\/\/\/example/, "the scheme's ordinary example remains teachable");
         assert.doesNotMatch(schemes, /GLYPH_MUST_STAY_CLIENT_SIDE/, "client display metadata never enters model teaching");
@@ -57,7 +57,7 @@ test("resource directory: the packet's `schemes` section is a terse directory af
         // Stable policy intervenes after definition; the resource directory follows it.
         const sysOrder = (packet.sections as Array<{ name: string; slot: string }>).filter((s) => s.slot === "system").map((s) => s.name);
         assert.equal(sysOrder.includes("tools"), false, "executable discovery does not recreate a hot-path tools section");
-        assert.equal(sysOrder.indexOf("schemes"), sysOrder.indexOf("project-policy") + 1, "the resource directory follows privileged policy");
+        assert.equal(sysOrder.indexOf("schemes"), sysOrder.indexOf("system-policy") + 1, "the resource directory follows privileged policy");
     } finally {
         await db.close();
     }

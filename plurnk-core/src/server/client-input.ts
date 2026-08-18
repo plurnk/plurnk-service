@@ -439,8 +439,8 @@ export default class ClientInput {
                 { field: "settings", recovery: "Provide a settings object." },
             );
         }
-        const r = parsed as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown; execs?: unknown };
-        const supported = new Set(["filesItems", "maxCommands", "git", "mdDocs", "client", "execs"]);
+        const r = parsed as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; client?: unknown; execs?: unknown };
+        const supported = new Set(["filesItems", "maxCommands", "git", "client", "execs"]);
         for (const key of Object.keys(r)) {
             if (!supported.has(key)) {
                 ClientInput.#invalid(
@@ -455,7 +455,7 @@ export default class ClientInput {
                 );
             }
         }
-        const out: { filesItems?: number; maxCommands?: number; git?: boolean; mdDocs?: Array<{ alias: string; content: string }>; client?: string; execs?: Record<string, string> } = {};
+        const out: { filesItems?: number; maxCommands?: number; git?: boolean; client?: string; execs?: Record<string, string> } = {};
         if (r.filesItems !== undefined) {
             if (typeof r.filesItems !== "number" || !Number.isInteger(r.filesItems) || r.filesItems < -1) {
                 ClientInput.#invalid(
@@ -557,50 +557,6 @@ export default class ClientInput {
                 execs[k] = v;
             }
             out.execs = execs;
-        }
-        if (r.mdDocs !== undefined) {
-            if (!Array.isArray(r.mdDocs)) {
-                ClientInput.#invalid(
-                    "workspace.create",
-                    "setting-invalid",
-                    "settings.mdDocs is not an array.",
-                    { field: "settings.mdDocs", recovery: "Provide an array of document objects." },
-                );
-            }
-            out.mdDocs = r.mdDocs.map((d, i) => {
-                if (typeof d !== "object" || d === null || Array.isArray(d)) {
-                    ClientInput.#invalid(
-                        "workspace.create",
-                        "setting-invalid",
-                        `settings.mdDocs[${i}] is not an object.`,
-                        {
-                            field: `settings.mdDocs[${i}]`,
-                            recovery: "Provide an object with alias and content fields.",
-                        },
-                    );
-                }
-                const e = d as { alias?: unknown; content?: unknown };
-                if (typeof e.alias !== "string" || e.alias.length === 0 || /[^\w.-]/.test(e.alias)) {
-                    ClientInput.#invalid(
-                        "workspace.create",
-                        "setting-invalid",
-                        `settings.mdDocs[${i}].alias is not a non-empty [\\w.-] string.`,
-                        {
-                            field: `settings.mdDocs[${i}].alias`,
-                            recovery: "Use a non-empty alias containing letters, digits, underscore, dot, or hyphen.",
-                        },
-                    );
-                }
-                if (typeof e.content !== "string") {
-                    ClientInput.#invalid(
-                        "workspace.create",
-                        "setting-invalid",
-                        `settings.mdDocs[${i}].content is not a string.`,
-                        { field: `settings.mdDocs[${i}].content`, recovery: "Provide string document content." },
-                    );
-                }
-                return { alias: e.alias, content: e.content };
-            });
         }
         return JSON.stringify(out);
     }

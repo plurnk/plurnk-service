@@ -307,15 +307,22 @@ ambient shared-state changes still cross only through the environment door.
 Git membership includes tracked and untracked-but-not-ignored project files
 ({§membership-auto-add}); it does not stage them or run `git add`.
 
-§actor-boundary-doc-injection **Operator reference documents use the actor
-path.** `PLURNK_SERVICE_MD_<ALIAS>=<path>` ({§operator-config}) materializes
-`<path>` as `worker://plurnk/<ALIAS>.md` through a `DispatchAsPlurnk` EDIT, then
-foists a READ into each model worker's turn 0. The materializing EDIT remains in
-the `plurnk` worker's log; the model sees the shared entry through its own READ.
-Client-provided workspace documents union with the operator set at the same
-entry surface.
+§turn0-agents-stunt **The project AGENTS.md is a turn-0 stunt.** When
+`<projectRoot>/AGENTS.md` exists, LoopDocs materializes it as the kernel-owned
+`worker://plurnk/agents.md` entry and the engine foists one READ of it into
+each model worker's first turn — visible, logged, line-addressable. Absent
+file: no entry, no stunt, nothing 404s. The GLOBAL `~/.plurnk/AGENTS.md`
+remains system-prompt policy ({§policy-sections}); the stunt carries only
+local repo guidance.
 
-§actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS` foists turn-0 discovery into the worker's first turn, so a worker opens with a navigable map instead of blank. An enabled preview executes exactly five orienting surveys in order: executable tool families (`## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>` whose body `//heading[text()="Example"]` locates each doc's `Example` heading), kernel docs (`## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>`), project files (`## FIND0 [+init] (*)`), workspace commons (`## FIND0 [+init] (worker:///*)`), and the worker's own space (`## FIND0 [+init] (worker://~/*)`). The tool survey's xpath body demonstrates a content matcher on a real glob — the opening turn shows FIND locate match positions, not merely enumerate — and a tool doc without an `## Example` heading is absent from that matched result, which is why the `Example` heading is mandatory for every published tool. When the enabled tool surface contains `worker://plurnk/tools/sh.md`, one `## READ0 [+init,+tools] (worker://plurnk/tools/sh.md) <1,17>` precedes the five surveys as a compact worked example containing its complete summary, invocation contract, and example; its absence adds no arbitrary replacement. READ leads so the worked example never reads as an intra-turn consequence of the tool survey. Their log classifications make the opening discovery one `init` set while retaining `docs` and `tools` on their respective rows ({§log-item-tags}). A shallow result renders direct entries normally and every deeper first-segment directory as an actionable `dir/**` summary with its recursive `items` and `tokens`; tool-family rows also carry the concise `{§scheme-catalog-summary}` that drives on-demand capability discovery. Ordinary surveys use FIND's markerless first-16 page, whose range metadata reports the requested and returned page against the complete result total; only the small curated kernel-doc and tool-family surfaces explicitly select all. The opening exemplar therefore demonstrates both `*` and `**` without normalizing an all-results override. Every survey executes even when empty because zero results are useful orientation. A positive `N` explicitly caps only the file map's rendered rows, using the map's actual direct-entry-plus-directory count; `-1` enables the ordinary markerless page; unset / `0` disables previews. `log://` is absent because the current worker's log already renders in present mode.
+§actor-boundary-doc-injection **The project AGENTS.md uses the actor
+path.** The project's `AGENTS.md` is materialized as
+`worker://plurnk/agents.md` through a `DispatchAsPlurnk` EDIT, then foisted as
+one READ into each model worker's turn 0 ({§turn0-agents-stunt}). The
+materializing EDIT remains in the `plurnk` worker's log; the model sees the
+shared entry through its own READ.
+
+§actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS` foists turn-0 discovery into the worker's first turn, so a worker opens with a navigable map instead of blank. An enabled preview executes exactly five orienting surveys in order: the authored skills (`## FIND0 [+init,+skills] (worker://plurnk/skills/*.md) <1,-1>`), the Plurnk-generated skill families (`## FIND0 [+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>` — both bodies `//heading[text()="Example"]` locate each skill's `Example` heading), project files (`## FIND0 [+init] (*)`), workspace commons (`## FIND0 [+init] (worker:///*)`), and the worker's own space (`## FIND0 [+init] (worker://~/*)`). The skills survey's xpath body demonstrates a content matcher on a real glob — the opening turn shows FIND locate match positions, not merely enumerate — and a skill without an `## Example` heading is absent from that matched result, which is why the `Example` heading is mandatory for every published skill. When the enabled tool surface contains `worker://plurnk/skills/plurnk/sh.md`, one `## READ0 [+init,+skills] (worker://plurnk/skills/plurnk/sh.md) <1,17>` precedes the four surveys as a compact worked example containing its complete summary, invocation contract, and example; its absence adds no arbitrary replacement. READ leads so the worked example never reads as an intra-turn consequence of the skills surveys. Their log classifications make the opening discovery one `init` set while retaining `skills` on their rows ({§log-item-tags}). A shallow result renders direct entries normally and every deeper first-segment directory as an actionable `dir/**` summary with its recursive `items` and `tokens`; tool-family rows also carry the concise `{§scheme-catalog-summary}` that drives on-demand capability discovery. Ordinary surveys use FIND's markerless first-16 page, whose range metadata reports the requested and returned page against the complete result total; only the small curated skills surfaces explicitly select all. The opening exemplar therefore demonstrates both `*` and `**` without normalizing an all-results override. Every survey executes even when empty because zero results are useful orientation. A positive `N` explicitly caps only the file map's rendered rows, using the map's actual direct-entry-plus-directory count; `-1` enables the ordinary markerless page; unset / `0` disables previews. `log://` is absent because the current worker's log already renders in present mode.
 
 §worker-initialization-entry **Worker initialization is not model output.** A worker's first loop begins with one born-OPEN actionless row at `log:///1/1/1`: `origin="plurnk"`, `op` null, and `attrs.kind="initialization"`. Its `text/vnd.plurnk` body dynamically mirrors the turn-zero PLAN, the orienting operations actually dispatched, and terminal `SEND0 [102]`. The PLAN states the concrete opening work: `* Discover the tooling available and survey the workspace file root.`; SEND hands off with `Next, address the prompt.`
 
@@ -2098,7 +2105,6 @@ Model selection: separate alias cascade in `ProviderRegistry` ({§provider-insta
 | `PLURNK_SERVICE_MAX_CYCLE_PERIOD`                           | `4` | Max period length cycle detection examines ({§engine-rails}). |
 | `PLURNK_SERVICE_REQUIEM_MAX_TOKENS`                         | `16384` | Initial forensic witness output allowance ({§digest-requiem}). |
 | `PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS`                   | `32768` | Retry allowance; must be at least the initial requiem allowance ({§digest-requiem}). |
-| `PLURNK_SERVICE_MD_<ALIAS>`                                 | (unset) | Operator reference doc: materializes `<path>` as `worker://plurnk/<ALIAS>.md`, auto-READ into every model worker's turn 0 ({§actor-boundary-doc-injection}). `~` expands to home. |
 | `PLURNK_SERVICE_FILES_ITEMS`                                | `-1` | Turn-0 catalog preview. Folder-capable schemes render a one-level `*` map with `dir/**` rollups; kernel docs remain recursive and explicitly complete. `-1` = markerless first pages; positive `N` explicitly caps only file-map rows; `0` / unset = off ({§actor-boundary-catalog-preview}). |
 | `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS`                        | (empty — waits indefinitely) | Finite positive milliseconds before cancellation with outcome `timeout`; empty waits, and every other explicit value fails ({§proposal-timeout-cancels}). |
 
@@ -2110,11 +2116,10 @@ Every core knob listed is enforced at its owning read site; `.env.defaults` is t
 - **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `runLoop({alias})` request overrides it) and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
 
 §operator-config-shipped-defaults **The shipped `.env.defaults` is itself under
-test.** It has no active `PLURNK_SERVICE_MD_*` doc alias because policy is a
-section and a doc default double-injects it; no active `PLURNK_MODEL`; no active
-local GBNF constraint; and the policy renders in exactly one packet section.
-Every other tier runs the test cascade, so shipped-default regressions are
-otherwise invisible by construction.
+test.** It has no active `PLURNK_MODEL`; no active local GBNF constraint; and
+the policy renders in exactly one packet section. Every other tier runs the
+test cascade, so shipped-default regressions are otherwise invisible by
+construction.
 
 §operator-config-flag-parity The companion **flag-parity** check binds code and
 template both ways: every `PLURNK_SERVICE_*` the service reads has a
@@ -2162,7 +2167,6 @@ boundary. Operator-arcane knobs stay environment-only.
 | Field                  | Admitted value                                 | Composition / owner                                           |
 | ---------------------- | ---------------------------------------------- | ------------------------------------------------------------- |
 | `settings.filesItems`  | Integer `>= -1`                                | Explicit replacement {§operator-config-workspace-files-items} |
-| `settings.mdDocs`      | Array of `{ alias: [\w.-]+, content: string }` | Alias-keyed union {§operator-config-workspace-md-docs}        |
 | `settings.maxCommands` | Non-negative integer                           | Tightening ceiling {§operator-config-workspace-max-commands}  |
 | `settings.git`         | Boolean                                        | Tightening denial {§operator-config-workspace-git}            |
 | `settings.client`      | Nonempty string                                | Stable self-identification {§client-metadata}                 |
@@ -2175,8 +2179,6 @@ leak into another.
 *Defaults — explicit-wins (the client replaces/merges freely):*
 
 - §operator-config-workspace-files-items `settings.filesItems` (number) **replaces** `PLURNK_SERVICE_FILES_ITEMS` for the workspace: a one-shot opens clean (`0`, no preview), with ordinary markerless pages (`-1`), or with the file list explicitly capped (`N`, other surveys remain markerless). A single scalar — the client value wins outright.
-- §operator-config-workspace-md-docs `settings.mdDocs` (`[{alias, content}]`) **unions** with the server's `PLURNK_SERVICE_MD_*` docs, keyed by alias — a client adds its own repo docs atop the operator's systemwide policy doc. On alias collision the client wins before I/O (a deliberate shadow), so the unselected operator path is not read; every selected non-empty operator path is required, and absence or another read failure rejects materialization with its cause. The client sends content (it owns the file), not a path.
-
 *Ceilings — most-restrictive-wins (the client may only narrow, never widen):*
 
 - §operator-config-workspace-max-commands `settings.maxCommands` (number)
@@ -3257,7 +3259,7 @@ section because they are language extensions rather than executable tools.
 
 ### §policy system.policy — the client's policy injection
 
-§policy-sections Two sections ride the system slot **after the definition and before capability teaching**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `~/.plurnk/AGENTS.md`) and `## Project Policy` from `PLURNK_SERVICE_PROJECT` (default `<projectRoot>/AGENTS.md`, resolved relative to the workspace root). AGENTS.md is **policy** — the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. Reference and scratch docs are NOT policy; `PLURNK_SERVICE_MD_*` materializes them as READ-able entries ({§operator-config}).
+§policy-sections One section rides the system slot **after the definition and before capability teaching**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `~/.plurnk/AGENTS.md`). Policy is the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker://plurnk/agents.md` entry ({§turn0-agents-stunt}); all other reference material is skills under the skills tree ({§skills-materialization}).
 
 On first run, and only when `~/.plurnk` itself is absent, the service seeds
 `AGENTS.md` from `@plurnk/plurnk-meta/PLURNK_PERSONALITY.md` ({§teaching-corpus}).
