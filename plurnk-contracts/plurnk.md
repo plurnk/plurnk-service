@@ -128,8 +128,9 @@ Text scopes use 1-based lines and Unicode code-point columns consistently across
 
     # PLAN0
     * The prior READ identified obsolete line 1847 with `@aB3dE`; the draft insertion belongs at line 2, column 5; the preface belongs before line 1.
+    * The audit marker inserts as its OWN line above line 2: a zero-width range at column 1 with a body that ends in a newline pushes the existing line down. A body WITHOUT the newline prepends onto the existing line.
     * Still need to inspect the notes selection and verify the copy and move destinations.
-    * Check every changed boundary after the results materialize.
+    * Check every changed boundary in the EDIT receipt — it shows the landed lines with `@hash` anchors. A READ round-trip fetches content; the receipt verifies where an edit landed.
 
     ## EDIT0 (worker:///obsolete.md) <@aB3dE>
 
@@ -137,6 +138,9 @@ Text scopes use 1-based lines and Unicode code-point columns consistently across
 
     ## EDIT0 (worker:///draft.md) <2,5,2,5>
     inserted text
+
+    ## EDIT0 (worker:///draft.md) <2,1,2,1>
+    // AUDIT-OK
 
     ## EDIT0 (worker:///preface.md) <0>
     # Preface

@@ -870,29 +870,29 @@ export default class TurnRunner {
                     },
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: null, signal: ["+init"],
+                            op: "FIND", delimiter: "", annotation: "workspace files", signal: ["+init"],
                             target: { kind: "local", raw: "*" },
                             body: null,
                             lineMarker: fileCap === null ? null : { marks: [1, fileCap] },
                             position: UNKNOWN_POSITION,
                         },
-                        exemplar: `## FIND0 [+init] (*)${fileCap === null ? "" : ` <1,${fileCap}>`}`,
+                        exemplar: `## FIND0 [+init] (*) <!-- workspace files -->${fileCap === null ? "" : ` <1,${fileCap}>`}`,
                     },
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: null, signal: ["+init"],
+                            op: "FIND", delimiter: "", annotation: "workspace entries", signal: ["+init"],
                             target: { kind: "url", raw: "worker:///*", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+init] (worker:///*)",
+                        exemplar: "## FIND0 [+init] (worker:///*) <!-- workspace entries -->",
                     },
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: null, signal: ["+init"],
+                            op: "FIND", delimiter: "", annotation: "worker entries", signal: ["+init"],
                             target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", query: null, fragment: null },
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+init] (worker://~/*)",
+                        exemplar: "## FIND0 [+init] (worker://~/*) <!-- worker entries -->",
                     },
                 ];
                 for (const { statement, exemplar } of surveys) {

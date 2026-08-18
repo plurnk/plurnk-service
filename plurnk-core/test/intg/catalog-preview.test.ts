@@ -193,8 +193,8 @@ test("the turn-0 initialization mirrors the REAL foisted survey — dynamic, not
                     /^# PLAN0\n\* Discover the tooling available and survey the workspace file root\./,
                     "opens with the concrete orientation work",
                 );
-                assert.match(content, /## FIND0 \[\+init\] \(worker:\/\/\/\*\)/, "the classified markerless shallow survey is rendered back to DSL");
-                assert.doesNotMatch(content, /## FIND0 \[\+init\] \(worker:\/\/\/\*\) </, "the ordinary survey does not teach an explicit all-results scope");
+                assert.match(content, /## FIND0 \[\+init\] \(worker:\/\/\/\*\) <!-- workspace entries -->/, "the classified markerless shallow survey is rendered back to DSL with its annotation");
+                assert.doesNotMatch(content, /## FIND0 \[\+init\] \(worker:\/\/\/\*\) <!-- workspace entries --> </, "the ordinary survey does not teach an explicit all-results scope");
                 assert.match(
                     content,
                     /## SEND0 \[102\]\nNext, address the prompt\.$/,
@@ -265,9 +265,9 @@ test("an empty workspace executes all five orienting FINDs and preserves empty-s
 //heading[text()="Example"]
 ## FIND0 [+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>
 //heading[text()="Example"]
-## FIND0 [+init] (*)
-## FIND0 [+init] (worker:///*)
-## FIND0 [+init] (worker://~/*)
+## FIND0 [+init] (*) <!-- workspace files -->
+## FIND0 [+init] (worker:///*) <!-- workspace entries -->
+## FIND0 [+init] (worker://~/*) <!-- worker entries -->
 
 ## SEND0 [102]
 Next, address the prompt.`);
