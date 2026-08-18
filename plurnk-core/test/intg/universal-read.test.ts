@@ -567,7 +567,9 @@ test("cold finite HTTP READ acquires before applying the exact text scope", asyn
     const lines = Array.from({ length: 20 }, (_, index) => `remote ${index + 1}`);
     const requests: string[] = [];
     globalThis.fetch = (async (input: string | URL | Request) => {
-        requests.push(String(input));
+        const requested = String(input);
+        if (requested.endsWith("/llms.txt")) return new Response(null, { status: 404 });
+        requests.push(requested);
         return new Response(lines.join("\n"), {
             status: 200,
             headers: { "content-type": "text/plain" },

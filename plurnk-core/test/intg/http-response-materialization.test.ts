@@ -301,6 +301,7 @@ test("an empty finite GET materializes atomically and remains reusable through 3
         const firstResponse = Promise.withResolvers<Response>();
         let requests = 0;
         globalThis.fetch = async (_url, init) => {
+            if (String(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
             requests += 1;
             if (requests === 1) {
                 firstStarted.resolve();
@@ -371,6 +372,7 @@ test("parser-produced request metadata cannot share a fresh HTTP representation"
         const requests: Array<{ authorization: string | null; conditional: boolean }> = [];
         const bodies = ["public v1", "private", "public v2"];
         globalThis.fetch = async (_url, init) => {
+            if (String(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
             const headers = new Headers(init?.headers);
             requests.push({
                 authorization: headers.get("authorization"),
@@ -434,6 +436,7 @@ test("a durable no-store response is operation evidence, not a reusable HTTP cac
         process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "60000";
         const requests: Array<{ conditional: boolean }> = [];
         globalThis.fetch = async (_url, init) => {
+            if (String(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
             const headers = new Headers(init?.headers);
             requests.push({
                 conditional: headers.has("if-none-match") || headers.has("if-modified-since"),

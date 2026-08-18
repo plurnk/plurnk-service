@@ -276,10 +276,20 @@ const withFetch = async (
     impl: typeof fetch | (() => Promise<Response>),
     fn: () => Promise<void>,
     allowAllTargets = true,
+    // {§http-llms-txt} — the companion probe is routed to a quiet 404 by
+    // default so ordinary fixtures model the pre-companion world; tests that
+    // exercise the companion pass `true` and answer /llms.txt themselves.
+    answerLlmsText = false,
 ) => {
     const original = globalThis.fetch;
     const publicUrl = allowAllTargets ? mock.method(Guard, "isPublicUrl", async () => true) : null;
-    globalThis.fetch = impl as typeof fetch;
+    const wrapped = answerLlmsText
+        ? impl
+        : async (input: string | URL | Request, init?: RequestInit) =>
+            String(input).endsWith("/llms.txt")
+                ? new Response(null, { status: 404 })
+                : (impl as typeof fetch)(input, init);
+    globalThis.fetch = wrapped as typeof fetch;
     try { await fn(); } finally {
         globalThis.fetch = original;
         publicUrl?.mock.restore();
@@ -2932,3 +2942,61 @@ test("a model-supplied User-Agent target block overrides the default identity", 
 });
 
 // ── cancellation ──────────────────────────────────────────────────────────
+
+// ── llms.txt companion ({§http-llms-txt}) ───────────────────────────────
+
+test("{§http-llms-txt} a successful GET piggybacks the origin's llms.txt exactly once per window", async () => {
+    const writes: string[] = [];
+    const { ctx } = makeCtx(null, {
+        write: async (pathname) => {
+            writes.push(pathname);
+            return { status: 201, created: true, entryId: 1 };
+        },
+    });
+    const http = new Http();
+    const target = urlTarget("https://example.com/guide/page", "/guide/page");
+    let llmsRequests = 0;
+    await withFetch(async (input) => {
+        const url = String(input);
+        if (url.endsWith("/llms.txt")) {
+            llmsRequests += 1;
+            return new Response("# llms\n\nUseful page summaries.", { status: 200, headers: { "content-type": "text/plain" } });
+        }
+        return new Response("## Page body", { status: 200, headers: { "content-type": "text/markdown" } });
+    }, async () => {
+        assert.equal((await prepareRepresentation(http, readStmt(target), ctx)).status, 200);
+        assert.equal((await prepareRepresentation(http, readStmt(target), ctx)).status, 200);
+    }, true, true);
+    assert.equal(llmsRequests, 1, "one companion probe per origin per TTL window");
+    assert.deepEqual(writes, [
+        "/example.com/guide/page",
+        "/example.com/llms.txt",
+        "/example.com/guide/page",
+    ], "the companion materializes as its own origin entry");
+});
+
+test("{§http-llms-txt} a missing llms.txt is quiet, non-recurring, and never fails the READ", async () => {
+    const writes: string[] = [];
+    const { ctx } = makeCtx(null, {
+        write: async (pathname) => {
+            writes.push(pathname);
+            return { status: 201, created: true, entryId: 1 };
+        },
+    });
+    const http = new Http();
+    const target = urlTarget("https://example.com/plain", "/plain");
+    let llmsRequests = 0;
+    await withFetch(async (input) => {
+        const url = String(input);
+        if (url.endsWith("/llms.txt")) {
+            llmsRequests += 1;
+            return new Response(null, { status: 404 });
+        }
+        return new Response("plain body", { status: 200, headers: { "content-type": "text/plain" } });
+    }, async () => {
+        assert.equal((await prepareRepresentation(http, readStmt(target), ctx)).status, 200);
+        assert.equal((await prepareRepresentation(http, readStmt(target), ctx)).status, 200);
+    }, true, true);
+    assert.equal(llmsRequests, 1, "the failed probe is remembered, not retried");
+    assert.deepEqual(writes, ["/example.com/plain", "/example.com/plain"], "no companion entry is fabricated");
+});

@@ -204,6 +204,16 @@ evidence, while each origin-backed channel carries an exact
 `http-response-status` producer Problem. A materializer-produced body and the
 acquisition `header` remain independent of an unavailable origin source.
 
+§http-llms-txt **Origin llms.txt companions.** After a successful generic GET
+materialization, the scheme opportunistically acquires `<origin>/llms.txt`
+once per origin per TTL window and materializes it as its own origin entry
+(`https://host/llms.txt`), surfaceable by FIND. A missing companion, any
+non-2xx, binary content, or a transport failure is quiet: the companion is
+never fabricated, the failed probe is remembered (not retried per READ), and
+the piggyback never fails the READ that carried it. The companion itself
+never recurses. This is lazy by construction — one extra request only when
+an origin is first being read.
+
 ## §http-status §4 HTTP status mapping
 
 | Outcome                                                       | Operation status                                         |

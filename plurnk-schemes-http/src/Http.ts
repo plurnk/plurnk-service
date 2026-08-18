@@ -218,6 +218,8 @@ const httpDate = (value: string, now = Date.now()): number | null => {
 // The relative path is identical from src/ during development and dist/ after build.
 const documentation = await readFile(new URL("../docs/http.md", import.meta.url), "utf-8");
 
+const LLMS_TEXT_ATTEMPT_TTL_MS = 3_600_000;
+
 export default class Http implements SchemeHandler {
     static manifest: SchemeManifest = {
         name: "http",
@@ -250,6 +252,10 @@ export default class Http implements SchemeHandler {
 
     readonly #errorDetailLimit: number;
     readonly #webFetcher: WebFetcher;
+    // {§http-llms-txt} — one opportunistic origin-companion attempt per TTL
+    // window; success and failure share the timer so a 404 does not re-probe
+    // on every READ.
+    readonly #llmsTextAttempts = new Map<string, number>();
     constructor() {
         this.#errorDetailLimit = ErrorDetail.configuredLimit();
         this.#webFetcher = new WebFetcher();
@@ -446,7 +452,40 @@ export default class Http implements SchemeHandler {
             channels: WebFetcher.materializedChannels(materialized, { url, method: "GET" }),
         });
         if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
+        await this.#piggybackLlmsText(address, ctx);
         return { status: 200 };
+    }
+
+    // {§http-llms-txt} — after a successful generic GET materialization,
+    // acquire <origin>/llms.txt once per TTL window and materialize it as its
+    // own https entry. Any failure is quiet: the companion never fails the
+    // READ that piggybacked it, and the companion itself never recurses.
+    async #piggybackLlmsText(address: NetworkAddress, ctx: SchemeCtx): Promise<void> {
+        const url = new URL(address.url);
+        if (url.pathname === "/llms.txt") return;
+        const origin = url.origin;
+        const last = this.#llmsTextAttempts.get(origin);
+        if (last !== undefined && Date.now() - last < LLMS_TEXT_ATTEMPT_TTL_MS) return;
+        this.#llmsTextAttempts.set(origin, Date.now());
+        const llmsUrl = `${origin}/llms.txt`;
+        try {
+            const fetched = await this.#webFetcher.fetch(llmsUrl, {
+                signal: ctx.signal,
+                guarded: false,
+                acceptHttpErrors: true,
+                preserveUnavailable: true,
+            });
+            if (fetched === null) return;
+            // A missing companion (404) or any non-2xx is quiet — no entry.
+            if ((fetched.status ?? 200) >= 400) return;
+            const materialized = await WebFetcher.materialize(fetched, ctx.projection, ctx.signal);
+            if (materialized === null) return;
+            await ctx.entries.write(`/${url.host}/llms.txt`, {
+                channels: WebFetcher.materializedChannels(materialized, { url: llmsUrl, method: "GET" }),
+            });
+        } catch {
+            // Quiet by contract: 404, guard rejection, network error, binary.
+        }
     }
 
     async #openEventStream(

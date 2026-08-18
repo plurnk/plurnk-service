@@ -215,6 +215,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
     const deadUrl = "https://93.184.216.34/missing";
     globalThis.fetch = (async (input: string | URL | Request) => {
         const requested = String(input);
+        if (requested.endsWith("/llms.txt")) return new Response(null, { status: 404 });
         requests.push(requested);
         if (requested === deadUrl) return new Response("missing", { status: 404 });
         return new Response("Zhannetta Nikolaevna Lotnik was his spouse.", {
@@ -313,6 +314,7 @@ test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisitio
     const findUrl = "https://93.184.216.34/mutation-find";
     globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
         const url = String(input);
+        if (url.endsWith("/llms.txt")) return new Response(null, { status: 404 });
         const method = init?.method ?? "GET";
         requests.push({ url, method });
         const body = method === "GET"
