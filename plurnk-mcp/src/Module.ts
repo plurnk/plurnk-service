@@ -17,10 +17,7 @@ import {
     type McpServerOptions,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
-import {
-    SdkError,
-    SdkErrorCode,
-} from "@modelcontextprotocol/client";
+
 import ServerConnection, { AuthorizationRequiredError } from "./client.ts";
 import {
     overlayServerDefinitions,
@@ -29,7 +26,6 @@ import {
 } from "./config.ts";
 import McpExecutor, { runtimeDecl } from "./McpExecutor.ts";
 import McpResources from "./McpResources.ts";
-import { MCP_PROTOCOL_VERSION } from "./protocol.ts";
 
 const OWNER = "@plurnk/plurnk-mcp";
 const STATE_VERSION = 1;
@@ -179,33 +175,6 @@ const actionError = (
 const errorsOf = (error: unknown): unknown[] =>
     error instanceof AggregateError ? [...error.errors] : [error];
 
-const errorTreeSome = (
-    error: unknown,
-    predicate: (candidate: unknown) => boolean,
-    seen = new Set<unknown>(),
-): boolean => {
-    if ((typeof error !== "object" && typeof error !== "function") || error === null) {
-        return predicate(error);
-    }
-    if (seen.has(error)) return false;
-    seen.add(error);
-    if (predicate(error)) return true;
-    if (error instanceof AggregateError) {
-        return [...error.errors].some((candidate) => errorTreeSome(candidate, predicate, seen));
-    }
-    return error instanceof Error && error.cause !== undefined
-        ? errorTreeSome(error.cause, predicate, seen)
-        : false;
-};
-
-const lacksRequiredProtocolRevision = (error: unknown): boolean => errorTreeSome(
-    error,
-    (candidate) => SdkError.isInstance(candidate)
-        && candidate.code === SdkErrorCode.EraNegotiationFailed
-        && candidate.message.includes("the server did not offer pinned protocol version")
-        && candidate.message.includes("via server/discover"),
-);
-
 const preparationError = (
     definition: McpServerDefinition,
     cause: unknown,
@@ -217,21 +186,6 @@ const preparationError = (
             [cause, closeCause],
             `MCP server '${definition.name}' preparation and cleanup failed.`,
         );
-    if (lacksRequiredProtocolRevision(cause)) {
-        return actionError(
-            "protocol-revision-unsupported",
-            502,
-            `MCP server '${definition.name}' did not offer required revision ${MCP_PROTOCOL_VERSION} through server/discover; upgrade or replace the legacy endpoint.`,
-            {
-                server: definition.name,
-                transport: definition.transport,
-                requiredRevision: MCP_PROTOCOL_VERSION,
-                requiredMethod: "server/discover",
-                retryable: false,
-            },
-            completeCause,
-        );
-    }
     return actionError(
         "server-unavailable",
         502,

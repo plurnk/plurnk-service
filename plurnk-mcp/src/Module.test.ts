@@ -819,34 +819,26 @@ test("failed enable leaves durable state and Registry authoritative", async () =
     }
 });
 
-test("{§mcp-management-actions} a legacy endpoint is attributed at the public action boundary", async () => {
+test("{§mcp-authority} a legacy peer negotiates below the pin and serves its standard catalog", async () => {
     const module = Module.init({ env: floor });
     const h = harness();
     try {
         await module.setup(h.seam);
         await h.hydrate(1);
-        await assert.rejects(
-            () => h.invoke(1, "workspace.mcp.add", {
-                alias: "echo",
-                target: process.execPath,
-                options: { args: [legacyFixture] },
-            }),
-            (error: unknown) => {
-                const problem = (error as { problem?: Record<string, unknown> }).problem;
-                assert.equal(
-                    problem?.type,
-                    "https://problems.plurnk.dev/mcp/management/protocol-revision-unsupported",
-                );
-                assert.equal(problem?.status, 502);
-                assert.equal(problem?.retryable, false);
-                assert.equal(problem?.server, "echo");
-                assert.equal(problem?.requiredRevision, "2026-07-28");
-                assert.equal(problem?.requiredMethod, "server/discover");
-                assert.match(String(problem?.detail ?? ""), /upgrade or replace the legacy endpoint/i);
-                return true;
-            },
-        );
-        assert.deepEqual(h.snapshots.get(1), [], "the rejected endpoint publishes no capability");
+        await h.invoke(1, "workspace.mcp.add", {
+            alias: "echo",
+            target: process.execPath,
+            options: { args: [legacyFixture] },
+        });
+        const list = await h.invoke(1, "workspace.mcp.list", {}) as {
+            servers: Array<Record<string, unknown>>;
+        };
+        const echo = list.servers.find((server) => server.alias === "echo");
+        assert.ok(echo !== undefined, "the legacy peer is listed");
+        assert.equal(echo?.state, "connected", "a negotiated legacy peer connects instead of being rejected");
+        assert.equal(echo?.protocolVersion, "2025-06-18", "the negotiated revision is the honest wire fact");
+        assert.deepEqual(echo?.tools, ["legacy_echo"], "the legacy peer's tool list is admitted");
+        assert.equal((echo?.server as { name?: string } | undefined)?.name, "legacy-echo", "the initialize serverInfo is the legacy identity");
     } finally {
         await module.close();
     }

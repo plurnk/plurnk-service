@@ -296,14 +296,22 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 },
             },
         })));
-        assert.equal(legacy.ok, false);
-        assert.equal(
-            legacy.problem?.type,
-            "https://problems.plurnk.dev/mcp/management/protocol-revision-unsupported",
-        );
-        assert.equal(legacy.problem?.retryable, false);
-        assert.equal(legacy.problem?.server, "legacy");
-        assert.match(String(legacy.problem?.detail ?? ""), /upgrade or replace the legacy endpoint/i);
+        // {§mcp-authority} — a legacy peer negotiates below the pin and serves its
+        // standard catalog instead of being rejected.
+        assert.equal(legacy.ok, true);
+        const legacyList = actionResult(await post(port, runInput(workspace, "legacy-list", {
+            forwardedProps: {
+                plurnk: {
+                    workspace,
+                    action: { kind: "workspace.mcp.list" },
+                },
+            },
+        })));
+        const legacyServer = (legacyList.result?.servers as ReadonlyArray<Readonly<Record<string, unknown>>> | undefined)
+            ?.find((server) => server.alias === "legacy");
+        assert.equal(legacyServer?.state, "connected");
+        assert.equal(legacyServer?.protocolVersion, "2025-06-18");
+        assert.deepEqual(legacyServer?.tools, ["legacy_echo"]);
     } finally {
         await daemon.stop();
         await db.close();

@@ -9,20 +9,27 @@ executor, resource, proposal, entry, Problem, and lifecycle contracts.
 
 ## §mcp-authority Protocol authority
 
-The only accepted revision is `2026-07-28`, specification commit
+The host's own wire authority is revision `2026-07-28`, specification commit
 `5f5440bb26a62e2cf3440b92da5a667efa03b267`. The implementation exact-pins
 `@modelcontextprotocol/client@2.0.0`. SDK exports are not protocol authority:
 that package deliberately retains legacy and deprecated API shapes. It owns
 core negotiation and transport; this package owns only exact-pinned extension
 wire that the SDK does not yet implement.
 
-The optional Tasks authority is the official `experimental-ext-tasks` contract
-at commit `2c1425d9a288b9b1f489430fe1e00bb392b47e48`. Its absence from the current
-SDK runtime does not revive that SDK's retained 2025 Tasks vocabulary.
+Connection setup negotiates-and-degrades. A server that negotiates the pinned
+revision and offers `server/discover` is a **modern** peer: it gets the complete
+extension wire (the `_meta` envelope, `resultType`, the Tasks extension) and its
+discover result is the identity and capability source. A server the SDK
+negotiated below the pin is an ordinary MCP peer: it serves the standard
+tool/resource/prompt surface from its `initialize` result at its negotiated
+revision, and the host applies no envelope, discover, or Tasks requirements to
+it. There is no rejection for offering an older supported revision and no
+protocol downgrade of the host's own extension wire: modern peers and legacy
+peers simply carry different surfaces.
 
-Every request carries the modern `_meta` envelope. Connection setup verifies
-`server/discover` at the pinned revision before publishing any runtime or
-scheme. There is no protocol downgrade or legacy fallback.
+The optional Tasks authority is the official `experimental-ext-tasks` contract
+at commit `2c1425d9a288b9b1f489430fe1e00bb392b47e48`. It is negotiated
+per-connection and absent from a legacy peer.
 
 ## §mcp-core-matrix Core capability matrix
 
@@ -71,7 +78,7 @@ originating tool result; a failed Task preserves its JSON-RPC error.
 | Removed | `resources/subscribe`, `resources/unsubscribe`, SSE resumption and `Last-Event-ID` | Use `subscriptions/listen`; reissue a lost request with a new ID |
 | Removed | Legacy Tasks `tasks/list`, `tasks/result`, and task-augmentation request fields | Use only the negotiated final Tasks extension |
 | Excluded | Other official, experimental, or private extensions | Require a separately owned contract before negotiation |
-| Excluded | Legacy revisions and dual-era operation | Pin `2026-07-28`; never probe-and-fallback |
+| Excluded | Dual-era operation | Modern peers and legacy peers carry different surfaces; the host never mixes the two on one connection |
 | Excluded | MCP server and authorization-server roles | This package is the host/client only |
 
 ## §mcp-transports Transport bindings
@@ -213,8 +220,7 @@ Problems rather than generic AG-UI failures:
 
 | Endpoint condition | Problem |
 |---|---|
-| Definitively does not offer pinned `2026-07-28` through `server/discover` | `502 protocol-revision-unsupported`, non-retryable; names the server, required revision and method, and directs the operator to upgrade or replace the legacy endpoint |
-| Cannot connect or complete current discovery/catalog preparation | `502 server-unavailable`, retryable; names the server and transport without exposing credentials |
+| Cannot connect or complete discovery/catalog preparation at the negotiated revision | `502 server-unavailable`, retryable; names the server and transport without exposing credentials |
 
 Interactive preparation returns a successful pending result shaped as
 `{ status: 202, authorization: { url } }`; it publishes no candidate runtime.

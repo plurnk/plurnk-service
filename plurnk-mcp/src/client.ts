@@ -50,8 +50,14 @@ import {
     serverSupportsTasks,
 } from "./tasks.ts";
 
+// {§mcp-authority} — capability source: the modern discover result when the
+// server offered it, else the legacy initialize result the SDK already folded.
+const serverCapabilities = (client: Client): DiscoverResult["capabilities"] | undefined =>
+    client.getDiscoverResult()?.capabilities
+    ?? client.getServerCapabilities() as DiscoverResult["capabilities"] | undefined;
+
 export interface ServerCatalog {
-    readonly protocolVersion: typeof MCP_PROTOCOL_VERSION;
+    readonly protocolVersion: string;
     readonly server: ReturnType<Client["getServerVersion"]>;
     readonly capabilities: DiscoverResult["capabilities"];
     readonly tools: Awaited<ReturnType<Client["listTools"]>>["tools"];
@@ -283,7 +289,8 @@ export class AuthorizationRequiredError extends Error {
 interface OpenClient {
     readonly client: Client;
     readonly transport: StdioClientTransport | StreamableHTTPClientTransport;
-    readonly extensions: ExtensionChannel;
+    readonly extensions: ExtensionChannel | null;
+    readonly protocolVersion: string;
     readonly subscriptions: Subscriptions;
 }
 
@@ -312,7 +319,7 @@ const openClient = async (
         {
             capabilities: clientCapabilities,
             versionNegotiation: {
-                mode: { pin: MCP_PROTOCOL_VERSION },
+                mode: "auto",
             },
             inputRequired: {
                 autoFulfill: false,
@@ -366,32 +373,35 @@ const openClient = async (
         }
         throw new Error(`MCP ${MCP_PROTOCOL_VERSION} connection failed.`, { cause });
     }
+    // {§mcp-authority} — negotiate-and-degrade. The pinned revision is the host's
+    // own wire authority: a modern pinned server with a discover result gets the
+    // complete extension wire. Anything the SDK negotiated below it is an
+    // ordinary MCP server — standard tool/resource/prompt surface from its
+    // initialize result, no discover identity, no tasks, no extension channel.
+    const era = client.getProtocolEra();
+    const negotiated = client.getNegotiatedProtocolVersion() ?? "";
     const discover = client.getDiscoverResult();
-    if (
-        client.getProtocolEra() !== "modern"
-        || client.getNegotiatedProtocolVersion() !== MCP_PROTOCOL_VERSION
-        || discover === undefined
-    ) {
-        await client.close();
-        throw new Error(`MCP server did not negotiate required revision ${MCP_PROTOCOL_VERSION}.`);
-    }
-    const extensions = new ExtensionChannel(transport, {
-        protocolVersion: MCP_PROTOCOL_VERSION,
-        clientInfo,
-        clientCapabilities,
-        cancelRequest: async (requestId) => client.notification({
-            method: "notifications/cancelled",
-            params: { requestId },
-        }),
-        onError: options.onInfrastructureError,
-    });
+    const modern = era === "modern" && negotiated === MCP_PROTOCOL_VERSION && discover !== undefined;
+    const extensions = modern
+        ? new ExtensionChannel(transport, {
+            protocolVersion: MCP_PROTOCOL_VERSION,
+            clientInfo,
+            clientCapabilities,
+            cancelRequest: async (requestId) => client.notification({
+                method: "notifications/cancelled",
+                params: { requestId },
+            }),
+            onError: options.onInfrastructureError,
+        })
+        : null;
     return {
         client,
         transport,
         extensions,
+        protocolVersion: negotiated,
         subscriptions: new Subscriptions(client, {
             timeout: requestTimeoutMs(environ),
-            tasks: serverSupportsTasks(discover.capabilities),
+            tasks: serverSupportsTasks(discover?.capabilities ?? client.getServerCapabilities()),
             onError: options.onInfrastructureError,
         }),
     };
@@ -504,7 +514,7 @@ export default class ServerConnection {
         run: (
             client: Client,
             subscriptions: Subscriptions,
-            extensions: ExtensionChannel,
+            extensions: ExtensionChannel | null,
         ) => Promise<T>,
     ): Promise<T> {
         this.#activeRequests += 1;
@@ -543,7 +553,7 @@ export default class ServerConnection {
 
     async tools(signal?: AbortSignal): Promise<Tool[]> {
         return this.#request(async (client) => {
-            if (client.getDiscoverResult()?.capabilities.tools === undefined) return [];
+            if (serverCapabilities(client)?.tools === undefined) return [];
             const { tools } = await client.listTools(undefined, this.#requestOptions(signal));
             return tools;
         });
@@ -551,27 +561,29 @@ export default class ServerConnection {
 
     async catalog(signal?: AbortSignal): Promise<ServerCatalog> {
         return this.#request(async (client) => {
-            const discover = client.getDiscoverResult();
-            if (discover === undefined) throw new Error("Modern MCP connection omitted its discovery result.");
+            // {§mcp-authority} — the discover result is the modern identity and
+            // capability source; a legacy server's initialize result supplies the
+            // same facts at its negotiated revision.
+            const capabilities = serverCapabilities(client) ?? {};
             const [tools, resources, resourceTemplates, prompts] = await Promise.all([
-                discover.capabilities.tools === undefined
+                capabilities.tools === undefined
                     ? Promise.resolve([])
                     : client.listTools(undefined, this.#requestOptions(signal)).then((result) => result.tools),
-                discover.capabilities.resources === undefined
+                capabilities.resources === undefined
                     ? Promise.resolve([])
                     : client.listResources(undefined, this.#requestOptions(signal)).then((result) => result.resources),
-                discover.capabilities.resources === undefined
+                capabilities.resources === undefined
                     ? Promise.resolve([])
                     : client.listResourceTemplates(undefined, this.#requestOptions(signal))
                         .then((result) => result.resourceTemplates),
-                discover.capabilities.prompts === undefined
+                capabilities.prompts === undefined
                     ? Promise.resolve([])
                     : client.listPrompts(undefined, this.#requestOptions(signal)).then((result) => result.prompts),
             ]);
             return {
-                protocolVersion: MCP_PROTOCOL_VERSION,
+                protocolVersion: client.getNegotiatedProtocolVersion() ?? "",
                 server: client.getServerVersion(),
-                capabilities: discover.capabilities,
+                capabilities,
                 tools,
                 resources,
                 resourceTemplates,
@@ -585,7 +597,7 @@ export default class ServerConnection {
         resourceTemplates: ServerCatalog["resourceTemplates"];
     }> {
         return this.#request(async (client) => {
-            if (client.getDiscoverResult()?.capabilities.resources === undefined) {
+            if (serverCapabilities(client)?.resources === undefined) {
                 return { resources: [], resourceTemplates: [] };
             }
             const [resources, resourceTemplates] = await Promise.all([
@@ -600,7 +612,7 @@ export default class ServerConnection {
 
     async prompts(signal?: AbortSignal): Promise<ServerCatalog["prompts"]> {
         return this.#request(async (client) => {
-            if (client.getDiscoverResult()?.capabilities.prompts === undefined) return [];
+            if (serverCapabilities(client)?.prompts === undefined) return [];
             return (await client.listPrompts(undefined, this.#requestOptions(signal))).prompts;
         });
     }
@@ -615,7 +627,7 @@ export default class ServerConnection {
     ): Promise<CallToolResult> {
         return this.#request(async (client, subscriptions, extensions) => {
             const timeout = requestTimeoutMs(this.#environ);
-            if (serverSupportsTasks(client.getDiscoverResult()?.capabilities)) {
+            if (serverSupportsTasks(serverCapabilities(client))) {
                 const tool = toolDefinition ?? (await client.listTools(
                     undefined,
                     this.#requestOptions(signal),
@@ -632,7 +644,7 @@ export default class ServerConnection {
                     onProgress,
                     interact,
                     timeout,
-                    channel: extensions,
+                    channel: extensions ?? (() => { throw new Error("MCP tasks channel absent on a non-modern connection."); })(),
                     subscriptions,
                 });
             }
@@ -736,7 +748,7 @@ export default class ServerConnection {
         if (client !== undefined) {
             closures.push(client.then(async ({ client: connected, extensions, subscriptions }) => {
                 const failures: unknown[] = [];
-                extensions.close();
+                extensions?.close();
                 // A full connection close terminates its listen request. Retiring first
                 // avoids a redundant cancellation racing the SDK's removed listen ID.
                 const settled = await Promise.allSettled([

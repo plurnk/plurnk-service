@@ -5,9 +5,13 @@ module for [Plurnk](https://github.com/plurnk/plurnk-service). It projects
 trusted MCP servers through Plurnk's existing executor, resource, proposal,
 entry, Problem, lifecycle, and AG-UI contracts.
 
-The module accepts only protocol revision `2026-07-28`. A legacy endpoint is
-rejected with a `protocol-revision-unsupported` Problem that names the required
-revision and `server/discover`; Plurnk does not negotiate a downgrade.
+The module's own wire authority is protocol revision `2026-07-28`
+({§mcp-authority}). Connection setup negotiates-and-degrades: a server that
+offers the pinned revision and `server/discover` gets the complete extension
+wire; a server the SDK negotiated below the pin is an ordinary MCP peer that
+serves its standard surface at its own negotiated revision. Plurnk does not
+downgrade its own extension wire, but it does not reject an older supported
+revision.
 
 ## Manage workspace servers
 
@@ -101,10 +105,10 @@ them read-only; the rest of the vendor catalog is not admitted.
 **Pinned release and revision.** `@brave/brave-search-mcp-server@2.1.0`
 (stdio) pins `@modelcontextprotocol/sdk@1.29.0`, whose latest protocol
 revision is `2025-11-25` and which does not implement `server/discover`. The
-host's pinned revision is `2026-07-28` ({§mcp-authority}), so the pinned
-release is not connectable yet — the daemon publishes it as `unavailable`.
-Enable the fixture once a Brave release ships a compliant SDK; the demo story
-`{§web-search-retrieval}` then exercises it and skips meanwhile.
+host negotiates-and-degrades ({§mcp-authority}), so the fixture connects at
+`2025-11-25` with the standard tool surface — verified live: the demo story
+`{§web-search-retrieval}` researched through the real Brave MCP tool and
+answered from it.
 
 ## Service defaults
 

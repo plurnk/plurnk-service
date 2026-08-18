@@ -24,6 +24,7 @@ import { openMigrated } from "./intg/_helpers.ts";
 import { connect, rpcCall, runLoopToTerminal } from "./intg/_rpc.ts";
 import Digest from "../src/digest/Digest.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { Module as McpModule } from "@plurnk/plurnk-mcp";
 
 export interface LiveWorkspace {
     db: Db;
@@ -78,6 +79,10 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
     const dbPath = join(runDir, "plurnk.db");
     const db = await openMigrated(dbPath);
     const daemon = new Daemon({ db, provider, mimetypes });
+    // The harness mirrors the service's default composition: the MCP host is a
+    // first-class module, so demo stories exercise ordinary MCP attachments
+    // exactly as a production daemon does.
+    daemon.registerModule(McpModule.init());
     await daemon.start(); // {§rpc} — the harness rides the listenerless seam
     const ws = await connect({ daemon });
     // SANDBOX: every live/demo workspace roots at a fresh empty dir, NEVER the host repo. With
