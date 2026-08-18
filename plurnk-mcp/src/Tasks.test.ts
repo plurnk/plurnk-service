@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import {
     SUBSCRIPTION_ID_META_KEY,
@@ -535,6 +536,54 @@ test("cancelling an owning operation awaits tasks/cancel before it settles", asy
         assert.ok(methods.indexOf("tasks/cancel") < methods.lastIndexOf("notifications/cancelled"));
     } finally {
         await connection.close();
+    }
+});
+
+test("{§tasks-lifetime} closing the owning connection abandons an in-process task instead of resuming it", async () => {
+    const paused = new ServerConnection({
+        name: "tasks-stdio",
+        transport: "stdio",
+        command: process.execPath,
+        args: [stdioFixture],
+        env: { PLURNK_TASK_PAUSE: "1" },
+    }, env);
+    const catalog = await paused.catalog();
+    const tool = catalog.tools.find(({ name }) => name === "stdio-defer")!;
+    const abandoned = paused.callTool(
+        tool.name,
+        { topic: "abandon" },
+        undefined,
+        undefined,
+        undefined,
+        tool,
+    );
+    const abandonment = abandoned.catch(() => undefined);
+    await delay(100);
+    await paused.close();
+    await abandonment;
+    await assert.rejects(() => abandoned, /connection|closed|failed/u);
+
+    const fresh = new ServerConnection({
+        name: "tasks-stdio",
+        transport: "stdio",
+        command: process.execPath,
+        args: [stdioFixture],
+    }, env);
+    try {
+        const replayed = await fresh.callTool(
+            tool.name,
+            { topic: "re-run" },
+            undefined,
+            undefined,
+            undefined,
+            tool,
+        );
+        assert.deepEqual(replayed.content, [{
+            type: "text",
+            text: "plain stdio Task completed",
+        }]);
+    } finally {
+        await fresh.close();
     }
 });
 

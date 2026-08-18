@@ -69,6 +69,26 @@ Polling honors each current `pollIntervalMs` under the one owning operation
 deadline. Task input keys are fulfilled at most once, in one atomic client
 interaction per observed input set. A completed Task is validated as the
 originating tool result; a failed Task preserves its JSON-RPC error.
+Handle ownership and the restart journey are bounded in {§tasks-lifetime}.
+
+## §tasks-lifetime Tasks lifetime and re-run
+
+Task handles are owned in-process by the connection and operation that created
+them; Plurnk deliberately declines durable task-handle recovery. A durable
+handle would need a persisted scheduler and a home for a result whose owning
+operation does not outlive the daemon; the ordinary Plurnk journey is that a
+restart re-runs the operation, which drives a fresh task. The server's own
+persistence of task state is respected only within one connection lifetime;
+nothing task-shaped is written to SQLite and no MCP sidecar lifecycle exists.
+
+| Boundary | Behaviour |
+|---|---|
+| Client disconnect | The daemon-owned operation and its task keep running; the client reattaches to the operation, not the task. |
+| Daemon restart | The connection and every in-flight task handle die with it; the tool call fails like any interrupted operation, the loop re-runs, and the tool call creates a fresh task. |
+| Workspace reattachment | The attachment reconstructs from its durable definition; in-flight tasks on the replaced connection are abandoned, not resumed. |
+| Expiry | The owning operation deadline bounds polling; a non-converging task fails at the standard round bound and is cancelled. |
+| Cancellation | Owner abort cancels the task before settling; the handle is then terminal. |
+| Already terminal | Terminal results and errors are consumed by the drive loop; a completed or failed task is never re-polled or re-resumed. |
 
 ## §mcp-exclusions Removed, deprecated, and excluded surfaces
 

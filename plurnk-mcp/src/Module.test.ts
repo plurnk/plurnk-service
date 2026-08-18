@@ -19,6 +19,7 @@ import Module, { closeConnections } from "./Module.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const legacyFixture = fileURLToPath(new URL("./fixtures/legacy-server.mjs", import.meta.url));
+const taskFixture = fileURLToPath(new URL("./fixtures/task-server.mjs", import.meta.url));
 const floor = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
     PLURNK_MCP_REQUEST_TIMEOUT: "30000",
@@ -788,6 +789,53 @@ test("OAuth completion rebases add and customized enable onto current workspace 
         );
     } finally {
         await module.close();
+    }
+});
+
+test("{§tasks-lifetime} daemon restart leaves no task material and a re-run drives a fresh in-process task", async () => {
+    const durable = new Map<number, unknown | null>();
+    const first = Module.init({ env: floor });
+    const firstHarness = harness(durable);
+    await first.setup(firstHarness.seam);
+    await firstHarness.hydrate(1);
+    await firstHarness.invoke(1, "workspace.mcp.add", {
+        alias: "tasks",
+        target: process.execPath,
+        options: { args: [taskFixture] },
+    });
+    const executor = firstHarness.snapshots.get(1)?.[0]?.executor;
+    assert.ok(executor);
+    const run = async (target: NonNullable<typeof executor>): Promise<{ status: number }> => {
+        const result = await target.run({
+            runtime: "tasks",
+            body: JSON.stringify({ topic: "module lifetime" }),
+            target: "stdio-defer",
+            cwd: null,
+            signal: new AbortController().signal,
+            write: () => undefined,
+            setState: () => undefined,
+            emit: () => undefined,
+            interact: async () => {
+                throw new Error("the plain task fixture never requests input");
+            },
+        });
+        return result as { status: number };
+    };
+    assert.equal((await run(executor)).status, 200);
+    assert.doesNotMatch(JSON.stringify(durable.get(1)), /stdio-task-1/, "task handles never reach durable state");
+    await first.close();
+
+    const restored = Module.init({ env: floor });
+    const restoredHarness = harness(durable);
+    try {
+        await restored.setup(restoredHarness.seam);
+        await restoredHarness.hydrate(1);
+        const replayed = restoredHarness.snapshots.get(1)?.[0]?.executor;
+        assert.ok(replayed);
+        const result = await run(replayed);
+        assert.equal(result.status, 200, "a re-run completes a fresh task instead of resuming the abandoned one");
+    } finally {
+        await restored.close();
     }
 });
 

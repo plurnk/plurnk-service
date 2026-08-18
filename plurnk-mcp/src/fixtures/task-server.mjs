@@ -4,6 +4,7 @@ const protocolVersion = "2026-07-28";
 const tasksExtension = "io.modelcontextprotocol/tasks";
 const taskId = "stdio-task-1";
 const timestamp = "2026-08-16T04:00:00Z";
+const paused = process.env.PLURNK_TASK_PAUSE === "1";
 let selected = false;
 
 const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -90,6 +91,10 @@ const handle = (message) => {
     if (method === "tasks/get") {
         if (!selected) {
             error(id, -32603, "Task was polled before its subscription filter was active");
+            return;
+        }
+        if (paused) {
+            result(id, { resultType: "complete", ...task("working") });
             return;
         }
         result(id, {

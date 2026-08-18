@@ -210,8 +210,8 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-tasks}", "plurnk-mcp Tasks 'current HTTP Tasks preserve MRTR, task input, polling, notifications, and routing'", "plurnk-core intg ClientInteractions", "plurnk-agui AguiPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'"],
-        note: "Advertised only when the complete in-process lifecycle is active; never core conformance. Task input routes through the general interaction owner.",
+        evidence: ["{§mcp-tasks}", "{§tasks-lifetime}", "plurnk-mcp Tasks 'current HTTP Tasks preserve MRTR, task input, polling, notifications, and routing'", "plurnk-mcp Tasks '{§tasks-lifetime} closing the owning connection abandons an in-process task instead of resuming it'", "plurnk-core intg ClientInteractions", "plurnk-agui AguiPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'"],
+        note: "Advertised only when the complete in-process lifecycle is active; never core conformance. Task input routes through the general interaction owner; handles are in-process per {§tasks-lifetime}.",
     },
     {
         id: MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID,
