@@ -79,3 +79,26 @@ test("{§mcp-tool-presentation} missing remote prose gets a factual fallback", (
         inputSchema: { type: "object" },
     }]).tools[0]?.summary, "Invoke the issue_read tool exposed by the gitea MCP server.");
 });
+
+test("{§mcp-apps-exclusion} Apps UI metadata never leaks into the model-facing projection", () => {
+    const tools: Tool[] = [{
+        name: "analytics",
+        description: "Interactive analytics.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        _meta: {
+            ui: {
+                resourceUri: "ui://apps/analytics",
+                csp: "default-src 'none'",
+                permissions: ["tools/call", "sendOpenLink"],
+            },
+        },
+    }];
+    const registry = toolRegistry("apps", tools);
+    const entry = registry.tools.find((candidate) => candidate.target === "analytics");
+    assert.ok(entry);
+    assert.equal(entry.summary, "Interactive analytics.");
+    assert.ok(
+        !JSON.stringify([entry.summary, entry.invocation]).includes("ui://"),
+        "no UI resource or policy material reaches the projection",
+    );
+});

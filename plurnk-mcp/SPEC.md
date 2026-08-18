@@ -331,6 +331,27 @@ secret-only client and Plurnk declines the assertion arms. The interactive
 OAuth arm is the human-principal path ({§mcp-management-actions}); bearer
 remains the private-service/legacy transport credential.
 
+## §mcp-ema-deferral Enterprise-managed authorization deferral
+
+Plurnk does not advertise or implement
+`io.modelcontextprotocol/enterprise-managed-authorization`. The SDK supplies
+the wire steps (ID-JAG acquisition via RFC 8693 and the RFC 7523 JWT bearer
+grant); the extension's remaining responsibilities are enterprise deployment
+policy, not open-source host mechanics:
+
+| Responsibility | Ownership |
+|---|---|
+| Capability advertisement, ID-JAG and access-token exchange, scope-error handling | Public protocol responsibilities the SDK host could own |
+| SSO acquisition of the identity assertion (ID token or SAML) | Presumes a user session the headless daemon does not own |
+| Saving the identity assertion for later use | Durable identity material; conflicts with the credential policy — secrets have one owner, the operator environment, and never a durable store |
+| IdP endpoint and client registration configuration | Organization-owned; Plurnk has no org-level configuration seam |
+
+The conformance client declines the enterprise scenarios, the capability
+matrix keeps the extension non-advertised ({§mcp-capability-matrix}), and the
+extension stays separate from core OAuth and client-credentials reporting.
+Re-evaluate when an organization-owned configuration owner exists and a
+decision on durable identity material is ratified.
+
 ## §mcp-setup Atomic lifecycle
 
 For each workspace, hydration resolves service defaults and durable positive
@@ -395,6 +416,22 @@ standalone `blob` content block is not a modern `tools/call` content member
 (blobs ride inside embedded blob resources) and is rejected as
 protocol-invalid. Size limits and MIME trust remain ordinary channel and
 entry policy, not MCP-specific rules.
+
+## §mcp-apps-exclusion MCP Apps exclusion
+
+Plurnk does not advertise or implement MCP Apps. An Apps host must sandbox
+render third-party HTML/JavaScript, enforce CSP and `_meta.ui` permissions,
+mediate a `postMessage` JSON-RPC `ui/` dialect, proxy app-initiated tool
+calls with consent, and own teardown. No Plurnk client can enforce that
+sandbox today (terminal and Neovim cannot), the daemon is not a second
+application platform, and AG-UI has no standard Apps projection — inventing
+a private event stream to carry Apps is rejected. Tool descriptions carrying
+`_meta.ui` metadata project into Plurnk without it: model-facing summaries
+derive only from name, description, title, and input schema, and no UI
+resource is fetched or preloaded. The capability matrix keeps the extension
+non-advertised ({§mcp-capability-matrix}). Re-evaluate only when a
+sandbox-capable client exists and a standard AG-UI projection is agreed;
+even then the capability would be per-client-advertised, never daemon-wide.
 
 ## §mcp-model-projection Model-facing projection
 
