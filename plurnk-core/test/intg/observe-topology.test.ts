@@ -1,13 +1,14 @@
 // The observational boundary's span topology through the REAL loop path
 // ({§observability-boundary}). A Mock provider without pre-supplied ops drives
 // the production parse path, so a single turn produces the full chain:
-// loop.run → loop.turn → provider.generate → contracts.parse → op.dispatch.
+// loop.run → loop.turn → gen_ai.client.request → contracts.parse → op.dispatch.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { withDaemon, connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 import { mountMemoryTracing } from "./_observe-memory.ts";
+import { SpanKind } from "@opentelemetry/api";
 import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 
 const settleExports = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 10));
@@ -60,10 +61,19 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
         assert.ok(Number.isInteger(turn.attributes["turn.id"]));
 
         const turnChildren = childrenByParent.get(turn.spanContext().spanId) ?? [];
-        const generate = turnChildren.find((s) => s.name === "provider.generate");
+        const generate = turnChildren.find((s) => s.name === "gen_ai.client.request");
         assert.ok(generate !== undefined, "the turn nests the provider call");
+        assert.equal(generate.kind, SpanKind.CLIENT, "the GenAI convention span is CLIENT-kind");
+        assert.equal(generate.attributes["gen_ai.operation.name"], "chat");
+        assert.equal(generate.attributes["gen_ai.system"], "mocktest", "the registered Mock alias projects as the GenAI system");
         assert.ok(typeof generate.attributes.model === "string" && generate.attributes.model.length > 0);
+        assert.equal(generate.attributes["gen_ai.request.model"], generate.attributes.model);
         assert.ok(Number.isInteger(generate.attributes.attempt), "the provider span carries the emission attempt");
+        assert.deepEqual(
+            generate.attributes["gen_ai.response.finish_reasons"],
+            ["stop"],
+            "the settled span carries the convention finish reason",
+        );
 
         // The parse is synchronous and ends before model dispatch. Turn-0
         // environmental FINDs and the model's PLAN/SEND therefore sit beside

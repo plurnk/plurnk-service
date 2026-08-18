@@ -60,6 +60,11 @@ import StoredPacket, { type PacketAssistant } from "./StoredPacket.ts";
 import Dispatcher from "./Dispatcher.ts";
 import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
 import { observed, observedSync } from "../observe/spans.ts";
+import {
+    GEN_AI_REQUEST_SPAN,
+    genAiRequestOptions,
+    settleGenAiResponse,
+} from "../observe/genai.ts";
 import { OPS_DISPATCHED, PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
 import { readOptimisticSettlementMs } from "./optimistic-settlement.ts";
@@ -522,7 +527,7 @@ export default class TurnRunner {
         const settlements = await Promise.allSettled(prepared.map(async ({ statement, modelCall, attributions, providerWorkerId }) => {
             try {
                 const response = await observed(
-                    "provider.generate",
+                    GEN_AI_REQUEST_SPAN,
                     { model: provider.model, attempt: 1, kind: "bare" },
                     async (span) => {
                         try {
@@ -545,6 +550,7 @@ export default class TurnRunner {
                                 status: "resolved",
                             });
                             span.setAttribute("status", "resolved");
+                            settleGenAiResponse(span, generated);
                             return generated;
                         } catch (error) {
                             if (error instanceof ProviderError) {
@@ -553,6 +559,10 @@ export default class TurnRunner {
                             throw error;
                         }
                     },
+                    genAiRequestOptions(
+                        ProviderInstantiate.aliasOf(provider) ?? "plurnk",
+                        provider.model,
+                    ),
                 );
                 await modelCall.observeResponse(response);
                 return {
@@ -1093,7 +1103,7 @@ export default class TurnRunner {
                 let completedResponse: ProviderResponse;
                 try {
                     completedResponse = await observed( // {§observability-boundary}
-                        "provider.generate",
+                        GEN_AI_REQUEST_SPAN,
                         { model: provider.model, attempt: modelCallSequence },
                         async (span) => {
                             try {
@@ -1122,6 +1132,7 @@ export default class TurnRunner {
                                     status: "resolved",
                                 });
                                 span.setAttribute("status", "resolved");
+                                settleGenAiResponse(span, generated);
                                 return generated;
                             } catch (error) {
                                 if (error instanceof ProviderError) {
@@ -1130,6 +1141,10 @@ export default class TurnRunner {
                                 throw error;
                             }
                         },
+                        genAiRequestOptions(
+                            ProviderInstantiate.aliasOf(provider) ?? "plurnk",
+                            provider.model,
+                        ),
                     );
                 } catch (error) {
                     if (!(error instanceof ProviderError)

@@ -183,6 +183,19 @@ OpenTelemetry may observe PLURNK; it never becomes product state, failure transp
 
 Configuration uses the standard `OTEL_*` environment: `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` select `otlp` or `console` per signal (a missing or `none` value keeps that signal off; no SDK default selects an exporter), `OTEL_SERVICE_NAME` names the service (default `plurnk-service`), case-insensitive `true` in `OTEL_SDK_DISABLED` turns the boundary off, and OTLP exporters honor `OTEL_EXPORTER_OTLP_*`. An unknown exporter name fails daemon boot; a typo never silently disables observation. OTel Logs and direct draft semantic-convention use are excluded. HTTP spans carry only an AG-UI-owned bounded route class, never an input pathname or query. Spans otherwise carry high-cardinality identifiers; metric labels stay low-cardinality. Prompts, reasoning, file bodies, arbitrary URLs, secrets, and plugin payloads are never recorded as attributes or metric values by default. Exporter failure cannot change product results or client lifecycle. Daemon, telemetry, and database teardown are independent reverse-ownership phases; every phase runs and aggregate failure preserves every cause.
 
+§observability-genai-conventions **GenAI convention projection.** Provider
+request spans use the OpenTelemetry GenAI semantic conventions: a
+CLIENT-kind `gen_ai.client.request` span carrying `gen_ai.operation.name`
+(`chat`), `gen_ai.system` (the provider alias), and `gen_ai.request.model`;
+on settlement it gains `gen_ai.usage.input_tokens` and
+`gen_ai.usage.output_tokens` from validated accounting plus
+`gen_ai.response.finish_reasons`; failures carry `error.type` as the class
+name only. Plurnk custom attributes (attempt, kind, status, loop/turn ids)
+ride alongside and never replace the convention attributes. The redaction
+boundary is unchanged — no prompts, reasoning, bodies, or URLs. This is the
+sanctioned exception to the blanket draft-convention exclusion; no other
+draft convention is projected.
+
 ### §in-process In-process architecture
 
 Composed daemon internals + admin CLI. Four plug points:
