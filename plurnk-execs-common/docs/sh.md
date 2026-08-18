@@ -3,6 +3,10 @@
 A shell command line, run via `sh -c`. Bare `EXEC` (no runtime tag) defaults
 to `sh`, so `## EXEC0` and `## EXEC0 [sh]` are equivalent headings.
 
+The body is **raw shell text** — never wrap it in ```sh or any Markdown
+fence: a fence line is shell syntax, and the command fails with a confusing
+parser error instead of a real one.
+
 ## Environment
 
 The command receives a **scoped** environment. Provider keys and every

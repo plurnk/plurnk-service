@@ -52,3 +52,30 @@ test("{§schemes-self-doc-materialization} kernel documentation materialization 
         await db.close();
     }
 });
+
+test("{§schemes-self-doc-materialization} an unchanged generated surface dispatches nothing on re-materialization", async () => {
+    const db = await openMigrated();
+    try {
+        const engine = new FixtureEngine({
+            db,
+            schemes: new SchemeRegistry(),
+            mimetypes: DEFAULT_MIMETYPES,
+        });
+        const workspaceId = await insertWorkspace(db, `loop-docs-idem-${crypto.randomUUID()}`);
+        engine.documents = [
+            { pathname: "/skills/plurnk/stable.md", content: "# Stable" },
+        ];
+        await LoopDocs.materialize(engine, db, workspaceId);
+        const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({
+            workspace_id: workspaceId,
+            name: "plurnk",
+        });
+        const before = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: plurnkWorker!.id });
+
+        await LoopDocs.materialize(engine, db, workspaceId);
+        const after = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: plurnkWorker!.id });
+        assert.equal(after?.id, before?.id, "the unchanged surface re-dispatches nothing — no new plurnk loop, no 304 churn");
+    } finally {
+        await db.close();
+    }
+});

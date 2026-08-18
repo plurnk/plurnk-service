@@ -7,6 +7,7 @@
 //      worker://plurnk/docs/ and worker://plurnk/tools/ — discovered by the
 //      turn-0 FIND surveys ({§schemes-self-doc-materialization},
 //      {§tools-resource-materialization}).
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type Engine from "../core/Engine.ts";
@@ -22,6 +23,12 @@ import Owner from "../core/Owner.ts";
 import DispatchAsPlurnk from "./dispatch-as-plurnk.ts";
 
 export default class LoopDocs {
+    // {§schemes-self-doc-materialization} {§tools-resource-materialization} —
+    // the generated-skill surface tracks a content signature so repeated
+    // boot/module-publish materializations dispatch nothing when nothing
+    // changed (the entry layer's 304 no-op never even runs).
+    static #signatures = new WeakMap<object, Map<number, string>>();
+
     static #target(pathname: string): ParsedPath {
         return {
             kind: "url",
@@ -94,6 +101,15 @@ export default class LoopDocs {
                 lineMarker: { marks: [1, -1] }, body: content, position: UNKNOWN_POSITION,
             });
         }
+
+        const signature = createHash("sha256")
+            .update(agentsContent ?? "\u0000")
+            .update([...desiredDocs].map(([pathname, content]) => `${pathname}\u0000${content}`).join("\u0001"))
+            .digest("hex");
+        const byWorkspace = LoopDocs.#signatures.get(db) ?? new Map<number, string>();
+        if (byWorkspace.get(workspaceId) === signature) return;
         await DispatchAsPlurnk.dispatch(engine, db, workspaceId, statements);
+        byWorkspace.set(workspaceId, signature);
+        LoopDocs.#signatures.set(db, byWorkspace);
     }
 }

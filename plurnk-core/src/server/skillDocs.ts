@@ -108,7 +108,7 @@ const renderIndex = (skills: readonly SkillDoc[], projectRoot: string | null): s
 export default class SkillDocs {
     // {§skills-materialization} — the materialized surface tracks the skill
     // folders' signature so a per-turn refresh dispatches only on real drift.
-    static #signatures = new Map<number, string>();
+    static #signatures = new WeakMap<object, Map<number, string>>();
 
     // {§skills-materialization} — PLURNK_SKILLS_<ALIAS>=<path-to-skill-folder>
     // declares operator-global skills, unioned with the project's skills/ by
@@ -163,17 +163,26 @@ export default class SkillDocs {
     // The model-facing EXEC[skills] runtime mutates the skills folders during a
     // turn; the turn-completion hook refreshes the surface so an added or
     // removed skill is discoverable from the next turn onward.
+    static #byWorkspace(db: Db): Map<number, string> {
+        const existing = SkillDocs.#signatures.get(db);
+        if (existing !== undefined) return existing;
+        const created = new Map<number, string>();
+        SkillDocs.#signatures.set(db, created);
+        return created;
+    }
+
     static async refreshIfChanged(engine: Engine, db: Db, workspaceId: number): Promise<void> {
         const scanned = await SkillDocs.#scan(workspaceId, db);
-        if (SkillDocs.#signatures.get(workspaceId) === scanned.signature) return;
+        const signatures = SkillDocs.#byWorkspace(db);
+        if (signatures.get(workspaceId) === scanned.signature) return;
         await SkillDocs.#materialize(engine, db, workspaceId, scanned);
-        SkillDocs.#signatures.set(workspaceId, scanned.signature);
+        signatures.set(workspaceId, scanned.signature);
     }
 
     static async materialize(engine: Engine, db: Db, workspaceId: number): Promise<void> {
         const scanned = await SkillDocs.#scan(workspaceId, db);
         await SkillDocs.#materialize(engine, db, workspaceId, scanned);
-        SkillDocs.#signatures.set(workspaceId, scanned.signature);
+        SkillDocs.#byWorkspace(db).set(workspaceId, scanned.signature);
     }
 
     static async #materialize(
