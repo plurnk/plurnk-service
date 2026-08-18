@@ -1,7 +1,9 @@
 # sh
 
 A shell command line, run via `sh -c`. Bare `EXEC` (no runtime tag) defaults
-to `sh`, so `## EXEC0` and `## EXEC0 [sh]` are equivalent headings.
+to `sh`, so `## EXEC0` and `## EXEC0 [sh]` are equivalent headings. The body
+is the literal command text passed to `sh -c`, character-perfect including
+whitespace.
 
 ## Environment
 
