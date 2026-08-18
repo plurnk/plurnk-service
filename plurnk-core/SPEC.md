@@ -2368,7 +2368,10 @@ cascade. A WORK/FORK child copies the spawning loop's effective spawn model
 no live link and begins with no override, so a later parent change affects
 only that worker's future loops and descendants. Client journal actors and
 Plurnk-owned bookkeeping workers run no model loops and own no model
-selection.
+selection. An explicit selection or spawn-override change while the worker
+holds a live or parked loop is a precise `409 worker-loop-active`, never a
+silent retroactive switch of the immutable loop snapshot; select after
+concluding or cancelling the loop.
 
 §methods-loop-run-model **Per-loop model selection.** `runLoop` accepts
 optional `model` (client-resolved `<provider>/<model>`, wins) or `alias` (a

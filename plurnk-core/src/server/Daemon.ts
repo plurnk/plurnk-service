@@ -735,6 +735,7 @@ export default class Daemon {
         const workspaceId = ClientInput.assertId("worker.model.set", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("worker.model.set", "workerId", args.workerId);
         await this.#assertWorkerOwned(workspaceId, workerId);
+        await this.#assertWorkerSelectable(workerId);
         const spec = await this.#resolveWorkerModel(workerId, args.alias, args.model);
         if (spec === null) {
             throw new OperationFailureError(Results.failure(
@@ -755,7 +756,28 @@ export default class Daemon {
         const workspaceId = ClientInput.assertId("worker.child.set", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("worker.child.set", "workerId", args.workerId);
         await this.#assertWorkerOwned(workspaceId, workerId);
+        await this.#assertWorkerSelectable(workerId);
         return this.#resolveWorkerSpawnModel(workerId, args.alias, args.model);
+    }
+
+    // {§worker-model-selection} — a selection must not mutate underneath active
+    // work: a live or parked loop is a precise 409, never a silent retroactive
+    // switch of the immutable loop snapshot.
+    async #assertWorkerSelectable(workerId: number): Promise<void> {
+        if (await this.#drains.hasLiveWork(workerId)) {
+            throw daemonFailure(
+                "daemon:worker",
+                "worker-loop-active",
+                409,
+                `Worker ${workerId} has a live or parked loop; select a model after concluding or cancelling it.`,
+                {
+                    workerId,
+                    stage: "model-selection",
+                    recovery: "Conclude or cancel the active loop before selecting a model.",
+                    retryable: false,
+                },
+            );
+        }
     }
 
     async #assertWorkerOwned(workspaceId: number, workerId: number): Promise<void> {

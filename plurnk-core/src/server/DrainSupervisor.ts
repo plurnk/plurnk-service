@@ -712,6 +712,18 @@ export default class DrainSupervisor {
         return this.#cancelTree(workerId, reason, false);
     }
 
+    // {§worker-model-selection} — the 409 boundary: a worker with a live drain
+    // holding a loop, or a parked (slept) loop, owns active work; a model
+    // selection must not mutate underneath it.
+    async hasLiveWork(workerId: number): Promise<boolean> {
+        if (this.#activeDrains.has(workerId)) {
+            const active = await this.#db.drain_current_loop_for_worker.get<{ id: number }>({ worker_id: workerId });
+            if (active !== undefined) return true;
+        }
+        const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ worker_id: workerId });
+        return slept !== undefined;
+    }
+
     cancel(workerId: number, reason: string = "user_cancelled"): boolean {
         const hadDrain = this.#activeDrains.has(workerId);
         const hadWork = hadDrain || this.#hasActiveStreams(workerId);

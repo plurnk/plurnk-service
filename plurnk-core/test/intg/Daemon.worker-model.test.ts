@@ -256,3 +256,73 @@ test("{§worker-model-selection}: the worker's durable model and spawn override 
         await db.close();
     }
 });
+
+test("{§worker-model-selection}: a selection while the worker holds a parked loop is a precise 409", async () => {
+    const spec = provider("parked", "parked-model");
+    const otherSpec = provider("switcheroo", "other-model");
+    const mock = new Mock({
+        contextWindow: 16_384,
+        responses: [
+            makeMockResponse("## EXEC0 [sh]\nsleep 30\n\n## SEND0 [202] <-1>\ndone"),
+            makeMockResponse("## SEND0 [200]\nresumed"),
+        ],
+    });
+    ProviderInstantiate.registerInstance(mock, spec);
+    ProviderInstantiate.registerInstance(mock, otherSpec);
+
+    await withDaemon(null, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        const priorOptimisticWait = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: `parked-${crypto.randomUUID()}` });
+            const [workspace] = await daemon.listWorkspaces();
+            assert.ok(workspace !== undefined);
+            const workerId = await daemon.ensureModelWorker(workspace.id);
+            const started = await daemon.runLoop({
+                workspaceId: workspace.id,
+                workerId,
+                prompt: "park",
+                alias: spec.alias,
+                model: `${spec.provider}/${spec.model}`,
+                flags: { auto: true },
+            });
+            // The EXEC stream keeps the loop parked (202); wait for that state.
+            for (let i = 0; i < 100; i++) {
+                const loops = await db.test_all_loops.all<{ status: number }>({});
+                if (loops.some(({ status }) => status === 202)) break;
+                await new Promise((resolve) => setTimeout(resolve, 20));
+            }
+            const loops = await db.test_all_loops.all<{ status: number }>({});
+            assert.ok(loops.some(({ status }) => status === 202), "the loop parked on its live stream");
+
+            const refused = await daemon.setWorkerModel({
+                workspaceId: workspace.id,
+                workerId,
+                alias: otherSpec.alias,
+                model: `${otherSpec.provider}/${otherSpec.model}`,
+            }).then(
+                () => null,
+                (error: unknown) => error as { result?: { problem?: { type?: string; status?: number } } },
+            );
+            const refusedProblem = refused?.result?.problem;
+            assert.equal(refusedProblem?.status, 409, "a selection under a parked loop is refused precisely");
+            assert.equal(refusedProblem?.type, "https://problems.plurnk.dev/daemon/worker/worker-loop-active");
+
+            await daemon.cancelDrain(workerId, "test");
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            const selected = await daemon.setWorkerModel({
+                workspaceId: workspace.id,
+                workerId,
+                alias: otherSpec.alias,
+                model: `${otherSpec.provider}/${otherSpec.model}`,
+            });
+            assert.equal(selected.alias, otherSpec.alias, "after cancelling, the selection persists");
+            void started;
+        } finally {
+            if (priorOptimisticWait === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+            else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = priorOptimisticWait;
+            ws.close();
+        }
+    });
+});
