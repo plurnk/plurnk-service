@@ -126,12 +126,13 @@ const sumKnown = (
     requests: readonly ProviderRequestAccounting[],
     read: (usage: ProviderUsage) => number | undefined,
 ): number | undefined => {
-    const values = requests.map((request) => request.usage === undefined
-        ? undefined
-        : read(request.usage));
-    return values.some((value) => value === undefined)
-        ? undefined
-        : (values as number[]).reduce((sum, value) => sum + value, 0);
+    // {§tokenomics-provider-usage} — aggregate usage sums every reported
+    // quantity; an unreported one (a response-less failure) is skipped, never
+    // invented as zero and never allowed to erase the reported evidence.
+    const known = requests
+        .map((request) => request.usage === undefined ? undefined : read(request.usage))
+        .filter((value): value is number => value !== undefined);
+    return known.length === 0 ? undefined : known.reduce((sum, value) => sum + value, 0);
 };
 
 export const aggregateProviderAccounting = (

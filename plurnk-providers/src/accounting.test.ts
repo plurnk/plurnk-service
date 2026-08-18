@@ -89,6 +89,10 @@ test("aggregateProviderAccounting preserves request order and only sums known fi
         },
     ]);
     assert.deepEqual(accounting.requests.map(({ provider }) => provider), ["provider:a", "provider:b"]);
-    assert.equal(accounting.usage, null, "an unknown failed request prevents fabricated totals");
-    assert.equal(accounting.costUsd, null);
+    assert.deepEqual(accounting.usage, {
+        inputTokens: 2,
+        outputTokens: 3,
+        totalTokens: 5,
+    }, "a response-less failure is skipped, never allowed to erase reported usage");
+    assert.equal(accounting.costUsd, null, "costUsd stays null while any request is not USD-expressible");
 });
