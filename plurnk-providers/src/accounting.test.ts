@@ -94,5 +94,5 @@ test("aggregateProviderAccounting preserves request order and only sums known fi
         outputTokens: 3,
         totalTokens: 5,
     }, "a response-less failure is skipped, never allowed to erase reported usage");
-    assert.equal(accounting.costUsd, null, "costUsd stays null while any request is not USD-expressible");
+    assert.equal(accounting.costUsd, "0.25", "a response-less failure is skipped; the expressible cost survives");
 });

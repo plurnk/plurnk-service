@@ -967,7 +967,7 @@ test("a provider failure after a rejected emission preserves both issued calls a
             { outcome: "response", input: 10, cost: "0.012" },
             { outcome: "error", input: null, cost: "provider went offline before reporting monetary evidence" },
         ]);
-        assert.equal((await engine.loopUsage(loopId)).accounting.costUsd, null);
+        assert.equal((await engine.loopUsage(loopId)).accounting.costUsd, "0.012", "the response-less failure is skipped; the expressible cost survives");
         const attempts = await db.test_turn_attempts.all<{
             state: "response" | "error";
             accepted: number | null;
