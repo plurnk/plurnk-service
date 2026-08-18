@@ -283,7 +283,6 @@ export default class ProposalLifecycle {
         const result = ProposalLifecycle.#result(row.logEntryId, row.rx);
         const flags = LoopFlagsReader.parse(row.loop_flags, row.loopId);
         const target = ProposalLifecycle.#target(row, op, attrs);
-        const operatorQuestion = ProposalLifecycle.#operatorQuestion(row, op, attrs);
         const diverged = await this.#db.engine_target_diverged_this_turn.get<{ hit: number }>({
             worker_id: row.workerId,
             turn_id: row.turnId,
@@ -302,7 +301,7 @@ export default class ProposalLifecycle {
             attrs,
             flags,
             staleClobberRisk,
-            disposition: ProposalLifecycle.#disposition(operatorQuestion, flags, staleClobberRisk),
+            disposition: ProposalLifecycle.#disposition(flags, staleClobberRisk),
         });
         return { ...proposal, workspaceId: row.workspaceId };
     }
@@ -366,32 +365,11 @@ export default class ProposalLifecycle {
         };
     }
 
-    static #operatorQuestion(
-        row: ProposalRow,
-        op: PlurnkOp,
-        attrs: Record<string, unknown>,
-    ): boolean {
-        if (op !== "SEND" || row.signal === null) return false;
-        let signal: unknown;
-        try {
-            signal = JSON.parse(row.signal);
-        } catch (cause) {
-            throw new Error(`Pending proposal ${row.logEntryId} has invalid signal JSON.`, { cause });
-        }
-        if (signal !== 300) return false;
-        if (typeof attrs.question !== "string") {
-            throw new Error(`Pending SEND signal 300 proposal ${row.logEntryId} has no question.`);
-        }
-        return true;
-    }
-
     static #disposition(
-        operatorQuestion: boolean,
         flags: LoopFlags,
         staleClobberRisk: boolean,
     ): ProposalDisposition {
         if (flags.auto) {
-            if (operatorQuestion) return { owner: "client" };
             return staleClobberRisk
                 ? { owner: "loop", decision: "reject", outcome: "stale_read_clobber" }
                 : { owner: "loop", decision: "accept" };
@@ -481,7 +459,7 @@ export default class ProposalLifecycle {
             }
             // Propagate applyResolution.outcome onto the accepted resolution
             // (operational metadata, e.g. exec's "started") AND its body — the applied result the
-            // model must see THIS turn: a file EDIT's line-numbered diff, a [300] answer. EXEC
+            // model must see THIS turn: a file EDIT's line-numbered diff. EXEC
             // never uses the body rail — its output streams uniformly ({§exec-stream}, NO same-turn
             // in-body exception; automatic admission only skips the review pause) and is READ next turn.
             const withOutcome = applyResult.outcome !== undefined && resolution.outcome === undefined

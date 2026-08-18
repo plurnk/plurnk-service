@@ -645,23 +645,22 @@ transfers directly:
 |-------|-----------------------------------------------------------------|-------------------------------|
 | `1xx` | Continue after submitted operations                             | `102 Processing`              |
 | `2xx` | Conclude successfully or wait on live obligations               | `200 OK`, `202 Accepted`      |
-| `3xx` | Ask the interactive user a stop-the-world multiple choice       | `300 Multiple Choices`        |
 | `4xx` | Abandon the loop after a model-side inability                   | `499`                         |
 | `5xx` | Runtime or infrastructure failure; never a model terminal claim | none                          |
 
 ### §waitpid-dispositions The terminal contract (waitpid)
 
 The model signals one intention per turn — **continue (102)**, **done
-(200)**, **wait (202)**, or **give up (499)**, plus the operator-facing
-**question (300)** — and the engine verifies the claim against the
-loop's live obligations (spawned children, open streams, pending
-retrievals); the grammar polices *shape* only. The shape rules ARE
-structural:
+(200)**, **wait (202)**, or **give up (499)** — and the engine verifies
+the claim against the loop's live obligations (spawned children, open
+streams, pending retrievals); the grammar polices *shape* only. Asking
+the human is the native `question` EXEC tool ({§question-tool}), not a
+disposition. The shape rules ARE structural:
 
-- §send-mid-reservation The five disposition codes `{102, 200, 202, 300, 499}` lex as a
+- §send-mid-reservation The four disposition codes `{102, 200, 202, 499}` lex as a
   distinct `DISPOSITION` token, making a disposition-coded SEND
   **structurally terminal**: a statement after it is a parse error
-  (the mid-termination rule), and the GBNF reserves the five from
+  (the mid-termination rule), and the GBNF reserves the four from
   mid-position SENDs (`status-mid` is their complement over `DDD`).
   This keeps the grammar's last-SEND model and the dispatcher's
   first-disposition model coincident.

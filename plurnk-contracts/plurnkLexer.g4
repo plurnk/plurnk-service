@@ -216,7 +216,7 @@ ST_END   : ']' { this.slotReady = true; } -> type(RBRACKET), mode(SLOTS) ;
 
 mode SIGNAL_INT;
 SI_WS   : [ \t]+ -> skip ;
-SI_DISP : ('102' | '200' | '202' | '300' | '499') { this.markDisposition(); } -> type(DISPOSITION) ;
+SI_DISP : ('102' | '200' | '202' | '499') { this.markDisposition(); } -> type(DISPOSITION) ;
 SI_INT  : '-'? [0-9]+ -> type(INT) ;
 SI_END  : ']' { this.slotReady = true; } -> type(RBRACKET), mode(SLOTS) ;
 

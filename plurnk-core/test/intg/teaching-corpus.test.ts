@@ -65,29 +65,3 @@ test("a failed required corpus read is not reclassified as optional absence", as
         await rm(root, { recursive: true, force: true });
     }
 });
-
-test("questions teaching is required exactly when the workspace admits that capability", async () => {
-    const root = await corpusRoot();
-    const db = await openMigrated();
-    try {
-        await writeFile(join(root, TEACHING_CORPUS.schemeDocs.worker), "# worker\n");
-        const schemes = new SchemeRegistry({ readTeaching: teachingCorpusReader(root) });
-        const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
-        const workspaceId = await insertWorkspace(db, `teaching-questions-${crypto.randomUUID()}`);
-
-        await assert.doesNotReject(() => LoopDocs.materialize(engine, db, workspaceId), "disabled questions do not consume their source");
-        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ questions: true }) });
-        await assert.rejects(
-            () => LoopDocs.materialize(engine, db, workspaceId),
-            (error: unknown) => {
-                assert.ok(error instanceof Error);
-                assert.match(error.message, /required teaching source 'docs\/questions\.md' could not be read/);
-                assert.equal((error.cause as NodeJS.ErrnoException | undefined)?.code, "ENOENT");
-                return true;
-            },
-        );
-    } finally {
-        await db.close();
-        await rm(root, { recursive: true, force: true });
-    }
-});

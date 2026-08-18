@@ -439,8 +439,8 @@ export default class ClientInput {
                 { field: "settings", recovery: "Provide a settings object." },
             );
         }
-        const r = parsed as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown; execs?: unknown; questions?: unknown };
-        const supported = new Set(["filesItems", "maxCommands", "git", "mdDocs", "client", "execs", "questions"]);
+        const r = parsed as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown; execs?: unknown };
+        const supported = new Set(["filesItems", "maxCommands", "git", "mdDocs", "client", "execs"]);
         for (const key of Object.keys(r)) {
             if (!supported.has(key)) {
                 ClientInput.#invalid(
@@ -455,7 +455,7 @@ export default class ClientInput {
                 );
             }
         }
-        const out: { filesItems?: number; maxCommands?: number; git?: boolean; mdDocs?: Array<{ alias: string; content: string }>; client?: string; execs?: Record<string, string>; questions?: boolean } = {};
+        const out: { filesItems?: number; maxCommands?: number; git?: boolean; mdDocs?: Array<{ alias: string; content: string }>; client?: string; execs?: Record<string, string> } = {};
         if (r.filesItems !== undefined) {
             if (typeof r.filesItems !== "number" || !Number.isInteger(r.filesItems) || r.filesItems < -1) {
                 ClientInput.#invalid(
@@ -497,19 +497,6 @@ export default class ClientInput {
                 );
             }
             out.git = r.git;
-        }
-        // {§send-300-choices} — operator questions: the client AFFIRMATIVELY requests them per
-        // workspace (its own PLURNK_QUESTIONS=1 forwarded); enabled = allowed (service env) AND this.
-        if (r.questions !== undefined) {
-            if (typeof r.questions !== "boolean") {
-                ClientInput.#invalid(
-                    "workspace.create",
-                    "setting-invalid",
-                    "settings.questions is not boolean.",
-                    { field: "settings.questions", recovery: "Use true or false for settings.questions." },
-                );
-            }
-            out.questions = r.questions;
         }
         // {§client-metadata} — workspace-stable frontend id (e.g. "plurnk.nvim/1.4.0"), forwarded to the plurnk
         // provider as Plurnk-Client metadata; ignored by every other provider. Self-identified.

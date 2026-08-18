@@ -65,7 +65,7 @@ export default class SchemeRegistry {
     #claims = new Map<string, NamespaceClaim>();
     #readTeaching: ReadTeaching;
     #schemeDocs: Promise<ReadonlyMap<string, string>> | undefined;
-    #questionsDoc: Promise<string> | undefined;
+
 
     // `fetchWeb` ({§exec-entry-sink}) is forwarded to the exec handler's content:null sink; default
     // = schemes-http's checked WebFetcher, injectable so tests substitute automatic network acquisition.
@@ -415,10 +415,6 @@ export default class SchemeRegistry {
         return out;
     }
 
-    questionsDoc(): Promise<string> {
-        this.#questionsDoc ??= this.#readTeaching(TEACHING_CORPUS.questions);
-        return this.#questionsDoc;
-    }
 
     // {§scheme-packet-transform} {§packet-plugin-transform}.
     async transformSections(sections: PacketSectionDraft[], workspaceId?: number): Promise<PacketSectionDraft[]> {

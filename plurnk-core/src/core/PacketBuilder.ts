@@ -244,9 +244,6 @@ export default class PacketBuilder {
         const log = await this.#buildLog(workerId, transientOpenLogEntryId);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
         const weighContent = contentWeight;
-        const optionalOperations = await WorkspaceSettings.questionsEnabled(this.#db, workspaceId)
-            ? "```plurnk\n## SEND0 [300]\nDeploy where?;staging;production\n```"
-            : "";
         const curationBudget = this.curationBudgetFor(provider);
         const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
         const promptProjectionWeight = promptProjection === "withheld"
@@ -281,9 +278,6 @@ export default class PacketBuilder {
             // prefix-cache locality. Empty policy sections simply disappear.
             { name: "system-policy", slot: "system", header: "Policy", content: systemPolicy ?? "" },
             { name: "project-policy", slot: "system", header: "Project Policy", content: projectPolicy ?? "" },
-            ...(optionalOperations.length > 0
-                ? [{ name: "optional-operations", slot: "system" as const, header: "Enabled Optional Operations", content: optionalOperations }]
-                : []),
             { name: "schemes", slot: "system", header: "Resources", content: this.#schemes.teach(workspaceId) },
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads volatile user status ({§packet-cache-monotone}).
@@ -350,12 +344,6 @@ export default class PacketBuilder {
             pathname: `/docs/${name}.md`,
             content,
         }));
-        // {§send-300-choices} {§teaching-corpus} — the conditional teaching: questions.md
-        // materializes only for enabled workspaces.
-        if (await WorkspaceSettings.questionsEnabled(this.#db, workspaceId)) {
-            const q = await this.#schemes.questionsDoc();
-            if (q.length > 0) out.push({ pathname: "/docs/questions.md", content: q });
-        }
         const executors = this.#executors();
         if (executors !== undefined) {
             const workspaceEnabled = await this.#workspaceEnabled(workspaceId); // {§operator-config-workspace-execs}

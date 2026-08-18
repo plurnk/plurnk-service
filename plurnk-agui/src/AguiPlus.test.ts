@@ -60,10 +60,9 @@ test("proposalToolCall: emits START/ARGS/END with the correlating id + the op in
     assert.deepEqual(evs[2], { type: "TOOL_CALL_END", toolCallId: "prop:42" });
 });
 
-test("AG-UI-conventional names: a [300] question elicits input, a side-effect requests approval", () => {
-    assert.equal(proposalToolName("SEND"), "request_user_input");
+test("AG-UI-conventional names: every side-effecting proposal requests approval", () => {
     assert.equal(proposalToolName("EDIT"), "request_approval");
-    assert.equal((proposalToolCall(proposal({ op: "SEND" }))[0] as { toolCallName: string }).toolCallName, "request_user_input");
+    assert.equal((proposalToolCall(proposal({ op: "EDIT" }))[0] as { toolCallName: string }).toolCallName, "request_approval");
 });
 
 test("the round-trip: AG-UI Run N's interrupt → AG-UI Run N+1's resume maps back to the exact proposal", () => {

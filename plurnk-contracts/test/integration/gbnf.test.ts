@@ -201,9 +201,10 @@ test("GBNF excludes zero-operation 102 and restores it after one internal operat
     assert.equal(derivesTurn(turn("think", [], 102, "working", " (worker://~)")), false);
     assert.equal(derivesTurn(turn("think", [mid("READ", " (worker:///x)")], 102, "working")), true);
     assert.equal(derivesTurn(turn("think", [mid("SEND", "", "progress")], 102, "working")), true);
-    for (const code of [200, 202, 300, 499]) {
+    for (const code of [200, 202, 499]) {
         assert.equal(derivesTurn(turn("think", [], code, "terminal")), true, String(code));
     }
+    assert.equal(derivesTurn(turn("think", [], 300, "question")), false, "300 is not a disposition; the question tool owns asking");
 
     const tolerant = PlurnkParser.parse(`${plan("think")}${terminal(102, "working")}`);
     assert.deepEqual(tolerant.items.filter((item) => item.kind === "error"), []);
@@ -297,7 +298,6 @@ test("GBNF terminal dispositions and 202 park scope are bounded", () => {
     assert.equal(derivesTurn(turn("p", [], 202, "targeted", " (worker://parent) <30,5>")), true);
     assert.equal(derivesTurn(turn("p", [], 200, "no park", " <30>")), false);
     assert.equal(derivesTurn(turn("p", [], 499, "abort")), true);
-    assert.equal(derivesTurn(turn("p", [], 300, "choose")), true);
     assert.equal(derivesTurn(turn("p", [], 500, "invalid")), false);
 });
 
@@ -426,9 +426,10 @@ test("GBNF mid-turn SENDs are statusless or carry non-disposition three-digit co
     assert.equal(derivesTurn(turn("p", [mid("SEND", " (worker://child)", "progress")], 200, "done")), true);
     assert.equal(derivesTurn(turn("p", [mid("SEND", " [400]", "progress")], 200, "done")), true);
     assert.equal(derivesTurn(turn("p", [mid("SEND", " [400] (worker://child)")], 200, "done")), true);
-    for (const code of [102, 200, 202, 300, 499]) {
+    for (const code of [102, 200, 202, 499]) {
         assert.equal(derivesTurn(turn("p", [mid("SEND", ` [${code}]`, "not terminal")], 200, "done")), false, String(code));
     }
+    assert.equal(derivesTurn(turn("p", [mid("SEND", " [300]", "not terminal")], 200, "done")), true, "300 is a legal mid-SEND status, not a disposition");
     assert.equal(derives("send-statement", "## SEND0 [40]\nmessage\n\n"), false);
     assert.equal(derives("send-statement", "## SEND0 [4000]\nmessage\n\n"), false);
 });

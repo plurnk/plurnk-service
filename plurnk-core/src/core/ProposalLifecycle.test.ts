@@ -70,10 +70,6 @@ test("pending projection rejects malformed durable review material at its owner"
             row: { ...base, loop_flags: JSON.stringify({ auto: "yes" }) },
             error: /Loop 13 has invalid persisted flags/,
         },
-        {
-            row: { ...base, op: "SEND", signal: JSON.stringify(300), scheme: null, pathname: null },
-            error: /Pending SEND signal 300 proposal 7 has no question/,
-        },
     ];
 
     for (const { row, error } of cases) {

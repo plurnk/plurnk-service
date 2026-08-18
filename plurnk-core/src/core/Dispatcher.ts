@@ -1451,33 +1451,6 @@ export default class Dispatcher {
             };
         }
 
-        // {§send-300-choices} — ask the operator and park (the answer returns via loop.inject).
-        // The three-state cascade (owner design): PLURNK_QUESTIONS unset = ALLOWED (not enabled);
-        // =0 = DENIED servicewide (a ceiling the client cannot override); ENABLED requires the
-        // client to affirmatively pass it per workspace (settings.questions — the interactive client
-        // with a human enables its own workspaces; headless/bench never asks). Enabled workspaces ALSO
-        // get the questions.md teaching injected (docEntries) — capability and teaching gate as one.
-        // Disabled → refused with a self-decide steer, never a park into the void.
-        if (status === 300) {
-            if (!(await WorkspaceSettings.questionsEnabled(this.#db, ctx.workspaceId))) {
-                return Dispatcher.#failure(
-                    "operator-questions-disabled",
-                    409,
-                    "Operator questions are disabled in this workspace.",
-                    {},
-                    {
-                        recovery: "Decide from the available evidence and continue or conclude.",
-                        retryable: false,
-                    },
-                );
-            }
-            // {§send-300-choices} — return a proposal whose accepted body becomes
-            // the answer; zero choices denotes an open question.
-            const parts = raw.split(";").map((x: string) => x.trim()).filter((x: string) => x.length > 0);
-            const [question = "", ...choices] = parts;
-            return { status: 202, attrs: choices.length > 0 ? { question, choices } : { question } };
-        }
-
         // [200] — terminate, gated by the pending set (post-batch). The row records the refused
         // attempt faithfully (status_rx=409, never erased); the loop stays a continue; the strike
         // couples in runTurn. [499] abandons and cancels the descendant scope.
@@ -1830,9 +1803,7 @@ export default class Dispatcher {
     // {§proposal}/{§send} — status 202 is a proposal except for broadcast
     // SEND signal 202, which parks the loop. The operation disambiguates the status.
     static #isProposal(statement: PlurnkStatement, result: DispatchResult): boolean {
-        // {§send-300-choices} — SEND signal 300 is the proposal exception.
         if (result.status !== 202) return false;
-        if (statement.op === "SEND" && statement.signal === 300) return true;
         return !(statement.op === "SEND" && statement.target === null);
     }
 

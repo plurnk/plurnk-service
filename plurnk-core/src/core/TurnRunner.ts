@@ -7,7 +7,7 @@ import type { BareStatement, PlurnkStatement, EditStatement, ReadStatement, UrlP
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
 // before being pushed to the loop's notices buffer.
 type ParseErrorInfo = { message: string; line: number; column: number; source: string };
-const TERMINAL_SEND_SIGNALS = new Set([102, 200, 202, 300, 499]);
+const TERMINAL_SEND_SIGNALS = new Set([102, 200, 202, 499]);
 const comparePosition = (
     a: { line: number; column: number },
     b: { line: number; column: number },
@@ -1576,13 +1576,6 @@ export default class TurnRunner {
             // and turn continuing, and its 409 steering ruling strikes once.
             if (statement === sendOp && result.status === 409) {
                 steerStruck = true;
-                turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;
-                await this.#db.engine_reconcile_turn_status.run({ id: turnId, status: turnStatus });
-            }
-            // {§send-300-choices}: a question resolves through the proposal system; whatever the
-            // resolution (answer/reject/timeout), the LOOP continues to the turn where the model
-            // reads it; the turn record is a continue, never a 300 terminal.
-            if (statement === sendOp && sendOp.signal === 300 && result.status !== 409) {
                 turnStatus = TURN_STATUS_IMPLICIT_CONTINUE;
                 await this.#db.engine_reconcile_turn_status.run({ id: turnId, status: turnStatus });
             }

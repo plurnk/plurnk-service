@@ -57,14 +57,14 @@ export const TEACHING_CORPUS = Object.freeze({
     personality: "PLURNK_PERSONALITY.md",
     requirements: "requirements.md",
     schemeDocs: SCHEME_TEACHING,
-    questions: "docs/questions.md",
+
 } as const);
 
 export type TeachingCorpusSource =
     | typeof TEACHING_CORPUS.personality
     | typeof TEACHING_CORPUS.requirements
     | (typeof TEACHING_CORPUS.schemeDocs)[keyof typeof TEACHING_CORPUS.schemeDocs]
-    | typeof TEACHING_CORPUS.questions;
+
 
 const RESERVED_ATTRIBUTION_PREFIX = "@plurnk/";
 const EMPTY_ATTRIBUTION: PluginAttribution = Object.freeze([] as string[]);

@@ -21,7 +21,6 @@ test("teaching corpus: the meta owner publishes one exact immutable membership",
         schemeDocs: {
             worker: "docs/worker.md",
         },
-        questions: "docs/questions.md",
     });
     assert.equal(Object.isFrozen(TEACHING_CORPUS), true);
     assert.equal(Object.isFrozen(TEACHING_CORPUS.schemeDocs), true);

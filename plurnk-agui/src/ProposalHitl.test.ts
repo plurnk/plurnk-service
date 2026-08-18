@@ -146,14 +146,13 @@ test("resolve(): a complete standard resume resolves the exact worker proposal",
 test("resurface(): a workspace's pending stopped-worlds come back as tool-calls", async () => {
     const pending: PendingProposal[] = [
         proposal({ logEntryId: 5, op: "EXEC", target: { scheme: null, pathname: null }, body: "rm -rf /tmp/x", attrs: { command: "rm" } }),
-        proposal({ logEntryId: 9, turnId: 2, op: "SEND", target: { scheme: null, pathname: null }, body: "", attrs: { question: "which env?" } }),
         proposal({ logEntryId: 10, disposition: { owner: "loop", decision: "accept" } }),
     ];
     const hitl = new ProposalHitl(mockSeam(pending).seam, collect());
     const { events } = await hitl.resurface(1);
     const starts = events.filter((e) => e.type === "TOOL_CALL_START") as Array<{ toolCallId: string; toolCallName: string }>;
-    assert.deepEqual(starts.map((s) => s.toolCallId), ["prop:5", "prop:9"], "only client-owned pending proposals re-surfaced");
-    assert.equal(starts[1].toolCallName, "request_user_input", "the [300] SEND re-surfaces as an input request");
+    assert.deepEqual(starts.map((s) => s.toolCallId), ["prop:5"], "only client-owned pending proposals re-surfaced");
+    assert.equal(starts[0].toolCallName, "request_approval");
 });
 
 test("resolve(): proposals and interactions share one complete worker-scoped resume", async () => {

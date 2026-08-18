@@ -44,7 +44,7 @@ export default class PlurnkParser {
     }
 
     // Terminal disposition alphabet. {§waitpid-dispositions} {§wait-obligation-matrix}
-    static #DISPOSITIONS = new Set([102, 200, 202, 300, 499]);
+    static #DISPOSITIONS = new Set([102, 200, 202, 499]);
 
     // Replace ANTLR's generic structure errors with the turn-shape imperative when the
     // PLAN-anchored sandwich is broken. PLAN-first takes precedence: with no PLAN we cannot
@@ -81,7 +81,7 @@ export default class PlurnkParser {
     }
 
     // Lift the mid-turn-termination error. A disposition-coded SEND
-    // (102/200/202/300/499) ends the turn, so a following operation is an error.
+    // (102/200/202/499) ends the turn, so a following operation is an error.
     // Rewrite ANTLR's generic structure message to that rule. {§send-mid-reservation}
     // Runs after the begin/end imperative (which handles the incomplete-shape case and, for a
     // complete-but-trailing turn, returns early leaving this error in place to rewrite).

@@ -187,10 +187,9 @@ export const buildModel = (): GModel => {
     final("send-102", "102", false);
     final("send-200", "200", false);
     final("send-202", "202", true);
-    final("send-300", "300", false);
     final("send-499", "499", false);
-    model.set("send-final-any", [[ref("send-102")], [ref("send-200")], [ref("send-202")], [ref("send-300")], [ref("send-499")]]);
-    model.set("send-final-first", [[ref("send-200")], [ref("send-202")], [ref("send-300")], [ref("send-499")]]);
+    model.set("send-final-any", [[ref("send-102")], [ref("send-200")], [ref("send-202")], [ref("send-499")]]);
+    model.set("send-final-first", [[ref("send-200")], [ref("send-202")], [ref("send-499")]]);
 
     model.set("op-statement", [
         [ref("find")], [ref("read")], [ref("edit")], [ref("copy")], [ref("move")],
@@ -254,7 +253,7 @@ export const buildModel = (): GModel => {
     ]);
     model.set("status-mid-1", [[lit("0"), cls([R("0", "1"), R("3", "9")])], [cls([R("1", "9")]), DIGIT]]);
     model.set("status-mid-2", [[lit("0"), cls([R("1", "1"), R("3", "9")])], [cls([R("1", "9")]), DIGIT]]);
-    model.set("status-mid-3", [[lit("0"), cls([R("1", "9")])], [cls([R("1", "9")]), DIGIT]]);
+    model.set("status-mid-3", [[lit("0"), cls([R("0", "9")])], [cls([R("1", "9")]), DIGIT]]);
     model.set("status-mid-4", [[lit("9"), cls([R("0", "8")])], [cls([R("0", "8")]), DIGIT]]);
 
     model.set("add-tags", [[lit("["), ref("add-tag"), star(ref("add-tag-rest")), lit("]")]]);

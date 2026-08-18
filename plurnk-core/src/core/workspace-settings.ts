@@ -20,7 +20,6 @@ export type WorkspaceOpenContext = {
     git: boolean | null;       // {§operator-config-workspace-git} — env AND workspace; null = unset
     client: string | null;     // {§client-metadata} — workspace-stable frontend id; null = unset
     execs: Record<string, string> | null; // {§operator-config-workspace-execs}
-    questions: boolean | null;    // {§send-300-choices} — the client's affirmative per-workspace request for operator questions ([300]); enabled = allowed (PLURNK_QUESTIONS != 0) AND requested.
 };
 
 export default class WorkspaceSettings {
@@ -28,25 +27,16 @@ export default class WorkspaceSettings {
     // bag never reaches here — workspace.create validates before persisting.
     static async read(db: Db, workspaceId: number): Promise<WorkspaceOpenContext> {
         const row = await db.workspace_get_settings.get<{ settings: string }>({ workspace_id: workspaceId });
-        const bag = row?.settings !== undefined ? (JSON.parse(row.settings) as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown; execs?: unknown; questions?: unknown }) : {};
+        const bag = row?.settings !== undefined ? (JSON.parse(row.settings) as { filesItems?: unknown; maxCommands?: unknown; git?: unknown; mdDocs?: unknown; client?: unknown; execs?: unknown }) : {};
         const filesItems = typeof bag.filesItems === "number" ? bag.filesItems : null;
         const maxCommands = typeof bag.maxCommands === "number" ? bag.maxCommands : null;
         const git = typeof bag.git === "boolean" ? bag.git : null;
         const client = typeof bag.client === "string" ? bag.client : null;
         const execs = (typeof bag.execs === "object" && bag.execs !== null && !Array.isArray(bag.execs)) ? (bag.execs as Record<string, string>) : null;
-        const questions = typeof bag.questions === "boolean" ? bag.questions : null;
         const mdDocs = Array.isArray(bag.mdDocs)
             ? bag.mdDocs.filter((d): d is ClientMdDoc => typeof (d as ClientMdDoc)?.alias === "string" && typeof (d as ClientMdDoc)?.content === "string")
             : [];
-        return { filesItems, mdDocs, maxCommands, git, client, execs, questions };
-    }
-
-    // {§send-300-choices} — the three-state cascade resolved: ALLOWED servicewide (PLURNK_QUESTIONS
-    // != "0") AND affirmatively REQUESTED by the client for this workspace. One predicate, shared by
-    // the dispatch gate and the teaching injection so capability and teaching can never desync.
-    static async questionsEnabled(db: Db, workspaceId: number): Promise<boolean> {
-        if (process.env.PLURNK_QUESTIONS === "0") return false;
-        return (await WorkspaceSettings.read(db, workspaceId)).questions === true;
+        return { filesItems, mdDocs, maxCommands, git, client, execs };
     }
 
     // The turn-0 reference-doc set: server env docs (PLURNK_SERVICE_MD_*, read from disk) UNION the

@@ -1596,7 +1596,6 @@ the loop continue; repeated offenses terminate through the engine's 500.
   live obligations. If work has completed but is unobserved, it continues
   directly to the next packet because the wake edge has already fired; only a
   genuinely empty set with no successful same-turn FOLD resolves immediately like `[200]`.
-- §send-300-choices **SEND signal `300` is an operator question - a PROPOSAL using the same stop-the-world system as file edits.** Enablement cascades: `PLURNK_QUESTIONS=0` is a servicewide ceiling; otherwise the client affirmatively requests per workspace (`settings.questions: true` at workspace creation), which ALSO injects the required `questions.md` teaching - capability and teaching gate as one ({§teaching-corpus}). An enabled workspace fails doc materialization with the read cause if that source is broken; a disabled workspace does not consume it. Enabled: the `;`-delimited body parses leniently (first segment the question, the rest choices; zero choices = an open question - never malformed), and the ask raises a proposal: dispatch stops the world, `loop/proposal` carries `{question, choices}` in attrs, and the client's accepted proposal body delivers the ANSWER - written into the ask's own model-facing rx (`{"status":200,"body":...}`), read next packet. Reject/timeout resolve through the standard {§proposal} semantics; the turn records a continue either way (never a 300 terminal), and the loop simply proceeds. Loop auto never auto-answers a question - it exists precisely to stop the world for a human, and the workspace opted in. Disabled: refused 409 with a self-decide steer, never a park into the void.
 
 ### §exec EXEC
 
@@ -1786,7 +1785,7 @@ stream cannot fall through an internal `exec`-only query. {§stream-control}
 
 - **Client disposition** ({§methods-proposal-resolve}) — a client interface delivers accept, reject, or cancel; AG-UI uses standard resume entries ({§agui-proposal-resolve}).
 - **Loop disposition** ({§proposal-disposition}) — core applies the exact automatic accept/reject before observational subscribers run; automatic policy is not an event listener or client fallback.
-- §proposal-timeout-cancels **Timeout is OPT-IN; the shipped default is a world that WAITS** - `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` empty (shipped) means a pending proposal - a file edit awaiting review or a [300] question - waits indefinitely for its human: absence is not an answer, so the service does not synthesize a cancellation. A finite positive millisecond value establishes the bound; then elapsing synthesizes `cancel` (outcome `timeout`), server-side, needing no client. Every other explicit value fails at the proposal lifecycle owner and terminalizes an already-written proposal rather than silently choosing an indefinite wait.
+- §proposal-timeout-cancels **Timeout is OPT-IN; the shipped default is a world that WAITS** - `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` empty (shipped) means a pending proposal - a file edit awaiting review - waits indefinitely for its human: absence is not an answer, so the service does not synthesize a cancellation. A finite positive millisecond value establishes the bound; then elapsing synthesizes `cancel` (outcome `timeout`), server-side, needing no client. Every other explicit value fails at the proposal lifecycle owner and terminalizes an already-written proposal rather than silently choosing an indefinite wait.
 
 **The decision drives a one-way state transition** on `log_entries.state` (resolution is idempotent — `WHERE state='proposed'`, so a second resolution 404s):
 
@@ -1837,17 +1836,14 @@ removes ownerless rows without fabricating cancellation, payload, or replay.
 
 `ProposalDisposition` is either `{ owner: "client" }` or `{ owner: "loop", decision: "accept" | "reject", outcome? }`. The decision table is complete and ordered:
 
-The `[300]` branch is identified by the durable SEND operation signal; `attrs.question` is its required presentation payload, not an independent policy switch ({§send-300-choices}).
+| `auto` | stale target | `noProposals` | Disposition                                               |
+| ------ | ------------ | ------------- | --------------------------------------------------------- |
+| true   | true         | any           | loop reject, outcome `stale_read_clobber`                 |
+| true   | false        | any           | loop accept                                               |
+| false  | any          | true          | loop reject, outcome `no_review_channel`                  |
+| false  | any          | false         | client                                                    |
 
-| `auto` | `[300]` question | stale target | `noProposals` | Disposition                                                        |
-| ------ | ---------------- | ------------ | ------------- | ------------------------------------------------------------------ |
-| true   | yes              | any          | any           | client                                                             |
-| true   | no               | true         | any           | loop reject, outcome `stale_read_clobber`                          |
-| true   | no               | false        | any           | loop accept                                                        |
-| false  | any              | any          | true          | loop reject, outcome `no_review_channel`                           |
-| false  | any              | any          | false         | client                                                             |
-
-Thus `auto` wins the otherwise nonsensical `auto + noProposals` combination, but its operator-question exception still leaves that question client-owned ({§send-300-choices}). Loop-owned settlement occurs before observational notification; observer failures are diagnosed with their cause and cannot change disposition or leave an eligible automatic proposal pending.
+Thus `auto` wins the otherwise nonsensical `auto + noProposals` combination. Loop-owned settlement occurs before observational notification; observer failures are diagnosed with their cause and cannot change disposition or leave an eligible automatic proposal pending.
 
 ---
 
@@ -2158,7 +2154,7 @@ boundary. Operator-arcane knobs stay environment-only.
 | `settings.git`         | Boolean                                        | Tightening denial {§operator-config-workspace-git}            |
 | `settings.client`      | Nonempty string                                | Stable self-identification {§client-metadata}                 |
 | `settings.execs`       | Record of policy-key to string                 | Subtractive executor layer {§operator-config-workspace-execs} |
-| `settings.questions`   | Boolean                                        | Affirmative question request {§send-300-choices}              |
+
 
 The composition families remain distinct so one setting's semantics never
 leak into another.
