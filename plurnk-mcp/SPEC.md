@@ -226,15 +226,39 @@ Problems rather than generic AG-UI failures:
 Interactive preparation returns a successful pending result shaped as
 `{ status: 202, authorization: { url } }`; it publishes no candidate runtime.
 The action owner retains one pending candidate per `(workspace, alias)` and a
-new request cancels and replaces it. Unrelated workspace changes remain
-authoritative while authorization is pending; drift of the same server fails
-completion with a conflict instead of replaying a stale workspace snapshot.
-`oauth.complete` accepts the complete
+new request cancels and replaces it ({§oauth-lifetime}). Unrelated workspace
+changes remain authoritative while authorization is pending; drift of the same
+server fails completion with a conflict instead of replaying a stale workspace
+snapshot. `oauth.complete` accepts the complete
 callback URL so state, `code`, and `iss` remain one parsing unit. A missing,
 expired, mismatched, or replayed callback fails without exposing attacker-owned
 OAuth error text. It completes either pending hydration or the originally
-requested add or enable. There is no callback HTTP endpoint,
-authority-root resource, or MCP-specific AG-UI route.
+requested add or enable.
+
+## §oauth-lifetime Interactive OAuth lifetime and reauthorization
+
+Interactive OAuth state is deliberately ephemeral and process-memory: client
+registration data, access and refresh tokens, the PKCE verifier, and pending
+state live only in the owning connection or pending candidate. Nothing
+OAuth-secret is written to SQLite; the durable workspace state holds only the
+unexpanded definition ({§mcp-configuration}). There is no callback HTTP
+listener, authority-root resource, or daemon-side browser side channel: the
+client returns the complete callback URL through `workspace.mcp.oauth.complete`
+so `state`, `code`, and `iss` remain one parsing unit. Reauthorization after a
+daemon restart is the intended journey, documented here rather than presented
+as an accidental failure.
+
+| Journey point | Behaviour |
+|---|---|
+| Pending authorization | One pending candidate per `(workspace, alias)`; a new add or customized enable cancels and replaces it. A callback from a superseded attempt fails state validation instead of cross-completing. |
+| Client disconnect | Does not touch the pending candidate; it can still be completed, or replaced by a fresh request. |
+| Daemon restart during pending | The candidate is lost: nothing was durable, no attachment publishes, and `oauth.complete` answers `404 oauth-not-pending`. Start authorization again. |
+| Daemon restart after authorization | The durable definition rehydrates but tokens are gone; the attachment publishes `authorization-required` and enable returns a fresh `{ status: 202, authorization: { url } }`. The operator reauthorizes. |
+| Token expiry | An expired access token surfaces as one unauthorized response; the SDK re-acquires via `refresh_token` when one was issued, otherwise re-enters interactive authorization. |
+| Refresh | Happens only against the issuer bound during the original authorization; the refreshed token replaces the in-memory token. |
+| Workspace disable/remove | Closes the attachment and clears its pending candidate; no durable secret deletion is needed because nothing secret is durable. |
+| Server replacement | Completion compares the pending candidate's expected definition with the current one; drift of the same server fails `409 oauth-target-conflict` instead of replaying a stale snapshot. |
+| Cross-authorization protection | Candidates are keyed by `(workspace, alias)`; callback state, PKCE, and issuer are validated by the SDK against the attempt that created them, so no other workspace, alias, or attempt can complete this authorization. |
 
 ## §oauth-client-credentials Client-credentials grant adoption
 

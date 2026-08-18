@@ -349,6 +349,8 @@ export default class Module {
     readonly #defaults: ReadonlyMap<string, McpServerDefinition>;
     readonly #defaultEnabled: ReadonlySet<string>;
     readonly #workspaces = new Map<number, WorkspaceSnapshot>();
+    // {§oauth-lifetime} — pending candidates are process-memory per
+    // (workspace, alias); a restart loses them by design.
     readonly #pending = new Map<string, PendingMutation>();
     readonly #locks = new Map<number, Promise<void>>();
     readonly #refreshTimers = new Map<string, NodeJS.Timeout>();
@@ -1143,6 +1145,8 @@ export default class Module {
             const key = this.#pendingKey(workspaceId, alias);
             const pending = this.#pending.get(key);
             if (pending === undefined) {
+                // {§oauth-lifetime} — restart during pending authorization
+                // surfaces as a factual not-pending state, never a secret replay.
                 throw actionError(
                     "oauth-not-pending",
                     404,

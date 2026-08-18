@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import {
     acceptedContent,
     inputRequired,
@@ -494,6 +495,115 @@ test("interactive HTTP OAuth preserves discovery, PKCE, state, issuer, and resou
     assert.equal(tokenRequest.get("redirect_uri"), `${origin}/callback`);
     assert.ok((tokenRequest.get("code_verifier")?.length ?? 0) >= 43);
     assert.equal(tokenRequest.get("resource"), `${origin}/mcp`);
+});
+
+test("{§oauth-lifetime} an expired access token refreshes with the stored grant without user interaction", async (t) => {
+    let origin = "";
+    let issuedAt = Number.POSITIVE_INFINITY;
+    const tokenRequests: URLSearchParams[] = [];
+    const served = await serveMcpHttp(t, handler(), (request) => {
+        const url = new URL(request.url);
+        if (url.pathname === "/mcp") {
+            if (
+                request.headers.get("authorization") === "Bearer access-token-2"
+                || (
+                    request.headers.get("authorization") === "Bearer access-token-1"
+                    && Date.now() - issuedAt < 1000
+                )
+            ) {
+                return null;
+            }
+            return new Response("unauthorized", {
+                status: 401,
+                headers: {
+                    "www-authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"`,
+                },
+            });
+        }
+        if (url.pathname === "/.well-known/oauth-protected-resource/mcp") {
+            return Response.json({
+                resource: `${origin}/mcp`,
+                authorization_servers: [origin],
+                scopes_supported: ["mcp:read"],
+            });
+        }
+        if (url.pathname === "/.well-known/oauth-authorization-server") {
+            return Response.json({
+                issuer: origin,
+                authorization_endpoint: `${origin}/authorize`,
+                token_endpoint: `${origin}/token`,
+                response_types_supported: ["code"],
+                grant_types_supported: ["authorization_code", "refresh_token"],
+                code_challenge_methods_supported: ["S256"],
+                token_endpoint_auth_methods_supported: ["none"],
+                scopes_supported: ["mcp:read", "offline_access"],
+                client_id_metadata_document_supported: true,
+                authorization_response_iss_parameter_supported: true,
+            });
+        }
+        if (url.pathname === "/token") {
+            return request.text().then((body) => {
+                const params = new URLSearchParams(body);
+                tokenRequests.push(params);
+                if (params.get("grant_type") === "refresh_token") {
+                    return Response.json({
+                        access_token: "access-token-2",
+                        token_type: "Bearer",
+                        expires_in: 3600,
+                        scope: "mcp:read offline_access",
+                    });
+                }
+                issuedAt = Date.now();
+                return Response.json({
+                    access_token: "access-token-1",
+                    token_type: "Bearer",
+                    expires_in: 1,
+                    refresh_token: "refresh-token-1",
+                    scope: "mcp:read offline_access",
+                });
+            });
+        }
+        return new Response("not found", { status: 404 });
+    });
+    origin = new URL(served.url).origin;
+    const connection = new ServerConnection({
+        name: "oauth",
+        transport: "http",
+        url: served.url,
+        authorization: {
+            type: "oauth",
+            redirectUrl: `${origin}/callback`,
+            clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
+            scope: "mcp:read",
+        },
+    }, floor);
+    t.after(() => connection.close());
+
+    let authorizationUrl = "";
+    await assert.rejects(
+        () => connection.connect(),
+        (error) => {
+            assert.ok(error instanceof AuthorizationRequiredError);
+            authorizationUrl = error.authorizationUrl;
+            return true;
+        },
+    );
+    const state = new URL(authorizationUrl).searchParams.get("state");
+    assert.ok(state);
+    await connection.finishAuthorization(
+        `${origin}/callback?code=fixture-code&state=${encodeURIComponent(state)}&iss=${encodeURIComponent(origin)}`,
+    );
+    assert.deepEqual((await connection.tools()).map(({ name }) => name), ["echo"]);
+    assert.equal(tokenRequests.length, 1);
+
+    await delay(1200);
+    const renewed = await connection.callTool("echo", { message: "after-expiry" });
+    assert.deepEqual(renewed.content, [{ type: "text", text: "after-expiry" }]);
+    assert.equal(tokenRequests.length, 2, "expiry surfaces one refresh round-trip");
+    const refreshRequest = tokenRequests[1];
+    assert.ok(refreshRequest);
+    assert.equal(refreshRequest.get("grant_type"), "refresh_token");
+    assert.equal(refreshRequest.get("refresh_token"), "refresh-token-1");
 });
 
 test("{§mcp-exclusions} unavailable deprecated DCR is attributed without probing it", async (t) => {

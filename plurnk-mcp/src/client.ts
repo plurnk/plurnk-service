@@ -228,6 +228,9 @@ const resolveDefinition = (
         };
     }
     const oauthAuthorization = definition.authorization;
+    // {§oauth-lifetime} — registration data, tokens, PKCE verifier, and
+    // callback state remain process-memory in this provider; the durable
+    // definition stays unexpanded.
     const oauthProvider = new InteractiveOAuthProvider({
         redirectUrl: oauthAuthorization.redirectUrl,
         ...(oauthAuthorization.scope === undefined ? {} : { scope: oauthAuthorization.scope }),
