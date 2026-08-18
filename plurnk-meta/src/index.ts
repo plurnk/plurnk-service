@@ -26,7 +26,7 @@ export interface PackageCandidate {
     name: string;
 }
 
-export type PluginKind = "exec" | "mimetype" | "provider" | "scheme" | "http-materializer";
+export type PluginKind = "exec" | "mimetype" | "provider" | "scheme" | "http-materializer" | "module";
 
 // Authored package.json shape retained only where a published family descriptor
 // requires that projection. Discovery and consumers exchange PluginAttribution.

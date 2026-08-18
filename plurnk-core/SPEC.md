@@ -2210,6 +2210,18 @@ recovers durable lifecycle, and starts modules in registration order. Shutdown
 closes started and self-closing modules in reverse order and surfaces aggregated
 close failures.
 
+§module-discovery **Third-party daemon-module composition is manifest
+discovery.** A package declares `plurnk: { kind: "module", module:
+"<export-subpath>" }`; the export is one DaemonModule (an object, or a no-arg
+factory returning one). At boot, core scans installed packages under the
+executor family's discovery and trust rules ({§plugin-discovery}) and
+registers every trusted declaring module before any module setup runs, in
+package-enumeration order. The service's explicit composition — the AG-UI,
+hooks, and MCP modules — carries init options and is wired in service.ts;
+discovery never duplicates those packages. An untrusted declaring package is
+skipped with a boot warning, never executed. A module export that is neither
+an object nor a no-arg factory fails boot loudly.
+
 §module-shutdown-order `Daemon.stop()` returns only after active worker drains,
 streaming producers, derivations, mimetypes, schemes, and every accepted
 conclusion-wake task have settled in dependency order. The supervisor owns each

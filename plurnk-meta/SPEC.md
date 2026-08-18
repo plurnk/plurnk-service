@@ -73,6 +73,7 @@ family-owned collection.
 | `"provider"`      | singular `name`                                          |
 | `"scheme"`        | `schemes[]`; singular `name` is the one-scheme shorthand |
 | `"http-materializer"` | `materializers[]` ({§http-materializer-plugins})     |
+| `"module"`        | singular `module` export subpath ({§module-discovery})   |
 
 Coordinated capabilities spanning families use explicit daemon-module
 composition ({§module-lifecycle}); a multi-kind manifest is not a parallel

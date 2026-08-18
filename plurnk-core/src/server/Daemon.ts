@@ -14,6 +14,7 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
 import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 import { routeForSpec, specForRoute } from "./model-route.ts";
+import { discoverDaemonModules } from "./module-discovery.ts";
 // {§notifications-envelope-carries-workspaceid}: "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
@@ -1658,6 +1659,16 @@ export default class Daemon {
         // (agnostic, by plurnk.kind:"scheme"). They light up http://, etc. with
         // no further engine change — #run wraps their context in SchemeCtxImpl ({§plugin-discovery}).
         await this.#schemes.discoverExternal(this.#discoveryCwd);
+        // {§module-discovery} — third-party daemon-module composition: trusted
+        // packages declaring `plurnk.kind: "module"` register beside the
+        // service's explicit composition before any module setup runs.
+        const discoveredModules = await discoverDaemonModules({ cwd: this.#discoveryCwd });
+        for (const packageName of discoveredModules.skipped) {
+            console.warn(`module discovery: '${packageName}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
+        }
+        for (const module of discoveredModules.modules) {
+            this.#modules.push(module);
+        }
         const setupSeam: ModuleSetupSeam = this;
         for (const module of this.#modules) {
             if (module.close !== undefined) this.#moduleClosers.push(module as StartedModule);
