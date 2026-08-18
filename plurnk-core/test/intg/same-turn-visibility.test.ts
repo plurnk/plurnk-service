@@ -15,10 +15,10 @@ test("{§op-mode-phases}: FIND observes an entry created by EDIT in the same tur
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "probe360" });
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
             assert.equal(finalStatus, 200);
             await flush();
-            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: 2 });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: loopId });
             const modelFind = (rows ?? []).filter((r) => r.op === "FIND" && r.origin === "model");
             assert.ok(modelFind.length >= 1, "the model's FIND dispatched");
             const rx = JSON.parse(modelFind[0].rx ?? "{}") as { content?: string };

@@ -3211,6 +3211,20 @@ before upserting the current set. `PLURNK_SERVICE_DOCS_EXCLUDE` does not hide an
 enabled executable; executor enablement is the sole user-configured filter
 shared by discovery and dispatch.
 
+§skills-materialization **The workspace skills surface.** Each
+`<projectRoot>/skills/<folder>/SKILL.md` (Agent Skills format: `name` +
+`description` frontmatter, instructions body) becomes one kernel-owned
+`worker://plurnk/skills/<name>.md` entry at workspace boot and creation, never
+per-loop. `worker://plurnk/skills/index.md` always exists — it lists installed
+skills, or states that none are installed and where they would live — so the
+turn-0 `+init,+skills` FIND survey always shows the surface. Only the two
+discovery keys are parsed (no full YAML dependency); the body is preserved
+verbatim. Reconciliation deletes retired skill entries before upserting the
+current set, and a workspace without a project root publishes the empty index
+alone. Skills are operator-installed teaching admitted through the kernel
+surface; they never override operator docs, tool contracts, or the instruction
+authority.
+
 The catalog describes workspace capabilities, not temporary authority. Loop
 mode remains a dispatch concern: an ask-mode EXEC receives the ordinary exact
 403 restriction instead of requiring a second per-loop documentation overlay.

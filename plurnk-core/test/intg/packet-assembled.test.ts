@@ -216,7 +216,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.match(log, /"path":"log:\/\/\/[^"]+\/FIND"/, "the catalog foist appears as a FIND op in the log address");
         assert.match(
             log,
-            /\d+:## FIND0 \[\+init,\+tools\] \(worker:\/\/plurnk\/tools\/\*\.md\) <1,-1>\n ?\d+:\/\/heading\[text\(\)="Example"\]\n ?\d+:## FIND0 \[\+init,\+docs\] \(worker:\/\/plurnk\/docs\/\*\*\) <1,-1>\n ?\d+:## FIND0 \[\+init\] \(\*\)/,
+            /\d+:## FIND0 \[\+init,\+tools\] \(worker:\/\/plurnk\/tools\/\*\.md\) <1,-1>\n ?\d+:\/\/heading\[text\(\)="Example"\]\n ?\d+:## FIND0 \[\+init,\+skills\] \(worker:\/\/plurnk\/skills\/\*\.md\) <1,-1>\n ?\d+:## FIND0 \[\+init,\+docs\] \(worker:\/\/plurnk\/docs\/\*\*\) <1,-1>\n ?\d+:## FIND0 \[\+init\] \(\*\)/,
             "without an enabled sh document, turn-0 omits the sample, crams its bodyless surveys, and keeps reference discovery before workspace discovery",
         );
         assert.doesNotMatch(log, /worker:\/\/plurnk\/tools\/sh\.md/, "an unavailable sh document is never fabricated as an orientation sample");

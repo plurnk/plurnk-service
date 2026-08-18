@@ -17,11 +17,11 @@ test("{§send-premature-terminate}: a failed op blocks same-turn 200 until the n
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "failgate" });
-            const { finalStatus, turnIds = [] } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
+            const { finalStatus, turnIds = [], loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
             assert.equal(finalStatus, 200, "the loop concluded on the SECOND turn, failures weighed");
             assert.equal(turnIds.length, 2, "exactly two turns — the refusal forced one weigh turn, no more");
             await flush();
-            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: 2 });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const sends = (rows ?? []).filter((r) => r.op === "SEND" && r.origin === "model");
             assert.equal(sends[0]?.status_rx, 409, "the first [200] was refused over the unseen failure");
             assert.match(sends[0]?.rx ?? "", /failed operation/, "the refusal names the failure, not a generic error");

@@ -47,6 +47,7 @@ import ClientInput from "./client-input.ts";
 import type { ClientEnvelope } from "./envelope.ts";
 import JournalTurn from "../core/JournalTurn.ts";
 import LoopDocs from "./loopDocs.ts";
+import SkillDocs from "./skillDocs.ts";
 import GitMembership from "../core/git-membership.ts";
 import Fork from "../core/fork.ts";
 import WorkerName from "../core/WorkerName.ts";
@@ -1109,6 +1110,7 @@ export default class Daemon {
                     await provider.hydrate(envelope.workspaceId);
                 }
                 await LoopDocs.materialize(this.#engine, this.#db, envelope.workspaceId);
+                await SkillDocs.materialize(this.#engine, this.#db, envelope.workspaceId);
                 void this.#engine.warmWorkspaceDerivations(envelope.workspaceId).catch(() => {});
                 this.#broadcast("all", "workspace/created", { id: envelope.workspaceId, name: envelope.workspaceName, projectRoot: envelope.projectRoot });
                 return envelope;
@@ -1452,6 +1454,7 @@ export default class Daemon {
         if (this.#capabilitiesPublished) {
             for (const workspace of await Envelope.listWorkspaces(this.#db)) {
                 await LoopDocs.materialize(this.#engine, this.#db, workspace.id);
+                await SkillDocs.materialize(this.#engine, this.#db, workspace.id);
             }
         }
     }
@@ -1466,6 +1469,7 @@ export default class Daemon {
             await this.#schemes.ready();
             for (const workspace of await Envelope.listWorkspaces(this.#db)) {
                 await LoopDocs.materialize(this.#engine, this.#db, workspace.id);
+                await SkillDocs.materialize(this.#engine, this.#db, workspace.id);
             }
         }
     }
@@ -1646,6 +1650,7 @@ export default class Daemon {
             rollbackRuntimes = commitRuntimes();
             if (this.#capabilitiesPublished) {
                 await LoopDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
+                    await SkillDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
             }
         } catch (cause) {
             rollbackRuntimes?.();
@@ -1670,6 +1675,7 @@ export default class Daemon {
                 if (this.#capabilitiesPublished) {
                     try {
                         await LoopDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
+                    await SkillDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
                     } catch (rollbackCause) {
                         rollbackErrors.push(rollbackCause);
                     }
@@ -1764,6 +1770,7 @@ export default class Daemon {
         // consume this workspace state but never republish it.
         for (const workspace of await Envelope.listWorkspaces(this.#db)) {
             await LoopDocs.materialize(this.#engine, this.#db, workspace.id);
+                await SkillDocs.materialize(this.#engine, this.#db, workspace.id);
         }
         this.#capabilitiesPublished = true;
 

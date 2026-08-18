@@ -811,8 +811,8 @@ export default class TurnRunner {
         await this.#warmWorkspace(systemCtx, true, false);
 
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
-        // One READ exemplar followed by five FIND surveys foisted into the worker's first model turn establish
-        // the executable-tool, documentation, project, commons, and private surfaces in that order. Their
+        // One READ exemplar followed by six FIND surveys foisted into the worker's first model turn establish
+        // the executable-tool, skills, documentation, project, commons, and private surfaces in that order. Their
         // `init` classification lets the model curate this opening survey as one log set.
         if (seq === 1) {
             // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
@@ -845,6 +845,14 @@ export default class TurnRunner {
                             body: { dialect: "xpath", raw: "//heading[text()=\"Example\"]" }, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                         exemplar: "## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>\n//heading[text()=\"Example\"]",
+                    },
+                    {
+                        statement: {
+                            op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+skills"],
+                            target: { kind: "url", raw: "worker://plurnk/skills/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/skills/*.md", query: null, fragment: null },
+                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                        },
+                        exemplar: "## FIND0 [+init,+skills] (worker://plurnk/skills/*.md) <1,-1>",
                     },
                     {
                         statement: {

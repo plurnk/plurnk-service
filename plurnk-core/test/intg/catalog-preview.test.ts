@@ -221,19 +221,21 @@ test("an empty workspace executes all five orienting FINDs and preserves empty-s
                 const finds = rows.filter((r) => r.op === "FIND");
                 assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
                     { scheme: "worker", hostname: "plurnk", pathname: "/tools/*.md" },
+                    { scheme: "worker", hostname: "plurnk", pathname: "/skills/*.md" },
                     { scheme: "worker", hostname: "plurnk", pathname: "/docs/**" },
                     { scheme: null, hostname: null, pathname: "*" },
                     { scheme: "worker", hostname: null, pathname: "/*" },
                     { scheme: "worker", hostname: "~", pathname: "/*" },
-                ], "the five surveys execute in their taught order");
+                ], "the six surveys execute in their taught order");
                 assert.deepEqual(finds.map(({ signal }) => JSON.parse(signal ?? "null")), [
-                    ["+init", "+tools"], ["+init", "+docs"], ["+init"], ["+init"], ["+init"],
+                    ["+init", "+tools"], ["+init", "+skills"], ["+init", "+docs"], ["+init"], ["+init"], ["+init"],
                 ]);
                 const orientations = [
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true],
                     ["workspace commons", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/*"), true],
                     ["own space", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/*"), true],
                     ["kernel docs", finds.find((r) => r.scheme === "worker" && r.hostname === "plurnk" && r.pathname === "/docs/**"), false],
+                    ["skills", finds.find((r) => r.scheme === "worker" && r.hostname === "plurnk" && r.pathname === "/skills/*.md"), false],
                     ["executable tools", finds.find((r) => r.scheme === "worker" && r.hostname === "plurnk" && r.pathname === "/tools/*.md"), false],
                 ] as const;
                 for (const [name, row, expectEmpty] of orientations) {
@@ -263,6 +265,7 @@ test("an empty workspace executes all five orienting FINDs and preserves empty-s
 ## READ0 [+init,+tools] (worker://plurnk/tools/sh.md) <1,17>
 ## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>
 //heading[text()="Example"]
+## FIND0 [+init,+skills] (worker://plurnk/skills/*.md) <1,-1>
 ## FIND0 [+init,+docs] (worker://plurnk/docs/**) <1,-1>
 ## FIND0 [+init] (*)
 ## FIND0 [+init] (worker:///*)
@@ -278,8 +281,8 @@ Next, address the prompt.`);
                     tagsBySequence.get(sequence)?.push(tag);
                 }
                 assert.deepEqual(finds.map(({ sequence }) => tagsBySequence.get(sequence)), [
-                    ["init", "tools"], ["docs", "init"], ["init"], ["init"], ["init"],
-                ], "each FIND classifies its own durable log item; docs and tools retain the shared init set");
+                    ["init", "tools"], ["init", "skills"], ["docs", "init"], ["init"], ["init"], ["init"],
+                ], "each FIND classifies its own durable log item; docs, skills, and tools retain the shared init set");
                 const shellTags = logTags.filter(({ coordinate }) => Number(coordinate.split("/")[2]) === shellSample?.sequence).map(({ tag }) => tag);
                 assert.deepEqual(shellTags, ["init", "tools"], "the worked tool-document READ belongs to the same init/tools set");
             } finally { ws.close(); }
