@@ -46,8 +46,8 @@ import { mcpRoutingHeaderValue } from "./protocolHeaders.ts";
 import {
     MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID,
     MCP_PROTOCOL_VERSION,
-    MCP_TASKS_EXTENSION_ID,
 } from "./protocol.ts";
+import { staticClientCapabilities } from "./capabilityMatrix.ts";
 import Subscriptions from "./subscriptions.ts";
 import {
     callToolWithTasks,
@@ -342,16 +342,15 @@ const openClient = async (
         name: packageJson.name,
         version: packageJson.version,
     };
-    // {§oauth-client-credentials} — the extension capability is advertised only
-    // on connections that actually hold a client-credentials definition; a
-    // bearer or interactive attachment never claims it.
+    // {§mcp-capability-matrix} — static advertisement derives from the
+    // capability matrix by construction; the conditional client-credentials
+    // extension ({§oauth-client-credentials}) is added only on connections
+    // that actually hold a client-credentials definition.
+    const matrixCapabilities = staticClientCapabilities();
     const clientCapabilities = {
-        elicitation: {
-            form: {},
-            url: {},
-        },
+        ...matrixCapabilities,
         extensions: {
-            [MCP_TASKS_EXTENSION_ID]: {},
+            ...matrixCapabilities.extensions,
             ...(definition.transport === "http" && definition.clientCredentials === true
                 ? { [MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID]: {} }
                 : {}),

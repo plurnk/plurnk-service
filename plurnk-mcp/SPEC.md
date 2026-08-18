@@ -33,6 +33,10 @@ per-connection and absent from a legacy peer.
 
 ## §mcp-core-matrix Core capability matrix
 
+The accountable capability matrix lives in `capabilityMatrix.ts`
+({§mcp-capability-matrix}); this section states the core surface contract the
+matrix rows cite.
+
 | Surface | Upstream contract | Plurnk host disposition |
 |---|---|---|
 | Base | JSON-RPC 2.0; per-request protocol, identity, and capability metadata; every result has `resultType` | Require the modern envelope and preserve protocol results and errors without reconstructing them |
@@ -80,6 +84,26 @@ originating tool result; a failed Task preserves its JSON-RPC error.
 | Excluded | Other official, experimental, or private extensions | Require a separately owned contract before negotiation |
 | Excluded | Dual-era operation | Modern peers and legacy peers carry different surfaces; the host never mixes the two on one connection |
 | Excluded | MCP server and authorization-server roles | This package is the host/client only |
+
+## §mcp-capability-matrix Accountable capability matrix
+
+`capabilityMatrix.ts` is the one accountable support matrix: one row per core
+surface, official extension, or explicitly selected experimental candidate,
+carrying authority, disposition (supported, partial, excluded, deferred),
+advertisement, interactivity, and evidence citations. Rows are "supported"
+only when every layer their owning contract includes has real coverage; a row
+cannot claim support merely because the direct SDK or conformance path passes.
+Every evidence citation must resolve through a named specification tag or a
+named composed test.
+
+The static wire advertisement is derived from the matrix by construction
+(`staticClientCapabilities`): an extension reaches the wire only because its
+row says `always`, and a `conditional` extension is added only by its owning
+connection logic ({§oauth-client-credentials}). The matrix unit tests enforce
+unique identities, no excluded row advertising, supported rows citing evidence,
+composed coverage for interactive advertised rows, and exact reconciliation
+between the matrix and the derived advertisement. Official required
+conformance stays a separate named gate, never folded into a matrix row.
 
 ## §mcp-transports Transport bindings
 
