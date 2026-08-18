@@ -4,7 +4,7 @@ import { instantiateProvider, loadActiveProvider, resetDiscoveryCache } from "./
 import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
 
 const mapOf = (entries: Record<string, string>, skipped: Record<string, string> = {}) =>
-    async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)), attributions: new Map<string, string | string[]>() });
+    async () => ({ registry: new Map(Object.entries(entries)), skipped: new Map(Object.entries(skipped)), attributions: new Map<string, string | string[]>(), grammarStyles: new Map() });
 
 // Alias parsing is tested in @plurnk/plurnk-aliases (its owner). Here we
 // exercise the resolution + two-tier instantiation this module owns; the active
@@ -31,7 +31,7 @@ test("instantiateProvider: cataloged name resolves in-framework, no scan, no imp
     let scanned = false;
     const p = await instantiateProvider("openai", { ...fullEnv }, "m",
         async (s) => { imports.push(s); return {}; },
-        async () => { scanned = true; return { registry: new Map(), skipped: new Map(), attributions: new Map() }; });
+        async () => { scanned = true; return { registry: new Map(), skipped: new Map(), attributions: new Map(), grammarStyles: new Map() }; });
     assert.equal(p.model, "m");
     assert.deepEqual(imports, []); // tier 1 never touches the importer…
     assert.equal(scanned, false); // …nor the scan
@@ -77,7 +77,7 @@ test("instantiateProvider: a selected plugin composes its static and runtime att
             registry: new Map([["acme", "@acme/ai-provider"]]),
             skipped: new Map(),
             attributions: new Map([["acme", "static:provider"]]),
-            packageAttributions: new Map([["@acme/ai-provider", ["static:provider"]]]),
+            packageAttributions: new Map([["@acme/ai-provider", ["static:provider"]]]), grammarStyles: new Map(),
         }),
     );
 
@@ -107,7 +107,7 @@ test("instantiateProvider: a per-alias baseUrl drives the standard openai probe 
         return new Response(JSON.stringify({ data: [] }), { status: 200 });
     });
     await instantiateProvider("openai", { ...fullEnv }, "m", // fullEnv.OPENAI_BASE_URL is http://x — the override must win
-        async () => ({}), async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map() }),
+        async () => ({}), async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map(), grammarStyles: new Map() }),
         "http://hazel2:8080/v1");
     assert.ok(probed.some((u) => u === "http://hazel2:8080/v1/models"), `probe hit the override host; saw ${probed.join(", ")}`);
     assert.equal(probed.some((u) => u.startsWith("http://x")), false); // never the per-name OPENAI_BASE_URL
@@ -193,13 +193,13 @@ test("instantiateProvider: per-alias knobs scope through to the provider (per-al
     });
     const env = { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW_turbo: "12345", PLURNK_PROVIDERS_LLAMA_SERVER_turbo: "1" };
     const p = await instantiateProvider("openai", env, "m",
-        async () => ({}), async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map() }),
+        async () => ({}), async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map(), grammarStyles: new Map() }),
         undefined, "turbo");
     assert.equal(p.contextWindow, 12345); // _turbo CONTEXT_WINDOW reached the provider
     assert.equal(p.constrainsOutput, true); // _turbo LLAMA_SERVER pin reached it too
     // same env, DIFFERENT alias: neither override applies
     const q = await instantiateProvider("openai", env, "m",
-        async () => ({}), async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map() }),
+        async () => ({}), async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map(), grammarStyles: new Map() }),
         undefined, "plain");
     assert.equal(q.contextWindow, null);
     assert.equal(q.constrainsOutput, false);
@@ -319,7 +319,7 @@ test("a catalog provider with unknown model metadata never falls through to plug
                 return {
                     registry: new Map([["cloudflare", "@plurnk/plurnk-providers-cloudflare"]]),
                     skipped: new Map(),
-                    attributions: new Map(),
+                    attributions: new Map(), grammarStyles: new Map(),
                 };
             },
         ),
@@ -344,7 +344,7 @@ test("explicit metadata constructs an out-of-snapshot Cloudflare model in the co
             return {
                 registry: new Map([["cloudflare", "@plurnk/plurnk-providers-cloudflare"]]),
                 skipped: new Map(),
-                attributions: new Map(),
+                attributions: new Map(), grammarStyles: new Map(),
             };
         },
     );
@@ -419,7 +419,7 @@ test("two Fireworks aliases independently select default and priority service ti
         PLURNK_PROVIDERS_SERVICE_TIER_standard: "default",
     };
     const imports = async () => ({});
-    const discover = async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map() });
+    const discover = async () => ({ registry: new Map(), skipped: new Map(), attributions: new Map(), grammarStyles: new Map() });
     const fast = await instantiateProvider("fireworks", env, "accounts/fireworks/routers/glm-5p2-fast", imports, discover, undefined, "fast");
     const standard = await instantiateProvider("fireworks", env, "deepseek-v4-pro", imports, discover, undefined, "standard");
     await fast.generate({ workerId: "fast-worker", messages: [] });

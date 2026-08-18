@@ -12,7 +12,7 @@ import {
     reasoningFromEnv,
     reasoningResponseStyleFromEnv,
 } from "./env.ts";
-import AiSdkProvider, { type ReasoningStyle } from "./AiSdkProvider.ts";
+import AiSdkProvider, { type GrammarStyle, type ReasoningStyle } from "./AiSdkProvider.ts";
 import { configuredProviderInfo, createSdkModel } from "./sdkModels.ts";
 import { providerSource } from "./notices.ts";
 import type { Provider, ProviderCostNormalizer } from "./types.ts";
@@ -54,6 +54,7 @@ export const providerFromSdkModel = ({
     systemCacheProviderOptions,
     reasoningResponseProviderOptions,
     additiveReasoningProvider,
+    grammarStyle,
 }: {
     name: string;
     env: NodeJS.ProcessEnv;
@@ -65,6 +66,9 @@ export const providerFromSdkModel = ({
     contextWindow: number;
     info?: ModelInfo;
     attributions?: (context: PluginAttributionContext) => PluginAttribution;
+    // {§provider-grammar-transport} — plugin-declared constrained-decoding
+    // capability; "none" keeps the grammar off the wire.
+    grammarStyle?: GrammarStyle;
     cacheAffinity?: CacheAffinity;
     systemCacheProviderOptions?: AiSdkProviderOptions;
     reasoningResponseProviderOptions?: AiSdkProviderOptions;
@@ -141,6 +145,7 @@ export const providerFromSdkModel = ({
         serviceTier: env.PLURNK_PROVIDERS_SERVICE_TIER,
         estimateCost,
         source: providerSource(name),
+        ...(grammarStyle === undefined ? {} : { grammarStyle }),
         gbnfDebug: env.PLURNK_PROVIDERS_GBNF_DEBUG !== undefined
             && env.PLURNK_PROVIDERS_GBNF_DEBUG !== ""
             && env.PLURNK_PROVIDERS_GBNF_DEBUG !== "0",

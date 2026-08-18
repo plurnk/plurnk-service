@@ -779,6 +779,15 @@ neither identity fail instead of guessing. A configured package variant or
 explicit path that cannot be loaded also fails; it never silently becomes
 unconstrained.
 
+§grammar-rail-registration **Rail variants are built-in names or import
+specifiers.** A bare variant (no `/`, no `:`) resolves as a built-in rail
+subpath under `@plurnk/plurnk-contracts`. Any other variant form is an import
+specifier — an absolute or relative operator file path, or a package export
+subpath (e.g. `@acme/plurnk-rails/custom.gbnf`) — resolved through the Node
+resolution chain, so a third-party rail package plugs in with no built-in
+registry. An unresolvable or unreadable rail fails the constrained generation
+loudly; it never silently becomes unconstrained.
+
 §gbnf-requires-reasoning Both shipped PLURNK rails require reasoning. The same alias-scoped configuration
 must resolve reasoning to `adaptive` or `on`; `off` with GBNF is rejected before
 the probe or any model generation. Reasoning-off remains valid when no GBNF rail

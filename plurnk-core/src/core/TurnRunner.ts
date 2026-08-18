@@ -28,6 +28,14 @@ import { editedSpan } from "../content/index.ts";
 import { promptPathname, promptLoopPrefix, renderTarget } from "./plurnk-uri.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
+// {§grammar-rail-registration} — bare names are the built-in rail namespace;
+// everything else is an import specifier resolved through the Node chain.
+export const resolveGrammarRailPath = (variant: string): string => variant.startsWith("/") || variant.startsWith(".")
+    || variant.includes("/") || variant.includes(":")
+    ? (variant.startsWith("/") || variant.startsWith(".")
+        ? variant
+        : fileURLToPath(import.meta.resolve(variant)))
+    : fileURLToPath(import.meta.resolve(`@plurnk/plurnk-contracts/${variant}`));
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 // Shared module imported by both Engine and bin/digest.ts, so wire
@@ -398,9 +406,11 @@ export default class TurnRunner {
             && scoped.PLURNK_PROVIDERS_GBNF_DEBUG !== "0";
         const hit = this.#gbnfCache.get(variant);
         if (hit !== undefined) return { ...hit, allowWithheld };
-        const path = variant.startsWith("/") || variant.startsWith(".")
-            ? variant
-            : fileURLToPath(import.meta.resolve(`@plurnk/plurnk-contracts/${variant}`));
+        // {§grammar-rail-registration} — a bare name is a built-in rail subpath
+        // under @plurnk/plurnk-contracts; any other form is an import specifier
+        // (an operator file path or a package export subpath), so a third-party
+        // rail package plugs in with no built-in registry change.
+        const path = resolveGrammarRailPath(variant);
         const text = await readFile(path, "utf8");  // unresolvable/unreadable throws — a configured rail never silently degrades
         const constraint = grammarConstraint(text);
         this.#gbnfCache.set(variant, constraint);

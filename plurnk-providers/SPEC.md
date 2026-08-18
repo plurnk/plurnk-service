@@ -375,6 +375,16 @@ A provider plugin:
 4. default-exports an AI SDK provider with `languageModel(modelId)`;
 5. peers on compatible `ai` and `@plurnk/plurnk-providers` majors.
 
+§provider-grammar-transport A plugin whose backend accepts a llama.cpp-style
+GBNF grammar may declare `plurnk.grammarStyle: "llamacpp"` beside its kind and
+name; the discovery records it and the adapted Provider carries the capability,
+so an operator-configured rail ({§grammar-rail-registration}) rides the wire
+exactly as on a probed llama-server. Absence or `"none"` keeps the grammar off
+the wire; any other value fails discovery loudly. The declaration is the
+plugin author's fact about their backend — a wrong declaration fails at the
+rail-truth boundary ({§rail-truth-engine-verdict}), never by degrading
+admission.
+
 PLURNK adapts the returned language model. The plugin does not implement the
 PLURNK `Provider`, read PLURNK tuning knobs, or reproduce transport policy.
 

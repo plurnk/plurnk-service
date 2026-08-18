@@ -47,6 +47,33 @@ test("discover: a provider package missing plurnk.name is ignored, not crashed",
     assert.deepEqual([...registry.keys()], ["named"]);
 });
 
+test("{§provider-grammar-transport} discover: the manifest grammarStyle declaration is recorded and validated", async (t) => {
+    const root = await buildModules(t, {
+        "@acme/llamacpp-rail": {
+            name: "@acme/llamacpp-rail",
+            plurnk: { kind: "provider", name: "rail", grammarStyle: "llamacpp" },
+        },
+        "@acme/plain": {
+            name: "@acme/plain",
+            plurnk: { kind: "provider", name: "plain" },
+        },
+    });
+    const { grammarStyles } = await discover({ cwd: root });
+    assert.equal(grammarStyles.get("rail"), "llamacpp");
+    assert.equal(grammarStyles.get("plain"), "none");
+    assert.equal(grammarStyles.get("absent"), undefined);
+});
+
+test("{§provider-grammar-transport} discover: an invalid grammarStyle fails loudly, never guessing", async (t) => {
+    const root = await buildModules(t, {
+        "@acme/bad-grammar": {
+            name: "@acme/bad-grammar",
+            plurnk: { kind: "provider", name: "bad", grammarStyle: "guff" },
+        },
+    });
+    await assert.rejects(discover({ cwd: root }), /grammarStyle must be "none" or "llamacpp"/);
+});
+
 test("discover: an array kind claims no provider family", async (t) => {
     const root = await buildModules(t, {
         "@acme/dual": {

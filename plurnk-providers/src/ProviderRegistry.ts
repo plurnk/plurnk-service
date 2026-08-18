@@ -61,7 +61,7 @@ export const instantiateProvider = async (
     if (catalog !== null) return catalog;
     if (name === "ollama") return ollamaProviderFromEnv(env, model, baseUrl === undefined ? undefined : { baseUrl });
     if (name === "openai" || name === "plurnk") return compatibleProviderFromEnv(name, env, model, baseUrl);
-    const { registry, skipped, packageAttributions = new Map() } = await providerPackages(discoverFn, env);
+    const { registry, skipped, packageAttributions = new Map(), grammarStyles = new Map() } = await providerPackages(discoverFn, env);
     const specifier = registry.get(name);
     if (specifier === undefined) {
         const declined = skipped.get(name);
@@ -99,6 +99,7 @@ export const instantiateProvider = async (
         languageModel: sdkProvider.languageModel(model),
         contextWindow,
         attributions,
+        ...(grammarStyles.get(name) === undefined ? {} : { grammarStyle: grammarStyles.get(name) }),
     });
 };
 

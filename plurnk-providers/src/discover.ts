@@ -6,6 +6,7 @@ import type {
     PluginAttribution,
     PluginAttributionDeclaration,
 } from "@plurnk/plurnk-meta";
+import type { GrammarStyle } from "./AiSdkProvider.ts";
 
 // Scope-agnostic discovery of installed AI SDK provider packages
 // ({§plugin-family-kind}).
@@ -40,6 +41,9 @@ export type Discovery = {
     // Published name-keyed projection retained for 1.x consumers.
     attributions: Map<string, string | string[]>;
     packageAttributions: PackageAttributions;
+    // {§provider-grammar-transport} — plugin-declared constrained-decoding
+    // capability per provider name; "none" unless the manifest declares one.
+    grammarStyles: Map<string, GrammarStyle>;
 };
 
 
@@ -51,6 +55,7 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
     const skipped = new Map<string, string>();
     const attributions = new Map<string, PluginAttributionDeclaration>();
     const packageAttributions = new Map<string, PluginAttribution>();
+    const grammarStyles = new Map<string, GrammarStyle>();
     for (const dir of dirs) {
         const info = await readProviderInfo(dir);
         if (info === null) continue;
@@ -67,11 +72,12 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
         }
         const tags = Meta.normalizeAttribution(info.attribution, info.packageName);
         registry.set(info.name, info.packageName);
+        grammarStyles.set(info.name, info.grammarStyle);
         const attribution = attributionProjection(info.attribution, tags);
         if (attribution !== undefined) attributions.set(info.name, attribution);
         if (tags.length > 0) packageAttributions.set(info.packageName, tags);
     }
-    return { registry, skipped, attributions, packageAttributions };
+    return { registry, skipped, attributions, packageAttributions, grammarStyles };
 };
 
 // Enumerate every installed package directory — scoped and unscoped — under
@@ -84,7 +90,7 @@ const defaultPackageDirs = async (cwd: string): Promise<string[]> => {
 // One inert manifest record for a provider package, or null for anything that
 // isn't one. Attribution remains unknown until trust admission, then the shared
 // {§plugin-attribution} boundary validates it.
-type ProviderInfo = { name: string; packageName: string; attribution: unknown };
+type ProviderInfo = { name: string; packageName: string; attribution: unknown; grammarStyle: GrammarStyle };
 
 const readProviderInfo = async (dir: string): Promise<ProviderInfo | null> => {
     let raw: string;
@@ -107,7 +113,18 @@ const readProviderInfo = async (dir: string): Promise<ProviderInfo | null> => {
     if (!Meta.declaresKind(plurnkRec, "provider")) return null;
     if (typeof plurnkRec.name !== "string" || plurnkRec.name === "") return null;
     if (typeof record.name !== "string" || record.name === "") return null;
-    return { name: plurnkRec.name, packageName: record.name, attribution: plurnkRec.attribution };
+    const grammarStyle = plurnkRec.grammarStyle;
+    if (grammarStyle !== undefined && grammarStyle !== "none" && grammarStyle !== "llamacpp") {
+        throw new Error(
+            `${record.name}: plurnk.grammarStyle must be "none" or "llamacpp", got ${JSON.stringify(grammarStyle)}.`,
+        );
+    }
+    return {
+        name: plurnkRec.name,
+        packageName: record.name,
+        attribution: plurnkRec.attribution,
+        grammarStyle: grammarStyle === undefined ? "none" : grammarStyle,
+    };
 };
 
 const attributionProjection = (
