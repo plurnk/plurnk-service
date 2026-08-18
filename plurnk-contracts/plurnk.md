@@ -22,7 +22,7 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|B
 
 PLAN begins the turn on a line starting with `# `, as in `# PLAN0`. Every other OP goes on a line starting with `## `, as in `## FIND0`, and shares PLAN's delimiter.
 OPs with a different delimiter from PLAN are body content of the previous valid OP.
-Each PLAN updates the running state with new or revised reasoning conclusions, learnings, open inquiries, and unresolved priorities. PLANs accumulate across turns — FOLD each PLAN whose conclusions this turn's PLAN has absorbed, so the log carries one live plan state instead of a growing history.
+Each PLAN updates the running state with new or revised reasoning conclusions, learnings, open inquiries, and unresolved priorities.
 SEND[status code] is the final OP.
 
 A single blank line between sections is optional and is not body content; additional blank lines are body content.
@@ -167,7 +167,7 @@ YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale t
 * `## FOLD0 [+stale] (log:///1/2/3/READ)` tags and folds one log item.
 * Log item addresses contain their loop, turn, and item, followed by their OP when present: `log:///{loop}/{turn}/{item}/{OP}`.
 
-YOU SHOULD FOLD superseded PLANs, stale READs, and irrelevant log items — an unfolded accumulation is context bloat, and each un-folded obsolete PLAN reads as still-active state.
+YOU SHOULD FOLD superseded PLANs, stale READs, and irrelevant log items.
 
 ## Delegation
 
