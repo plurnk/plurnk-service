@@ -112,6 +112,53 @@ test("{§skills-materialization} reconciliation retires removed skills and keeps
     }
 });
 
+
+test("{§skills-materialization} PLURNK_SKILLS_<ALIAS> declares operator skills; the project wins a collision", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-skills-env-"));
+    const operatorDir = await mkdtemp(join(tmpdir(), "plurnk-skills-operator-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    t.after(() => rm(operatorDir, { recursive: true, force: true }));
+    await mkdir(join(operatorDir, "policy"), { recursive: true });
+    await writeFile(join(operatorDir, "policy", "SKILL.md"), "---\nname: policy\ndescription: Operator rules\n---\nAlways quote patterns.");
+    const prev = process.env.PLURNK_SKILLS_POLICY;
+    process.env.PLURNK_SKILLS_POLICY = join(operatorDir, "policy");
+    const { db, workspaceId, ownerId } = await openWorkspace(root);
+    const engine = new FixtureEngine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+    try {
+        await SkillDocs.materialize(engine, db, workspaceId);
+        const policy = await entry(db, workspaceId, ownerId, "/skills/policy.md");
+        assert.ok(policy, "the operator skill materializes for every workspace");
+        assert.match(policy!.body, /Always quote patterns/);
+
+        // A project folder with the same alias shadows the operator path BEFORE it is read.
+        await mkdir(join(root, "skills", "policy"), { recursive: true });
+        await writeFile(join(root, "skills", "policy", "SKILL.md"), "---\nname: policy\ndescription: Project rules\n---\nProject body.");
+        await SkillDocs.materialize(engine, db, workspaceId);
+        const shadowed = await entry(db, workspaceId, ownerId, "/skills/policy.md");
+        assert.match(shadowed!.body, /Project body/, "the project alias wins the collision");
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_SKILLS_POLICY; else process.env.PLURNK_SKILLS_POLICY = prev;
+        await db.close();
+    }
+});
+
+test("{§skills-materialization} an unshadowed unreadable operator skill fails materialization with its cause", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-skills-env-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const prev = process.env.PLURNK_SKILLS_BROKEN;
+    process.env.PLURNK_SKILLS_BROKEN = join(root, "absent");
+    const { db, workspaceId } = await openWorkspace(root);
+    const engine = new FixtureEngine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+    try {
+        await assert.rejects(
+            () => SkillDocs.materialize(engine, db, workspaceId),
+            /configured operator skill 'broken' could not be read/,
+        );
+    } finally {
+        if (prev === undefined) delete process.env.PLURNK_SKILLS_BROKEN; else process.env.PLURNK_SKILLS_BROKEN = prev;
+        await db.close();
+    }
+});
 test("{§skills-materialization} a workspace without a project root still publishes the empty index", async () => {
     const { db, workspaceId, ownerId } = await openWorkspace(null);
     const engine = new FixtureEngine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });

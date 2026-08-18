@@ -7,7 +7,8 @@
 // been — even when none are installed.
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import {
     UNKNOWN_POSITION,
     type EditStatement,
@@ -109,12 +110,30 @@ export default class SkillDocs {
     // folders' signature so a per-turn refresh dispatches only on real drift.
     static #signatures = new Map<number, string>();
 
+    // {§skills-materialization} — PLURNK_SKILLS_<ALIAS>=<path-to-skill-folder>
+    // declares operator-global skills, unioned with the project's skills/ by
+    // alias; the project wins a collision before the operator path is read.
+    static #envSkillFolders(): Array<{ alias: string; dir: string }> {
+        const out: Array<{ alias: string; dir: string }> = [];
+        for (const [key, value] of Object.entries(process.env)) {
+            if (!key.startsWith("PLURNK_SKILLS_") || typeof value !== "string" || value.length === 0) continue;
+            const alias = key.slice("PLURNK_SKILLS_".length);
+            if (alias.length === 0) continue;
+            const expanded = value.startsWith("~/")
+                ? resolve(homedir(), value.slice(2))
+                : value === "~" ? homedir() : value;
+            out.push({ alias, dir: resolve(expanded) });
+        }
+        return out;
+    }
+
     static async #scan(workspaceId: number, db: Db): Promise<{ skills: SkillDoc[]; projectRoot: string | null; signature: string }> {
         const workspace = await db.envelope_get_workspace.get<{ project_root: string | null }>({
             id: workspaceId,
         });
         const projectRoot = workspace?.project_root ?? null;
         const skills: SkillDoc[] = [];
+        const projectAliases = new Set<string>();
         if (projectRoot !== null) {
             const dir = join(projectRoot, "skills");
             const folders = (await readdir(dir, { withFileTypes: true }).catch(() => []))
@@ -123,8 +142,17 @@ export default class SkillDocs {
             for (const folder of folders) {
                 const raw = await readFile(join(dir, folder.name, "SKILL.md"), "utf8").catch(() => null);
                 if (raw === null) continue;
+                projectAliases.add(folder.name.toLowerCase());
                 skills.push(parseSkill(folder.name, raw));
             }
+        }
+        for (const { alias, dir } of SkillDocs.#envSkillFolders().toSorted((left, right) => left.alias.localeCompare(right.alias))) {
+            if (projectAliases.has(alias.toLowerCase())) continue; // {§skills-materialization} — project wins a collision
+            const raw = await readFile(join(dir, "SKILL.md"), "utf8").catch(() => null);
+            if (raw === null) {
+                throw new Error(`configured operator skill '${alias.toLowerCase()}' could not be read (PLURNK_SKILLS_${alias})`);
+            }
+            skills.push(parseSkill(alias.toLowerCase(), raw));
         }
         const signature = createHash("sha256")
             .update(skills.map((skill) => `${skill.name}\u0000${skill.description ?? ""}\u0000${skill.body}`).join("\u0001"))
@@ -144,6 +172,7 @@ export default class SkillDocs {
 
     static async materialize(engine: Engine, db: Db, workspaceId: number): Promise<void> {
         const scanned = await SkillDocs.#scan(workspaceId, db);
+        console.error("DEBUG scan:", scanned.skills.map((x) => `${x.name}:${x.body.slice(0, 14)}`).join(" | "));
         await SkillDocs.#materialize(engine, db, workspaceId, scanned);
         SkillDocs.#signatures.set(workspaceId, scanned.signature);
     }

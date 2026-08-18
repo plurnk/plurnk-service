@@ -3230,18 +3230,22 @@ shared by discovery and dispatch.
 `<projectRoot>/skills/<folder>/SKILL.md` (Agent Skills format: `name` +
 `description` frontmatter, instructions body) becomes one kernel-owned
 `worker://plurnk/skills/<name>.md` entry at workspace boot and creation.
-`worker://plurnk/skills/index.md` always exists — it lists installed skills,
-or states that none are installed and where they would live — so the turn-0
-`+init,+skills` FIND survey always shows the surface. Only the two discovery
-keys are parsed (no full YAML dependency); the body is preserved verbatim.
-Reconciliation deletes retired skill entries before upserting the current
-set, and a workspace without a project root publishes the empty index alone.
-The model-facing `EXEC0 [skills] (list|add|remove)` runtime mutates the same
+Operator-global skills declared via `PLURNK_SKILLS_<ALIAS>=<path-to-skill-folder>`
+union with the project set by alias — the project wins a collision before the
+operator path is read, and an unshadowed unreadable operator skill fails
+materialization with its cause. `worker://plurnk/skills/index.md` always
+exists — it lists installed skills, or states that none are installed and
+where they would live — so the turn-0 `+init,+skills` FIND survey always
+shows the surface. Only the two discovery keys are parsed (no full YAML
+dependency); the body is preserved verbatim. Reconciliation deletes retired
+skill entries before upserting the current set, and a workspace without a
+project root or operator skills publishes the empty index alone. The
+model-facing `EXEC0 [skills] (list|add|remove)` runtime mutates the same
 folders; the daemon's turn-completion hook refreshes the surface against the
 folders' signature so an added or removed skill is discoverable from the next
 turn, while an unchanged set dispatches nothing. Skills are operator- or
 model-installed teaching admitted through the kernel surface; they never
-override operator docs, tool contracts, or the instruction authority.
+override the instruction authority.
 
 The catalog describes workspace capabilities, not temporary authority. Loop
 mode remains a dispatch concern: an ask-mode EXEC receives the ordinary exact
