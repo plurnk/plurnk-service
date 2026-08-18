@@ -2367,6 +2367,20 @@ JSON yields the default rules, never a read failure. There is no servicewide
 or workspace ceiling on a worker's own rules; each client decides for its own
 workers.
 
+§question-tool **The native request-user-input tool.** Core registers one
+in-process `question` runtime at boot. Its body is the MCP2 2026-07-28
+form-elicitation shape verbatim — `{ message, requestedSchema }` — and its
+`results` channel carries the standard `ElicitResult`
+(`{ action: "accept", content }` or `{ action: "cancel" }`); nothing bespoke
+crosses the wire. The executor maps the body onto the contracts-owned
+`ClientInteractionRequest` (toolName `question`) and awaits the shared
+client-interaction lifecycle — durable pause, reconnect discovery,
+cancellation, and the answer-as-resolution all come from
+{§client-interactions}; there is no loopback MCP and no proposal masquerade.
+Effect `read`: the tool observes the human's answer and is never
+proposal-gated. Admission is per-worker under {§worker-settings}: the tool
+exists for a worker only when that worker's `requestUserInput` rule is set.
+
 §worker-model-selection **Worker-owned model selection.** Every model worker
 owns one durable model, persisted as a nullable `model_routes` foreign key.
 The root conversation worker is seeded once — from an explicit selection, else

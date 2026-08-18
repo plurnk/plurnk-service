@@ -17,6 +17,7 @@ import { routeForSpec, specForRoute } from "./model-route.ts";
 import { discoverDaemonModules } from "./module-discovery.ts";
 import WorkerSettingsReader from "../core/worker-settings.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
+import QuestionTool, { questionRuntimeDecl } from "../schemes/QuestionTool.ts";
 // {§notifications-envelope-carries-workspaceid}: "all" = a global event
 // (workspace/created), {workspaceId} = workspace-scoped.
 export type NotifyTarget = "all" | { workspaceId: number };
@@ -1712,6 +1713,21 @@ export default class Daemon {
         // shell is the default runtime, so its executor must boot usable.
         const executors = await ExecutorRegistry.build({ defaultRuntime: "sh", cwd: this.#discoveryCwd });
         this.#engine.setExecutors(executors);
+        // {§question-tool} — the native request-user-input runtime, process-wide;
+        // per-worker admission gates its doc visibility and dispatch ({§worker-settings}).
+        await this.#engine.registerRuntimes([{
+            tag: "question",
+            entry: {
+                executor: new QuestionTool({ runtime: "question", glyph: "❓" }),
+                namespaceOwner: { kind: "module", name: "core" },
+                glyph: "❓",
+                summary: questionRuntimeDecl.summary,
+                invocation: questionRuntimeDecl.invocation,
+                details: questionRuntimeDecl.details ?? "",
+                available: true,
+                detail: "in-process",
+            },
+        }]);
         // {§effect-policy-tunable} — invalid operator policy fails boot, not the first EXEC.
         EffectPolicy.validateConfiguration();
         // {§exec} — mint a scheme per runtime tag so exec output entries address by tag
