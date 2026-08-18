@@ -10,7 +10,11 @@ import {
 import { z } from "zod/v4";
 import { serveMcpHttp } from "../test/http-fixture.ts";
 import ServerConnection, { AuthorizationRequiredError } from "./client.ts";
-import { MCP_PROTOCOL_VERSION } from "./protocol.ts";
+import {
+    MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID,
+    MCP_PROTOCOL_VERSION,
+    MCP_TASKS_EXTENSION_ID,
+} from "./protocol.ts";
 
 const floor = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
@@ -177,6 +181,138 @@ test("HTTP bearer credentials expand only while preparing a connection", async (
     if (connection.definition.authorization?.type === "bearer") {
         assert.equal(connection.definition.authorization.token, "${MCP_TEST_TOKEN}");
     }
+});
+
+test("{§oauth-client-credentials} the extension capability is advertised only on client-credentials connections", async (t) => {
+    let servedUrl = "";
+    const served = await serveMcpHttp(t, handler(), (request) => {
+        const url = new URL(request.url);
+        const authorization = request.headers.get("authorization");
+        if (url.pathname.endsWith("/.well-known/oauth-protected-resource")) {
+            return Response.json({
+                resource: servedUrl,
+                authorization_servers: [servedUrl],
+            });
+        }
+        if (url.pathname.endsWith("/.well-known/oauth-authorization-server")) {
+            return Response.json({
+                issuer: servedUrl,
+                authorization_endpoint: `${servedUrl}/authorize`,
+                token_endpoint: `${servedUrl}/token`,
+                scopes_supported: [],
+            });
+        }
+        if (url.pathname.endsWith("/token")) {
+            return Response.json({
+                access_token: "granted-access-token",
+                token_type: "Bearer",
+                expires_in: 3600,
+            });
+        }
+        if (authorization === "Bearer granted-access-token" || authorization === "Bearer secret") {
+            return null;
+        }
+        return new Response("unauthorized", { status: 401 });
+    });
+    servedUrl = served.url;
+
+    const granted = new ServerConnection({
+        name: "grant",
+        transport: "http",
+        url: served.url,
+        authorization: {
+            type: "client-credentials",
+            clientId: "app-id",
+            clientSecret: "${MCP_TEST_SECRET}",
+            issuer: served.url,
+        },
+    }, { ...floor, MCP_TEST_SECRET: "client-secret-value" });
+    t.after(() => granted.close());
+    assert.deepEqual((await granted.tools()).map(({ name }) => name), ["echo"]);
+    assert.ok(served.requests.some(({ headers, body }) =>
+        headers.get("authorization") === "Bearer granted-access-token" &&
+        (body as { method?: string }).method === "server/discover"));
+
+    const bearer = new ServerConnection({
+        name: "private",
+        transport: "http",
+        url: served.url,
+        authorization: { type: "bearer", token: "${MCP_TEST_TOKEN}" },
+    }, { ...floor, MCP_TEST_TOKEN: "secret" });
+    t.after(() => bearer.close());
+    assert.deepEqual((await bearer.tools()).map(({ name }) => name), ["echo"]);
+
+    const advertisedExtensions = (body: unknown): Record<string, unknown> | undefined => {
+        const meta = (body as {
+            params?: { _meta?: { "io.modelcontextprotocol/clientCapabilities"?: {
+                extensions?: Record<string, unknown>;
+            } } };
+        }).params?._meta?.["io.modelcontextprotocol/clientCapabilities"];
+        return meta?.extensions;
+    };
+    const discovers = served.requests
+        .map(({ headers, body }) => ({ auth: headers.get("authorization"), body: body as { method?: string } }))
+        .filter(({ body }) => body !== null && typeof body === "object" && body.method === "server/discover");
+    const [grantedDiscover] = discovers.filter(({ auth }) => auth === "Bearer granted-access-token");
+    const [bearerDiscover] = discovers.filter(({ auth }) => auth === "Bearer secret");
+    assert.ok(grantedDiscover !== undefined, "the authenticated grant connection discovered once");
+    assert.ok(bearerDiscover !== undefined, "the bearer connection discovered once");
+    const grantedCapabilities = advertisedExtensions(grantedDiscover.body) ?? {};
+    const bearerCapabilities = advertisedExtensions(bearerDiscover.body) ?? {};
+    assert.ok(MCP_TASKS_EXTENSION_ID in grantedCapabilities);
+    assert.ok(MCP_TASKS_EXTENSION_ID in bearerCapabilities);
+    assert.ok(MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID in grantedCapabilities);
+    assert.ok(!(MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID in bearerCapabilities));
+});
+
+test("{§oauth-client-credentials} a declared issuer withholds the credential from a different authorization server", async (t) => {
+    let servedUrl = "";
+    let tokenPosts = 0;
+    const served = await serveMcpHttp(t, handler(), (request) => {
+        const url = new URL(request.url);
+        const authorization = request.headers.get("authorization");
+        if (url.pathname.endsWith("/.well-known/oauth-protected-resource")) {
+            return Response.json({
+                resource: servedUrl,
+                authorization_servers: [servedUrl],
+            });
+        }
+        if (url.pathname.endsWith("/.well-known/oauth-authorization-server")) {
+            return Response.json({
+                issuer: servedUrl,
+                authorization_endpoint: `${servedUrl}/authorize`,
+                token_endpoint: `${servedUrl}/token`,
+                scopes_supported: [],
+            });
+        }
+        if (url.pathname.endsWith("/token")) {
+            tokenPosts += 1;
+            return Response.json({
+                access_token: "granted-access-token",
+                token_type: "Bearer",
+                expires_in: 3600,
+            });
+        }
+        if (authorization === "Bearer granted-access-token") return null;
+        return new Response("unauthorized", { status: 401 });
+    });
+    servedUrl = served.url;
+
+    const connection = new ServerConnection({
+        name: "bound",
+        transport: "http",
+        url: served.url,
+        authorization: {
+            type: "client-credentials",
+            clientId: "app-id",
+            clientSecret: "${MCP_TEST_SECRET}",
+            issuer: "https://different-issuer.invalid/",
+        },
+    }, { ...floor, MCP_TEST_SECRET: "client-secret-value" });
+    t.after(() => connection.close());
+
+    await assert.rejects(() => connection.tools());
+    assert.equal(tokenPosts, 0, "the credential never reached a token endpoint");
 });
 
 test("HTTP progress and stream cancellation settle the same request", async (t) => {

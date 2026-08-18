@@ -819,6 +819,65 @@ test("failed enable leaves durable state and Registry authoritative", async () =
     }
 });
 
+test("{§oauth-client-credentials} a rejected grant crosses the boundary as an authorization problem", async (t) => {
+    let servedUrl = "";
+    let tokenPosts = 0;
+    const served = await serveMcpHttp(t, httpHandler(), (request) => {
+        const url = new URL(request.url);
+        const authorization = request.headers.get("authorization");
+        if (url.pathname.endsWith("/.well-known/oauth-protected-resource")) {
+            return Response.json({
+                resource: servedUrl,
+                authorization_servers: [servedUrl],
+            });
+        }
+        if (url.pathname.endsWith("/.well-known/oauth-authorization-server")) {
+            return Response.json({
+                issuer: servedUrl,
+                authorization_endpoint: `${servedUrl}/authorize`,
+                token_endpoint: `${servedUrl}/token`,
+                scopes_supported: [],
+            });
+        }
+        if (url.pathname.endsWith("/token")) {
+            tokenPosts += 1;
+            return Response.json({ error: "invalid_client" }, { status: 400 });
+        }
+        if (authorization === "Bearer granted-access-token") return null;
+        return new Response("unauthorized", { status: 401 });
+    });
+    servedUrl = served.url;
+
+    const module = Module.init({
+        env: { ...floor, MCP_CC_SECRET: "client-secret-value" },
+    });
+    const h = harness();
+    try {
+        await module.setup(h.seam);
+        await h.hydrate(1);
+        await rejectsManagementProblem(
+            () => h.invoke(1, "workspace.mcp.add", {
+                alias: "grant",
+                target: served.url,
+                options: {
+                    authorization: {
+                        type: "client-credentials",
+                        clientId: "app-id",
+                        clientSecret: "${MCP_CC_SECRET}",
+                    },
+                },
+            }),
+            "oauth-client-credentials-failed",
+            502,
+        );
+        assert.ok(tokenPosts >= 1, "the grant was actually attempted");
+        assert.deepEqual(h.snapshots.get(1), []);
+        assert.equal(h.durable.get(1), null);
+    } finally {
+        await module.close();
+    }
+});
+
 test("{§mcp-authority} a legacy peer negotiates below the pin and serves its standard catalog", async () => {
     const module = Module.init({ env: floor });
     const h = harness();

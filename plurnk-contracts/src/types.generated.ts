@@ -493,6 +493,7 @@ type: "client-credentials"
 clientId: string
 clientSecret: EnvironmentReference
 scope?: string
+issuer?: string
 })
 tools?: string[]
 read?: string[]
@@ -525,6 +526,7 @@ type: "client-credentials"
 clientId: string
 clientSecret: string
 scope?: string
+issuer?: string
 })
 
 export type McpServerToolNames = string[]

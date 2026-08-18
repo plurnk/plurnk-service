@@ -166,7 +166,7 @@ the normalized durable definition shape. It is a closed discriminated union:
 | `http` + interactive OAuth / CIMD preferred | above plus `authorization: { type: "oauth", redirectUrl, clientMetadataUrl }` | `scope`; DCR remains the server-advertised fallback when CIMD is unavailable |
 | `http` + interactive OAuth / pre-registered | above plus `authorization: { type: "oauth", redirectUrl, clientId, clientSecret: "${NAME}" }` | `scope` |
 | `http` + interactive OAuth / DCR fallback only | above plus `authorization: { type: "oauth", redirectUrl }` | `scope` |
-| `http` + client credentials | above plus `authorization: { type: "client-credentials", clientId, clientSecret: "${NAME}" }` | `scope` |
+| `http` + client credentials | above plus `authorization: { type: "client-credentials", clientId, clientSecret: "${NAME}" }` | `scope`; `issuer` binds the credential to its authorization server ({§oauth-client-credentials}) |
 
 `tools` absent enables the complete listed set; `[]` enables none. `read` is an
 exact subset of the enabled set. A credential field is one complete symbolic
@@ -221,6 +221,7 @@ Problems rather than generic AG-UI failures:
 | Endpoint condition | Problem |
 |---|---|
 | Cannot connect or complete discovery/catalog preparation at the negotiated revision | `502 server-unavailable`, retryable; names the server and transport without exposing credentials |
+| Client-credentials grant rejected by the authorization server | `502 oauth-client-credentials-failed`, non-retryable; names the server and client id, never the secret ({§oauth-client-credentials}) |
 
 Interactive preparation returns a successful pending result shaped as
 `{ status: 202, authorization: { url } }`; it publishes no candidate runtime.
@@ -234,6 +235,33 @@ expired, mismatched, or replayed callback fails without exposing attacker-owned
 OAuth error text. It completes either pending hydration or the originally
 requested add or enable. There is no callback HTTP endpoint,
 authority-root resource, or MCP-specific AG-UI route.
+
+## §oauth-client-credentials Client-credentials grant adoption
+
+The `client-credentials` arm of `McpServerDefinition.authorization` adopts the
+official `io.modelcontextprotocol/oauth-client-credentials` extension's
+client-secret form faithfully: an MCP connection whose definition holds a
+client-credentials grant advertises the extension capability in
+`clientCapabilities.extensions`; connections without one never claim it. The
+grant uses `client_secret_basic` authentication with `grant_type
+client_credentials`. Scope from the definition's optional `scope` is passed to
+the token request. The credential itself is one complete symbolic environment
+reference (`clientSecret: "${NAME}"`), expanded only while preparing the
+connection; it is never stored in SQLite, logged, or echoed in Problems.
+
+| Aspect | Behaviour |
+|---|---|
+| Issuer binding | The definition's optional `issuer` is passed as the SDK provider's `expectedIssuer`, stamping the credential with its authorization server so SEP-2352 issuer checks refuse to send it elsewhere. Absent, the SDK's legacy no-binding behaviour applies. |
+| Token lifetime | Token refresh is 401-triggered by the SDK client: an expired access token surfaces as one unauthorized response, the provider re-fetches with the stored credential, and the request is retried. Proactive expiry scheduling is a client-internal optimization, not a wire requirement; Plurnk does not wrap the SDK with its own scheduler. |
+| Rotation | `clientSecret` resolution happens per connection preparation, so rotating the operator environment value takes effect on the next preparation of the server. |
+| Errors | A rejected grant crosses the action boundary as `502 oauth-client-credentials-failed`, non-retryable, naming the server and client id only; SDK OAuth error text is never echoed. Other connection failures keep the generic `server-unavailable` allocation. |
+
+Static credentials authorize application principals (service attachments, CI,
+daemons), not human users. Private-key JWT and static JWT assertions for
+client authentication are a declared non-goal; the specification permits a
+secret-only client and Plurnk declines the assertion arms. The interactive
+OAuth arm is the human-principal path ({§mcp-management-actions}); bearer
+remains the private-service/legacy transport credential.
 
 ## §mcp-setup Atomic lifecycle
 

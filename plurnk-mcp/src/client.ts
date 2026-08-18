@@ -1,4 +1,7 @@
 import {
+    OAuthClientFlowError,
+    OAuthError,
+    UnauthorizedError,
     Client,
     ClientCredentialsProvider,
     StreamableHTTPClientTransport,
@@ -41,6 +44,7 @@ import InteractiveOAuthProvider from "./oauth.ts";
 import ExtensionChannel from "./extensionChannel.ts";
 import { mcpRoutingHeaderValue } from "./protocolHeaders.ts";
 import {
+    MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID,
     MCP_PROTOCOL_VERSION,
     MCP_TASKS_EXTENSION_ID,
 } from "./protocol.ts";
@@ -81,6 +85,9 @@ interface ResolvedHttpDefinition {
     readonly authProvider?: AuthProvider | OAuthClientProvider;
     readonly oauthProvider?: InteractiveOAuthProvider;
     readonly cachePartition: string;
+    // {§oauth-client-credentials} — the connection advertises the extension
+    // capability only when its definition holds a client-credentials grant.
+    readonly clientCredentials?: boolean;
 }
 
 type ResolvedDefinition = ResolvedStdioDefinition | ResolvedHttpDefinition;
@@ -94,6 +101,26 @@ export type { ClientInteractionHandler } from "./inputRequired.ts";
 
 const message = (error: unknown): string =>
     error instanceof Error ? error.message : String(error);
+
+const errorsOf = (error: unknown): unknown[] =>
+    error instanceof AggregateError ? [...error.errors] : [error];
+
+// {§oauth-client-credentials} — a rejected client-credentials grant is an
+// authorization fact, never a generic unavailability.
+export const isClientCredentialsRejection = (error: unknown): boolean => errorsOf(error).some((candidate) => {
+    let current: unknown = candidate;
+    while (current !== undefined && current !== null) {
+        if (
+            OAuthError.isInstance(current) ||
+            UnauthorizedError.isInstance(current) ||
+            OAuthClientFlowError.isInstance(current)
+        ) {
+            return true;
+        }
+        current = current instanceof Error ? current.cause : undefined;
+    }
+    return false;
+});
 
 const expandedRecord = (
     source: Readonly<Record<string, string>> | undefined,
@@ -183,9 +210,16 @@ const resolveDefinition = (
             transport: "http",
             url,
             ...(headers === undefined ? {} : { headers }),
+            clientCredentials: true,
             authProvider: new ClientCredentialsProvider({
                 clientId: definition.authorization.clientId,
                 clientSecret: secret,
+                // {§oauth-client-credentials} — a declared issuer binds the static
+                // credential to that authorization server (SEP-2352); absent, the
+                // SDK's legacy no-binding behaviour applies.
+                ...(definition.authorization.issuer === undefined
+                    ? {}
+                    : { expectedIssuer: definition.authorization.issuer }),
                 ...(definition.authorization.scope === undefined
                     ? {}
                     : { scope: definition.authorization.scope }),
@@ -305,6 +339,9 @@ const openClient = async (
         name: packageJson.name,
         version: packageJson.version,
     };
+    // {§oauth-client-credentials} — the extension capability is advertised only
+    // on connections that actually hold a client-credentials definition; a
+    // bearer or interactive attachment never claims it.
     const clientCapabilities = {
         elicitation: {
             form: {},
@@ -312,6 +349,9 @@ const openClient = async (
         },
         extensions: {
             [MCP_TASKS_EXTENSION_ID]: {},
+            ...(definition.transport === "http" && definition.clientCredentials === true
+                ? { [MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID]: {} }
+                : {}),
         },
     } satisfies ClientCapabilities;
     const client = new Client(

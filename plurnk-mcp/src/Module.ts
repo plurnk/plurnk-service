@@ -18,7 +18,10 @@ import {
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
 
-import ServerConnection, { AuthorizationRequiredError } from "./client.ts";
+import ServerConnection, {
+    AuthorizationRequiredError,
+    isClientCredentialsRejection,
+} from "./client.ts";
 import {
     overlayServerDefinitions,
     serviceDefinitions,
@@ -186,6 +189,25 @@ const preparationError = (
             [cause, closeCause],
             `MCP server '${definition.name}' preparation and cleanup failed.`,
         );
+    // {§oauth-client-credentials} — a rejected grant is an authorization fact,
+    // never a generic unavailability.
+    if (definition.authorization?.type === "client-credentials" && isClientCredentialsRejection(cause)) {
+        return actionError(
+            "oauth-client-credentials-failed",
+            502,
+            `MCP server '${definition.name}' rejected the client-credentials grant; check the configured client credentials and issuer.`,
+            {
+                server: definition.name,
+                transport: definition.transport,
+                clientId: definition.authorization.clientId,
+                ...(definition.authorization.issuer === undefined
+                    ? {}
+                    : { issuer: definition.authorization.issuer }),
+                retryable: false,
+            },
+            completeCause,
+        );
+    }
     return actionError(
         "server-unavailable",
         502,
