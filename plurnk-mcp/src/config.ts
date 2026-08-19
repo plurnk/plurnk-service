@@ -11,6 +11,7 @@ const COMPANION_SUFFIXES = [
     "_cwd",
     "_env",
     "_headers",
+    "_summary",
     "_tools",
     "_read",
 ] as const;
@@ -20,6 +21,11 @@ const CONTROL_KEYS = new Map([
     ["enabled", `${PREFIX}ENABLED`],
 ]);
 const SERVER_NAME = /^[a-z][a-z0-9-]*$/;
+// {§mcp-summary-derivation} — a _SUMMARY companion may extend a server name
+// with one tool name (PLURNK_MCP_<server>_<tool>_SUMMARY); tool names legally
+// contain underscores, so summary keys admit them and bind to the declared
+// server in summaryOverrides.
+const SUMMARY_KEY_NAME = /^[a-z][a-z0-9_-]*$/;
 const ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/gu;
 
 type CompanionSuffix = typeof COMPANION_SUFFIXES[number];
@@ -76,7 +82,15 @@ const parseEnvironment = (
                     `${key} uses ${reservedGlobal} as a server name; reserved globals cannot have server companions.`,
                 );
             }
-            assertServerName(name, key);
+            if (companion === "_summary") {
+                if (!SUMMARY_KEY_NAME.test(name)) {
+                    throw new Error(
+                        `${key} derives invalid MCP summary name '${name}'; names must match [a-z][a-z0-9_-]*.`,
+                    );
+                }
+            } else {
+                assertServerName(name, key);
+            }
             const bySuffix = companions.get(name) ?? new Map<CompanionSuffix, EnvironmentVariable>();
             const existing = bySuffix.get(companion);
             if (existing !== undefined) {
@@ -100,6 +114,10 @@ const parseEnvironment = (
     if (!allowOrphanCompanions) {
         for (const [name, fields] of companions) {
             if (targets.has(name)) continue;
+            // A _SUMMARY companion may address one tool of a declared server:
+            // PLURNK_MCP_<SERVER>_<TOOL>_SUMMARY ({§mcp-summary-derivation}).
+            const toolSummaryOf = [...targets.keys()].find((target) => name.startsWith(`${target}_`));
+            if (fields.get("_summary") !== undefined && toolSummaryOf !== undefined) continue;
             const variables = [...fields.values()].map(({ key }) => key).join(", ");
             throw new Error(
                 `${variables} has no MCP server target ${PREFIX}${name.toUpperCase()}.`,
@@ -313,6 +331,34 @@ export const serviceDefinitions = (
     if (definition === null) throw new Error(`MCP server '${name}' disappeared during configuration.`);
     return definition;
 });
+
+// {§mcp-summary-derivation} — authored orientation lines. A _SUMMARY companion
+// names either the whole server (PLURNK_MCP_<SERVER>_SUMMARY) or one tool
+// (PLURNK_MCP_<SERVER>_<TOOL>_SUMMARY). Values expand ${NAME} references like
+// every other companion.
+export const summaryOverrides = (
+    environ: NodeJS.ProcessEnv = process.env,
+): { servers: Map<string, string>; tools: Map<string, string> } => {
+    const { targets, companions } = parseEnvironment(environ);
+    const servers = new Map<string, string>();
+    const tools = new Map<string, string>();
+    for (const [name, fields] of companions) {
+        const summary = fields.get("_summary");
+        if (summary === undefined) continue;
+        const value = expandReferences(summary.value, environ, summary.key);
+        if (targets.has(name)) {
+            servers.set(name, value);
+            continue;
+        }
+        const server = [...targets.keys()].find((target) => name.startsWith(`${target}_`));
+        if (server === undefined) {
+            throw new Error(`${summary.key} has no MCP server target ${PREFIX}${name.toUpperCase()}.`);
+        }
+        const tool = name.slice(server.length + 1);
+        tools.set(`${server}/${tool}`, value);
+    }
+    return { servers, tools };
+};
 
 export const serviceEnabledNames = (
     environ: NodeJS.ProcessEnv = process.env,

@@ -359,6 +359,7 @@ export default class PacketBuilder {
                     invocation: entry.invocation,
                     details: entry.details,
                     registry: executors.toolRegistry(tag, workspaceId),
+                    ...(entry.resourcesPath === undefined ? {} : { resourcesPath: entry.resourcesPath }),
                 }));
             }
         }

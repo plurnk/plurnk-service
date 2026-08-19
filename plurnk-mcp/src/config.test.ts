@@ -7,6 +7,7 @@ import {
     serverDefinition,
     serviceEnabledNames,
     serverNames,
+    summaryOverrides,
 } from "./config.ts";
 
 const floor = {
@@ -380,4 +381,36 @@ test("timeouts are required positive integers owned by .env.defaults", () => {
         }),
         /positive integer/,
     );
+});
+
+test("{§mcp-summary-derivation} _SUMMARY companions separate server and tool tiers", () => {
+    const environ = {
+        ...floor,
+        PLURNK_MCP_BRAVE: "npx",
+        PLURNK_MCP_BRAVE_SUMMARY: "Search the web with Brave.",
+        PLURNK_MCP_BRAVE_BRAVE_WEB_SEARCH_SUMMARY: "General web search.",
+    };
+    const { servers, tools } = summaryOverrides(environ);
+    assert.deepEqual([...servers], [["brave", "Search the web with Brave."]]);
+    assert.deepEqual([...tools], [["brave/brave_web_search", "General web search."]]);
+});
+
+test("{§mcp-summary-derivation} a tool _SUMMARY companion without its server target is an orphan", () => {
+    assert.throws(
+        () => summaryOverrides({
+            ...floor,
+            PLURNK_MCP_BRAVE_BRAVE_WEB_SEARCH_SUMMARY: "General web search.",
+        }),
+        /no MCP server target/,
+    );
+});
+
+test("{§mcp-summary-derivation} summary companions expand ${NAME} references", () => {
+    const { servers } = summaryOverrides({
+        ...floor,
+        PLURNK_MCP_BRAVE: "npx",
+        PLURNK_MCP_BRAVE_SUMMARY: "Search with ${SEARCH_KIND}.",
+        SEARCH_KIND: "the Brave API",
+    });
+    assert.equal(servers.get("brave"), "Search with the Brave API.");
 });

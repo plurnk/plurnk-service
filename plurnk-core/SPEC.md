@@ -3228,7 +3228,14 @@ tool resource; an exact registry's empty set publishes no executable family and
 admits no invocation. Reconciliation deletes stale family and child documents
 before upserting the current set. `PLURNK_SERVICE_DOCS_EXCLUDE` does not hide an
 enabled executable; executor enablement is the sole user-configured filter
-shared by discovery and dispatch.
+shared by discovery and dispatch. A runtime declaration may carry
+`resourcesPath` — the generated-doc root. Absent, its docs live in the internal
+`/skills/plurnk` namespace; present (attached MCP families: `/tools`), the
+family and its child tool docs materialize under that root, the turn-0 survey
+`## FIND0 [+init,+skills] (worker://plurnk/tools/**)` exposes the whole tree
+with each row's summary, and the child summary IS its invocation form so the
+discovery row teaches the call. Attached tools are capabilities like every
+other runtime; the model never learns an origin.
 
 §skills-materialization **The workspace skills surface.** Each
 `<projectRoot>/skills/<folder>/SKILL.md` (Agent Skills format: `name` +

@@ -1497,6 +1497,7 @@ export default class Daemon {
                 summary: runtime.summary,
                 invocation: runtime.invocation,
                 details: runtime.details ?? "",
+                ...(runtime.resourcesPath === undefined ? {} : { resourcesPath: runtime.resourcesPath }),
                 available: availability.available,
                 detail: availability.detail,
             },

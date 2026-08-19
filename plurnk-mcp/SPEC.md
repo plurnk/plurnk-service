@@ -187,6 +187,8 @@ unavailable candidate without changing durable state.
 | `PLURNK_MCP_<server>_HEADERS` | JSON string map for supplementary HTTP headers |
 | `PLURNK_MCP_<server>_TOOLS` | Optional JSON array of exact enabled tool names; absent enables all listed server tools, while `[]` enables none |
 | `PLURNK_MCP_<server>_READ` | JSON string array forming an exact subset of enabled tools that the operator classifies as read-only; every other enabled tool retains the conservative `host` effect |
+| `PLURNK_MCP_<server>_SUMMARY` | Authored one-line server orientation ({§mcp-summary-derivation}) |
+| `PLURNK_MCP_<server>_<tool>_SUMMARY` | Authored one-line tool orientation; tool names fold the same way and may contain underscores |
 | `PLURNK_MCP_ENABLED` | JSON array of exact configured server aliases enabled by default; absent or `[]` enables none |
 | `PLURNK_MCP_CONNECT_TIMEOUT` | Positive integer milliseconds |
 | `PLURNK_MCP_REQUEST_TIMEOUT` | Positive integer milliseconds |
@@ -198,6 +200,19 @@ references, and invalid JSON fail startup. A stdio target is one exact
 executable string even when its path contains whitespace; arguments never hide
 inside it. Bearer authentication and a case-insensitive `Authorization` entry
 in `_HEADERS` are mutually exclusive.
+
+§mcp-summary-derivation **Every orientation line derives from authored
+metadata — never a container template.** The runtime declaration's summary
+resolves in order: the `_SUMMARY` companion, the server's own
+`serverInfo.description` (2026-06-18 spec field), the first sentence of its
+`instructions` essay, then a factual tool-name list. Each tool's one-liner
+resolves: its `_<server>_<tool>_SUMMARY` companion, `annotations.title`, the
+first sentence of its `description` (capped), then the tool name. The family
+doc's Summary section and the survey row carry the server one-liner; the tool
+doc's Summary section IS the invocation form
+`EXEC [server] (tool) <!-- one-liner -->`, so the discovery row teaches the
+call ({§tools-resource-materialization}). Summary companions expand `${NAME}`
+references like every other companion.
 
 §mcp-definition-wire The contracts-owned `McpServerDefinition` JSON Schema is
 the normalized durable definition shape. It is a closed discriminated union:

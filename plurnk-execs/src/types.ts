@@ -162,6 +162,7 @@ export interface ExecInfo {
     // Supplemental Markdown for this tag. Empty when omitted. Summary and
     // Invocation remain declaration-owned and are projected by the consumer.
     details: string;
+    resourcesPath?: string;
     packageName: string;
     // Published per-tag projection of the package-level attribution declaration.
     // Discovery validates it through {§plugin-attribution} before admission.
@@ -179,6 +180,10 @@ export interface RuntimeDecl {
     summary: string;
     invocation: RuntimeInvocation;
     details?: string;
+    // {§tools-resource-materialization} — the generated-doc root. Absent: the
+    // internal skills namespace. Present (MCP families): the tools namespace
+    // whose survey exposes every child tool.
+    resourcesPath?: string;
 }
 
 // Dynamic runtime declaration hook ({§executor-dynamic-runtimes}). Discovery

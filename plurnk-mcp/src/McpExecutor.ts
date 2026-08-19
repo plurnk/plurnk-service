@@ -23,10 +23,41 @@ import { toolRegistry as presentTools } from "./ToolPresentation.ts";
 
 const CHANNEL = "body";
 
-export const runtimeDecl = (name: string): RuntimeDecl => ({
+const firstSentence = (text: string | undefined): string | undefined => {
+    if (text === undefined) return undefined;
+    const normalized = text.replaceAll(/\s+/gu, " ").trim();
+    if (normalized === "") return undefined;
+    const boundary = /[.!?](?:\s|$)/u.exec(normalized);
+    return boundary === null ? normalized : normalized.slice(0, boundary.index + 1);
+};
+
+// {§mcp-summary-derivation} — one server one-liner: the authored _SUMMARY
+// companion, then the server's own description (2026-06-18 spec field), then
+// the first sentence of its instructions essay. Never the container template;
+// when the chain is empty, name the actual tools.
+export const serverSummary = (
+    name: string,
+    catalog: ServerCatalog | undefined,
+    override: string | undefined,
+): string => {
+    if (override !== undefined && override.trim() !== "") return override.trim();
+    const described = catalog?.server?.description;
+    if (described !== undefined && described.trim() !== "") return described.replaceAll(/\s+/gu, " ").trim();
+    const instructed = firstSentence(catalog?.instructions);
+    if (instructed !== undefined) return instructed;
+    const tools = catalog?.tools.map((tool) => tool.name).join(", ");
+    return tools === undefined || tools === ""
+        ? `MCP server ${name}.`
+        : `Tools: ${tools}.`;
+};
+
+export const runtimeDecl = (name: string, summary: string): RuntimeDecl => ({
     name,
     glyph: "🔌",
-    summary: `Use enabled tools from the ${name} MCP server.`,
+    summary,
+    // {§tools-resource-materialization} — MCP families live in the tools
+    // namespace, surveyed as a tree with per-tool summaries.
+    resourcesPath: "/tools",
     invocation: {
         body: { role: "JSON arguments", required: false },
         target: { role: "MCP tool", required: true, kind: "literal" },
@@ -60,17 +91,20 @@ export default class McpExecutor extends BaseExecutor {
     readonly #tools: readonly string[] | null;
     readonly #read: ReadonlySet<string>;
     #registry: RuntimeToolRegistry | null = null;
+    readonly #toolSummaries: ReadonlyMap<string, string>;
     #catalog: ServerCatalog | null = null;
 
     constructor(
         metadata: { runtime: string; glyph: string },
         connection: ServerConnection,
         policy: Partial<ToolPolicy> = {},
+        toolSummaries?: ReadonlyMap<string, string>,
     ) {
         super(metadata);
         this.#connection = connection;
         this.#tools = policy.tools ?? null;
         this.#read = new Set(policy.read ?? []);
+        this.#toolSummaries = toolSummaries ?? new Map();
     }
 
     override get manifest() {
@@ -164,7 +198,7 @@ export default class McpExecutor extends BaseExecutor {
         const catalog = await this.#connection.catalog(signal);
         const selected = this.#selectTools(catalog.tools);
         this.#registry = RuntimeInvocation.assertToolRegistry(
-            presentTools(this.runtime, selected),
+            presentTools(this.runtime, selected, this.#toolSummaries),
             "@plurnk/plurnk-mcp",
             this.runtime,
         );

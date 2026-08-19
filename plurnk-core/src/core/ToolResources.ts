@@ -15,6 +15,11 @@ interface ToolSource {
     readonly invocation: RuntimeInvocationDecl;
     readonly details: string;
     readonly registry: RuntimeToolRegistry | null;
+    // {§tools-resource-materialization} — the generated-doc root; absent = the
+    // internal skills namespace. The tools namespace exposes child tools through
+    // the tree survey, so its family examples drop the child pointer and its
+    // child summaries ARE the invocation form.
+    readonly resourcesPath?: string;
 }
 
 const inlineCode = (value: string): string => {
@@ -33,7 +38,9 @@ const fence = (language: string, value: string): string => {
 const escapeCell = (value: string): string => value.replaceAll("|", "\\|");
 
 const summaryParagraph = (value: string): string =>
-    /^(?:[>#+*`~-]|\d+[.)]\s|<)/u.test(value) ? `\\${value}` : value;
+    /^(?:[>#+*`~-]|\d+[.)]\s|<)/u.test(value) && !value.startsWith("`")
+        ? `\\${value}`
+        : value;
 
 const annotationText = (value: string): string => {
     const normalized = value.replaceAll(/\s+/gu, " ").trim().replaceAll("--", "—");
@@ -120,9 +127,11 @@ export default class ToolResources {
     }
 
     static render(source: ToolSource): ToolResource[] {
+        const toolsNamespace = source.resourcesPath !== undefined;
+        const root = toolsNamespace ? source.resourcesPath! : "/skills/plurnk";
         if (source.registry === null) {
             return [{
-                pathname: `/skills/plurnk/${source.runtime}.md`,
+                pathname: `${root}/${source.runtime}.md`,
                 content: renderDocument(
                     source.runtime,
                     source.summary,
@@ -137,12 +146,16 @@ export default class ToolResources {
             .toSorted((left, right) => left.target.localeCompare(right.target));
         const familyInvocations = tools.flatMap((tool, index): string[] => {
             const segment = ToolResources.targetSegment(tool.target);
-            const details = `worker://plurnk/skills/plurnk/${source.runtime}/${segment}.md`;
+            // The tools namespace surveys its whole tree, so the child pointer
+            // in the annotation is redundant; the one-liner alone orients.
+            const annotation = toolsNamespace
+                ? tool.summary
+                : `${tool.summary} (details: worker://plurnk${root}/${source.runtime}/${segment}.md)`;
             const heading = exampleSource(
                 source.runtime,
                 tool.invocation,
                 tool.target,
-                `${tool.summary} (details: ${details})`,
+                annotation,
             ).split("\n", 1)[0]!;
             const input = tool.invocation.signature ?? tool.invocation.example?.body;
             return [
@@ -157,17 +170,23 @@ export default class ToolResources {
             ["## Example", "", ...familyInvocations],
             source.details,
         );
-        const toolResources = tools.map((tool): ToolResource => ({
-            pathname: `/skills/plurnk/${source.runtime}/${ToolResources.targetSegment(tool.target)}.md`,
-            content: renderDocument(
-                `${source.runtime} / ${inlineCode(tool.target)}`,
-                tool.summary,
-                renderInvocation(source.runtime, tool.invocation, tool.target, tool.summary),
-                tool.details ?? "",
-            ),
-        }));
+        const toolResources = tools.map((tool): ToolResource => {
+            const invocationForm = inlineCode(`EXEC [${source.runtime}] (${tool.target})`)
+                + ` <!-- ${annotationText(tool.summary)} -->`;
+            return {
+                pathname: `${root}/${source.runtime}/${ToolResources.targetSegment(tool.target)}.md`,
+                // {§mcp-summary-derivation} — the tools-namespace child summary IS
+                // the invocation form, so the survey row teaches the call.
+                content: renderDocument(
+                    `${source.runtime} / ${inlineCode(tool.target)}`,
+                    toolsNamespace ? invocationForm : tool.summary,
+                    renderInvocation(source.runtime, tool.invocation, tool.target, tool.summary),
+                    tool.details ?? "",
+                ),
+            };
+        });
         return [
-            { pathname: `/skills/plurnk/${source.runtime}.md`, content: family },
+            { pathname: `${root}/${source.runtime}.md`, content: family },
             ...toolResources,
         ];
     }

@@ -63,6 +63,9 @@ const serverCapabilities = (client: Client): DiscoverResult["capabilities"] | un
 export interface ServerCatalog {
     readonly protocolVersion: string;
     readonly server: ReturnType<Client["getServerVersion"]>;
+    // {§mcp-summary-derivation} — the initialize result's orientation essay;
+    // its first sentence is the last server-summary tier.
+    readonly instructions?: string;
     readonly capabilities: DiscoverResult["capabilities"];
     readonly tools: Awaited<ReturnType<Client["listTools"]>>["tools"];
     readonly resources: Awaited<ReturnType<Client["listResources"]>>["resources"];
@@ -625,6 +628,7 @@ export default class ServerConnection {
             return {
                 protocolVersion: client.getNegotiatedProtocolVersion() ?? "",
                 server: client.getServerVersion(),
+                instructions: client.getInstructions(),
                 capabilities,
                 tools,
                 resources,

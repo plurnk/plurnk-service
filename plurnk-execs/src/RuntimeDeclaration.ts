@@ -3,7 +3,7 @@ import RuntimeSummary from "./RuntimeSummary.ts";
 import RuntimeTag from "./RuntimeTag.ts";
 import type { RuntimeDecl } from "./types.ts";
 
-const FIELDS = new Set(["name", "glyph", "summary", "invocation", "details"]);
+const FIELDS = new Set(["name", "glyph", "summary", "invocation", "details", "resourcesPath"]);
 
 export default class RuntimeDeclaration {
     static assert(value: unknown, owner: string): RuntimeDecl {
@@ -26,6 +26,12 @@ export default class RuntimeDeclaration {
         if ("details" in declaration && typeof declaration.details !== "string") {
             fail("details must be a string");
         }
+        if ("resourcesPath" in declaration
+            && (typeof declaration.resourcesPath !== "string"
+                || declaration.resourcesPath.length === 0
+                || !declaration.resourcesPath.startsWith("/"))) {
+            fail("resourcesPath must be a non-empty absolute pathname like /tools");
+        }
 
         return {
             name,
@@ -35,6 +41,9 @@ export default class RuntimeDeclaration {
             ...(declaration.details === undefined
                 ? {}
                 : { details: declaration.details as string }),
+            ...(declaration.resourcesPath === undefined
+                ? {}
+                : { resourcesPath: declaration.resourcesPath as string }),
         };
     }
 }

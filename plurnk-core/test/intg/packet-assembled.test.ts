@@ -216,7 +216,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.match(log, /"path":"log:\/\/\/[^"]+\/FIND"/, "the catalog foist appears as a FIND op in the log address");
         assert.match(
             log,
-            /\d+:## FIND0 \[\+init,\+skills\] \(worker:\/\/plurnk\/skills\/\*\.md\) <1,-1>\n ?\d+:\/\/heading\[text\(\)="Example"\]\n ?\d+:## FIND0 \[\+init,\+skills\] \(worker:\/\/plurnk\/skills\/plurnk\/\*\.md\) <1,-1>\n ?\d+:\/\/heading\[text\(\)="Example"\]\n ?\d+:## FIND0 \[\+init\] \(\*\)/,
+            /\d+:## FIND0 \[\+init,\+skills\] \(worker:\/\/plurnk\/skills\/\*\.md\) <1,-1>\n ?\d+:\/\/heading\[text\(\)="Example"\]\n ?\d+:## FIND0 \[\+init,\+skills\] \(worker:\/\/plurnk\/skills\/plurnk\/\*\.md\) <1,-1>\n ?\d+:\/\/heading\[text\(\)="Example"\]\n ?\d+:## FIND0 \[\+init,\+skills\] \(worker:\/\/plurnk\/tools\/\*\*\) <1,-1> <!-- attached tools -->\n ?\d+:## FIND0 \[\+init\] \(\*\)/,
             "without an enabled sh skill, turn-0 omits the sample, crams its bodyless surveys, and keeps reference discovery before workspace discovery",
         );
         assert.doesNotMatch(log, /worker:\/\/plurnk\/skills\/plurnk\/sh\.md/, "an unavailable sh skill is never fabricated as an orientation sample");

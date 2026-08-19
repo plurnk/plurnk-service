@@ -50,7 +50,7 @@ test("{§mcp-tool-presentation} derives exact summaries and invocations from the
     const registry = toolRegistry("gitea", tools);
     assert.deepEqual(registry.tools, [{
         target: "issue_read",
-        summary: "Read one issue.",
+        summary: "Issue reader",
         invocation: {
             body: { role: "JSON arguments", required: true },
             target: { role: "MCP tool", required: true, kind: "literal" },
@@ -73,11 +73,37 @@ test("{§mcp-tool-presentation} an empty enabled set exposes no hidden tool name
     });
 });
 
-test("{§mcp-tool-presentation} missing remote prose gets a factual fallback", () => {
+test("{§mcp-tool-presentation} missing remote prose falls back to the tool name", () => {
     assert.equal(toolRegistry("gitea", [{
         name: "issue_read",
         inputSchema: { type: "object" },
-    }]).tools[0]?.summary, "Invoke the issue_read tool exposed by the gitea MCP server.");
+    }]).tools[0]?.summary, "issue_read");
+});
+
+test("{§mcp-tool-presentation} an authored _SUMMARY override beats every derived tier", () => {
+    const tools: Tool[] = [{
+        name: "issue_read",
+        title: "Issue",
+        description: "Read one issue.",
+        annotations: { title: "Issue reader" },
+        inputSchema: { type: "object" },
+    }];
+    assert.equal(
+        toolRegistry("gitea", tools, new Map([["gitea/issue_read", "Read one issue."]])).tools[0]?.summary,
+        "Read one issue.",
+    );
+});
+
+test("{§mcp-tool-presentation} a long description trims to its first sentence", () => {
+    const tools: Tool[] = [{
+        name: "web_search",
+        description: "Performs web searches using the API and returns results. Extra detail beyond the first sentence.",
+        inputSchema: { type: "object" },
+    }];
+    assert.equal(
+        toolRegistry("brave", tools).tools[0]?.summary,
+        "Performs web searches using the API and returns results.",
+    );
 });
 
 test("{§mcp-apps-exclusion} Apps UI metadata never leaks into the model-facing projection", () => {

@@ -26,8 +26,9 @@ import {
     overlayServerDefinitions,
     serviceDefinitions,
     serviceEnabledNames,
+    summaryOverrides,
 } from "./config.ts";
-import McpExecutor, { runtimeDecl } from "./McpExecutor.ts";
+import McpExecutor, { runtimeDecl, serverSummary } from "./McpExecutor.ts";
 import McpResources from "./McpResources.ts";
 
 const OWNER = "@plurnk/plurnk-mcp";
@@ -346,6 +347,7 @@ const statusOf = (error: unknown): number | null => {
 
 export default class Module {
     readonly #env: NodeJS.ProcessEnv;
+    readonly #summaries: { servers: Map<string, string>; tools: Map<string, string> };
     readonly #defaults: ReadonlyMap<string, McpServerDefinition>;
     readonly #defaultEnabled: ReadonlySet<string>;
     readonly #workspaces = new Map<number, WorkspaceSnapshot>();
@@ -367,6 +369,7 @@ export default class Module {
             serviceDefinitions(environ).map((definition) => [definition.name, definition]),
         );
         this.#defaultEnabled = new Set(serviceEnabledNames(environ));
+        this.#summaries = summaryOverrides(environ);
     }
 
     async setup(seam: ModuleSetupSeam): Promise<void> {
@@ -480,6 +483,7 @@ export default class Module {
             { runtime: definition.name, glyph: "🔌" },
             candidate,
             { tools: definition.tools ?? null, read: definition.read ?? [] },
+            this.#summaries.tools,
         );
         try {
             const availability = await executor.requireAvailable();
@@ -490,7 +494,7 @@ export default class Module {
                 executor,
                 runtime: {
                     namespaceOwner: OWNER,
-                    decl: runtimeDecl(definition.name),
+                    decl: runtimeDecl(definition.name, serverSummary(definition.name, executor.catalog, this.#summaries.servers.get(definition.name))),
                     executor,
                     availability,
                     scheme: new McpResources(definition.name, candidate, executor.catalog),
@@ -1241,6 +1245,7 @@ export default class Module {
                 tools: attachment.definition.tools ?? null,
                 read: attachment.definition.read ?? [],
             },
+            this.#summaries.tools,
         );
         const availability = await executor.requireAvailable();
         const refreshed: ActiveAttachment = {
@@ -1248,7 +1253,7 @@ export default class Module {
             executor,
             runtime: {
                 namespaceOwner: OWNER,
-                decl: runtimeDecl(name),
+                decl: runtimeDecl(name, serverSummary(name, executor.catalog, this.#summaries.servers.get(name))),
                 executor,
                 availability,
                 scheme: new McpResources(name, attachment.connection, executor.catalog),

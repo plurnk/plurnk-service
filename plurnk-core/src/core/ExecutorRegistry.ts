@@ -51,6 +51,9 @@ export interface RegistryEntry {
     readonly invocation: RuntimeInvocationDecl;
     // Supplemental reference detail for the generated tool document.
     readonly details: string;
+    // {§tools-resource-materialization} — the generated-doc root for this
+    // runtime; absent = the internal skills namespace.
+    readonly resourcesPath?: string;
     readonly available: boolean;
     readonly detail: string | undefined;
 }
@@ -217,7 +220,7 @@ export default class ExecutorRegistry {
         probeTimeoutMs?: number;
         cwd?: string;   // discovery root — the dir whose node_modules holds the exec plugins
         discoverFn?: () => Promise<{
-            registry: ReadonlyMap<string, { runtime: string; glyph: string; summary: string; invocation: RuntimeInvocationDecl; details: string; packageName: string }>;
+            registry: ReadonlyMap<string, { runtime: string; glyph: string; summary: string; invocation: RuntimeInvocationDecl; details: string; resourcesPath?: string; packageName: string }>;
             packageAttributions?: PackageAttributions;
             skipped?: string[];
         }>;
@@ -262,6 +265,7 @@ export default class ExecutorRegistry {
                 summary: info.summary,
                 invocation: info.invocation,
                 details: info.details,
+                ...(info.resourcesPath === undefined ? {} : { resourcesPath: info.resourcesPath }),
                 available: availability.available,
                 detail: availability.detail,
             });

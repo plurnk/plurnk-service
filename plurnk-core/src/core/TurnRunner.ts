@@ -826,9 +826,10 @@ export default class TurnRunner {
         await this.#warmWorkspace(systemCtx, true, false);
 
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
-        // One worked-skills READ exemplar followed by five FIND surveys foisted into the worker's first model turn
-        // establish the skills tree (authored and Plurnk-generated families), project, commons, and private
-        // surfaces in that order. Their `init` classification lets the model curate this opening survey as one log set.
+        // One worked-skills READ exemplar followed by six FIND surveys foisted into the worker's first model turn
+        // establish the skills tree (authored and Plurnk-generated families), the attached tools tree, project,
+        // commons, and private surfaces in that order. Their `init` classification lets the model curate this
+        // opening survey as one log set.
         if (seq === 1) {
             // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
             const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
@@ -868,6 +869,18 @@ export default class TurnRunner {
                             body: { dialect: "xpath", raw: "//heading[text()=\"Example\"]" }, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
                         exemplar: "## FIND0 [+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>\n//heading[text()=\"Example\"]",
+                    },
+                    {
+                        // {§tools-resource-materialization} — attached tool families
+                        // (MCP servers) survey as one tree; each row's summary is the
+                        // tool's one-liner or invocation form, so the discovery row
+                        // itself orients. Empty when no tools are attached.
+                        statement: {
+                            op: "FIND", delimiter: "", annotation: "attached tools", signal: ["+init", "+skills"],
+                            target: { kind: "url", raw: "worker://plurnk/tools/**", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/tools/**", query: null, fragment: null },
+                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                        },
+                        exemplar: "## FIND0 [+init,+skills] (worker://plurnk/tools/**) <1,-1> <!-- attached tools -->",
                     },
                     {
                         statement: {

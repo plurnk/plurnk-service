@@ -136,6 +136,7 @@ export default class Discover {
                 invocation: decl.invocation,
                 details,
                 packageName,
+                ...(decl.resourcesPath === undefined ? {} : { resourcesPath: decl.resourcesPath }),
                 ...(attribution !== undefined ? { attribution } : {}),
             });
         }

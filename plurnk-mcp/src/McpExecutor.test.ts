@@ -6,8 +6,9 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import type { ExecArgs } from "@plurnk/plurnk-execs";
+
 import type { Notice } from "@plurnk/plurnk-contracts";
-import McpExecutor, { runtimeDecl } from "./McpExecutor.ts";
+import McpExecutor, { runtimeDecl, serverSummary } from "./McpExecutor.ts";
 import ServerConnection from "./client.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
@@ -81,9 +82,9 @@ const waitForFile = async (pathname: string): Promise<void> => {
     await access(pathname);
 };
 
-test("runtime declaration provides the structural family fallback only", async () => {
-    const declaration = runtimeDecl("echo");
-    assert.equal(declaration.summary, "Use enabled tools from the echo MCP server.");
+test("runtime declaration derives the server summary from the chain", async () => {
+    const declaration = runtimeDecl("echo", serverSummary("echo", undefined, undefined));
+    assert.equal(declaration.summary, "MCP server echo.");
     assert.deepEqual(declaration.invocation, {
         body: { role: "JSON arguments", required: false },
         target: { role: "MCP tool", required: true, kind: "literal" },
