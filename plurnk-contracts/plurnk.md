@@ -30,7 +30,7 @@ Body content is character-perfect, including whitespace.
 
 ### OPs
 
-| OP   | purpose                        | `[signal]`   | single `(path)`            | `<scope>`      | `body`                      |
+| OP   | purpose                        | `[signal]`   | `(path)`            | `<scope>`      | `body`                      |
 |------|--------------------------------|--------------|----------------------------|----------------|-----------------------------|
 | PLAN | persist working-state deltas    | -            | -                          | -              | new conclusions, inquiries, priorities |
 | FIND | list matching targets          | add log tags?    | target or glob             | result range?  | pattern?                    |
@@ -99,7 +99,7 @@ Matcher bodies select resources by content.
 
 ### `(path)`
 
-* Each OP's `(path)` slot takes exactly one bare project-relative path or resource URI — a single target, never a list.
+* Each OP's `(path)` slot takes exactly one bare project-relative path or resource URI.
 * Log item paths are nested: `log:///1/2/3` is loop/turn/item.
 * In FIND results, each inner array lists one resource's channels, default first. Append `#channel` to override the default.
 * A file or entry extension declares its mimetype.
