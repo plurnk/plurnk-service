@@ -159,3 +159,60 @@ test("#283: a scoped READ of a project file still returns exactly the window", a
         await db.close();
     }
 });
+
+test("#287: matcher FIND locations name the channel they address", async () => {
+    const { db, engine, ids } = await setup();
+    const originalFetch = globalThis.fetch;
+    try {
+        const page = [
+            "<!DOCTYPE html>",
+            "<html>",
+            "<head><title>t</title></head>",
+            "<body>",
+            "<p>v26.7.0 current</p>",
+            "<p>v24.18.1 lts</p>",
+            "</body>",
+            "</html>",
+            "",
+        ].join("\n");
+        globalThis.fetch = (async (input: string | URL | Request) => {
+            if (String(input).endsWith("/llms.txt")) return new Response(null, { status: 404 });
+            return new Response(page, {
+                status: 200, statusText: "OK", headers: { "content-type": "text/html" },
+            });
+        }) as typeof fetch;
+        let sequence = 0;
+        const parseFind = (dsl: string): ReadStatement => {
+            const found = PlurnkParser.parse(`# PLAN0\n${dsl}`).items.find(
+                (item) => item.kind === "statement" && item.statement.op === (dsl.startsWith("## READ") ? "READ" : "FIND"),
+            );
+            if (found === undefined) throw new Error(`no statement parsed from: ${dsl}`);
+            return (found as { kind: "statement"; statement: ReadStatement }).statement;
+        };
+        const dispatch = async (dsl: string) => (await engine.dispatch({
+            statement: parseFind(dsl), ...ids, sequence: ++sequence, origin: "model",
+        })) as unknown as { status: number };
+
+        const acquired = await dispatch("## READ0 (https://93.184.216.34/channel-facts)");
+        assert.equal(acquired.status, 200, "materialization read succeeds");
+
+        await dispatch("## FIND0 (https://93.184.216.34/channel-facts)\n/v[0-9.]+/i");
+        const bodyFind = await readContent(db, ids, sequence);
+        const bodyLocations = JSON.parse(String(bodyFind.content ?? "[]")) as Array<{ channel?: string }>;
+        assert.ok(bodyLocations.length > 0, "the default-channel FIND reports match locations");
+        for (const location of bodyLocations) {
+            assert.equal(location.channel, "body", "a default-channel match names the body channel");
+        }
+
+        await dispatch("## FIND0 (https://93.184.216.34/channel-facts#html)\n/v[0-9.]+/i");
+        const htmlFind = await readContent(db, ids, sequence);
+        const htmlLocations = JSON.parse(String(htmlFind.content ?? "[]")) as Array<{ channel?: string }>;
+        assert.ok(htmlLocations.length > 0, "the #html-channel FIND reports match locations");
+        for (const location of htmlLocations) {
+            assert.equal(location.channel, "html", "an #html-channel match names the html channel");
+        }
+    } finally {
+        globalThis.fetch = originalFetch;
+        await db.close();
+    }
+});

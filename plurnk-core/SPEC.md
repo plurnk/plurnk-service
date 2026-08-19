@@ -992,7 +992,9 @@ Directed SEND (non-null path) routes to scheme's `send`. Status = intent:
 
 - §log-uniform-query **Log speaks the universal query contract** — `## FIND0 (log://…)` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~semantic` and `@graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are one-channel catalog groups whose `[0].path` is `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). A FIND signal classifies the FIND result row and never changes this candidate set ({§log-item-tags}). Log remains the core event ledger rather than duplicating rows into `entries`; its core-private storage adapter supplies one complete channel representation to the same READ projector. That adapter is not a plugin seam and grants no protocol scheme an alternate READ path.
 - §find-source-agnostic **The content matcher is source-agnostic** — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND works uniformly across schemes by construction: `EntryFind` and `Log.find` run the one shared primitive rather than re-implementing it per scheme. Log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
-- §matcher-selection-signal **Matching carries navigation evidence** - a matcher is a boolean resource predicate. Internally, each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{locator?,region?}`. `locator` preserves a structural address without overloading the resource row's `path`; `region` is a complete four-coordinate `TextRegion` only when the finding maps honestly into the exact text the model can READ. Exact duplicate evidence deduplicates. Relation findings map their indexed source spans through the same readable text coordinate index. FIND alone decides whether that grouped selection projects as resource rows or flat locations ({§find-result-projection}); the engine never fabricates a region or guesses which surgical READ the model wants.
+- §channel-selection-visibility **Channel selection is decision-time information, not a guess** — every multi-channel resource presents its channels with extents wherever FIND presents the resource: broad results list each channel's path, mimetype, tokens, and lines (default channel first), and matcher locations name the channel their line coordinates address. The packet never presents channels as equal and indistinguishable; extents derive from the stored channels by construction. Budget enforcement stays with the grinder — this is information, not a second guard.
+
+- §matcher-selection-signal **Matching carries navigation evidence** - a matcher is a boolean resource predicate. Internally, each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{channel?,locator?,region?}`; `channel` names the entry channel the finding was located in and is absent for channel-less resources such as log rows, so line coordinates cannot be mis-attributed across channels of the same resource ({§channel-selection-visibility}). `locator` preserves a structural address without overloading the resource row's `path`; `region` is a complete four-coordinate `TextRegion` only when the finding maps honestly into the exact text the model can READ. Exact duplicate evidence deduplicates. Relation findings map their indexed source spans through the same readable text coordinate index. FIND alone decides whether that grouped selection projects as resource rows or flat locations ({§find-result-projection}); the engine never fabricates a region or guesses which surgical READ the model wants.
 
 `## SEND0 [410] (path[#fragment])` also deletes the target entry/channel — an implemented side-effect, NOT taught to the model and with no live/demo surface. The model-facing delete idiom is KILL ({§move}).
 
@@ -1513,14 +1515,15 @@ AST: `{ op: "FIND", target (scope), body: MatcherBody | null (predicate), signal
   | exact | absent | `resource` | the one catalog channel group |
   | glob or folder | absent | `resource` | catalog channel groups |
   | glob or folder | present | `resource` | matching channel groups with `matchLocationCount` on `[0]` |
-  | exact | present | `matchLocation` | flat `{ locator?, region? }` locations |
+  | exact | present | `matchLocation` | flat `{ channel?, locator?, region? }` locations |
 
   A glob or folder remains resource mode when it resolves to one path. An exact
   target remains location mode when it has many locations. A valid exact match
   with no addressable location is status 200 with `matchingPathCount: 1`,
   `matchLocationCount: 0`, and no fabricated row; a matcher selecting no
   resource is 204. A body-less broad empty catalog survey is status 200; an
-  absent exact resource is 404.
+  absent exact resource is 404. Every entry-channel location names its `channel`
+  ({§channel-selection-visibility}); log rows carry none.
 
   Inside `FindResult`, `matchingPathCount` and `matchLocationCount` describe the
   complete selection before pagination; the packet curates those facts under

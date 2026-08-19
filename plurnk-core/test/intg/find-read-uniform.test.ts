@@ -402,6 +402,7 @@ test("FIND coordinates compose into scoped READ for structured JSON", async () =
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: ctx.mimetypes }),
         );
         assert.deepEqual(found.results, [{
+            channel: "body",
             locator: "$[0]",
             region: { startLine: 2, startColumn: 3, endLine: 5, endColumn: 4 },
         }]);

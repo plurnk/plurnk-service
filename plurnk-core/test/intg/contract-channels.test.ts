@@ -99,6 +99,7 @@ test("{§find-channel-selection}: FIND matches the explicitly addressed channel"
         assert.equal(result.matchingPathCount, 1);
         assert.equal(result.matchLocationCount, 1);
         assert.deepEqual(result.results, [{
+            channel: "stderr",
             region: {
                 startLine: 1,
                 startColumn: 1,

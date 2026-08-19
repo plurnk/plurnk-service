@@ -540,7 +540,10 @@ export default class EntryFind {
                 matches: [],
                 problem: r.problem,
             };
-            matches = r.matches.map((match) => ({ pathname: match.key, matches: match.matches }));
+            matches = r.matches.map((match) => ({
+                pathname: match.key,
+                matches: match.matches.map((evidence) => ({ channel, ...evidence })),
+            }));
         }
 
         return { status: 200, matches, channel, ...(scope === null ? {} : { scope }), ...(candidatePathnames === undefined ? {} : { candidatePathnames }) };
@@ -571,7 +574,10 @@ export default class EntryFind {
             candidates.push({ key: pathname, ...row });
         }
         const resolved = Matcher.addTextRegions(matches, candidates);
-        return resolved.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
+        // {§find-result-projection} — every addressable finding names the channel
+        // it was located in, so line coordinates cannot be mis-attributed across
+        // channels of the same resource.
+        return resolved.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges.map((range) => ({ channel, ...range })) }));
     }
 
     // FIND result = the scheme's default-first channel groups, filtered to the matched

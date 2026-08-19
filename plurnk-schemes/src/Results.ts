@@ -53,6 +53,9 @@ export interface RepresentationPreparationResult extends SchemeResultBase {}
 export interface MatchEvidence {
     readonly locator?: string;
     readonly region?: TextRegion;
+    // The entry channel the match was located in ({§find-result-projection});
+    // absent for channel-less resources such as log rows.
+    readonly channel?: string;
 }
 
 export interface EntryResult extends SchemeResultBase {

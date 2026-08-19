@@ -101,7 +101,7 @@ Matcher bodies select resources by content.
 
 * Each OP's `(path)` slot takes exactly one bare project-relative path or resource URI.
 * Log item paths are nested: `log:///1/2/3` is loop/turn/item.
-* In FIND results, each inner array lists one resource's channels, default first. Append `#channel` to override the default.
+* In FIND results, each inner array lists one resource's channels with their extents, default first. Append `#channel` to override the default; matcher locations name the channel their line coordinates address.
 * A file or entry extension declares its mimetype.
 * Percent-encode reserved path characters: `(` becomes `%28`, `)` becomes `%29`, and `<` becomes `%3C`.
 * Creating a file automatically creates missing parent directories.
