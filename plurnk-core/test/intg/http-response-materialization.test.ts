@@ -473,3 +473,100 @@ test("a durable no-store response is operation evidence, not a reusable HTTP cac
         await db.close();
     }
 });
+
+test("{§revalidation} #288: a 304 with a strong etag of the stored weak etag's opaque value refreshes instead of failing", async () => {
+    const db = await openMigrated();
+    const originalFetch = globalThis.fetch;
+    const originalTtl = process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
+    const http = new Http();
+    try {
+        let requests = 0;
+        globalThis.fetch = async (_url, init) => {
+            if (String(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
+            requests += 1;
+            if (requests === 1) {
+                return new Response("legacy body v1", {
+                    status: 200,
+                    headers: { "content-type": "text/plain", etag: 'W/"opaque-1"', "last-modified": "Wed, 05 Aug 2026 16:23:37 GMT" },
+                });
+            }
+            assert.equal(new Headers(init?.headers).get("if-none-match"), 'W/"opaque-1"', "the stored weak etag becomes the conditional");
+            return new Response(null, {
+                status: 304,
+                statusText: "Not Modified",
+                headers: { etag: '"opaque-1"', "last-modified": "Wed, 05 Aug 2026 16:23:37 GMT" },
+            });
+        };
+
+        const workspaceId = await insertWorkspace(db, `http-weak-strong-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+
+        const acquired = await readHttp(http, legacyTextStatement(), ctx);
+        assert.equal(acquired.status, 200, "the weak-etag representation materializes");
+        assert.equal(acquired.content, "legacy body v1");
+
+        process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "0";
+        const refreshed = await readHttp(http, legacyTextStatement(), ctx);
+        assert.equal(refreshed.status, 200, "a strong-etag 304 of the same opaque value corresponds (weak comparison per RFC 9110 §8.8.3.2)");
+        assert.equal(refreshed.content, "legacy body v1");
+        assert.equal(requests, 2, "one conditional revalidation, no full reacquisition");
+    } finally {
+        globalThis.fetch = originalFetch;
+        if (originalTtl === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
+        else process.env.PLURNK_SCHEMES_HTTP_TTL_MS = originalTtl;
+        await db.close();
+    }
+});
+
+test("{§revalidation} #288: a 304 that cannot identify the stored representation falls back to one unconditional GET", async () => {
+    const db = await openMigrated();
+    const originalFetch = globalThis.fetch;
+    const originalTtl = process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
+    const http = new Http();
+    try {
+        let requests = 0;
+        globalThis.fetch = async (_url, init) => {
+            if (String(_url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
+            requests += 1;
+            if (requests === 1) {
+                return new Response("legacy body v1", {
+                    status: 200,
+                    headers: { "content-type": "text/plain", etag: 'W/"opaque-1"', "last-modified": "Wed, 05 Aug 2026 16:23:37 GMT" },
+                });
+            }
+            if (requests === 2) {
+                assert.equal(new Headers(init?.headers).get("if-none-match"), 'W/"opaque-1"', "the first revalidation goes out conditional");
+                return new Response(null, {
+                    status: 304,
+                    statusText: "Not Modified",
+                    headers: { etag: 'W/"opaque-2"' },
+                });
+            }
+            assert.equal(new Headers(init?.headers).get("if-none-match"), null, "the genuine-mismatch fallback re-issues unconditionally");
+            return new Response("legacy body v2", {
+                status: 200,
+                headers: { "content-type": "text/plain", etag: 'W/"opaque-2"' },
+            });
+        };
+
+        const workspaceId = await insertWorkspace(db, `http-mismatch-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+
+        const acquired = await readHttp(http, legacyTextStatement(), ctx);
+        assert.equal(acquired.status, 200);
+        assert.equal(acquired.content, "legacy body v1");
+
+        process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "0";
+        const refreshed = await readHttp(http, legacyTextStatement(), ctx);
+        assert.equal(refreshed.status, 200, "a genuine etag mismatch reacquires unconditionally instead of surfacing an unrecoverable 502");
+        assert.equal(refreshed.content, "legacy body v2");
+        assert.equal(requests, 3, "conditional revalidation, mismatch, one unconditional fallback");
+    } finally {
+        globalThis.fetch = originalFetch;
+        if (originalTtl === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
+        else process.env.PLURNK_SCHEMES_HTTP_TTL_MS = originalTtl;
+        await db.close();
+    }
+});

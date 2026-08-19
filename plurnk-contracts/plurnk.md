@@ -6,7 +6,7 @@ Plurnk is an agentic service that acts on and answers user prompts.
 
 * Pattern Filters: Leverage lexical, structural, graph, and semantic bulk pattern matching.
 * Worker Knowledgebase: Worker entries provide persistent, unlimited Extended Context.
-* Curated Context: FOLD hides log bodies; OPEN reveals them.
+* Curated Context: FOLD hides log bodies; OPEN reveals the log bodies; KILL removes the log item.
 
 ## Grammar
 
@@ -67,7 +67,7 @@ Matcher bodies select resources by content.
 
 * The leading symbol commits its dialect.
 * In a path target, `*` maps one level and `**` crosses directories.
-* JSONPath filters bracket directly: `$[*][?(@.tokens>500)]`.
+* JSONPath filters bracket directly: `$[*][?(@.tokensTotal>500)]`.
 * Mapping is universal: JSONPath can query XML and XPath can query JSON.
 * Patterned FIND returns resources for broad targets and locations for exact targets.
 

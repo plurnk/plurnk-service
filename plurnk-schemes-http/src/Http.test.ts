@@ -2009,11 +2009,11 @@ for (const {
         valid: true,
     },
     {
-        name: "a strong response ETag cannot relabel a weak stored tag",
+        name: "a strong response ETag weakly identifies a stored weak tag",
         storedValidator: 'etag: W/"v1"',
         responseHeaders: { etag: '"v1"' },
         expectedConditional: ["if-none-match", 'W/"v1"'],
-        valid: false,
+        valid: true,
     },
     {
         name: "the same weak ETag identifies the stored response",
@@ -2090,11 +2090,16 @@ for (const {
             await withFetch(async (_url, init) => {
                 requests += 1;
                 const sent = new Headers(init?.headers);
-                if (expectedConditional === null) {
-                    assert.equal(sent.has("if-none-match"), false);
-                    assert.equal(sent.has("if-modified-since"), false);
+                if (requests === 1) {
+                    if (expectedConditional === null) {
+                        assert.equal(sent.has("if-none-match"), false);
+                        assert.equal(sent.has("if-modified-since"), false);
+                    } else {
+                        assert.equal(sent.get(expectedConditional[0]), expectedConditional[1]);
+                    }
                 } else {
-                    assert.equal(sent.get(expectedConditional[0]), expectedConditional[1]);
+                    assert.equal(sent.has("if-none-match"), false, "the genuine-mismatch fallback re-issues without If-None-Match");
+                    assert.equal(sent.has("if-modified-since"), false, "the genuine-mismatch fallback re-issues without If-Modified-Since");
                 }
                 return new Response(null, { status: 304, headers: responseHeaders });
             }, async () => {
@@ -2112,7 +2117,8 @@ for (const {
                 }
             });
         });
-        assert.equal(requests, 1, "an invalid 304 never triggers an implicit retry");
+        assert.equal(requests, valid ? 1 : 2,
+            "a genuinely mismatched 304 falls back to one unconditional GET ({§revalidation})");
         if (valid) {
             assert.equal(inspect().wrote?.entry.channels.body?.content, "cached");
         } else {

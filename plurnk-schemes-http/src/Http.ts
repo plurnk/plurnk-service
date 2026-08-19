@@ -385,10 +385,56 @@ export default class Http implements SchemeHandler {
                 );
             }
             const responseHeaders = fetched.responseHeaders ?? [];
-            if (!Http.#revalidationCorresponds(
+            if (Http.#revalidationCorresponds(
                 cachedHeader,
                 new Headers(responseHeaders.map(([name, value]) => [name, value])),
             )) {
+                const channels: EntryData["channels"] = {
+                    ...cached.channels,
+                    [HEADER]: {
+                        ...cached.channels[HEADER]!,
+                        content: Http.#refreshAfter304(cachedHeader, responseHeaders, requestHeaders),
+                    },
+                };
+                const written = await ctx.entries.write(pathname, {
+                    channels,
+                });
+                if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
+                return { status: 200 };
+            }
+            // {§revalidation} — a genuinely mismatched 304 (different opaque
+            // tags): the conditional is the problem, so fall back to one
+            // unconditional GET and acquire normally instead of surfacing
+            // an unrecoverable 502. A second 304 has no way out and is the
+            // honest failure.
+            try {
+                fetched = await this.#webFetcher.fetch(url, {
+                    signal: ctx.signal,
+                    headers: requestHeaders,
+                    guarded: false,
+                    acceptHttpErrors: true,
+                    preserveUnavailable: true,
+                });
+            } catch (error) {
+                if (ctx.signal?.aborted === true && error === ctx.signal.reason) {
+                    return Http.#cancelled(url, "GET");
+                }
+                throw error;
+            }
+            if (fetched === null) {
+                return Http.#bad(
+                    404,
+                    "http",
+                    "not-materialized",
+                    `The URL ${url} could not be materialized.`,
+                    {
+                        target: url,
+                        stage: "acquisition",
+                        retryable: true,
+                    },
+                );
+            }
+            if (fetched.status === 304) {
                 return Http.#bad(
                     502,
                     "http",
@@ -402,18 +448,7 @@ export default class Http implements SchemeHandler {
                     },
                 );
             }
-            const channels: EntryData["channels"] = {
-                ...cached.channels,
-                [HEADER]: {
-                    ...cached.channels[HEADER]!,
-                    content: Http.#refreshAfter304(cachedHeader, responseHeaders, requestHeaders),
-                },
-            };
-            const written = await ctx.entries.write(pathname, {
-                channels,
-            });
-            if (Results.isErrorStatus(written.status)) return Http.#passthrough(written);
-            return { status: 200 };
+            // Non-304: fall through to ordinary acquisition below.
         }
 
         if (fetched.mimetype === "text/event-stream"
@@ -1196,8 +1231,11 @@ export default class Http implements SchemeHandler {
                 ? entityTag(storedTagValues[0]!)
                 : null;
             if (responseTag === null || storedTag === null) return false;
-            return responseTag.opaque === storedTag.opaque
-                && (responseTag.weak || !storedTag.weak);
+            // {§revalidation} — If-None-Match correspondence is a weak
+            // comparison (RFC 9110 §8.8.3.2): opaque tags match regardless of
+            // the W/ prefix, so an origin that upgrades a stored weak etag to
+            // a strong etag on the 304 still corresponds.
+            return responseTag.opaque === storedTag.opaque;
         }
 
         const responseModifiedValue = responseHeaders.get("last-modified");
