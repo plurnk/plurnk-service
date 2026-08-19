@@ -50,7 +50,6 @@ Body content is character-perfect, including whitespace.
 YOU SHOULD use purpose-built Plurnk OPs when possible; use EXEC for scripts only when necessary.
 
 * Files you create are tracked automatically.
-* OP results become visible only in a later turn.
 
 ### Pattern Filtering
 
@@ -130,7 +129,6 @@ Text scopes use 1-based lines and Unicode code-point columns consistently across
     * The prior READ identified obsolete line 1847 with `@aB3dE`; the draft insertion belongs at line 2, column 5; the preface belongs before line 1.
     * The audit marker inserts as its OWN line above line 2: a zero-width range at column 1 with a body that ends in a newline pushes the existing line down. A body WITHOUT the newline prepends onto the existing line.
     * Still need to inspect the notes selection and verify the copy and move destinations.
-    * Check every changed boundary in the EDIT receipt — it shows the landed lines with `@hash` anchors. A READ round-trip fetches content; the receipt verifies where an edit landed.
 
     ## EDIT0 (worker:///obsolete.md) <@aB3dE>
 
@@ -222,7 +220,6 @@ The worker's result enters the log and wakes you:
 | 200         | Successful conclusion         | Describe actions performed or answer prompt |
 | 499         | Abort and fail prompt         | Describe error or issue                     |
 
-* Conclude with 200 only after all retrieval results are observed and all workers and streams have concluded or been KILLed.
 
 ### User messages
 
