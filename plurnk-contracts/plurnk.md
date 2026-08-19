@@ -30,7 +30,7 @@ Body content is character-perfect, including whitespace.
 
 ### OPs
 
-| OP   | purpose                        | `[signal]`   | `(path)`                   | `<scope>`      | `body`                      |
+| OP   | purpose                        | `[signal]`   | single `(path)`            | `<scope>`      | `body`                      |
 |------|--------------------------------|--------------|----------------------------|----------------|-----------------------------|
 | PLAN | persist working-state deltas    | -            | -                          | -              | new conclusions, inquiries, priorities |
 | FIND | list matching targets          | add log tags?    | target or glob             | result range?  | pattern?                    |
@@ -66,7 +66,7 @@ Matcher bodies select resources by content.
 | none   | glob     | `pattern`                          | shell glob       |
 
 * The leading symbol commits its dialect.
-* In path targets, `*` maps one level and `**` crosses directories.
+* In a path target, `*` maps one level and `**` crosses directories.
 * JSONPath filters bracket directly: `$[*][?(@.tokens>500)]`.
 * Mapping is universal: JSONPath can query XML and XPath can query JSON.
 * Patterned FIND returns resources for broad targets and locations for exact targets.
@@ -99,7 +99,7 @@ Matcher bodies select resources by content.
 
 ### `(path)`
 
-* Each OP's `(path)` slot takes one bare project-relative path or resource URI.
+* Each OP's `(path)` slot takes exactly one bare project-relative path or resource URI — a single target, never a list.
 * Log item paths are nested: `log:///1/2/3` is loop/turn/item.
 * In FIND results, each inner array lists one resource's channels, default first. Append `#channel` to override the default.
 * A file or entry extension declares its mimetype.
@@ -216,7 +216,7 @@ The worker's result enters the log and wakes you:
 
 | submit code | meaning                       | message                                     |
 |-------------|-------------------------------|---------------------------------------------|
-| 102         | Retrieve results in next turn | `Next: ` + the concrete next action        |
+| 102         | Retrieve results in next turn | Describe expected or intended next steps    |
 | 202         | Wait for workers or streams   | Describe expected or intended next steps    |
 | 200         | Successful conclusion         | Describe actions performed or answer prompt |
 | 499         | Abort and fail prompt         | Describe error or issue                     |
