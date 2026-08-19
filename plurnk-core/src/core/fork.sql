@@ -1,6 +1,6 @@
 -- Fork a worker: deep-copy its log into a new worker in the same workspace (SPEC {§machine-processes} —
 -- branch the log, share the world). loops → turns → entries are copied with their
--- fold-state (expanded) and attribution (origin/source) intact; only the worker/loop/
+-- folded body intervals and attribution (origin/source) intact; only the worker/loop/
 -- turn ids are remapped. Nothing of the world is copied
 -- ({§machine-processes-fork-shares-the-world}); workspace entries and the
 -- overlay remain shared. The branch inherits the parent's ambient observation
@@ -57,30 +57,31 @@ RETURNING id;
 -- PREP: fork_get_log_entries
 -- worker_id is the branch's; loop_id/turn_id are remapped by the caller. The source `id` rides along so
 -- the caller can carry {§log-item-tags} classifications across (old id → new id). origin/source (attribution)
--- and expanded (fold-state) ride along too. {§machine-processes-fork-copies-the-log}
+-- and folded intervals ride along too. {§machine-processes-fork-copies-the-log}
 SELECT id, loop_id, turn_id, sequence, at, origin, source, op, delimiter, signal,
        ambient_event_id,
        scheme, username, password, hostname, port, pathname, query, fragment,
        lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight,
-       state, outcome, attrs, expanded
+       state, outcome, attrs, folded
 FROM log_entries WHERE worker_id = $worker_id ORDER BY id;
 
 -- PREP: fork_insert_log_entry
 -- RETURNING the new id so the caller can copy the row's classifications onto it ({§log-item-tags}).
-INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, op, delimiter, signal, scheme, username, password, hostname, port, pathname, query, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, outcome, attrs, expanded)
-VALUES ($worker_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $ambient_event_id, $op, $delimiter, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight, $state, $outcome, $attrs, $expanded)
+INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, op, delimiter, signal, scheme, username, password, hostname, port, pathname, query, fragment, lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, outcome, attrs, folded)
+VALUES ($worker_id, $loop_id, $turn_id, $sequence, $at, $origin, $source, $ambient_event_id, $op, $delimiter, $signal, $scheme, $username, $password, $hostname, $port, $pathname, $query, $fragment, $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight, $state, $outcome, $attrs, $folded)
 RETURNING id;
 
 -- PREP: fork_copy_log_tags
 -- {§log-item-tags} + {§machine-processes-fork-copies-the-log} — a forked log row keeps its
--- classifications along with its fold-state.
+-- classifications along with its folded body intervals.
 INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
 SELECT $new_log_id, tag FROM log_tags WHERE log_entry_id = $old_log_id;
 
 -- PREP: fork_get_log_curation_effects
 -- Exact OPEN/FOLD event effects are part of the copied log history, not
 -- process-local grinder bookkeeping. Both row identities are remapped below.
-SELECT effect.operation_log_entry_id, effect.target_log_entry_id, effect.expanded_before,
+SELECT effect.operation_log_entry_id, effect.target_log_entry_id,
+       effect.folded_before, effect.folded_after,
        effect.tags_added, effect.tags_removed
 FROM log_curation_effects effect
 JOIN log_entries operation ON operation.id = effect.operation_log_entry_id
@@ -91,14 +92,16 @@ ORDER BY effect.operation_log_entry_id, effect.target_log_entry_id;
 INSERT INTO log_curation_effects (
     operation_log_entry_id,
     target_log_entry_id,
-    expanded_before,
+    folded_before,
+    folded_after,
     tags_added,
     tags_removed
 )
 VALUES (
     $operation_log_entry_id,
     $target_log_entry_id,
-    $expanded_before,
+    $folded_before,
+    $folded_after,
     $tags_added,
     $tags_removed
 );

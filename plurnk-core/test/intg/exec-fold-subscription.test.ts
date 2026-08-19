@@ -1,4 +1,4 @@
-// {§subscriptions} — FOLD/OPEN is render-only (toggles log_entries.expanded); it must
+// {§subscriptions} — FOLD/OPEN is render-only (changes log_entries.folded); it must
 // NOT cancel a live stream's subscription. A streaming exec, FOLDed mid-stream,
 // keeps emitting and closes on its own exit, never on the FOLD.
 
@@ -54,7 +54,7 @@ test("FOLD on a streaming exec's log row keeps the subscription live", async () 
         const fold = await new Log().fold(foldStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
         assert.equal(fold.status, 200, "FOLD of the exec log row succeeds");
 
-        // The subscription is STILL open — FOLD touched expanded, not the registry.
+        // The subscription is STILL open — FOLD touched body visibility, not the registry.
         const midSub = await db.test_get_subscription_by_entry.get<{ closed_at: string | null }>({ worker_id: workerId, entry_id: entryRow!.id });
         assert.equal(midSub?.closed_at, null, "FOLD did not cancel the live subscription");
 

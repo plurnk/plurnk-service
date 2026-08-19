@@ -51,7 +51,7 @@ test("a workspace-commons entry is shared — a second worker updates it rather 
 // workspace resolve the IDENTICAL git-member overlay — membership is workspace-keyed, no worker_id). It lives
 // there for the git-fixture deps (withGitWorkspace); the stub here is retired.
 
-test("a fork copies the parent's log (rows + their fold-state)", async () => {
+test("a fork copies the parent's log (rows + their folded body intervals)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -69,21 +69,21 @@ test("a fork copies the parent's log (rows + their fold-state)", async () => {
 
         const branchWorkerId = await Fork.fork(db, workerId);
 
-        const shape = (rows: Array<{ op: string; pathname: string; expanded: number }>) => rows.map((r) => `${r.op}:${r.pathname}:${r.expanded}`);
-        const parentLog = await db.engine_render_log.all<{ op: string; pathname: string; expanded: number }>({ worker_id: workerId });
-        const branchLog = await db.engine_render_log.all<{ op: string; pathname: string; expanded: number }>({ worker_id: branchWorkerId });
-        assert.deepEqual(shape(branchLog), shape(parentLog), "the branch's log mirrors the parent's — rows and fold-state");
-        assert.ok(branchLog.some((r) => r.expanded === 0), "the row folded on the parent stayed folded in the branch");
-        const effectShape = (rows: Array<{ op: string; operation_sequence: number; target_sequence: number; expanded_before: number }>) =>
-            rows.map((row) => `${row.op}:${row.operation_sequence}->${row.target_sequence}:${row.expanded_before}`);
+        const shape = (rows: Array<{ op: string; pathname: string; folded: string }>) => rows.map((r) => `${r.op}:${r.pathname}:${r.folded}`);
+        const parentLog = await db.engine_render_log.all<{ op: string; pathname: string; folded: string }>({ worker_id: workerId });
+        const branchLog = await db.engine_render_log.all<{ op: string; pathname: string; folded: string }>({ worker_id: branchWorkerId });
+        assert.deepEqual(shape(branchLog), shape(parentLog), "the branch's log mirrors the parent's — rows and visibility");
+        assert.ok(branchLog.some((r) => r.folded === "[[1,-1]]"), "the row folded on the parent stayed folded in the branch");
+        const effectShape = (rows: Array<{ op: string; operation_sequence: number; target_sequence: number; folded_before: string; folded_after: string }>) =>
+            rows.map((row) => `${row.op}:${row.operation_sequence}->${row.target_sequence}:${row.folded_before}->${row.folded_after}`);
         const parentEffects = await db.test_log_curation_effects_by_worker.all<{
-            op: string; operation_sequence: number; target_sequence: number; expanded_before: number;
+            op: string; operation_sequence: number; target_sequence: number; folded_before: string; folded_after: string;
         }>({ worker_id: workerId });
         const branchEffects = await db.test_log_curation_effects_by_worker.all<{
-            op: string; operation_sequence: number; target_sequence: number; expanded_before: number;
+            op: string; operation_sequence: number; target_sequence: number; folded_before: string; folded_after: string;
         }>({ worker_id: branchWorkerId });
         assert.deepEqual(effectShape(branchEffects), effectShape(parentEffects), "the branch retains the exact FOLD event effect with remapped row identities");
-        assert.deepEqual(effectShape(branchEffects), ["FOLD:3->1:1"]);
+        assert.deepEqual(effectShape(branchEffects), ["FOLD:3->1:[]->[[1,-1]]"]);
     } finally { db.close(); }
 });
 

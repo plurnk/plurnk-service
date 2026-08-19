@@ -192,14 +192,14 @@ test("entry() materializes an https resource and classifies each plurnk narratio
         // The packet gate (the render the model actually sees): folded by default the meta line
         // projects the machine-created entry as an ordinary system READ, carrying the honest OPEN
         // cost — real tokens + lines, no body riding. Durable storage remains the typed EDIT above.
-        const view = (folded: boolean): object[] => [{
+        const view = (folded: readonly (readonly [number, number])[]): object[] => [{
             coordinate: "1/1/2", origin: "plurnk", op: "EDIT", delimiter: "", signal: null,
             target: { scheme: "https", username: null, password: null, hostname: null, port: null, pathname: "/example.org/turkeys", query: null, fragment: null },
             status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
             folded, source: "worker://researcher", attrs: { kind: "entry_materialized" }, tags: ["second_query"],
         }];
         const countTokens = (t: string): number => Math.ceil(t.length / 4);
-        const foldedLine = PacketWire.renderLog(view(true), countTokens);
+        const foldedLine = PacketWire.renderLog(view([[1, -1]]), countTokens);
         assert.match(foldedLine, /"path":"log:\/\/\/[^"]+\/READ"/, "machine acquisition presents the resulting readable resource, not an authored EDIT");
         assert.match(foldedLine, /"path":"log:\/\/\/1\/1\/2\/READ"/, "the model-facing log handle agrees with the projected operation");
         assert.doesNotMatch(foldedLine, /\/EDIT"/, "the internal storage operation does not leak into model reasoning");
@@ -207,7 +207,7 @@ test("entry() materializes an https resource and classifies each plurnk narratio
         assert.match(foldedLine, /"tokens":\d*[1-9]/, "the folded meta line carries a real OPEN cost, not 0");
         assert.match(foldedLine, /"lines":1/, "the meta line carries the line count for slice planning");
         assert.ok(!foldedLine.includes("wild turkeys"), "folded = no body rides the packet");
-        const openLine = PacketWire.renderLog(view(false), countTokens);
+        const openLine = PacketWire.renderLog(view([]), countTokens);
         assert.ok(openLine.includes("1:wild turkeys are large birds, revised"), "opened, the full written content renders line-numbered");
         const sig = await db.test_log_entries_by_worker_op_signal.all<{ signal: string | null }>({ worker_id: plurnkWorker.id, op: "EDIT" });
         assert.ok(sig.some((r) => /turkeys_query/.test(r.signal ?? "")), "SIGNAL carries the tags — the same slot a model's EDIT[tags] uses, so renderers show them natively");

@@ -131,13 +131,13 @@ test("on overflow the prior turn's log entries are folded to their coordinate", 
         const wideP = mockAt(4096, okSends(1));
         const tinyP = mockAt(TINY, okSends(2), 4096, true);
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const before = await db.engine_render_log.all<{ turn_seq: number; expanded: number }>({ worker_id: workerId });
-        assert.ok(before.some((r) => r.turn_seq === 1 && r.expanded === 1), "turn 1 left an open (expanded=1) log entry");
+        const before = await db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number }>({ worker_id: workerId });
+        assert.ok(before.some((r) => r.turn_seq === 1 && r.weight > 0 && r.folded === "[]"), "turn 1 left an open body");
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const after = await db.engine_render_log.all<{ turn_seq: number; expanded: number; pathname: string | null }>({ worker_id: workerId });
+        const after = await db.engine_render_log.all<{ turn_seq: number; folded: string; pathname: string | null; weight: number }>({ worker_id: workerId });
         // The prompt frame is grinder-exempt. {§grinder-errors-exempt}
-        const t1 = after.filter((r) => r.turn_seq === 1 && (r as { scheme?: string | null }).scheme !== "prompt");
-        assert.ok(t1.length > 0 && t1.every((r) => r.expanded === 0), "prior turn's WORK folded (the exempt prompt stays open) — collapsed to coordinate, not deleted");
+        const t1 = after.filter((r) => r.turn_seq === 1 && r.weight > 0 && (r as { scheme?: string | null }).scheme !== "prompt");
+        assert.ok(t1.length > 0 && t1.every((r) => r.folded === "[[1,-1]]"), "prior turn's bodies folded (the exempt prompt stays open) — collapsed to coordinates, not deleted");
     } finally { await db.close(); }
 });
 
@@ -145,7 +145,7 @@ test("a PLAN row at the newest boundary survives the overflow fold", async () =>
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
-        // Turn 1 emits PLAN + SEND under a WIDE ceiling — both land as open (expanded=1) log
+        // Turn 1 emits PLAN + SEND under a WIDE ceiling — both land as open log
         // rows. Turn 2 under TINY overflows: the grinder folds the boundary's WORK (the SEND)
         // while the PLAN — the model's orientation surface — stays OPEN, like errors + prompt.
         const planStmt = { op: "PLAN", annotation: null, delimiter: "", signal: null, target: null, lineMarker: null, body: "1. read the doc\n2. answer", position: { line: 1, column: 1 } } as PlurnkStatement;
@@ -153,14 +153,14 @@ test("a PLAN row at the newest boundary survives the overflow fold", async () =>
         const wideP = mockAt(4096, [response([planStmt, sendStmt(200, "ok")])]);
         const tinyP = mockAt(TINY, okSends(1), 4096, true);
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const before = await db.engine_render_log.all<{ turn_seq: number; op: string; expanded: number }>({ worker_id: workerId });
-        assert.ok(before.some((r) => r.turn_seq === 1 && r.op === "PLAN" && r.expanded === 1), "turn 1's PLAN landed open");
+        const before = await db.engine_render_log.all<{ turn_seq: number; op: string; folded: string }>({ worker_id: workerId });
+        assert.ok(before.some((r) => r.turn_seq === 1 && r.op === "PLAN" && r.folded === "[]"), "turn 1's PLAN landed open");
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const after = await db.engine_render_log.all<{ turn_seq: number; op: string; expanded: number; pathname: string | null }>({ worker_id: workerId });
+        const after = await db.engine_render_log.all<{ turn_seq: number; op: string; folded: string; pathname: string | null; weight: number }>({ worker_id: workerId });
         const plan = after.find((r) => r.turn_seq === 1 && r.op === "PLAN");
-        assert.equal(plan?.expanded, 1, "the PLAN row is grinder-exempt — still OPEN through the fold");
-        const folded = after.filter((r) => r.turn_seq === 1 && r.op !== "PLAN" && r.op !== "error" && (r as { scheme?: string | null }).scheme !== "prompt");
-        assert.ok(folded.length > 0 && folded.every((r) => r.expanded === 0), "the boundary's non-exempt WORK still folds around the surviving plan");
+        assert.equal(plan?.folded, "[]", "the PLAN row is grinder-exempt — still OPEN through the fold");
+        const folded = after.filter((r) => r.turn_seq === 1 && r.weight > 0 && r.op !== "PLAN" && r.op !== "error" && (r as { scheme?: string | null }).scheme !== "prompt");
+        assert.ok(folded.length > 0 && folded.every((r) => r.folded === "[[1,-1]]"), "the boundary's non-exempt WORK still folds around the surviving plan");
     } finally { await db.close(); }
 });
 
@@ -178,14 +178,14 @@ test("the grinder never folds older history - the model owns its visibility", as
         const tinyP = mockAt(TINY, okSends(2), 4096, true);
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const openT1before = (await db.engine_render_log.all<{ turn_seq: number; expanded: number }>({ worker_id: workerId }))
-            .filter((r) => r.turn_seq === 1 && r.expanded === 1).length;
+        const openT1before = (await db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number }>({ worker_id: workerId }))
+            .filter((r) => r.turn_seq === 1 && r.weight > 0 && r.folded === "[]").length;
         assert.ok(openT1before > 0, "precondition: turn 1 left older open rows");
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 3 });
-        const after = await db.engine_render_log.all<{ turn_seq: number; expanded: number }>({ worker_id: workerId });
-        assert.equal(after.filter((r) => r.turn_seq === 1 && r.expanded === 1).length, openT1before,
+        const after = await db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number }>({ worker_id: workerId });
+        assert.equal(after.filter((r) => r.turn_seq === 1 && r.weight > 0 && r.folded === "[]").length, openT1before,
             "turn 1's open rows are untouched by the turn-3 grinder fire");
-        assert.ok(after.filter((r) => r.turn_seq === 2).every((r) => r.expanded === 0),
+        assert.ok(after.filter((r) => r.turn_seq === 2 && r.weight > 0).every((r) => r.folded === "[[1,-1]]"),
             "the newest completed turn (2) IS folded — the boundary rule fired");
     } finally { await db.close(); }
 });
@@ -231,16 +231,16 @@ test("{§grinder-layer1-rollback}: overflow rolls back only the exact older rows
         assert.equal(openedPlan.status, 200);
         const effects = await db.test_log_curation_effects_by_worker.all<{
             target_log_entry_id: number;
-            expanded_before: number;
+            folded_before: string;
             op: string;
             turn_id: number;
         }>({ worker_id: workerId });
         assert.deepEqual(
-            effects.map(({ target_log_entry_id, expanded_before, op, turn_id }) => ({ target_log_entry_id, expanded_before, op, turn_id })),
+            effects.map(({ target_log_entry_id, folded_before, op, turn_id }) => ({ target_log_entry_id, folded_before, op, turn_id })),
             [
-                { target_log_entry_id: newlyOpenedId, expanded_before: 0, op: "OPEN", turn_id: curationTurnId },
-                { target_log_entry_id: alreadyOpenId, expanded_before: 1, op: "OPEN", turn_id: curationTurnId },
-                { target_log_entry_id: exemptPlanId, expanded_before: 0, op: "OPEN", turn_id: curationTurnId },
+                { target_log_entry_id: newlyOpenedId, folded_before: "[[1,-1]]", op: "OPEN", turn_id: curationTurnId },
+                { target_log_entry_id: alreadyOpenId, folded_before: "[]", op: "OPEN", turn_id: curationTurnId },
+                { target_log_entry_id: exemptPlanId, folded_before: "[[1,-1]]", op: "OPEN", turn_id: curationTurnId },
             ],
             "the suppressed event retains its exact selected set and each target's prior visibility",
         );
@@ -265,14 +265,14 @@ test("{§grinder-layer1-rollback}: overflow rolls back only the exact older rows
 
         assert.equal(result.fit, true, "rolling back the newly introduced older body makes the packet fit");
         assert.equal(overflowCalls, 1, "one over-ceiling assembly emits one overflow event");
-        const rows = await db.engine_render_log.all<{ id: number; expanded: number; tags: string }>({ worker_id: workerId });
+        const rows = await db.engine_render_log.all<{ id: number; folded: string; tags: string }>({ worker_id: workerId });
         const byId = new Map(rows.map((row) => [row.id, row]));
-        assert.equal(byId.get(newlyOpenedId)?.expanded, 0, "the folded-to-open target is rolled back");
+        assert.equal(byId.get(newlyOpenedId)?.folded, "[[1,-1]]", "the folded-to-open target is rolled back");
         assert.deepEqual(JSON.parse(byId.get(newlyOpenedId)?.tags ?? "[]"), ["overflow"], "the rollback records its reason");
-        assert.equal(byId.get(alreadyOpenId)?.expanded, 1, "a no-op OPEN does not make older context grinder-owned");
+        assert.equal(byId.get(alreadyOpenId)?.folded, "[]", "a no-op OPEN does not make older context grinder-owned");
         assert.deepEqual(JSON.parse(byId.get(alreadyOpenId)?.tags ?? "[]"), [], "the no-op target receives no overflow provenance");
-        assert.equal(byId.get(unrelatedId)?.expanded, 1, "unselected older history remains model-owned");
-        assert.equal(byId.get(exemptPlanId)?.expanded, 1, "an older PLAN reopened by the boundary remains grinder-exempt");
+        assert.equal(byId.get(unrelatedId)?.folded, "[]", "unselected older history remains model-owned");
+        assert.equal(byId.get(exemptPlanId)?.folded, "[]", "an older PLAN reopened by the boundary remains grinder-exempt");
         assert.deepEqual(JSON.parse(byId.get(exemptPlanId)?.tags ?? "[]"), [], "the exempt PLAN receives no overflow provenance");
     } finally { await db.close(); }
 });
@@ -307,16 +307,69 @@ test("{§grinder-layer1-rollback}: a reopened target folded again before grindin
         });
 
         const currentTurnId = await insertTurn(db, loopId, 3, 102);
-        await db.engine_grinder_fold_newest_turn({ loop_id: loopId, turn_id: currentTurnId });
-        const row = (await db.engine_render_log.all<{ id: number; expanded: number; tags: string }>({ worker_id: workerId }))
+        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
+        const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
+        await builder.rollbackNewestBoundary(loopId, currentTurnId);
+        const row = (await db.engine_render_log.all<{ id: number; folded: string; tags: string }>({ worker_id: workerId }))
             .find(({ id }) => id === target.id);
-        assert.equal(row?.expanded, 0, "the model's later FOLD remains authoritative");
+        assert.equal(row?.folded, "[[1,-1]]", "the model's later FOLD remains authoritative");
         assert.deepEqual(JSON.parse(row?.tags ?? "[]"), [], "the grinder does not claim a row that was already folded");
-        const effects = await db.test_log_curation_effects_by_worker.all<{ op: string; expanded_before: number }>({ worker_id: workerId });
-        assert.deepEqual(effects.map(({ op, expanded_before }) => ({ op, expanded_before })), [
-            { op: "OPEN", expanded_before: 0 },
-            { op: "FOLD", expanded_before: 1 },
+        const effects = await db.test_log_curation_effects_by_worker.all<{ op: string; folded_before: string }>({ worker_id: workerId });
+        assert.deepEqual(effects.map(({ op, folded_before }) => ({ op, folded_before })), [
+            { op: "OPEN", folded_before: "[[1,-1]]" },
+            { op: "FOLD", folded_before: "[]" },
         ], "both curation events retain their exact prior state");
+    } finally { await db.close(); }
+});
+
+test("{§grinder-layer1-rollback}: rollback restores exact opened intervals without erasing later curation", async () => {
+    const db = await openMigrated();
+    try {
+        const { workspaceId, workerId, loopId } = await envelope(db);
+        const oldTurnId = await insertTurn(db, loopId, 1, 200);
+        const content = Array.from({ length: 10 }, (_, index) => `line ${index + 1}`).join("\n");
+        const target = await db.engine_insert_log_entry.get<{ id: number }>({
+            worker_id: workerId, loop_id: loopId, turn_id: oldTurnId, sequence: 1,
+            origin: "model", source: null, model_call_id: null, op: "READ", delimiter: "", signal: null,
+            scheme: "worker", username: null, password: null, hostname: null, port: null,
+            pathname: "/old", query: null, fragment: null, lineMarker: null,
+            tx: "", mimetype_tx: "text/plain",
+            rx: JSON.stringify({ status: 200, content, mimetype: "text/plain", startLine: 1 }),
+            mimetype_rx: "application/json", status_rx: 200, weight: content.length,
+            state: "resolved", outcome: null, attrs: "{}",
+        });
+        if (target === undefined) throw new Error("old log fixture insert returned no row");
+        await db.log_set_folded_by_id.run({ id: target.id, folded: "[[3,5]]" });
+
+        const curationTurnId = await insertTurn(db, loopId, 2, 200);
+        const engine = plainEngine(db);
+        await engine.dispatch({
+            statement: { ...openStmt(urlPath("log", "/1/1/1/READ")), lineMarker: { marks: [3, 5] } },
+            workspaceId, workerId, loopId, turnId: curationTurnId, sequence: 1, origin: "model",
+        });
+        await engine.dispatch({
+            statement: { ...foldStmt(urlPath("log", "/1/1/1/READ")), lineMarker: { marks: [8] } },
+            workspaceId, workerId, loopId, turnId: curationTurnId, sequence: 2, origin: "model",
+        });
+
+        const currentTurnId = await insertTurn(db, loopId, 3, 102);
+        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
+        const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
+        await builder.rollbackNewestBoundary(loopId, currentTurnId);
+
+        const row = (await db.engine_render_log.all<{ id: number; folded: string; tags: string }>({ worker_id: workerId }))
+            .find(({ id }) => id === target.id);
+        assert.deepEqual(JSON.parse(row?.folded ?? "null"), [[3, 5], [8, 8]], "only the OPEN delta is rolled back");
+        assert.deepEqual(JSON.parse(row?.tags ?? "[]"), ["overflow"]);
+        for (const sequence of [1, 2]) {
+            const curation = await db.test_get_log_folded.get<{ folded: string }>({
+                worker_id: workerId,
+                loop_seq: 1,
+                turn_seq: 2,
+                sequence,
+            });
+            assert.equal(curation?.folded, "[]", "a bodyless boundary row has no visibility to roll back");
+        }
     } finally { await db.close(); }
 });
 
@@ -416,10 +469,10 @@ test("{§grinder-layer1-rollback}: a huge current-turn engine row folds with the
             rebuild: () => builder.buildRequestPacket(args),
         });
         assert.equal(result.fit, true, "stage 2 folded the current turn's engine row and the rebuilt packet fits");
-        const rows = await db.engine_render_log.all<{ turn_seq: number; op: string; expanded: number; tags: string }>({ worker_id: workerId });
+        const rows = await db.engine_render_log.all<{ turn_seq: number; op: string; folded: string; tags: string }>({ worker_id: workerId });
         const bigRow = rows.find((r) => r.turn_seq === 2 && r.op === "READ");
         assert.ok(bigRow !== undefined, "the wake row is still LISTED (folded, not deleted)");
-        assert.equal(bigRow.expanded, 0, "the wake row is FOLDED (re-OPENable) — and not fatal");
+        assert.equal(bigRow.folded, "[[1,-1]]", "the wake row is FOLDED (re-OPENable) — and not fatal");
         assert.deepEqual(JSON.parse(bigRow.tags), ["overflow"], "the automatic fold stamps its canonical reason tag");
         assert.match(packetSection(result.packet, "log"), /"tags":\["overflow"\]/, "the rebuilt ambient projection exposes the persisted tag");
         assert.equal(overflowCalls, 1, "the enforcement owner emits one overflow event for the composed engine to persist");

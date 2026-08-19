@@ -1,5 +1,5 @@
 -- log:/// scheme — read by (loop_sequence, turn_sequence, sequence)
--- coordinate; open/fold toggle the `expanded` flag on the addressed row.
+-- coordinate; OPEN/FOLD mutate canonical hidden body-line intervals.
 
 -- PREP: log_read_by_coordinate
 SELECT le.origin, le.op, le.scheme, le.pathname, le.status_rx,
@@ -34,11 +34,29 @@ WHERE l.worker_id = $worker_id
   ) = $scope_prefix)
 ORDER BY l.sequence, t.sequence, le.sequence;
 
--- PREP: log_set_expanded_by_id
--- RETURNING distinguishes a real 0↔1 transition from a successful visibility
--- no-op without a separate pre-write snapshot.
-UPDATE log_entries SET expanded = $expanded
-WHERE id = $id AND expanded != $expanded
+-- PREP: log_curation_targets
+-- The exact selected set resolved above, with the canonical body inputs and
+-- current visibility needed to plan one deterministic curation event.
+SELECT
+    le.id,
+    (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordinate,
+    le.origin,
+    le.op,
+    le.tx,
+    le.mimetype_tx,
+    le.rx,
+    le.mimetype_rx,
+    le.attrs,
+    le.folded
+FROM log_entries le
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = t.loop_id
+WHERE le.id IN (SELECT value FROM json_each($ids))
+ORDER BY l.sequence, t.sequence, le.sequence;
+
+-- PREP: log_set_folded_by_id
+UPDATE log_entries SET folded = $folded
+WHERE id = $id AND json(folded) != json($folded)
 RETURNING id;
 
 -- PREP: log_delete_by_id

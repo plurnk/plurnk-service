@@ -52,7 +52,7 @@ export class SqlRiteSync {
 	static open(options?: SqlRiteOptions): Promise<SqlRiteSync>;
 	close(): void;
 	[Symbol.dispose](): void;
-	engine_grinder_fold_newest_turn(params?: Record<string, unknown>): SqlRiteResult;
+	engine_grinder_apply(params?: Record<string, unknown>): SqlRiteResult;
 	crud_find_workspace_entry: SqlRiteSyncPreparedStatements;
 	crud_read_channels: SqlRiteSyncPreparedStatements;
 	crud_insert_workspace_entry: SqlRiteSyncPreparedStatements;
@@ -199,6 +199,8 @@ export class SqlRiteSync {
 	engine_child_workers_live: SqlRiteSyncPreparedStatements;
 	engine_child_streams_open: SqlRiteSyncPreparedStatements;
 	engine_render_errors: SqlRiteSyncPreparedStatements;
+	engine_grinder_boundary_rows: SqlRiteSyncPreparedStatements;
+	engine_grinder_open_effects: SqlRiteSyncPreparedStatements;
 	engine_fold_log_entry: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_insert_log_entry: SqlRiteSyncPreparedStatements;
@@ -260,7 +262,8 @@ export class SqlRiteSync {
 	log_read_by_coordinate: SqlRiteSyncPreparedStatements;
 	log_id_by_coordinate: SqlRiteSyncPreparedStatements;
 	log_match_coordinates: SqlRiteSyncPreparedStatements;
-	log_set_expanded_by_id: SqlRiteSyncPreparedStatements;
+	log_curation_targets: SqlRiteSyncPreparedStatements;
+	log_set_folded_by_id: SqlRiteSyncPreparedStatements;
 	log_delete_by_id: SqlRiteSyncPreparedStatements;
 	log_find_candidates: SqlRiteSyncPreparedStatements;
 	log_write_tag: SqlRiteSyncPreparedStatements;
@@ -307,7 +310,7 @@ export default class SqlRite {
 	ready(): Promise<SqlRite>;
 	close(): Promise<void>;
 	[Symbol.asyncDispose](): Promise<void>;
-	engine_grinder_fold_newest_turn(params?: Record<string, unknown>): Promise<SqlRiteResult>;
+	engine_grinder_apply(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	crud_find_workspace_entry: SqlRitePreparedStatements;
 	crud_read_channels: SqlRitePreparedStatements;
 	crud_insert_workspace_entry: SqlRitePreparedStatements;
@@ -454,6 +457,8 @@ export default class SqlRite {
 	engine_child_workers_live: SqlRitePreparedStatements;
 	engine_child_streams_open: SqlRitePreparedStatements;
 	engine_render_errors: SqlRitePreparedStatements;
+	engine_grinder_boundary_rows: SqlRitePreparedStatements;
+	engine_grinder_open_effects: SqlRitePreparedStatements;
 	engine_fold_log_entry: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
 	engine_insert_log_entry: SqlRitePreparedStatements;
@@ -515,7 +520,8 @@ export default class SqlRite {
 	log_read_by_coordinate: SqlRitePreparedStatements;
 	log_id_by_coordinate: SqlRitePreparedStatements;
 	log_match_coordinates: SqlRitePreparedStatements;
-	log_set_expanded_by_id: SqlRitePreparedStatements;
+	log_curation_targets: SqlRitePreparedStatements;
+	log_set_folded_by_id: SqlRitePreparedStatements;
 	log_delete_by_id: SqlRitePreparedStatements;
 	log_find_candidates: SqlRitePreparedStatements;
 	log_write_tag: SqlRitePreparedStatements;

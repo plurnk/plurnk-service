@@ -21,6 +21,8 @@ import type {
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
 import LogBody from "../core/LogBody.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
+import LogVisibility, { type LogFoldRanges } from "../core/LogVisibility.ts";
+import LineAnchors from "../content/line-anchors.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import EntryGraph from "./_entry-graph.ts";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
@@ -44,8 +46,11 @@ type CoordinateRow = {
 };
 
 export interface LogCurationPlan {
-    readonly targetLogEntryIds: readonly number[];
-    readonly expanded: 0 | 1;
+    readonly targets: readonly {
+        readonly id: number;
+        readonly before: LogFoldRanges;
+        readonly after: LogFoldRanges;
+    }[];
     readonly add: readonly string[];
     readonly remove: readonly string[];
 }
@@ -117,6 +122,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         volatile: false,
         modelVisible: true,
         folderScopes: true,
+        lineAnchors: true,
         example: "## READ0 (log:///1/2/3)",
     };
 
@@ -502,15 +508,15 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
 
     async open(statement: OpenStatement, ctx: CoreSchemeCallContext): Promise<OpenFoldResult> {
         const core = this.coreContext(ctx);
-        const outcome = await this.#planCuration(statement, core, 1);
+        const outcome = await this.#planCuration(statement, core, "OPEN");
         if (outcome.plan !== null) await this.#applyDirect(outcome.plan, core);
         return outcome.result;
     }
 
-    // FOLD toggles the expanded bit only — an active subscription stays alive. {§subscriptions-fold-keeps-subscription}
+    // FOLD changes only packet visibility — an active subscription stays alive. {§subscriptions-fold-keeps-subscription}
     async fold(statement: FoldStatement, ctx: CoreSchemeCallContext): Promise<OpenFoldResult> {
         const core = this.coreContext(ctx);
-        const outcome = await this.#planCuration(statement, core, 0);
+        const outcome = await this.#planCuration(statement, core, "FOLD");
         if (outcome.plan !== null) await this.#applyDirect(outcome.plan, core);
         return outcome.result;
     }
@@ -521,7 +527,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return this.#planCuration(
             statement,
             this.coreContext(ctx),
-            statement.op === "OPEN" ? 1 : 0,
+            statement.op,
         );
     }
 
@@ -635,17 +641,20 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     }
 
     async #applyDirect(plan: LogCurationPlan, ctx: PlurnkSchemeContext): Promise<void> {
-        for (const id of plan.targetLogEntryIds) {
-            await ctx.db.log_set_expanded_by_id.run({ id, expanded: plan.expanded });
-            for (const tag of plan.remove) await ctx.db.log_remove_tag.run({ log_entry_id: id, tag });
-            for (const tag of plan.add) await ctx.db.log_write_tag.run({ log_entry_id: id, tag });
+        for (const target of plan.targets) {
+            await ctx.db.log_set_folded_by_id.run({
+                id: target.id,
+                folded: LogVisibility.serialize(target.after),
+            });
+            for (const tag of plan.remove) await ctx.db.log_remove_tag.run({ log_entry_id: target.id, tag });
+            for (const tag of plan.add) await ctx.db.log_write_tag.run({ log_entry_id: target.id, tag });
         }
     }
 
     async #planCuration(
         statement: OpenStatement | FoldStatement,
         ctx: PlurnkSchemeContext,
-        expanded: 0 | 1,
+        operation: "OPEN" | "FOLD",
     ): Promise<LogCurationOutcome> {
         let tags: ReturnType<typeof TagSignal.curation>;
         try {
@@ -664,15 +673,89 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 plan: null,
             };
         }
-        const planned = (ids: number[]): LogCurationOutcome => ({
-            result: { status: 200, matched: ids.length },
-            plan: {
-                targetLogEntryIds: ids,
-                expanded,
-                add: tags.add,
-                remove: tags.remove,
-            },
-        });
+        const planned = async (ids: number[]): Promise<LogCurationOutcome> => {
+            const rows = await ctx.db.log_curation_targets.all<{
+                id: number;
+                coordinate: string;
+                origin: string;
+                op: string | null;
+                tx: string;
+                mimetype_tx: string;
+                rx: string;
+                mimetype_rx: string;
+                attrs: string;
+                folded: string;
+            }>({ ids: JSON.stringify(ids) });
+            if (rows.length !== ids.length) {
+                throw new Error("Log curation selection changed before its visibility plan was resolved.");
+            }
+            const targets: Array<LogCurationPlan["targets"][number]> = [];
+            for (const row of rows) {
+                const body = LogBody.resolve({
+                    op: row.op,
+                    attrs: row.attrs,
+                    tx: row.tx,
+                    rx: row.rx,
+                    mimetypeTx: row.mimetype_tx,
+                    mimetypeRx: row.mimetype_rx,
+                });
+                const identity = `log:///${LogEntryProjection.coordinate(row.coordinate, row)}`;
+                const result = row.mimetype_rx === "application/json"
+                    ? JSON.parse(row.rx) as unknown
+                    : null;
+                const rawAnchors = LogEntryProjection.op(row) === "READ"
+                    && result !== null
+                    && typeof result === "object"
+                    && Object.hasOwn(result, "lineAnchors")
+                    ? (result as { lineAnchors: unknown }).lineAnchors
+                    : [];
+                if (!Array.isArray(rawAnchors)) {
+                    throw new TypeError("A READ log body carries malformed published line anchors.");
+                }
+                const scope = LogVisibility.resolveScope(
+                    statement.lineMarker,
+                    identity,
+                    body.content,
+                    rawAnchors as readonly string[],
+                );
+                if (!scope.ok) {
+                    return {
+                        result: Results.failure(
+                            "scheme:log",
+                            "curation-scope-invalid",
+                            400,
+                            scope.detail,
+                            {},
+                            {
+                                target: identity,
+                                recovery: "Use one log-body line or an inclusive two-line range.",
+                                retryable: false,
+                            },
+                        ) as OpenFoldResult,
+                        plan: null,
+                    };
+                }
+                const before = LogVisibility.parse(row.folded);
+                targets.push({
+                    id: row.id,
+                    before,
+                    after: LogVisibility.apply(
+                        before,
+                        operation,
+                        scope.range,
+                        LogVisibility.lineCount(body.content),
+                    ),
+                });
+            }
+            return {
+                result: { status: 200, matched: ids.length },
+                plan: {
+                    targets,
+                    add: tags.add,
+                    remove: tags.remove,
+                },
+            };
+        };
         if (statement.body !== null) {
             const matched = await this.#resolveByMatcher(statement, tags.filter, ctx);
             if (matched.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
@@ -731,7 +814,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     "scheme:log",
                     "target-required",
                     400,
-                    `${expanded === 1 ? "OPEN" : "FOLD"} requires a path, body pattern, or unsigned tag; signed tags do not select log items.`,
+                    `${operation} requires a path, body pattern, or unsigned tag; signed tags do not select log items.`,
                     {},
                     {
                         recovery: "Provide a log coordinate, prefix, glob, body pattern, or unsigned tag.",

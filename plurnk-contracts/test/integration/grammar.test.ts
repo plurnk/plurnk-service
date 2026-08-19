@@ -58,8 +58,8 @@ test("protocol operations parse as Markdown sections", () => {
         ["EDIT", " [+draft] (notes.md) <2>", "replacement"],
         ["COPY", " (notes.md)", "archive.md<0>"],
         ["MOVE", " (notes.md)", "archive.md"],
-        ["OPEN", " [memory] (log:///**)", "~topic"],
-        ["FOLD", " [memory] (log:///**)", undefined],
+        ["OPEN", " [memory] (log:///**) <@aB3dE>", "~topic"],
+        ["FOLD", " [memory] (log:///**) <17,-1>", undefined],
         ["SEND", " [400] (worker://child)", "progress"],
         ["EXEC", " [node] (./) <60,5>", "console.log(1)"],
         ["BARE", " [+fact]", "What is the capital of Germany?"],
@@ -73,6 +73,15 @@ test("protocol operations parse as Markdown sections", () => {
         assert.equal(statement.op, op, op);
         assert.equal(statement.delimiter, "0", op);
     }
+});
+
+test("OPEN and FOLD parse numeric and anchored log-body line scopes", () => {
+    const open = oneStatement("## OPEN0 (log:///1/2/3/READ) <@aB3dE>");
+    const fold = oneStatement("## FOLD0 [research] (log:///**/READ) <17,-1>");
+    assert.equal(open.op, "OPEN");
+    assert.deepEqual(open.lineMarker, { marks: ["@aB3dE"] });
+    assert.equal(fold.op, "FOLD");
+    assert.deepEqual(fold.lineMarker, { marks: [17, -1] });
 });
 
 // {§operation-annotation}
@@ -564,13 +573,18 @@ test("SEND terminal scope is retained while mid SEND rejects it; EXEC admits tim
     assert.deepEqual(oneStatement("## EXEC0 [node] <60,5> (./)\ncommand").lineMarker, { marks: [60, 5] });
 });
 
-test("OPEN and FOLD reject positional scope", () => {
+test("OPEN and FOLD retain scoped curation through slot permutations", () => {
     for (const op of ["OPEN", "FOLD"] as const) {
-        const result = PlurnkParser.parseStatements(section(op, " [memory] (log:///**) <1,2>"));
-        assert.equal(result.items.some((item) => item.kind === "statement"), false);
-        const error = result.items.find((item) => item.kind === "error");
-        assert.equal(error?.kind, "error");
-        if (error?.kind === "error") assert.match(error.error.message, /unexpected `<L>` line marker/);
+        const expected = oneStatement(section(op, " [memory] (log:///**) <1,2>"));
+        for (const slots of [
+            " (log:///**) <1,2> [memory]",
+            " <1,2> [memory] (log:///**)",
+        ]) {
+            const actual = oneStatement(section(op, slots));
+            assert.deepEqual(actual.signal, expected.signal);
+            assert.deepEqual(actual.target, expected.target);
+            assert.deepEqual(actual.lineMarker, expected.lineMarker);
+        }
     }
 });
 

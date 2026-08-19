@@ -57,9 +57,9 @@ const openStmt = (opts: { target: ParsedPath | null; tags?: string[] }): OpenSta
     lineMarker: null, body: null, position: { line: 1, column: 1 },
 });
 
-const foldStmt = (opts: { target: ParsedPath | null; tags?: string[] }): FoldStatement => ({
+const foldStmt = (opts: { target: ParsedPath | null; tags?: string[]; marker?: TextLineMarker | null }): FoldStatement => ({
     op: "FOLD", annotation: null, delimiter: "", signal: opts.tags ?? null, target: opts.target,
-    lineMarker: null, body: null, position: { line: 1, column: 1 },
+    lineMarker: opts.marker ?? null, body: null, position: { line: 1, column: 1 },
 });
 
 test("Engine.dispatch: KILL against worker:/// permanently deletes the entry (200, then READ 404)", async () => {
@@ -260,10 +260,10 @@ test("Engine.dispatch: targetless FOLD[tag] and OPEN[tag] symmetrically filter l
         });
         assert.equal(folded.status, 200);
         assert.equal((folded as { matched?: number }).matched, 1);
-        const before = await db.test_get_log_expanded.get<{ expanded: number }>({
+        const before = await db.test_get_log_folded.get<{ folded: string }>({
             worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1,
         });
-        assert.equal(before?.expanded, 0);
+        assert.equal(before?.folded, "[[1,-1]]");
 
         const opened = await engine.dispatch({
             statement: openStmt({ target: null, tags: ["working-set"] }),
@@ -271,10 +271,10 @@ test("Engine.dispatch: targetless FOLD[tag] and OPEN[tag] symmetrically filter l
         });
         assert.equal(opened.status, 200);
         assert.equal((opened as { matched?: number }).matched, 1);
-        const after = await db.test_get_log_expanded.get<{ expanded: number }>({
+        const after = await db.test_get_log_folded.get<{ folded: string }>({
             worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1,
         });
-        assert.equal(after?.expanded, 1);
+        assert.equal(after?.folded, "[]");
     } finally { await db.close(); }
 });
 
@@ -316,18 +316,18 @@ test("Engine.dispatch: FOLD/OPEN atomically change visibility and exact tag clas
         const foldEffects = (await db.test_log_curation_effects_by_worker.all<{
             operation_sequence: number;
             target_sequence: number;
-            expanded_before: 0 | 1;
+            folded_before: string;
             tags_added: string;
             tags_removed: string;
         }>({ worker_id: env.workerId })).filter(({ operation_sequence }) => operation_sequence === 3);
         assert.deepEqual(foldEffects.map((effect) => ({
             target: effect.target_sequence,
-            expandedBefore: effect.expanded_before,
+            foldedBefore: JSON.parse(effect.folded_before),
             added: JSON.parse(effect.tags_added),
             removed: JSON.parse(effect.tags_removed),
         })), [
-            { target: 1, expandedBefore: 1, added: ["archive"], removed: ["stale"] },
-            { target: 2, expandedBefore: 1, added: ["archive"], removed: [] },
+            { target: 1, foldedBefore: [], added: ["archive"], removed: ["stale"] },
+            { target: 2, foldedBefore: [], added: ["archive"], removed: [] },
         ]);
 
         const opened = await engine.dispatch({
@@ -461,6 +461,56 @@ test("Engine.dispatch: READ accepts a current line anchor and rejects a stale on
         assert.equal(stale.status, 409);
         assert.equal(stale.problem?.type, "https://problems.plurnk.dev/scheme/worker/line-anchor-collision");
         assert.equal(stale.problem?.anchor, undefined);
+    } finally { await db.close(); }
+});
+
+test("Engine.dispatch: FOLD accepts both a log body's published anchors and anchors from READing the log", async () => {
+    const { db, engine, env } = await setup();
+    const content = "alpha\nbeta\ngamma";
+    const target = urlPath("log", "/1/1/1/READ");
+    const publishedAnchors = LineAnchors.tokens("worker:///source.md", content);
+    try {
+        await db.engine_insert_log_entry.get({
+            worker_id: env.workerId, loop_id: env.loopId, turn_id: env.turnId, sequence: 1,
+            origin: "model", source: null, model_call_id: null, op: "READ", delimiter: "", signal: null,
+            scheme: "worker", username: null, password: null, hostname: null, port: null,
+            pathname: "/source.md", query: null, fragment: null, lineMarker: null,
+            tx: "", mimetype_tx: "text/plain",
+            rx: JSON.stringify({
+                status: 200,
+                content,
+                mimetype: "text/plain",
+                startLine: 17,
+                lineAnchorIdentity: "worker:///source.md",
+                lineAnchors: publishedAnchors,
+                lineNumberWidth: 2,
+            }),
+            mimetype_rx: "application/json", status_rx: 200, weight: content.length,
+            state: "resolved", outcome: null, attrs: "{}",
+        });
+
+        const read = await engine.dispatch({
+            statement: readStmt({ target }),
+            ...env, sequence: 2, origin: "model",
+        });
+        assert.equal(read.status, 200);
+        const logAnchors = (read as { lineAnchors?: readonly string[] }).lineAnchors;
+        assert.equal(logAnchors?.[1], LineAnchors.token("log:///1/1/1/READ", 2, content));
+
+        const foldedFromBody = await engine.dispatch({
+            statement: foldStmt({ target, marker: { marks: [publishedAnchors[1]!] } }),
+            ...env, sequence: 3, origin: "model",
+        });
+        assert.equal(foldedFromBody.status, 200);
+        const foldedFromLogRead = await engine.dispatch({
+            statement: foldStmt({ target, marker: { marks: [logAnchors![2]!] } }),
+            ...env, sequence: 4, origin: "model",
+        });
+        assert.equal(foldedFromLogRead.status, 200);
+        const row = await db.test_get_log_folded.get<{ folded: string }>({
+            worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1,
+        });
+        assert.equal(row?.folded, "[[2,3]]");
     } finally { await db.close(); }
 });
 

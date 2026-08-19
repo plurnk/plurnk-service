@@ -272,8 +272,8 @@ test("log_entries: a malformed bound curation plan rolls back its row and every 
         const ctx = await seedEnvelope(db, "ws-log-curation-atomicity");
         const targetId = await minimalLog(db, ctx, { sequence: 1, signal: JSON.stringify(["+research"]) });
         for (const plan of [
-            { ids: [targetId], expanded: 0, add: ["archive", "archive"], remove: [] },
-            { ids: [targetId], expanded: 0, add: [], remove: ["nonbreaking\u00a0space"] },
+            { targets: [{ id: targetId, before: [], after: [[1, -1]] }], add: ["archive", "archive"], remove: [] },
+            { targets: [{ id: targetId, before: [], after: [[1, -1]] }], add: [], remove: ["nonbreaking\u00a0space"] },
         ]) {
             await assert.rejects(
                 () => minimalLog(db, ctx, {
@@ -286,13 +286,13 @@ test("log_entries: a malformed bound curation plan rolls back its row and every 
             );
         }
         assert.equal(
-            (await db.test_get_log_expanded.get<{ expanded: number }>({
+            (await db.test_get_log_folded.get<{ folded: string }>({
                 worker_id: ctx.workerId,
                 loop_seq: 1,
                 turn_seq: 1,
                 sequence: 1,
-            }))?.expanded,
-            1,
+            }))?.folded,
+            "[]",
         );
         assert.deepEqual(
             await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: ctx.workerId }),
@@ -302,6 +302,39 @@ test("log_entries: a malformed bound curation plan rolls back its row and every 
             (await db.test_count_log_entries_by_turn.get<{ n: number }>({ turn_id: ctx.turnId }))?.n,
             1,
             "the failed outer INSERT leaves no curation event row",
+        );
+    } finally { await db.close(); }
+});
+
+test("log_entries: folded body intervals are canonical and curation snapshots reject collisions", async () => {
+    const db = await openMigrated();
+    try {
+        const ctx = await seedEnvelope(db, "ws-log-folded-intervals");
+        const targetId = await minimalLog(db, ctx, { sequence: 1 });
+        await assert.rejects(
+            () => db.log_set_folded_by_id.run({ id: targetId, folded: "[[1,2],[3,4]]" }),
+            /folded ranges are invalid/,
+            "adjacent intervals must be merged by the visibility owner",
+        );
+        await db.log_set_folded_by_id.run({ id: targetId, folded: "[[2,3]]" });
+        await assert.rejects(
+            () => minimalLog(db, ctx, {
+                sequence: 2,
+                op: "OPEN",
+                attrs: JSON.stringify({
+                    __plurnk_curation: {
+                        targets: [{ id: targetId, before: [], after: [] }],
+                        add: [],
+                        remove: [],
+                    },
+                }),
+            }),
+            /invalid private log curation payload/,
+            "a stale before snapshot rejects the complete event",
+        );
+        assert.equal(
+            (await db.test_count_log_entries_by_turn.get<{ n: number }>({ turn_id: ctx.turnId }))?.n,
+            1,
         );
     } finally { await db.close(); }
 });
@@ -316,7 +349,8 @@ test("log_entries: curation effect deltas accept only canonical stored tag ident
             () => db.fork_insert_log_curation_effect.run({
                 operation_log_entry_id: operationId,
                 target_log_entry_id: targetId,
-                expanded_before: 1,
+                folded_before: "[]",
+                folded_after: "[]",
                 tags_added: "[]",
                 tags_removed: JSON.stringify(["nonbreaking\u00a0space"]),
             }),

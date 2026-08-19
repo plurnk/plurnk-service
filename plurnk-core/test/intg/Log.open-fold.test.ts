@@ -1,16 +1,17 @@
 // log:/// scheme participates in the model's curation surface via OPEN/FOLD
 // on log:///N/T/S URIs. Underlying storage is the log_entries table (separate
-// from entries+entry_channels); the expanded column toggles visibility.
+// from entries+entry_channels); canonical folded line intervals own visibility.
 // log entries lack channels and many other entry properties but share the
 // URI-dispatched open/fold mechanism.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import Log from "../../src/schemes/Log.ts";
+import LineAnchors from "../../src/content/line-anchors.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx } from "./_helpers.ts";
 import { urlPath, openStmt, foldStmt, findStmt } from "./_dsl.ts";
 
-const setup = async (attrs = "{}") => {
+const setup = async (attrs = "{}", span = "body") => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
@@ -30,28 +31,53 @@ const setup = async (attrs = "{}") => {
         pathname: "/x", query: null, fragment: null,
         lineMarker: null,
         tx: "## EDIT0 (worker:///x)\nbody", mimetype_tx: "text/vnd.plurnk",
-        rx: JSON.stringify({ status: 201 }), mimetype_rx: "application/json",
+        rx: JSON.stringify({ status: 201, ...(span.length === 0 ? {} : { span }) }), mimetype_rx: "application/json",
         status_rx: 201, weight: 0,
         state: "resolved", outcome: null, attrs,
     });
     return { db, workspaceId, workerId, loopId, turnId };
 };
 
-const getExpanded = async (db: Awaited<ReturnType<typeof openMigrated>>, workerId: number): Promise<number> => {
-    const row = await db.test_get_log_expanded.get<{ expanded: number }>({
+const getFolded = async (db: Awaited<ReturnType<typeof openMigrated>>, workerId: number): Promise<string | undefined> => {
+    const row = await db.test_get_log_folded.get<{ folded: string }>({
         worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 1,
     });
-    return row?.expanded ?? -1;
+    return row?.folded;
 };
 
-test("new log entry defaults to expanded=1", async () => {
+const seedRead = async ({ db, workerId, loopId, turnId }: Awaited<ReturnType<typeof setup>>, sequence: number, content: string): Promise<number> => {
+    const row = await db.engine_insert_log_entry.get<{ id: number }>({
+        worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
+        origin: "model", source: null, model_call_id: null, op: "READ", delimiter: "", signal: null,
+        scheme: "worker", username: null, password: null, hostname: null, port: null,
+        pathname: `/doc-${sequence}`, query: null, fragment: null, lineMarker: null,
+        tx: "", mimetype_tx: "text/plain",
+        rx: JSON.stringify({ status: 200, content, mimetype: "text/plain", startLine: 1 }),
+        mimetype_rx: "application/json", status_rx: 200, weight: content.length,
+        state: "resolved", outcome: null, attrs: "{}",
+    });
+    if (row === undefined) throw new Error("READ fixture insert returned no row");
+    return row.id;
+};
+
+const foldedAt = async (
+    db: Awaited<ReturnType<typeof openMigrated>>,
+    workerId: number,
+    id: number,
+): Promise<unknown> => {
+    const row = (await db.engine_render_log.all<{ id: number; folded: string }>({ worker_id: workerId }))
+        .find((candidate) => candidate.id === id);
+    return JSON.parse(row?.folded ?? "null") as unknown;
+};
+
+test("new log entry defaults to no folded intervals", async () => {
     const { db, workerId } = await setup();
     try {
-        assert.equal(await getExpanded(db, workerId), 1);
+        assert.equal(await getFolded(db, workerId), "[]");
     } finally { await db.close(); }
 });
 
-test("FOLD(log:///1/1/1) flips expanded to 0", async () => {
+test("FOLD(log:///1/1/1) folds the complete body interval", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const r = await new Log().fold(
@@ -59,7 +85,7 @@ test("FOLD(log:///1/1/1) flips expanded to 0", async () => {
             makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }),
         );
         assert.equal(r.status, 200);
-        assert.equal(await getExpanded(db, workerId), 0);
+        assert.equal(await getFolded(db, workerId), "[[1,-1]]");
     } finally { await db.close(); }
 });
 
@@ -71,7 +97,7 @@ test("FOLD accepts the canonical /OP suffix", async () => {
             makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }),
         );
         assert.equal(r.status, 200);
-        assert.equal(await getExpanded(db, workerId), 0);
+        assert.equal(await getFolded(db, workerId), "[[1,-1]]");
     } finally { await db.close(); }
 });
 
@@ -83,7 +109,7 @@ test("FOLD rejects a supplied /OP suffix that disagrees with the addressed row",
             makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }),
         );
         assert.equal(r.status, 404);
-        assert.equal(await getExpanded(db, workerId), 1, "a discordant address cannot curate the row");
+        assert.equal(await getFolded(db, workerId), "[]", "a discordant address cannot curate the row");
     } finally { await db.close(); }
 });
 
@@ -95,7 +121,7 @@ test("a tag filter does not turn a discordant exact /OP suffix into a successful
             makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }),
         );
         assert.equal(result.status, 404);
-        assert.equal(await getExpanded(db, workerId), 1, "a discordant exact address cannot curate the row");
+        assert.equal(await getFolded(db, workerId), "[]", "a discordant exact address cannot curate the row");
     } finally { await db.close(); }
 });
 
@@ -119,19 +145,19 @@ test("a typed entry-materialization row resolves by its projected /READ suffix, 
     } finally { await rejected.db.close(); }
 });
 
-test("OPEN(log:///1/1/1) flips expanded back to 1", async () => {
+test("OPEN(log:///1/1/1) clears the complete folded interval", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         const log = new Log();
         await log.fold(foldStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
         const r = await log.open(openStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
         assert.equal(r.status, 200);
-        assert.equal(await getExpanded(db, workerId), 1);
+        assert.equal(await getFolded(db, workerId), "[]");
     } finally { await db.close(); }
 });
 
 test("OPEN/FOLD are friendly visibility no-ops on valid bodyless entries", async () => {
-    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, workspaceId, workerId, loopId, turnId } = await setup("{}", "");
     try {
         const log = new Log();
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" });
@@ -140,18 +166,66 @@ test("OPEN/FOLD are friendly visibility no-ops on valid bodyless entries", async
         const alreadyOpen = await log.open(openStmt(target), ctx);
         assert.equal(alreadyOpen.status, 200);
         assert.equal(alreadyOpen.matched, 1);
-        assert.equal(await getExpanded(db, workerId), 1);
+        assert.equal(await getFolded(db, workerId), "[]");
 
         await log.fold(foldStmt(target), ctx);
         const alreadyFolded = await log.fold(foldStmt(target), ctx);
         assert.equal(alreadyFolded.status, 200);
         assert.equal(alreadyFolded.matched, 1);
-        assert.equal(await getExpanded(db, workerId), 0);
+        assert.equal(await getFolded(db, workerId), "[]", "a bodyless row has no hidden line interval");
 
         const foldedBodyless = await log.open(openStmt(target), ctx);
         assert.equal(foldedBodyless.status, 200);
         assert.equal(foldedBodyless.matched, 1);
-        assert.equal(await getExpanded(db, workerId), 1);
+        assert.equal(await getFolded(db, workerId), "[]");
+    } finally { await db.close(); }
+});
+
+test("scoped OPEN/FOLD compose numeric and hash-selected body intervals", async () => {
+    const context = await setup();
+    const { db, workspaceId, workerId, loopId, turnId } = context;
+    try {
+        const content = Array.from({ length: 8 }, (_, index) => `line ${index + 1}`).join("\n");
+        const id = await seedRead(context, 2, content);
+        const target = urlPath("log", "/1/1/2/READ");
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" });
+        const log = new Log();
+
+        const fold = await log.fold({
+            ...foldStmt(target),
+            lineMarker: { marks: [3, 5] },
+        }, ctx);
+        assert.equal(fold.status, 200);
+        assert.deepEqual(await foldedAt(db, workerId, id), [[3, 5]]);
+
+        const anchor = LineAnchors.token("log:///1/1/2/READ", 4, content);
+        const open = await log.open({
+            ...openStmt(target),
+            lineMarker: { marks: [anchor] },
+        }, ctx);
+        assert.equal(open.status, 200);
+        assert.deepEqual(await foldedAt(db, workerId, id), [[3, 3], [5, 5]]);
+    } finally { await db.close(); }
+});
+
+test("bulk curation intersects one scope with every selected canonical body", async () => {
+    const context = await setup();
+    const { db, workspaceId, workerId, loopId, turnId } = context;
+    try {
+        const shortId = await seedRead(context, 2, "short\nbody");
+        const longId = await seedRead(
+            context,
+            3,
+            Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n"),
+        );
+        const result = await new Log().fold({
+            ...foldStmt(urlPath("log", "/**/READ")),
+            lineMarker: { marks: [17, -1] },
+        }, makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
+        assert.equal(result.status, 200);
+        assert.equal(result.matched, 2, "row selection is independent of each body's scope intersection");
+        assert.deepEqual(await foldedAt(db, workerId, shortId), [], "an absent range is a successful no-op");
+        assert.deepEqual(await foldedAt(db, workerId, longId), [[17, -1]]);
     } finally { await db.close(); }
 });
 
@@ -217,10 +291,10 @@ test("FOLD and OPEN apply the same tag + matcher filter", async () => {
         const retainedId = await seedRead(2, "retain this row");
         await seedRead(3, "discard this row");
         await db.log_write_tag.run({ log_entry_id: retainedId, tag: "memory" });
-        const expandedAt = async (sequence: number): Promise<number> =>
-            (await db.test_get_log_expanded.get<{ expanded: number }>({
+        const foldedAt = async (sequence: number): Promise<string | undefined> =>
+            (await db.test_get_log_folded.get<{ folded: string }>({
                 worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence,
-            }))?.expanded ?? -1;
+            }))?.folded;
 
         const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" });
         const matcher = { dialect: "regex" as const, raw: "/retain/", pattern: "retain", flags: "" };
@@ -231,9 +305,9 @@ test("FOLD and OPEN apply the same tag + matcher filter", async () => {
         }, ctx);
         assert.equal(fold.status, 200);
         assert.equal(fold.matched, 1);
-        assert.equal(await expandedAt(2), 0, "the matching READ row is folded");
-        assert.equal(await expandedAt(3), 1, "the non-matching READ row remains open");
-        assert.equal(await expandedAt(1), 1, "the non-matching EDIT (1/1/1) is untouched");
+        assert.equal(await foldedAt(2), "[[1,-1]]", "the matching READ row is folded");
+        assert.equal(await foldedAt(3), "[]", "the non-matching READ row remains open");
+        assert.equal(await foldedAt(1), "[]", "the non-matching EDIT (1/1/1) is untouched");
 
         const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: workerId });
         assert.deepEqual(tags, [{ coordinate: "1/1/2", tag: "memory" }], "FOLD preserves the existing classification");
@@ -245,8 +319,8 @@ test("FOLD and OPEN apply the same tag + matcher filter", async () => {
         }, ctx);
         assert.equal(open.status, 200);
         assert.equal(open.matched, 1);
-        assert.equal(await expandedAt(2), 1, "targetless OPEN filters the worker log by tag + matcher");
-        assert.equal(await expandedAt(3), 1, "OPEN does not broaden the tagged set");
+        assert.equal(await foldedAt(2), "[]", "targetless OPEN filters the worker log by tag + matcher");
+        assert.equal(await foldedAt(3), "[]", "OPEN does not broaden the tagged set");
     } finally { await db.close(); }
 });
 
@@ -258,17 +332,17 @@ test("log curation honors segment-local `*` and recursive `**`", async () => {
 
         const shallow = await log.fold(foldStmt(urlPath("log", "/*")), ctx);
         assert.equal(shallow.status, 204, "no row lives directly at the log root");
-        assert.equal(await getExpanded(db, workerId), 1, "`*` does not cross coordinate separators");
+        assert.equal(await getFolded(db, workerId), "[]", "`*` does not cross coordinate separators");
 
         const turnRows = await log.fold(foldStmt(urlPath("log", "/1/1/*")), ctx);
         assert.equal(turnRows.status, 200, "the documented loop/turn/item hierarchy reaches rows with one star");
         assert.equal(turnRows.matched, 1);
-        assert.equal(await getExpanded(db, workerId), 0, "the rendered /OP decoration is not a mandatory hierarchy level");
+        assert.equal(await getFolded(db, workerId), "[[1,-1]]", "the rendered /OP decoration is not a mandatory hierarchy level");
 
         await log.open(openStmt(urlPath("log", "/1/1/*")), ctx);
         const recursive = await log.fold(foldStmt(urlPath("log", "/**")), ctx);
         assert.equal(recursive.status, 200);
-        assert.equal(await getExpanded(db, workerId), 0, "`**` reaches recursive log rows");
+        assert.equal(await getFolded(db, workerId), "[[1,-1]]", "`**` reaches recursive log rows");
     } finally { await db.close(); }
 });
 
@@ -276,10 +350,10 @@ test("log curation honors segment-local `*` and recursive `**`", async () => {
 test("KILL permanently erases the addressed log row", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
-        assert.equal(await getExpanded(db, workerId), 1, "row exists before KILL");
+        assert.equal(await getFolded(db, workerId), "[]", "row exists before KILL");
         const r = await new Log().kill("/1/1/1", null, makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
         assert.equal(r.status, 200, "KILL on a log item succeeds");
-        assert.equal(await getExpanded(db, workerId), -1, "the addressed row is gone");
+        assert.equal(await getFolded(db, workerId), undefined, "the addressed row is gone");
     } finally { await db.close(); }
 });
 
@@ -298,7 +372,7 @@ test("KILL erases an op='error' log item exactly like any other — errors ARE n
         });
         const r = await new Log().kill("/1/1/2", null, makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
         assert.equal(r.status, 200, "an error row is KILLable exactly like any log item — no special-casing");
-        const gone = await db.test_get_log_expanded.get({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2 });
+        const gone = await db.test_get_log_folded.get({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2 });
         assert.equal(gone, undefined, "the error row is gone");
     } finally { await db.close(); }
 });
@@ -312,7 +386,7 @@ test("FOLD(log:///1/1/) folds the turn's rows — the trailing slash means the c
         );
         assert.equal(r.status, 200);
         assert.equal(r.matched, 1, "the count of curated rows, clearly shown");
-        assert.equal(await getExpanded(db, workerId), 0, "the turn's row folded");
+        assert.equal(await getFolded(db, workerId), "[[1,-1]]", "the turn's row folded");
     } finally { await db.close(); }
 });
 
@@ -343,7 +417,7 @@ test("{§log-coordinate-hierarchy} a partial coordinate is a prefix with or with
         );
         assert.equal(noSlash.status, 200, "log:///1/1 (no slash) folds turn 1/1 — no more 400");
         assert.equal(noSlash.matched, 1, "the turn's row");
-        assert.equal(await getExpanded(db, workerId), 0);
+        assert.equal(await getFolded(db, workerId), "[[1,-1]]");
         // And the loop prefix: log:///1 selects all of loop 1's rows.
         await new Log().open(openStmt(urlPath("log", "/1/1")), makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
         const loop = await new Log().fold(
@@ -365,7 +439,7 @@ test("FOLD[tag] and OPEN[tag] symmetrically filter ALL-tag classifications", asy
                 scheme: "worker", username: null, password: null, hostname: null, port: null,
                 pathname: "/doc", query: null, fragment: null, lineMarker: null,
                 tx: "## READ0 (worker:///doc)", mimetype_tx: "text/vnd.plurnk",
-                rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json",
+                rx: JSON.stringify({ status: 200, content: "body", mimetype: "text/plain" }), mimetype_rx: "application/json",
                 status_rx: 200, weight: 0, state: "resolved", outcome: null, attrs: "{}",
             });
             assert.ok(row !== undefined);
@@ -377,13 +451,13 @@ test("FOLD[tag] and OPEN[tag] symmetrically filter ALL-tag classifications", asy
         await db.log_write_tag.run({ log_entry_id: classifiedId, tag: "hot" });
         const mk = () => makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" });
         const log = new Log();
-        const expandedAt = async (seq: number): Promise<number> =>
-            (await db.test_get_log_expanded.get<{ expanded: number }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: seq }))?.expanded ?? -1;
+        const foldedAt = async (seq: number): Promise<string | undefined> =>
+            (await db.test_get_log_folded.get<{ folded: string }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: seq }))?.folded;
 
         const fold = await log.fold({ ...foldStmt(null), signal: ["projectB"] }, mk());
         assert.equal(fold.status, 200);
         assert.equal(fold.matched, 1);
-        assert.equal(await expandedAt(2), 0, "row 2 folded");
+        assert.equal(await foldedAt(2), "[[1,-1]]", "row 2 folded");
 
         // FIND's signal classifies its own durable receipt at the Dispatcher seam; it does
         // not filter the rows returned by the scheme.
@@ -398,7 +472,7 @@ test("FOLD[tag] and OPEN[tag] symmetrically filter ALL-tag classifications", asy
         const open = await log.open({ ...openStmt(null), signal: ["projectB"] }, mk());
         assert.equal(open.status, 200);
         assert.equal(open.matched, 1);
-        assert.equal(await expandedAt(2), 1, "row 2 recalled by name");
+        assert.equal(await foldedAt(2), "[]", "row 2 recalled by name");
 
         // An unknown tag is a no-op success (204), never an error.
         assert.equal((await log.open({ ...openStmt(null), signal: ["ghost"] }, mk())).status, 204, "recalling an unused name steers nothing");
@@ -427,7 +501,7 @@ test("FOLD/OPEN tag changes apply only after unsigned tags select the log set", 
         const folded = await log.fold({ ...foldStmt(null), signal: ["research", "+archive", "-stale"] }, ctx);
         assert.equal(folded.status, 200);
         assert.equal(folded.matched, 1);
-        assert.equal(await getExpanded(db, workerId), 0);
+        assert.equal(await getFolded(db, workerId), "[[1,-1]]");
         assert.deepEqual(
             (await db.test_log_tags_by_worker.all<{ tag: string }>({ worker_id: workerId })).map(({ tag }) => tag),
             ["archive", "research"],
@@ -435,7 +509,7 @@ test("FOLD/OPEN tag changes apply only after unsigned tags select the log set", 
 
         const opened = await log.open({ ...openStmt(null), signal: ["archive", "-archive"] }, ctx);
         assert.equal(opened.status, 200);
-        assert.equal(await getExpanded(db, workerId), 1);
+        assert.equal(await getFolded(db, workerId), "[]");
         assert.deepEqual(
             (await db.test_log_tags_by_worker.all<{ tag: string }>({ worker_id: workerId })).map(({ tag }) => tag),
             ["research"],
@@ -465,8 +539,8 @@ test("FOLD/OPEN curate engine-minted error rows through the same operation coord
         // The model's exact gesture — fold the error row by its canonical operation address.
         const fold = await new Log().fold(foldStmt(urlPath("log", "/1/1/2/error")), ctx);
         assert.equal(fold.status, 200, "an error row folds by coordinate — the model can reclaim budget by curating its OWN error rows");
-        const folded = await db.test_get_log_expanded.get<{ expanded: number }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2 });
-        assert.equal(folded?.expanded, 0, "the error row is folded away");
+        const folded = await db.test_get_log_folded.get<{ folded: string }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2 });
+        assert.equal(folded?.folded, "[[1,-1]]", "the error row is folded away");
         // OPEN it back — full parity with model-op rows.
         const open = await new Log().open(openStmt(urlPath("log", "/1/1/2/error")), ctx);
         assert.equal(open.status, 200, "OPEN(log:///1/1/2/error) restores it — the lowercase suffix parses for OPEN too");

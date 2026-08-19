@@ -48,6 +48,7 @@ import TerminalResult from "./TerminalResult.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
 import JournalTurn from "./JournalTurn.ts";
 import LogBody from "./LogBody.ts";
+import LogVisibility from "./LogVisibility.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 
 // TurnRunner owns one durable model turn; Engine retains the surrounding loop
@@ -1877,7 +1878,11 @@ export default class TurnRunner {
                     mimetypeTx: "text/plain",
                     mimetypeRx: "application/json",
                 }, this.#weighContent),
-                expanded: terminal !== null && terminal.status >= 200 && terminal.status < 300 ? 1 : 0,
+                folded: LogVisibility.serialize(
+                    terminal !== null && terminal.status >= 200 && terminal.status < 300
+                        ? LogVisibility.OPEN
+                        : LogVisibility.FOLDED,
+                ),
                 attrs,
             });
             const materialized = inserted ?? await this.#db.engine_ambient_delta_id.get<{ id: number }>({
@@ -1993,7 +1998,7 @@ export default class TurnRunner {
                         }, this.#weighContent),
                         status: terminal?.status ?? 200,
                         attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: true }),
-                        expanded: 1,
+                        folded: LogVisibility.serialize(LogVisibility.OPEN),
                     });
                     written++;
                 }
@@ -2024,7 +2029,9 @@ export default class TurnRunner {
                 }, this.#weighContent),
                 status: result.status,
                 attrs: JSON.stringify({ streamEnd: publishEnd, terminal: terminalDelivery }),
-                expanded: terminalDelivery ? 1 : 0,  // {§exec-stream} — terminal observation auto-OPENs; ongoing folds
+                folded: LogVisibility.serialize(
+                    terminalDelivery ? LogVisibility.OPEN : LogVisibility.FOLDED,
+                ), // {§exec-stream} — terminal observation auto-OPENs; ongoing folds
             });
             written++;
         }

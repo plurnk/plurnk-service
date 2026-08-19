@@ -94,9 +94,11 @@ export default class ReadProjector {
             );
         }
 
+        const publishesLineAnchors = manifest.lineAnchors === true
+            || (manifest.textEditScopes === true && manifest.writableBy.includes("model"));
         let lineMarker: LineMarker | null;
         if (LineAnchors.hasAnchor(statement.lineMarker)) {
-            if (manifest.textEditScopes !== true || !manifest.writableBy.includes("model")) {
+            if (!publishesLineAnchors) {
                 return failure(
                     "line-anchor-unsupported",
                     400,
@@ -188,8 +190,7 @@ export default class ReadProjector {
             }) as EntryReadResult;
         if (
             result.status !== 200
-            || manifest.textEditScopes !== true
-            || !manifest.writableBy.includes("model")
+            || !publishesLineAnchors
             || typeof result.content !== "string"
         ) {
             return result;

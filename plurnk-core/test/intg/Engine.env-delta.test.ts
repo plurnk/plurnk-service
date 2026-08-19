@@ -264,11 +264,11 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
         // A's turn 2 pulls B's edit from the shared log as a FOLDED delta — A consulted no
         // per-worker snapshot; it learned its world moved purely through its own log.
         const turn = await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; expanded: number }>({ worker_id: workerA });
+        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; folded: string }>({ worker_id: workerA });
         const delta = rows.find((r) => r.op === "EDIT" && r.origin === "plurnk" && r.scheme === "worker" && r.pathname === "/shared.md");
         assert.ok(delta, "A's turn-2 log carries a delta for B's edit");
         assert.equal(delta!.source, "worker://sibling", "the durable delta uses the sibling's addressable identity");
-        assert.equal(delta!.expanded, 0, "the broadcast delta lands FOLDED — listed, collapsed until the model OPENs it");
+        assert.equal(delta!.folded, "[[1,-1]]", "the broadcast delta lands FOLDED — listed, collapsed until the model OPENs it");
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
         const packetDelta = logEntries(packet).find((entry) => entry.target === "worker:///shared.md" && String(entry.path).endsWith("/EDIT"));
@@ -654,11 +654,11 @@ test("an out-of-band disk change surfaces as a source=file delta narrated by the
 
         // Turn 2 — the plurnk worker logs the divergence as a source=file EDIT; A pulls it.
         const turn2 = await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; expanded: number; attrs: string; weight: number }>({ worker_id: workerA });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; folded: string; attrs: string; weight: number }>({ worker_id: workerA });
         const delta = rows.find((r) => r.origin === "plurnk" && r.op === "EDIT" && r.source === "file");
         assert.ok(delta, "the out-of-band disk change surfaced as a source=file delta");
         assert.equal(delta!.pathname, "notes.md", "the delta names the diverged file");
-        assert.equal(delta!.expanded, 0, "the fs delta lands folded");
+        assert.equal(delta!.folded, "[[1,-1]]", "the fs delta lands folded");
         const span = JSON.parse(delta!.rx).span as string;
         assert.match(span, /line3-external/, "the delta carries the changed span ({§env-delta-filesystem-narration})");
         assert.equal(delta!.weight, contentWeight(span), "the fs delta stores the weight of its canonical changed span");
@@ -742,7 +742,7 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
         // A's turn 2 pulls both terminations from the shared log: the 2xx
         // deliverable born open, the failure folded.
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; expanded: number }>({ worker_id: workerA });
+        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; status_rx: number | null; rx: string; folded: string }>({ worker_id: workerA });
 
         const win = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/worker");
         assert.ok(win, "worker's SEND[200] termination surfaced as a worker delta in A's log");
@@ -750,7 +750,7 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
         assert.equal(win!.source, "worker://worker", "attributed with the terminating worker's control identity");
         assert.equal(win!.status_rx, 200, "the terminal status rides");
         assert.deepEqual(JSON.parse(win!.rx), deliverable, "the exact terminal result rides the parent edge");
-        assert.equal(win!.expanded, 1, "born OPEN — a child's 2xx deliverable reaches the parent open + awakening, not hidden behind a fold");
+        assert.equal(win!.folded, "[]", "born OPEN — a child's 2xx deliverable reaches the parent open + awakening, not hidden behind a fold");
 
         const failed = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/failed-worker");
         assert.ok(failed, "the failed loop surfaced too — every death-path stamps terminated_at uniformly");
@@ -759,7 +759,7 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
         assert.equal(failure.status, 502, "the exact failure status survives the parent edge");
         assert.equal(failure.problem?.detail, "provider_failure", "the exact Problem survives the parent edge");
         assert.equal(failed!.source, "worker://failed-worker", "attributed with the failed worker's control identity");
-        assert.equal(failed!.expanded, 0, "a failure stays folded — only a 2xx deliverable is born open");
+        assert.equal(failed!.folded, "[[1,-1]]", "a failure stays folded — only a 2xx deliverable is born open");
     } finally {
         await db.close();
     }

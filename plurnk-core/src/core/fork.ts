@@ -2,7 +2,7 @@
 //
 // A fork is a new worker in the same workspace (`parent_worker_id` records the lineage),
 // holding a deep copy of the parent's log: loops → turns → entries, with their
-// fold-state (`expanded`) and attribution (`origin`/`source`) intact. It copies
+// folded body intervals and attribution (`origin`/`source`) intact. It copies
 // nothing of the shared WORLD — commons-owned entries and the overlay are shared, never
 // copied, because the worker never owned them. It DOES inherit the parent's private
 // entries ({§worker-scheme}, owner-remapped parent → branch):
@@ -100,7 +100,7 @@ export default class Fork {
             turnMap.set(id, nt.id);
         }
 
-        // entries → new entries: worker/loop/turn ids remapped; fold-state and
+        // entries → new entries: worker/loop/turn ids remapped; visibility and
         // attribution and content all preserved.
         const entries = await db.fork_get_log_entries.all<{ id: number; loop_id: number; turn_id: number; [k: string]: unknown }>({ worker_id: parentWorkerId });
         const logMap = new Map<number, number>();
@@ -115,7 +115,8 @@ export default class Fork {
         const curationEffects = await db.fork_get_log_curation_effects.all<{
             operation_log_entry_id: number;
             target_log_entry_id: number;
-            expanded_before: 0 | 1;
+            folded_before: string;
+            folded_after: string;
             tags_added: string;
             tags_removed: string;
         }>({ worker_id: parentWorkerId });
@@ -128,7 +129,8 @@ export default class Fork {
             await db.fork_insert_log_curation_effect.run({
                 operation_log_entry_id: operationLogEntryId,
                 target_log_entry_id: targetLogEntryId,
-                expanded_before: effect.expanded_before,
+                folded_before: effect.folded_before,
+                folded_after: effect.folded_after,
                 tags_added: effect.tags_added,
                 tags_removed: effect.tags_removed,
             });

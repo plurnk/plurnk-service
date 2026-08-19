@@ -27,6 +27,8 @@ import ProviderInstantiate from "./ProviderInstantiate.ts";
 import BudgetReadout from "./BudgetReadout.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import ToolResources from "./ToolResources.ts";
+import LogVisibility from "./LogVisibility.ts";
+import LogBody from "./LogBody.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -388,13 +390,79 @@ export default class PacketBuilder {
         // ONE rule, every turn ({§grinder-layer1-rollback}): atomically fold/tag
         // context introduced by the newest boundary. Other older history remains
         // model-owned; remaining curation debt is neither failure nor strike.
-        await this.#db.engine_grinder_fold_newest_turn({ loop_id: loopId, turn_id: turnId });
+        await this.#rollbackNewestBoundary(loopId, turnId);
         const current = await rebuild();
         return { packet: current, fit: measure(current) <= budget, boundaryRolledBack: true };
     }
 
     async rollbackNewestBoundary(loopId: number, turnId: number): Promise<void> {
-        await this.#db.engine_grinder_fold_newest_turn({ loop_id: loopId, turn_id: turnId });
+        await this.#rollbackNewestBoundary(loopId, turnId);
+    }
+
+    async #rollbackNewestBoundary(loopId: number, turnId: number): Promise<void> {
+        type PlannedTarget = {
+            readonly id: number;
+            readonly before: ReturnType<typeof LogVisibility.parse>;
+            after: ReturnType<typeof LogVisibility.parse>;
+        };
+        const plan = new Map<number, PlannedTarget>();
+        const boundary = await this.#db.engine_grinder_boundary_rows.all<{
+            id: number;
+            op: string | null;
+            attrs: string;
+            tx: string;
+            mimetype_tx: string;
+            rx: string;
+            mimetype_rx: string;
+            folded: string;
+        }>({ loop_id: loopId, turn_id: turnId });
+        for (const row of boundary) {
+            const before = LogVisibility.parse(row.folded);
+            const body = LogBody.resolve({
+                op: row.op,
+                attrs: row.attrs,
+                tx: row.tx,
+                rx: row.rx,
+                mimetypeTx: row.mimetype_tx,
+                mimetypeRx: row.mimetype_rx,
+            });
+            const after = LogVisibility.apply(
+                before,
+                "FOLD",
+                [1, -1],
+                LogVisibility.lineCount(body.content),
+            );
+            if (!LogVisibility.equal(before, after)) {
+                plan.set(row.id, { id: row.id, before, after });
+            }
+        }
+
+        const effects = await this.#db.engine_grinder_open_effects.all<{
+            id: number;
+            folded: string;
+            folded_before: string;
+            folded_after: string;
+        }>({ loop_id: loopId, turn_id: turnId });
+        for (const effect of effects) {
+            const opened = LogVisibility.openedBy(
+                LogVisibility.parse(effect.folded_before),
+                LogVisibility.parse(effect.folded_after),
+            );
+            if (opened.length === 0) continue;
+            const existing = plan.get(effect.id);
+            if (existing !== undefined) {
+                existing.after = LogVisibility.fold(existing.after, opened);
+                continue;
+            }
+            const before = LogVisibility.parse(effect.folded);
+            const after = LogVisibility.fold(before, opened);
+            if (!LogVisibility.equal(before, after)) {
+                plan.set(effect.id, { id: effect.id, before, after });
+            }
+        }
+        await this.#db.engine_grinder_apply({
+            targets: JSON.stringify([...plan.values()]),
+        });
     }
 
     // Every prior-turn operation failure is durable before packet assembly.
@@ -433,7 +501,7 @@ export default class PacketBuilder {
             hostname: string | null; port: number | null; pathname: string | null;
             query: string | null; fragment: string | null;
             status_rx: number; rx: string; mimetype_rx: string;
-            tx: string; mimetype_tx: string; expanded: number; source: string | null; attrs: string | null;
+            tx: string; mimetype_tx: string; folded: string; source: string | null; attrs: string | null;
             tags: string;
         }>({ worker_id: workerId });
         return rows.map((r) => {
@@ -486,7 +554,9 @@ export default class PacketBuilder {
                 mimetype_rx: r.mimetype_rx,
                 tx,
                 mimetype_tx: r.mimetype_tx,
-                folded: r.expanded === 0 && r.id !== transientOpenLogEntryId,
+                folded: r.id === transientOpenLogEntryId
+                    ? LogVisibility.OPEN
+                    : LogVisibility.parse(r.folded),
                 source: r.source,
                 attrs: r.attrs === null ? null : JSON.parse(r.attrs),
                 tags: JSON.parse(r.tags),

@@ -214,7 +214,7 @@ delimiter: string
 annotation: (string | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
-lineMarker: null
+lineMarker: (TextLineMarker | null)
 body: (MatcherBody | null)
 position: Position
 }
@@ -225,7 +225,7 @@ delimiter: string
 annotation: (string | null)
 signal: (string[] | null)
 target: (ParsedPath | null)
-lineMarker: null
+lineMarker: (TextLineMarker | null)
 body: (MatcherBody | null)
 position: Position
 }

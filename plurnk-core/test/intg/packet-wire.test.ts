@@ -108,7 +108,7 @@ test("log entry: durable folksonomic tags remain visible when the body is folded
         origin: "model",
         op: "READ",
         status: 200,
-        folded: true,
+        folded: [[1, -1]],
         tags: ["overflow", "research"],
         rx: { content: "large result", mimetype: "text/plain" },
     }], tok);
@@ -494,7 +494,7 @@ test("a failed content-bearing READ renders both its Problem and diagnostic body
             mimetype: "text/stream",
             startLine: 1,
         },
-        folded: false,
+        folded: [],
     }], tok);
 
     assert.match(out, /"problem":\{[^}]*"detail":"'sh' exited with code 1\."/);
@@ -570,7 +570,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
     const lineRegion = { startLine: 17, startColumn: 1, endLine: 18, endColumn: 1 };
     const rows = [
         {
-            coordinate: "1/1/1", origin: "model", op: "READ", status: 200, folded: true,
+            coordinate: "1/1/1", origin: "model", op: "READ", status: 200, folded: [[1, -1]],
             target: { scheme: null, pathname: "/lines.md" },
             rx: {
                 content: "alpha\n\n", mimetype: "text/markdown", startLine: 17, region: lineRegion,
@@ -578,12 +578,12 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
             },
         },
         {
-            coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: true,
+            coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: [[1, -1]],
             target: { scheme: null, pathname: "/exact.md" },
             rx: { content: "alpha", mimetype: "text/markdown", startLine: 2, region },
         },
         {
-            coordinate: "1/1/3", origin: "model", op: "FIND", status: 200, folded: true,
+            coordinate: "1/1/3", origin: "model", op: "FIND", status: 200, folded: [[1, -1]],
             target: { scheme: "worker", pathname: "/**" }, tx: { body: null },
             rx: {
                 content: '[{"path":"worker:///a"}]', mimetype: "application/json",
@@ -593,7 +593,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
             },
         },
         {
-            coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, folded: true,
+            coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, folded: [[1, -1]],
             target: { scheme: "worker", pathname: "/**" }, tx: { body: { raw: "/target/" } },
             rx: {
                 content: '[{"path":"worker:///a","matchLocationCount":2}]', mimetype: "application/json",
@@ -603,7 +603,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
             },
         },
         {
-            coordinate: "1/1/5", origin: "model", op: "FIND", status: 200, folded: true,
+            coordinate: "1/1/5", origin: "model", op: "FIND", status: 200, folded: [[1, -1]],
             target: { scheme: null, pathname: "/exact.md" }, tx: { body: { raw: "/target/" } },
             rx: {
                 content: `[${JSON.stringify({ region })}]`, mimetype: "application/json",
@@ -613,7 +613,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
             },
         },
         {
-            coordinate: "1/1/6", origin: "plurnk", op: "FIND", status: 200, folded: true,
+            coordinate: "1/1/6", origin: "plurnk", op: "FIND", status: 200, folded: [[1, -1]],
             target: { scheme: "worker", pathname: "/missing/**" }, tx: { body: null },
             rx: {
                 content: "[]", mimetype: "application/json",
@@ -623,7 +623,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
             },
         },
         {
-            coordinate: "1/1/7", origin: "model", op: "READ", status: 416, folded: true,
+            coordinate: "1/1/7", origin: "model", op: "READ", status: 416, folded: [[1, -1]],
             target: { scheme: null, pathname: "/lines.md" },
             rx: {
                 content: null,
@@ -703,7 +703,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
     if (tokenizer === null) throw new Error("The bundled Gemma tokenizer is required for the metadata budget contract.");
     assert.equal(tokenizer.tokenizerId, "5f7eee611703c5ce");
     const metadataTokens = await tokenizer.countTokens(metadata.map((row) => JSON.stringify(row)).join("\n"));
-    assert.equal(metadataTokens, 567, "canonical retrieval metadata has one reviewed Gemma-token count");
+    assert.equal(metadataTokens, 564, "canonical retrieval metadata has one reviewed Gemma-token count");
 
     assert.throws(
         () => PacketWire.renderLog([{
@@ -860,7 +860,7 @@ test("an oversized auto-opened terminal stream READ renders its complete observa
         status: 200,
         target: { scheme: "sh", pathname: "/1/1/1", fragment: "stdout" },
         rx: { status: 200, mimetype: "text/stream", content: output, startLine: 1 },
-        folded: false,
+        folded: [],
     }], tok);
     assert.match(rendered, /1:stream line 1/, "the terminal output arrives OPEN");
     assert.match(rendered, /40:stream line 40/, "READ observations are never silently projected again");
@@ -875,7 +875,7 @@ test("READ bodies render copyable Base62 line anchors while other numbered bodie
         status: 200,
         target: { scheme: "worker", pathname: "/notes.md" },
         rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta", startLine: 7 },
-        folded: false,
+        folded: [],
         lineAnchors: ["@aZ09b", "@Q1w2E"],
         lineNumberWidth: 1,
     }], tok);
@@ -889,10 +889,29 @@ test("READ bodies render copyable Base62 line anchors while other numbered bodie
         status: 200,
         target: { scheme: "worker", pathname: "/notes.md" },
         rx: { status: 200, mimetype: "application/json", content: '["one"]', startLine: 1 },
-        folded: false,
+        folded: [],
     }], tok);
     assert.match(find, /\n1:\["one"\]\n/);
     assert.doesNotMatch(find, /@[0-9A-Za-z]{5} 1:/);
+});
+
+test("partially folded log bodies preserve source coordinates and expose only hidden intervals", () => {
+    const rendered = PacketWire.renderLog([{
+        coordinate: "1/2/1",
+        origin: "model",
+        op: "READ",
+        status: 200,
+        target: { scheme: "worker", pathname: "/notes.md" },
+        rx: { status: 200, mimetype: "text/markdown", content: "one\ntwo\nthree\nfour", startLine: 17 },
+        folded: [[2, 3]],
+        lineAnchors: ["@00001", "@00002", "@00003", "@00004"],
+        lineNumberWidth: 2,
+    }], tok);
+    assert.match(rendered, /"display":"open"/);
+    assert.match(rendered, /"folded":\["<2,3>"\]/);
+    assert.match(rendered, /@00001 17:one/);
+    assert.match(rendered, /@00004 20:four/);
+    assert.doesNotMatch(rendered, /18:two|19:three/);
 });
 
 test("READ rendering fails hard when persisted anchors do not align with the projected snapshot", () => {
@@ -904,7 +923,7 @@ test("READ rendering fails hard when persisted anchors do not align with the pro
             status: 200,
             target: { scheme: "worker", pathname: "/notes.md" },
             rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta", startLine: 7 },
-            folded: false,
+            folded: [],
             lineAnchors: ["@aZ09b"],
             lineNumberWidth: 1,
         }], tok),
@@ -1000,7 +1019,7 @@ test("log render: READ@200 with text/html is line-addressable", () => {
 
 test("a folded model-emission row renders meta-only without inventing an operation", () => {
     const out = PacketWire.renderLog([{
-        coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: true,
+        coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: [[1, -1]],
         attrs: { kind: "model_emission" },
         rx: { content: "# PLAN0\nInitialize\n\n## SEND0 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
@@ -1011,7 +1030,7 @@ test("a folded model-emission row renders meta-only without inventing an operati
 
 test("an open model-emission row mirrors the model's own emission back, line-numbered", () => {
     const out = PacketWire.renderLog([{
-        coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: false,
+        coordinate: "1/1/1", origin: "model", op: null, status: 200, folded: [],
         attrs: { kind: "model_emission" },
         rx: { content: "# PLAN0\nInitialize\n\n## SEND0 [102]\nInitialized", mimetype: "text/vnd.plurnk" },
     }], tok);
@@ -1022,7 +1041,7 @@ test("an open model-emission row mirrors the model's own emission back, line-num
 
 test("an open initialization row identifies kernel-authored initialization without impersonating the model", () => {
     const out = PacketWire.renderLog([{
-        coordinate: "1/1/1", origin: "plurnk", op: null, status: 200, folded: false,
+        coordinate: "1/1/1", origin: "plurnk", op: null, status: 200, folded: [],
         attrs: { kind: "initialization" },
         rx: {
             content: "# PLAN0\n* Discover the tooling available and survey the workspace file root.\n\n## SEND0 [102]\nNext, address the prompt.",
@@ -1037,8 +1056,8 @@ test("an open initialization row identifies kernel-authored initialization witho
 test("the Log renders as a fenced jsonplurnk array that strips to valid JSON — one carve-out, deterministically", () => {
     const out = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "worker", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } }, // none: empty FIND, no body
-        { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: true, target: { scheme: null, pathname: "/a.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } }, // folded: body hidden
-        { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: false, target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // open: raw multiline string
+        { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: [[1, -1]], target: { scheme: null, pathname: "/a.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } }, // folded: body hidden
+        { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // open: raw multiline string
     ], tok);
     assert.match(out, /^`{3,}jsonplurnk\n/, "the fence leads — the Log carries data only, no prose note");
     const m = /(`{3,})jsonplurnk\n([\s\S]*?)\n\1/.exec(out);
@@ -1131,6 +1150,23 @@ test("every ordinary bounded body producer uses the same addressable preview", (
             `${entry.op} exposes the same selected and complete line extents`,
         );
     });
+});
+
+test("partial curation precedes automatic preview and chunk coordinates remain canonical", () => {
+    const content = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join("\n");
+    const rendered = PacketWire.renderLog([{
+        coordinate: "1/2/1",
+        origin: "model",
+        op: "SEND",
+        status: 200,
+        target: null,
+        tx: { body: { raw: content } },
+        folded: [[11, 14]],
+    }], tok);
+    assert.match(rendered, /20:line 20/, "later visible lines enter the bounded projection");
+    assert.doesNotMatch(rendered, /21:line 21/);
+    assert.match(rendered, /"folded":\["<11,14>"\]/);
+    assert.match(rendered, /"chunk":"showing <1,10>,<15,20> of <1,30>"/);
 });
 
 test("structured mutation receipts bypass a second generic preview", () => {
@@ -1303,7 +1339,7 @@ test("{§jsonplurnk}: a folded bounded body does not claim to display a chunk", 
         origin: "model",
         op: "SEND",
         status: 200,
-        folded: true,
+        folded: [[1, -1]],
         tx: { body: long },
     }], tok);
 

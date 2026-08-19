@@ -36,8 +36,8 @@ test("an explicit FOLD of the prompt row is ordinary curation", async () => {
         const r = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 200, "the valid prompt log row folds like every other open row");
         assert.equal((r as { matched?: number }).matched, 1);
-        const exp = await db.test_prompt_expanded.get<{ expanded: number }>({});
-        assert.equal(exp?.expanded, 0, "the explicit curation request is honored");
+        const visibility = await db.test_prompt_folded.get<{ folded: string }>({});
+        assert.equal(visibility?.folded, "[[1,-1]]", "the explicit curation request is honored");
     } finally { await db.close(); }
 });
 
@@ -49,8 +49,8 @@ test("the prompt row can be folded and opened again", async () => {
         assert.equal(folded.status, 200, "FOLD of the frame body is legal");
         const opened = await engine.dispatch({ statement: openStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
         assert.equal(opened.status, 200, "OPEN restores the configured prompt projection");
-        const exp = await db.test_prompt_expanded.get<{ expanded: number }>({});
-        assert.equal(exp?.expanded, 1, "the frame survives the round trip");
+        const visibility = await db.test_prompt_folded.get<{ folded: string }>({});
+        assert.equal(visibility?.folded, "[]", "the frame survives the round trip");
     } finally { await db.close(); }
 });
 
@@ -90,19 +90,24 @@ test("the grinder never folds the prompt frame, even on overflow", async () => {
         // Fire the grinder's fold directly (as enforceBudget does on overflow) against turn 1.
         const t1 = await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: loopId, sequence: 1 });
         const before = await db.engine_render_log.all<{
+            id: number;
             loop_seq: number;
             turn_seq: number;
             sequence: number;
             op: string;
             scheme: string | null;
-            expanded: number;
+            folded: string;
         }>({ worker_id: workerId });
-        await db.engine_grinder_fold_newest_turn({ loop_id: loopId, turn_id: t1!.id });
-        const exp = await db.test_prompt_expanded.get<{ expanded: number }>({});
-        assert.equal(exp?.expanded, 1, "the grinder skipped the prompt — the task frame survives its reclamation");
+        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
+        const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
+        await builder.rollbackNewestBoundary(loopId, t1!.id);
+        const visibility = await db.test_prompt_folded.get<{ folded: string }>({});
+        assert.equal(visibility?.folded, "[]", "the grinder skipped the prompt — the task frame survives its reclamation");
 
+        const after = new Map((await db.engine_render_log.all<{ id: number; folded: string }>({ worker_id: workerId }))
+            .map((row) => [row.id, row.folded]));
         const expected = before
-            .filter((row) => row.expanded === 1 && row.op !== "error" && row.op !== "PLAN" && row.scheme !== "prompt")
+            .filter((row) => after.get(row.id) !== row.folded)
             .map((row) => `${row.loop_seq}/${row.turn_seq}/${row.sequence}`)
             .sort();
         const overflowTags = (await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: workerId }))

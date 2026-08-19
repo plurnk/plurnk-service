@@ -35,6 +35,10 @@ export interface SchemeManifest {
     // True only when EDIT accepts the shared textual <scope> contract. Core
     // then lowers rendered line anchors to numeric coordinates before dispatch.
     readonly textEditScopes?: boolean;
+    // True when the scheme's stable textual representations publish and accept
+    // shared line anchors without claiming EDIT support. textEditScopes also
+    // implies this capability.
+    readonly lineAnchors?: boolean;
     // Entries land FOLDED, off the ranked manifest surface (READable by address,
     // not poured into the ranked view). Absent/false → first-class ranked.
     // Full contract + containment rationale: SPEC {§manifest} (foldedByDefault).

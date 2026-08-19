@@ -86,7 +86,7 @@ test("an oversized deliverable renders the universal preview and log recovery ad
     const row = {
         coordinate: "1/2/1", origin: "plurnk", op: "SEND", delimiter: "", signal: null, source: "worker://comparison-checker",
         target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/comparison-checker", query: null, fragment: null },
-        status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: false, attrs: null,
+        status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: null,
     };
     const rendered = PacketWire.renderLog([row], countTokens);
     assert.ok(rendered.includes("deranged output line 1"), "the preview head is visible");
@@ -100,7 +100,7 @@ test("a single-line body is constrained by the independent character bound", () 
     const row = {
         coordinate: "1/2/1", origin: "plurnk", op: "SEND", delimiter: "", signal: null, source: "worker://oneliner",
         target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/oneliner", query: null, fragment: null },
-        status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: false, attrs: null,
+        status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: null,
     };
     const rendered = PacketWire.renderLog([row], countTokens);
     const bodyChars = (rendered.match(/x+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0);
@@ -113,7 +113,7 @@ test("a small deliverable rides whole — whole-when-small is the common case, u
     const row = {
         coordinate: "1/2/1", origin: "plurnk", op: "SEND", delimiter: "", signal: null, source: "worker://tidy",
         target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/tidy", query: null, fragment: null },
-        status: 200, rx: "answer: 42\nnotes: none", mimetype_rx: "text/markdown", tx: { body: "" }, folded: false, attrs: null,
+        status: 200, rx: "answer: 42\nnotes: none", mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: null,
     };
     const rendered = PacketWire.renderLog([row], countTokens);
     assert.ok(rendered.includes("answer: 42") && rendered.includes("notes: none"), "the whole deliverable rides");

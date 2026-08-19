@@ -385,7 +385,7 @@ test("GBNF OPEN and FOLD shape curation syntax while the parser owns selection v
             [],
             `${op} tolerant ingestion leaves target ownership to runtime`,
         );
-        assert.equal(derivesTurn(turn("p", [mid(op, " [memory] (log:///**) <1,2>")], 102, "done")), false, op);
+        assert.equal(derivesTurn(turn("p", [mid(op, " [memory] (log:///**) <1,2>")], 102, "done")), true, op);
     }
 });
 
@@ -534,6 +534,11 @@ test("GBNF preserves signs as operators only at the start of a tag term", () => 
     assert.equal(derives("statement", "## FIND0 [+a+b-c] (source)\n\n"), true);
     assert.equal(derives("statement", "## FIND0 [+-tag] (source)\n\n"), false);
     assert.equal(derives("statement", "## FOLD0 [a+b-c,-stale+old] (log:///**)\n\n"), true);
+});
+
+test("GBNF shapes scoped bulk log curation with numeric or anchored lines", () => {
+    assert.equal(derives("statement", "## FOLD0 (log:///**/READ) <17,-1>\n\n"), true);
+    assert.equal(derives("statement", "## OPEN0 (log:///1/2/3/READ) <@aB3dE>\n\n"), true);
 });
 
 test("representative rail turns round-trip through ANTLR", () => {

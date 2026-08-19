@@ -348,11 +348,11 @@ ORDER BY ae.id;
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source, ambient_event_id,
     op, scheme, hostname, pathname, tx, mimetype_tx,
-    rx, mimetype_rx, status_rx, weight, expanded, attrs
+    rx, mimetype_rx, status_rx, weight, folded, attrs
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', $source, $event_id,
     $op, $scheme, $hostname, $pathname, '', 'text/plain',
-    $rx, $mimetype_rx, $status, $weight, $expanded, $attrs
+    $rx, $mimetype_rx, $status, $weight, $folded, $attrs
 )
 ON CONFLICT(worker_id, ambient_event_id) WHERE ambient_event_id IS NOT NULL DO NOTHING
 RETURNING id;
@@ -400,14 +400,14 @@ ORDER BY id DESC LIMIT 1;
 -- PREP: engine_insert_stream_delta
 -- {§exec-stream} / {§env-delta} — materialize a channel's next publishable content as a
 -- foisted READ row (the model READs the stream it never typed). origin=plurnk; fragment is
--- the channel; attrs.streamEnd is the next turn's cursor; expanded=1 for a terminal
--- observation, 0 for an ongoing observation. {§exec-stream}
+-- the channel; attrs.streamEnd is the next turn's cursor; terminal observations
+-- are born open and ongoing observations wholly folded. {§exec-stream}
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
-    op, scheme, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs, expanded
+    op, scheme, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs, folded
 ) VALUES (
     $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', NULL, NULL,
-    'READ', $scheme, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $weight, $attrs, $expanded
+    'READ', $scheme, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $weight, $attrs, $folded
 );
 
 -- PREP: engine_child_workers_live
@@ -452,54 +452,94 @@ WHERE le.loop_id = $loop_id
   AND t.sequence >= $current_turn_seq - 1
 ORDER BY t.sequence, le.sequence;
 
--- TX: engine_grinder_fold_newest_turn
+-- PREP: engine_grinder_boundary_rows
 -- {§grinder-layer1-rollback} — THE DOCTRINE: the log is the model's memory and the model ALONE
 -- curates it (FOLD/KILL). The grinder rolls back only context introduced by the newest turn
 -- boundary: rows born in the immediately-prior/current turn plus exact older rows that a successful
--- OPEN in the immediately-prior turn transitioned from folded to open. The durable effect relation
--- owns that landed set; never re-run an authored glob/tag/matcher against later state. An OPEN no-op
--- contributes no older row. Turn 1 is the same rule (no prior turn; its foists are the newest).
--- Folded, never deleted; THREE exemptions ({§grinder-errors-exempt}): op='error',
--- the user prompt, and PLAN. The temporary set captures the
--- selection once so folding and additive `overflow` tagging cannot diverge.
-CREATE TEMP TABLE IF NOT EXISTS engine_grinder_fold_set (id INTEGER PRIMARY KEY);
-DELETE FROM engine_grinder_fold_set;
+-- OPEN in the immediately-prior turn exposed. TypeScript performs the interval
+-- algebra; this query owns the boundary selection. Folded, never deleted; THREE
+-- exemptions ({§grinder-errors-exempt}): op='error', the user prompt, and PLAN.
 WITH previous_turn AS (
     SELECT MAX(id) AS id FROM turns WHERE loop_id = $loop_id AND id < $turn_id
 )
-INSERT INTO engine_grinder_fold_set (id)
-SELECT boundary.id
+SELECT boundary.id, boundary.op, boundary.attrs,
+       boundary.tx, boundary.mimetype_tx, boundary.rx, boundary.mimetype_rx,
+       boundary.folded
 FROM log_entries boundary
 WHERE boundary.loop_id = $loop_id
-  AND boundary.expanded = 1
+  AND json(boundary.folded) != '[[1,-1]]'
   AND COALESCE(boundary.op, '') NOT IN ('error', 'PLAN')
   AND COALESCE(boundary.scheme, '') != 'prompt'  -- the task frame ({§prompt-self-only}); NULL-safe: a model-emission row's scheme is NULL
-  AND (boundary.turn_id = $turn_id OR boundary.turn_id = (SELECT id FROM previous_turn))
-UNION
-SELECT target.id
+  AND (boundary.turn_id = $turn_id OR boundary.turn_id = (SELECT id FROM previous_turn));
+
+-- PREP: engine_grinder_open_effects
+-- Exact intervals exposed by successful OPENs at the boundary. Current target
+-- visibility rides beside them so later authored FOLDs remain authoritative.
+WITH previous_turn AS (
+    SELECT MAX(id) AS id FROM turns WHERE loop_id = $loop_id AND id < $turn_id
+)
+SELECT target.id, target.folded,
+       effect.folded_before, effect.folded_after
 FROM log_curation_effects effect
 JOIN log_entries operation ON operation.id = effect.operation_log_entry_id
 JOIN log_entries target ON target.id = effect.target_log_entry_id
 WHERE operation.turn_id = (SELECT id FROM previous_turn)
   AND operation.op = 'OPEN'
   AND operation.status_rx < 400
-  AND effect.expanded_before = 0
-  AND target.expanded = 1
   AND COALESCE(target.op, '') NOT IN ('error', 'PLAN')
   AND COALESCE(target.scheme, '') != 'prompt';
 
-UPDATE log_entries SET expanded = 0
-WHERE id IN (SELECT id FROM engine_grinder_fold_set);
+-- TX: engine_grinder_apply
+-- Apply one already-resolved exact set atomically. Each before snapshot is a
+-- collision guard; concurrent visibility change fails at this owning boundary.
+CREATE TEMP TABLE IF NOT EXISTS engine_grinder_plan_guard (
+    valid INTEGER NOT NULL CHECK (valid = 1)
+);
+DELETE FROM engine_grinder_plan_guard;
+INSERT INTO engine_grinder_plan_guard (valid)
+SELECT CASE WHEN
+    COALESCE(json_type($targets), '') != 'array'
+    OR EXISTS (
+        SELECT 1
+        FROM json_each($targets) target
+        WHERE target.type != 'object'
+           OR COALESCE(json_type(target.value, '$.id'), '') != 'integer'
+           OR COALESCE(json_type(target.value, '$.before'), '') != 'array'
+           OR COALESCE(json_type(target.value, '$.after'), '') != 'array'
+    )
+    OR (
+        SELECT COUNT(*) FROM json_each($targets)
+    ) != (
+        SELECT COUNT(DISTINCT json_extract(value, '$.id')) FROM json_each($targets)
+    )
+    OR EXISTS (
+        SELECT 1
+        FROM json_each($targets) planned
+        LEFT JOIN log_entries current ON current.id = json_extract(planned.value, '$.id')
+        WHERE current.id IS NULL
+           OR json(current.folded) != json(json_extract(planned.value, '$.before'))
+    )
+THEN 0 ELSE 1 END;
+
+UPDATE log_entries
+SET folded = (
+    SELECT json_extract(planned.value, '$.after')
+    FROM json_each($targets) planned
+    WHERE json_extract(planned.value, '$.id') = log_entries.id
+)
+WHERE id IN (SELECT json_extract(value, '$.id') FROM json_each($targets));
 
 INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
-SELECT id, 'overflow' FROM engine_grinder_fold_set;
+SELECT json_extract(value, '$.id'), 'overflow'
+FROM json_each($targets)
+WHERE json(json_extract(value, '$.before')) != json(json_extract(value, '$.after'));
 
-DELETE FROM engine_grinder_fold_set;
+DELETE FROM engine_grinder_plan_guard;
 
 -- PREP: engine_fold_log_entry
 -- Fold one known log row by id. Model-emission rows use this after insertion so
 -- the complete admitted emission remains available without opening by default.
-UPDATE log_entries SET expanded = 0 WHERE id = $id;
+UPDATE log_entries SET folded = '[[1,-1]]' WHERE id = $id;
 
 -- PREP: engine_render_log
 -- Render-time log-section assembly ({§body-projection}).
@@ -507,8 +547,8 @@ UPDATE log_entries SET expanded = 0 WHERE id = $id;
 -- memory carries across loops within a worker, not just the
 -- current loop. Coordinates append /<op> only for rows that represent an operation.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
--- `expanded = 0` rows are FOLDED — listed but collapsed to their coordinate
--- (FOLD); the renderer elides the body. {§open-fold}: folded rows stay listed, re-OPENable.
+-- Folded intervals are projected against the canonical body by packet-wire;
+-- wholly folded rows remain listed and re-OPENable. {§open-fold}
 SELECT
     le.id,
     l.sequence  AS loop_seq,
@@ -522,7 +562,7 @@ SELECT
     le.query, le.fragment,
     le.status_rx, le.rx, le.mimetype_rx,
     le.tx, le.mimetype_tx,
-    le.state, le.outcome, le.expanded, le.source, le.weight, le.attrs,
+    le.state, le.outcome, le.folded, le.source, le.weight, le.attrs,
     COALESCE((
         SELECT json_group_array(ordered.tag)
         FROM (

@@ -48,7 +48,6 @@ import type {
     WorkStatementContext,
     ForkStatementContext,
     BranchModifiersContext,
-    CurationModifiersContext,
     LookStatementContext,
     MoveStatementContext,
     ReadStatementContext,
@@ -82,7 +81,7 @@ type Ctor<T> = new (...args: any[]) => T;
 
 type TagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: LineMarker | null };
 type TextTagSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: TextLineMarker | null };
-type CurationSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: null };
+type CurationSlots = { signal: string[] | null; target: ParsedPath | null; lineMarker: TextLineMarker | null };
 type IntSlots = { signal: number | null; target: ParsedPath | null };
 type ExecSlots = { signal: string | null; target: ParsedPath | null; lineMarker: LineMarker | null };
 
@@ -227,7 +226,7 @@ export default class AstBuilder {
 
     static #buildOpen(ctx: OpenStatementContext): OpenStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractCurationSlots(ctx.curationModifiers(), position);
+        const slots = AstBuilder.#extractCurationSlots(ctx.tagOpModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         const tags = AstBuilder.#curationTags(slots.signal, position);
         if (slots.target === null && raw === null && tags.filter.length === 0 && (tags.add.length > 0 || tags.remove.length > 0)) {
@@ -250,7 +249,7 @@ export default class AstBuilder {
 
     static #buildFold(ctx: FoldStatementContext): FoldStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractCurationSlots(ctx.curationModifiers(), position);
+        const slots = AstBuilder.#extractCurationSlots(ctx.tagOpModifiers(), position);
         const raw = AstBuilder.#bodyTextOf(ctx);
         const tags = AstBuilder.#curationTags(slots.signal, position);
         if (slots.target === null && raw === null && tags.filter.length === 0 && (tags.add.length > 0 || tags.remove.length > 0)) {
@@ -443,11 +442,11 @@ export default class AstBuilder {
         };
     }
 
-    static #extractCurationSlots(modCtx: CurationModifiersContext | null, pos: Position): CurationSlots {
+    static #extractCurationSlots(modCtx: TagOpModifiersContext | null, pos: Position): CurationSlots {
         return {
             signal: AstBuilder.#tagsFromSignal(AstBuilder.#findFirst(modCtx, TagSignalContext)),
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
-            lineMarker: null,
+            lineMarker: AstBuilder.#textLineMarkerFromCtx(AstBuilder.#findFirst(modCtx, LineMarkerContext)),
         };
     }
 

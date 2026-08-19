@@ -1835,8 +1835,7 @@ export default class Dispatcher {
                 throw new Error("Dispatcher.#writeLog: result attrs collide with private log curation state");
             }
             attrsObj.__plurnk_curation = {
-                ids: curationPlan.targetLogEntryIds,
-                expanded: curationPlan.expanded,
+                targets: curationPlan.targets,
                 add: curationPlan.add,
                 remove: curationPlan.remove,
             };

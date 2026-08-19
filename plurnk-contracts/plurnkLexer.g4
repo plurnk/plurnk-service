@@ -149,7 +149,8 @@ public getOpenHeading(): string { return this.openHeading; }
 private isSendOp(): boolean { return this.openOp === "SEND"; }
 private isExecOp(): boolean { return this.openOp === "EXEC"; }
 private isTextCoordinateOp(): boolean {
-    return this.openOp === "READ" || this.openOp === "EDIT" || this.openOp === "COPY" || this.openOp === "MOVE" || this.openOp === "LOOK";
+    return this.openOp === "READ" || this.openOp === "EDIT" || this.openOp === "COPY" || this.openOp === "MOVE"
+        || this.openOp === "OPEN" || this.openOp === "FOLD" || this.openOp === "LOOK";
 }
 private isKillOp(): boolean { return this.openOp === "KILL"; }
 }

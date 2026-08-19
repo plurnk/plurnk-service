@@ -27,14 +27,16 @@ SELECT sequence, status_rx, pathname, op FROM log_entries
 WHERE turn_id = $turn_id
 ORDER BY sequence;
 
--- PREP: test_get_log_expanded
-SELECT le.expanded FROM log_entries le
+-- PREP: test_get_log_folded
+SELECT le.folded
+FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
 -- PREP: test_log_curation_effects_by_worker
-SELECT effect.operation_log_entry_id, effect.target_log_entry_id, effect.expanded_before,
+SELECT effect.operation_log_entry_id, effect.target_log_entry_id,
+       effect.folded_before, effect.folded_after,
        effect.tags_added, effect.tags_removed,
        operation.op, operation.turn_id,
        operation.sequence AS operation_sequence,
@@ -188,7 +190,8 @@ WHERE l.worker_id = $worker_id ORDER BY coordinate, lt.tag;
 -- ({§connection-lifecycle}), so a test queries by the loopId it holds.
 -- origin is the writer tier (model | client | plurnk) — lets a test assert an engine foist
 -- (origin='plurnk') vs a model op without a second query.
-SELECT id, op, pathname, scheme, hostname, sequence, turn_id, loop_id, status_rx, signal, tx, rx, expanded, origin, lineMarker, attrs
+SELECT id, op, pathname, scheme, hostname, sequence, turn_id, loop_id, status_rx, signal, tx, rx,
+       folded, origin, lineMarker, attrs
 FROM log_entries WHERE loop_id = $loop_id ORDER BY id;
 
 -- PREP: test_get_worker_id_by_loop
@@ -510,8 +513,9 @@ FROM workers WHERE workspace_id = $workspace_id ORDER BY id;
 -- PREP: test_first_turn_for_loop
 SELECT packet FROM turns WHERE loop_id = $loop_id ORDER BY sequence LIMIT 1;
 
--- PREP: test_prompt_expanded
-SELECT expanded FROM log_entries WHERE scheme='prompt' AND op='prompt' LIMIT 1;
+-- PREP: test_prompt_folded
+SELECT folded
+FROM log_entries WHERE scheme='prompt' AND op='prompt' LIMIT 1;
 
 -- PREP: test_turn_id_by_seq
 SELECT id FROM turns WHERE loop_id = $loop_id AND sequence = $sequence;

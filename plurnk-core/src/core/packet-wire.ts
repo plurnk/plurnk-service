@@ -13,6 +13,7 @@ import { renderTarget } from "./plurnk-uri.ts";
 import type { GitStatus } from "./git-state.ts";
 import LogBody from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
+import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
 import {
     assertEditReceipt,
     assertResourceEffects,
@@ -90,7 +91,7 @@ interface LogEntryView {
     mimetype_tx?: unknown;
     rx?: unknown;
     mimetype_rx?: unknown;
-    folded?: boolean;
+    folded?: unknown;
     source?: unknown;
     attrs?: unknown;
     tags?: unknown;
@@ -109,6 +110,14 @@ interface Packet { sections?: SectionView[] }
 type WeighContent = (text: string) => number;
 interface RenderLogOptions {
     readonly promptProjectionWeight?: number;
+}
+
+interface VisibleLogBody {
+    readonly content: string;
+    readonly ordinals: readonly number[];
+    readonly folded: LogFoldRanges;
+    readonly totalLines: number;
+    readonly fullyFolded: boolean;
 }
 
 export default class PacketWire {
@@ -235,6 +244,43 @@ export default class PacketWire {
         )}`;
     }
 
+    static #numberSelectedLines(
+        body: string,
+        ordinals: readonly number[],
+        startLine: number,
+        lineAnchors: readonly string[] | null,
+        lineNumberWidth: number | null,
+        numericLineNumberWidth: number,
+    ): string {
+        const lines = TextCoordinates.logicalLines(body);
+        if (lines.length !== ordinals.length) {
+            throw new TypeError("A sparse log-body projection requires one source ordinal per rendered line.");
+        }
+        const displayed = ordinals.map((ordinal) => startLine + ordinal - 1);
+        const width = lineAnchors === null
+            ? numericLineNumberWidth > 0
+                ? numericLineNumberWidth
+                : String(Math.max(...displayed)).length
+            : lineNumberWidth ?? 0;
+        if (lineAnchors !== null && !LineAnchors.isLineNumberWidth(width)) {
+            throw new TypeError("An anchored sparse log-body projection requires a valid source line width.");
+        }
+        return lines.map((line, index) => {
+            const ordinal = ordinals[index]!;
+            const lineNumber = displayed[index]!;
+            const content = body.slice(line.start, line.contentEnd);
+            if (lineAnchors === null) {
+                return `${String(lineNumber).padStart(width, " ")}:${content}${line.separator}`;
+            }
+            const anchor = lineAnchors[ordinal - 1];
+            if (!LineAnchors.isAnchor(anchor)) {
+                throw new TypeError(`A sparse READ projection has no line anchor for body line ${ordinal}.`);
+            }
+            const separator = " ".repeat(width - String(lineNumber).length + 1);
+            return `${anchor}${separator}${lineNumber}:${content}${line.separator}`;
+        }).join("");
+    }
+
     // The single content-body renderer EVERY output-emitting op routes through.
     // Exact READ content receives source-width-aligned `@hash N:`; other textual bodies receive `N:`.
     // Matchers consume canonical content before this presentation projection.
@@ -245,14 +291,24 @@ export default class PacketWire {
         lineAnchors: readonly string[] | null = null,
         lineNumberWidth: number | null = null,
         numericLineNumberWidth = 0,
+        lineOrdinals: readonly number[] | null = null,
     ): string {
         if (content.length === 0) return "";
         // `startLine === null` means the producer already supplied numbered
         // content; re-numbering would duplicate its coordinates.
         const rendered = startLine !== null
-            ? lineAnchors === null
-                ? PacketWire.#numberLines(content, startLine, numericLineNumberWidth)
-                : LineAnchors.render(content, startLine, lineAnchors, lineNumberWidth ?? 0)
+            ? lineOrdinals !== null
+                ? PacketWire.#numberSelectedLines(
+                    content,
+                    lineOrdinals,
+                    startLine,
+                    lineAnchors,
+                    lineNumberWidth,
+                    numericLineNumberWidth,
+                )
+                : lineAnchors === null
+                    ? PacketWire.#numberLines(content, startLine, numericLineNumberWidth)
+                    : LineAnchors.render(content, startLine, lineAnchors, lineNumberWidth ?? 0)
             : content;
         return PacketWire.#quoteBody(rendered);
     }
@@ -415,14 +471,58 @@ export default class PacketWire {
         return `showing ${selected} of ${complete}`;
     }
 
+    static #sparseChunk(
+        completeContent: string,
+        visibleContent: string,
+        visibleOrdinals: readonly number[],
+        projectedContent: string,
+    ): string {
+        const end = projectedContent.length;
+        const coordinates = new TextCoordinates(visibleContent);
+        const lines = coordinates.logicalLines();
+        const finalCompleteLine = lines.findIndex((line) =>
+            line.separator.length > 0 && line.end === end);
+        if (finalCompleteLine !== -1) {
+            const selectedOrdinals = visibleOrdinals.slice(0, finalCompleteLine + 1);
+            const runs: Array<[number, number]> = [];
+            for (const ordinal of selectedOrdinals) {
+                const previous = runs.at(-1);
+                if (previous === undefined || ordinal !== previous[1] + 1) {
+                    runs.push([ordinal, ordinal]);
+                } else {
+                    previous[1] = ordinal;
+                }
+            }
+            const selected = runs.map(([start, finish]) => `<${start},${finish}>`).join(",");
+            return `showing ${selected} of <1,${TextCoordinates.logicalLines(completeContent).length}>`;
+        }
+
+        const local = coordinates.regionFromOffsets(0, end);
+        const complete = new TextCoordinates(completeContent)
+            .regionFromOffsets(0, completeContent.length);
+        if (local === null || complete === null) {
+            throw new Error("a sparse character-bound chunk must resolve to exact text coordinates");
+        }
+        const startLine = visibleOrdinals[local.startLine - 1];
+        const endLine = visibleOrdinals[local.endLine - 1];
+        if (startLine === undefined || endLine === undefined) {
+            throw new Error("a sparse character-bound chunk must map to canonical body lines");
+        }
+        return `showing ${PacketWire.#formatRegion({
+            ...local,
+            startLine,
+            endLine,
+        })} of ${PacketWire.#formatRegion(complete)}`;
+    }
+
     static #promptProjection(
         body: ReturnType<typeof LogBody.resolve>,
         budget: number,
         weighContent: WeighContent,
+        render: (content: string) => string = (content) =>
+            PacketWire.#renderContentBody(content, body.startLine, null),
     ): { text: string; cut: boolean; chunk: string | null } {
-        const weightAt = (end: number): number => weighContent(
-            PacketWire.#renderContentBody(body.content.slice(0, end), body.startLine, null),
-        );
+        const weightAt = (end: number): number => weighContent(render(body.content.slice(0, end)));
         if (weightAt(body.content.length) <= budget) {
             return { text: body.content, cut: false, chunk: null };
         }
@@ -472,9 +572,31 @@ export default class PacketWire {
         };
     }
 
+    static #visibleBody(
+        entry: LogEntryView,
+        body: ReturnType<typeof LogBody.resolve>,
+    ): VisibleLogBody {
+        const folded = LogVisibility.parse(entry.folded ?? LogVisibility.OPEN);
+        const lines = TextCoordinates.logicalLines(body.content);
+        const totalLines = lines.length;
+        const clipped = LogVisibility.clipped(folded, totalLines);
+        const ordinals = LogVisibility.visibleLineOrdinals(clipped, totalLines);
+        return {
+            content: ordinals.map((ordinal) => {
+                const line = lines[ordinal - 1]!;
+                return body.content.slice(line.start, line.end);
+            }).join(""),
+            ordinals,
+            folded: clipped,
+            totalLines,
+            fullyFolded: LogVisibility.fullyFolded(clipped, totalLines),
+        };
+    }
+
     static #promptProjectionWeights(
         entries: readonly LogEntryView[],
         bodies: readonly ReturnType<typeof LogBody.resolve>[],
+        visibility: readonly VisibleLogBody[],
         weighContent: WeighContent,
         budget: number | undefined,
     ): ReadonlyMap<number, number> {
@@ -483,8 +605,20 @@ export default class PacketWire {
             throw new RangeError(`promptProjectionWeight must be a non-negative safe integer, got ${JSON.stringify(budget)}`);
         }
         const costs = entries.flatMap((entry, index) => {
-            if (entry.op !== "prompt" || entry.folded === true || bodies[index]!.content.length === 0) return [];
-            const rendered = PacketWire.#renderContentBody(bodies[index]!.content, bodies[index]!.startLine, null);
+            if (entry.op !== "prompt" || bodies[index]!.content.length === 0) return [];
+            const body = bodies[index]!;
+            const visible = visibility[index]!;
+            const width = body.startLine === null || visible.totalLines === 0
+                ? 0
+                : String(body.startLine + visible.totalLines - 1).length;
+            const rendered = PacketWire.#renderContentBody(
+                body.content,
+                body.startLine,
+                null,
+                null,
+                width,
+                body.startLine === null ? null : visible.ordinals,
+            );
             return [{ index, cost: weighContent(rendered) }];
         });
         const allocations = new Map<number, number>();
@@ -520,9 +654,16 @@ export default class PacketWire {
                 mimetypeRx: typeof e.mimetype_rx === "string" ? e.mimetype_rx : undefined,
             });
         });
+        const visibility = entries.map((entry, index) =>
+            PacketWire.#visibleBody(entry, bodies[index]!));
+        const visibleBodies = bodies.map((body, index) => ({
+            ...body,
+            content: visibility[index]!.fullyFolded ? "" : visibility[index]!.content,
+        }));
         const promptProjectionWeights = PacketWire.#promptProjectionWeights(
             entries,
-            bodies,
+            visibleBodies,
+            visibility,
             weighContent,
             options.promptProjectionWeight,
         );
@@ -701,27 +842,61 @@ export default class PacketWire {
             // allowance. Structured mutation receipts own their join bound;
             // every remaining body uses the ordinary fixed preview.
             const fullBody = bodies[index]!;
+            const bodyVisibility = visibility[index]!;
+            const projectedBody = bodyVisibility.fullyFolded
+                ? fullBody
+                : { ...fullBody, content: bodyVisibility.content };
             const emptyFind = op === "FIND" && e.status === 200 && findItems === 0;
             const previewExempt = op === "READ"
                 || op === "FIND"
                 || op === "PLAN"
                 || structuredMutationReceipt;
-            const promptProjectionWeight = promptProjectionWeights.get(index);
-            const projection = promptProjectionWeight !== undefined
-                ? PacketWire.#promptProjection(fullBody, promptProjectionWeight, weighContent)
-                : previewExempt
-                ? { text: fullBody.content, cut: false, chunk: null }
-                : PacketWire.#preview(fullBody.content);
-            if (projection.cut && path === null) {
-                throw new Error("a previewed log body requires an addressable log path");
-            }
             const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;
             const lineNumberWidth = op === "READ" ? e.lineNumberWidth ?? null : null;
+            if (lineAnchors !== null) {
+                LineAnchors.assertProjection(fullBody.content, lineAnchors);
+            }
             const findRange = op === "FIND" && meta.range !== null && typeof meta.range === "object"
                 ? meta.range as RangeExtent
                 : null;
             const bodyStartLine = findRange?.returned?.[0] ?? fullBody.startLine;
-            const numericLineNumberWidth = findRange === null ? 0 : String(findRange.total).length;
+            const numericLineNumberWidth = findRange === null
+                ? bodyStartLine === null || bodyVisibility.totalLines === 0
+                    ? 0
+                    : String(bodyStartLine + bodyVisibility.totalLines - 1).length
+                : String(findRange.total).length;
+            const allOrdinals = Array.from(
+                { length: bodyVisibility.totalLines },
+                (_, ordinal) => ordinal + 1,
+            );
+            const sourceOrdinals = bodyVisibility.fullyFolded
+                ? allOrdinals
+                : bodyVisibility.ordinals;
+            const promptProjectionWeight = promptProjectionWeights.get(index);
+            const projection = promptProjectionWeight !== undefined
+                ? PacketWire.#promptProjection(
+                    projectedBody,
+                    promptProjectionWeight,
+                    weighContent,
+                    (content) => PacketWire.#renderContentBody(
+                        content,
+                        bodyStartLine,
+                        null,
+                        null,
+                        numericLineNumberWidth,
+                        bodyStartLine === null
+                            ? null
+                            : sourceOrdinals.slice(0, TextCoordinates.logicalLines(content).length),
+                    ),
+                )
+                : previewExempt
+                ? { text: projectedBody.content, cut: false, chunk: null }
+                : PacketWire.#preview(projectedBody.content);
+            if (projection.cut && path === null) {
+                throw new Error("a previewed log body requires an addressable log path");
+            }
+            const projectedLineCount = TextCoordinates.logicalLines(projection.text).length;
+            const projectedOrdinals = sourceOrdinals.slice(0, projectedLineCount);
             const body = emptyFind || projection.text.length === 0
                 ? ""
                 : PacketWire.#renderContentBody(
@@ -730,6 +905,7 @@ export default class PacketWire {
                     lineAnchors,
                     lineNumberWidth,
                     numericLineNumberWidth,
+                    bodyStartLine === null ? null : projectedOrdinals,
                 );
 
             // tokens on EVERY row (0 when there's genuinely no body) so the model can always weigh
@@ -740,22 +916,41 @@ export default class PacketWire {
             // lines beside tokens on a non-retrieval row with a navigable body — the count of
             // `N:`-numbered lines (fences and unnumbered prose don't count), so the model can plan
             // a <start,end> slice before paying for an OPEN. READ/FIND own typed extents instead.
-            if (body.length > 0 && op !== "READ" && op !== "FIND") {
-                const navigable = body.split("\n").filter((l) => /^\d+:/.test(l)).length;
-                if (navigable > 0) meta.lines = navigable;
+            if (fullBody.content.length > 0 && op !== "READ" && op !== "FIND") {
+                meta.lines = bodyVisibility.totalLines;
+            }
+
+            if (bodyVisibility.folded.length > 0 && !bodyVisibility.fullyFolded) {
+                meta.folded = LogVisibility.format(bodyVisibility.folded);
             }
 
             // {§jsonplurnk} — `display` describes the three body states: `none` carries an explicit
             // empty JSON string, `folded` withholds an existing body, and `open` appends that body as
             // the format's one raw multiline string. The explicit empty body keeps
             // every state self-describing; OPEN/FOLD remain friendly no-ops on `none`.
-            const display = body.length === 0 ? "none" : e.folded === true ? "folded" : "open";
+            const display = fullBody.content.length === 0
+                ? "none"
+                : bodyVisibility.fullyFolded
+                    ? "folded"
+                    : body.length === 0
+                        ? "none"
+                        : "open";
             meta.display = display;
             if (display === "none") meta.body = "";
             const obj = PacketWire.#canonicalJson(meta);
             if (display !== "open") return obj;
-            const chunk = projection.chunk !== null
-                ? `,"chunk":${JSON.stringify(projection.chunk)}`
+            const projectedChunk = projection.chunk !== null
+                && bodyVisibility.folded.length > 0
+                && !bodyVisibility.fullyFolded
+                ? PacketWire.#sparseChunk(
+                    fullBody.content,
+                    projectedBody.content,
+                    sourceOrdinals,
+                    projection.text,
+                )
+                : projection.chunk;
+            const chunk = projectedChunk !== null
+                ? `,"chunk":${JSON.stringify(projectedChunk)}`
                 : "";
             return obj.replace(/\}$/, `,"body":${body}${chunk}}`);
         }).join(",\n");

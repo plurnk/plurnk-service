@@ -75,8 +75,8 @@ readStatement : OPEN_READ tagOpModifiers? opAnnotation? statementEnd ;
 editStatement : OPEN_EDIT tagOpModifiers? opAnnotation? statementEnd ;
 copyStatement : OPEN_COPY tagOpModifiers? opAnnotation? statementEnd ;
 moveStatement : OPEN_MOVE tagOpModifiers? opAnnotation? statementEnd ;
-openStatement : OPEN_OPEN curationModifiers? opAnnotation? statementEnd ;
-foldStatement : OPEN_FOLD curationModifiers? opAnnotation? statementEnd ;
+openStatement : OPEN_OPEN tagOpModifiers? opAnnotation? statementEnd ;
+foldStatement : OPEN_FOLD tagOpModifiers? opAnnotation? statementEnd ;
 sendStatement : OPEN_SEND termModifiers opAnnotation? statementEnd ;
 midSend       : OPEN_SEND midModifiers? opAnnotation? statementEnd ;
 execStatement : OPEN_EXEC execModifiers? opAnnotation? statementEnd ;
@@ -102,11 +102,6 @@ tagOpModifiers
     : tagSignal (target lineMarker? | lineMarker target?)?
     | target (tagSignal lineMarker? | lineMarker tagSignal?)?
     | lineMarker (tagSignal target? | target tagSignal?)?
-    ;
-
-curationModifiers
-    : tagSignal target?
-    | target tagSignal?
     ;
 
 intOpModifiers

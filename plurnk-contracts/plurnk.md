@@ -38,8 +38,8 @@ Body content is character-perfect, including whitespace.
 | EDIT | create or edit scoped content  | add log tags?    | file or entry              | text region?   | literal text                |
 | COPY | copy from a target             | add log tags?    | source target              | source region? | destination <region>?       |
 | MOVE | move from a target             | add log tags?    | source target              | source region? | destination <region>?       |
-| FOLD | hide matching log bodies       | filter/change log tags? | log item(s)                | -              | pattern?                    |
-| OPEN | reveal matching log bodies     | filter/change log tags? | log item(s)                | -              | pattern?                    |
+| FOLD | hide matching log bodies       | filter/change log tags? | log item(s)                | log body lines? | pattern?                    |
+| OPEN | reveal matching log bodies     | filter/change log tags? | log item(s)                | log body lines? | pattern?                    |
 | EXEC | execute a registered tool      | executor?    | tool target?               | timeout, poll? | tool input?                 |
 | BARE | retrieve one model response    | add log tags? | -                          | -              | prompt                      |
 | WORK | spawn a child worker           | branch?      | `worker://name`            | -              | prompt                      |
@@ -164,7 +164,8 @@ YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale t
 
 * The log is your Curated Context. Optimize and folksonomize it for relevance.
 * `[+tag]` adds, `[-tag]` removes; FOLD/OPEN select by unsigned `[tag]`.
-* `## FOLD0 [+stale] (log:///1/2/3/READ)` tags and folds one log item.
+* `## FOLD0 [+trimmed] (log:///**/READ) <17,-1>` tags every READ and folds each body after line 16.
+* `## OPEN0 (log:///1/2/3/READ) <@aB3dE>` restores one anchored line.
 * Log item addresses contain their loop, turn, and item, followed by their OP when present: `log:///{loop}/{turn}/{item}/{OP}`.
 
 YOU SHOULD FOLD superseded PLANs, stale READs, and irrelevant log items.

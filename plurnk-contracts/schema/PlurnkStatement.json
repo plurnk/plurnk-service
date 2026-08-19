@@ -132,7 +132,7 @@
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": { "$ref": "#/$defs/CurationTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "type": "null" },
+                "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
                 "body": { "$ref": "#/$defs/MatcherBodyOrNull" },
                 "position": { "$ref": "#/$defs/PositionRef" }
             }
@@ -147,7 +147,7 @@
                 "annotation": { "$ref": "#/$defs/AnnotationOrNull" },
                 "signal": { "$ref": "#/$defs/CurationTagSignal" },
                 "target": { "$ref": "#/$defs/PathOrNull" },
-                "lineMarker": { "type": "null" },
+                "lineMarker": { "$ref": "#/$defs/TextLineMarkerOrNull" },
                 "body": { "$ref": "#/$defs/MatcherBodyOrNull" },
                 "position": { "$ref": "#/$defs/PositionRef" }
             }

@@ -152,8 +152,8 @@ export const buildModel = (): GModel => {
     optionalBodySection(model, "edit", taggedTargetScope("EDIT", "text-line-slot"), "section-body");
     requiredBodySection(model, "copy", taggedTargetScope("COPY", "text-line-slot"));
     requiredBodySection(model, "move", taggedTargetScope("MOVE", "text-line-slot"));
-    optionalBodySection(model, "open", [lit("## OPEN0"), ref("log-selection")], "pattern-body");
-    optionalBodySection(model, "fold", [lit("## FOLD0"), ref("log-selection")], "pattern-body");
+    optionalBodySection(model, "open", [lit("## OPEN0"), ref("log-selection"), opt(ref("text-line-slot"))], "pattern-body");
+    optionalBodySection(model, "fold", [lit("## FOLD0"), ref("log-selection"), opt(ref("text-line-slot"))], "pattern-body");
     optionalBodySection(model, "exec", [
         lit("## EXEC0"),
         opt(ref("exec-slot")),

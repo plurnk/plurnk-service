@@ -210,7 +210,7 @@ available during constrained generation; ANTLR remains the wider language and
 accepts intentional alternate-lane literals during ingestion.
 
 §gbnf-curation-shaping The rail admits OPEN/FOLD curation terms, a canonical
-`log:` target, and a matcher independently. It accepts any ordered mixture of
+`log:` target, an optional log-body line scope, and a matcher independently. It accepts any ordered mixture of
 unsigned, `+`, and `-` terms without proving that the combination selects a log
 item; ANTLR and AstBuilder own that condition, while runtime owns wider ingested
 target resolution.
@@ -258,7 +258,7 @@ The following constraints are structural:
 - A header occupies one physical line.
 - Each admitted signal, target, and scope slot appears at most once.
 - An annotation follows every present modifier and appears at most once.
-- OPEN, FOLD, BARE, WORK, FORK, and KILL do not admit a scope slot.
+- BARE, WORK, FORK, and KILL do not admit a scope slot.
 - An ingested delimiter is `[A-Za-z0-9_]*`; canonical teaching and the GBNF use `0`.
 
 §slot-order Canonical producers and the GBNF rail emit signal, then target, then
@@ -314,8 +314,8 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | EDIT | optional add log tags         | required file or entry                       | required for an existing target | literal text                   |
 | COPY | optional add log tags         | required source                              | optional source region          | required destination selection |
 | MOVE | optional add log tags         | required source                              | optional source region          | required destination selection |
-| FOLD | optional filter/change tags   | optional log selection                       | none                            | optional matcher               |
-| OPEN | optional filter/change tags   | optional log selection                       | none                            | optional matcher               |
+| FOLD | optional filter/change tags   | optional log selection                       | optional log-body line scope    | optional matcher               |
+| OPEN | optional filter/change tags   | optional log selection                       | optional log-body line scope    | optional matcher               |
 | EXEC | optional executor             | optional local working path                  | optional timeout, poll          | optional executor input        |
 | BARE | optional add log tags         | none                                         | none                            | required prompt                |
 | WORK | optional Git branch           | required fresh `worker://name`               | none                            | required prompt                |
@@ -341,11 +341,13 @@ strips any `+`; the signal neither filters nor modifies resources. OPEN and
 FOLD treat every unsigned `tag` as an ALL-tags selector, then add each `+tag`
 and remove each `-tag` from the selected log items. Signed terms never select,
 so either a target, matcher, or unsigned tag is required. Adding and removing
-the same tag conflicts. Neither curation operation exposes a positional scope.
+the same tag conflicts. An optional OPEN/FOLD line scope changes visibility
+inside every selected canonical log body; it does not participate in row selection.
 
 The `<scope>` slot is optional where admitted and its domain is OP-specific. FIND
 scopes ordered results. EXEC and SEND scope timing. READ, EDIT, COPY, and
-MOVE use one universal text algebra independent of mimetype:
+MOVE use one universal text algebra independent of mimetype; OPEN/FOLD admit
+only its one- and two-line forms for canonical log-body visibility:
 
 | Arity         | Surface meaning                                                     | Endpoint rule                                        |
 |---------------|---------------------------------------------------------------------|------------------------------------------------------|
@@ -560,6 +562,7 @@ The operation column names the canonical AST operation after
 | EDIT                  | 0/1/2/4 text coordinates               | Text replacement, deletion, prepend, or append                             |
 | COPY/MOVE source      | 0/1/2/4 text coordinates               | Region copied or moved from the selected source                            |
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
+| OPEN / FOLD           | 0/1/2 body-relative line coordinates   | Whole log body when absent; one physical line or inclusive range when present |
 | EXEC                  | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in seconds                           |
 | Terminal SEND `[202]` | `timeout[,poll]`                       | Bounded or indefinite wait and optional poll cadence                       |
 
@@ -568,13 +571,15 @@ whole line, two integers are an inclusive whole-line range, and four integers
 are an exact start-inclusive/end-exclusive region. Mutation scopes additionally
 admit `0` as prepend and `-1` as append. A leading decimal on semantic FIND
 is a similarity threshold; any remaining integers select result positions. READ
-does not admit decimal scope components.
+does not admit decimal scope components. OPEN/FOLD intersect a valid body-relative line
+scope with each selected body; an absent line is a successful no-op for that
+body, while unsupported arity is a runtime failure.
 
 §text-line-anchor-syntax A text coordinate admits a case-sensitive line anchor
 spelled `@` followed by exactly five Base62 characters (`0-9A-Za-z`) wherever
 its `L`, `SL`, or `EL` position denotes a line. Columns, prepend `0`, and append
-`-1` remain numeric. Exact READ, EDIT, COPY/MOVE source and destination, and
-client LOOK preserve these positions in `TextLineMarker`; core resolves them
+`-1` remain numeric. Exact READ, EDIT, COPY/MOVE source and destination,
+OPEN/FOLD, and client LOOK preserve these positions in `TextLineMarker`; core resolves them
 against the addressed current text before operation-specific numeric scope
 semantics run. A matcher-bearing or path-glob READ normalizes to FIND, whose
 result positions remain numeric and reject anchors. Numeric text scopes remain
@@ -589,7 +594,7 @@ shapes for runtime validation. An anchor-bearing text scope uses commas; ANTLR
 tolerates one space after each comma.
 
 Apart from the unadvertised three-coordinate text-scope tolerance in
-{§text-scope-semantics}, the runtime rejects invalid arity, out-of-range or
+{§text-scope-semantics} and OPEN/FOLD's per-body empty intersection, the runtime rejects invalid arity, out-of-range or
 inverted positions, and decimal text coordinates rather than rounding or
 reinterpreting them. FIND owns a deterministic result order so the same
 inclusive range selects the same positions from unchanged state. The parser

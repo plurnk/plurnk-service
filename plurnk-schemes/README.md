@@ -80,6 +80,7 @@ static manifest: SchemeManifest = {
   writableBy: ["model", "client"],
   volatile: false,
   modelVisible: true,
+  lineAnchors: true,                    // publish stable line anchors without EDIT
   textEditScopes: true,                 // use the standard text-edit capability
   glyph: "🦊",                          // optional client-only display marker
   example: "## READ0 (foo://thing/42)", // concise hot-path operation example set
@@ -91,7 +92,9 @@ static manifest: SchemeManifest = {
 - **`documentation`** — the **deep doc** (ops, channels, edge cases). The consumer materializes it as a pull-able `worker://plurnk/docs/<name>.md` entry the model READs on demand — off the hot path. It is analogous to executor supplemental `details`. **Convention:** keep it in a **`docs/<name>.md`** file (root) and load it at module init with the snippet above — `../` resolves the same from `src/` (test) and `dist/` (built); add `docs/**/*` to `files`. A missing file fails-hard at import.
 - **`glyph`** — optional opaque client display metadata. It is discoverable through the client capability wire and never rendered into model teaching; clients choose fallback, fonts, and theme.
 
-Declare `textEditScopes: true` only when `editBatch` accepts PLURNK's shared
+Declare `lineAnchors: true` when stable textual representations should publish
+and accept shared anchors without supporting EDIT. Declare `textEditScopes: true`
+only when `editBatch` accepts PLURNK's shared
 text-coordinate algebra. Core's universal READ projection derives and resolves
 any model-facing line anchor; scheme handlers receive numeric
 `ResolvedEditStatement` coordinates only. Delegate those edits to

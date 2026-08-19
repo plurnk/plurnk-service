@@ -777,7 +777,8 @@ CREATE TABLE IF NOT EXISTS derivation_embeddings (
 -- status⊥state: status is the HTTP outcome, state is where in the
 -- lifecycle the entry sits. Most rows write 'resolved' directly;
 -- proposing schemes transition 'proposed' → resolved/failed/cancelled.
--- expanded: per-row visibility for OPEN/FOLD via the log:/// scheme.
+-- folded: canonical hidden log-body line intervals for OPEN/FOLD. [] is
+-- wholly open and [[1,-1]] is wholly folded.
 CREATE TABLE IF NOT EXISTS log_entries (
     id              INTEGER NOT NULL PRIMARY KEY,
     version         INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
@@ -841,7 +842,8 @@ CREATE TABLE IF NOT EXISTS log_entries (
     outcome         TEXT,
     attrs           TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(attrs)),
 
-    expanded         INTEGER NOT NULL DEFAULT 1 CHECK (expanded IN (0, 1)),
+    folded           TEXT    NOT NULL DEFAULT '[]'
+                    CHECK (json_valid(folded) AND json_type(folded) = 'array'),
 
     CHECK ((op IS NULL) = COALESCE(json_extract(attrs, '$.kind') IN ('initialization', 'model_emission'), 0)),
     CHECK (json_extract(attrs, '$.kind') != 'initialization' OR origin = 'plurnk'),
@@ -862,6 +864,65 @@ CREATE UNIQUE INDEX IF NOT EXISTS log_entries_model_call_id
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_worker_ambient_event
     ON log_entries (worker_id, ambient_event_id)
     WHERE ambient_event_id IS NOT NULL;
+
+-- A folded interval is an inclusive [start,end] pair. Ranges are positive,
+-- sorted, disjoint, and non-adjacent; -1 is the final open-ended endpoint.
+-- Canonical intervals make visibility equality and curation effects exact.
+CREATE TRIGGER IF NOT EXISTS log_entries_folded_valid_insert
+BEFORE INSERT ON log_entries
+WHEN EXISTS (
+    SELECT 1
+    FROM json_each(NEW.folded) range
+    WHERE range.type != 'array'
+       OR json_array_length(range.value) != 2
+       OR COALESCE(json_type(range.value, '$[0]'), '') != 'integer'
+       OR COALESCE(json_type(range.value, '$[1]'), '') != 'integer'
+       OR json_extract(range.value, '$[0]') < 1
+       OR (
+           json_extract(range.value, '$[1]') != -1
+           AND json_extract(range.value, '$[1]') < json_extract(range.value, '$[0]')
+       )
+       OR EXISTS (
+           SELECT 1
+           FROM json_each(NEW.folded) previous
+           WHERE previous.key = range.key - 1
+             AND (
+                 json_extract(previous.value, '$[1]') = -1
+                 OR json_extract(range.value, '$[0]') <= json_extract(previous.value, '$[1]') + 1
+             )
+       )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'log entry folded ranges are invalid');
+END;
+
+CREATE TRIGGER IF NOT EXISTS log_entries_folded_valid_update
+BEFORE UPDATE OF folded ON log_entries
+WHEN EXISTS (
+    SELECT 1
+    FROM json_each(NEW.folded) range
+    WHERE range.type != 'array'
+       OR json_array_length(range.value) != 2
+       OR COALESCE(json_type(range.value, '$[0]'), '') != 'integer'
+       OR COALESCE(json_type(range.value, '$[1]'), '') != 'integer'
+       OR json_extract(range.value, '$[0]') < 1
+       OR (
+           json_extract(range.value, '$[1]') != -1
+           AND json_extract(range.value, '$[1]') < json_extract(range.value, '$[0]')
+       )
+       OR EXISTS (
+           SELECT 1
+           FROM json_each(NEW.folded) previous
+           WHERE previous.key = range.key - 1
+             AND (
+                 json_extract(previous.value, '$[1]') = -1
+                 OR json_extract(range.value, '$[0]') <= json_extract(previous.value, '$[1]') + 1
+             )
+       )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'log entry folded ranges are invalid');
+END;
 
 CREATE TRIGGER IF NOT EXISTS log_entries_model_call_valid
 BEFORE INSERT ON log_entries
@@ -983,12 +1044,15 @@ END;
 
 -- Successful OPEN/FOLD rows are durable curation events even though their
 -- ordinary packet projection is suppressed ({§fold-open-meta-operations}).
--- Preserve the exact selected set and each target's pre-event visibility so a
+-- Preserve the exact selected set and each target's before/after visibility so a
 -- broad selector never collapses into the lossy fact `matched: N`.
 CREATE TABLE IF NOT EXISTS log_curation_effects (
     operation_log_entry_id INTEGER NOT NULL,
     target_log_entry_id    INTEGER NOT NULL,
-    expanded_before        INTEGER NOT NULL CHECK (expanded_before IN (0, 1)),
+    folded_before          TEXT    NOT NULL
+                                  CHECK (json_valid(folded_before) AND json_type(folded_before) = 'array'),
+    folded_after           TEXT    NOT NULL
+                                  CHECK (json_valid(folded_after) AND json_type(folded_after) = 'array'),
     tags_added             TEXT    NOT NULL DEFAULT '[]'
                                   CHECK (json_valid(tags_added) AND json_type(tags_added) = 'array'),
     tags_removed           TEXT    NOT NULL DEFAULT '[]'
@@ -1017,6 +1081,39 @@ BEGIN
               AND operation.op IN ('OPEN', 'FOLD')
               AND operation.status_rx < 400
               AND operation.worker_id = target.worker_id
+        )
+        OR EXISTS (
+            SELECT 1
+            FROM (
+                SELECT 'before' AS side, key, value, type FROM json_each(NEW.folded_before)
+                UNION ALL
+                SELECT 'after' AS side, key, value, type FROM json_each(NEW.folded_after)
+            ) range
+            WHERE range.type != 'array'
+               OR json_array_length(range.value) != 2
+               OR COALESCE(json_type(range.value, '$[0]'), '') != 'integer'
+               OR COALESCE(json_type(range.value, '$[1]'), '') != 'integer'
+               OR json_extract(range.value, '$[0]') < 1
+               OR (
+                   json_extract(range.value, '$[1]') != -1
+                   AND json_extract(range.value, '$[1]') < json_extract(range.value, '$[0]')
+               )
+               OR EXISTS (
+                   SELECT 1
+                   FROM (
+                       SELECT key, value FROM json_each(
+                           CASE range.side
+                               WHEN 'before' THEN NEW.folded_before
+                               ELSE NEW.folded_after
+                           END
+                       )
+                   ) previous
+                   WHERE previous.key = range.key - 1
+                     AND (
+                         json_extract(previous.value, '$[1]') = -1
+                         OR json_extract(range.value, '$[0]') <= json_extract(previous.value, '$[1]') + 1
+                     )
+               )
         )
         OR EXISTS (
             SELECT 1
@@ -1073,7 +1170,7 @@ BEGIN
 END;
 
 -- One outer INSERT owns the whole landed curation event: exact selected rows,
--- their pre-event visibility and tag deltas, the requested visibility, and the
+-- their before/after visibility and tag deltas, and the
 -- resulting classifications. Trigger failure rolls the operation row and all
 -- effects back together. The private plan is erased before INSERT returns.
 CREATE TRIGGER IF NOT EXISTS log_entries_apply_curation
@@ -1083,26 +1180,70 @@ WHEN NEW.op IN ('OPEN', 'FOLD')
  AND json_type(NEW.attrs, '$.__plurnk_curation') = 'object'
 BEGIN
     SELECT CASE WHEN
-        COALESCE(json_type(NEW.attrs, '$.__plurnk_curation.ids'), '') != 'array'
+        COALESCE(json_type(NEW.attrs, '$.__plurnk_curation.targets'), '') != 'array'
         OR COALESCE(json_type(NEW.attrs, '$.__plurnk_curation.add'), '') != 'array'
         OR COALESCE(json_type(NEW.attrs, '$.__plurnk_curation.remove'), '') != 'array'
-        OR COALESCE(json_type(NEW.attrs, '$.__plurnk_curation.expanded'), '') != 'integer'
-        OR json_extract(NEW.attrs, '$.__plurnk_curation.expanded') NOT IN (0, 1)
-        OR json_array_length(NEW.attrs, '$.__plurnk_curation.ids') = 0
+        OR json_array_length(NEW.attrs, '$.__plurnk_curation.targets') = 0
         OR EXISTS (
-            SELECT 1 FROM json_each(NEW.attrs, '$.__plurnk_curation.ids')
-            WHERE type != 'integer' OR value <= 0
+            SELECT 1
+            FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
+            WHERE selected.type != 'object'
+               OR COALESCE(json_type(selected.value, '$.id'), '') != 'integer'
+               OR json_extract(selected.value, '$.id') <= 0
+               OR COALESCE(json_type(selected.value, '$.before'), '') != 'array'
+               OR COALESCE(json_type(selected.value, '$.after'), '') != 'array'
+               OR EXISTS (
+                   SELECT 1 FROM json_each(selected.value) field
+                   WHERE field.key NOT IN ('id', 'before', 'after')
+               )
+               OR EXISTS (
+                   SELECT 1
+                   FROM (
+                       SELECT 'before' AS side, range.key, range.value, range.type
+                       FROM json_each(json_extract(selected.value, '$.before')) range
+                       UNION ALL
+                       SELECT 'after' AS side, range.key, range.value, range.type
+                       FROM json_each(json_extract(selected.value, '$.after')) range
+                   ) range
+                   WHERE range.type != 'array'
+                      OR json_array_length(range.value) != 2
+                      OR COALESCE(json_type(range.value, '$[0]'), '') != 'integer'
+                      OR COALESCE(json_type(range.value, '$[1]'), '') != 'integer'
+                      OR json_extract(range.value, '$[0]') < 1
+                      OR (
+                          json_extract(range.value, '$[1]') != -1
+                          AND json_extract(range.value, '$[1]') < json_extract(range.value, '$[0]')
+                      )
+                      OR EXISTS (
+                          SELECT 1
+                          FROM json_each(
+                              CASE range.side
+                                  WHEN 'before' THEN json_extract(selected.value, '$.before')
+                                  ELSE json_extract(selected.value, '$.after')
+                              END
+                          ) previous
+                          WHERE previous.key = range.key - 1
+                            AND (
+                                json_extract(previous.value, '$[1]') = -1
+                                OR json_extract(range.value, '$[0]') <= json_extract(previous.value, '$[1]') + 1
+                            )
+                      )
+               )
         )
         OR (
-            SELECT COUNT(*) FROM json_each(NEW.attrs, '$.__plurnk_curation.ids')
+            SELECT COUNT(*) FROM json_each(NEW.attrs, '$.__plurnk_curation.targets')
         ) != (
-            SELECT COUNT(DISTINCT value) FROM json_each(NEW.attrs, '$.__plurnk_curation.ids')
+            SELECT COUNT(DISTINCT json_extract(value, '$.id'))
+            FROM json_each(NEW.attrs, '$.__plurnk_curation.targets')
         )
         OR EXISTS (
             SELECT 1
-            FROM json_each(NEW.attrs, '$.__plurnk_curation.ids') selected
-            LEFT JOIN log_entries target ON target.id = selected.value
-            WHERE target.id IS NULL OR target.worker_id != NEW.worker_id OR target.id = NEW.id
+            FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
+            LEFT JOIN log_entries target ON target.id = json_extract(selected.value, '$.id')
+            WHERE target.id IS NULL
+               OR target.worker_id != NEW.worker_id
+               OR target.id = NEW.id
+               OR json(target.folded) != json(json_extract(selected.value, '$.before'))
         )
         OR EXISTS (
             SELECT 1
@@ -1153,14 +1294,16 @@ BEGIN
     INSERT INTO log_curation_effects (
         operation_log_entry_id,
         target_log_entry_id,
-        expanded_before,
+        folded_before,
+        folded_after,
         tags_added,
         tags_removed
     )
     SELECT
         NEW.id,
         target.id,
-        target.expanded,
+        json_extract(selected.value, '$.before'),
+        json_extract(selected.value, '$.after'),
         COALESCE((
             SELECT json_group_array(ordered.tag)
             FROM (
@@ -1185,26 +1328,32 @@ BEGIN
                 ORDER BY removal.value
             ) ordered
         ), '[]')
-    FROM json_each(NEW.attrs, '$.__plurnk_curation.ids') selected
-    JOIN log_entries target ON target.id = selected.value;
+    FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
+    JOIN log_entries target ON target.id = json_extract(selected.value, '$.id');
 
     UPDATE log_entries
-    SET expanded = json_extract(NEW.attrs, '$.__plurnk_curation.expanded')
+    SET folded = (
+        SELECT json_extract(selected.value, '$.after')
+        FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
+        WHERE json_extract(selected.value, '$.id') = log_entries.id
+    )
     WHERE id IN (
-        SELECT value FROM json_each(NEW.attrs, '$.__plurnk_curation.ids')
+        SELECT json_extract(value, '$.id')
+        FROM json_each(NEW.attrs, '$.__plurnk_curation.targets')
     );
 
     DELETE FROM log_tags
     WHERE log_entry_id IN (
-        SELECT value FROM json_each(NEW.attrs, '$.__plurnk_curation.ids')
+        SELECT json_extract(value, '$.id')
+        FROM json_each(NEW.attrs, '$.__plurnk_curation.targets')
     )
       AND tag IN (
         SELECT value FROM json_each(NEW.attrs, '$.__plurnk_curation.remove')
     );
 
     INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
-    SELECT selected.value, addition.value
-    FROM json_each(NEW.attrs, '$.__plurnk_curation.ids') selected
+    SELECT json_extract(selected.value, '$.id'), addition.value
+    FROM json_each(NEW.attrs, '$.__plurnk_curation.targets') selected
     CROSS JOIN json_each(NEW.attrs, '$.__plurnk_curation.add') addition;
 
     UPDATE log_entries
@@ -1214,7 +1363,7 @@ END;
 
 -- Column-scoped immutability: the original action's identity and target never
 -- change; the proposal lifecycle is allowed to mutate state, outcome,
--- status_rx, rx, expanded. Keep attrs separate so the curation trigger's one
+-- status_rx, rx, folded. Keep attrs separate so the curation trigger's one
 -- private-payload removal cannot exempt changes to any other core column.
 CREATE TRIGGER IF NOT EXISTS log_entries_immutable_core
 BEFORE UPDATE OF
@@ -1225,7 +1374,7 @@ BEFORE UPDATE OF
     lineMarker, tx, mimetype_tx, mimetype_rx
 ON log_entries
 BEGIN
-    SELECT RAISE(ABORT, 'log_entries core fields are immutable; only state/outcome/status_rx/rx/expanded may change');
+    SELECT RAISE(ABORT, 'log_entries core fields are immutable; only state/outcome/status_rx/rx/folded may change');
 END;
 
 CREATE TRIGGER IF NOT EXISTS log_entries_immutable_attrs

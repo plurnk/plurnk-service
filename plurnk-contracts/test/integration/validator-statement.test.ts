@@ -36,21 +36,20 @@ test("PlurnkStatement: FOLD with jsonpath matcher", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: OPEN and FOLD have no positional line marker", () => {
+test("PlurnkStatement: OPEN and FOLD admit log-body line markers", () => {
     for (const op of ["OPEN", "FOLD"] as const) {
-        const parsed = PlurnkParser.parseStatements(`## ${op}0 [memory] (log://**)`);
+        const parsed = PlurnkParser.parseStatements(`## ${op}0 [memory] (log://**) <17,-1>`);
         const item = parsed.items[0];
         assert.equal(item.kind, "statement");
         if (item.kind !== "statement") continue;
         assert.equal(item.statement.op, op);
-        assert.equal(item.statement.lineMarker, null);
+        assert.deepEqual(item.statement.lineMarker, { marks: [17, -1] });
 
-        const invalid = Validator.validatePlurnkStatement({
+        const anchored = Validator.validatePlurnkStatement({
             ...JSON.parse(JSON.stringify(item.statement)),
-            lineMarker: { marks: [1] },
+            lineMarker: { marks: ["@aB3dE"] },
         });
-        assert.equal(invalid.valid, false, `${op} schema must reject a positional line marker`);
-        assert.ok(invalid.errors.some(({ instanceLocation }) => instanceLocation.endsWith("/lineMarker")));
+        assert.equal(anchored.valid, true, `${op} schema must admit a line anchor`);
     }
 });
 

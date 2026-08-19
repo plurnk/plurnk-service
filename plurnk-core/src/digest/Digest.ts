@@ -205,7 +205,8 @@ interface LogRow {
 interface LogCurationEffectRow {
     operation_log_entry_id: number;
     target_log_entry_id: number;
-    expanded_before: 0 | 1;
+    folded_before: string;
+    folded_after: string;
     tags_added: string;
     tags_removed: string;
 }
@@ -790,8 +791,10 @@ export default class Digest {
                     : { stream: Digest.#renderStream(le) }),
                 ...(le.status_rx >= 400 ? { problem: Digest.#rowProblem(le) } : {}),
             })),
-            log_curation_effects: m.curationEffects.map(({ tags_added, tags_removed, ...effect }) => ({
+            log_curation_effects: m.curationEffects.map(({ folded_before, folded_after, tags_added, tags_removed, ...effect }) => ({
                 ...effect,
+                folded_before: Digest.#parseJson(folded_before, []),
+                folded_after: Digest.#parseJson(folded_after, []),
                 tags_added: Digest.#parseJson(tags_added, []),
                 tags_removed: Digest.#parseJson(tags_removed, []),
             })),
@@ -1107,8 +1110,8 @@ export default class Digest {
             && (channelDerivations || legacyEntryDerivations);
         if (has("log_curation_effects")) {
             curationEffects = probe.prepare(`
-                SELECT operation_log_entry_id, target_log_entry_id, expanded_before,
-                       tags_added, tags_removed
+                SELECT operation_log_entry_id, target_log_entry_id,
+                       folded_before, folded_after, tags_added, tags_removed
                 FROM log_curation_effects
                 ORDER BY operation_log_entry_id, target_log_entry_id
             `).all() as unknown as LogCurationEffectRow[];
