@@ -78,7 +78,7 @@ test("log entry: a no-body row renders explicit display:none and body:\"\" — p
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /\{"path":"log:\/\/\/1\/1\/1\/EDIT","body":"","display":"none","origin":"model","status":200,"target":"out\.txt","tokens":0\}/, "jsonplurnk object; display:none carries body:\"\"; path leads and owns the log identity and operation; target = action operand; tokens:0");
+    assert.match(out, /\{"path":"log:\/\/\/1\/1\/1\/EDIT","body":"","display":"none","origin":"model","status":200,"target":"out\.txt","tokensMetadata":\d+,"tokensTotal":\d+\}/, "jsonplurnk object; display:none carries body:\"\"; path leads and owns the log identity and operation; target = action operand; tokensMetadata and tokensTotal carry the rendered metadata line's real weight");
     assert.doesNotMatch(out, /"op":"EDIT"/, "the canonical path does not duplicate its operation in metadata");
 });
 
@@ -703,7 +703,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
     if (tokenizer === null) throw new Error("The bundled Gemma tokenizer is required for the metadata budget contract.");
     assert.equal(tokenizer.tokenizerId, "5f7eee611703c5ce");
     const metadataTokens = await tokenizer.countTokens(metadata.map((row) => JSON.stringify(row)).join("\n"));
-    assert.equal(metadataTokens, 564, "canonical retrieval metadata has one reviewed Gemma-token count");
+    assert.equal(metadataTokens, 652, "canonical retrieval metadata has one reviewed Gemma-token count");
 
     assert.throws(
         () => PacketWire.renderLog([{
@@ -1244,7 +1244,7 @@ test("{§prompt-projection}: prompt rows share one explicit projection-weight al
         { coordinate: "1/1/2", op: "prompt", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/2" }, rx: { content, mimetype: "text/markdown" } },
     ], tok, { promptProjectionWeight: budget });
 
-    const weights = [...rendered.matchAll(/"tokens":(\d+)/g)].map((match) => Number(match[1]));
+    const weights = [...rendered.matchAll(/"tokensBody":(\d+)/g)].map((match) => Number(match[1]));
     assert.equal(weights.length, 2);
     assert.ok(weights.every((weight) => weight > 0), "each arriving frame receives a visible share");
     assert.ok(weights.reduce((sum, weight) => sum + weight, 0) <= budget, "the aggregate prompt body weight stays within the shared allowance");

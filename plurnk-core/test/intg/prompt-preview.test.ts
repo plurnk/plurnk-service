@@ -59,7 +59,7 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
             const ceiling = Number(/Token Ceiling\s+(\d+)/.exec(budgetSection)?.[1]);
             const projectionPercent = Number(/^([0-9]+(?:\.[0-9]+)?)%$/.exec(process.env.PLURNK_SERVICE_PROMPT_PROJECTION ?? "")?.[1]);
             assert.ok(Number.isFinite(ceiling) && Number.isFinite(projectionPercent));
-            assert.ok(Number(projectedPrompt?.tokens) <= Math.floor(ceiling * projectionPercent / 100), "the projected body stays within its configured quarter-window allowance");
+            assert.ok(Number(projectedPrompt?.tokensBody) <= Math.floor(ceiling * projectionPercent / 100), "the projected body stays within its configured quarter-window allowance");
             const bodyTarget = /"path":"(log:\/\/\/1\/1\/\d+\/prompt)"/
                 .exec(logSection?.content ?? "")?.[1];
             assert.ok(bodyTarget, "the emitted canonical-body target is present");

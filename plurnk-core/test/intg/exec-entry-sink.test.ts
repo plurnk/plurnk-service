@@ -204,7 +204,7 @@ test("entry() materializes an https resource and classifies each plurnk narratio
         assert.match(foldedLine, /"path":"log:\/\/\/1\/1\/2\/READ"/, "the model-facing log handle agrees with the projected operation");
         assert.doesNotMatch(foldedLine, /\/EDIT"/, "the internal storage operation does not leak into model reasoning");
         assert.match(foldedLine, /"display":"folded"/, "a sink resource row is folded by default — display:folded, OPENable");
-        assert.match(foldedLine, /"tokens":\d*[1-9]/, "the folded meta line carries a real OPEN cost, not 0");
+        assert.match(foldedLine, /"tokensBody":\d*[1-9]/, "the folded meta line carries a real OPEN cost, not 0");
         assert.match(foldedLine, /"lines":1/, "the meta line carries the line count for slice planning");
         assert.ok(!foldedLine.includes("wild turkeys"), "folded = no body rides the packet");
         const openLine = PacketWire.renderLog(view([]), countTokens);

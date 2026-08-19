@@ -908,11 +908,28 @@ export default class PacketWire {
                     bodyStartLine === null ? null : projectedOrdinals,
                 );
 
-            // tokens on EVERY row (0 when there's genuinely no body) so the model can always weigh
-            // it; for a folded row this is the room an OPEN would add.
-            // 0 for a genuinely empty body — never call weighContent("") (some providers return
-            // undefined for it, which JSON.stringify would drop, leaving the row with no tokens).
-            meta.tokens = body.length > 0 ? weighContent(body) : 0;
+            // {§packet-token-accounting} — every row reports its real rendered weight so the
+            // packet is self-reconciling against the budget: tokensMetadata is the rendered
+            // metadata line (always present), tokensBody is the body's weight whenever a body
+            // exists (open or withheld — folding frees it; opening costs it), and tokensTotal
+            // is the row's weight in the packet RIGHT NOW (metadata + body only when rendered).
+            // KILL frees tokensTotal. The metadata line is weighed without the token fields,
+            // then re-weighed once with them so the fields' own text is counted (one extra
+            // pass converges).
+            // tokensBody is the withheld body's full weight on a folded row (the cost of an
+            // OPEN), and the rendered body's weight otherwise (what the packet carries now).
+            const withheldWeight = fullBody.content.length > 0 ? weighContent(fullBody.content) : undefined;
+            const renderedBodyWeight = body.length > 0 ? weighContent(body) : 0;
+            const tokensBody = bodyVisibility.fullyFolded ? withheldWeight
+                : body.length > 0 ? renderedBodyWeight
+                : undefined;
+            if (tokensBody !== undefined) meta.tokensBody = tokensBody;
+            const measureMetadata = (): number => weighContent(PacketWire.#canonicalJson(meta));
+            let tokensMetadata = measureMetadata();
+            meta.tokensMetadata = tokensMetadata;
+            tokensMetadata = measureMetadata();
+            meta.tokensMetadata = tokensMetadata;
+            meta.tokensTotal = tokensMetadata + renderedBodyWeight;
             // lines beside tokens on a non-retrieval row with a navigable body — the count of
             // `N:`-numbered lines (fences and unnumbered prose don't count), so the model can plan
             // a <start,end> slice before paying for an OPEN. READ/FIND own typed extents instead.
