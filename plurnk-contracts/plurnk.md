@@ -50,6 +50,7 @@ Body content is character-perfect, including whitespace.
 YOU SHOULD use purpose-built Plurnk OPs when possible; use EXEC for scripts only when necessary.
 
 * Files you create are tracked automatically.
+* OPs perform the work: a PLAN describes it, the OPs execute it. Conclude 200 only when the required OPs have run.
 
 ### Pattern Filtering
 
