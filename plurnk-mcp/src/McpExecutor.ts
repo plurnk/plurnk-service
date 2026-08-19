@@ -32,7 +32,8 @@ const firstSentence = (text: string | undefined): string | undefined => {
 };
 
 // {§mcp-summary-derivation} — one server one-liner: the authored _SUMMARY
-// companion, then the server's own description (2026-06-18 spec field), then
+// companion, then the server's own description and display title (spec
+// metadata — a title like "Chrome DevTools MCP server" IS the one-liner), then
 // the first sentence of its instructions essay. Never the container template;
 // when the chain is empty, name the actual tools.
 export const serverSummary = (
@@ -43,6 +44,8 @@ export const serverSummary = (
     if (override !== undefined && override.trim() !== "") return override.trim();
     const described = catalog?.server?.description;
     if (described !== undefined && described.trim() !== "") return described.replaceAll(/\s+/gu, " ").trim();
+    const titled = catalog?.server?.title;
+    if (titled !== undefined && titled.trim() !== "") return titled.replaceAll(/\s+/gu, " ").trim();
     const instructed = firstSentence(catalog?.instructions);
     if (instructed !== undefined) return instructed;
     const tools = catalog?.tools.map((tool) => tool.name).join(", ");

@@ -363,3 +363,16 @@ test("MCP executor backstops core admission against disabled targets", async () 
         await connection.close();
     }
 });
+
+test("{§mcp-summary-derivation} the server's display title outranks the tool-name fallback", () => {
+    const catalog = {
+        protocolVersion: "2026-07-28",
+        server: { name: "chrome_devtools", title: "Chrome DevTools MCP server", version: "0.1.0" },
+        capabilities: {},
+        tools: [{ name: "click", inputSchema: { type: "object" } }],
+        resources: [],
+        resourceTemplates: [],
+        prompts: [],
+    } as unknown as Parameters<typeof serverSummary>[1];
+    assert.equal(serverSummary("cdp", catalog, undefined), "Chrome DevTools MCP server");
+});

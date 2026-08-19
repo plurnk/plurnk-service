@@ -205,8 +205,9 @@ in `_HEADERS` are mutually exclusive.
 §mcp-summary-derivation **Every orientation line derives from authored
 metadata — never a container template.** The runtime declaration's summary
 resolves in order: the `_SUMMARY` companion, the server's own
-`serverInfo.description` (2026-06-18 spec field), the first sentence of its
-`instructions` essay, then a factual tool-name list. Each tool's one-liner
+`serverInfo.description`, its display `title` (both spec metadata — a title
+like "Chrome DevTools MCP server" is already a one-liner), the first sentence
+of its `instructions` essay, then a factual tool-name list. Each tool's one-liner
 resolves: its `_<server>_<tool>_SUMMARY` companion, `annotations.title`, the
 first sentence of its `description` (capped), then the tool name. The family
 doc's Summary section and the survey row carry the server one-liner; the tool
