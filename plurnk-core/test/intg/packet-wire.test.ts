@@ -1044,7 +1044,7 @@ test("an open initialization row identifies kernel-authored initialization witho
         coordinate: "1/1/1", origin: "plurnk", op: null, status: 200, folded: [],
         attrs: { kind: "initialization" },
         rx: {
-            content: "# PLAN0\n* Discover the tooling available and survey the workspace file root.\n\n## SEND0 [102]\nNext, address the prompt.",
+            content: "# PLAN0\n* Discover the tooling available and survey the workspace file root.\n\n## SEND0 [102]\nNext: Address the prompt.",
             mimetype: "text/vnd.plurnk",
         },
     }], tok);

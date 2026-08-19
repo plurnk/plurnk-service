@@ -60,7 +60,7 @@ Matcher bodies select resources by content.
 |--------|----------|------------------------------------|------------------|
 | `/`    | regex    | `/pattern/flags`                   | ECMAScript       |
 | `//`   | xpath    | `//selector`                       | XPath 1.0        |
-| `$`    | jsonpath | `$.field`, `$.items[*].name`         | RFC 9535         |
+| `$`    | jsonpath | `$.field`, `$.items[*].name`        | RFC 9535         |
 | `~`    | semantic | `~phrase`                          | embedding cosine |
 | `@`    | graph    | `@<symbol`, `@>symbol`, `@symbol`  | symbol index     |
 | none   | glob     | `pattern`                          | shell glob       |
@@ -95,7 +95,7 @@ Matcher bodies select resources by content.
     *revolution*
 
     ## SEND0 [102]
-    Continue next turn when the matcher results are visible, then compare them and inspect the relevant targets.
+    Next: Compare and inspect the retrieved targets.
 
 ### `(path)`
 
@@ -152,7 +152,7 @@ Text scopes use 1-based lines and Unicode code-point columns consistently across
     worker:///archive.md <-1>
 
     ## SEND0 [102]
-    Continue next turn by inspecting each result and reading the changed destinations.
+    Next: Inspect each result and read the changed destinations.
 
 * Unscoped FIND returns items 1-16; unscoped READ returns lines 1–16. Use `<1,-1>` for all.
 * Rendered exact READ lines begin with a per-line `@hash` anchor and `L:` line number; neither is content.
@@ -174,10 +174,10 @@ YOU SHOULD FOLD superseded PLANs, stale READs, and irrelevant log items.
 * Work on a Git branch: `## WORK0 [feature/recheck] (worker://recheck)` with body `Implement the alternative`.
 * Send a worker another message: `## SEND0 (worker://recheck)` with body `Also verify the alternative against the existing tests.`.
 * Fork with inherited history: `## FORK0 (worker://recheck)` with body `Re-derive the capital from a primary source`.
-* Retrieve a one-shot child-model response using only the body prompt: `## BARE0` with body `What is the capital of Germany?`.
+* Retrieve a clean, focused, one-shot inference response using only the body prompt: `## BARE0` with body `What is the capital of Germany?`.
 * Terminate a worker: `## KILL0 (worker://recheck)`.
 
-Before using a branch signal, ensure the repository is clean.
+Before delegating a worker with a branch signal, ensure the repository is clean.
 
 ```mermaid
 sequenceDiagram
@@ -216,7 +216,7 @@ The worker's result enters the log and wakes you:
 
 | submit code | meaning                       | message                                     |
 |-------------|-------------------------------|---------------------------------------------|
-| 102         | Retrieve results in next turn | Describe expected or intended next steps    |
+| 102         | Retrieve results in next turn | `Next: ` + the concrete next action        |
 | 202         | Wait for workers or streams   | Describe expected or intended next steps    |
 | 200         | Successful conclusion         | Describe actions performed or answer prompt |
 | 499         | Abort and fail prompt         | Describe error or issue                     |

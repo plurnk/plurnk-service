@@ -911,7 +911,7 @@ export default class TurnRunner {
                 const initialization = [
                     "# PLAN0\n* Discover the tooling available and survey the workspace file root.",
                     ...(turnZeroMoves.length > 0 ? [turnZeroMoves.join("\n")] : []),
-                    "## SEND0 [102]\nNext, address the prompt.",
+                    "## SEND0 [102]\nNext: Address the prompt.",
                 ].join("\n\n");
                 await this.#dispatcher.writeInitializationEntry({ verbatim: initialization, workerId, loopId, turnId, sequence: 1 });
             }

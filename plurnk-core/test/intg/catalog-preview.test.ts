@@ -197,7 +197,7 @@ test("the turn-0 initialization mirrors the REAL foisted survey — dynamic, not
                 assert.doesNotMatch(content, /## FIND0 \[\+init\] \(worker:\/\/\/\*\) <!-- workspace entries --> </, "the ordinary survey does not teach an explicit all-results scope");
                 assert.match(
                     content,
-                    /## SEND0 \[102\]\nNext, address the prompt\.$/,
+                    /## SEND0 \[102\]\nNext: Address the prompt\.$/,
                     "closes by stating the next action",
                 );
             } finally { ws.close(); }
@@ -270,7 +270,7 @@ test("an empty workspace executes all five orienting FINDs and preserves empty-s
 ## FIND0 [+init] (worker://~/*) <!-- worker entries -->
 
 ## SEND0 [102]
-Next, address the prompt.`);
+Next: Address the prompt.`);
                 const logTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: modelWorkerId });
                 const tagsBySequence = new Map<number, string[]>();
                 for (const { sequence } of finds) tagsBySequence.set(sequence, []);
