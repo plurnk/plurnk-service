@@ -3231,11 +3231,13 @@ enabled executable; executor enablement is the sole user-configured filter
 shared by discovery and dispatch. A runtime declaration may carry
 `resourcesPath` — the generated-doc root. Absent, its docs live in the internal
 `/skills/plurnk` namespace; present (attached MCP families: `/tools`), the
-family and its child tool docs materialize under that root, the turn-0 survey
-`## FIND0 [+init,+skills] (worker://plurnk/tools/**)` exposes the whole tree
-with each row's summary, and the child summary IS its invocation form so the
-discovery row teaches the call. Attached tools are capabilities like every
-other runtime; the model never learns an origin.
+family and its child tool docs materialize under that root. Turn 0 surveys the
+families (`## FIND0 [+init,+tools] (worker://plurnk/tools/*.md)`, one row per
+server carrying its summary) and, for each server named in
+`PLURNK_MCP_EXPANDED`, its complete tool tree (`tools/<server>/**`). The child
+summary IS its invocation form so the discovery row teaches the call.
+Attached tools are capabilities like every other runtime; the model never
+learns an origin.
 
 §skills-materialization **The workspace skills surface.** Each
 `<projectRoot>/skills/<folder>/SKILL.md` (Agent Skills format: `name` +

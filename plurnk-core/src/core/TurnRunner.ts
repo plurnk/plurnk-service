@@ -845,6 +845,23 @@ export default class TurnRunner {
                     scheme: "worker",
                     pathname: "/skills/plurnk/sh.md",
                 });
+                // {§tools-resource-materialization} — PLURNK_MCP_EXPANDED servers
+                // contribute one complete tool-tree survey each, directly after the
+                // family survey, so turn 0 names every tool they expose in order.
+                const registry = this.#executors();
+                const toolExpansions: Array<{ statement: FindStatement | ReadStatement; exemplar: string }> = [];
+                for (const tag of registry?.availableRuntimes(workspaceId) ?? []) {
+                    const entry = registry?.entry(tag, workspaceId);
+                    if (entry?.resourcesPath !== "/tools" || entry.expandTools !== true) continue;
+                    toolExpansions.push({
+                        statement: {
+                            op: "FIND", delimiter: "", annotation: `enabled tools: ${tag}`, signal: ["+init", "+tools"],
+                            target: { kind: "url", raw: `worker://plurnk/tools/${tag}/**`, scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: `/tools/${tag}/**`, query: null, fragment: null },
+                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                        },
+                        exemplar: `## FIND0 [+init,+tools] (worker://plurnk/tools/${tag}/**) <1,-1> <!-- enabled tools: ${tag} -->`,
+                    });
+                }
                 const surveys: Array<{ statement: FindStatement | ReadStatement; exemplar: string }> = [
                     ...(shellSample === undefined ? [] : [{
                         statement: {
@@ -871,17 +888,20 @@ export default class TurnRunner {
                         exemplar: "## FIND0 [+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>\n//heading[text()=\"Example\"]",
                     },
                     {
-                        // {§tools-resource-materialization} — attached tool families
-                        // (MCP servers) survey as one tree; each row's summary is the
-                        // tool's one-liner or invocation form, so the discovery row
-                        // itself orients. Empty when no tools are attached.
+                        // {§tools-resource-materialization} — enabled tool families
+                        // (MCP servers) survey at family level; each row's summary is
+                        // the server one-liner or its flagship invocation form, so the
+                        // discovery row itself orients. Servers named in
+                        // PLURNK_MCP_EXPANDED add a second survey of their complete
+                        // tool tree.
                         statement: {
-                            op: "FIND", delimiter: "", annotation: "attached tools", signal: ["+init", "+skills"],
-                            target: { kind: "url", raw: "worker://plurnk/tools/**", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/tools/**", query: null, fragment: null },
+                            op: "FIND", delimiter: "", annotation: "enabled tools", signal: ["+init", "+tools"],
+                            target: { kind: "url", raw: "worker://plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/tools/*.md", query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+init,+skills] (worker://plurnk/tools/**) <1,-1> <!-- attached tools -->",
+                        exemplar: "## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1> <!-- enabled tools -->",
                     },
+                    ...toolExpansions,
                     {
                         statement: {
                             op: "FIND", delimiter: "", annotation: "workspace files", signal: ["+init"],

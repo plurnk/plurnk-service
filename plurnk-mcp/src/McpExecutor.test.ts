@@ -83,7 +83,7 @@ const waitForFile = async (pathname: string): Promise<void> => {
 };
 
 test("runtime declaration derives the server summary from the chain", async () => {
-    const declaration = runtimeDecl("echo", serverSummary("echo", undefined, undefined));
+    const declaration = runtimeDecl("echo", serverSummary("echo", undefined, undefined), false);
     assert.equal(declaration.summary, "MCP server echo.");
     assert.deepEqual(declaration.invocation, {
         body: { role: "JSON arguments", required: false },

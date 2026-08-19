@@ -163,6 +163,7 @@ export interface ExecInfo {
     // Invocation remain declaration-owned and are projected by the consumer.
     details: string;
     resourcesPath?: string;
+    expandTools?: boolean;
     packageName: string;
     // Published per-tag projection of the package-level attribution declaration.
     // Discovery validates it through {§plugin-attribution} before admission.
@@ -184,6 +185,9 @@ export interface RuntimeDecl {
     // internal skills namespace. Present (MCP families): the tools namespace
     // whose survey exposes every child tool.
     resourcesPath?: string;
+    // Expand this runtime's complete tool tree into the turn-0 tools survey;
+    // absent, turn 0 lists the family document alone.
+    expandTools?: boolean;
 }
 
 // Dynamic runtime declaration hook ({§executor-dynamic-runtimes}). Discovery

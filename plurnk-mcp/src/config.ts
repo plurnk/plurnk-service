@@ -19,6 +19,7 @@ const CONTROL_KEYS = new Map([
     ["connect_timeout", `${PREFIX}CONNECT_TIMEOUT`],
     ["request_timeout", `${PREFIX}REQUEST_TIMEOUT`],
     ["enabled", `${PREFIX}ENABLED`],
+    ["expanded", `${PREFIX}EXPANDED`],
 ]);
 const SERVER_NAME = /^[a-z][a-z0-9-]*$/;
 // {§mcp-summary-derivation} — a _SUMMARY companion may extend a server name
@@ -336,6 +337,29 @@ export const serviceDefinitions = (
 // names either the whole server (PLURNK_MCP_<SERVER>_SUMMARY) or one tool
 // (PLURNK_MCP_<SERVER>_<TOOL>_SUMMARY). Values expand ${NAME} references like
 // every other companion.
+// {§tools-resource-materialization} — the turn-0 tools survey lists server
+// families; servers named here also expand their complete tool tree into the
+// turn-0 survey.
+export const expandedServerNames = (
+    environ: NodeJS.ProcessEnv = process.env,
+): string[] => {
+    const field = `${PREFIX}EXPANDED`;
+    const configured = jsonStrings(environ[field], field);
+    const available = new Set(serverNames(environ));
+    const expanded = new Set<string>();
+    for (const name of configured) {
+        assertServerName(name, field);
+        if (!available.has(name)) {
+            throw new Error(`${field} contains unknown MCP server '${name}'.`);
+        }
+        if (expanded.has(name)) {
+            throw new Error(`${field} contains duplicate MCP server '${name}'.`);
+        }
+        expanded.add(name);
+    }
+    return [...expanded].toSorted();
+};
+
 export const summaryOverrides = (
     environ: NodeJS.ProcessEnv = process.env,
 ): { servers: Map<string, string>; tools: Map<string, string> } => {

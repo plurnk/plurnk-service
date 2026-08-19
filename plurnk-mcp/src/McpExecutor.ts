@@ -51,13 +51,15 @@ export const serverSummary = (
         : `Tools: ${tools}.`;
 };
 
-export const runtimeDecl = (name: string, summary: string): RuntimeDecl => ({
+export const runtimeDecl = (name: string, summary: string, expandTools: boolean): RuntimeDecl => ({
     name,
     glyph: "🔌",
     summary,
     // {§tools-resource-materialization} — MCP families live in the tools
-    // namespace, surveyed as a tree with per-tool summaries.
+    // namespace; the turn-0 survey lists the family document, and expandTools
+    // (PLURNK_MCP_EXPANDED) adds the complete tool tree.
     resourcesPath: "/tools",
+    ...(expandTools ? { expandTools: true } : {}),
     invocation: {
         body: { role: "JSON arguments", required: false },
         target: { role: "MCP tool", required: true, kind: "literal" },

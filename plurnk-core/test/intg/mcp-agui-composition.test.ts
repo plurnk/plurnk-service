@@ -231,7 +231,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.doesNotMatch(firstPacket, /## Registered Tools/);
         assert.match(firstPacket, /worker:\/\/plurnk\/tools\/fixture\.md/);
         assert.match(firstPacket, /Tools: echo, fail\./);
-        assert.match(firstPacket, /worker:\/\/plurnk\/tools\/fixture\/echo\.md/, "the tools tree survey lists child tool documents at turn 0");
+        assert.doesNotMatch(firstPacket, /worker:\/\/plurnk\/tools\/fixture\/echo\.md/, "without PLURNK_MCP_EXPANDED, turn 0 surveys family documents only");
         const familyContract = packet(provider.requests, 1);
         assert.match(familyContract, /## EXEC0 \[fixture\] \(echo\) <!-- Echo one message\. -->/);
         assert.match(familyContract, /## EXEC0 \[fixture\] \(fail\) <!-- Return a deterministic tool error\. -->/);

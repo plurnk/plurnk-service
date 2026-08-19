@@ -23,6 +23,7 @@ import ServerConnection, {
     isClientCredentialsRejection,
 } from "./client.ts";
 import {
+    expandedServerNames,
     overlayServerDefinitions,
     serviceDefinitions,
     serviceEnabledNames,
@@ -348,6 +349,7 @@ const statusOf = (error: unknown): number | null => {
 export default class Module {
     readonly #env: NodeJS.ProcessEnv;
     readonly #summaries: { servers: Map<string, string>; tools: Map<string, string> };
+    readonly #expanded: Set<string>;
     readonly #defaults: ReadonlyMap<string, McpServerDefinition>;
     readonly #defaultEnabled: ReadonlySet<string>;
     readonly #workspaces = new Map<number, WorkspaceSnapshot>();
@@ -370,6 +372,7 @@ export default class Module {
         );
         this.#defaultEnabled = new Set(serviceEnabledNames(environ));
         this.#summaries = summaryOverrides(environ);
+        this.#expanded = new Set(expandedServerNames(environ));
     }
 
     async setup(seam: ModuleSetupSeam): Promise<void> {
@@ -494,7 +497,7 @@ export default class Module {
                 executor,
                 runtime: {
                     namespaceOwner: OWNER,
-                    decl: runtimeDecl(definition.name, serverSummary(definition.name, executor.catalog, this.#summaries.servers.get(definition.name))),
+                    decl: runtimeDecl(definition.name, serverSummary(definition.name, executor.catalog, this.#summaries.servers.get(definition.name)), this.#expanded.has(definition.name)),
                     executor,
                     availability,
                     scheme: new McpResources(definition.name, candidate, executor.catalog),
@@ -1253,7 +1256,7 @@ export default class Module {
             executor,
             runtime: {
                 namespaceOwner: OWNER,
-                decl: runtimeDecl(name, serverSummary(name, executor.catalog, this.#summaries.servers.get(name))),
+                decl: runtimeDecl(name, serverSummary(name, executor.catalog, this.#summaries.servers.get(name)), this.#expanded.has(name)),
                 executor,
                 availability,
                 scheme: new McpResources(name, attachment.connection, executor.catalog),
