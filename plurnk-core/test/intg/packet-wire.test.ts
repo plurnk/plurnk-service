@@ -78,7 +78,7 @@ test("log entry: a no-body row renders explicit display:none and body:\"\" — p
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.match(out, /\{"path":"log:\/\/\/1\/1\/1\/EDIT","body":"","display":"none","origin":"model","status":200,"target":"out\.txt","tokensMetadata":\d+,"tokensTotal":\d+\}/, "jsonplurnk object; display:none carries body:\"\"; path leads and owns the log identity and operation; target = action operand; tokensMetadata and tokensTotal carry the rendered metadata line's real weight");
+    assert.match(out, /\{"path":"log:\/\/\/1\/1\/1\/EDIT","body":"","display":"none","origin":"model","status":200,"target":"out\.txt","tokensActive":\d+,"tokensMetadata":\d+\}/, "jsonplurnk object; display:none carries body:\"\"; path leads and owns the log identity and operation; target = action operand; tokensActive equals the row's active metadata weight");
     assert.doesNotMatch(out, /"op":"EDIT"/, "the canonical path does not duplicate its operation in metadata");
 });
 
@@ -1069,6 +1069,41 @@ test("the Log renders as a fenced jsonplurnk array that strips to valid JSON —
     assert.equal(arr[0].body, "", "display:none carries an explicit empty JSON body");
     assert.ok(!("body" in arr[1]), "display:folded withholds its body");
     assert.equal(arr[2].body, "", "the open row's raw multiline value — the one deviation — strips to a string, recovering valid JSON");
+});
+
+test("{§packet-token-accounting}: row accounting distinguishes canonical body cost from active packet cost", () => {
+    const rendered = PacketWire.renderLog([
+        { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "worker", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } },
+        { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, folded: [[1, -1]], target: { scheme: null, pathname: "/folded.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } },
+        { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/open.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } },
+        { coordinate: "1/1/4", origin: "model", op: "READ", status: 200, folded: [[2, 2]], target: { scheme: null, pathname: "/partial.md" }, rx: { content: "one\ntwo\nthree", mimetype: "text/markdown", startLine: 1 } },
+    ], tok);
+    const fence = /(`{3,})jsonplurnk\n([\s\S]*?)\n\1/.exec(rendered);
+    assert.ok(fence);
+    const strict = fence[2]!.replace(/"body":"\n(?:\d+:[^\n]*\n)+"(?=\})/g, '"body":""');
+    const rows = JSON.parse(strict) as Array<{
+        display: "none" | "folded" | "open";
+        tokensActive: number;
+        tokensBody?: number;
+        tokensMetadata: number;
+        tokensTotal?: number;
+    }>;
+
+    for (const row of rows) {
+        assert.ok(!Object.hasOwn(row, "tokensTotal"), "the ambiguous former field is absent");
+        assert.ok(row.tokensMetadata > 0, "every materialized row reports its active metadata cost");
+    }
+    assert.equal(rows[0]!.tokensActive, rows[0]!.tokensMetadata, "a bodyless row activates metadata only");
+    assert.equal(rows[1]!.tokensActive, rows[1]!.tokensMetadata, "a folded row activates metadata only");
+    assert.ok((rows[1]!.tokensBody ?? 0) > 0, "a folded row separately reports the cost of opening its body");
+    for (const row of rows.slice(2)) {
+        assert.equal(row.display, "open");
+        assert.equal(
+            row.tokensActive,
+            row.tokensMetadata + (row.tokensBody ?? 0),
+            "a wholly or partially open row activates its rendered metadata and body",
+        );
+    }
 });
 
 test("the fixed jsonplurnk fence is cache-stable because body coordinates prevent a closing fence", () => {

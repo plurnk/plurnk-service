@@ -71,7 +71,7 @@ Matcher bodies select resources by content.
 
 * The leading symbol commits its dialect.
 * In a path target, `*` maps one level and `**` crosses directories.
-* JSONPath filters bracket directly: `$[*][?(@.tokensTotal>500)]`.
+* JSONPath filters bracket directly: `$[*][?(@.tokensActive>500)]`.
 * Mapping is universal: JSONPath can query XML and XPath can query JSON.
 * Patterned FIND returns resources for broad targets and locations for exact targets.
 
@@ -158,7 +158,7 @@ YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale t
 * `## OPEN0 (log:///1/2/3/READ) <@aB3dE>` restores one anchored line.
 * Log item addresses contain their loop, turn, and item, followed by their OP when present: `log:///{loop}/{turn}/{item}/{OP}`.
 
-YOU SHOULD FOLD superseded PLANs, stale READs, and irrelevant log items.
+YOU SHOULD FOLD, KILL, or trim superseded PLANs, stale READs, and irrelevant log items.
 
 ## Delegation
 
