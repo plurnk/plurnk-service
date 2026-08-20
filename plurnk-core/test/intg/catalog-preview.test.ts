@@ -260,7 +260,11 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                 const toolItems = (toolResult.results
                     ?? (toolResult.content === undefined ? [] : JSON.parse(toolResult.content) as unknown[])) as Array<Array<{ path: string; summary?: string }>>;
                 const shell = toolItems.flat().find(({ path }) => path === "worker://plurnk/skills/plurnk/sh.md");
-                assert.equal(shell?.summary, "Run POSIX shell commands and scripts.", "Turn 0 carries the family summary without its invocation body");
+                assert.equal(
+                    shell?.summary,
+                    "`EXEC [sh] <!-- Run POSIX shell commands and scripts. -->\\npwd`",
+                    "Turn 0 teaches a compact executable witness with its authored summary",
+                );
                 for (const [name, summary] of [
                     ["http", "Read and modify web resources through addressable HTTP(S) entries."],
                     ["worker", "Coordinate workers and manage shared or private workspace entries."],

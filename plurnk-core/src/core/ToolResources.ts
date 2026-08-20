@@ -85,6 +85,18 @@ const exampleSource = (
         : `${heading}\n${invocation.example.body}`;
 };
 
+const summaryInvocation = (
+    runtime: string,
+    invocation: RuntimeInvocationDecl,
+    exactTarget: string | undefined,
+    summary: string,
+): string => {
+    const source = exampleSource(runtime, invocation, exactTarget, summary)
+        .replace(/^## EXEC0/u, "EXEC")
+        .replace("\n", "\\n");
+    return inlineCode(source);
+};
+
 const renderInvocation = (
     runtime: string,
     invocation: RuntimeInvocationDecl,
@@ -134,7 +146,7 @@ export default class ToolResources {
                 pathname: `${root}/${source.runtime}.md`,
                 content: renderDocument(
                     source.runtime,
-                    source.summary,
+                    summaryInvocation(source.runtime, source.invocation, undefined, source.summary),
                     renderInvocation(source.runtime, source.invocation, undefined, source.summary),
                     source.details,
                 ),
@@ -171,15 +183,11 @@ export default class ToolResources {
             source.details,
         );
         const toolResources = tools.map((tool): ToolResource => {
-            const invocationForm = inlineCode(`EXEC [${source.runtime}] (${tool.target})`)
-                + ` <!-- ${annotationText(tool.summary)} -->`;
             return {
                 pathname: `${root}/${source.runtime}/${ToolResources.targetSegment(tool.target)}.md`,
-                // {§mcp-summary-derivation} — the tools-namespace child summary IS
-                // the invocation form, so the survey row teaches the call.
                 content: renderDocument(
                     `${source.runtime} / ${inlineCode(tool.target)}`,
-                    toolsNamespace ? invocationForm : tool.summary,
+                    summaryInvocation(source.runtime, tool.invocation, tool.target, tool.summary),
                     renderInvocation(source.runtime, tool.invocation, tool.target, tool.summary),
                     tool.details ?? "",
                 ),

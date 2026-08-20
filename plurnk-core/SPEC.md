@@ -3241,9 +3241,11 @@ as a directly copyable `## EXEC0` heading with its input signature. Each heading
 uses {§operation-annotation} for the target summary and an exact child-document
 address; it never advertises a generic invocation that dispatch would reject.
 Target filenames use one deterministic percent-encoded path segment; the child
-document retains the exact unencoded target as invocation authority and carries
-the richer input-side contract. Tool-result/output schemas remain ordinary
-evidence and never enter these documents.
+document retains the exact unencoded target as invocation authority, exposes its
+annotated invocation form through Summary metadata, and carries the richer
+input-side contract. General-runtime summaries similarly expose their compact
+executable witness ({§executor-tool-document}). Tool-result/output schemas remain
+ordinary evidence and never enter these documents.
 
 ```mermaid
 flowchart LR
