@@ -117,10 +117,23 @@ export const liveLoop = async (
     opts?: { timeoutMs?: number },
 ): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelWorkerId: number; lastContent: string }> => {
     const timeoutMs = opts?.timeoutMs ?? Number(process.env.PLURNK_SERVICE_LIVE_TIMEOUT ?? 600_000);
-    const term = await runLoopToTerminal(s.ws, id, {
-        prompt: params.prompt, flags: { auto: true, ...params.flags },
-        ...(params.maxTurns !== undefined ? { maxTurns: params.maxTurns } : {}),
-    }, { timeoutMs });
+    let term;
+    try {
+        term = await runLoopToTerminal(s.ws, id, {
+            prompt: params.prompt, flags: { auto: true, ...params.flags },
+            ...(params.maxTurns !== undefined ? { maxTurns: params.maxTurns } : {}),
+        }, { timeoutMs });
+    } catch (error) {
+        // #295 — a harness timeout must explicitly cancel the loop before the
+        // rejection propagates, so cleanup (daemon.stop) never doubles as the
+        // only cancellation path and a wedged child can't wedge the teardown.
+        try {
+            await rpcCall(s.ws, id + 10_000, "loop.cancel", { reason: "harness_timeout" });
+        } catch {
+            // best-effort; the timeout error is the real failure
+        }
+        throw error;
+    }
     if (term.modelWorkerId === undefined) throw new Error("liveLoop: loop.run returned no modelWorkerId");
     const lastContent = await lastReply(s.db, term.turnIds);
     return {

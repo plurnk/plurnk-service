@@ -1841,6 +1841,17 @@ export default class Daemon {
         }
     }
 
+    // {§crash-only-stop} — the settle deadline. Default 30s; an operator can
+    // raise it for slow hosts or lower it for tests. 0 is refused (an unbounded
+    // stop is exactly the wedge this exists to prevent).
+    static #stopDeadlineMs(): number {
+        const raw = Number(process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS ?? 30_000);
+        if (!Number.isSafeInteger(raw) || raw <= 0) {
+            throw new Error(`PLURNK_SERVICE_STOP_TIMEOUT_MS must be a positive integer; got ${JSON.stringify(process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS)}.`);
+        }
+        return raw;
+    }
+
     async stop(): Promise<void> {
         if (!this.#started) return;
         this.#started = false;
@@ -1873,20 +1884,36 @@ export default class Daemon {
         this.#branchBatches.beginStop();
         this.#drains.beginStop("daemon_stopping");
         await this.#branchBatches.idle();
-        const [drainResult] = await Promise.allSettled([this.#drains.idle()]);
-        const closeResults = await moduleClose;
-        const [streamingResult] = await Promise.allSettled([this.#drainStreamingSchemes()]);
-        const [derivationResult] = await Promise.allSettled([
-            this.#engine.drainDerivations(derivationAbort), // active workspace warms settle before the db closes upstream
-        ]);
+        // {§crash-only-stop} — the settle sequence is DEADLINE-BOUNDED: a child
+        // that never closes (a wedged MCP server, a stuck stream) must not hang
+        // the daemon forever. Past the deadline the waits are abandoned; the
+        // process may exit with the WAL in place (SQLite recovers) rather than
+        // leak as a live-but-wedged tree.
+        const stopDeadlineMs = Daemon.#stopDeadlineMs();
+        const deadline = Date.now() + stopDeadlineMs;
+        const settle = (label: string, wait: () => Promise<unknown>): Promise<PromiseSettledResult<unknown>> =>
+            Promise.race([
+                Promise.allSettled([wait()]).then(([r]) => r as PromiseSettledResult<unknown>),
+                new Promise<PromiseSettledResult<unknown>>((resolve) => {
+                    setTimeout(() => resolve({ status: "rejected", reason: new Error(`stop deadline exceeded waiting for ${label}`) }), Math.max(0, deadline - Date.now())).unref?.();
+                }),
+            ]);
+        const drainResult = await settle("drains idle", () => this.#drains.idle());
+        const closeResults = await Promise.allSettled([moduleClose.then((results) => {
+            if (results.some((r) => r.status === "rejected")) throw new AggregateError(
+                results.filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => r.reason),
+                "module close failed");
+        })]);
+        const streamingResult = await settle("streaming schemes idle", () => this.#drainStreamingSchemes());
+        const derivationResult = await settle("derivation drain", () => this.#engine.drainDerivations(derivationAbort));
         const mimetypeResults = this.#ownsMimetypes
             ? await Promise.allSettled([this.#mimetypes.dispose()])
             : [];
-        const [schemeResult] = await Promise.allSettled([this.#schemes.close()]);
+        const schemeResult = await settle("schemes close", () => this.#schemes.close());
         // Streaming and scheme closure are the last producers of synchronous
         // conclusion notifications. Join the supervisor-owned async tails only
         // after those producers settle, before the caller may close SQLite.
-        const [wakeResult] = await Promise.allSettled([this.#drains.idle()]);
+        const wakeResult = await settle("drains idle (wake)", () => this.#drains.idle());
         const closeErrors = [
             ...closeResults,
             drainResult,
