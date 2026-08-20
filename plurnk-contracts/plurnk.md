@@ -164,11 +164,11 @@ YOU SHOULD FOLD, KILL, or trim superseded PLANs, stale READs, and irrelevant log
 
 ## Delegation
 
-| OP    | inherits   | typical use                     | example |
-|-------|------------|---------------------------------|---------|
-| WORK  | fresh log  | Divide and conquer              | `## WORK0 (worker://recheck)` with body `Create a European capital table.`. |
-| FORK  | forked log | Do two things at once           | `## FORK0 (worker://recheck)` with body `Re-derive the capital from a primary source` |
-| BARE  | no log     | Context-free one-shot inference | `## BARE0` with body `What is the capital of Germany?` |
+| OP    | inherits   | typical use                     | body |
+|-------|------------|---------------------------------|------|
+| WORK  | fresh log  | Divide and conquer              | self-contained task with necessary context |
+| FORK  | forked log | Do two things at once           | distinct objective; prior context is inherited |
+| BARE  | no log     | Context-free one-shot inference | complete standalone prompt |
 
 * Before delegating a worker with a branch signal, ensure the repository is clean.
 * Send a worker another message: `## SEND0 (worker://recheck)` with body `Also verify the alternative against the existing tests.`.
