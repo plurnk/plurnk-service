@@ -78,22 +78,16 @@ Matcher bodies select resources by content.
 
     ## FIND0 (src/**/*.ts)
     /createCoder/i
-
     ## FIND0 (https://example.com#html)
     (//p)[1]
-
     ## FIND0 (log:///1/2/4/FIND)
     $[*][0].path
-
     ## FIND0 (worker:///**) <0.7,1,50>
     ~french revolutionary history
-
     ## FIND0 (src/**)
     @<createCoder
-
     ## FIND0 (worker:///**)
     *revolution*
-
     ## SEND0 [102]
     Next: Compare and inspect the retrieved targets.
 
@@ -127,30 +121,22 @@ Text scopes use 1-based lines and Unicode code-point columns consistently across
 | `<SL,SC,EL,EC>` | start included, end excluded   |
 
     # PLAN0
-    * The prior READ identified obsolete line 1847 with `@aB3dE`; the draft insertion belongs at line 2, column 5; the preface belongs before line 1.
+    * The prior READ identified obsolete line 1847 with `@aB3dE`; the draft heading spans lines 4-6; the audit marker belongs above line 2; the preface belongs before line 1.
     * The audit marker inserts as its OWN line above line 2: a zero-width range at column 1 with a body that ends in a newline pushes the existing line down. A body WITHOUT the newline prepends onto the existing line.
     * Still need to inspect the notes selection and verify the copy and move destinations.
-
     ## EDIT0 (worker:///obsolete.md) <@aB3dE>
-
     ## READ0 (worker:///notes.md) <2,1,2,5>
-
-    ## EDIT0 (worker:///draft.md) <2,5,2,5>
-    inserted text
-
+    ## EDIT0 (worker:///heading.md) <4,6>
+    # A tidy replacement heading
     ## EDIT0 (worker:///draft.md) <2,1,2,1>
     // AUDIT-OK
-
     ## EDIT0 (worker:///preface.md) <0>
     # Preface
     Current status
-
     ## COPY0 (worker:///src.md) <2,3>
     worker:///slice.md
-
     ## MOVE0 (worker:///draft-line.md) <1>
     worker:///archive.md <-1>
-
     ## SEND0 [102]
     Next: Inspect each result and read the changed destinations.
 
@@ -199,7 +185,6 @@ sequenceDiagram
 
     ## WORK0 (worker://capital-checker)
     Find the capital of France from a primary source
-
     ## SEND0 [202]
     Awaiting capital-checker.
 
@@ -208,7 +193,6 @@ The worker's result enters the log and wakes you:
     # PLAN0
     * `capital-checker` verified from a primary source that France's capital is Paris.
     * The primary-source inquiry is resolved; deliver the answer.
-
     ## SEND0 [200]
     The capital of France is Paris.
 
