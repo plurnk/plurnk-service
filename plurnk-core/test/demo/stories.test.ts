@@ -178,7 +178,7 @@ test("{§web-search-retrieval} story: answer a question through an attached sear
 test("story: answer a recent general-knowledge question", { timeout: TIMEOUT }, async () => {
     const story = await runStory({
         label: "web-retrieve-live",
-        prompt: "Who won the 2026 Eurovision Song Contest, and with which song?",
+        prompt: "As of August 20, 2026, who won the 2026 Eurovision Song Contest, and with which song?",
         maxTurns: 30,
         ...(process.env.PLURNK_MCP_BRAVE === undefined ? {} : { setup: enableMcp("brave") }),
     });
