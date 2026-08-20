@@ -118,7 +118,7 @@ test("log entry: durable folksonomic tags remain visible when the body is folded
 test("environment-delta provenance renders as source, never a fictitious run entity", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",
-        origin: "plurnk",
+        origin: "_plurnk",
         source: "file",
         op: "EDIT",
         status: 200,
@@ -474,7 +474,7 @@ test("log render: a scoped READ preserves its complete source TextRegion", () =>
 test("a failed content-bearing READ renders both its Problem and diagnostic body", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/1",
-        origin: "plurnk",
+        origin: "_plurnk",
         op: "READ",
         status: 500,
         target: { scheme: "sh", pathname: "/1/1/2", fragment: "stderr" },
@@ -517,7 +517,7 @@ test("log render: a matcher FIND exposes surgical coordinates", () => {
         op: "FIND",
         status: 200,
         target: { scheme: null, pathname: "/spec.md" },
-        tx: { body: { raw: "/grinder/" } },
+        tx: { body: { raw: "/overflow/" } },
         rx: {
             content: JSON.stringify(matches),
             mimetype: "application/json",
@@ -532,7 +532,7 @@ test("log render: a matcher FIND exposes surgical coordinates", () => {
             },
         },
     }], tok);
-    assert.match(out, /"matcher":"\/grinder\/"/);
+    assert.match(out, /"matcher":"\/overflow\/"/);
     assert.doesNotMatch(out, /"matchingPathCount":/);
     assert.doesNotMatch(out, /"matchLocationCount":/);
     assert.doesNotMatch(out, /"items":|"lines":/);
@@ -613,7 +613,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
             },
         },
         {
-            coordinate: "1/1/6", origin: "plurnk", op: "FIND", status: 200, folded: [[1, -1]],
+            coordinate: "1/1/6", origin: "_plurnk", op: "FIND", status: 200, folded: [[1, -1]],
             target: { scheme: "worker", pathname: "/missing/**" }, tx: { body: null },
             rx: {
                 content: "[]", mimetype: "application/json",
@@ -703,7 +703,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
     if (tokenizer === null) throw new Error("The bundled Gemma tokenizer is required for the metadata budget contract.");
     assert.equal(tokenizer.tokenizerId, "5f7eee611703c5ce");
     const metadataTokens = await tokenizer.countTokens(metadata.map((row) => JSON.stringify(row)).join("\n"));
-    assert.equal(metadataTokens, 652, "canonical retrieval metadata has one reviewed Gemma-token count");
+    assert.equal(metadataTokens, 653, "canonical retrieval metadata has one reviewed Gemma-token count");
 
     assert.throws(
         () => PacketWire.renderLog([{
@@ -840,7 +840,7 @@ test("render guard: every content-emitting op applies the N: convention uniforml
         { label: "FIND text → numbered", entry: { ...base, op: "FIND", rx: { status: 200, mimetype: "text/markdown", content: "m1\nm2" } }, want: /1:m1\n2:m2/ },
         { label: "EDIT span → pre-numbered span preserved verbatim (editedSpan owns the real offsets)", entry: { ...base, op: "EDIT", rx: { status: 200, span: "5:x\n6:y" } }, want: /5:x\n6:y/, anti: /1:5:/ },
         { label: "EXEC body → numbered", entry: { ...base, op: "EXEC", target: { scheme: "sh", pathname: "/1/1/1" }, tx: execTx("ls\npwd") }, want: /1:ls\n2:pwd/ },
-        { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "plurnk", target: { scheme: "sh", pathname: "/1/1/1", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:out5\n6:out6/ },
+        { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "_plurnk", target: { scheme: "sh", pathname: "/1/1/1", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:out5\n6:out6/ },
         { label: "PLAN body → numbered content, never a PLAN heading", entry: { ...base, op: "PLAN", tx: { body: "read line 2\nthen answer" } }, want: /1:read line 2\n2:then answer/, anti: /^# PLAN/m },
         { label: "SEND body → numbered content, never a SEND heading", entry: { ...base, op: "SEND", tx: { body: "here is the answer" } }, want: /1:here is the answer/, anti: /^## SEND/m },
     ];
@@ -855,7 +855,7 @@ test("an oversized auto-opened terminal stream READ renders its complete observa
     const output = Array.from({ length: 40 }, (_, i) => `stream line ${i + 1}`).join("\n");
     const rendered = PacketWire.renderLog([{
         coordinate: "1/2/1",
-        origin: "plurnk",
+        origin: "_plurnk",
         op: "READ",
         status: 200,
         target: { scheme: "sh", pathname: "/1/1/1", fragment: "stdout" },
@@ -989,7 +989,7 @@ test("log render: FIND@200 renders its result catalog, not just the echoed query
     const catalog = '[\n  {\n    "path": "prompt:///1/1",\n    "channels": {\n      "prompt:///1/1": { "mimetype": "text/markdown", "tokens": 20, "lines": 1 }\n    }\n  }\n]';
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",
-        origin: "plurnk",
+        origin: "_plurnk",
         op: "FIND",
         status: 200,
         target: { scheme: "worker", pathname: "/**" },
@@ -1041,7 +1041,7 @@ test("an open model-emission row mirrors the model's own emission back, line-num
 
 test("an open initialization row identifies kernel-authored initialization without impersonating the model", () => {
     const out = PacketWire.renderLog([{
-        coordinate: "1/1/1", origin: "plurnk", op: null, status: 200, folded: [],
+        coordinate: "1/1/1", origin: "_plurnk", op: null, status: 200, folded: [],
         attrs: { kind: "initialization" },
         rx: {
             content: "# PLAN0\n* Discover the tooling available and survey the workspace file root.\n\n## SEND0 [102]\nNext: Address the prompt.",
@@ -1049,7 +1049,7 @@ test("an open initialization row identifies kernel-authored initialization witho
         },
     }], tok);
     assert.match(out, /"kind":"initialization"/, "the row states why the kernel-authored actionless body exists");
-    assert.match(out, /"origin":"plurnk"/, "the row preserves its kernel authorship");
+    assert.match(out, /"origin":"_plurnk"/, "the row preserves its kernel authorship");
     assert.doesNotMatch(out, /"kind":"model_emission"/, "initialization never masquerades as model output");
 });
 
@@ -1157,7 +1157,7 @@ test("PLAN/READ/FIND bodies bypass the ordinary preview", () => {
     assert.doesNotMatch(findOut, /"chunk"/, "no preview cut on FIND");
 
     const pushedRead = PacketWire.renderLog([
-        { coordinate: "1/1/5", origin: "plurnk", op: "READ", status: 200, target: { scheme: "sh", pathname: "/1/1/1" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
+        { coordinate: "1/1/5", origin: "_plurnk", op: "READ", status: 200, target: { scheme: "sh", pathname: "/1/1/1" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
     ], tok);
     assert.match(pushedRead, /line 30 of a runaway/, "an engine-observed READ receives the same complete projection");
     assert.doesNotMatch(pushedRead, /"chunk"/, "provenance does not introduce a hidden READ bound");
@@ -1275,8 +1275,8 @@ test("{§prompt-projection}: prompt rows share one explicit projection-weight al
     const content = Array.from({ length: 80 }, (_, i) => `prompt ${i + 1} ${"x".repeat(32)}`).join("\n");
     const budget = 80;
     const rendered = PacketWire.renderLog([
-        { coordinate: "1/1/1", op: "prompt", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/1" }, rx: { content, mimetype: "text/markdown" } },
-        { coordinate: "1/1/2", op: "prompt", origin: "plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/2" }, rx: { content, mimetype: "text/markdown" } },
+        { coordinate: "1/1/1", op: "prompt", origin: "_plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/1" }, rx: { content, mimetype: "text/markdown" } },
+        { coordinate: "1/1/2", op: "prompt", origin: "_plurnk", status: 200, target: { scheme: "prompt", pathname: "/1/2" }, rx: { content, mimetype: "text/markdown" } },
     ], tok, { promptProjectionWeight: budget });
 
     const weights = [...rendered.matchAll(/"tokensBody":(\d+)/g)].map((match) => Number(match[1]));
@@ -1294,7 +1294,7 @@ test("{§jsonplurnk}: a character preview never cuts a numbered body inside its 
         process.env.PLURNK_SERVICE_PREVIEW_CHARS = "24";
         const rendered = PacketWire.renderLog([{
             coordinate: "1/1/1",
-            origin: "plurnk",
+            origin: "_plurnk",
             op: "EDIT",
             status: 201,
             target: { scheme: "https", pathname: "/example.test/result" },

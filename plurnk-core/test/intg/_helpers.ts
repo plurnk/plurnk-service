@@ -381,7 +381,7 @@ export const schemeManifest = (name: string, channels: Record<string, string> = 
     channels,
     defaultChannel,
     category: "data",
-    writableBy: ["model", "client", "plurnk", "plugin"],
+    writableBy: ["model", "client", "_plurnk", "plugin"],
     volatile: false,
     modelVisible: true,
 });

@@ -18,9 +18,15 @@ export const measureFloor = async (opts: { label: string; projectRoot: string; p
             { prompt: opts.prompt, maxTurns: 1 },
             { timeoutMs: 240_000 },
         );
-        if (turnIds.length !== 1) throw new Error(`floor probe recorded ${turnIds.length} turns; expected exactly one`);
-        const row = await s.db.test_get_turn.get<{ packet: string }>({ id: turnIds[0] });
-        const weight = (JSON.parse(row?.packet ?? "{}") as { weight?: number }).weight ?? 0;
+        if (turnIds.length !== 2) {
+            throw new Error(`floor probe recorded ${turnIds.length} durable turns; expected initialization plus one model turn`);
+        }
+        const rows = await Promise.all(turnIds.map((id) =>
+            s.db.test_get_turn.get<{ packet: string | null }>({ id })));
+        if (rows[0]?.packet !== null || rows[1]?.packet == null) {
+            throw new Error("floor probe did not record packetless initialization followed by one model turn");
+        }
+        const weight = (JSON.parse(rows[1].packet) as { weight?: number }).weight ?? 0;
         if (weight <= 0) throw new Error("floor probe read no packet weight from the first stored request");
         if (s.provider.outputBudget === null) throw new Error("floor probe provider has no resolved output budget");
         return { weight, outputBudget: s.provider.outputBudget };

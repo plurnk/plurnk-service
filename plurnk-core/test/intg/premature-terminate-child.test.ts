@@ -202,6 +202,8 @@ test("a successful same-turn FOLD continues an empty SEND[202] without blocking 
             const rows = await db.test_log_sequencees_by_turn.all<{ sequence: number; op: string }>({ turn_id: primed.turnId });
             const read = rows.find((row) => row.op === "READ");
             assert.ok(read, "the prior READ provides one open log row to curate");
+            const primedTurn = await db.test_get_turn.get<{ sequence: number }>({ id: primed.turnId });
+            assert.ok(primedTurn, "the model turn has a durable loop coordinate");
             const result = await engine.runTurn({
                 provider: new Mock({
                     contextWindow: 100000,
@@ -210,7 +212,7 @@ test("a successful same-turn FOLD continues an empty SEND[202] without blocking 
                             content: "",
                             reasoning: null,
                             ops: [
-                                foldStmt(urlPath("log", `/1/1/${read.sequence}/READ`)),
+                                foldStmt(urlPath("log", `/1/${primedTurn.sequence}/${read.sequence}/READ`)),
                                 sendStmt(status, null, status === 202 ? "continue after curation" : "curation complete"),
                             ],
                         },
@@ -366,7 +368,7 @@ test("retrieval-and-conclude strikes out even when changing targets avoids cycle
 
         assert.equal(result.reason, "strike_threshold", "habitual retrieval-and-conclude ends through strike accounting");
         assert.equal(result.result.status, 500, "distinct targets prove the cycle detector was not the terminating rail");
-        assert.equal(result.turnIds.length, 6, "the shipped six-strike threshold gives recovery room before abandonment");
+        assert.equal(result.turnIds.length, 7, "packetless initialization plus six model strikes form the durable chronology");
         const refusals = await db.test_send_rows_for_worker.all<{ status_rx: number }>({ worker_id: workerId });
         assert.equal(refusals.filter((r) => r.status_rx === 409).length, 6, "all six conclude-attempts refused — patience never weakens the gate");
     } finally { await db.close(); }

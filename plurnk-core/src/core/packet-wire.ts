@@ -30,7 +30,7 @@ const editReceiptRevisionChars = (): number => {
     return value;
 };
 
-const previewBounds = (): { lines: number; chars: number } => {
+export const previewBounds = (): { lines: number; chars: number } => {
     const rawLines = process.env.PLURNK_SERVICE_PREVIEW_LINES;
     const rawChars = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
     const lines = Number(rawLines);

@@ -343,7 +343,7 @@ test("wake-on-completion preserves the durable loop's cumulative maxTurns ceilin
             const terminal = seen.find((event) => event.loopId === loopId);
             assert.equal(terminal?.result.status, 429);
             assert.equal(terminal?.hitMaxTurns, true);
-            assert.equal(terminal?.turnIds.length, 1, "the pre-park turn counts against the same durable ceiling");
+            assert.equal(terminal?.turnIds.length, 2, "initialization and the pre-park model turn remain in the durable chronology");
             assert.equal(mock.remaining, 1, "resume terminates before asking the provider for a second turn");
         } finally {
             ws.close();

@@ -172,7 +172,7 @@ test("proposal: an accepted tagged EDIT carries its classifications through the 
             pathname: string | null;
             tags: string;
         }>({ worker_id: observerId });
-        const delta = rows.find((row) => row.origin === "plurnk"
+        const delta = rows.find((row) => row.origin === "_plurnk"
             && row.op === "EDIT"
             && row.scheme === "proposing-test"
             && row.pathname === "/x");

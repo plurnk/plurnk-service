@@ -13,7 +13,7 @@ class StructuredFixture {
         channels: { results: "application/json" },
         defaultChannel: "results",
         category: "data",
-        writableBy: ["plurnk"],
+        writableBy: ["_plurnk"],
         volatile: true,
         modelVisible: false,
     } as const;
@@ -74,7 +74,7 @@ const structuredRows = async (db: Awaited<ReturnType<typeof openMigrated>>, turn
         rx: string;
         attrs: string;
     }>({ turn_id: turnId }).then((rows) => rows.filter((row) =>
-        row.scheme === "structured-fixture" && row.op === "READ" && row.origin === "plurnk"));
+        row.scheme === "structured-fixture" && row.op === "READ" && row.origin === "_plurnk"));
 
 type Fixture = Awaited<ReturnType<typeof setup>>;
 

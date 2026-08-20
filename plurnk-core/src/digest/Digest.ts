@@ -412,7 +412,7 @@ export default class Digest {
 
     static #renderGroupedOpLine(row: LogRow): string {
         const attrs = Digest.#parseJson(row.attrs, {}) as { kind?: unknown };
-        const materialized = row.origin === "plurnk" && row.op === "EDIT" && attrs.kind === "entry_materialized";
+        const materialized = row.origin === "_plurnk" && row.op === "EDIT" && attrs.kind === "entry_materialized";
         const actionlessKind = row.op === null
             ? LogBody.actionlessKind({ op: row.op, attrs })
             : null;

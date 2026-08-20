@@ -45,7 +45,7 @@ test("fetchLogEntry preserves causal source and structured attributes", async ()
     try {
         const ctx = await seedEnvelope(db, `wire-provenance-${crypto.randomUUID()}`);
         const id = await minimalLog(db, ctx, {
-            origin: "plurnk",
+            origin: "_plurnk",
             source: "worker://researcher",
             attrs: JSON.stringify({ kind: "entry_materialized" }),
             tx: JSON.stringify("in"),
@@ -109,7 +109,7 @@ test("log_entries: origin enum", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-origin");
-        for (const [i, origin] of ["model", "client", "plurnk", "plugin"].entries()) {
+        for (const [i, origin] of ["model", "client", "_plurnk", "plugin"].entries()) {
             await minimalLog(db, ctx, { sequence: i + 1, origin });
         }
         await assert.rejects(
@@ -124,16 +124,24 @@ test("log_entries: actionless kinds have exact authorship", async () => {
     try {
         const ctx = await seedEnvelope(db, "ws-log-actionless-kinds");
         await minimalLog(db, ctx, {
-            sequence: 1, origin: "plurnk", op: null,
+            sequence: 1, origin: "_plurnk", op: null, signal: null,
             attrs: JSON.stringify({ kind: "initialization" }),
         });
         await minimalLog(db, ctx, {
-            sequence: 2, origin: "model", op: null,
+            sequence: 2, origin: "model", op: null, signal: null,
             attrs: JSON.stringify({ kind: "model_emission" }),
         });
+        await minimalLog(db, ctx, {
+            sequence: 3, origin: "_plurnk", op: null, signal: null,
+            attrs: JSON.stringify({ kind: "overflow" }),
+        });
+        const classified = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: ctx.workerId });
+        assert.deepEqual(classified.filter(({ coordinate }) => coordinate === "1/1/1").map(({ tag }) => tag), ["_plurnk", "init"]);
+        assert.deepEqual(classified.filter(({ coordinate }) => coordinate === "1/1/3").map(({ tag }) => tag), ["_plurnk", "overflow"]);
         for (const [sequence, origin, kind] of [
-            [3, "model", "initialization"],
-            [4, "plurnk", "model_emission"],
+            [4, "model", "initialization"],
+            [5, "model", "overflow"],
+            [6, "_plurnk", "model_emission"],
         ] as const) {
             await assert.rejects(
                 () => minimalLog(db, ctx, { sequence, origin, op: null, attrs: JSON.stringify({ kind }) }),
@@ -141,11 +149,11 @@ test("log_entries: actionless kinds have exact authorship", async () => {
             );
         }
         await assert.rejects(
-            () => minimalLog(db, ctx, { sequence: 5, origin: "plurnk", op: null, attrs: JSON.stringify({ kind: "other" }) }),
+            () => minimalLog(db, ctx, { sequence: 7, origin: "_plurnk", op: null, attrs: JSON.stringify({ kind: "other" }) }),
             /CHECK constraint failed/,
         );
         await assert.rejects(
-            () => minimalLog(db, ctx, { sequence: 6, origin: "plurnk", op: "READ", attrs: JSON.stringify({ kind: "initialization" }) }),
+            () => minimalLog(db, ctx, { sequence: 8, origin: "_plurnk", op: "READ", attrs: JSON.stringify({ kind: "initialization" }) }),
             /CHECK constraint failed/,
         );
     } finally { await db.close(); }

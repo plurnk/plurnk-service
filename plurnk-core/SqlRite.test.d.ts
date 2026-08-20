@@ -58,7 +58,6 @@ export class SqlRiteSync {
 	test_loops_insert_no_worker_id(params?: Record<string, unknown>): SqlRiteResult;
 	test_workers_insert_default_values(params?: Record<string, unknown>): SqlRiteResult;
 	test_workspaces_insert_no_name(params?: Record<string, unknown>): SqlRiteResult;
-	engine_grinder_apply(params?: Record<string, unknown>): SqlRiteResult;
 	crud_find_workspace_entry: SqlRiteSyncPreparedStatements;
 	crud_read_channels: SqlRiteSyncPreparedStatements;
 	crud_insert_workspace_entry: SqlRiteSyncPreparedStatements;
@@ -187,6 +186,7 @@ export class SqlRiteSync {
 	engine_loop_turn_seqs: SqlRiteSyncPreparedStatements;
 	engine_open_turn: SqlRiteSyncPreparedStatements;
 	engine_close_turn: SqlRiteSyncPreparedStatements;
+	engine_close_packetless_turn: SqlRiteSyncPreparedStatements;
 	engine_open_model_call: SqlRiteSyncPreparedStatements;
 	engine_observe_model_call_response: SqlRiteSyncPreparedStatements;
 	engine_fail_model_call: SqlRiteSyncPreparedStatements;
@@ -207,8 +207,8 @@ export class SqlRiteSync {
 	engine_child_workers_live: SqlRiteSyncPreparedStatements;
 	engine_child_streams_open: SqlRiteSyncPreparedStatements;
 	engine_render_errors: SqlRiteSyncPreparedStatements;
-	engine_grinder_boundary_rows: SqlRiteSyncPreparedStatements;
-	engine_grinder_open_effects: SqlRiteSyncPreparedStatements;
+	overflow_turn_boundary_rows: SqlRiteSyncPreparedStatements;
+	overflow_turn_open_effects: SqlRiteSyncPreparedStatements;
 	engine_fold_log_entry: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_insert_log_entry: SqlRiteSyncPreparedStatements;
@@ -287,6 +287,7 @@ export class SqlRiteSync {
 	lifecycle_finish_loop: SqlRiteSyncPreparedStatements;
 	lifecycle_loop_status: SqlRiteSyncPreparedStatements;
 	lifecycle_loop_turns: SqlRiteSyncPreparedStatements;
+	lifecycle_loop_model_turn_count: SqlRiteSyncPreparedStatements;
 	lifecycle_worker_tree: SqlRiteSyncPreparedStatements;
 	lifecycle_cancel_worker_tree: SqlRiteSyncPreparedStatements;
 	owner_is_ancestor_or_self: SqlRiteSyncPreparedStatements;
@@ -342,9 +343,11 @@ export class SqlRiteSync {
 	test_get_packet: SqlRiteSyncPreparedStatements;
 	test_get_turn_status: SqlRiteSyncPreparedStatements;
 	test_list_turns_in_loop: SqlRiteSyncPreparedStatements;
+	test_latest_model_turn_in_loop: SqlRiteSyncPreparedStatements;
 	test_log_entries_by_turn: SqlRiteSyncPreparedStatements;
 	test_log_entries_by_worker: SqlRiteSyncPreparedStatements;
 	test_log_tags_by_worker: SqlRiteSyncPreparedStatements;
+	test_log_tags_by_turn: SqlRiteSyncPreparedStatements;
 	test_log_entries_by_loop: SqlRiteSyncPreparedStatements;
 	test_get_worker_id_by_loop: SqlRiteSyncPreparedStatements;
 	test_worker_lineage: SqlRiteSyncPreparedStatements;
@@ -555,7 +558,6 @@ export default class SqlRite {
 	test_loops_insert_no_worker_id(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_workers_insert_default_values(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	test_workspaces_insert_no_name(params?: Record<string, unknown>): Promise<SqlRiteResult>;
-	engine_grinder_apply(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	crud_find_workspace_entry: SqlRitePreparedStatements;
 	crud_read_channels: SqlRitePreparedStatements;
 	crud_insert_workspace_entry: SqlRitePreparedStatements;
@@ -684,6 +686,7 @@ export default class SqlRite {
 	engine_loop_turn_seqs: SqlRitePreparedStatements;
 	engine_open_turn: SqlRitePreparedStatements;
 	engine_close_turn: SqlRitePreparedStatements;
+	engine_close_packetless_turn: SqlRitePreparedStatements;
 	engine_open_model_call: SqlRitePreparedStatements;
 	engine_observe_model_call_response: SqlRitePreparedStatements;
 	engine_fail_model_call: SqlRitePreparedStatements;
@@ -704,8 +707,8 @@ export default class SqlRite {
 	engine_child_workers_live: SqlRitePreparedStatements;
 	engine_child_streams_open: SqlRitePreparedStatements;
 	engine_render_errors: SqlRitePreparedStatements;
-	engine_grinder_boundary_rows: SqlRitePreparedStatements;
-	engine_grinder_open_effects: SqlRitePreparedStatements;
+	overflow_turn_boundary_rows: SqlRitePreparedStatements;
+	overflow_turn_open_effects: SqlRitePreparedStatements;
 	engine_fold_log_entry: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
 	engine_insert_log_entry: SqlRitePreparedStatements;
@@ -784,6 +787,7 @@ export default class SqlRite {
 	lifecycle_finish_loop: SqlRitePreparedStatements;
 	lifecycle_loop_status: SqlRitePreparedStatements;
 	lifecycle_loop_turns: SqlRitePreparedStatements;
+	lifecycle_loop_model_turn_count: SqlRitePreparedStatements;
 	lifecycle_worker_tree: SqlRitePreparedStatements;
 	lifecycle_cancel_worker_tree: SqlRitePreparedStatements;
 	owner_is_ancestor_or_self: SqlRitePreparedStatements;
@@ -839,9 +843,11 @@ export default class SqlRite {
 	test_get_packet: SqlRitePreparedStatements;
 	test_get_turn_status: SqlRitePreparedStatements;
 	test_list_turns_in_loop: SqlRitePreparedStatements;
+	test_latest_model_turn_in_loop: SqlRitePreparedStatements;
 	test_log_entries_by_turn: SqlRitePreparedStatements;
 	test_log_entries_by_worker: SqlRitePreparedStatements;
 	test_log_tags_by_worker: SqlRitePreparedStatements;
+	test_log_tags_by_turn: SqlRitePreparedStatements;
 	test_log_entries_by_loop: SqlRitePreparedStatements;
 	test_get_worker_id_by_loop: SqlRitePreparedStatements;
 	test_worker_lineage: SqlRitePreparedStatements;

@@ -169,7 +169,7 @@ WHERE source.status IN (200, 413, 429, 499, 500, 504, 508)
         AND e.pathname LIKE '/' || source.sequence || '/%'
         AND NOT EXISTS (
             SELECT 1 FROM log_entries le
-            WHERE le.loop_id = source.id AND le.origin = 'plurnk' AND le.op = 'prompt'
+            WHERE le.loop_id = source.id AND le.origin = '_plurnk' AND le.op = 'prompt'
               AND le.scheme = 'prompt' AND le.pathname = e.pathname
         )
   )

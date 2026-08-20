@@ -21,7 +21,7 @@ const setup = async (attrs = "{}", span = "body") => {
     await db.engine_insert_log_entry.get({
         worker_id: workerId, loop_id: loopId, turn_id: turnId,
         sequence: 1,
-            origin: "plurnk",
+            origin: "_plurnk",
             source: null,
             model_call_id: null,
         op: "EDIT", delimiter: "",
@@ -254,10 +254,10 @@ test("FOLD on malformed path returns 400", async () => {
 test("engine_render_log carries the delta source; self-authored entries stay null", async () => {
     const { db, workerId, loopId, turnId } = await setup();
     try {
-        // A synthetic environment-delta row ({§env-delta}): origin=plurnk, source=a scheme.
+        // A synthetic environment-delta row ({§env-delta}): origin=_plurnk, source=a scheme.
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId,
-            sequence: 2, origin: "plurnk", source: "file", model_call_id: null,
+            sequence: 2, origin: "_plurnk", source: "file", model_call_id: null,
             op: "EDIT", delimiter: "", signal: null,
             scheme: "file", username: null, password: null, hostname: null, port: null,
             pathname: "/config.toml", query: null, fragment: null, lineMarker: null,
@@ -528,7 +528,7 @@ test("FOLD/OPEN curate engine-minted error rows through the same operation coord
         // Curation must work identically on every log row.
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 2,
-            origin: "plurnk", source: "rail", model_call_id: null, op: "error", delimiter: "", signal: null,
+            origin: "_plurnk", source: "rail", model_call_id: null, op: "error", delimiter: "", signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
             pathname: null, query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",

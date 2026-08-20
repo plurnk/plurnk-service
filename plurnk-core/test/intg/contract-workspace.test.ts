@@ -354,7 +354,7 @@ test("out-of-band change to a member surfaces as a system delta-EDIT", async () 
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         if (row === undefined) throw new Error("turn packet not found");
         const log = logEntries(JSON.parse(row.packet));
-        const signalled = log.some((r) => r.origin === "plurnk" && JSON.stringify(r).includes(trackedPath));
+        const signalled = log.some((r) => r.origin === "_plurnk" && JSON.stringify(r).includes(trackedPath));
         assert.ok(signalled, "EMI must surface the out-of-band-changed member as a system signal naming the file");
     });
 });

@@ -15,7 +15,7 @@ export default class Prompt implements SchemeHandler {
         channels: { body: "text/markdown" },
         defaultChannel: "body",
         category: "data",
-        writableBy: ["client", "plurnk"],
+        writableBy: ["client", "_plurnk"],
         volatile: false,
         modelVisible: true,
         folderScopes: true,

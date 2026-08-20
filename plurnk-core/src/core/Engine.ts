@@ -588,11 +588,12 @@ export default class Engine {
         origin?: WriterTier;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
-    }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "provider_capacity" | "invalid_emission" | "loop_timeout" | "external" | null }> {
+    }): Promise<{ turnIds: number[]; result: SchemeResult; hitMaxTurns: boolean; reason: "max_turns" | "strike_threshold" | "token_budget" | "provider_capacity" | "invalid_emission" | "loop_timeout" | "external" | null }> {
         // A 202 park suspends this durable loop and a later wake re-enters runLoop.
         // Its ceiling therefore counts every prior turn, not merely this process-local
         // execution segment.
         const turnIds = await this.#lifecycle.turnIds(loopId);
+        let modelTurnCount = await this.#lifecycle.modelTurnCount(loopId);
         let invalidEmissionRecoveryEntryId: number | null = null;
         // Per-loop AbortController for scheme-side cancellation propagation.
         // Chained from the caller's `signal` so an external abort cascades.
@@ -615,10 +616,10 @@ export default class Engine {
                 "engine:rails",
                 "loop-timeout",
                 504,
-                `The loop exceeded its wall-clock deadline after ${turnIds.length} turns.`,
+                `The loop exceeded its wall-clock deadline after ${modelTurnCount} model turns.`,
                 {},
                 {
-                    turns: turnIds.length,
+                    turns: modelTurnCount,
                     stage: "loop",
                     retryable: false,
                 },
@@ -681,7 +682,7 @@ export default class Engine {
             if (timedOut()) return await ruleTimeout();
             signal?.throwIfAborted();
 
-            if (maxTurns >= 0 && turnIds.length >= maxTurns) {
+            if (maxTurns >= 0 && modelTurnCount >= maxTurns) {
                 const failure = Results.failure(
                     "engine:rails",
                     "max-turns",
@@ -722,19 +723,21 @@ export default class Engine {
                     async (span) => {
                         const t = await this.runTurn({
                             provider, childProvider, messages, requirements, workspaceId, workerId, loopId, origin, signal, onDispatch,
-                            turnNumber: turnIds.length + 1, maxTurns,
+                            turnNumber: modelTurnCount + 1, maxTurns,
                             invalidEmissionRecoveryEntryId,
                         });
                         span.setAttribute("turn.id", t.turnId);
                         return t;
                     },
                 );
-                await this.#workspaceTurnCompleted?.({
-                    workspaceId,
-                    workerId,
-                    loopId,
-                    turnId: turn.turnId,
-                });
+                for (const completedTurnId of turn.createdTurnIds) {
+                    await this.#workspaceTurnCompleted?.({
+                        workspaceId,
+                        workerId,
+                        loopId,
+                        turnId: completedTurnId,
+                    });
+                }
             } catch (err) {
                 // The wall fired mid-turn — the abort tore the turn down (generate rides the loop
                 // signal); rule the legible 504, never a generic drain error.
@@ -743,7 +746,20 @@ export default class Engine {
             } finally {
                 releaseWorkspace();
             }
-            turnIds.push(turn.turnId);
+            turnIds.push(...turn.createdTurnIds);
+
+            // {§overflow-turn-only} — packetless kernel chronology is not a
+            // model attempt and never enters emission or strike accounting.
+            if (turn.producer === "_plurnk") {
+                if (turn.curationFailure !== undefined) {
+                    const result = await this.#lifecycle.finish(loopId, turn.curationFailure);
+                    if (result === null) throw new Error(`loop ${loopId} became terminal before token-overflow settlement`);
+                    cleanup("forceful", "token_budget_overflow");
+                    return { turnIds, result, hitMaxTurns: false, reason: "token_budget" };
+                }
+                continue;
+            }
+            modelTurnCount++;
 
             // {§invalid-emission-attempts} Invalid provider emissions are retried beneath this turn and never
             // reach the strike rail. The first consecutive exhaustion has already
@@ -776,7 +792,7 @@ export default class Engine {
             }
             invalidEmissionRecoveryEntryId = null;
 
-            // SPEC {§grinder}: the provider rejected the changed request for capacity.
+            // {§provider-surface-capacity}: the provider rejected the changed request for capacity.
             if (turn.capacityHardStop) {
                 if (turn.capacityFailure === undefined) {
                     throw new Error("a provider-capacity stop requires its exact failure");
@@ -805,11 +821,11 @@ export default class Engine {
                     "strike-threshold",
                     status,
                     verdict.cycleDetected
-                        ? `The loop reached its strike threshold after ${turnIds.length} turns because its operation pattern repeated.`
-                        : `The loop reached its strike threshold after ${turnIds.length} turns because consecutive turns failed.`,
+                        ? `The loop reached its strike threshold after ${modelTurnCount} model turns because its operation pattern repeated.`
+                        : `The loop reached its strike threshold after ${modelTurnCount} model turns because consecutive turns failed.`,
                     {},
                     {
-                        turns: turnIds.length,
+                        turns: modelTurnCount,
                         stage: "loop",
                         retryable: false,
                     },
@@ -928,7 +944,7 @@ export default class Engine {
     async warmWorkspaceDerivations(workspaceId: number): Promise<void> {
         const ctx: PlurnkSchemeContext = {
             db: this.#db, workspaceId, workerId: 0, loopId: 0, turnId: 0,
-            writer: "plurnk",
+            writer: "_plurnk",
             signal: undefined,
             streamEventNotify: this.#streamEventNotify,
             wakeWorkerNotify: this.#wakeWorkerNotify,
@@ -987,7 +1003,7 @@ export default class Engine {
         const ctx: PlurnkSchemeContext = {
             db: this.#db, workspaceId: workspaceRow.workspace_id, workerId, loopId,
             turnId: 0,                   // no turn open at inject time; entries don't pin turnId
-            writer: "plurnk",
+            writer: "_plurnk",
             signal: this.#loopAborts.get(loopId)?.signal,
             streamEventNotify: this.#streamEventNotify,
             wakeWorkerNotify: this.#wakeWorkerNotify,

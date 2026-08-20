@@ -1,20 +1,21 @@
-// Budget stories — the grinder under real pressure. The specimens exercise
+// Budget stories — the overflow recovery under real pressure. The specimens exercise
 // PLURNK's own packet architecture:
 //
 //   * Entries are FREE. An EDIT's body lands in the catalog entry, which does not
 //     render — so a "fat entry" adds nothing to the packet. The only thing that
 //     renders (and therefore creates budget pressure) is the LOG: a READ result
 //     renders the content it pulled.
-//   * The grinder runs PRE-LLM. A turn's stored request packet is what was sent
-//     BEFORE the model spoke — it never contains that turn's own emission. The fat
-//     log a turn produces only weighs on the NEXT turn's packet.
+//   * The overflow recovery runs PRE-LLM. An over-ceiling would-be model turn becomes
+//     a packetless `_plurnk` recovery turn; the next model turn receives the recovered
+//     state and one ephemeral notice. A model turn's stored request packet is what was
+//     sent before the model spoke, so its own fat log weighs on the next candidate.
 //   * The lever is the immediately-prior turn only
-//     (engine_grinder_prior_turn_logs: MAX(turn) < current).
+//     (the immediately preceding model turn plus the current pre-model boundary).
 //
 // Machinery anchors (overflow-only, layer1-rollback, context-envelope admission,
 // and negative-pressure telemetry) live in Engine.budget-enforce. These behavioral
-// stories prove that the grinder gates on the CURRENT packet, folding RECLAIMS
-// room, and a failed hard admission never reaches the model.
+// stories prove that the recovery gates on the current candidate, ordinary FOLD
+// reclaims room, and a failed hard admission never reaches the model.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -71,6 +72,19 @@ const packetOf = async (db: Db, turnId: number): Promise<{ weight: number; assis
     const packet = JSON.parse(row!.packet) as { weight: number; assistant?: { ops: unknown[] } };
     return { ...packet, packet };
 };
+const overflowReceipt = async (db: Db, turnId: number): Promise<string> => {
+    const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: turnId });
+    const receipt = rows.find((row) => row.op === null
+        && row.origin === "_plurnk"
+        && JSON.parse(row.attrs).kind === "overflow");
+    assert.ok(receipt, "the packetless turn contains its overflow receipt");
+    return (JSON.parse(receipt.rx) as { content: string }).content;
+};
+const pressureOf = (receipt: string): { usage: number; ceiling: number; deficit: number } => {
+    const match = /Token Usage (\d+) exceeded Token Ceiling (\d+) by (\d+)\./.exec(receipt);
+    assert.ok(match, `overflow receipt carries measured pressure; got: ${receipt}`);
+    return { usage: Number(match[1]), ceiling: Number(match[2]), deficit: Number(match[3]) };
+};
 const budgetHeadline = (packet: object): { ceiling: number; usage: number; percent: number; free: number } => {
     const budget = packetSection(packet, "budget");
     // percent renders `<1` for sub-1% usage (be85626 — never a bare 0%); accept it, mapping to 0.5.
@@ -80,7 +94,7 @@ const budgetHeadline = (packet: object): { ceiling: number; usage: number; perce
 };
 const logRows = async (db: Db, workerId: number): Promise<Array<{ turn_seq: number; folded: string; weight: number; op: string; pathname: string | null; tags: string }>> =>
     db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number; op: string; pathname: string | null; tags: string }>({ worker_id: workerId });
-// The prompt frame is grinder-exempt. {§grinder-errors-exempt}
+// The prompt frame is overflow recovery-exempt. {§overflow-turn-exemptions}
 const isPrompt = (r: { scheme?: string | null; pathname: string | null }): boolean => (r as { scheme?: string | null }).scheme === "prompt";
 
 // Two reference measurements on throwaway workers (deterministic FAT body), so the
@@ -106,7 +120,7 @@ test("budget: a READ result renders into the log and weighs on the next turn's p
     } finally { await db.close(); }
 });
 
-// 1 — cascade ok: comfortably under budget the grinder is inert, delivered ≤100%.
+// 1 — cascade ok: comfortably under budget the overflow recovery is inert, delivered ≤100%.
 test("budget: under the ceiling the turn delivers and the budget reads at or below 100%", async () => {
     const db = await openMigrated();
     try {
@@ -123,7 +137,7 @@ test("budget: under the ceiling the turn delivers and the budget reads at or bel
     } finally { await db.close(); }
 });
 
-// 2 — the grinder gates on the CURRENT assembled packet: a fat prior-turn
+// 2 — the overflow recovery gates on the CURRENT assembled packet: a fat prior-turn
 // READ log triggers the fold on the next turn — plurnk measures packet.weight.
 test("budget: overflow is judged on the current assembled packet, not a prior-turn baseline", async () => {
     const db = await openMigrated();
@@ -134,19 +148,21 @@ test("budget: overflow is judged on the current assembled packet, not a prior-tu
         const provider = new Mock({ contextWindow: WINDOW, responses: fatReads(FAT) });
         await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 }); // fat READ log, expanded
         // Ceiling sits ABOVE the floor but BELOW floor+fat: the only thing over the
-        // wall is the fat prior-turn log, which the grinder must measure NOW and fold.
+        // wall is the fat prior-turn log, which the overflow recovery must measure NOW and fold.
         const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
-        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const t1Log = (await logRows(db, workerId)).filter((r) => r.turn_seq === 1 && r.weight > 0 && !isPrompt(r));
-        assert.ok(t1Log.length > 0 && t1Log.every((r) => r.folded === "[[1,-1]]"), "the fat prior-turn log (excl. the exempt prompt) was folded — overflow judged on the current packet");
+        const recovery = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        assert.equal(recovery.producer, "_plurnk", "the over-ceiling candidate becomes a recovery turn");
+        assert.equal((await db.test_get_turn.get<{ packet: string | null }>({ id: recovery.turnId }))?.packet, null);
+        assert.equal(tightP.remaining, 1, "provider I/O is unreachable on the recovery turn");
+        const priorModelLog = (await logRows(db, workerId)).filter((r) => r.turn_seq === 2 && r.weight > 0 && !isPrompt(r));
+        assert.ok(priorModelLog.length > 0 && priorModelLog.every((r) => r.folded === "[[1,-1]]"),
+            "the fat prior model turn was folded because the current candidate overflowed");
     } finally { await db.close(); }
 });
 
-// 3 — fold RECLAIMS budget and the turn still DELIVERS (the owner's core invariant:
-// "impossible to go over budget if you started under and fold all of your previous
-// turn's log items"). The 413 diagnoses the recovered overflow without becoming
-// the turn's terminal disposition.
-test("budget: folding reclaims room, surfaces a nonterminal 413 Problem, and the turn delivers", async () => {
+// 3 — recovery is its own turn. The successor model packet carries one ephemeral
+// 413 notice and can deliver normally without a synthetic durable Problem row.
+test("budget: folding reclaims room, records a recovery turn, and the successor model turn delivers", async () => {
     const db = await openMigrated();
     try {
         const { floor, expanded } = await measure(db);
@@ -155,19 +171,20 @@ test("budget: folding reclaims room, surfaces a nonterminal 413 Problem, and the
         const provider = new Mock({ contextWindow: WINDOW, responses: fatReads(FAT) });
         await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
-        const t2 = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        assert.equal(t2.status, 200, "the turn delivers after the grinder folds prior-turn logs to fit");
-        assert.equal(t2.capacityHardStop, false, "the curation-overflow 413 is model-facing and nonterminal");
-        const packet = (await packetOf(db, t2.turnId)).packet;
-        assert.match(packetSection(packet, "errors"), /^\* 413 log:\/\/\/.+\/error$/m, "the recovered overflow is indexed as a 413");
+        const recovery = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        assert.equal(recovery.producer, "_plurnk");
+        assert.match(await overflowReceipt(db, recovery.turnId), /^# PLAN0\n\* Token Budget Overflow:/);
+        const delivered = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        assert.equal(delivered.status, 200, "the successor model turn delivers after recovery");
+        assert.equal(delivered.producer, "model");
+        const packet = (await packetOf(db, delivered.turnId)).packet;
+        assert.equal(packetSection(packet, "errors"), "", "recovered overflow is not fabricated as a durable operation failure");
+        assert.equal(packetSection(packet, "notices").match(/Token Budget Overflow:/gu)?.length, 1,
+            "the successor receives exactly one ephemeral overflow notice");
+        assert.match(packetSection(packet, "notices"), new RegExp(OVERFLOW_DETAIL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
         const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        const overflow = errors
-            .map(({ rx }) => JSON.parse(rx) as { problem?: { type?: string; status?: number; detail?: string } })
-            .find(({ problem }) => problem?.type === "https://problems.plurnk.dev/engine/context/token-budget-overflow")
-            ?.problem;
-        assert.equal(overflow?.status, 413);
-        assert.equal(overflow?.detail, OVERFLOW_DETAIL);
-        assert.match(packetSection(packet, "log"), /"status":413/, "the exact Problem is visible on its durable log row");
+        assert.equal(errors.some(({ rx }) => JSON.parse(rx).problem?.type === "https://problems.plurnk.dev/engine/context/token-budget-overflow"), false,
+            "durable receipt and ephemeral notice do not duplicate themselves as a synthetic Problem");
     } finally { await db.close(); }
 });
 
@@ -182,8 +199,9 @@ test("budget: a delivered packet after fold-to-fit reads at or below 100%", asyn
         const provider = new Mock({ contextWindow: WINDOW, responses: fatReads(FAT) });
         await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
-        const t2 = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const { percent, free } = budgetHeadline((await packetOf(db, t2.turnId)).packet);
+        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const delivered = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const { percent, free } = budgetHeadline((await packetOf(db, delivered.turnId)).packet);
         assert.ok(percent <= 100, `delivered fold-to-fit packet reads ≤100% (got ${percent}%)`);
         assert.ok(free >= 0, "free never goes negative on a delivered packet");
     } finally { await db.close(); }
@@ -200,13 +218,14 @@ test("budget: folding a fat log strictly reduces the measured packet", async () 
         const provider = new Mock({ contextWindow: WINDOW, responses: fatReads(FAT) });
         await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
-        const t2 = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const delivered = (await packetOf(db, t2.turnId)).weight;
+        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const modelTurn = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const delivered = (await packetOf(db, modelTurn.turnId)).weight;
         assert.ok(delivered < expanded, `delivered post-fold packet (${delivered}) lighter than the expanded reference (${expanded})`);
     } finally { await db.close(); }
 });
 
-// 6 — a hard-413 never reaches the model. The stored turn remains request-only.
+// 6 — a hard-413 never reaches the model. The recovery turn remains packetless.
 test("budget: an un-foldable hard-413 short-circuits dispatch — the model is never called", async () => {
     const db = await openMigrated();
     try {
@@ -215,10 +234,12 @@ test("budget: an un-foldable hard-413 short-circuits dispatch — the model is n
         const provider = mockCeiling(TINY, [response([sendStmt(200, null, "must not run")])]);
         const t = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t.status, 413, "the effective context envelope rejects immediately");
-        assert.equal(t.capacityHardStop, true, "the exact provider preflight stop fired before physical I/O");
+        assert.equal(t.producer, "_plurnk");
+        assert.equal(t.capacityHardStop, false, "curation recovery fails before the provider capacity boundary");
         assert.equal(provider.remaining, 1, "the provider was not called");
-        const packet = await packetOf(db, t.turnId);
-        assert.equal(packet.assistant, undefined, "no assistant is fabricated when dispatch short-circuits");
+        assert.equal((await db.test_get_turn.get<{ packet: string | null }>({ id: t.turnId }))?.packet, null,
+            "no request or assistant is fabricated when recovery fails");
+        assert.ok((await overflowReceipt(db, t.turnId)).includes("Token Budget Overflow"));
     } finally { await db.close(); }
 });
 
@@ -232,20 +253,21 @@ test("budget: folding changes the render, not the stored curation weight of the 
         const wide = engineAt(db);
         const provider = new Mock({ contextWindow: WINDOW, responses: [...fatReads(FAT), ...okSends(1)] });
         await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const before = (await logRows(db, workerId)).filter((r) => r.turn_seq === 1).reduce((s, r) => s + r.weight, 0);
+        const before = (await logRows(db, workerId)).filter((r) => r.turn_seq === 2).reduce((s, r) => s + r.weight, 0);
         const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
         await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const t1After = (await logRows(db, workerId)).filter((r) => r.turn_seq === 1);
-        assert.ok(t1After.filter((r) => r.weight > 0 && !isPrompt(r)).every((r) => r.folded === "[[1,-1]]"), "turn 1's bodies folded (the exempt prompt stays open)");
-        assert.equal(t1After.reduce((s, r) => s + r.weight, 0), before, "stored weight is unchanged across the fold — only the render collapsed");
+        const modelTurnAfter = (await logRows(db, workerId)).filter((r) => r.turn_seq === 2);
+        assert.ok(modelTurnAfter.filter((r) => r.weight > 0 && !isPrompt(r)).every((r) => r.folded === "[[1,-1]]"),
+            "the first model turn's bodies folded while its exempt prompt stayed open");
+        assert.equal(modelTurnAfter.reduce((s, r) => s + r.weight, 0), before,
+            "stored weight is unchanged across the fold — only the render collapsed");
     } finally { await db.close(); }
 });
 
-// 8 — the lever is the IMMEDIATELY-prior turn, not progressive shedding. The grinder
-// folds MAX(turn < current) only; it does not walk back through history. Turn 2 folds
-// turn 1, turn 3 folds turn 2, and turn 1 — already
-// folded — stays folded, untouched.
-test("budget: the grinder folds the immediately-prior turn each time, never older folded turns", async () => {
+// 8 — the lever is the IMMEDIATELY-prior turn, not progressive shedding. The overflow recovery
+// selects the previous packet-bearing turn only; it does not walk backward
+// through packetless chronology or progressively shed older history.
+test("budget: the overflow recovery folds the immediately-prior turn each time, never older folded turns", async () => {
     const db = await openMigrated();
     try {
         const { floor, expanded } = await measure(db);
@@ -253,21 +275,22 @@ test("budget: the grinder folds the immediately-prior turn each time, never olde
         const wide = engineAt(db);
         const provider = new Mock({ contextWindow: WINDOW, responses: fatReads(FAT) });
         await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const tightP = mockCeiling(Math.floor((floor + expanded) / 2), [...fatReads(FAT, 2), ...okSends(2)]);
-        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const tightP = mockCeiling(Math.floor((floor + expanded) / 2), [...fatReads(FAT, 1), ...okSends(1)]);
+        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 }); // recovery, raw turn 3
         const folded = (rows: Array<{ turn_seq: number; folded: string; weight: number; op: string; pathname: string | null }>, t: number): boolean =>
             rows.filter((r) => r.turn_seq === t && r.weight > 0 && r.op !== "error" && !isPrompt(r)).every((r) => r.folded === "[[1,-1]]");
-        assert.ok(folded(await logRows(db, workerId), 1), "turn 2 folded turn 1");
-        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 3 });
-        const afterT3 = await logRows(db, workerId);
-        assert.ok(folded(afterT3, 2), "turn 3 folded turn 2 — the immediately-prior turn");
-        assert.ok(folded(afterT3, 1), "turn 1 stays folded — the grinder never reached back to re-touch it");
+        assert.ok(folded(await logRows(db, workerId), 2), "the first recovery folded model turn 2");
+        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 }); // fat model turn, raw turn 4
+        await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 3 }); // recovery, raw turn 5
+        const afterSecondRecovery = await logRows(db, workerId);
+        assert.ok(folded(afterSecondRecovery, 4), "the second recovery folded immediately-prior model turn 4");
+        assert.ok(folded(afterSecondRecovery, 2), "older model turn 2 stays folded without being selected again");
     } finally { await db.close(); }
 });
 
 // 8b — automatic folds remain model-legible through the same folksonomic tags
 // used by explicit FOLD/OPEN/FIND operations.
-test("the grinder stamps every automatically folded row with the overflow tag", async () => {
+test("the overflow recovery stamps every automatically folded row with the overflow tag", async () => {
     const db = await openMigrated();
     try {
         const { floor, expanded } = await measure(db);
@@ -276,31 +299,37 @@ test("the grinder stamps every automatically folded row with the overflow tag", 
         const provider = new Mock({ contextWindow: WINDOW, responses: fatReads(FAT) });
         await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const tightP = mockCeiling(Math.floor((floor + expanded) / 2), okSends(1));
-        const t2 = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const foldedRows = (await logRows(db, workerId)).filter((row) => row.turn_seq === 1 && row.weight > 0 && !isPrompt(row));
+        const recovery = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const foldedRows = (await logRows(db, workerId)).filter((row) => row.turn_seq === 2 && row.weight > 0 && !isPrompt(row));
         assert.ok(foldedRows.length > 0 && foldedRows.every((row) => row.folded === "[[1,-1]]"));
-        assert.ok(foldedRows.every((row) => (JSON.parse(row.tags) as string[]).includes("overflow")), "every row selected by the atomic fold carries its cause");
-        assert.match(packetSection((await packetOf(db, t2.turnId)).packet, "log"), /"tags":\["overflow"\]/, "ambient metadata materializes the tag");
+        assert.ok(foldedRows.every((row) => {
+            const tags = JSON.parse(row.tags) as string[];
+            return tags.includes("_plurnk") && tags.includes("overflow");
+        }), "every row selected by recovery carries its internal producer and cause");
+        const delivered = await wide.runTurn({ provider: tightP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const rendered = packetSection((await packetOf(db, delivered.turnId)).packet, "log");
+        assert.match(rendered, /"tags":\["_plurnk","overflow"\]/, "the successor packet materializes both classifications");
+        assert.match(await overflowReceipt(db, recovery.turnId), /## FOLD0 \[\+_plurnk,\+overflow\]/,
+            "the receipt records the exact ordinary FOLD operations");
         const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        assert.ok(errors.some(({ rx }) => JSON.parse(rx).problem?.detail === OVERFLOW_DETAIL), "the automatic fold retains its 413 failure truth");
+        assert.equal(errors.some(({ rx }) => JSON.parse(rx).problem?.detail === OVERFLOW_DETAIL), false,
+            "successful recovery is a turn and notice, not a durable synthetic error");
     } finally { await db.close(); }
 });
 
-// 10 — the un-foldable hard-413 record reports ruler pressure honestly even
-// though that packet is retained only as failure evidence.
-test("budget: the un-foldable hard-413 record reports a positive overshoot honestly", async () => {
+// 10 — the un-foldable hard-413 receipt reports ruler pressure honestly while
+// the rejected candidate remains unstored.
+test("budget: the un-foldable hard-413 recovery receipt reports a positive overshoot honestly", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = engineAt(db);
         const t = await engine.runTurn({ provider: mockCeiling(TINY, []), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t.status, 413);
-        const packet = (await packetOf(db, t.turnId)).packet;
-        const { ceiling, usage, percent, free } = budgetHeadline(packet);
+        const { ceiling, usage, deficit } = pressureOf(await overflowReceipt(db, t.turnId));
         assert.ok(usage > ceiling, `usage ${usage} exceeds ceiling ${ceiling} — a real overshoot`);
-        assert.ok(percent > 100, `percent honestly past 100 in the failure record (got ${percent})`);
-        assert.equal(free, ceiling - usage, "free reports the full negative ruler debt");
-        assert.equal(packetSection(packet, "budget").match(/Context Token Budget Panic:/gu)?.length, 1);
+        assert.equal(deficit, usage - ceiling, "receipt pressure closes exactly");
+        assert.equal((await db.test_get_turn.get<{ packet: string | null }>({ id: t.turnId }))?.packet, null);
     } finally { await db.close(); }
 });
 
@@ -311,10 +340,13 @@ test("budget: the provider-derived input capacity is the curation ceiling", asyn
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         // {§tokenomics-window-partition}: mockCeiling(10) gives context 12 with
-        // a total output budget of 2, deriving input capacity 10.
-        const t = await engine.runTurn({ provider: mockCeiling(10, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        const { ceiling } = budgetHeadline((await packetOf(db, t.turnId)).packet);
+        // a total output budget of 2, deriving input capacity 10. The ordinary
+        // curation rail reports that exact derived ceiling before provider I/O.
+        const provider = mockCeiling(10, okSends(1));
+        const t = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const { ceiling } = pressureOf(await overflowReceipt(db, t.turnId));
         assert.equal(ceiling, 10, "context 12 − total output budget 2 → input capacity 10");
+        assert.equal(provider.remaining, 1, "curation overflow prevents provider I/O");
     } finally { await db.close(); }
 });
 

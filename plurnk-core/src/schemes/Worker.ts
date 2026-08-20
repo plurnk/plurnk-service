@@ -42,7 +42,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         channels: { body: "text/markdown" },
         defaultChannel: "body",
         category: "data",
-        writableBy: ["model", "client", "plurnk"], // the kernel authors worker://plurnk/ (docs); write-scoping still gates principals
+        writableBy: ["model", "client", "_plurnk"], // the kernel authors worker://plurnk/ (docs); write-scoping still gates principals
         volatile: false,
         modelVisible: true,
         folderScopes: true,

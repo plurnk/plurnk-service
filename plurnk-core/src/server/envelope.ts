@@ -31,7 +31,7 @@ export interface WorkerRow {
     id: number;
     name: string;
     created_at: string;
-    origin: "model" | "client" | "plurnk";
+    origin: "model" | "client" | "_plurnk";
 }
 
 // `workerId` is the client actor's worker: dispatched client actions live there
@@ -221,7 +221,7 @@ export default class Envelope {
     static async ensurePlurnkWorker(db: Db, workspaceId: number): Promise<number> {
         const existing = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
         if (existing !== undefined) return existing.id;
-        const worker = await db.envelope_insert_worker.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk", origin: "plurnk" });
+        const worker = await db.envelope_insert_worker.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk", origin: "_plurnk" });
         if (worker === undefined) throw new Error("ensurePlurnkWorker: worker insert returned no row");
         return worker.id;
     }

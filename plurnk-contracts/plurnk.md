@@ -158,6 +158,8 @@ YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale t
 * `## OPEN0 (log:///1/2/3/READ) <@aB3dE>` restores one anchored line.
 * Log item addresses contain their loop, turn, and item, followed by their OP when present: `log:///{loop}/{turn}/{item}/{OP}`.
 
+YOU MUST keep Token Usage within the Token Ceiling.
+
 YOU SHOULD FOLD, KILL, or trim superseded PLANs, stale READs, and irrelevant log items.
 
 ## Delegation

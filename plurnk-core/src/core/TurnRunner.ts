@@ -74,6 +74,7 @@ import ModelCall, {
     ModelCallPersistenceError,
     ProviderAccountingIntegrityError,
 } from "./ModelCall.ts";
+import OverflowTurn from "./OverflowTurn.ts";
 
 const RECORD_STREAM_MIMETYPES = new Set(["application/jsonl", "application/x-ndjson"]);
 
@@ -110,8 +111,8 @@ type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
 
 // The prompt entry target - prompt:///<loop>/<N>, self-only ({§prompt-self-only}):
 // the owner rides the owner_id column, the address carries only the loop coordinate.
-const promptTarget = (loopSeq: number, turnSeq: number): UrlPath => {
-    const storage = promptPathname(loopSeq, turnSeq);
+const promptTarget = (loopSeq: number, promptOrdinal: number): UrlPath => {
+    const storage = promptPathname(loopSeq, promptOrdinal);
     return {
         kind: "url", raw: `prompt://${storage}`,
         scheme: "prompt", username: null, password: null,
@@ -219,7 +220,9 @@ const grammarConstraint = (grammar: string): GrammarConstraint => {
 };
 
 type EngineTurnResult = {
+    createdTurnIds: number[];
     turnId: number;
+    producer: "model" | "_plurnk";
     status: number;
     outcomes: StrikeOutcome[];
     fingerprint: string;
@@ -229,6 +232,7 @@ type EngineTurnResult = {
     emissionExhausted: boolean;
     rejectedModelEntryId?: number;
     capacityFailure?: SchemeResult;
+    curationFailure?: SchemeResult;
 };
 
 type BareBatchResult = {
@@ -238,12 +242,13 @@ type BareBatchResult = {
 };
 
 const TOKEN_BUDGET_OVERFLOW_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling. Newest log items were automatically FOLDed to fit within token budget. Curate the log and/or perform more conservatively scoped or chunked retrieval operations to recover.";
+const TOKEN_BUDGET_OVERFLOW_HARD_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling, and the transparent recovery turn could not make enough room without curating unrelated older history.";
 
 const curationOverflowFailure = (pressure: CurationOverflow): SchemeResult => Results.failure(
     "engine:context",
     "token-budget-overflow",
     413,
-    TOKEN_BUDGET_OVERFLOW_DETAIL,
+    TOKEN_BUDGET_OVERFLOW_HARD_DETAIL,
     {},
     {
         usage: pressure.weight,
@@ -650,21 +655,33 @@ export default class TurnRunner {
         //
         // sequence is "ordinal of stuff in this turn." Pre-model
         // writes consume low indices; model ops continue from there.
-        const seqRow = await this.#db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
-        const seq = (seqRow as { next: number }).next;
+        const initialSequence = await this.#db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
+        if (initialSequence === undefined) throw new Error("Engine.runTurn: next turn sequence is unavailable");
         // loops.sequence is the loop's ordinal within the worker. Turn-0 foists that belong to the
         // WORKER (manifest preview, AGENTS, operator docs) gate on the worker's first loop, not every loop's
         // first turn ({§actor-boundary-catalog-preview}); per-loop foists such as
-        // {§prompt-entry} still fire each loop. Read once, turn-1 only.
-        const loopRow = seq === 1
+        // {§prompt-entry} still fire each loop. Read once, first model turn only.
+        const loopRow = turnNumber === 1
             ? await this.#db.engine_get_loop_prompt.get<{ prompt: string; sequence: number; open_paths: string }>({ loop_id: loopId })
             : undefined;
         const workerFirstLoop = (loopRow?.sequence ?? 0) === 1;
+        const createdTurnIds: number[] = [];
+        // {§worker-initialization-entry} — turn zero is an ordinary packetless
+        // `_plurnk` operation batch. Its model-facing zero is a phase label;
+        // durable turn coordinates remain one-based.
+        const initializationTurn = initialSequence.next === 1 && workerFirstLoop
+            ? await JournalTurn.insert(this.#db, loopId)
+            : null;
+        if (initializationTurn !== null) createdTurnIds.push(initializationTurn.id);
+        const seqRow = await this.#db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
+        if (seqRow === undefined) throw new Error("Engine.runTurn: model turn sequence is unavailable");
+        const seq = seqRow.next;
         const openRow = await this.#db.engine_open_turn.get<{ id: number }>({
             loop_id: loopId, sequence: seq,
         });
         if (openRow === undefined) throw new Error("Engine.runTurn: turn open returned no row");
         const turnId = openRow.id;
+        createdTurnIds.push(turnId);
         // {§env-delta-log-pull} — establish a fresh worker's observation
         // baseline immediately after its first turn opens. A fork already has
         // its parent's cursor, so the NULL-guarded statement leaves it intact.
@@ -676,7 +693,7 @@ export default class TurnRunner {
         // different providers each read their own honest tokenizer values.
         const systemCtx: PlurnkSchemeContext = {
             db: this.#db, workspaceId, workerId, loopId, turnId,
-            writer: "plurnk",
+            writer: "_plurnk",
             signal: this.#loopSignal(loopId),
             streamEventNotify: this.#streamEventNotify,
             wakeWorkerNotify: this.#wakeWorkerNotify,
@@ -700,14 +717,14 @@ export default class TurnRunner {
         //     we DON'T re-foist here for N>1.
         // Model ops dispatch after these pre-model rows.
         let nextActionIndex = 1;
+        let initializationActionIndex = 2;
         const turnOpenPaths: string[] = [];
         // {§worker-initialization-entry} — the worker's first turn opens with a kernel-authored initialization: a
         // worked turn PLAN → the environment FINDs the foist ACTUALLY dispatches → SEND signal 102. Built
         // from the real ops below (not a static print — we lean into the genuine echo paradigm) and
         // written at sequence 1, so it reads first with the foisted results following.
         const turnZeroMoves: string[] = [];
-        if (seq === 1) {
-            if (workerFirstLoop) nextActionIndex = 2;  // reserve sequence 1 for initialization
+        if (initializationTurn !== null) {
             // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
             // worker://plurnk/agents.md) gets one foisted READ on the worker's first
             // loop, so local repo guidance is visible turn-0 content. Global policy
@@ -727,21 +744,23 @@ export default class TurnRunner {
                         pathname: "/agents.md", query: null, fragment: null,
                     };
                     const agentsRead: ReadStatement = {
-                        op: "READ", delimiter: "", annotation: null, signal: ["+init", "+policy"], target: agentsTarget,
+                        op: "READ", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+policy"], target: agentsTarget,
                         lineMarker: null, body: null, position: UNKNOWN_POSITION,
                     };
                     await this.#dispatch({
-                        statement: agentsRead, workspaceId, workerId, loopId, turnId,
-                        sequence: nextActionIndex, origin: "plurnk", onDispatch,
+                        statement: agentsRead, workspaceId, workerId, loopId, turnId: initializationTurn.id,
+                        sequence: initializationActionIndex, origin: "_plurnk", onDispatch,
                     });
-                    nextActionIndex++;
+                    initializationActionIndex++;
                 }
             }
+        }
+        if (turnNumber === 1) {
             const promptRow = loopRow; // {§prompt-entry} — per-loop; fires every loop's turn 1
             if (promptRow !== undefined && typeof promptRow.prompt === "string" && promptRow.prompt.length > 0) {
                 const openPaths = assertOpenPaths(JSON.parse(promptRow.open_paths) as unknown, `Loop ${loopId} open_paths`);
                 const promptLoopSeq = promptRow.sequence; // the loop's per-worker sequence — model-facing, matching log coordinates (owner: the db id read as prompt/2/1)
-                const promptPath = promptTarget(promptLoopSeq, seq);
+                const promptPath = promptTarget(promptLoopSeq, 1);
                 const entry: EntryData = {
                     channels: { body: { content: promptRow.prompt, mimetype: "text/markdown" } },
                     attributes: { openPaths },
@@ -827,11 +846,11 @@ export default class TurnRunner {
         await this.#warmWorkspace(systemCtx, true, false);
 
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
-        // Six bodyless FIND surveys foisted into the worker's first model turn establish the skills tree
+        // Six bodyless FIND surveys in the worker's packetless initialization turn establish the skills tree
         // (authored and Plurnk-generated families), attached tools tree, project, commons, and private
         // surfaces in that order.
         // Their `init` classification lets the model curate this opening survey as one log set.
-        if (seq === 1) {
+        if (initializationTurn !== null) {
             // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
             const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
             const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
@@ -849,29 +868,29 @@ export default class TurnRunner {
                     if (entry?.resourcesPath !== "/tools" || entry.expandTools !== true) continue;
                     toolExpansions.push({
                         statement: {
-                            op: "FIND", delimiter: "", annotation: `enabled tools: ${tag}`, signal: ["+init", "+tools"],
+                            op: "FIND", delimiter: "", annotation: `enabled tools: ${tag}`, signal: ["+_plurnk", "+init", "+tools"],
                             target: { kind: "url", raw: `worker://plurnk/tools/${tag}/**`, scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: `/tools/${tag}/**`, query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
-                        exemplar: `## FIND0 [+init,+tools] (worker://plurnk/tools/${tag}/**) <1,-1> <!-- enabled tools: ${tag} -->`,
+                        exemplar: `## FIND0 [+_plurnk,+init,+tools] (worker://plurnk/tools/${tag}/**) <1,-1> <!-- enabled tools: ${tag} -->`,
                     });
                 }
                 const surveys: Array<{ statement: FindStatement; exemplar: string }> = [
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+skills"],
+                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+skills"],
                             target: { kind: "url", raw: "worker://plurnk/skills/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/skills/*.md", query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+init,+skills] (worker://plurnk/skills/*.md) <1,-1>",
+                        exemplar: "## FIND0 [+_plurnk,+init,+skills] (worker://plurnk/skills/*.md) <1,-1>",
                     },
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+skills"],
+                            op: "FIND", delimiter: "", annotation: null, signal: ["+_plurnk", "+init", "+skills"],
                             target: { kind: "url", raw: "worker://plurnk/skills/plurnk/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/skills/plurnk/*.md", query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>",
+                        exemplar: "## FIND0 [+_plurnk,+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>",
                     },
                     {
                         // {§tools-resource-materialization} — enabled tool families
@@ -881,43 +900,43 @@ export default class TurnRunner {
                         // PLURNK_MCP_EXPANDED add a second survey of their complete
                         // tool tree.
                         statement: {
-                            op: "FIND", delimiter: "", annotation: "enabled tools", signal: ["+init", "+tools"],
+                            op: "FIND", delimiter: "", annotation: "enabled tools", signal: ["+_plurnk", "+init", "+tools"],
                             target: { kind: "url", raw: "worker://plurnk/tools/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/tools/*.md", query: null, fragment: null },
                             body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1> <!-- enabled tools -->",
+                        exemplar: "## FIND0 [+_plurnk,+init,+tools] (worker://plurnk/tools/*.md) <1,-1> <!-- enabled tools -->",
                     },
                     ...toolExpansions,
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: "workspace files", signal: ["+init"],
+                            op: "FIND", delimiter: "", annotation: "workspace files", signal: ["+_plurnk", "+init"],
                             target: { kind: "local", raw: "*" },
                             body: null,
                             lineMarker: fileCap === null ? null : { marks: [1, fileCap] },
                             position: UNKNOWN_POSITION,
                         },
-                        exemplar: `## FIND0 [+init] (*) <!-- workspace files -->${fileCap === null ? "" : ` <1,${fileCap}>`}`,
+                        exemplar: `## FIND0 [+_plurnk,+init] (*) <!-- workspace files -->${fileCap === null ? "" : ` <1,${fileCap}>`}`,
                     },
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: "workspace entries", signal: ["+init"],
+                            op: "FIND", delimiter: "", annotation: "workspace entries", signal: ["+_plurnk", "+init"],
                             target: { kind: "url", raw: "worker:///*", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+init] (worker:///*) <!-- workspace entries -->",
+                        exemplar: "## FIND0 [+_plurnk,+init] (worker:///*) <!-- workspace entries -->",
                     },
                     {
                         statement: {
-                            op: "FIND", delimiter: "", annotation: "worker entries", signal: ["+init"],
+                            op: "FIND", delimiter: "", annotation: "worker entries", signal: ["+_plurnk", "+init"],
                             target: { kind: "url", raw: "worker://~/*", scheme: "worker", username: null, password: null, hostname: "~", port: null, pathname: "/*", query: null, fragment: null },
                             body: null, lineMarker: null, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+init] (worker://~/*) <!-- worker entries -->",
+                        exemplar: "## FIND0 [+_plurnk,+init] (worker://~/*) <!-- worker entries -->",
                     },
                 ];
                 for (const { statement, exemplar } of surveys) {
-                    await this.#dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: nextActionIndex, origin: "plurnk", onDispatch });
-                    nextActionIndex++;
+                    await this.#dispatch({ statement, workspaceId, workerId, loopId, turnId: initializationTurn.id, sequence: initializationActionIndex, origin: "_plurnk", onDispatch });
+                    initializationActionIndex++;
                     turnZeroMoves.push(exemplar);
                 }
             }
@@ -932,7 +951,14 @@ export default class TurnRunner {
                     ...(turnZeroMoves.length > 0 ? [turnZeroMoves.join("\n")] : []),
                     "## SEND0 [102]\nNext: Address the prompt.",
                 ].join("\n\n");
-                await this.#dispatcher.writeInitializationEntry({ verbatim: initialization, workerId, loopId, turnId, sequence: 1 });
+                const receiptId = await this.#dispatcher.writeInitializationEntry({
+                    verbatim: initialization,
+                    workerId,
+                    loopId,
+                    turnId: initializationTurn.id,
+                    sequence: 1,
+                });
+                onDispatch?.(receiptId);
             }
         }
 
@@ -952,7 +978,7 @@ export default class TurnRunner {
             };
             await this.#dispatch({
                 statement: fileRead, workspaceId, workerId, loopId, turnId,
-                sequence: nextActionIndex, origin: "plurnk", onDispatch,
+                sequence: nextActionIndex, origin: "_plurnk", onDispatch,
             });
             nextActionIndex++;
         }
@@ -970,7 +996,7 @@ export default class TurnRunner {
         // The post-reconciliation Git snapshot above is threaded into the packet
         // and every budget rebuild; overflow never shells again.
         // Notices are non-terminal observations, never operation-failure truth.
-        // Drain once and thread the same set through every grinder rebuild.
+        // Drain once and thread the same set through every overflow rebuild.
         const notices = this.#notices.drain(loopId)
             .filter((event) => (event as { level?: string }).level !== "info") as Notice[];
 
@@ -993,24 +1019,73 @@ export default class TurnRunner {
                 promptProjection,
             });
         let requestPacket = await buildPacket();
-        // SPEC {§grinder} — budget grinder, pre-LLM: reclaim window on actual overflow.
-        const enforced = await this.#packets.enforceBudget({
-            packet: requestPacket, provider, loopId, turnId,
-            recordOverflow: async (pressure) => {
-                await this.#problems.record({
+        // {§overflow-turn} — measured overflow diverts this would-be model
+        // turn into an ordinary packetless `_plurnk` operation batch. Every
+        // visibility effect goes through Dispatcher FOLD; provider I/O is
+        // structurally unreachable on this branch.
+        const pressure = this.#packets.curationOverflow(requestPacket, provider);
+        if (pressure !== null) {
+            const folds = await OverflowTurn.plan(this.#db, loopId, turnId);
+            const receiptId = await this.#dispatcher.writeOverflowEntry({
+                verbatim: OverflowTurn.receipt(pressure, folds),
+                workerId,
+                loopId,
+                turnId,
+                sequence: nextActionIndex++,
+            });
+            onDispatch?.(receiptId);
+            for (const { statement } of folds) {
+                const result = await this.#dispatch({
+                    statement,
+                    workspaceId,
                     workerId,
                     loopId,
                     turnId,
                     sequence: nextActionIndex++,
-                    origin: "plurnk",
-                    source: "engine",
-                    result: curationOverflowFailure(pressure),
+                    origin: "_plurnk",
+                    onDispatch,
                 });
-            },
-            rebuild: buildPacket,
-        });
-        requestPacket = enforced.packet;
-        let boundaryRolledBack = enforced.boundaryRolledBack;
+                if (result.status >= 400) {
+                    throw new OperationFailureError(result);
+                }
+            }
+            const closed = await this.#db.engine_close_packetless_turn.get<{ id: number }>({
+                id: turnId,
+                status: 200,
+            });
+            if (closed === undefined) {
+                throw new Error(`overflow turn ${turnId} could not close as a packetless operation batch`);
+            }
+            const rebuilt = await buildPacket();
+            const remaining = this.#packets.curationOverflow(rebuilt, provider);
+            const curationFailure = folds.length === 0 || remaining !== null
+                ? curationOverflowFailure(remaining ?? pressure)
+                : undefined;
+            if (curationFailure === undefined) {
+                this.#notices.push(workspaceId, loopId, {
+                    source: "engine:context",
+                    kind: "token_budget_overflow",
+                    level: "error",
+                    message: TOKEN_BUDGET_OVERFLOW_DETAIL,
+                    usage: pressure.weight,
+                    ceiling: pressure.budget,
+                    deficit: pressure.excess,
+                });
+            }
+            return {
+                createdTurnIds,
+                turnId,
+                producer: "_plurnk",
+                status: curationFailure?.status ?? TURN_STATUS_IMPLICIT_CONTINUE,
+                outcomes: [],
+                fingerprint: "",
+                capacityHardStop: false,
+                steerStruck: false,
+                emissionAttempts: 0,
+                emissionExhausted: false,
+                ...(curationFailure === undefined ? {} : { curationFailure }),
+            };
+        }
         let modelMessages = PacketWire.packetToWireMessages(requestPacket) as ChatMessage[];
         // Curation pressure and provider generation are independent. The
         // provider owns its configured total output envelope.
@@ -1061,17 +1136,6 @@ export default class TurnRunner {
                     return true;
                 }
                 baselineMessages = candidateMessages;
-            }
-            if (!boundaryRolledBack) {
-                await this.#packets.rollbackNewestBoundary(loopId, turnId);
-                boundaryRolledBack = true;
-                const candidate = await buildPacket();
-                const candidateMessages = PacketWire.packetToWireMessages(candidate) as ChatMessage[];
-                if (JSON.stringify(candidateMessages) !== JSON.stringify(baselineMessages)) {
-                    requestPacket = candidate;
-                    modelMessages = candidateMessages;
-                    return true;
-                }
             }
             return false;
         };
@@ -1177,7 +1241,7 @@ export default class TurnRunner {
                         loopId,
                         turnId,
                         sequence: nextActionIndex++,
-                        origin: "plurnk",
+                        origin: "_plurnk",
                         source: "provider",
                         result: failure,
                     });
@@ -1258,7 +1322,7 @@ export default class TurnRunner {
                 loopId,
                 turnId,
                 sequence: nextActionIndex,
-                origin: "plurnk",
+                origin: "_plurnk",
                 source: "provider",
                 result: failure,
             });
@@ -1276,7 +1340,9 @@ export default class TurnRunner {
             });
             if (capacityFailure) {
                 return {
+                    createdTurnIds,
                     turnId,
+                    producer: "model",
                     status: recorded.result.status,
                     outcomes: [],
                     fingerprint: "",
@@ -1326,7 +1392,9 @@ export default class TurnRunner {
                 meta: JSON.stringify(response.meta ?? {}),
             });
             return {
+                createdTurnIds,
                 turnId,
+                producer: "model",
                 status: allowInvalidEmissionRecovery ? TURN_STATUS_IMPLICIT_CONTINUE : 500,
                 outcomes: [],
                 fingerprint: "",
@@ -1660,7 +1728,7 @@ export default class TurnRunner {
                 loopId,
                 turnId,
                 sequence: errSeq++,
-                origin: "plurnk",
+                origin: "_plurnk",
                 source: "rail",
                 result: Results.failure(
                     "engine:rail",
@@ -1698,7 +1766,9 @@ export default class TurnRunner {
         }
 
         return {
+            createdTurnIds,
             turnId,
+            producer: "model",
             status: turnStatus,
             outcomes,
             fingerprint: StrikeRail.fingerprintTurn(packetAssistant.ops),
@@ -2067,7 +2137,7 @@ export default class TurnRunner {
         if (divergences.length === 0) return;
         const gitByPath = new Map(gitStatus?.files.map(({ path, status }) => [path, status] as const) ?? []);
         const worker = await this.#db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" })
-            ?? await this.#db.envelope_insert_worker.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk", origin: "plurnk" });
+            ?? await this.#db.envelope_insert_worker.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk", origin: "_plurnk" });
         if (worker === undefined) throw new Error("logFsFictions: plurnk worker resolution returned no row");
         const loop = await this.#db.envelope_insert_client_loop.get<{ id: number }>({ worker_id: worker.id });
         if (loop === undefined) throw new Error("logFsFictions: loop insert returned no row");
@@ -2081,7 +2151,7 @@ export default class TurnRunner {
                 : "{}";
             await this.#db.engine_insert_log_entry.get({
                 worker_id: worker.id, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
-                origin: "plurnk", source: "file", model_call_id: null,
+                origin: "_plurnk", source: "file", model_call_id: null,
                 op: "EDIT", delimiter: "", signal: null,
                 // Match Dispatcher.#extractTarget: a bare file address has NULL scheme
                 // only in log target metadata; its entry identity remains `file`.
@@ -2126,7 +2196,7 @@ export default class TurnRunner {
             loop_id: loopId,
             turn_id: turnId,
             sequence,
-            origin: "plurnk",
+            origin: "_plurnk",
             source: null,
             model_call_id: null,
             op: "prompt",

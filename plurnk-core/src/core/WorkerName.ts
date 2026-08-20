@@ -2,7 +2,7 @@ import { RESERVED_AUTHORITIES, WORKER_NAME } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 
 export type WorkerNameRejection = "invalid" | "reserved";
-export type WorkerOrigin = "model" | "client" | "plurnk";
+export type WorkerOrigin = "model" | "client" | "_plurnk";
 
 export interface WorkerNameClaim {
     id: number;

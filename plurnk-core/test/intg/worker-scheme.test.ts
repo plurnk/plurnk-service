@@ -740,7 +740,7 @@ test("the kernel's published surface worker://plurnk/ refuses model writes (403)
     // engine seeds it AS the plurnk worker (loopDocs.ts). A model naming that authority must be
     // refused — the `authority === "plurnk"` branch is a DISTINCT early-return (writable:false)
     // that the generic sibling-authority test never exercises, so it gets its own pin. run61's
-    // worker://plurnk/skills/plurnk edits are all origin=plurnk (the kernel publishing), never the model.
+    // worker://plurnk/skills/plurnk edits are all origin=_plurnk (the kernel publishing), never the model.
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh });

@@ -22,7 +22,7 @@ test("a short prompt lands as one first-class prompt row", async () => {
             const resp = await runLoopToTerminal(ws, 2, { prompt: "three\nshort\nlines" });
             const { loopId } = resp as { loopId: number };
             const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-            const prompt = rows.find((r) => r.op === "prompt" && r.origin === "plurnk" && /^\/1\/\d+$/.test(r.pathname ?? "") && r.scheme === "prompt");
+            const prompt = rows.find((r) => r.op === "prompt" && r.origin === "_plurnk" && /^\/1\/\d+$/.test(r.pathname ?? "") && r.scheme === "prompt");
             assert.ok(prompt, "the first-class prompt row exists");
             assert.equal(prompt!.lineMarker, null, "prompt delivery is not a synthetic scoped retrieval");
             assert.match(prompt!.rx ?? "", /three/, "the complete durable body belongs to the prompt row");
@@ -40,7 +40,7 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
             const resp = await runLoopToTerminal(ws, 2, { prompt: fat });
             const { loopId, turnIds } = resp as { loopId: number; turnIds: number[] };
             const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-            const prompt = rows.find((r) => r.op === "prompt" && r.origin === "plurnk" && /^\/1\/\d+$/.test(r.pathname ?? "") && r.scheme === "prompt");
+            const prompt = rows.find((r) => r.op === "prompt" && r.origin === "_plurnk" && /^\/1\/\d+$/.test(r.pathname ?? "") && r.scheme === "prompt");
             assert.ok(prompt, "the first-class prompt row exists");
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds[turnIds.length - 1] });
             const packet = JSON.parse(row!.packet) as { sections?: Array<{ name: string; slot: string; header: string | null; content: string }> };
@@ -60,13 +60,13 @@ test("a jumbo prompt renders an adaptive addressable chunk and the section lists
             const projectionPercent = Number(/^([0-9]+(?:\.[0-9]+)?)%$/.exec(process.env.PLURNK_SERVICE_PROMPT_PROJECTION ?? "")?.[1]);
             assert.ok(Number.isFinite(ceiling) && Number.isFinite(projectionPercent));
             assert.ok(Number(projectedPrompt?.tokensBody) <= Math.floor(ceiling * projectionPercent / 100), "the projected body stays within its configured quarter-window allowance");
-            const bodyTarget = /"path":"(log:\/\/\/1\/1\/\d+\/prompt)"/
-                .exec(logSection?.content ?? "")?.[1];
-            assert.ok(bodyTarget, "the emitted canonical-body target is present");
+            const bodyTarget = typeof projectedPrompt?.path === "string" ? projectedPrompt.path : undefined;
+            assert.match(bodyTarget ?? "", /^log:\/\/\/1\/2\/\d+\/prompt$/,
+                "the prompt body is addressed in the first packet-bearing turn");
             const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId });
             assert.ok(worker, "the model worker exists");
             const recovered = await readLog(
-                readStmt(urlPath("log", new URL(bodyTarget).pathname), { marks: [1, -1] }),
+                readStmt(urlPath("log", new URL(bodyTarget!).pathname), { marks: [1, -1] }),
                 makeSchemeCtx({ db, workerId: worker!.worker_id, mimetypes: DEFAULT_MIMETYPES }),
             );
             assert.equal(recovered.status, 200);
@@ -84,7 +84,7 @@ test("an oversized deliverable renders the universal preview and log recovery ad
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const bomb = Array.from({ length: 400 }, (_, i) => `deranged output line ${i + 1}`).join("\n");
     const row = {
-        coordinate: "1/2/1", origin: "plurnk", op: "SEND", delimiter: "", signal: null, source: "worker://comparison-checker",
+        coordinate: "1/2/1", origin: "_plurnk", op: "SEND", delimiter: "", signal: null, source: "worker://comparison-checker",
         target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/comparison-checker", query: null, fragment: null },
         status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: null,
     };
@@ -98,7 +98,7 @@ test("a single-line body is constrained by the independent character bound", () 
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const bomb = "x".repeat(20_000); // one line, run111-scale
     const row = {
-        coordinate: "1/2/1", origin: "plurnk", op: "SEND", delimiter: "", signal: null, source: "worker://oneliner",
+        coordinate: "1/2/1", origin: "_plurnk", op: "SEND", delimiter: "", signal: null, source: "worker://oneliner",
         target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/oneliner", query: null, fragment: null },
         status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: null,
     };
@@ -111,7 +111,7 @@ test("a single-line body is constrained by the independent character bound", () 
 test("a small deliverable rides whole — whole-when-small is the common case, untouched", () => {
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const row = {
-        coordinate: "1/2/1", origin: "plurnk", op: "SEND", delimiter: "", signal: null, source: "worker://tidy",
+        coordinate: "1/2/1", origin: "_plurnk", op: "SEND", delimiter: "", signal: null, source: "worker://tidy",
         target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/tidy", query: null, fragment: null },
         status: 200, rx: "answer: 42\nnotes: none", mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: null,
     };
@@ -128,7 +128,7 @@ test("a single-line jumbo prompt uses the adaptive prompt allowance rather than 
             const bomb = `find the needle: ${"hay ".repeat(50_000)}needle`;
             const resp = await runLoopToTerminal(ws, 2, { prompt: bomb });
             const { turnIds } = resp as { loopId: number; turnIds: number[] };
-            const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds[0] });
+            const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds.at(-1)! });
             const packet = JSON.parse(row!.packet) as { sections?: Array<{ name: string; content: string }> };
             const log = (packet.sections ?? []).find((sec) => sec.name === "log")?.content ?? "";
             const longestHayRun = (log.match(/(?:hay )+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0);

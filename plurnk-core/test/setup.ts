@@ -1,7 +1,7 @@
 // The MOCK-tier test bootstrap (unit + intg), loaded via `node --import=./test/setup.ts`.
 //
 // These tiers inject Mock providers with tiny FAKE context windows (many at 8192, some at 1) to
-// exercise the budget grinder and overflow paths. That is a TEST-FIXTURE concern, NOT a model
+// exercise the budget overflow recovery and overflow paths. That is a TEST-FIXTURE concern, NOT a model
 // config: it needs small reserves so a fake 8192 window has prompt room, and it must be identical
 // on every checkout. So it lives here — committed and authoritative (an --import module runs AFTER
 // --env-file, so it wins) — never in the real-model .env.test profile (it would collide with the

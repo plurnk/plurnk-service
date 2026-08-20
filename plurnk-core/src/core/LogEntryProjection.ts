@@ -20,7 +20,7 @@ export default class LogEntryProjection {
     static op(row: LogEntryProjectionRow): string | null {
         const op = typeof row.op === "string" && row.op.length > 0 ? row.op : null;
         const attrs = LogEntryProjection.#attrs(row.attrs);
-        const materializedEntry = row.origin === "plurnk" && op === "EDIT"
+        const materializedEntry = row.origin === "_plurnk" && op === "EDIT"
             && attrs !== null && typeof attrs === "object"
             && (attrs as { kind?: unknown }).kind === "entry_materialized";
         return materializedEntry ? "READ" : op;

@@ -24,7 +24,7 @@ test("ProblemLog persists one self-identifying RFC 9457 operation failure", asyn
             loopId,
             turnId,
             sequence: 5,
-            origin: "plurnk",
+            origin: "_plurnk",
             source: "rail",
             result: Results.failure(
                 "engine:rail",

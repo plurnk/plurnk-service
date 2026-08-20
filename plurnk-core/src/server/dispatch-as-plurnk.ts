@@ -1,6 +1,6 @@
 // Self-hosting keystone (SPEC {§actor-boundary}, {§actor-boundary-self-hosting}): the runtime acting as an ordinary `plurnk`
 // actor. Uses the workspace's reserved plurnk worker, opens an ephemeral loop+turn,
-// and fires ops through Engine.dispatch with origin=plurnk — the same path the
+// and fires ops through Engine.dispatch with origin=_plurnk — the same path the
 // model and clients use. Mirrors _dispatchAsClient, but the work is the
 // runtime's own (e.g. materializing operator doc entries). The ops land in the
 // plurnk worker's log, NOT the model's; other workers see only the resulting
@@ -24,7 +24,7 @@ export default class DispatchAsPlurnk {
             for (const statement of statements) {
                 const result = await engine.dispatch({
                     statement, workspaceId, workerId, loopId, turnId,
-                    sequence: sequence++, origin: "plurnk",
+                    sequence: sequence++, origin: "_plurnk",
                 });
                 if (result.status >= 400) {
                     throw new OperationFailureError(result);

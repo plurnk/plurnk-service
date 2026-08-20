@@ -13,7 +13,7 @@ export default class Owner {
     static async commonsId(db: Db, workspaceId: number): Promise<number> {
         const existing = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "commons" });
         if (existing !== undefined) return existing.id;
-        const created = await db.envelope_insert_worker.get<{ id: number }>({ workspace_id: workspaceId, name: "commons", origin: "plurnk" });
+        const created = await db.envelope_insert_worker.get<{ id: number }>({ workspace_id: workspaceId, name: "commons", origin: "_plurnk" });
         if (created === undefined) throw new Error("Owner.commonsId: commons worker insert returned no row");
         return created.id;
     }
@@ -22,7 +22,7 @@ export default class Owner {
     static async kernelId(db: Db, workspaceId: number): Promise<number> {
         const existing = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
         if (existing !== undefined) return existing.id;
-        const created = await db.envelope_insert_worker.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk", origin: "plurnk" });
+        const created = await db.envelope_insert_worker.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk", origin: "_plurnk" });
         if (created === undefined) throw new Error("Owner.kernelId: kernel worker insert returned no row");
         return created.id;
     }

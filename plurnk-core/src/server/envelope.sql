@@ -28,7 +28,7 @@ RETURNING id, name;
 
 -- PREP: envelope_insert_worker
 -- origin is the worker's actor ({§machine-processes}): 'model' (the conversation),
--- 'client' (a connection's own worker), or 'plurnk' (the runtime self-hosting worker).
+-- 'client' (a connection's own worker), or '_plurnk' (the runtime self-hosting worker).
 INSERT INTO workers (workspace_id, name, origin)
 VALUES ($workspace_id, $name, $origin)
 RETURNING id, name, origin;

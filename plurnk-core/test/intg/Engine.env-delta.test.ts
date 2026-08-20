@@ -34,7 +34,7 @@ const okSend = (): MockResponse => ({
 });
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
 
-// {§tokenomics-window-partition} — the envelope rides the provider; the wide Mock windows in this file keep the grinder out.
+// {§tokenomics-window-partition} — the envelope rides the provider; the wide Mock windows in this file keep overflow recovery out.
 const makeEngine = (db: Db): Engine => new Engine({ db, schemes: new SchemeRegistry() });
 
 // Controlled concurrency specimen: let one real prepared statement finish, then
@@ -122,7 +122,7 @@ test("observer-local log classifications cannot rewrite an ambient occurrence", 
             op: string;
             pathname: string | null;
         }>({ worker_id: firstObserverId });
-        const firstDelta = firstRows.find((row) => row.origin === "plurnk"
+        const firstDelta = firstRows.find((row) => row.origin === "_plurnk"
             && row.op === "EDIT"
             && row.pathname === "/classified.md");
         assert.ok(firstDelta, "the first observer materialized the source occurrence");
@@ -135,7 +135,7 @@ test("observer-local log classifications cannot rewrite an ambient occurrence", 
             pathname: string | null;
             tags: string;
         }>({ worker_id: secondObserverId });
-        const secondDelta = secondRows.find((row) => row.origin === "plurnk"
+        const secondDelta = secondRows.find((row) => row.origin === "_plurnk"
             && row.op === "EDIT"
             && row.pathname === "/classified.md");
         assert.ok(secondDelta, "the second observer materialized the same source occurrence");
@@ -165,7 +165,7 @@ test("an observer cannot capture an EDIT occurrence between its row and classifi
                 pathname: string | null;
                 tags: string;
             }>({ worker_id: observerId });
-            const delta = rows.find((row) => row.origin === "plurnk"
+            const delta = rows.find((row) => row.origin === "_plurnk"
                 && row.op === "EDIT"
                 && row.pathname === "/classified.md");
             assert.ok(delta, "the interleaved observer captured the source occurrence");
@@ -216,7 +216,7 @@ test("worker-entry deltas follow shared visibility without leaking private scrat
         })).status, 201, "the sibling creates the same private space through its literal name");
         assert.equal((await eng.dispatch({
             statement: editStmt(workerPath("plurnk", "/bulletin.md"), "kernel bulletin"),
-            workspaceId, workerId: kernel, loopId: kernelLoop, turnId: kernelTurn, sequence: 1, origin: "plurnk",
+            workspaceId, workerId: kernel, loopId: kernelLoop, turnId: kernelTurn, sequence: 1, origin: "_plurnk",
         })).status, 201, "the kernel creates a published entry");
 
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
@@ -224,7 +224,7 @@ test("worker-entry deltas follow shared visibility without leaking private scrat
             origin: string; op: string; scheme: string | null; hostname: string | null;
             pathname: string | null; source: string | null; rx: string;
         }>({ worker_id: observer });
-        const deltas = rows.filter((row) => row.origin === "plurnk" && row.op === "EDIT");
+        const deltas = rows.filter((row) => row.origin === "_plurnk" && row.op === "EDIT");
 
         assert.deepEqual(
             deltas
@@ -265,7 +265,7 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
         // per-worker snapshot; it learned its world moved purely through its own log.
         const turn = await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; folded: string }>({ worker_id: workerA });
-        const delta = rows.find((r) => r.op === "EDIT" && r.origin === "plurnk" && r.scheme === "worker" && r.pathname === "/shared.md");
+        const delta = rows.find((r) => r.op === "EDIT" && r.origin === "_plurnk" && r.scheme === "worker" && r.pathname === "/shared.md");
         assert.ok(delta, "A's turn-2 log carries a delta for B's edit");
         assert.equal(delta!.source, "worker://sibling", "the durable delta uses the sibling's addressable identity");
         assert.equal(delta!.folded, "[[1,-1]]", "the broadcast delta lands FOLDED — listed, collapsed until the model OPENs it");
@@ -310,7 +310,7 @@ test("ambient delivery follows monotonic occurrence identity, never wall-clock o
 
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ worker_id: observer });
         const observed = rows
-            .filter((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname?.startsWith("/equal-") === true)
+            .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname?.startsWith("/equal-") === true)
             .map((row) => row.pathname)
             .sort();
         assert.deepEqual(observed, ["/equal-a.md", "/equal-b.md"], "both equal-time events arrive, once each");
@@ -372,7 +372,7 @@ test("a proposed shared EDIT publishes only on successful resolution", async () 
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ worker_id: observer });
         const observed = rows
-            .filter((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-proposal.md") === true)
+            .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-proposal.md") === true)
             .map((row) => row.pathname);
         assert.deepEqual(observed, ["/accepted-proposal.md"], "acceptance publishes once; rejection never becomes ambient state");
     } finally {
@@ -426,15 +426,15 @@ test("a closed pull boundary assigns before, during, and after races exactly onc
         }>({ worker_id: observer });
         assert.deepEqual(
             rows
-                .filter((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-boundary.md") === true)
+                .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-boundary.md") === true)
                 .map(({ turn_seq, pathname }) => ({ turn: turn_seq, pathname }))
                 .sort((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? "")),
             [
-                { turn: 3, pathname: "/after-boundary.md" },
-                { turn: 2, pathname: "/before-boundary.md" },
-                { turn: 3, pathname: "/during-boundary.md" },
+                { turn: 4, pathname: "/after-boundary.md" },
+                { turn: 3, pathname: "/before-boundary.md" },
+                { turn: 4, pathname: "/during-boundary.md" },
             ],
-            "the captured window owns only the event already inside it; both later events wait for the next pull",
+            "after packetless initialization, the captured window owns only the event already inside it; both later events wait for the next pull",
         );
     } finally {
         await db.close();
@@ -470,7 +470,7 @@ test("a fresh worker baselines history but retains an event racing its first pac
 
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ worker_id: observer });
         const observed = rows
-            .filter((row) => row.origin === "plurnk" && row.op === "EDIT" && ["/historical.md", "/first-turn-race.md"].includes(row.pathname ?? ""))
+            .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && ["/historical.md", "/first-turn-race.md"].includes(row.pathname ?? ""))
             .map((row) => row.pathname);
         assert.deepEqual(observed, ["/first-turn-race.md"], "pre-baseline history stays out; a post-baseline race remains deliverable once");
     } finally {
@@ -502,7 +502,7 @@ test("ambient occurrence evidence survives source-log curation", async () => {
 
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null; rx: string }>({ worker_id: observer });
-        const delta = rows.find((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname === "/curated.md");
+        const delta = rows.find((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname === "/curated.md");
         assert.match(delta?.rx ?? "", /durable occurrence/, "curating the producer's log cannot erase the ambient event");
         await db.test_workspaces_delete.run({ id: workspaceId });
     } finally {
@@ -544,7 +544,7 @@ test("a fork inherits observed progress and independently receives pending event
         for (const [workerId, label] of [[branch, "branch"], [parent, "parent"]] as const) {
             const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null; source: string | null }>({ worker_id: workerId });
             const paths = rows
-                .filter((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-fork.md") === true)
+                .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-fork.md") === true)
                 .map(({ pathname, source }) => ({ pathname, source }))
                 .sort((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? ""));
             assert.deepEqual(paths, [
@@ -572,7 +572,7 @@ test("an environment delta preserves typed source attributes for model-facing pr
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
         const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
             worker_id: plurnk, loop_id: plurnkLoop, turn_id: plurnkTurn, sequence: 1,
-            origin: "plurnk", source: "worker://observer", model_call_id: null,
+            origin: "_plurnk", source: "worker://observer", model_call_id: null,
             op: "EDIT", delimiter: "", signal: JSON.stringify(["+query"]),
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/page", query: null, fragment: null, lineMarker: null,
@@ -585,7 +585,7 @@ test("an environment delta preserves typed source attributes for model-facing pr
 
         await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; attrs: string; tags: string }>({ worker_id: observer });
-        const delta = rows.find((row) => row.origin === "plurnk" && row.op === "EDIT" && row.pathname === "/page");
+        const delta = rows.find((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname === "/page");
         assert.equal(delta?.source, "worker://observer");
         assert.deepEqual(JSON.parse(delta?.attrs ?? "{}"), { kind: "entry_materialized" });
         assert.deepEqual(JSON.parse(delta?.tags ?? "[]"), ["query"]);
@@ -613,7 +613,7 @@ test("exactly two cross-worker channels — state via the env-delta, a message v
         await eng.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; weight: number }>({ worker_id: workerA });
-        const ambient = rows.find((r) => r.op === "EDIT" && r.origin === "plurnk" && r.pathname === "/shared.md" && r.source === "worker://sibling");
+        const ambient = rows.find((r) => r.op === "EDIT" && r.origin === "_plurnk" && r.pathname === "/shared.md" && r.source === "worker://sibling");
         assert.ok(ambient, "environment door: B's shared-entry edit crossed to A as a delta (state, ambient)");
         assert.ok(ambient.weight > 0, "the ambient copy retains the source event's canonical body weight");
 
@@ -648,14 +648,14 @@ test("an out-of-band disk change surfaces as a source=file delta narrated by the
         // Turn 1 materializes notes.md from disk (first sight — no divergence).
         await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
         const afterT1 = await db.engine_render_log.all<{ origin: string; op: string; source: string | null }>({ worker_id: workerA });
-        assert.ok(!afterT1.some((r) => r.origin === "plurnk" && r.op === "EDIT" && r.source === "file"), "first sight reconciles silently — no fs delta");
+        assert.ok(!afterT1.some((r) => r.origin === "_plurnk" && r.op === "EDIT" && r.source === "file"), "first sight reconciles silently — no fs delta");
         // The file changes out-of-band (an external editor, a git pull).
         await writeFile(join(root, "notes.md"), "line1\nline2\nline3-external\n");
 
         // Turn 2 — the plurnk worker logs the divergence as a source=file EDIT; A pulls it.
         const turn2 = await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; folded: string; attrs: string; weight: number }>({ worker_id: workerA });
-        const delta = rows.find((r) => r.origin === "plurnk" && r.op === "EDIT" && r.source === "file");
+        const delta = rows.find((r) => r.origin === "_plurnk" && r.op === "EDIT" && r.source === "file");
         assert.ok(delta, "the out-of-band disk change surfaced as a source=file delta");
         assert.equal(delta!.pathname, "notes.md", "the delta names the diverged file");
         assert.equal(delta!.folded, "[[1,-1]]", "the fs delta lands folded");
@@ -746,7 +746,7 @@ test("a sibling's loop-termination surfaces — a 2xx deliverable born OPEN + aw
 
         const win = rows.find((r) => r.op === "SEND" && r.scheme === "worker" && r.pathname === "/worker");
         assert.ok(win, "worker's SEND[200] termination surfaced as a worker delta in A's log");
-        assert.equal(win!.origin, "plurnk", "the termination delta is the engine's narration");
+        assert.equal(win!.origin, "_plurnk", "the termination delta is the engine's narration");
         assert.equal(win!.source, "worker://worker", "attributed with the terminating worker's control identity");
         assert.equal(win!.status_rx, 200, "the terminal status rides");
         assert.deepEqual(JSON.parse(win!.rx), deliverable, "the exact terminal result rides the parent edge");

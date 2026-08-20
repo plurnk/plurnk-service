@@ -63,7 +63,7 @@ const response = (ops: PlurnkStatement[], content: string = "", completion: numb
 class Sealed {
     static manifest = {
         name: "sealed", channels: {}, defaultChannel: "", category: "data",
-        writableBy: ["plurnk"], volatile: false, modelVisible: true, example: "",
+        writableBy: ["_plurnk"], volatile: false, modelVisible: true, example: "",
     };
 }
 
@@ -101,16 +101,15 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         const turn = await db.test_get_turn.get<{ loop_id: number; sequence: number; status: number }>({ id: result.turnId });
         if (turn === undefined) throw new Error("turn not found");
         assert.equal(turn.loop_id, loopId);
-        assert.equal(turn.sequence, 1);
+        assert.equal(turn.sequence, 2, "the packetless initialization owns durable turn 1");
         assert.equal(turn.status, 200);
         assert.equal((await engine.loopUsage(loopId)).accounting.usage?.outputTokens, 42);
 
-        // 5 log entries: the turn-0 initialization (OPEN at sequence 1),
-        // one first-class prompt row, two model ops (EDIT, SEND), and one folded
+        // 4 log entries: one first-class prompt row, two model ops (EDIT, SEND), and one folded
         // `model` echo of this turn's verbatim emission.
-        // Turn-as-container model — pre-model writes share the turn's sequence counter.
+        // The initialization receipt belongs to its preceding packetless turn.
         const logCount = (await db.test_count_log_entries_by_turn.get<{ n: number }>({ turn_id: result.turnId }))?.n;
-        assert.equal(logCount, 5);
+        assert.equal(logCount, 4);
 
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200, "terminal SEND propagated to loop.status");
@@ -209,9 +208,8 @@ test("Engine.runTurn: admitted response does not change packet request-weight se
 });
 
 test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", async () => {
-    // Turn-as-container model, 1-based. The worker's first turn opens with sequence=1
-    // reserved for the turn-0 initialization, the prompt row at 2, then the
-    // three model ops and terminal SEND on the running counter.
+    // The packetless initialization is durable turn 1. The first model turn is
+    // turn 2 and starts its own operation sequence with the prompt row.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -232,12 +230,11 @@ test("Engine.runTurn: multi-op turn - first-class prompt precedes model ops", as
         assert.deepEqual(
             indices.map((r) => ({ idx: r.sequence, op: r.op })),
             [
-                { idx: 1, op: null }, // the turn-0 initialization, OPEN at sequence 1 ({§worker-initialization-entry})
-                { idx: 2, op: "prompt" }, // the prompt (prompt:///<loop>/1, owner-keyed)
+                { idx: 1, op: "prompt" }, // the prompt (prompt:///<loop>/1, owner-keyed)
+                { idx: 2, op: "EDIT" },
                 { idx: 3, op: "EDIT" },
                 { idx: 4, op: "EDIT" },
-                { idx: 5, op: "EDIT" },
-                { idx: 6, op: "SEND" },
+                { idx: 5, op: "SEND" },
             ],
         );
     } finally { await db.close(); }
@@ -390,7 +387,7 @@ test("Engine.runLoop: three consecutive hard failures abandon at 500 with strike
         assert.equal(result.result.status, 500, "distinct hard failures abandon at 500 Internal Server Error");
         assert.equal(result.reason, "strike_threshold");
         assert.equal(result.hitMaxTurns, false);
-        assert.equal(result.turnIds.length, 3, "abandoned on the 3rd consecutive struck turn");
+        assert.equal(result.turnIds.length, 4, "initialization plus three struck model turns");
     } finally { await db.close(); }
 });
 
@@ -422,7 +419,7 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
         });
         assert.equal(result.result.status, 200);
         assert.equal(result.reason, "external");
-        assert.equal(result.turnIds.length, 5); // 4 soft-404 read turns (SEND[102]) + 1 clean terminal
+        assert.equal(result.turnIds.length, 6); // initialization + 4 soft-404 model turns + 1 clean terminal
     } finally { await db.close(); }
 });
 
@@ -456,7 +453,7 @@ test("Engine.runLoop: clean turn between hard failures resets the streak", async
         });
         assert.equal(result.result.status, 500, "distinct hard failures → 500");
         assert.equal(result.reason, "strike_threshold");
-        assert.equal(result.turnIds.length, 4, "clean turn 2 reset streak; abandon fired on turn 4");
+        assert.equal(result.turnIds.length, 5, "initialization plus four model turns; the clean second model turn reset the streak");
     } finally { await db.close(); }
 });
 
@@ -484,7 +481,7 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 5,
         });
         assert.equal(result.result.status, 200);
-        const t2 = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[1] });
+        const t2 = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[2] });
         const t2packet = JSON.parse(t2?.packet ?? "{}");
         const errors = packetSection(t2packet, "errors");
         // The 403 action failure DOES surface (a real error that happened) as a LogCoordinate pointer.
@@ -515,7 +512,7 @@ test("Engine.runLoop: 3 identical period-1 turns trip cycle → strikes accumula
         });
         assert.equal(result.result.status, 508, "cycle-driven strike → 508 Loop Detected");
         assert.equal(result.reason, "strike_threshold");
-        assert.equal(result.turnIds.length, 5, "cycle fires on turn 3; 3 consecutive cycle strikes (3, 4, 5) abandon");
+        assert.equal(result.turnIds.length, 6, "initialization plus five model turns; cycle strikes on model turns 3 through 5");
     } finally { await db.close(); }
 });
 
@@ -537,7 +534,7 @@ test("Engine.runLoop: varied per-turn fingerprints don't trip cycle detection", 
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 2, minCycles: 3, maxCyclePeriod: 4,
         });
         assert.equal(result.result.status, 200);
-        assert.equal(result.turnIds.length, 5);
+        assert.equal(result.turnIds.length, 6, "initialization plus five model turns");
     } finally { await db.close(); }
 });
 
@@ -662,9 +659,10 @@ test("Engine.runTurn: sequence increments across multiple turn calls in the same
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const t3 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const seqs = await db.test_list_turns_in_loop.all<{ id: number; sequence: number }>({ loop_id: loopId });
-        assert.deepEqual(seqs.map((s) => s.sequence), [1, 2, 3]);
-        assert.deepEqual([t1.turnId, t2.turnId, t3.turnId], seqs.map((s) => s.id));
+        const seqs = await db.test_list_turns_in_loop.all<{ id: number; sequence: number; packet: string | null }>({ loop_id: loopId });
+        assert.deepEqual(seqs.map((s) => s.sequence), [1, 2, 3, 4]);
+        assert.equal(seqs[0]?.packet, null, "turn 1 is packetless initialization");
+        assert.deepEqual([t1.turnId, t2.turnId, t3.turnId], seqs.slice(1).map((s) => s.id));
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 200, "loop terminal after final SEND[200]");
     } finally { await db.close(); }
@@ -705,9 +703,9 @@ test("Engine.runTurn: the first turn's log section contains the prompt entry", a
         // Found by its stable identity (origin + target),
         // robust to the turn-0 initialization at 1/1/1 ({§worker-initialization-entry}) and any
         // catalog-preview FIND that shifts its coordinate.
-        const prompt = log.find((e) => e.origin === "plurnk" && e.target === "prompt:///1/1");
+        const prompt = log.find((e) => e.origin === "_plurnk" && e.target === "prompt:///1/1");
         assert.ok(prompt, "first-class prompt row logged against prompt:///1/1");
-        assert.equal(prompt.origin, "plurnk");
+        assert.equal(prompt.origin, "_plurnk");
         assert.equal(prompt.target, "prompt:///1/1");
         assert.match(String(prompt.path), /\/prompt$/, "path owns the prompt operation delimiter");
     } finally { await db.close(); }
@@ -731,7 +729,7 @@ test("Engine.runTurn: the second turn's log section captures prior actions", asy
         // EDIT and a SEND). Found by identity (origin + op + target), robust to the
         // turn-0 initialization ({§worker-initialization-entry}) and a catalog-preview foist that
         // shift coordinates between the prompt and the model's ops.
-        assert.ok(log.find((e) => e.origin === "plurnk" && typeof e.target === "string" && e.target.startsWith("prompt:///") && String(e.path).endsWith("/prompt")), "prompt row logged");
+        assert.ok(log.find((e) => e.origin === "_plurnk" && typeof e.target === "string" && e.target.startsWith("prompt:///") && String(e.path).endsWith("/prompt")), "prompt row logged");
         const edit = log.find((e) => e.origin === "model" && String(e.path).endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
@@ -791,7 +789,7 @@ test("Errors pointers use the canonical projected operation of a materialization
         const turnId = await insertTurn(db, loopId, 1, 102);
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "plurnk", source: "test", model_call_id: null, op: "EDIT", delimiter: "", signal: null,
+            origin: "_plurnk", source: "test", model_call_id: null, op: "EDIT", delimiter: "", signal: null,
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/rejected", query: null, fragment: null, lineMarker: null,
             tx: "{}", mimetype_tx: "application/json",
@@ -809,7 +807,7 @@ test("Errors pointers use the canonical projected operation of a materialization
 test("Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors section", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // Model attempts to EDIT sealed:/// — denied 403 (writableBy=['plurnk']).
+        // Model attempts to EDIT sealed:/// — denied 403 (writableBy=['_plurnk']).
         const denied: EditStatement = {
             op: "EDIT", annotation: null, delimiter: "", signal: null,
             target: urlPath("sealed", "/illegal"),
@@ -828,9 +826,9 @@ test("Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors sec
         const packet = JSON.parse(row?.packet ?? "{}");
         // {§log-row-self-explains}: the pointer targets the OP ROW — the row carries its own
         // failure message on its meta line, so the pointer leads to a record that states its why.
-        // Turn-as-container, 1-based: initialization 1/1/1, prompt 1/1/2,
-        // then the model's denied EDIT at 1/1/3.
-        assert.equal(packetSection(packet, "errors"), "* 403 log:///1/1/3/EDIT", "the pointer targets the failing op row itself");
+        // The initialization is turn 1. In model turn 2, the prompt precedes
+        // the denied EDIT, whose stable coordinate is therefore 1/2/2.
+        assert.equal(packetSection(packet, "errors"), "* 403 log:///1/2/2/EDIT", "the pointer targets the failing op row itself");
     } finally { await db.close(); }
 });
 

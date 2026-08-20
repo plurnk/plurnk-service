@@ -79,7 +79,7 @@ SELECT $new_log_id, tag FROM log_tags WHERE log_entry_id = $old_log_id;
 
 -- PREP: fork_get_log_curation_effects
 -- Exact OPEN/FOLD event effects are part of the copied log history, not
--- process-local grinder bookkeeping. Both row identities are remapped below.
+-- process-local overflow recovery bookkeeping. Both row identities are remapped below.
 SELECT effect.operation_log_entry_id, effect.target_log_entry_id,
        effect.folded_before, effect.folded_after,
        effect.tags_added, effect.tags_removed
