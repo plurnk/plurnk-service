@@ -25,7 +25,7 @@ OPs with a different delimiter from PLAN are body content of the previous valid 
 Each PLAN updates the running state with new or revised reasoning conclusions, learnings, open inquiries, and unresolved priorities.
 SEND[status code] is the final OP.
 
-Every OP must have either its body content or the next OP on the following line.
+OP headings immediately follow the preceding heading or body.
 Body content is character-perfect, including whitespace.
 
 ### Standard Workflow
@@ -145,7 +145,7 @@ Text scopes use 1-based lines and Unicode code-point columns consistently across
     ## SEND0 [102]
     Next: Inspect each result and read the changed destinations.
 
-* Unscoped FIND returns items 1-16; unscoped READ returns lines 1–16. Use `<1,-1>` for all.
+* Unscoped FIND returns items 1-16; unscoped READ returns lines 1–16. `<1,-1>` returns all.
 * Rendered exact READ lines begin with a per-line `@hash` anchor and `L:` line number; neither is content.
 
 YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale targets.
