@@ -25,6 +25,7 @@ import { connect, rpcCall, runLoopToTerminal } from "./intg/_rpc.ts";
 import Digest from "../src/digest/Digest.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
+import { failAfterCancellation } from "./live-failure.ts";
 
 export interface LiveWorkspace {
     db: Db;
@@ -127,12 +128,12 @@ export const liveLoop = async (
         // {§methods-loop-cancel}/{§crash-only-stop} — a harness timeout explicitly cancels before the
         // rejection propagates, so cleanup (daemon.stop) never doubles as the
         // only cancellation path and a wedged child can't wedge the teardown.
-        try {
-            await rpcCall(s.ws, id + 10_000, "loop.cancel", { reason: "harness_timeout" });
-        } catch {
-            // best-effort; the timeout error is the real failure
-        }
-        throw error;
+        return await failAfterCancellation(error, async () => {
+            const cancelled = await rpcCall(s.ws, id + 10_000, "loop.cancel", { reason: "harness_timeout" });
+            if (cancelled.error !== undefined) {
+                throw new Error(`loop.cancel RPC failed (${cancelled.error.code}): ${cancelled.error.message}`);
+            }
+        });
     }
     if (term.modelWorkerId === undefined) throw new Error("liveLoop: loop.run returned no modelWorkerId");
     const lastContent = await lastReply(s.db, term.turnIds);
