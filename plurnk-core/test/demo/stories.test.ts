@@ -348,20 +348,20 @@ test("story: draft a brief, tighten it, then file it away", { timeout: TIMEOUT }
 });
 
 test("story: remember a fact, then recall it later", { timeout: TIMEOUT }, async () => {
-    // worker:// persistent-memory round-trip. The deploy key is in NO file — a correct recall on a
+    // worker:// persistent-memory round-trip. The release marker is in NO file — a correct recall on a
     // LATER turn proves the model stored it in its own memory and retrieved it. Natural prompts.
     const chain = await runStoryChain({
         label: "memory",
         maxTurns: 6,
         prompts: [
-            "Hang onto this for me: the staging deploy key is SK-7788-QRT.",
-            "Remind me — what was that staging deploy key?",
+            "Hang onto this for me: the staging release marker is BLUE-7788-QRT.",
+            "Remind me — what was that staging release marker?",
         ],
     });
     try {
         assert.equal(chain.steps[1].finalStatus, 200, "the recall turn concluded");
-        assert.match(chain.steps[1].lastContent, /SK-7788-QRT/,
-            `recalled the key from memory; got: ${chain.steps[1].lastContent.slice(0, 200)}`);
+        assert.match(chain.steps[1].lastContent, /BLUE-7788-QRT/,
+            `recalled the marker from memory; got: ${chain.steps[1].lastContent.slice(0, 200)}`);
     } finally { await chain.cleanup(); }
 });
 
