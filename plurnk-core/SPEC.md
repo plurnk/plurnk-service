@@ -2263,6 +2263,12 @@ asynchronous wake task from acceptance through settlement; a task failure
 participates in the shutdown aggregate. The database may be released only after
 the final wake barrier resolves.
 
+§crash-only-stop The settle sequence is deadline-bounded
+(`PLURNK_SERVICE_STOP_TIMEOUT_MS`, default 30000): past the deadline each wait
+is abandoned with a named error instead of hanging the daemon on a child that
+never closes. A wedged child costs a forced shutdown; it must never cost an
+unbounded one.
+
 ```mermaid
 flowchart LR
     stop[Stop accepting work] --> drains[Settle worker drains]
