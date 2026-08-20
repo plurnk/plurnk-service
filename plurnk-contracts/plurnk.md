@@ -171,13 +171,15 @@ YOU SHOULD FOLD superseded PLANs, stale READs, and irrelevant log items.
 
 ## Delegation
 
-* Work on a Git branch: `## WORK0 [feature/recheck] (worker://recheck)` with body `Implement the alternative`.
-* Send a worker another message: `## SEND0 (worker://recheck)` with body `Also verify the alternative against the existing tests.`.
-* Fork with inherited history: `## FORK0 (worker://recheck)` with body `Re-derive the capital from a primary source`.
-* Retrieve a clean, focused, one-shot inference response using only the body prompt: `## BARE0` with body `What is the capital of Germany?`.
-* Terminate a worker: `## KILL0 (worker://recheck)`.
+| OP    | inherits   | typical use                     | example |
+|-------|------------|---------------------------------|---------|
+| WORK  | fresh log  | Divide and conquer              | `## WORK0 (worker://recheck)` with body `Create a European capital table.`. |
+| FORK  | forked log | Do two things at once           | `## FORK0 (worker://recheck)` with body `Re-derive the capital from a primary source` |
+| BARE  | no log     | Context-free one-shot inference | `## BARE0` with body `What is the capital of Germany?` |
 
-Before delegating a worker with a branch signal, ensure the repository is clean.
+* Before delegating a worker with a branch signal, ensure the repository is clean.
+* Send a worker another message: `## SEND0 (worker://recheck)` with body `Also verify the alternative against the existing tests.`.
+* Terminate a worker: `## KILL0 (worker://recheck)`.
 
 ```mermaid
 sequenceDiagram
