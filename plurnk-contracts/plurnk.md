@@ -196,8 +196,6 @@ YOU SHOULD FOLD superseded PLANs, stale READs, and irrelevant log items.
 | FORK  | forked log | Do two things at once           | `## FORK0 (worker://recheck)` with body `Re-derive the capital from a primary source` |
 | BARE  | no log     | Context-free one-shot inference | `## BARE0` with body `What is the capital of Germany?` |
 
-Continue independent work with `SEND[102]`; use `SEND[202]` when a live child or stream is the only remaining dependency.
-
 * Before delegating a worker with a branch signal, ensure the repository is clean.
 * Send a worker another message: `## SEND0 (worker://recheck)` with body `Also verify the alternative against the existing tests.`.
 * Terminate a worker: `## KILL0 (worker://recheck)`.
