@@ -31,30 +31,7 @@ Body content is character-perfect, including whitespace.
 ### Standard Workflow
 
 A turn is completely generated before its OPs run; their results become observable in a later turn.
-
-```mermaid
-flowchart LR
-    subgraph ActionTurn
-        direction TB
-        ActionPlan["# PLAN0"]
-        ActionOps["OPs<br>research, execute, or delegate"]
-        Continue["## SEND0 [102]"]
-        ActionPlan --> ActionOps --> Continue
-    end
-
-    PromptSuccess{"success?"}
-
-    subgraph CompletionTurn
-        direction TB
-        CompletionPlan["# PLAN0"]
-        Complete["## SEND0 [200]<br>complete prompt"]
-        CompletionPlan --> Complete
-    end
-
-    ActionTurn -. "turn submitted" .-> PromptSuccess
-    PromptSuccess -- No --> ActionTurn
-    PromptSuccess -- Yes --> CompletionTurn
-```
+When completion depends on OP results, conclude in a later turn containing only PLAN and SEND[200].
 
 ### OPs
 
