@@ -35,6 +35,33 @@ export type SdkModel = {
 
 const cacheControl = { type: "ephemeral" as const };
 
+const openRouterHeaders = (
+    provider: string,
+    env: NodeJS.ProcessEnv,
+    catalog: ProviderInfo,
+): Readonly<Record<string, string>> => {
+    if (catalog.id !== "openrouter") return {};
+    if (env.OPENROUTER_X_TITLE !== undefined) {
+        throw new Error(`${provider} provider: OPENROUTER_X_TITLE was renamed to OPENROUTER_APP_TITLE.`);
+    }
+    const referer = env.OPENROUTER_HTTP_REFERER?.trim();
+    if (referer === undefined || referer === "") return {};
+    let parsed: URL;
+    try {
+        parsed = new URL(referer);
+    } catch (cause) {
+        throw new Error(`${provider} provider: OPENROUTER_HTTP_REFERER must be an absolute HTTP(S) URL.`, { cause });
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        throw new Error(`${provider} provider: OPENROUTER_HTTP_REFERER must be an absolute HTTP(S) URL.`);
+    }
+    const title = env.OPENROUTER_APP_TITLE?.trim();
+    return {
+        "HTTP-Referer": parsed.href,
+        ...(title === undefined || title === "" ? {} : { "X-OpenRouter-Title": title }),
+    };
+};
+
 const envPrefix = (provider: string): string =>
     provider.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase();
 
@@ -226,10 +253,7 @@ export const createSdkModel = (
                 languageModel: createOpenRouter({
                     apiKey: requireApiKey(provider, env, catalog),
                     baseURL: url,
-                    headers: {
-                        ...(env.OPENROUTER_HTTP_REFERER === undefined ? {} : { "HTTP-Referer": env.OPENROUTER_HTTP_REFERER }),
-                        ...(env.OPENROUTER_X_TITLE === undefined ? {} : { "X-Title": env.OPENROUTER_X_TITLE }),
-                    },
+                    headers: openRouterHeaders(provider, env, catalog),
                 }).languageModel(model),
                 ...(catalog.id === "openrouter"
                     ? { cacheAffinity: { target: "header" as const, name: "x-session-id" } }

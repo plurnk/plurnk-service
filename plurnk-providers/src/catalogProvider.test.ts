@@ -378,6 +378,8 @@ test("native provider routes project their documented cache controls through the
         const provider = catalogProviderFromEnv("openrouter", {
             ...env,
             OPENROUTER_API_KEY: "test-key",
+            OPENROUTER_HTTP_REFERER: "https://github.com/plurnk/plurnk-service",
+            OPENROUTER_APP_TITLE: "Plurnk",
         }, "anthropic/claude-sonnet-4.6", `http://127.0.0.1:${address.port}/api/v1`);
         await provider?.generate({
             workerId: "openrouter-worker",
@@ -387,6 +389,8 @@ test("native provider routes project their documented cache controls through the
             ],
         });
         assert.equal(call?.headers.get("x-session-id"), "openrouter-worker");
+        assert.equal(call?.headers.get("http-referer"), "https://github.com/plurnk/plurnk-service");
+        assert.equal(call?.headers.get("x-openrouter-title"), "Plurnk");
         assert.deepEqual((call?.body.messages as unknown[] | undefined)?.[0], {
             role: "system",
             content: [{

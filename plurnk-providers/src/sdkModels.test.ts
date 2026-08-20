@@ -42,6 +42,23 @@ test("createSdkModel constructs Cerebras from Models.dev facts", () => {
     assert.equal(sdk?.compatible, undefined);
 });
 
+test("{§openrouter-app-attribution} attribution rejects malformed URLs and the retired title name", () => {
+    assert.throws(
+        () => createSdkModel("openrouter", "openai/gpt-5", {
+            OPENROUTER_API_KEY: "key",
+            OPENROUTER_HTTP_REFERER: "plurnk",
+        }),
+        /OPENROUTER_HTTP_REFERER must be an absolute HTTP\(S\) URL/,
+    );
+    assert.throws(
+        () => createSdkModel("openrouter", "openai/gpt-5", {
+            OPENROUTER_API_KEY: "key",
+            OPENROUTER_X_TITLE: "Plurnk",
+        }),
+        /OPENROUTER_X_TITLE was renamed to OPENROUTER_APP_TITLE/,
+    );
+});
+
 test("the Google SDK adapter owns its readable-reasoning response projection", () => {
     assert.deepEqual(
         createSdkModel("google", "gemini-3.7-flash", { GEMINI_API_KEY: "test-key" })?.reasoningResponseProviderOptions,

@@ -467,6 +467,15 @@ First-party attribution, client, strike, workspace, loop, turn, and worker
 headers are sent only by the `plurnk` provider. They never leak to another
 backend.
 
+§openrouter-app-attribution **The cataloged OpenRouter route identifies the
+calling application through OpenRouter's current app-attribution headers.**
+`HTTP-Referer` is the absolute HTTP(S) application URL and
+`X-OpenRouter-Title` is its optional display title. The shipped floor identifies
+the public Plurnk repository and may be replaced by operator configuration; an
+explicitly empty `OPENROUTER_HTTP_REFERER` suppresses both headers. Attribution
+applies only to the cataloged `openrouter` route and never leaks to another
+provider merely because it uses the same SDK package.
+
 ## §9 Failures, retries, and cancellation
 
 §provider-failure-normalization Provider failures normalize to `ProviderError`.
