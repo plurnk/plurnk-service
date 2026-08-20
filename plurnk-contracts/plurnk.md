@@ -25,7 +25,7 @@ OPs with a different delimiter from PLAN are body content of the previous valid 
 Each PLAN updates the running state with new or revised reasoning conclusions, learnings, open inquiries, and unresolved priorities.
 SEND[status code] is the final OP.
 
-A single blank line between sections is optional and is not body content; additional blank lines are body content.
+Every OP must have either its body content or the next OP on the following line.
 Body content is character-perfect, including whitespace.
 
 ### OPs
