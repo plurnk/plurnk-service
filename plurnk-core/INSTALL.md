@@ -1,6 +1,10 @@
 # Configuring plurnk-service
 
-Operator guide. Put machine-specific choices in `~/.plurnk/.env`. Each installed package's `.env.defaults` is the authoritative list and floor for the knobs that package owns; the daemon assembles those files into the read-only `~/.plurnk/.env.defaults` catalog on every boot.
+Operator guide. Put machine-specific choices in
+`$XDG_CONFIG_HOME/plurnk/.env` (normally `~/.config/plurnk/.env`). Each
+installed package's `.env.defaults` is the authoritative list and floor for
+the knobs that package owns. `plurnk-service config defaults` projects the
+complete owner-labelled catalog on demand; no generated copy is persisted.
 
 ## Install
 
@@ -10,7 +14,14 @@ plurnk-service migrate        # apply the disposable version-1 schema baseline
 plurnk-service start
 ```
 
-First start creates `~/.plurnk/`: `.env` (yours, seeded once with a model picker — **edit this**), `AGENTS.md` (the operating policy, yours), `.env.defaults` + `INSTALL.md` (package-owned references, **refreshed every boot** — never edit them). No model ships active; the daemon can boot without one, but model loops fail until `PLURNK_MODEL` selects a declared alias.
+First start creates `$XDG_CONFIG_HOME/plurnk` with `.env` (yours, seeded once
+with three model profiles—**edit this**) and `AGENTS.md` (the operating policy,
+yours). Durable SQLite data defaults to `$XDG_DATA_HOME/plurnk/plurnk.db`. No
+model ships active; the daemon can boot without one, but model loops fail until
+`PLURNK_MODEL` selects a declared alias. Use `plurnk-service config`, `config
+edit`, `config defaults`, and `config check` to inspect and maintain the one
+environment cascade. A pre-XDG `~/.plurnk` is never read implicitly; stop the
+old daemon and run `plurnk-service paths migrate` once.
 
 The default service includes local embeddings. An explicitly disabled or unavailable embedder makes `~query` fall back to FTS keyword ranking. Set `PLURNK_MIMETYPES_EMBED_BASE_URL` to use a remote OpenAI-compatible embedding endpoint instead.
 
@@ -21,20 +32,46 @@ Higher-priority source classes override lower ones ({§operator-config-precedenc
 | Priority | Source                                 | Role                                                                                       |
 |---------:|----------------------------------------|--------------------------------------------------------------------------------------------|
 |        1 | Installed packages' assembled defaults | Versioned floor; one owner per key. A collision fails boot naming both owners.             |
-|        2 | `~/.plurnk/.env`                       | User configuration, seeded once and never overwritten. **Write generated config here.**    |
+|        2 | `$XDG_CONFIG_HOME/plurnk/.env`          | User configuration, seeded once and never overwritten.                                    |
 |        3 | `./.env`                               | Configuration for the current working directory.                                           |
 |        4 | `--config=<path>`                      | One explicit service configuration file.                                                   |
 |        5 | `--env-file*`                          | Repeatable explicit files; later files win. The `-if-exists` form skips absent files.       |
 |        6 | Shell environment                      | Process-level operator values.                                                              |
 |        7 | `--<flag>`                             | Highest-priority service CLI value.                                                         |
 
-`~/.plurnk/.env.defaults` is the regenerated assembled catalog, not another input layer. The service CLI mirrors only the `PLURNK_*` variables declared by the service package's own `.env.defaults`: strip `PLURNK_`, lowercase, and replace `_` with `-` (`PLURNK_SERVICE_MAX_TURNS` ↔ `--service-max-turns`). Installed plugin knobs remain available through env/config files and the assembled catalog without implicitly expanding the service executable's CLI ({§operator-config-cli-flags}). Feature-flag booleans use `1`, not `true`; `~/` expands to home.
+The service CLI mirrors only the `PLURNK_*` variables declared by the service
+package's own `.env.defaults`: strip `PLURNK_`, lowercase, and replace `_` with
+`-` (`PLURNK_SERVICE_MAX_TURNS` ↔ `--service-max-turns`). Installed plugin
+knobs remain available through env/config files and `config defaults` without
+implicitly expanding the service executable's CLI
+({§operator-config-cli-flags}). Feature-flag booleans use `1`, not `true`;
+`~/` expands to home.
 
 ## The prefix law (who owns a flag)
 
 Family prefixes identify the semantic owner: `PLURNK_SERVICE_*` (this daemon), `PLURNK_PROVIDERS_*`, `PLURNK_MIMETYPES_*`, `PLURNK_EXECS_*`, `PLURNK_SCHEMES_HTTP_*`, `PLURNK_AGUI_*` (the AG-UI module), and `PLURNK_CLIENT_*` (the CLI). Bare `PLURNK_*` names are reserved for front-door or cross-family concepts such as model aliases, endpoint binding, and plugin trust. Even a cross-family key has one physical reader and one `.env.defaults` owner; “shared” never means duplicate implementations. Vendor keys (`OPENAI_API_KEY`, `FIREWORKS_API_KEY`, and peers) retain their vendor conventions.
 
 When a value is required, an unset or retired name fails boot naming the violated key rather than selecting a silent default.
+
+## Agent Skills
+
+Plurnk reads the standard universal roots: project skills from
+`.agents/skills/<name>/SKILL.md`, then user-global skills from
+`~/.agents/skills/<name>/SKILL.md`. Package-bundled skills form
+the final layer; the default installation includes an attributed, pinned
+`find-skills`. Project names shadow global names, which shadow bundled names.
+Plurnk never copies a bundled skill into the shared global root and does not
+maintain a separate skill registry.
+
+Use the ecosystem CLI when you deliberately install something. A project
+installation is the ordinary default:
+
+```sh
+npx skills add <owner/repo@skill> --agent universal --yes
+```
+
+Add `--global` only when you intend to share that skill with every compatible
+agent using the universal user root.
 
 ## Couplings (the edges an agent gets wrong)
 

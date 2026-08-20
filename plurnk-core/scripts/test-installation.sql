@@ -15,3 +15,11 @@ VALUES ($worker_id, 1, $prompt) RETURNING id;
 -- PREP: installation_insert_turn
 INSERT INTO turns (loop_id, sequence, status, packet)
 VALUES ($loop_id, 1, 200, NULL);
+
+-- PREP: installation_select_skills
+SELECT entries.pathname, entry_channels.content
+FROM entries
+JOIN entry_channels ON entry_channels.entry_id = entries.id
+WHERE entries.scheme = 'worker'
+  AND entries.pathname LIKE '/skills/%'
+  AND entry_channels.name = 'body';

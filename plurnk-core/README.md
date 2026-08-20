@@ -34,7 +34,15 @@ plurnk-service migrate    # apply the disposable version-1 schema baseline
 plurnk-service start      # daemon
 ```
 
-Config + state live in `~/.plurnk/` (created on first start): put your config in `~/.plurnk/.env` (yours, seeded once); the DB defaults to `~/.plurnk/plurnk.db`. Declare a provider/model as `PLURNK_MODEL_<alias>=<provider>/<model-id>`, then select that alias with `PLURNK_MODEL=<alias>`. **[`INSTALL.md`](./INSTALL.md) is the config guide** — the cascade, prefix ownership, coupled settings, and profiles; each installed package's `.env.defaults` supplies its exact machine floor.
+Configuration follows XDG at `$XDG_CONFIG_HOME/plurnk` (normally
+`~/.config/plurnk`); durable data defaults to `$XDG_DATA_HOME/plurnk` (normally
+`~/.local/share/plurnk`). First start seeds the user-owned `.env` and
+`AGENTS.md` once. Declare `PLURNK_MODEL_<alias>=<provider>/<model-id>`, then
+select it with `PLURNK_MODEL=<alias>`. Run `plurnk-service config defaults` for
+the complete installed option catalog and `plurnk-service config check` to
+validate without contacting a provider. **[`INSTALL.md`](./INSTALL.md) is the
+configuration guide.** A legacy mixed `~/.plurnk` is moved only by the explicit
+`plurnk-service paths migrate` command.
 
 The 1.x package retains its frozen root library barrel for SemVer compatibility;
 it is not the client boundary and gains no new APIs. Programmatic forensic use

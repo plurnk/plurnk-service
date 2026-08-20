@@ -42,7 +42,6 @@
         "plurnk-execs-jq",
         "plurnk-execs-sqlite",
         "plurnk-execs-wasm",
-        "plurnk-execs-skills",
         "plurnk-providers",
         "plurnk-agui",
         "plurnk-core"
@@ -56,7 +55,7 @@
         "metadata:write": "node scripts/package-provenance.mjs --write",
         "metadata:check": "node scripts/package-provenance.mjs",
         "lifecycle:check": "node scripts/package-lifecycle-policy.mjs",
-        "root:lint": "npm run metadata:check && node scripts/dependency-policy.mjs && node scripts/package-build-policy.mjs && node scripts/spec-references.mjs && npm run source:check && npm run docs:check",
+        "root:lint": "npm run metadata:check && node scripts/dependency-policy.mjs && node scripts/package-build-policy.mjs && node scripts/spec-references.mjs && node scripts/host-path-policy.mjs && npm run source:check && npm run docs:check",
         "pretest:lint": "npm run lifecycle:check",
         "test:lint": "npm run root:lint && npm run test:lint --workspaces --if-present",
         "pretest:unit": "npm run lifecycle:check",
@@ -78,7 +77,7 @@
         "release:publish": "node scripts/release-publish.mjs",
         "release:externals": "node scripts/release-external-packages.mjs",
         "external:census": "node plurnk-meta/scripts/external-package-census.mjs",
-        "config:list": "node --conditions=plurnk-dev scripts/config-list.mjs",
+        "config:list": "node --conditions=plurnk-dev plurnk-core/src/service.ts config defaults",
         "candidate": "node scripts/candidate.mjs",
         "readiness:metaproject": "node scripts/orientation.mjs"
     },

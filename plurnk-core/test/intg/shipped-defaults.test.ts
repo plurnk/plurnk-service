@@ -50,7 +50,7 @@ test("the template ships no double policy, no active model, ONLY service-owned k
 
 test("under the shipped policy wiring, the personality renders in the packet exactly once", async () => {
     // Mirror a fresh install: PLURNK_SERVICE_POLICY → the seed file itself (ensureHome copies
-    // PLURNK_PERSONALITY.md to ~/.plurnk/AGENTS.md).
+    // PLURNK_PERSONALITY.md to the XDG configuration AGENTS.md).
     const prevPolicy = process.env.PLURNK_SERVICE_POLICY;
     process.env.PLURNK_SERVICE_POLICY = Paths.personality;
     const db = await openMigrated();

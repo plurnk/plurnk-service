@@ -30,6 +30,22 @@ unregistered names do not ship as speculative teaching. Manifest `documentation`
 optional: an absent field contributes no pull doc, while a present field is the
 fallback only when meta owns no source for that scheme name.
 
+## §bundled-skills Published default Agent Skills
+
+`BUNDLED_SKILLS` is the exact immutable membership of Plurnk-owned default
+skills. Every member is a complete standard Agent Skills directory carried in
+the package; adding a file elsewhere does not implicitly publish it. Core owns
+the ordered project/global/bundled union and model-facing materialization at
+{§skills-materialization}.
+
+| Name | Source | Provenance |
+|---|---|---|
+| `find-skills` | `skills/find-skills/SKILL.md` | Adapted from `vercel-labs/skills` revision `435076e78988e1e6ec40d00b0b1d76bdbbc5419a`; adjacent MIT license retained. |
+
+Bundled membership does not install into or mutate the user-owned universal
+Agent Skills root. A lower-precedence bundled skill may be shadowed by the
+same standard skill installed globally or in the project.
+
 ## §plugin-discovery Installed capability discovery
 
 ```mermaid

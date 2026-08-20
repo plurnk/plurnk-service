@@ -66,7 +66,7 @@ without copying it or restarting the daemon. For example, a service catalog
 can provide the executable while one project's `.env` supplies its identity:
 
 ```text
-# ~/.plurnk/.env, read by the service
+# $XDG_CONFIG_HOME/plurnk/.env, read by the service
 PLURNK_MCP_GITEA=/usr/local/bin/possumtech-gitea-mcp
 PLURNK_MCP_ENABLED=[]
 
@@ -88,7 +88,7 @@ runtime. Two service-owned definitions are permitted to participate in demos
 of MCP and model behavior — Gitea (above) and Brave Search:
 
 ```text
-# ~/.plurnk/.env, read by the service — demo fixtures; never default-enabled
+# $XDG_CONFIG_HOME/plurnk/.env, read by the service — demo fixtures; never default-enabled
 PLURNK_MCP_BRAVE=npx
 PLURNK_MCP_BRAVE_ARGS=["-y","@brave/brave-search-mcp-server@2.1.0"]
 PLURNK_MCP_BRAVE_ENV={"BRAVE_API_KEY":"${BRAVE_API_KEY}"}

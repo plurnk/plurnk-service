@@ -1,5 +1,5 @@
 // {§operator-config-env-defaults} — the .env.defaults assembly: every package owns its knobs,
-// one floor, one law (global key uniqueness), rendered to a machine-owned catalog.
+// one floor, one law (global key uniqueness), projected through the on-demand catalog.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
@@ -70,13 +70,14 @@ test("a malformed member file crashes naming the owner — never a degraded floo
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("the catalog render is machine-owned, owner-labelled, comments preserved", async () => {
+test("the on-demand catalog is owner-labelled and preserves package comments", async () => {
     const { root, nm } = await scaffold();
     try {
         await addPackage(nm, "@plurnk/plurnk-fake", { defaults: "# fake's own doc line\nPLURNK_FAKE_X=1\n" });
         const files = await EnvDefaults.collect(root, nm);
         const catalog = EnvDefaults.renderCatalog(files);
-        assert.match(catalog, /MACHINE-OWNED/, "the header warns it is regenerated");
+        assert.match(catalog, /Generated on demand/, "the header identifies the projection");
+        assert.doesNotMatch(catalog, /~\/.plurnk/, "the retired mixed home is absent");
         assert.match(catalog, /═══ @plurnk\/plurnk-service ═══/, "the host section is owner-labelled");
         assert.match(catalog, /═══ @plurnk\/plurnk-fake ═══/, "each member section is owner-labelled");
         assert.match(catalog, /# fake's own doc line/, "the owner's comments ARE the docs — preserved verbatim");

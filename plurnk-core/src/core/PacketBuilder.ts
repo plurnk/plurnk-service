@@ -258,7 +258,7 @@ export default class PacketBuilder {
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
         const inject = await readPacketInject(); // {§packet-inject} — per-turn; a broken configured path fails hard
-        const systemPolicy = await readSystemPolicy(); // ~/.plurnk/AGENTS.md (or PLURNK_SERVICE_POLICY)
+        const systemPolicy = await readSystemPolicy(); // XDG config AGENTS.md (or PLURNK_SERVICE_POLICY)
         // {§turn0-agents-stunt} — the PROJECT AGENTS.md rides turn 0 as a foisted
         // READ (LoopDocs → worker://plurnk/agents.md), not the system prompt.
         // {§packet-git-status}/{§worker-branch-batch-return} — only the direct,

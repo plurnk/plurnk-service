@@ -311,7 +311,7 @@ Git membership includes tracked and untracked-but-not-ignored project files
 `<projectRoot>/AGENTS.md` exists, LoopDocs materializes it as the kernel-owned
 `worker://plurnk/agents.md` entry and the engine foists one READ of it into
 each model worker's first turn — visible, logged, line-addressable. Absent
-file: no entry, no stunt, nothing 404s. The GLOBAL `~/.plurnk/AGENTS.md`
+file: no entry, no stunt, nothing 404s. The global XDG configuration `AGENTS.md`
 remains system-prompt policy ({§policy-sections}); the stunt carries only
 local repo guidance.
 
@@ -2100,12 +2100,32 @@ service manifest edit.
 
 ## §operator-config Operator Configuration
 
+### §host-path-layout Host filesystem layout
+
+On XDG-compatible hosts, artifact semantics select the default location. An
+unset or empty base variable uses the XDG default; a relative value is invalid
+and is ignored rather than resolved against the working directory.
+
+| Class | Base | Plurnk member |
+|---|---|---|
+| Configuration | `$XDG_CONFIG_HOME` (default `~/.config`) | `plurnk/.env`, `plurnk/AGENTS.md` |
+| Durable user data | `$XDG_DATA_HOME` (default `~/.local/share`) | `plurnk/plurnk.db` and SQLite sidecars |
+| Persistent operational state | `$XDG_STATE_HOME` (default `~/.local/state`) | Reserved; no directory is created without an owned artifact. |
+| Reproducible cache | `$XDG_CACHE_HOME` (default `~/.cache`) | Reserved; no directory is created without an owned artifact. |
+| Shared global Agent Skills | User home | `.agents/skills/<name>/SKILL.md` |
+
+The service creates only a directory required by the current command. A newly
+created configuration or data directory uses mode `0700`; a newly seeded
+secret-bearing `.env` uses `0600`. Existing user-owned permissions are not
+rewritten. Explicit Plurnk path overrides retain `~/` expansion and their
+ordinary precedence; XDG variables themselves require absolute paths.
+
 §operator-config-precedence Configuration is one environment cascade. Higher-priority sources preserve or replace values supplied by every lower source:
 
 | Priority | Source                             | Ordering                                                  |
 |---------:|------------------------------------|-----------------------------------------------------------|
 |        1 | Assembled package `.env.defaults` | Set-if-unset floor; one owner per key.                     |
-|        2 | `~/.plurnk/.env`                   | User-level ambient configuration.                         |
+|        2 | `$XDG_CONFIG_HOME/plurnk/.env`     | User-level ambient configuration.                         |
 |        3 | `./.env`                           | Working-directory ambient configuration.                  |
 |        4 | `--config=<path>`                  | Singular service-owned explicit file.                     |
 |        5 | `--env-file*`                      | Repeatable explicit files; later selected files win.      |
@@ -2114,13 +2134,23 @@ service manifest edit.
 
 Node's pre-script env-file form and the executable's post-script form share the same later-file-wins ordering. `--env-file-if-exists` skips an absent file without changing the order of selected files.
 
-§operator-config-env-defaults **Every package owns its knobs — `.env.defaults` is the standard.** Each package in the daemon's ecosystem — internal or third-party — ships a `.env.defaults` at its package root declaring its own knobs; the file is the package's configuration reference, traveling in the tarball and changing with the code that reads it. At boot the daemon assembles every installed member's file into one floor (membership = the `@plurnk/*` scope or a `plurnk` package.json field, gated by `PLURNK_PLUGINS_TRUSTED_ONLY` with discover()'s exact semantics), applies it set-if-unset under every operator source, and renders the assembled catalog to `~/.plurnk/.env.defaults`. The catalog is machine-owned, regenerated each boot, and never read back as configuration. A key claimed by two packages fails boot naming both. With the reader-declares discipline, each key has one implementation and one defaults owner.
+§operator-config-env-defaults **Every package owns its knobs — `.env.defaults` is the standard.** Each package in the daemon's ecosystem — internal or third-party — ships a `.env.defaults` at its package root declaring its own knobs; the file is the package's configuration reference, traveling in the tarball and changing with the code that reads it. At boot the daemon assembles every installed member's file into one floor (membership = the `@plurnk/*` scope or a `plurnk` package.json field, gated by `PLURNK_PLUGINS_TRUSTED_ONLY` with discover()'s exact semantics) and applies it set-if-unset under every operator source. `plurnk-service config defaults` renders the same complete, owner-labelled aggregate to stdout on demand, preserving comments and optional declarations without persisting a second copy or exposing effective secret values. A key claimed by two packages fails boot naming both. With the reader-declares discipline, each key has one implementation and one defaults owner.
+
+§operator-config-discovery The conventional `plurnk-service config` command
+family is a view over the environment cascade, never another configuration
+representation. `config` reports the canonical `.env`, actual source order,
+and model-selection state; `config edit` opens that file through `$VISUAL` or
+`$EDITOR`; `config defaults` emits the aggregate above; and `config check`
+validates the provider-free configuration contracts without starting a model
+or provider request. The seeded `.env`, first-run diagnostic, service help, and
+missing-model recovery all signpost `plurnk-service config defaults` as the
+complete installed option catalog.
 
 Model selection: separate alias cascade in `ProviderRegistry` ({§provider-instantiation}). `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares; `PLURNK_MODEL=<alias>` selects. Optional `PLURNK_MODEL_CHILD=<alias>` selects the default child provider; unset means inherit the spawning loop's provider. Aliases and selections live in `.env`, not `.env.defaults` (operator-specific).
 
 | Var                                                         | Default | Purpose |
 |-------------------------------------------------------------|---------|---------|
-| `PLURNK_SERVICE_DB_PATH`                                    | `~/.plurnk/plurnk.db` | SQLite file path. |
+| `PLURNK_SERVICE_DB_PATH`                                    | `$XDG_DATA_HOME/plurnk/plurnk.db` | SQLite file path; an explicit non-empty value overrides the derived default. |
 | `PLURNK_HOST`                                               | `127.0.0.1` | Bind address for the listener. Local-only by default. |
 | `PLURNK_PORT`                                               | `3044` | TCP port for THE client surface — the AG-UI+ listener (the plurnk-agui plugin module binds it at boot). Production is single-listener. |
 | §operator-config-git-ceiling `PLURNK_SERVICE_GIT_ALLOWED`   | `1` | Hard service ceiling: only `1` admits Git membership, status, branch batching, and `git`/`isogit` executors; every other value denies them before executor registration or packet teaching. |
@@ -3274,28 +3304,34 @@ summary IS its invocation form so the discovery row teaches the call.
 Attached tools are capabilities like every other runtime; the model never
 learns an origin.
 
-§skills-materialization **The workspace skills surface.** Each
-`<projectRoot>/skills/<folder>/SKILL.md` (Agent Skills format: `name` +
-`description` frontmatter, instructions body) becomes one kernel-owned
+§skills-materialization **The workspace skills surface.** Plurnk discovers one
+ordered union of standard Agent Skills: project
+`<projectRoot>/.agents/skills/<name>/SKILL.md`, user-global
+`~/.agents/skills/<name>/SKILL.md`, then the exact bundled skill
+membership published by `@plurnk/plurnk-meta`. Collisions resolve project over
+global over bundled by directory/name before a shadowed lower-precedence body
+is read. Plurnk never seeds or mutates the shared global root absent an explicit
+user installation action. Every admitted skill requires standard `name` and
+`description` frontmatter with `name` matching its directory; an invalid or
+unreadable discovered skill fails materialization with its path and cause.
+
+Each admitted skill becomes one kernel-owned
 `worker://plurnk/skills/<name>.md` entry at workspace boot and creation.
-Operator-global skills declared via `PLURNK_SKILLS_<ALIAS>=<path-to-skill-folder>`
-union with the project set by alias — the project wins a collision before the
-operator path is read, and an unshadowed unreadable operator skill fails
-materialization with its cause. `worker://plurnk/skills/index.md` always
-exists — it lists installed skills, or states that none are installed and
-where they would live — so the turn-0 `+init,+skills` FIND survey always
+`worker://plurnk/skills/index.md` always exists and lists the effective union,
+including the bundled discovery skill, so the turn-0 `+init,+skills` FIND survey always
 shows the surface. The materialized index and each standard skill expose an
 exact H2 `Summary`; a skill's required `description` becomes that summary while
-its instructions body is preserved verbatim. Only the two discovery keys are
-parsed (no full YAML dependency). Reconciliation deletes retired
-skill entries before upserting the current set, and a workspace without a
-project root or operator skills publishes the empty index alone. The
-model-facing `EXEC0 [skills] (list|add|remove)` runtime mutates the same
-folders; the daemon's turn-completion hook refreshes the surface against the
-folders' signature so an added or removed skill is discoverable from the next
-turn, while an unchanged set dispatches nothing. Skills are operator- or
-model-installed teaching admitted through the kernel surface; they never
-override the instruction authority.
+its instructions body is preserved verbatim. Frontmatter is parsed as YAML;
+admission consumes its standard discovery keys. Reconciliation deletes retired skill entries
+before upserting the current set; turn admission refreshes the surface under the
+workspace gate before packet assembly, so an explicitly installed or removed
+skill is discoverable in the first subsequent model turn while an unchanged set
+dispatches nothing.
+The bundled `find-skills` skill is an attributed, release-pinned adaptation of
+the upstream standard skill and targets the universal Agent Skills location;
+it does not create a Plurnk registry or MCP-like enablement mechanism. Skills
+are user-, project-, or package-installed teaching admitted through the kernel
+surface; they never override instruction authority.
 
 The catalog describes workspace capabilities, not temporary authority. Loop
 mode remains a dispatch concern: an ask-mode EXEC receives the ordinary exact
@@ -3313,14 +3349,26 @@ section because they are language extensions rather than executable tools.
 
 ### §policy system.policy — the client's policy injection
 
-§policy-sections One section rides the system slot **after the definition and before capability teaching**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `~/.plurnk/AGENTS.md`). Policy is the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker://plurnk/agents.md` entry ({§turn0-agents-stunt}); all other reference material is skills under the skills tree ({§skills-materialization}).
+§policy-sections One section rides the system slot **after the definition and before capability teaching**: `## Policy` from `PLURNK_SERVICE_POLICY` (default `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, {§host-path-layout}). Policy is the client's authoritative rules promoted into the privileged zone — NOT a curatable, foldable, READ-able entry; the model cannot FOLD it away. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker://plurnk/agents.md` entry ({§turn0-agents-stunt}); all other reference material is skills under the skills tree ({§skills-materialization}).
 
-On first run, and only when `~/.plurnk` itself is absent, the service seeds
+On first run, and only when `$XDG_CONFIG_HOME/plurnk` itself is absent, the service seeds
 `AGENTS.md` from `@plurnk/plurnk-meta/PLURNK_PERSONALITY.md` ({§teaching-corpus}).
 It reads that required source before creating the service home; a failed read
 surfaces with its cause and leaves no apparently initialized home.
 After that bootstrap the file is user-owned: edits and deletion persist, and a
 later boot never refreshes or recreates it.
+
+§legacy-home-transition A legacy `~/.plurnk` is never an ambient fallback. If
+legacy state exists while canonical destinations do not, ordinary startup
+fails with the exact `plurnk-service paths migrate` recovery. That explicit,
+idempotent command refuses destination conflicts and a live database owner,
+moves known user configuration and durable SQLite files to their semantic
+homes, byte-verifies the complete copied set before removing any source,
+discards only recognized generated references, and removes the empty legacy
+directory. A pre-commit failure rolls back canonical files and directories
+created by that attempt. Unknown legacy members or simultaneous
+legacy/canonical state fail without guessing. No dual read or dual write survives
+the transition.
 
 §schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. Every published pull doc carries an exact H2 `Summary` for ordinary catalog projection. `SchemeRegistry.teach(workspaceId)` renders the effective directory, `SchemeRegistry.docs(workspaceId)` resolves corpus-or-manifest documentation, and `referenceEntries(workspaceId)` supplies the current `/skills/plurnk/` generated-skill set when core publishes workspace capabilities ({§skills-materialization}). One materializer reconciles the reserved scope exactly: vanished contributions are deleted before current documents are upserted, so an excluded scheme or disabled, detached, replaced, or removed runtime cannot leave a stale model-facing contract.
 

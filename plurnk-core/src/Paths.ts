@@ -9,7 +9,12 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { TEACHING_CORPUS, type TeachingCorpusSource } from "@plurnk/plurnk-meta";
+import {
+    BUNDLED_SKILLS,
+    TEACHING_CORPUS,
+    type BundledSkillName,
+    type TeachingCorpusSource,
+} from "@plurnk/plurnk-meta";
 
 export default class Paths {
     static #PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -29,6 +34,15 @@ export default class Paths {
 
     static teachingSource(source: TeachingCorpusSource): string {
         return resolve(Paths.teachingRoot, source);
+    }
+
+    // {§bundled-skills} — exact meta-owned membership; core does not scan the
+    // package tree and accidentally expose an unpublished or auxiliary file.
+    static bundledSkills(): ReadonlyMap<BundledSkillName, string> {
+        return new Map(Object.entries(BUNDLED_SKILLS).map(([name, source]) => [
+            name as BundledSkillName,
+            resolve(Paths.teachingRoot, source),
+        ]));
     }
 
     // Absolute overrides stay absolute; relative paths resolve from the package root.

@@ -1,11 +1,10 @@
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import HostPaths from "./HostPaths.ts";
 
 // {§inject} Operator packet injection is read per turn. An explicit unreadable path fails;
 // unset or empty configuration contributes no section.
 export const resolveInjectPath = (raw: string): string =>
-    raw.startsWith("~/") ? join(homedir(), raw.slice(2)) : raw;
+    new HostPaths().expandUserPath(raw);
 
 export const readPacketInject = async (): Promise<string | null> => {
     const raw = process.env.PLURNK_SERVICE_PACKET_INJECT?.trim();
@@ -21,14 +20,14 @@ const readPolicy = async (path: string, explicit: boolean): Promise<string | nul
     catch (err) { if (explicit) throw err; return null; }
 };
 
-// System Policy: PLURNK_SERVICE_POLICY (~-expanded) or the default ~/.plurnk/AGENTS.md. An EXPLICITLY-empty
+// System Policy: PLURNK_SERVICE_POLICY (~-expanded) or the XDG config policy. An EXPLICITLY-empty
 // PLURNK_SERVICE_POLICY disables it (undefined → default; "" → off; a path → that file). The Mock
 // fixture clears the ambient default; each real-model harness names its exact higher-precedence policy.
 export const readSystemPolicy = async (): Promise<string | null> => {
     const raw = process.env.PLURNK_SERVICE_POLICY;
     if (raw !== undefined && raw.trim() === "") return null; // explicit empty → off (test isolation)
     const env = raw?.trim();
-    return readPolicy(env ? resolveInjectPath(env) : join(homedir(), ".plurnk", "AGENTS.md"), !!env);
+    return readPolicy(env ? resolveInjectPath(env) : new HostPaths().policyFile, !!env);
 };
 
 // Project policy is retired from the system slot: the project AGENTS.md now

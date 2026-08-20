@@ -78,7 +78,7 @@ repeatable `--env-file-if-exists` flags the LAST flag wins. The live/demo tier
 2. `plurnk-core/.env.test` — the committed real-model gate profile
    (`PLURNK_MODEL=turboderp`, `PLURNK_SERVICE_FILES_ITEMS=-1`,
    `PLURNK_SERVICE_GIT_AUTO=1`, `PLURNK_SERVICE_EMBED_DISABLE=0`),
-3. `./.env`, then `~/.plurnk/.env` — operator files. `~/.plurnk/.env` declares the
+3. `./.env`, then `$XDG_CONFIG_HOME/plurnk/.env` — operator files. The user file declares the
    model aliases (`PLURNK_MODEL_<alias>=<provider>/<model>`, e.g.
    `PLURNK_MODEL_deepdumb=deepseek/deepseek-v4-flash`); both are operator-owned and
    never committed,
@@ -90,7 +90,7 @@ Model selection: `PLURNK_MODEL=<alias>` selects the active alias;
 `PLURNK_MODEL_<alias>=<provider>/<model>` declares it (provider ids in
 `plurnk-models/src/providers.json`). Resolution is `resolveActiveAlias()`
 (plurnk-aliases) then `loadActiveProvider()` (plurnk-providers). Declare an alias
-once in `~/.plurnk/.env` and select it per run with `PLURNK_MODEL=<alias>`; never
+once in `$XDG_CONFIG_HOME/plurnk/.env` and select it per run with `PLURNK_MODEL=<alias>`; never
 redeclare it inline. The repo ships only the `turboderp` gate default, never a
 credential.
 
@@ -101,7 +101,7 @@ loop via `test/_live-harness.ts` (`liveWorkspace` + `liveLoop`) and uses the flo
 bootstrap (`--import=./test/floor.ts`) instead; it boots a fresh sandbox workspace,
 never the host repo, and is not part of `npm test`. Both tiers route through
 driver scripts (`scripts/live.mjs`, `scripts/demo.mjs`) that layer the full
-cascade (operator-environment.sh → floor.ts → `.env.defaults`, `~/.plurnk/.env`,
+cascade (operator-environment.sh → floor.ts → `.env.defaults`, the XDG user `.env`,
 `./.env`, `.env.test`) and place `--test-name-pattern` *before* the file list
 (node ignores it after the files). Run from `plurnk-core`, selecting a model:
 

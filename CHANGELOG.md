@@ -7,6 +7,21 @@ is published, release notes may include breaking changes.
 
 ## Unreleased
 
+### Filesystem and skills
+
+- Split user configuration and durable data across the XDG config and data
+  homes. Existing pre-XDG installations move only through
+  `plurnk-service paths migrate`, which refuses conflicts and verifies every
+  copy before removing legacy sources.
+- Discover Agent Skills from project `.agents/skills/`, user
+  `~/.agents/skills/`, and the exact bundled fallback, with project-first
+  precedence and no Plurnk-specific registration.
+- Added `plurnk-service config`, `config edit`, `config defaults`, and
+  `config check` as views over the existing environment cascade.
+- Removed implicit `~/.plurnk` reads and the bespoke
+  `@plurnk/plurnk-execs-skills` executor. Generated configuration references
+  are now rendered on demand instead of copied into an operator home.
+
 ## 1.4.0 - 2026-08-06
 
 ### Changed

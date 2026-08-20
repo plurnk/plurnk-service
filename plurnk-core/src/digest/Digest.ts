@@ -35,7 +35,6 @@ import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, renameSync, rmSy
 import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { homedir } from "node:os";
 import { isDeepStrictEqual } from "node:util";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
 import { observedSync } from "../observe/spans.ts";
@@ -50,6 +49,7 @@ import StoredPacket, { type DurablePacket } from "../core/StoredPacket.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
+import HostPaths from "../core/HostPaths.ts";
 import {
     aggregateProviderAccounting,
     ProviderError,
@@ -821,16 +821,13 @@ export default class Digest {
         }, null, 2);
     }
 
-    // Default DB path — mirrors the service (`Service.#expandHome(PLURNK_SERVICE_DB_PATH)`; the
-    // `.env.defaults` floor is `~/.plurnk/plurnk.db`). The old repo-local default broke when
-    // the DB moved to `~/.plurnk`; a no-arg digest now reads the service's actual DB.
+    // Default DB path mirrors the host path contract and an explicit service override.
     static defaultDbPath(): string {
+        const paths = new HostPaths();
         const env = process.env.PLURNK_SERVICE_DB_PATH;
-        if (env !== undefined && env.length > 0) {
-            if (env === "~") return homedir();
-            return env.startsWith("~/") ? resolve(homedir(), env.slice(2)) : env;
-        }
-        return resolve(homedir(), ".plurnk", "plurnk.db");
+        return env !== undefined && env.length > 0
+            ? resolve(paths.expandUserPath(env))
+            : paths.databaseFile;
     }
 
     // {§digest-requiem}: one out-of-band audit per model-bearing worker, with exact

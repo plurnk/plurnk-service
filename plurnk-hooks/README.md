@@ -7,7 +7,8 @@ executable on stdin. It does not define another event bus or invoke a shell.
 
 ## Configure
 
-Put the following in `~/.plurnk/.env`:
+Put the following in `$XDG_CONFIG_HOME/plurnk/.env` (normally
+`~/.config/plurnk/.env`):
 
 ```dotenv
 PLURNK_HOOKS_COMMAND=/usr/bin/node

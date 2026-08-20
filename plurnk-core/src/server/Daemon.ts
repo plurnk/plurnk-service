@@ -261,11 +261,14 @@ export default class Daemon {
             branchWorker: async (args) => this.#branchBatches.enqueue(args),
             branchCompletionGate: async (workerId) => this.#branchBatches.completionGate(workerId),
             acquireWorkspaceTurn: async (workspaceId, workerId) => this.#workspaceGate.acquireTurn(workspaceId, workerId),
-            workspaceTurnCompleted: async ({ workspaceId, turnId }) => {
-                await this.#branchBatches.sealTurn(turnId);
-                // {§skills-materialization} — EXEC[skills] mutations become
-                // discoverable on the following turn.
+            // {§skills-materialization} — filesystem installers operate out of
+            // band. Refresh under the workspace turn gate before packet assembly
+            // so the first subsequent model turn sees their exact result.
+            workspaceTurnStarting: async ({ workspaceId }) => {
                 await SkillDocs.refreshIfChanged(this.#engine, this.#db, workspaceId);
+            },
+            workspaceTurnCompleted: async ({ turnId }) => {
+                await this.#branchBatches.sealTurn(turnId);
             },
             // worker:// KILL (terminate) — cancel the addressed worker subtree and
             // tear down its held streams before the operation completes.

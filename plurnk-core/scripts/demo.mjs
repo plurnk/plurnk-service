@@ -11,6 +11,7 @@
 import { spawn } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
+import HostPaths from "../src/core/HostPaths.ts";
 
 const workspace = resolve(import.meta.dirname, "..");
 const demoDirectory = resolve(workspace, "test/demo");
@@ -23,9 +24,7 @@ export const demoFiles = async () => (await readdir(demoDirectory))
 export const demoInvocation = async (pattern) => {
     const files = await demoFiles();
     if (files.length === 0) throw new Error("no demo stories found under test/demo");
-    const operatorEnv = process.env.HOME === undefined
-        ? []
-        : [`--env-file-if-exists=${process.env.HOME}/.plurnk/.env`];
+    const operatorEnv = [`--env-file-if-exists=${new HostPaths().configFile}`];
     return {
         args: [
             "--conditions=plurnk-dev",

@@ -7,18 +7,28 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Owner from "../../src/core/Owner.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 
-test("{§skills-materialization} the turn-completion hook refreshes skills mutated between loops", async () => {
+class PacketCapturingMock extends Mock {
+    readonly requests: string[] = [];
+
+    override generate(...args: Parameters<Mock["generate"]>): ReturnType<Mock["generate"]> {
+        this.requests.push(args[0].messages.map(({ content }) => content).join("\n\n"));
+        return super.generate(...args);
+    }
+}
+
+test("{§skills-materialization} turn admission refreshes skills mutated between loops", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-skills-loop-"));
-    const provider = new Mock({
+    const provider = new PacketCapturingMock({
         contextWindow: 16384,
         responses: [
             { assistant: { content: "# PLAN0\ncurate:\n\n## SEND0 [200]\nobserved.", reasoning: null } },
-            { assistant: { content: "# PLAN0\ncurate:\n\n## SEND0 [200]\nobserved.", reasoning: null } },
+            { assistant: { content: "# PLAN0\nInspect the newly installed skill.\n\n## READ0 (worker://plurnk/skills/review.md) <1,-1>\n\n## SEND0 [102]\nRead the skill.", reasoning: null } },
+            { assistant: { content: "# PLAN0\nThe skill is available.\n\n## SEND0 [200]\nobserved.", reasoning: null } },
         ],
     });
     try {
-        await mkdir(join(root, "skills", "grep"), { recursive: true });
-        await writeFile(join(root, "skills", "grep", "SKILL.md"), "---\nname: grep\ndescription: Find text\n---\nUse ripgrep.");
+        await mkdir(join(root, ".agents", "skills", "grep"), { recursive: true });
+        await writeFile(join(root, ".agents", "skills", "grep", "SKILL.md"), "---\nname: grep\ndescription: Find text\n---\nUse ripgrep.");
         await withDaemon(provider, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -39,13 +49,14 @@ test("{§skills-materialization} the turn-completion hook refreshes skills mutat
 
                 assert.equal((await runLoopToTerminal(ws, 2, { prompt: "first", flags: { auto: true } })).finalStatus, 200);
 
-                // Between loops the model-side EXEC[skills] would have landed:
-                await mkdir(join(root, "skills", "review"), { recursive: true });
-                await writeFile(join(root, "skills", "review", "SKILL.md"), "---\nname: review\ndescription: Check diffs\n---\nReview diffs before committing.");
+                // Between loops an ordinary Agent Skills installer has landed a project skill.
+                await mkdir(join(root, ".agents", "skills", "review"), { recursive: true });
+                await writeFile(join(root, ".agents", "skills", "review", "SKILL.md"), "---\nname: review\ndescription: Check diffs\n---\nReview diffs before committing.");
 
                 assert.equal((await runLoopToTerminal(ws, 2, { prompt: "second", flags: { auto: true } })).finalStatus, 200);
+                assert.match(provider.requests[2] ?? "", /Review diffs before committing\./);
 
-                assert.notEqual(await entry("/skills/review.md"), undefined, "the turn-completion hook republished the added skill");
+                assert.notEqual(await entry("/skills/review.md"), undefined, "turn admission republished the added skill");
                 assert.match(
                     ((await db.crud_find_workspace_entry.get<{ id: number }>({
                         workspace_id: created.id,

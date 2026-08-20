@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { collectLiveTestNames } from "../test/live-test.ts";
+import HostPaths from "../src/core/HostPaths.ts";
 
 const workspace = resolve(import.meta.dirname, "..");
 const liveDirectory = resolve(workspace, "test/live");
@@ -27,9 +28,7 @@ export const liveInvocation = async (requested) => {
     const pattern = requested === undefined
         ? undefined
         : exactSpecimen(requested, await collectLiveTestNames(files));
-    const operatorEnv = process.env.HOME === undefined
-        ? []
-        : [`--env-file-if-exists=${process.env.HOME}/.plurnk/.env`];
+    const operatorEnv = [`--env-file-if-exists=${new HostPaths().configFile}`];
     return {
         args: [
             "--conditions=plurnk-dev",

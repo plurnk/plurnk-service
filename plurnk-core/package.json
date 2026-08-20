@@ -120,7 +120,8 @@
         "@possumtech/sqlrite": "^6.5.2",
         "diff": "^9.0.0",
         "ignore": "7.0.6",
-        "isomorphic-git": "1.41.7"
+        "isomorphic-git": "1.41.7",
+        "yaml": "^2.9.0"
     },
     "devDependencies": {
         "@opentelemetry/core": "^2.10.0",

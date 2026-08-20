@@ -55,6 +55,11 @@ export type WorkspaceDerivationStatus = {
     level: "info" | "error";
 };
 export type AcquireWorkspaceTurn = (workspaceId: number, workerId: number) => Promise<() => void>;
+export type WorkspaceTurnStarting = (args: {
+    workspaceId: number;
+    workerId: number;
+    loopId: number;
+}) => Promise<void>;
 export type WorkspaceTurnCompleted = (args: {
     workspaceId: number;
     workerId: number;
@@ -291,9 +296,10 @@ export default class Engine {
     #streamEventNotify: StreamEventNotify | undefined;
     #wakeWorkerNotify: WakeWorkerNotify | undefined;
     readonly #acquireWorkspaceTurn: AcquireWorkspaceTurn;
+    readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
     readonly #workspaceTurnCompleted: WorkspaceTurnCompleted | undefined;
 
-    constructor({ db, schemes, mimetypes, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnCompleted, noticeNotify, weigh }: {
+    constructor({ db, schemes, mimetypes, streamEventNotify, wakeWorkerNotify, injectWorker, branchWorker, branchCompletionGate, cancelWorker, cancelDescendants, acquireWorkspaceTurn, workspaceTurnStarting, workspaceTurnCompleted, noticeNotify, weigh }: {
         db: Db;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
@@ -305,6 +311,7 @@ export default class Engine {
         cancelWorker?: CancelWorkerNotify;
         cancelDescendants?: CancelDescendantsNotify;
         acquireWorkspaceTurn?: AcquireWorkspaceTurn;
+        workspaceTurnStarting?: WorkspaceTurnStarting;
         workspaceTurnCompleted?: WorkspaceTurnCompleted;
         noticeNotify?: NoticeNotify;
         weigh?: (text: string) => number;
@@ -315,6 +322,7 @@ export default class Engine {
         this.#streamEventNotify = streamEventNotify;
         this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#acquireWorkspaceTurn = acquireWorkspaceTurn ?? (async () => () => {});
+        this.#workspaceTurnStarting = workspaceTurnStarting;
         this.#workspaceTurnCompleted = workspaceTurnCompleted;
         // Default to empty discovery — standalone Engine construction (in
         // tests) gets no handlers, and content flows through the framework's
@@ -707,6 +715,7 @@ export default class Engine {
             let turn;
             const releaseWorkspace = await this.#acquireWorkspaceTurn(workspaceId, workerId);
             try {
+                await this.#workspaceTurnStarting?.({ workspaceId, workerId, loopId });
                 turn = await observed( // {§observability-boundary}
                     "loop.turn",
                     { workerId, "loop.id": loopId },

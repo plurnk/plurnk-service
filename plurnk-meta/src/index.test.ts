@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import Meta, { TEACHING_CORPUS, type PluginAttributionContext } from "./index.ts";
+import Meta, { BUNDLED_SKILLS, TEACHING_CORPUS, type PluginAttributionContext } from "./index.ts";
 
 const attributionContext: PluginAttributionContext = {
     workspaceId: "workspace-7",
@@ -24,6 +24,13 @@ test("teaching corpus: the meta owner publishes one exact immutable membership",
     });
     assert.equal(Object.isFrozen(TEACHING_CORPUS), true);
     assert.equal(Object.isFrozen(TEACHING_CORPUS.schemeDocs), true);
+});
+
+test("{§bundled-skills} publishes the exact immutable default skill membership", () => {
+    assert.deepEqual(BUNDLED_SKILLS, {
+        "find-skills": "skills/find-skills/SKILL.md",
+    });
+    assert.equal(Object.isFrozen(BUNDLED_SKILLS), true);
 });
 
 test("isTrusted: gate off (unset / empty / '0') trusts everything", () => {

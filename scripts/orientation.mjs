@@ -11,12 +11,13 @@ import {
     rmSync,
     writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { evaluateOrientation } from "./orientation-verdict.mjs";
+import HostPaths from "../plurnk-core/src/core/HostPaths.ts";
 
 const serviceRoot = resolve(import.meta.dirname, "..");
-const operatorEnv = resolve(homedir(), ".plurnk", ".env");
+const operatorEnv = new HostPaths().configFile;
 if (existsSync(operatorEnv)) process.loadEnvFile(operatorEnv);
 process.loadEnvFile(resolve(serviceRoot, "plurnk-meta", ".env.defaults"));
 

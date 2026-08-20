@@ -5,7 +5,7 @@ import Meta from "@plurnk/plurnk-meta";
 
 // Each package owns its configuration keys and declares them in its package-root `.env.defaults`
 // ({§operator-config-env-defaults}). The daemon assembles those files into the lowest-precedence
-// floor and renders the same sources to ~/.plurnk/.env.defaults as a catalog, never an input.
+// floor and renders the same sources on demand through `config defaults`, never a second file.
 // Duplicate ownership fails boot naming both packages.
 //
 // Membership = the `@plurnk/*` scope OR a `plurnk` field in package.json (the same marker the
@@ -81,13 +81,15 @@ export default class EnvDefaults {
         for (const [key, { value }] of merged) process.env[key] ??= value;
     }
 
-    // ~/.plurnk/.env.defaults — the operator's catalog: every member's raw file (comments are the
-    // docs), owner-labelled. Machine-owned, regenerated each boot, never read back as config.
+    // The operator's on-demand catalog: every member's raw file (comments are
+    // the docs), owner-labelled, with no effective values or persisted copy.
     static renderCatalog(files: readonly EnvDefaultsFile[]): string {
         const head = [
-            "# ⚠ MACHINE-OWNED — regenerated on every daemon boot from the installed packages'",
-            "# .env.defaults files. Do NOT edit; your config lives in ~/.plurnk/.env (yours, wins",
-            "# over this floor) or the shell env. One section per owning package.",
+            "# Plurnk installed configuration defaults",
+            "# Generated on demand from each installed package's .env.defaults.",
+            "# This output is documentation, not an input file. Put user overrides in",
+            "# $XDG_CONFIG_HOME/plurnk/.env, a project .env, or the shell environment.",
+            "# Effective secret values are never projected here.",
             "",
         ].join("\n");
         return head + files.map(({ owner, text }) => `# ═══ ${owner} ═══\n${text.trimEnd()}\n`).join("\n");

@@ -33,7 +33,9 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
         const dbPath = join(dir, "plurnk.db");
         const env: NodeJS.ProcessEnv = {
             ...process.env,
-            HOME: dir,   // isolate the ~/.plurnk first-run bootstrap into the temp dir
+            HOME: dir,
+            XDG_CONFIG_HOME: join(dir, ".config"),
+            XDG_DATA_HOME: join(dir, ".local", "share"),
             PLURNK_SERVICE_DB_PATH: dbPath,
             PLURNK_HOST: "127.0.0.1",
             PLURNK_PORT: "0",      // the AG-UI+ surface — THE listener; OS picks a free port

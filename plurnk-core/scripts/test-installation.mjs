@@ -4,7 +4,7 @@
 // fresh install has no active model ({§operator-config-shipped-defaults}): the pointer surfaces instead.
 // The hosted-model round-trip is a deliberate red until that endpoint is live.
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +15,13 @@ let failures = 0;
 const ok = (cond, msg) => { process.stdout.write(`  ${cond ? "✓" : "✗"} ${msg}\n`); if (!cond) failures++; };
 const bin = resolve(sandbox, "node_modules", ".bin", "plurnk-service");
 const isogitPackage = "@plurnk/plurnk-execs-isogit";
+const sandboxHostEnv = {
+    HOME: sandbox,
+    XDG_CONFIG_HOME: resolve(sandbox, ".config"),
+    XDG_DATA_HOME: resolve(sandbox, ".local", "share"),
+    XDG_STATE_HOME: resolve(sandbox, ".local", "state"),
+    XDG_CACHE_HOME: resolve(sandbox, ".cache"),
+};
 
 const installedManifest = (packageName) => JSON.parse(readFileSync(
     resolve(sandbox, "node_modules", ...packageName.split("/"), "package.json"),
@@ -104,28 +111,41 @@ const packedPublicSurface = () => {
 
 const runBin = (args, env = {}) => {
     try {
-        const stdout = execFileSync(bin, args, { cwd: sandbox, encoding: "utf8", env: { ...process.env, HOME: sandbox, ...env } });
+        const stdout = execFileSync(bin, args, { cwd: sandbox, encoding: "utf8", env: { ...process.env, ...sandboxHostEnv, ...env } });
         return { code: 0, stdout };
     } catch (e) {
         return { code: e.status ?? 1, stdout: e.stdout?.toString() ?? "", stderr: e.stderr?.toString() ?? "" };
     }
 };
 
-const bootStart = (env = {}) => new Promise((res) => {
+const bootStart = (env = {}, probe) => new Promise((res) => {
     // Run from OUTSIDE the install dir so discovery must resolve plugins package-relative,
     // not from CWD/node_modules — the global-dogfood scenario (start from your own project).
     const childEnv = { ...process.env };
     for (const key of ["PLURNK_AGUI_TOKEN", "PLURNK_AGUI_MAX_TURNS", "PLURNK_AGUI_HEARTBEAT_MS"]) delete childEnv[key];
-    Object.assign(childEnv, { HOME: sandbox, PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" }, env);
+    Object.assign(childEnv, sandboxHostEnv, { PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" }, env);
     const child = spawn(bin, ["start"], { cwd: resolve(sandbox, ".."), env: childEnv });
-    let stdout = "", stderr = "", listening = false;
+    let stdout = "", stderr = "", listening = false, probeResult, probeError;
     // Resolve on EXIT (after a graceful SIGTERM) so both pipes fully drain — the
     // embedder notice rides stderr and races the stdout startup line otherwise.
     const hardKill = setTimeout(() => child.kill("SIGKILL"), 20_000);
-    child.stdout.on("data", (c) => { stdout += c; if (/plurnk-service agui=http:\/\//.test(stdout) && !listening) { listening = true; setTimeout(() => child.kill("SIGTERM"), 300); } });
+    child.stdout.on("data", (c) => {
+        stdout += c;
+        const address = stdout.match(/plurnk-service agui=(http:\/\/\S+)/u)?.[1];
+        if (address === undefined || listening) return;
+        listening = true;
+        if (probe === undefined) {
+            setTimeout(() => child.kill("SIGTERM"), 300);
+            return;
+        }
+        void Promise.resolve(probe(address)).then(
+            (value) => { probeResult = value; child.kill("SIGTERM"); },
+            (cause) => { probeError = cause; child.kill("SIGTERM"); },
+        );
+    });
     child.stderr.on("data", (c) => { stderr += c; });
-    child.once("exit", () => { clearTimeout(hardKill); res({ stdout, stderr, listening }); });
-    child.once("error", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, error: true }); });
+    child.once("exit", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError }); });
+    child.once("error", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError, error: true }); });
 });
 
 process.stdout.write("== plurnk-service installation e2e ==\n");
@@ -284,11 +304,90 @@ const cascade = execFileSync(bin, [`--env-file=${firstEnv}`, `--env-file=${secon
 });
 ok(cascade.includes(`migrated: ${secondDb}`), "the packed bin applies repeated env files in later-file-wins order");
 
-// first-run bootstrap: ~/.plurnk seeded with config (HOME → sandbox), no PLURNK_SERVICE_DB_PATH so it homes the DB
+// First-run bootstrap splits configuration and durable data by XDG semantics.
 const home = runBin(["migrate"], {});
-ok(existsSync(resolve(sandbox, ".plurnk", ".env")) && existsSync(resolve(sandbox, ".plurnk", "plurnk.db")),
-    "first run bootstraps ~/.plurnk (.env seeded + DB homed there, not CWD)");
+ok(
+    existsSync(resolve(sandboxHostEnv.XDG_CONFIG_HOME, "plurnk", ".env"))
+        && existsSync(resolve(sandboxHostEnv.XDG_DATA_HOME, "plurnk", "plurnk.db")),
+    "first run seeds XDG configuration and homes SQLite under XDG data",
+);
 void home;
+
+const configDefaults = runBin(["config", "defaults"]);
+ok(
+    configDefaults.code === 0
+        && /Generated on demand/.test(configDefaults.stdout)
+        && /@plurnk\/plurnk-service/.test(configDefaults.stdout),
+    "the packed binary projects the installed owner-labelled option catalog",
+);
+ok(
+    existsSync(resolve(mods, "@plurnk", "plurnk-meta", "skills", "find-skills", "SKILL.md")),
+    "the attributed bundled find-skills asset ships inside plurnk-meta",
+);
+
+// Drive the installed daemon through its real AG-UI boundary, then inspect its
+// durable address space. This composes the packed bundle, standard project
+// location, workspace bootstrap, and skill materializer without a provider.
+const packedSkillProject = resolve(sandbox, "packed-skill-project");
+const packedSkillDir = resolve(packedSkillProject, ".agents", "skills", "inspect");
+mkdirSync(packedSkillDir, { recursive: true });
+writeFileSync(resolve(packedSkillDir, "SKILL.md"), [
+    "---",
+    "name: inspect",
+    "description: Inspect a packed installation.",
+    "---",
+    "Use the installed product boundary.",
+].join("\n"));
+const packedSkillDb = resolve(sandbox, "packed-skills.db");
+const skillBoot = await bootStart({ PLURNK_SERVICE_DB_PATH: packedSkillDb }, async (address) => {
+    const response = await fetch(address, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+            runId: "packed-skills",
+            threadId: "packed-skills",
+            workerId: "packed-skills",
+            state: {},
+            messages: [],
+            tools: [],
+            context: [],
+            forwardedProps: {
+                plurnk: {
+                    action: {
+                        kind: "workspace.create",
+                        projectRoot: packedSkillProject,
+                    },
+                },
+            },
+        }),
+    });
+    const body = await response.text();
+    if (!response.ok || !/plurnk\.action\.result/u.test(body) || !/"ok":true/u.test(body)) {
+        throw new Error(`packed workspace.create failed (${response.status}): ${body}`);
+    }
+});
+ok(
+    skillBoot.listening === true && skillBoot.probeError === undefined,
+    "the packed AG-UI workspace bootstrap accepts a conventional project skill without a provider",
+);
+const skillDb = new SqlRiteSync({ path: packedSkillDb, dir: import.meta.dirname });
+const packedSkills = new Map(
+    skillDb.installation_select_skills.all().map(({ pathname, content }) => [pathname, content]),
+);
+skillDb.close();
+ok(
+    packedSkills.get("/skills/inspect.md")?.includes("Inspect a packed installation.") === true,
+    "the installed product materializes .agents/skills project content",
+);
+ok(
+    packedSkills.get("/skills/find-skills.md")?.includes("# find-skills") === true,
+    "the installed product materializes its bundled discovery skill",
+);
+ok(
+    packedSkills.get("/skills/index.md")?.includes("**inspect**") === true
+        && packedSkills.get("/skills/index.md")?.includes("**find-skills**") === true,
+    "the installed product publishes both skills through one model-facing index",
+);
 
 const boot = await bootStart({
     PLURNK_SERVICE_DB_PATH: resolve(sandbox, "start.db"),
@@ -298,7 +397,12 @@ ok(!/embedder inactive/.test(boot.stderr), "no embedder-inactive notice — the 
 // {§operator-config-shipped-defaults}: a fresh install resolves no model and names
 // the available configuration paths instead.
 ok(/ no model\n?$/m.test(boot.stdout) || /no model/.test(boot.stdout), "startup line reports 'no model' on an untouched install (no hosted default)");
-ok(/no model configured/.test(boot.stderr) && /local \/ cloud \/ plurnk\.ai/.test(boot.stderr), "the pointer names the three options in ~/.plurnk/.env");
+ok(
+    /no model configured/.test(boot.stderr)
+        && /config defaults/.test(boot.stderr)
+        && /\.config\/plurnk\/\.env/.test(boot.stderr),
+    "the no-model diagnostic points to the XDG user config and complete option catalog",
+);
 
 const aguiDefaultsPath = resolve(mods, "@plurnk", "plurnk-agui", ".env.defaults");
 const aguiDefaults = readFileSync(aguiDefaultsPath, "utf8");

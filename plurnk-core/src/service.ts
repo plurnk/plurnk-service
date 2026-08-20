@@ -1,25 +1,28 @@
 #!/usr/bin/env node
 
 import { parseArgs } from "node:util";
-import { copyFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { homedir } from "node:os";
 import SqlRite from "@possumtech/sqlrite";
 import type { Db } from "./core/Db.ts";
 import Daemon from "./server/Daemon.ts";
 import DaemonLock from "./server/DaemonLock.ts";
 import EnvFlags from "./core/EnvFlags.ts";
 import EnvDefaults from "./core/env-defaults.ts";
+import HostPaths from "./core/HostPaths.ts";
+import LegacyHome from "./core/LegacyHome.ts";
+import OperatorConfig from "./core/OperatorConfig.ts";
 import ProviderInstantiate from "./core/ProviderInstantiate.ts";
-import Meta, { TEACHING_CORPUS } from "@plurnk/plurnk-meta";
+import Meta from "@plurnk/plurnk-meta";
 import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as HooksModule } from "@plurnk/plurnk-hooks";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
-import { readTeachingSourceSync } from "./core/teaching-corpus.ts";
+import Paths from "./Paths.ts";
 import { startObservability } from "./observe/init.ts";
 
 // The `plurnk-service` executable: launches the daemon (start) or applies the schema baseline.
@@ -30,69 +33,7 @@ export default class Service {
     static #codeDir = dirname(fileURLToPath(import.meta.url));
     static #projectRoot = resolve(Service.#codeDir, "..");
     static #ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
-    static #homeDir = resolve(homedir(), ".plurnk");
-
-    // First-run bootstrap — run-time, NOT an install script: seed ~/.plurnk so a global
-    // install has a stable home for config + the DB. Idempotent (only acts when absent).
-    static #ensureHome(): void {
-        // Seed ONCE, on first run (the home is absent). After that the user owns ~/.plurnk —
-        // edits and deletions stick, no silent re-seed. The assembled floor is in-memory
-        // ({§operator-config-env-defaults}); `~/.plurnk/.env.defaults` is its rendered catalog,
-        // machine-owned and regenerated each boot. Wiping the whole dir is a deliberate reset.
-        if (existsSync(Service.#homeDir)) return;
-        // Read the required seed before mutating the home. A broken installed corpus
-        // fails the first-run boundary without leaving an apparently initialized home.
-        const shippedPolicy = readTeachingSourceSync(TEACHING_CORPUS.personality);
-        mkdirSync(Service.#homeDir, { recursive: true });
-        // The first-run model selection lives HERE, as commented peers — an honest surfaced
-        // choice (no active default ships, {§operator-config-shipped-defaults}). One uncomment per option; agents read this
-        // file as naturally as humans do.
-        writeFileSync(resolve(Service.#homeDir, ".env"), [
-            "# plurnk config — overrides the shipped defaults (~/.plurnk/.env.defaults is the assembled legend).",
-            "#",
-            "# Pick a model — uncomment ONE block:",
-            "#",
-            "# LOCAL — your own llama-server / any OpenAI-compatible endpoint:",
-            "# PLURNK_MODEL_local=\"openai/gemma\"",
-            "# OPENAI_BASE_URL=http://127.0.0.1:11434",
-            "# PLURNK_MODEL=local",
-            "#",
-            "# CLOUD — bring your own key, any openrouter model:",
-            "# PLURNK_MODEL_cloud=\"openrouter/qwen/qwen3-coder\"",
-            "# OPENROUTER_API_KEY=\"...\"",
-            "# PLURNK_MODEL=cloud",
-            "#",
-            "# PLURNK.AI - Plurnk-optimized endpoint service - https://plurnk.ai/",
-            "# PLURNK_MODEL_plurnk=\"plurnk/plurnk\"",
-            "# PLURNK_API_KEY=\"...\"",
-            "# PLURNK_MODEL=plurnk",
-            "",
-        ].join("\n"));
-        // Seed the default operating policy rendered as ## Policy. The user owns the seeded file;
-        // later edits or deletion persist.
-        writeFileSync(resolve(Service.#homeDir, "AGENTS.md"), shippedPolicy);
-        process.stderr.write(`plurnk-service: created ${Service.#homeDir} — config in ${resolve(Service.#homeDir, ".env")}\n`);
-    }
-
-    // Package-owned reference files are REFRESHED from the installed package on every boot —
-    // they carry the installed version's prose, so a seed-once snapshot would silently drift.
-    // Safe to clobber because they are package-owned, NOT user config: ~/.plurnk/.env (the
-    // user's, seeded once above) is never touched here. The knob legend is the assembled
-    // ~/.plurnk/.env.defaults, written by main() after assembly; .env.example is that legend's
-    // retired name — a machine-owned stale copy is removed so it can't mislead readers.
-    static #syncReferenceFiles(): void {
-        if (!existsSync(Service.#homeDir)) return;
-        for (const name of ["INSTALL.md"]) {
-            const src = resolve(Service.#projectRoot, name);
-            if (existsSync(src)) copyFileSync(src, resolve(Service.#homeDir, name));
-        }
-        rmSync(resolve(Service.#homeDir, ".env.example"), { force: true });
-    }
-
-    static #expandHome(p: string): string {
-        if (p === "~") return homedir();
-        return p.startsWith("~/") ? resolve(homedir(), p.slice(2)) : p;
-    }
+    static #hostPaths = new HostPaths();
 
     // The node_modules holding the service's plugin deps (exec/scheme/mimetype), resolved
     // from this file's REAL location by the shared membership walk. Falls back to CWD.
@@ -125,10 +66,68 @@ export default class Service {
         });
     }
 
+    static #configFileArg(): string | null {
+        const index = process.argv.findIndex((arg) => arg === "--config" || arg.startsWith("--config="));
+        if (index === -1) return null;
+        const arg = process.argv[index]!;
+        const value = arg.includes("=") ? arg.slice(arg.indexOf("=") + 1) : process.argv[index + 1];
+        return value === undefined ? null : Service.#hostPaths.expandUserPath(value);
+    }
+
     static #requireEnv(name: string): string {
         const value = process.env[name];
         if (value === undefined || value.length === 0) Service.#die(78, `missing required env ${name} (declare it in .env.defaults)`);
         return value;
+    }
+
+    static #databasePath(): string {
+        const configured = process.env.PLURNK_SERVICE_DB_PATH;
+        return configured === undefined || configured.length === 0
+            ? Service.#hostPaths.databaseFile
+            : resolve(Service.#hostPaths.expandUserPath(configured));
+    }
+
+    static #modelConfiguration(): {
+        readonly aliases: ReturnType<typeof parseAliasesFromEnv>;
+        readonly active: ReturnType<typeof resolveActiveAlias>;
+    } {
+        const aliases = parseAliasesFromEnv(process.env);
+        const active = resolveActiveAlias(process.env);
+        const selected = process.env.PLURNK_MODEL ?? "";
+        if (active === null && selected !== "") {
+            const declared = aliases.map(({ alias }) => alias).join(", ");
+            throw new Error(
+                `PLURNK_MODEL=${selected} names no declared alias (declared: ${declared.length > 0 ? declared : "none"}). `
+                + `The knob takes an ALIAS name; for an inline model, declare PLURNK_MODEL_<alias>=${selected} and set PLURNK_MODEL=<alias>.`,
+            );
+        }
+        const childAlias = process.env.PLURNK_MODEL_CHILD;
+        if (childAlias !== undefined) {
+            if (childAlias.length === 0 || !aliases.some(({ alias }) => alias === childAlias.toLowerCase())) {
+                const names = aliases.map(({ alias }) => alias).join(", ");
+                throw new Error(
+                    `PLURNK_MODEL_CHILD=${childAlias} names no declared alias (declared: ${names.length > 0 ? names : "none"}). `
+                    + "Unset it to inherit each spawning loop's provider, or select a declared alias.",
+                );
+            }
+        }
+        return { aliases, active };
+    }
+
+    static async #ensureOperatorConfig(): Promise<void> {
+        await LegacyHome.assertCanonical(Service.#hostPaths);
+        if (Service.#hostPaths.invalidXdg.length > 0) {
+            process.stderr.write(
+                `plurnk-service: ignored relative XDG variable(s): ${Service.#hostPaths.invalidXdg.join(", ")}; `
+                + "run plurnk-service config check\n",
+            );
+        }
+        if (await OperatorConfig.ensure(Service.#hostPaths, Paths.personality)) {
+            process.stderr.write(
+                `plurnk-service: created ${Service.#hostPaths.configDir} — edit ${Service.#hostPaths.configFile}; `
+                + "run plurnk-service config defaults for every installed option\n",
+            );
+        }
     }
 
     static #sqliteKnob(name: string): number | undefined {
@@ -150,7 +149,7 @@ export default class Service {
             const v = Service.#sqliteKnob(env);
             if (v !== undefined) tuning[opt] = v;
         }
-        mkdirSync(dirname(dbPath), { recursive: true });
+        mkdirSync(dirname(dbPath), { recursive: true, mode: 0o700 });
         const lock = exclusive ? await DaemonLock.acquire(dbPath) : null;
         try {
             const db = await SqlRite.open({
@@ -187,41 +186,22 @@ export default class Service {
     }
 
     static async #migrate(): Promise<void> {
-        const dbPath = Service.#expandHome(Service.#requireEnv("PLURNK_SERVICE_DB_PATH"));
+        const dbPath = Service.#databasePath();
         const db = await Service.#openDb(dbPath, true);
         try { process.stdout.write(`migrated: ${dbPath}\n`); }
         finally { await db.close(); }
     }
 
     static async #start(): Promise<void> {
-        const dbPath = Service.#expandHome(Service.#requireEnv("PLURNK_SERVICE_DB_PATH"));
+        const dbPath = Service.#databasePath();
         const host = Service.#requireEnv("PLURNK_HOST");
         // PLURNK_PORT is THE client surface — the AG-UI+ listener (the agui plugin module binds
         // it at boot via the seam). {§rpc}: production has no daemon-owned listener.
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
 
-        const alias = resolveActiveAlias();
-        const childAlias = process.env.PLURNK_MODEL_CHILD;
-        if (childAlias !== undefined) {
-            const declared = parseAliasesFromEnv(process.env);
-            if (childAlias.length === 0 || !declared.some(({ alias: name }) => name === childAlias.toLowerCase())) {
-                const names = declared.map(({ alias: name }) => name).join(", ");
-                throw new Error(
-                    `PLURNK_MODEL_CHILD=${childAlias} names no declared alias (declared: ${names.length > 0 ? names : "none"}). `
-                    + "Unset it to inherit each spawning loop's provider, or select a declared alias.",
-                );
-            }
-        }
         // {§operator-config} — an explicit boot alias must resolve; only an
         // unset selector permits modelless boot for per-request selection.
-        const selectedModel = process.env.PLURNK_MODEL ?? "";
-        if (alias === null && selectedModel !== "") {
-            const declared = parseAliasesFromEnv(process.env).map((a) => a.alias).join(", ");
-            throw new Error(
-                `PLURNK_MODEL=${selectedModel} names no declared alias (declared: ${declared.length > 0 ? declared : "none"}). `
-                + `The knob takes an ALIAS name; for an inline model, declare PLURNK_MODEL_<alias>=${selectedModel} and set PLURNK_MODEL=<alias>.`,
-            );
-        }
+        const { active: alias } = Service.#modelConfiguration();
         // {§startup-admission-order}: persistence and its exclusive owner are
         // admitted before provider verification can perform external work.
         const db = await Service.#openDb(dbPath, true);
@@ -268,7 +248,10 @@ export default class Service {
                 process.stderr.write("plurnk-service: remote embedder active but reports no input context window — set PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW to the endpoint's limit or embedding derivations will refuse\n");
             }
             if (alias === null) {
-                process.stderr.write(`plurnk-service: no model configured — uncomment one of the three options (local / cloud / plurnk.ai) in ${resolve(Service.#homeDir, ".env")}. Loops fail legibly until then.\n`);
+                process.stderr.write(
+                    `plurnk-service: no model configured — choose a profile in ${Service.#hostPaths.configFile}; `
+                    + "run plurnk-service config defaults for every installed option. Loops fail legibly until then.\n",
+                );
             }
             const aliasStr = alias === null ? "no model" : `${alias.alias}=${alias.provider}/${alias.model}`;
             process.stdout.write(`plurnk-service agui=http://${aguiAddr.host}:${aguiAddr.port} db=${dbPath} ${aliasStr}\n`);
@@ -289,31 +272,100 @@ export default class Service {
         }
     }
 
+    static async #configStatus(): Promise<void> {
+        const { aliases, active } = Service.#modelConfiguration();
+        const explicitFiles = Service.#envFileArgs().map(({ path }) => resolve(Service.#hostPaths.expandUserPath(path)));
+        const configFile = Service.#configFileArg();
+        const lines = [
+            `config: ${Service.#hostPaths.configFile} (${existsSync(Service.#hostPaths.configFile) ? "present" : "absent"})`,
+            "sources (low -> high):",
+            "  package .env.defaults floor",
+            `  ${Service.#hostPaths.configFile}${existsSync(Service.#hostPaths.configFile) ? "" : " (absent)"}`,
+            `  ${resolve(".env")}${existsSync(".env") ? "" : " (absent)"}`,
+            ...(configFile === null ? [] : [`  ${resolve(configFile)}${existsSync(configFile) ? "" : " (absent)"}`]),
+            ...explicitFiles.map((path) => `  ${path}${existsSync(path) ? "" : " (absent)"}`),
+            "  process environment",
+            "  CLI flags",
+            `model: ${active === null ? "not selected" : `${active.alias}=${active.provider}/${active.model}`}`,
+            `declared aliases: ${aliases.length === 0 ? "none" : aliases.map(({ alias }) => alias).join(", ")}`,
+            `database: ${Service.#databasePath()}`,
+            "defaults: plurnk-service config defaults",
+            "validation: plurnk-service config check",
+        ];
+        process.stdout.write(`${lines.join("\n")}\n`);
+    }
+
+    static async #configCheck(): Promise<void> {
+        if (Service.#hostPaths.invalidXdg.length > 0) {
+            throw new Error(
+                `relative XDG variable(s) are invalid and ignored: ${Service.#hostPaths.invalidXdg.join(", ")}`,
+            );
+        }
+        const { aliases, active } = Service.#modelConfiguration();
+        process.stdout.write([
+            "configuration valid",
+            `config: ${Service.#hostPaths.configFile}`,
+            `model: ${active === null ? "not selected" : `${active.alias}=${active.provider}/${active.model}`}`,
+            `declared aliases: ${aliases.length === 0 ? "none" : aliases.map(({ alias }) => alias).join(", ")}`,
+            `database: ${Service.#databasePath()}`,
+            "provider requests: none",
+            "",
+        ].join("\n"));
+    }
+
+    static async #configEdit(): Promise<void> {
+        const editor = process.env.VISUAL || process.env.EDITOR;
+        if (editor === undefined || editor.length === 0) {
+            throw new Error(
+                `VISUAL and EDITOR are unset; edit ${Service.#hostPaths.configFile}, `
+                + "then run plurnk-service config check",
+            );
+        }
+        await new Promise<void>((resolvePromise, rejectPromise) => {
+            // VISUAL/EDITOR conventionally permits a shell command with flags.
+            // Keep the user-owned command semantics, but pass the config path as
+            // a quoted positional so whitespace and shell characters stay data.
+            const child = spawn(
+                "/bin/sh",
+                ["-c", `${editor} "$1"`, "plurnk-service config edit", Service.#hostPaths.configFile],
+                { stdio: "inherit" },
+            );
+            child.once("error", rejectPromise);
+            child.once("exit", (code, signal) => {
+                if (code === 0) resolvePromise();
+                else rejectPromise(new Error(`${editor} exited ${code ?? `on ${signal ?? "unknown signal"}`}`));
+            });
+        });
+    }
+
+    static async #pathsMigrate(): Promise<void> {
+        const moves = await LegacyHome.migrate(Service.#hostPaths);
+        if (moves.length === 0) {
+            process.stdout.write(`paths canonical: no legacy home remains at ${Service.#hostPaths.legacyDir}\n`);
+            return;
+        }
+        process.stdout.write(`paths migrated:\n${moves.map(({ source, destination }) => `  ${source} -> ${destination}`).join("\n")}\n`);
+    }
+
     static async main(): Promise<void> {
-        if (!process.argv.includes("--help") && !process.argv.includes("-h")) { Service.#ensureHome(); Service.#syncReferenceFiles(); }
         // loadEnvFile is set-if-unset, so every service-owned layer loads high→low. Within the
         // repeatable env-file tier, loading last→first preserves Node's later-file-wins order.
         // {§operator-config-precedence}
-        for (const { path: envFile, required } of Service.#envFileArgs().toReversed()) Service.#loadEnv(envFile, required);
+        for (const { path: envFile, required } of Service.#envFileArgs().toReversed()) {
+            Service.#loadEnv(Service.#hostPaths.expandUserPath(envFile), required);
+        }
 
-        const configFlagIndex = process.argv.findIndex((a) => a === "--config" || a.startsWith("--config="));
-        const configFile = ((): string | null => {
-            if (configFlagIndex === -1) return null;
-            const arg = process.argv[configFlagIndex];
-            if (arg.includes("=")) return arg.slice(arg.indexOf("=") + 1);
-            return process.argv[configFlagIndex + 1] ?? null;
-        })();
+        const configFile = Service.#configFileArg();
 
         if (configFile !== null) Service.#loadEnv(configFile, true);
         Service.#loadEnv(".env", false);
-        Service.#loadEnv(resolve(Service.#homeDir, ".env"), false);
+        Service.#loadEnv(Service.#hostPaths.configFile, false);
         // The assembled floor sits under everything the operator set: this package's
         // .env.defaults + every installed member's, one owner per key (collision = boot crash),
-        // applied set-if-unset. The catalog renders to ~/.plurnk/.env.defaults — the operator's
-        // legend, machine-owned, never read back as config.
+        // applied set-if-unset. The complete owner-labelled catalog is projected only by
+        // `config defaults`; there is no generated configuration copy.
         const defaultsFiles = await EnvDefaults.collect(Service.#projectRoot, Service.#pluginsNodeModules());
         EnvDefaults.apply(EnvDefaults.merge(defaultsFiles));
-        if (existsSync(Service.#homeDir)) writeFileSync(resolve(Service.#homeDir, ".env.defaults"), EnvDefaults.renderCatalog(defaultsFiles));
 
         const flagDescriptors = await EnvFlags.parseEnvDefaults(resolve(Service.#projectRoot, ".env.defaults"));
         const flagOptions: Record<string, { type: "string" }> = {};
@@ -321,13 +373,18 @@ export default class Service {
             flagOptions[f.flagName.replace(/^--/, "")] = { type: "string" };
         }
 
-        const usage = `usage: plurnk-service [options] [migrate]
+        const usage = `usage: plurnk-service [options] [start|migrate]
+       plurnk-service [options] config [edit|defaults|check]
+       plurnk-service paths migrate
 
 ${EnvFlags.formatFlagsHelp(flagDescriptors)}
 
   --env-file=<path>            layer env from <path> (repeatable; later wins; errors if missing)
   --env-file-if-exists=<path>  layer env from <path> if present (repeatable; later wins)
   --config=<path>              layer additional env from <path>
+  config defaults             print every installed package's annotated .env.defaults
+  config check                validate configuration without contacting a provider
+  paths migrate               move a legacy ~/.plurnk into canonical XDG paths
   -v, --version                show executable provenance
   -h, --help                   show this help
 `;
@@ -356,16 +413,41 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
             process.exit(0);
         }
 
-        const dispatch: Record<string, () => Promise<void>> = { migrate: Service.#migrate, start: Service.#start };
-        const subcommand = typeof positionals[0] === "string" ? positionals[0] : "start";
-        const handler = dispatch[subcommand];
-        if (handler === undefined) Service.#die(64, `unknown subcommand: ${subcommand}\n\n${usage}`);
-        if (positionals.length > 1) Service.#die(64, `unexpected arguments: ${positionals.slice(1).join(" ")}`);
+        const command = typeof positionals[0] === "string" ? positionals[0] : "start";
+        const action = typeof positionals[1] === "string" ? positionals[1] : null;
+        let name = command;
+        let handler: (() => Promise<void>) | null = null;
+        if (command === "start" || command === "migrate") {
+            if (positionals.length > 1) Service.#die(64, `unexpected arguments: ${positionals.slice(1).join(" ")}`);
+            await Service.#ensureOperatorConfig();
+            handler = command === "start" ? Service.#start : Service.#migrate;
+        } else if (command === "config") {
+            if (positionals.length > 2) Service.#die(64, `unexpected arguments: ${positionals.slice(2).join(" ")}`);
+            name = action === null ? "config" : `config ${action}`;
+            if (action === "defaults") {
+                handler = async () => { process.stdout.write(EnvDefaults.renderCatalog(defaultsFiles)); };
+            } else {
+                await LegacyHome.assertCanonical(Service.#hostPaths);
+                if (action === "edit") {
+                    await Service.#ensureOperatorConfig();
+                    handler = Service.#configEdit;
+                } else if (action === "check") {
+                    handler = Service.#configCheck;
+                } else if (action === null) {
+                    handler = Service.#configStatus;
+                }
+            }
+        } else if (command === "paths" && action === "migrate") {
+            if (positionals.length > 2) Service.#die(64, `unexpected arguments: ${positionals.slice(2).join(" ")}`);
+            name = "paths migrate";
+            handler = Service.#pathsMigrate;
+        }
+        if (handler === null) Service.#die(64, `unknown command: ${positionals.join(" ")}\n\n${usage}`);
 
         process.stderr.write(`plurnk-service: ${formatBuildInfo(buildInfo)}\n`);
         try { await handler(); }
         catch (cause) {
-            process.stderr.write(ServiceTeardown.diagnostic(subcommand, cause));
+            process.stderr.write(ServiceTeardown.diagnostic(name, cause));
             process.exit(1);
         }
     }
