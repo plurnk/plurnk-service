@@ -132,6 +132,8 @@ export class SqlRiteSync {
 	client_interaction_insert: SqlRiteSyncPreparedStatements;
 	client_interaction_list: SqlRiteSyncPreparedStatements;
 	client_interaction_delete: SqlRiteSyncPreparedStatements;
+	digest_schema_tables: SqlRiteSyncPreparedStatements;
+	digest_schema_columns: SqlRiteSyncPreparedStatements;
 	digest_workspaces: SqlRiteSyncPreparedStatements;
 	digest_workers: SqlRiteSyncPreparedStatements;
 	digest_loops: SqlRiteSyncPreparedStatements;
@@ -390,6 +392,8 @@ export default class SqlRite {
 	client_interaction_insert: SqlRitePreparedStatements;
 	client_interaction_list: SqlRitePreparedStatements;
 	client_interaction_delete: SqlRitePreparedStatements;
+	digest_schema_tables: SqlRitePreparedStatements;
+	digest_schema_columns: SqlRitePreparedStatements;
 	digest_workspaces: SqlRitePreparedStatements;
 	digest_workers: SqlRitePreparedStatements;
 	digest_loops: SqlRitePreparedStatements;

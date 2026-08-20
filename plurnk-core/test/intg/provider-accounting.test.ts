@@ -3,7 +3,6 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DatabaseSync } from "node:sqlite";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -150,29 +149,27 @@ test("the baseline has no floating-point or denormalized accounting columns", as
     const dir = await mkdtemp(join(tmpdir(), "plurnk-money-schema-"));
     const path = join(dir, "plurnk.db");
     const db = await openMigrated(path);
-    await db.close();
     try {
-        const sqlite = new DatabaseSync(path, { readOnly: true });
-        const tableInfo = (table: string): Array<{ name: string; type: string }> =>
-            sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string; type: string }>;
+        const tableInfo = (table: string): Promise<Array<{ name: string; type: string }>> =>
+            db.test_provider_accounting_table_info.all({ table });
         for (const table of ["workspaces", "workers", "turns", "model_calls", "turn_attempts"]) {
             assert.equal(
-                tableInfo(table).some(({ name }) => name.startsWith("usage_") || name === "cost_usd"),
+                (await tableInfo(table)).some(({ name }) => name.startsWith("usage_") || name === "cost_usd"),
                 table === "turns",
                 `${table} has no accounting rollup (turns retains only usage_curation_budget)`,
             );
         }
         assert.deepEqual(
-            tableInfo("turns").filter(({ name }) => name.startsWith("usage_")).map(({ name }) => name),
+            (await tableInfo("turns")).filter(({ name }) => name.startsWith("usage_")).map(({ name }) => name),
             ["usage_curation_budget"],
         );
         assert.equal(
-            tableInfo("provider_requests").some(({ type }) => type === "REAL"),
+            (await tableInfo("provider_requests")).some(({ type }) => type === "REAL"),
             false,
             "money is stored as canonical TEXT, never REAL",
         );
-        sqlite.close();
     } finally {
+        await db.close();
         await rm(dir, { recursive: true, force: true });
     }
 });

@@ -23,10 +23,29 @@
                 "ignoreRestSiblings": true
             }
         ],
+        "eslint/no-restricted-imports": [
+            "error",
+            {
+                "paths": [
+                    {
+                        "name": "node:sqlite",
+                        "message": "Internal persistence SQL belongs in package-owned SqlRite statements."
+                    }
+                ]
+            }
+        ],
         "import/no-cycle": "error",
         "typescript/no-floating-promises": "error"
     },
     "overrides": [
+        {
+            "files": [
+                "plurnk-execs-sqlite/src/Sqlite.ts"
+            ],
+            "rules": {
+                "eslint/no-restricted-imports": "off"
+            }
+        },
         {
             "files": [
                 "**/*.test.js",

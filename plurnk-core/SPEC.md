@@ -3178,7 +3178,7 @@ retain distinct contracts and lifetimes.
 
 | Surface                                | Contract                                                                                                                                            |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Import `@plurnk/plurnk-service/digest` | Ships `Digest` and its co-located `digest.sql`; importing performs no I/O or process action. The CLI wrapper alone invokes it.                      |
+| Import `@plurnk/plurnk-service/digest` | Ships `Digest` and its package-owned SqlRite statements; importing performs no I/O or process action. The CLI wrapper alone invokes it.             |
 | `run({ dbPath })`                      | Reads the required database and writes a complete digest to `./test/digest` relative to the caller's working directory.                             |
 | `digestDir`                            | Selects the output directory. `run` removes and recreates it so stale packet artifacts cannot survive; concurrent callers use distinct directories. |
 | `workerId`                             | Narrows workers and every dependent loop, turn, logical model call, emission attempt, physical request, and log row to that one worker.             |

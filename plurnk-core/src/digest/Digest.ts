@@ -31,7 +31,6 @@
 // SQL lives in the co-located digest.sql; opened the sqlrite way (SqlRiteSync,
 // the sync CLI/script facade). Each PREP block is read through its own accessor.
 
-import { DatabaseSync } from "node:sqlite";
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -215,6 +214,27 @@ interface WorkerRollupRow {
     last_status: number | null;
 }
 interface OpMixRow { worker_id: number; op: string; n: number }
+interface SemanticStateRow {
+    channel_entries: number;
+    derivation_complete: number;
+    unfinished: number;
+}
+interface DispositionCountRow { disposition: string; n: number }
+interface DispositionRow {
+    scheme: string;
+    pathname: string;
+    channel: string;
+    disposition: string;
+    reason: string | null;
+}
+interface DerivationStateRow {
+    complete: number;
+    building: number;
+}
+interface EmbeddingStateRow {
+    chunks: number;
+    models: number;
+}
 
 // Loaded snapshot + derived index maps, threaded through the renderers so the
 // data flow is explicit (no hidden module-level state).
@@ -1081,6 +1101,21 @@ export default class Digest {
         // mode) inspect cleanly; this tool only reads. The DB is quiescent at
         // digest time, so each PREP reads on its own — no cross-query snapshot.
         const db = new SqlRiteSync({ path: dbPath, dir: [moduleDir] });
+        const tables = new Set(
+            (db.digest_schema_tables as SyncPrep<{ name: string }>).all().map(({ name }) => name),
+        );
+        const columns = new Map<string, Set<string>>();
+        const has = (table: string): boolean => tables.has(table);
+        const hasColumn = (table: string, column: string): boolean => {
+            let names = columns.get(table);
+            if (names === undefined) {
+                names = new Set(
+                    (db.digest_schema_columns as SyncPrep<{ name: string }>).all({ table }).map(({ name }) => name),
+                );
+                columns.set(table, names);
+            }
+            return names.has(column);
+        };
         let workspaces = (db.digest_workspaces as SyncPrep<WorkspaceRow>).all();
         let workers = (db.digest_workers as SyncPrep<WorkerRow>).all();
         let loops = (db.digest_loops as SyncPrep<LoopRow>).all();
@@ -1096,57 +1131,74 @@ export default class Digest {
         let curationEffects: LogCurationEffectRow[] = [];
         let workerRollupRows = (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all();
         let opMixRows = (db.digest_worker_op_mix as SyncPrep<OpMixRow>).all();
-        // The semantic-state analytic (owner ask), feature-detected per table: a HISTORICAL
-        // specimen may predate token_counts/derivation_embeddings — an old db is a fact to read,
-        // not a contract violation. Absent tables read as -1. node:sqlite directly (SqlRite's
-        // eager prepare would refuse the whole open over one missing optional table).
-        const probe = new DatabaseSync(dbPath, { readOnly: true });
-        const has = (t: string): boolean => probe.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t) !== undefined;
-        const hasColumn = (table: string, column: string): boolean => probe.prepare(`SELECT 1 FROM pragma_table_info(?) WHERE name=?`).get(table, column) !== undefined;
-        const one = (q: string): number => Number((probe.prepare(q).get() as { n: number }).n);
+        // Historical specimens may predate individual forensic analytics. The
+        // base statement set discovers their schema; only compatible static
+        // SqlRite packs are opened, so absence remains evidence rather than an
+        // eager-prepare failure or a reason to assemble SQL in TypeScript.
         const channelDerivations = has("entry_channels") && hasColumn("entry_channels", "deep_hash");
         const legacyEntryDerivations = has("entries") && hasColumn("entries", "deep_hash");
         const semanticStateAvailable = has("entries") && has("entry_channels")
             && (channelDerivations || legacyEntryDerivations);
-        if (has("log_curation_effects")) {
-            curationEffects = probe.prepare(`
-                SELECT operation_log_entry_id, target_log_entry_id,
-                       folded_before, folded_after, tags_added, tags_removed
-                FROM log_curation_effects
-                ORDER BY operation_log_entry_id, target_log_entry_id
-            `).all() as unknown as LogCurationEffectRow[];
-        }
-        const subjects = semanticStateAvailable
-            ? `FROM entries e JOIN entry_channels ec ON ec.entry_id=e.id${channelDerivations ? "" : " AND ec.name='body'"}`
-            : "";
-        const attachment = channelDerivations ? "ec.deep_hash" : "e.deep_hash";
-        const channelProjection = channelDerivations ? "ec.name" : "'body'";
         const hasDisposition = semanticStateAvailable
             && has("derivations")
             && hasColumn("derivations", "disposition");
-        const dispositionCount = (value: string): number => hasDisposition
-            ? one(`SELECT count(*) n ${subjects} JOIN derivations d ON d.deep_hash=${attachment} WHERE d.disposition='${value}'`)
-            : -1;
-        const dispositions = hasDisposition
-            ? probe.prepare(`SELECT e.scheme, e.pathname, ${channelProjection} AS channel, d.disposition, d.reason ${subjects} JOIN derivations d ON d.deep_hash=${attachment} WHERE d.disposition <> 'vector' ORDER BY d.disposition, e.scheme, e.pathname, channel`).all() as Array<{ scheme: string; pathname: string; channel: string; disposition: string; reason: string | null }>
+        const queryRoot = resolve(moduleDir, "..", "..", "digest-sql");
+        const queryDirs = [
+            ...(has("log_curation_effects") ? [join(queryRoot, "curation")] : []),
+            ...(semanticStateAvailable
+                ? [join(queryRoot, channelDerivations ? "channel-state" : "entry-state")]
+                : []),
+            ...(hasDisposition
+                ? [join(queryRoot, channelDerivations ? "channel-dispositions" : "entry-dispositions")]
+                : []),
+            ...(semanticStateAvailable && has("derivations") ? [join(queryRoot, "derivations")] : []),
+            ...(has("derivation_embeddings") ? [join(queryRoot, "embeddings")] : []),
+            ...(has("token_counts") ? [join(queryRoot, "token-counts")] : []),
+        ];
+        const analytics = queryDirs.length === 0
+            ? null
+            : new SqlRiteSync({ path: dbPath, dir: queryDirs });
+        if (has("log_curation_effects")) {
+            curationEffects = (analytics!.digest_curation_effects as SyncPrep<LogCurationEffectRow>).all();
+        }
+        const semanticState = semanticStateAvailable
+            ? ((analytics![channelDerivations ? "digest_channel_semantic_state" : "digest_entry_semantic_state"] as SyncPrep<SemanticStateRow>).get()
+                ?? { channel_entries: 0, derivation_complete: 0, unfinished: 0 })
+            : null;
+        const dispositionCounts = hasDisposition
+            ? (analytics![channelDerivations ? "digest_channel_disposition_counts" : "digest_entry_disposition_counts"] as SyncPrep<DispositionCountRow>).all()
             : [];
+        const dispositionCount = (value: string): number =>
+            dispositionCounts.find(({ disposition }) => disposition === value)?.n ?? (hasDisposition ? 0 : -1);
+        const dispositions = hasDisposition
+            ? (analytics![channelDerivations ? "digest_channel_dispositions" : "digest_entry_dispositions"] as SyncPrep<DispositionRow>).all()
+            : [];
+        const derivationState = semanticStateAvailable && has("derivations")
+            ? (analytics!.digest_derivation_state as SyncPrep<DerivationStateRow>).get()
+            : undefined;
+        const embeddingState = has("derivation_embeddings")
+            ? (analytics!.digest_embedding_state as SyncPrep<EmbeddingStateRow>).get()
+            : undefined;
+        const tokenState = has("token_counts")
+            ? (analytics!.digest_token_count as SyncPrep<{ n: number }>).get()
+            : undefined;
         const embeddings = {
-            channel_entries: semanticStateAvailable ? one(`SELECT count(*) n ${subjects}`) : -1,
-            derivation_complete: semanticStateAvailable ? one(`SELECT count(*) n ${subjects} WHERE ${attachment} IS NOT NULL`) : -1,
+            channel_entries: semanticState?.channel_entries ?? -1,
+            derivation_complete: semanticState?.derivation_complete ?? -1,
             vector_complete: dispositionCount("vector"),
             lexical: dispositionCount("lexical"),
             excluded: dispositionCount("excluded"),
             nonsemantic: dispositionCount("nonsemantic"),
             failed: dispositionCount("failed"),
             dispositions,
-            unfinished: semanticStateAvailable ? one(`SELECT count(*) n ${subjects} WHERE ${attachment} IS NULL`) : -1,
-            derivation_artifacts_complete: semanticStateAvailable && has("derivations") ? one("SELECT count(*) n FROM derivations WHERE state='complete'") : -1,
-            derivation_artifacts_building: semanticStateAvailable && has("derivations") ? one("SELECT count(*) n FROM derivations WHERE state='building'") : -1,
-            chunk_rows: has("derivation_embeddings") ? one("SELECT count(*) n FROM derivation_embeddings") : -1,
-            models: has("derivation_embeddings") ? one("SELECT count(DISTINCT embedding_model) n FROM derivation_embeddings") : -1,
-            token_derivations: has("token_counts") ? one("SELECT count(*) n FROM token_counts") : -1,
+            unfinished: semanticState?.unfinished ?? -1,
+            derivation_artifacts_complete: derivationState?.complete ?? -1,
+            derivation_artifacts_building: derivationState?.building ?? -1,
+            chunk_rows: embeddingState?.chunks ?? -1,
+            models: embeddingState?.models ?? -1,
+            token_derivations: tokenState?.n ?? -1,
         };
-        probe.close();
+        analytics?.close();
         db.close();
 
         // {§digest-programmatic-surface} — optional worker/workspace selectors narrow the

@@ -6,8 +6,9 @@
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import SqlRiteSync from "@possumtech/sqlrite/sync";
 import { installPacked, installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
 
 let failures = 0;
@@ -229,21 +230,21 @@ ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from 
 // consumer, not the workspace source condition. A successful run proves the
 // packed dist/digest/digest.sql resolved beside Digest.js.
 const packedDigestDir = resolve(sandbox, "packed-digest");
-const digestFixture = new DatabaseSync(migratedDb);
+const digestFixture = new SqlRiteSync({
+    path: migratedDb,
+    dir: dirname(fileURLToPath(import.meta.url)),
+});
 try {
-    digestFixture.exec("PRAGMA foreign_keys = ON");
-    const workspace = digestFixture.prepare(
-        "INSERT INTO workspaces (name) VALUES (?) RETURNING id",
-    ).get("packed-digest-workspace");
-    const worker = digestFixture.prepare(
-        "INSERT INTO workers (workspace_id, name, origin) VALUES (?, ?, 'model') RETURNING id",
-    ).get(workspace.id, "packed-digest-worker");
-    const loop = digestFixture.prepare(
-        "INSERT INTO loops (worker_id, sequence, prompt) VALUES (?, 1, ?) RETURNING id",
-    ).get(worker.id, "packed-digest-prompt");
-    digestFixture.prepare(
-        "INSERT INTO turns (loop_id, sequence, status, packet) VALUES (?, 1, 200, NULL)",
-    ).run(loop.id);
+    const workspace = digestFixture.installation_insert_workspace.get({ name: "packed-digest-workspace" });
+    const worker = digestFixture.installation_insert_worker.get({
+        workspace_id: workspace.id,
+        name: "packed-digest-worker",
+    });
+    const loop = digestFixture.installation_insert_loop.get({
+        worker_id: worker.id,
+        prompt: "packed-digest-prompt",
+    });
+    digestFixture.installation_insert_turn.run({ loop_id: loop.id });
 } finally {
     digestFixture.close();
 }

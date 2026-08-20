@@ -4,6 +4,12 @@
 -- DB (a kept test .db or a post-workspace plurnk.db), so each PREP is its own read
 -- — sqlrite 5 dropped the JS transaction composer and these never needed it.
 
+-- PREP: digest_schema_tables
+SELECT name FROM sqlite_schema WHERE type = 'table';
+
+-- PREP: digest_schema_columns
+SELECT name FROM pragma_table_info($table) ORDER BY cid;
+
 -- PREP: digest_workspaces
 SELECT * FROM workspaces ORDER BY id;
 

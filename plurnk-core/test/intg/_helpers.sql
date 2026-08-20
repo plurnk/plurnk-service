@@ -554,6 +554,9 @@ SELECT meta FROM turns WHERE id = $id;
 -- PREP: test_schema_version
 SELECT user_version AS v FROM pragma_user_version;
 
+-- PREP: test_provider_accounting_table_info
+SELECT name, type FROM pragma_table_info($table) ORDER BY cid;
+
 -- PREP: test_count_entry_rows
 SELECT COUNT(*) AS n FROM entries WHERE workspace_id = $workspace_id AND pathname = $pathname;
 

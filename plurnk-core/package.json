@@ -26,6 +26,7 @@
     "files": [
         ".env.defaults",
         "dist/**/*",
+        "digest-sql/**/*.sql",
         "migrations/**/*.sql",
         "README.md",
         "INSTALL.md",

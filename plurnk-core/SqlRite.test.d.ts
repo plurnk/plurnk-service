@@ -138,6 +138,8 @@ export class SqlRiteSync {
 	client_interaction_insert: SqlRiteSyncPreparedStatements;
 	client_interaction_list: SqlRiteSyncPreparedStatements;
 	client_interaction_delete: SqlRiteSyncPreparedStatements;
+	digest_schema_tables: SqlRiteSyncPreparedStatements;
+	digest_schema_columns: SqlRiteSyncPreparedStatements;
 	digest_workspaces: SqlRiteSyncPreparedStatements;
 	digest_workers: SqlRiteSyncPreparedStatements;
 	digest_loops: SqlRiteSyncPreparedStatements;
@@ -428,6 +430,7 @@ export class SqlRiteSync {
 	test_count_stamped_deep_hash: SqlRiteSyncPreparedStatements;
 	test_get_turn_meta: SqlRiteSyncPreparedStatements;
 	test_schema_version: SqlRiteSyncPreparedStatements;
+	test_provider_accounting_table_info: SqlRiteSyncPreparedStatements;
 	test_count_entry_rows: SqlRiteSyncPreparedStatements;
 	test_file_pathnames: SqlRiteSyncPreparedStatements;
 	test_first_worker_for_ws: SqlRiteSyncPreparedStatements;
@@ -632,6 +635,8 @@ export default class SqlRite {
 	client_interaction_insert: SqlRitePreparedStatements;
 	client_interaction_list: SqlRitePreparedStatements;
 	client_interaction_delete: SqlRitePreparedStatements;
+	digest_schema_tables: SqlRitePreparedStatements;
+	digest_schema_columns: SqlRitePreparedStatements;
 	digest_workspaces: SqlRitePreparedStatements;
 	digest_workers: SqlRitePreparedStatements;
 	digest_loops: SqlRitePreparedStatements;
@@ -922,6 +927,7 @@ export default class SqlRite {
 	test_count_stamped_deep_hash: SqlRitePreparedStatements;
 	test_get_turn_meta: SqlRitePreparedStatements;
 	test_schema_version: SqlRitePreparedStatements;
+	test_provider_accounting_table_info: SqlRitePreparedStatements;
 	test_count_entry_rows: SqlRitePreparedStatements;
 	test_file_pathnames: SqlRitePreparedStatements;
 	test_first_worker_for_ws: SqlRitePreparedStatements;
