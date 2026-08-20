@@ -305,9 +305,20 @@ const openTransport = (
             },
         );
     }
+    // #295 crash-only child lifecycle — stdio servers spawn through the
+    // parent-death watchdog wrapper: the real server runs detached (own
+    // process group) and the wrapper group-kills it (grandchildren included)
+    // when the daemon dies by ANY path, including SIGKILL where close()
+    // never runs. Protocol bytes are forwarded verbatim.
     return new StdioClientTransport({
-        command: definition.command,
-        args: definition.args,
+        command: process.execPath,
+        args: [
+            new URL("./mcp-watchdog.mjs", import.meta.url).pathname,
+            String(process.pid),
+            "--",
+            definition.command,
+            ...definition.args,
+        ],
         cwd: definition.cwd,
         env: {
             ...getDefaultEnvironment(),
