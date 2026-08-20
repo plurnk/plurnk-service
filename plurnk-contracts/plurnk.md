@@ -34,31 +34,31 @@ A turn is completely generated before its OPs run; their results become observab
 
 ```mermaid
 flowchart LR
-    subgraph T1["Turn 1"]
+    subgraph T1["Action Turn"]
         direction TB
-        A1["# PLAN0<br>research, execute, or delegate"]
-        A2["one or more OPs"]
-        A3["## SEND0 [102]<br>or<br>## SEND0 [202]"]
+        A1["# PLAN0"]
+        A2["OPs<br>research, execute, or delegate"]
+        A3["## SEND0 [102]"]
         A1 --> A2 --> A3
     end
 
-    subgraph T2["Turn 2"]
+    subgraph T2["Next Packet"]
         direction TB
-        B1["# PLAN0<br>observe returned results"]
-        B2["one or more OPs<br>act, evaluate, or verify"]
-        B3["## SEND0 [102]<br>or<br>## SEND0 [202]"]
-        B1 --> B2 --> B3
+        B1["results become observable"]
+        B2{"all required work<br>completed and confirmed?"}
+        B1 --> B2
     end
 
-    subgraph T3["Turn 3"]
+    subgraph T3["Completion Turn"]
         direction TB
-        C1["# PLAN0<br>observe results and confirm completion"]
-        C2["## SEND0 [200]<br>conclude"]
+        C1["# PLAN0"]
+        C2["## SEND0 [200]<br>complete prompt"]
         C1 --> C2
     end
 
-    T1 -. "results enter the next packet" .-> T2
-    T2 -. "results enter the next packet" .-> T3
+    A3 -. "results enter the next packet" .-> B1
+    B2 -- No --> A1
+    B2 -- Yes --> C1
 ```
 
 ### OPs
@@ -195,6 +195,8 @@ YOU SHOULD FOLD superseded PLANs, stale READs, and irrelevant log items.
 | WORK  | fresh log  | Divide and conquer              | `## WORK0 (worker://recheck)` with body `Create a European capital table.`. |
 | FORK  | forked log | Do two things at once           | `## FORK0 (worker://recheck)` with body `Re-derive the capital from a primary source` |
 | BARE  | no log     | Context-free one-shot inference | `## BARE0` with body `What is the capital of Germany?` |
+
+Continue independent work with `SEND[102]`; use `SEND[202]` when a live child or stream is the only remaining dependency.
 
 * Before delegating a worker with a branch signal, ensure the repository is clean.
 * Send a worker another message: `## SEND0 (worker://recheck)` with body `Also verify the alternative against the existing tests.`.
