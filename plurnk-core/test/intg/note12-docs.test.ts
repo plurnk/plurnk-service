@@ -1,5 +1,5 @@
 // {§schemes-directory}: terse fenced examples are pushed; full reference docs
-// are materialized under worker://plurnk/docs/ and discovered by the turn-zero FIND.
+// are materialized under worker://plurnk/skills/plurnk/ and discovered by the turn-zero FIND.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -9,7 +9,7 @@ class DocStub {
     static manifest = {
         name: "docstub", channels: { body: "text/plain" }, defaultChannel: "body",
         category: "data", writableBy: ["model"], volatile: false, modelVisible: true,
-        example: "## READ0 (docstub:///x)", documentation: "# docstub\nFuller reference content.",
+        example: "## READ0 (docstub:///x)", documentation: "# docstub\n\n## Summary\n\nRead docstub resources.\n\nFuller reference content.",
     };
 }
 
@@ -24,7 +24,7 @@ test("{§schemes-directory}: teach() pushes an example while docs() carries the 
 
     const docs = await registry.docs();
     const stub = docs.find((d) => d.name === "docstub");
-    assert.equal(stub?.content, "# docstub\nFuller reference content.", "docs() carries the content for materialization at worker://plurnk/docs/<name>.md");
+    assert.equal(stub?.content, "# docstub\n\n## Summary\n\nRead docstub resources.\n\nFuller reference content.", "docs() carries the content for materialization through the shared skills catalog");
     assert.equal(docs.some(({ name }) => name === "log" || name === "prompt"), false, "self-evident log and prompt resources add no redundant pull docs");
 
     // A scheme with no example (provisional, e.g. skill) is omitted from the directory entirely.

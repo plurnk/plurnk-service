@@ -322,7 +322,32 @@ one READ into each model worker's turn 0 ({§turn0-agents-stunt}). The
 materializing EDIT remains in the `plurnk` worker's log; the model sees the
 shared entry through its own READ.
 
-§actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS` foists turn-0 discovery into the worker's first turn, so a worker opens with a navigable map instead of blank. An enabled preview executes exactly six baseline orienting FIND surveys in order: the authored skills (`## FIND0 [+init,+skills] (worker://plurnk/skills/*.md) <1,-1>`), the Plurnk-generated skill families (`## FIND0 [+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>` — both bodies `//heading[text()="Example"]` locate each skill's `Example` heading), enabled tool families (`## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>`), project files (`## FIND0 [+init] (*)`), workspace commons (`## FIND0 [+init] (worker:///*)`), and the worker's own space (`## FIND0 [+init] (worker://~/*)`). The skills surveys' xpath body demonstrates a content matcher on a real glob — the opening turn shows FIND locate match positions, not merely enumerate — and a skill without an `## Example` heading is absent from that matched result, which is why the `Example` heading is mandatory for every published skill. Their log classifications make the opening discovery one `init` set while retaining `skills` or `tools` on the corresponding rows ({§log-item-tags}). A shallow result renders direct entries normally and every deeper first-segment directory as an actionable `dir/**` summary with its recursive `items` and `tokens`; tool-family rows also carry the concise `{§scheme-catalog-summary}` that drives on-demand capability discovery. Ordinary surveys use FIND's markerless first-16 page, whose range metadata reports the requested and returned page against the complete result total; only the small curated skills and tools surfaces explicitly select all. The opening survey therefore demonstrates both `*` and `**` without normalizing an all-results override. Every survey executes even when empty because zero results are useful orientation. A positive `N` explicitly caps only the file map's rendered rows, using the map's actual direct-entry-plus-directory count; `-1` enables the ordinary markerless page; unset / `0` disables previews. `log://` is absent because the current worker's log already renders in present mode.
+§actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS`
+foists turn-0 discovery into the worker's first turn, so a worker opens with a
+navigable map instead of blank. An enabled preview executes exactly six baseline
+bodyless FIND surveys in order: authored skills (`## FIND0 [+init,+skills]
+(worker://plurnk/skills/*.md) <1,-1>`), Plurnk-generated reference families
+(`## FIND0 [+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>`), enabled
+tool families (`## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1>`),
+project files (`## FIND0 [+init] (*)`), workspace commons (`## FIND0 [+init]
+(worker:///*)`), and the worker's own space (`## FIND0 [+init] (worker://~/*)`).
+The catalogs select every direct document independently of its authored body;
+ordinary READ supplies its examples and complete instructions on demand. Their
+log classifications make the opening discovery one `init` set while retaining
+`skills` or `tools` on the corresponding rows ({§log-item-tags}). A shallow
+result renders direct entries normally and every deeper first-segment directory
+as an actionable `dir/**` summary with its recursive `items` and `tokens`;
+tool-family rows also carry the concise `{§scheme-catalog-summary}` that drives
+on-demand capability discovery. Ordinary surveys use FIND's markerless first-16
+page, whose range metadata reports the requested and returned page against the
+complete result total; only the small curated skills and tools surfaces
+explicitly select all. The opening survey demonstrates both `*` and `**` without
+normalizing an all-results override. Every survey executes even when empty
+because zero results are useful orientation. A positive `N` explicitly caps
+only the file map's rendered rows, using the map's actual
+direct-entry-plus-directory count; `-1` enables the ordinary markerless page;
+unset / `0` disables previews. `log://` is absent because the current worker's
+log already renders in present mode.
 
 §worker-initialization-entry **Worker initialization is not model output.** A worker's first loop begins with one born-OPEN actionless row at `log:///1/1/1`: `origin="plurnk"`, `op` null, and `attrs.kind="initialization"`. Its `text/vnd.plurnk` body dynamically mirrors the turn-zero PLAN, the orienting operations actually dispatched, and terminal `SEND0 [102]`. The PLAN states the concrete opening work: `* Discover the tooling available and survey the workspace file root.`; SEND hands off with `Next: Address the prompt.`
 
@@ -3257,8 +3282,10 @@ operator path is read, and an unshadowed unreadable operator skill fails
 materialization with its cause. `worker://plurnk/skills/index.md` always
 exists — it lists installed skills, or states that none are installed and
 where they would live — so the turn-0 `+init,+skills` FIND survey always
-shows the surface. Only the two discovery keys are parsed (no full YAML
-dependency); the body is preserved verbatim. Reconciliation deletes retired
+shows the surface. The materialized index and each standard skill expose an
+exact H2 `Summary`; a skill's required `description` becomes that summary while
+its instructions body is preserved verbatim. Only the two discovery keys are
+parsed (no full YAML dependency). Reconciliation deletes retired
 skill entries before upserting the current set, and a workspace without a
 project root or operator skills publishes the empty index alone. The
 model-facing `EXEC0 [skills] (list|add|remove)` runtime mutates the same
@@ -3293,7 +3320,7 @@ surfaces with its cause and leaves no apparently initialized home.
 After that bootstrap the file is user-owned: edits and deletion persist, and a
 later boot never refreshes or recreates it.
 
-§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. `SchemeRegistry.teach(workspaceId)` renders the effective directory, `SchemeRegistry.docs(workspaceId)` resolves corpus-or-manifest documentation, and `referenceEntries(workspaceId)` supplies the current `/skills/plurnk/` generated-skill set when core publishes workspace capabilities ({§skills-materialization}). One materializer reconciles the reserved scope exactly: vanished contributions are deleted before current documents are upserted, so an excluded scheme or disabled, detached, replaced, or removed runtime cannot leave a stale model-facing contract.
+§schemes-self-doc-materialization **The scheme self-doc contract.** `@plurnk/plurnk-schemes` owns `example` and `documentation` in `SchemeManifest` ({§manifest-self-doc}); the former is the hot-path operation example set and the latter is the deep pull doc. Every published pull doc carries an exact H2 `Summary` for ordinary catalog projection. `SchemeRegistry.teach(workspaceId)` renders the effective directory, `SchemeRegistry.docs(workspaceId)` resolves corpus-or-manifest documentation, and `referenceEntries(workspaceId)` supplies the current `/skills/plurnk/` generated-skill set when core publishes workspace capabilities ({§skills-materialization}). One materializer reconciles the reserved scope exactly: vanished contributions are deleted before current documents are upserted, so an excluded scheme or disabled, detached, replaced, or removed runtime cannot leave a stale model-facing contract.
 
 ### §packet-git-status The Git status section — compact repository state
 

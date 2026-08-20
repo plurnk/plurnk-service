@@ -1,5 +1,9 @@
 # http(s)://
 
+## Summary
+
+Read and modify web resources through addressable HTTP(S) entries.
+
 Use a web URL as an addressable entry. Every exact READ acquires or refreshes a
 complete representation when needed, then core selects the channel and applies
 the requested text scope. HTML becomes a readable model-facing body (normally

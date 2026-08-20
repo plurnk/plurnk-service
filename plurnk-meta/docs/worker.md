@@ -1,5 +1,9 @@
 # `worker://` — workers and their entries
 
+## Summary
+
+Coordinate workers and manage shared or private workspace entries.
+
 Workers inhabit one workspace. `worker://<name>` addresses a named worker; `worker://~` is the
 current-worker control sigil; `worker://~/path` addresses your private entries; `worker:///path`
 addresses the shared commons.

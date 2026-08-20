@@ -928,7 +928,7 @@ test("Engine.dispatch: model EDIT worker://plurnk/ is 403 — only the kernel au
         await Owner.commonsId(db, env.workspaceId); // ensure reserved rows resolvable
         await Envelope.ensurePlurnkWorker(db, env.workspaceId);
         const result = await engine.dispatch({
-            statement: editStmt({ target: { kind: "url", raw: "worker://plurnk/docs/log.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/docs/log.md", query: null, fragment: null }, body: "y" }),
+            statement: editStmt({ target: { kind: "url", raw: "worker://plurnk/skills/plurnk/log.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/skills/plurnk/log.md", query: null, fragment: null }, body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });

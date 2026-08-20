@@ -243,6 +243,7 @@ test("manifest: documentation is loaded verbatim from docs/wss.md", async () => 
     const fromFile = await readFile(new URL("../docs/wss.md", import.meta.url), "utf-8");
     assert.equal(Ws.manifest.documentation, fromFile);
     assert.match(Ws.manifest.documentation ?? "", /^# wss:\/\//);
+    assert.match(Ws.manifest.documentation ?? "", /^## Summary\n\nMaintain persistent, bidirectional WebSocket connections as addressable entries\.$/m);
 });
 
 test("READ: inbound frames stream into messages; socket close settles done", async () => {

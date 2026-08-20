@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-type LogRow = { op: string; pathname: string; scheme: string | null; hostname: string | null; sequence: number; signal: string | null; status_rx: number; rx: string };
+type LogRow = { op: string; pathname: string; scheme: string | null; hostname: string | null; sequence: number; signal: string | null; status_rx: number; tx: string; rx: string };
 const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
 
 test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
@@ -234,23 +234,41 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true, 200],
                     ["workspace commons", finds.find((r) => r.scheme === "worker" && r.hostname === null && r.pathname === "/*"), true, 200],
                     ["own space", finds.find((r) => r.scheme === "worker" && r.hostname === "~" && r.pathname === "/*"), true, 200],
-                    ["skills", finds.find((r) => r.scheme === "worker" && r.hostname === "plurnk" && r.pathname === "/skills/*.md"), true, 204],
+                    ["skills", finds.find((r) => r.scheme === "worker" && r.hostname === "plurnk" && r.pathname === "/skills/*.md"), false, 200],
                     ["enabled tools", finds.find((r) => r.scheme === "worker" && r.hostname === "plurnk" && r.pathname === "/tools/*.md"), true, 200],
                     ["plurnk skills", finds.find((r) => r.scheme === "worker" && r.hostname === "plurnk" && r.pathname === "/skills/plurnk/*.md"), false, 200],
                 ] as const;
                 for (const [name, row, expectEmpty, expectStatus] of orientations) {
                     assert.ok(row !== undefined, `${name} FIND executes even when empty`);
-                    assert.equal(row.status_rx, expectStatus, `${name} empty FIND is a ${expectStatus === 204 ? "zero-match" : "successful"} survey`);
+                    assert.equal(row.status_rx, expectStatus, `${name} FIND has its catalog contract status`);
                     const result = JSON.parse(row.rx) as { content?: string; results?: unknown[] };
                     const items = result.results ?? (result.content !== undefined ? JSON.parse(result.content) as unknown[] : []);
                     if (expectEmpty) assert.deepEqual(items, [], `${name} preserves the informative zero-result response`);
                 }
+                assert.ok(
+                    finds.every(({ tx }) => (JSON.parse(tx) as { body?: unknown }).body === null),
+                    "Turn 0 catalogs documents without imposing a body-shape eligibility gate",
+                );
+                const skillsSurvey = finds.find((r) => r.pathname === "/skills/*.md");
+                const skillsResult = JSON.parse(skillsSurvey!.rx) as { content?: string; results?: unknown[] };
+                const skillItems = (skillsResult.results
+                    ?? (skillsResult.content === undefined ? [] : JSON.parse(skillsResult.content) as unknown[])) as Array<Array<{ path: string; summary?: string }>>;
+                const index = skillItems.flat().find(({ path }) => path === "worker://plurnk/skills/index.md");
+                assert.equal(index?.summary, "Agent Skills available to this workspace.", "the authored-skill catalog projects its standard discovery summary");
                 const toolSurvey = finds.find((r) => r.pathname === "/skills/plurnk/*.md");
                 const toolResult = JSON.parse(toolSurvey!.rx) as { content?: string; results?: unknown[] };
                 const toolItems = (toolResult.results
                     ?? (toolResult.content === undefined ? [] : JSON.parse(toolResult.content) as unknown[])) as Array<Array<{ path: string; summary?: string }>>;
                 const shell = toolItems.flat().find(({ path }) => path === "worker://plurnk/skills/plurnk/sh.md");
                 assert.equal(shell?.summary, "Run POSIX shell commands and scripts.", "Turn 0 carries the family summary without its invocation body");
+                for (const [name, summary] of [
+                    ["http", "Read and modify web resources through addressable HTTP(S) entries."],
+                    ["worker", "Coordinate workers and manage shared or private workspace entries."],
+                    ["wss", "Maintain persistent, bidirectional WebSocket connections as addressable entries."],
+                ] as const) {
+                    const resource = toolItems.flat().find(({ path }) => path === `worker://plurnk/skills/plurnk/${name}.md`);
+                    assert.equal(resource?.summary, summary, `${name} reference depth is visible with an orienting summary`);
+                }
                 const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "worker" && row.hostname === "plurnk" && row.pathname === "/skills/plurnk/sh.md");
                 assert.equal(shellSample, undefined, "Turn 0 does not privilege the shell skill with an automatic READ");
                 const exemplar = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
@@ -259,9 +277,7 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
 * Discover the tooling available and survey the workspace file root.
 
 ## FIND0 [+init,+skills] (worker://plurnk/skills/*.md) <1,-1>
-//heading[text()="Example"]
 ## FIND0 [+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>
-//heading[text()="Example"]
 ## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1> <!-- enabled tools -->
 ## FIND0 [+init] (*) <!-- workspace files -->
 ## FIND0 [+init] (worker:///*) <!-- workspace entries -->

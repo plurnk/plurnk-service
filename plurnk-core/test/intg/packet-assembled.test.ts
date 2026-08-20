@@ -216,7 +216,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.match(log, /"path":"log:\/\/\/[^"]+\/FIND"/, "the catalog foist appears as a FIND op in the log address");
         assert.match(
             log,
-            /\d+:## FIND0 \[\+init,\+skills\] \(worker:\/\/plurnk\/skills\/\*\.md\) <1,-1>\n ?\d+:\/\/heading\[text\(\)="Example"\]\n ?\d+:## FIND0 \[\+init,\+skills\] \(worker:\/\/plurnk\/skills\/plurnk\/\*\.md\) <1,-1>\n ?\d+:\/\/heading\[text\(\)="Example"\]\n ?\d+:## FIND0 \[\+init,\+tools\] \(worker:\/\/plurnk\/tools\/\*\.md\) <1,-1> <!-- enabled tools -->\n ?\d+:## FIND0 \[\+init\] \(\*\)/,
+            /\d+:## FIND0 \[\+init,\+skills\] \(worker:\/\/plurnk\/skills\/\*\.md\) <1,-1>\n ?\d+:## FIND0 \[\+init,\+skills\] \(worker:\/\/plurnk\/skills\/plurnk\/\*\.md\) <1,-1>\n ?\d+:## FIND0 \[\+init,\+tools\] \(worker:\/\/plurnk\/tools\/\*\.md\) <1,-1> <!-- enabled tools -->\n ?\d+:## FIND0 \[\+init\] \(\*\)/,
             "turn-0 crams its bodyless surveys and keeps reference discovery before workspace discovery",
         );
         assert.doesNotMatch(log, /worker:\/\/plurnk\/skills\/plurnk\/sh\.md/, "turn-0 never privileges the sh skill with an orientation READ");
@@ -392,9 +392,9 @@ test("assembled packet: the skills foist — FIND(worker://plurnk/skills/**) sur
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "go");
         // A materialized scheme doc (what loop_run writes in production — the demo's runLoop doesn't) —
-        // kernel-owned at worker://plurnk/docs/… ({§entry-owner}).
+        // kernel-owned at worker://plurnk/skills/plurnk/… ({§entry-owner}).
         const Owner = (await import("../../src/core/Owner.ts")).default;
-        await seedEntryWithChannel(db, { workspaceId, ownerId: await Owner.kernelId(db, workspaceId), scheme: "worker", pathname: "/skills/plurnk/worker.md", channel: "body", content: "# worker\nYour shared blackboard.\n\n## Example\n\n## EDIT0 (worker:///notes.md)\nNotes.", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, ownerId: await Owner.kernelId(db, workspaceId), scheme: "worker", pathname: "/skills/plurnk/worker.md", channel: "body", content: "# worker\n\n## Summary\n\nManage shared worker entries.\n\n## Example\n\n## EDIT0 (worker:///notes.md)\nNotes.", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
@@ -404,13 +404,14 @@ test("assembled packet: the skills foist — FIND(worker://plurnk/skills/**) sur
         // the materialized doc reaches the model via FIND, not an inline link ({§schemes-directory}).
         assert.match(log, /"target":"worker:\/\/plurnk\/skills\/plurnk\/\*\.md"/, "the foist scopes the kernel surface to the skills tree");
         assert.match(log, /worker:\/\/plurnk\/skills\/plurnk\/worker\.md/, "the materialized skill surfaces in the foist's rendered result");
+        assert.match(log, /"summary":"Manage shared worker entries\."/, "the catalog projects the document's Summary without opening its body");
     } finally {
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
     }
 });
 
-test("assembled packet: the kernel skills FIND executes successfully when no skills are materialized", async () => {
+test("assembled packet: the bodyless kernel reference catalog succeeds when no references are materialized", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "2";
     const db = await openMigrated();
@@ -425,7 +426,7 @@ test("assembled packet: the kernel skills FIND executes successfully when no ski
         const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string | null; hostname: string | null; pathname: string; status_rx: number; rx: string }>({ loop_id: loopId });
         const docs = rows.find((row) => row.op === "FIND" && row.scheme === "worker" && row.hostname === "plurnk" && row.pathname === "/skills/plurnk/*.md");
         assert.ok(docs !== undefined, "the kernel skills FIND executes without relying on materialized skills");
-        assert.equal(docs.status_rx, 204, "an empty matcher survey reports zero matches");
+        assert.equal(docs.status_rx, 200, "an empty bodyless catalog remains a successful scope query");
         const result = JSON.parse(docs.rx) as { content?: string; results?: unknown[] };
         const items = result.results ?? (result.content !== undefined ? JSON.parse(result.content) as unknown[] : []);
         assert.deepEqual(items, [], "the empty kernel skills survey preserves its zero-result response");

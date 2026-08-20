@@ -30,7 +30,7 @@ import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 //   worker:///notes.md         — the COMMONS, a shared blackboard
 //   worker://~/draft.md        — the calling worker's own private space
 //   worker://<name>/result.md  — a named worker's space, ancestry-gated read (owner + ancestors)
-//   worker://plurnk/docs/x.md  — the kernel's published surface, world-readable
+//   worker://plurnk/skills/plurnk/x.md  — the kernel's published surface, world-readable
 // Writes are own-space-and-commons only ({§worker-write-scoping}): a named authority is read-only to
 // the model, so nothing worker-authored can ever land under another principal — worker://plurnk/
 // included, which is what makes the kernel's surface the trust boundary with no guard to forget.

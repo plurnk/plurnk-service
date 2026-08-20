@@ -306,7 +306,7 @@ test("manifest: name http, default channel body, requiresWeb, network-volatile",
     assert.equal(Http.manifest.flags?.requiresWeb, true);
     assert.equal(Http.manifest.volatile, true);
     assert.deepEqual(Object.keys(Http.manifest.channels).sort(), ["body", "header", "html"]);
-    // Self-doc for the model's packet listing (deep docs ride worker://plurnk/docs/http.md).
+    // Self-doc for the model's packet listing (deep docs ride the shared skills catalog).
     const examples = (Http.manifest.example ?? "").split("\n\n");
     assert.equal(examples.length, 3, "HTTP teaches one retrieval and both mutation choices");
     assert.match(examples[0] ?? "", /^## READ0 \(https:\/\/[^)]+\)$/u);
@@ -319,6 +319,7 @@ test("manifest: documentation is loaded verbatim from docs/http.md", async () =>
     const fromFile = await readFile(new URL("../docs/http.md", import.meta.url), "utf-8");
     assert.equal(Http.manifest.documentation, fromFile);
     assert.match(Http.manifest.documentation ?? "", /^# http\(s\):\/\//);
+    assert.match(Http.manifest.documentation ?? "", /^## Summary\n\nRead and modify web resources through addressable HTTP\(S\) entries\.$/m);
 });
 
 test("ready validates the fetch ceiling without making a provider request", async () => {

@@ -67,12 +67,13 @@ test("{§skills-materialization} project skill folders become index plus one ker
 
         const index = await entry(db, workspaceId, ownerId, "/skills/index.md");
         assert.ok(index);
+        assert.match(index.body, /^## Summary\n\nAgent Skills available to this workspace\.$/m);
         assert.match(index.body, /- \*\*grep\*\* — Find text in files/);
         assert.match(index.body, /- \*\*review\*\*/);
 
         const grep = await entry(db, workspaceId, ownerId, "/skills/grep.md");
         assert.ok(grep);
-        assert.match(grep.body, /^# grep\n\n> Find text in files\n\nUse ripgrep\. Always quote patterns\.$/);
+        assert.match(grep.body, /^# grep\n\n## Summary\n\nFind text in files\n\nUse ripgrep\. Always quote patterns\.$/);
         assert.doesNotMatch(grep.body, /^---/);
 
         const review = await entry(db, workspaceId, ownerId, "/skills/review.md");

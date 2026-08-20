@@ -1,5 +1,9 @@
 # wss:// — WebSocket
 
+## Summary
+
+Maintain persistent, bidirectional WebSocket connections as addressable entries.
+
 Use WebSocket for a persistent, bidirectional connection. `wss` is a
 stateful scheme, not an HTTP content type: READ claims a workspace address and
 owns its socket until terminal settlement, while EDIT, SEND, and KILL address

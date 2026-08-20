@@ -827,8 +827,9 @@ export default class TurnRunner {
         await this.#warmWorkspace(systemCtx, true, false);
 
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
-        // Six FIND surveys foisted into the worker's first model turn establish the skills tree (authored and
-        // Plurnk-generated families), attached tools tree, project, commons, and private surfaces in that order.
+        // Six bodyless FIND surveys foisted into the worker's first model turn establish the skills tree
+        // (authored and Plurnk-generated families), attached tools tree, project, commons, and private
+        // surfaces in that order.
         // Their `init` classification lets the model curate this opening survey as one log set.
         if (seq === 1) {
             // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
@@ -860,17 +861,17 @@ export default class TurnRunner {
                         statement: {
                             op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+skills"],
                             target: { kind: "url", raw: "worker://plurnk/skills/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/skills/*.md", query: null, fragment: null },
-                            body: { dialect: "xpath", raw: "//heading[text()=\"Example\"]" }, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+init,+skills] (worker://plurnk/skills/*.md) <1,-1>\n//heading[text()=\"Example\"]",
+                        exemplar: "## FIND0 [+init,+skills] (worker://plurnk/skills/*.md) <1,-1>",
                     },
                     {
                         statement: {
                             op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+skills"],
                             target: { kind: "url", raw: "worker://plurnk/skills/plurnk/*.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/skills/plurnk/*.md", query: null, fragment: null },
-                            body: { dialect: "xpath", raw: "//heading[text()=\"Example\"]" }, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
+                            body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
                         },
-                        exemplar: "## FIND0 [+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>\n//heading[text()=\"Example\"]",
+                        exemplar: "## FIND0 [+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>",
                     },
                     {
                         // {§tools-resource-materialization} — enabled tool families

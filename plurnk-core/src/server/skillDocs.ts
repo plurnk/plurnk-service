@@ -78,12 +78,18 @@ const parseSkill = (folder: string, raw: string): SkillDoc => {
 
 const renderSkill = (doc: SkillDoc): string => [
     `# ${doc.name}`,
-    ...(doc.description === null ? [] : ["", `> ${doc.description}`]),
+    ...(doc.description === null ? [] : ["", "## Summary", "", doc.description]),
     ...(doc.body.length === 0 ? [] : ["", doc.body]),
 ].join("\n");
 
 const renderIndex = (skills: readonly SkillDoc[], projectRoot: string | null): string => {
-    const lines = ["# Installed skills"];
+    const lines = [
+        "# Installed skills",
+        "",
+        "## Summary",
+        "",
+        "Agent Skills available to this workspace.",
+    ];
     if (skills.length === 0) {
         const location = projectRoot === null
             ? "a workspace project root"
