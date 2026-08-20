@@ -68,6 +68,7 @@ import {
 } from "../observe/genai.ts";
 import { OPS_DISPATCHED, PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import { scheduleTurnOps } from "./turn-scheduler.ts";
+import { expandSafeUriTargetGroup } from "./operation-target-groups.ts";
 import { readOptimisticSettlementMs } from "./optimistic-settlement.ts";
 import ModelCall, {
     ModelCallPersistenceError,
@@ -1490,7 +1491,7 @@ export default class TurnRunner {
                 || realCommands++ < maxCommands;
             },
         );
-        const opsToDispatch = scheduleTurnOps(admittedOps);
+        const opsToDispatch = scheduleTurnOps(admittedOps.flatMap(expandSafeUriTargetGroup));
         await this.#dispatcher.prepareEditBatches(
             opsToDispatch.filter(
                 (statement): statement is EditStatement =>
@@ -1501,7 +1502,7 @@ export default class TurnRunner {
                 origin, onDispatch,
             },
         );
-        const droppedCount = opsCount - opsToDispatch.length;
+        const droppedCount = opsCount - admittedOps.length;
         const bareStatements = opsToDispatch.filter(
             (statement): statement is BareStatement => statement.op === "BARE",
         );
