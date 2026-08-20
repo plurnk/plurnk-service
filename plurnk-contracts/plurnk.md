@@ -42,7 +42,7 @@ flowchart LR
         ActionPlan --> ActionOps --> Continue
     end
 
-    CompletionConfirmed{"all required work<br>completed and confirmed?"}
+    PromptSuccess{"success?"}
 
     subgraph CompletionTurn
         direction TB
@@ -51,9 +51,9 @@ flowchart LR
         CompletionPlan --> Complete
     end
 
-    ActionTurn -. "turn submitted" .-> CompletionConfirmed
-    CompletionConfirmed -- No --> ActionTurn
-    CompletionConfirmed -- Yes --> CompletionTurn
+    ActionTurn -. "turn submitted" .-> PromptSuccess
+    PromptSuccess -- No --> ActionTurn
+    PromptSuccess -- Yes --> CompletionTurn
 ```
 
 ### OPs
