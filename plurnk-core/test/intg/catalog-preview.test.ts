@@ -252,17 +252,12 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                 const shell = toolItems.flat().find(({ path }) => path === "worker://plurnk/skills/plurnk/sh.md");
                 assert.equal(shell?.summary, "Run POSIX shell commands and scripts.", "Turn 0 carries the family summary without its invocation body");
                 const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "worker" && row.hostname === "plurnk" && row.pathname === "/skills/plurnk/sh.md");
-                assert.equal(shellSample?.status_rx, 200, "Turn 0 pulls the enabled sh family as its one worked tool-document example");
-                const shellContent = (JSON.parse(shellSample!.rx) as { content: string }).content;
-                assert.equal(shellContent.split("\n").length, 17, "the worked sample stops after the complete invocation example");
-                assert.match(shellContent, /```plurnk\n## EXEC0 \[sh\] <!-- Run POSIX shell commands and scripts\. -->\npwd\n```$/);
-                assert.doesNotMatch(shellContent, /A shell command line/, "the deep shell reference stays pull-only");
+                assert.equal(shellSample, undefined, "Turn 0 does not privilege the shell skill with an automatic READ");
                 const exemplar = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 const content = (JSON.parse(exemplar!.rx) as { content: string }).content;
                 assert.equal(content, `# PLAN0
 * Discover the tooling available and survey the workspace file root.
 
-## READ0 [+init,+skills] (worker://plurnk/skills/plurnk/sh.md) <1,17>
 ## FIND0 [+init,+skills] (worker://plurnk/skills/*.md) <1,-1>
 //heading[text()="Example"]
 ## FIND0 [+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>
@@ -284,8 +279,6 @@ Next: Address the prompt.`);
                 assert.deepEqual(finds.map(({ sequence }) => tagsBySequence.get(sequence)), [
                     ["init", "skills"], ["init", "skills"], ["init", "tools"], ["init"], ["init"], ["init"],
                 ], "each FIND classifies its own durable log item; the skills surveys retain the shared init set");
-                const shellTags = logTags.filter(({ coordinate }) => Number(coordinate.split("/")[2]) === shellSample?.sequence).map(({ tag }) => tag);
-                assert.deepEqual(shellTags, ["init", "skills"], "the worked tool-document READ belongs to the same init/skills set");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }

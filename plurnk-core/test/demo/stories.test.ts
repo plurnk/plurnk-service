@@ -14,17 +14,17 @@
 // Model-story doctrine:
 //   - Project fixture: real files the model can read/edit/query.
 //   - Scoped prompts: "find exactly N values" / "edit this specific
-//     thing" — gives gemma a clear stopping point. Open-ended phrasings
+//     thing" — gives weaker models a clear stopping point. Open-ended phrasings
 //     let small models over-investigate and stall on Completion.
-//   - 8-minute timeout: gemma's reasoning takes time on multi-step.
-//   - Outcome assertions only: file content, response text. Not op shapes.
+//   - The configurable timeout leaves room for multi-step local-model reasoning.
+//   - Assertions target task outcomes and named behavioral invariants, not incidental exact OP sequences.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Db } from "../../src/core/Db.ts";
-import { liveWorkspace, liveLoop } from "../_live-harness.ts";
+import { liveWorkspace, liveLoop, type LiveWorkspace } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
 import WorldState from "../intg/world-state.ts";
 
@@ -35,6 +35,7 @@ interface StoryOpts {
     prompt: string;
     maxTurns?: number;
     flags?: Record<string, unknown>;
+    setup?: (workspace: LiveWorkspace) => Promise<void>;
 }
 
 interface StoryResult {
@@ -42,15 +43,11 @@ interface StoryResult {
     workspace: string;
     cleanup: () => Promise<void>;
     turnIds: number[];
+    modelWorkerId: number;
     finalStatus: number;
     lastContent: string;
     dump: () => Promise<void>;
 }
-
-const assertMaterializedWebPage = async (story: StoryResult): Promise<void> => {
-    const pages = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "https" });
-    assert.ok((pages?.n ?? 0) > 0, "the search flow materialized a primary web page");
-};
 
 const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     const fixture = await seedDemoFixture(opts.label);
@@ -60,6 +57,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     // handles (ws pair, db worker) keep the child process alive after the worker and wedge the tier.
     let loop;
     try {
+        await opts.setup?.(s);
         loop = await liveLoop(
             s, 2,
             { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}), ...(opts.flags !== undefined ? { flags: opts.flags } : {}) },
@@ -70,7 +68,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
         await fixture.cleanup().catch((e) => console.error(`[story:${opts.label}] fixture cleanup after failure:`, e));
         throw err;
     }
-    const { finalStatus, hitMaxTurns, turnIds, lastContent } = loop;
+    const { finalStatus, hitMaxTurns, turnIds, modelWorkerId, lastContent } = loop;
     console.error(`[story:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns}`);
     // {§fs-world-state} — every demo story also audits the world the model leaves behind.
     const wsViolations = await WorldState.check(s.db);
@@ -88,8 +86,16 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     return {
         db: s.db, workspace: fixture.workspace,
         cleanup: async () => { await s.cleanup(); await fixture.cleanup(); },
-        turnIds, finalStatus, lastContent, dump,
+        turnIds, modelWorkerId, finalStatus, lastContent, dump,
     };
+};
+
+const enableMcp = (alias: string) => async (workspace: LiveWorkspace): Promise<void> => {
+    const attached = await workspace.invokeWorkspaceAction(
+        "workspace.mcp.enable",
+        { alias },
+    ) as { status?: number };
+    assert.equal(attached.status, 200, `the declared ${alias} fixture is attached before the model loop`);
 };
 
 interface ChainOpts { label: string; prompts: string[]; maxTurns?: number; onStep?: (index: number, workspace: string) => Promise<void>;
@@ -157,6 +163,7 @@ test("{§web-search-retrieval} story: answer a question through an attached sear
         label: "web-search-mcp",
         prompt: "Search the web for the latest stable Node.js version and tell me in one sentence.",
         maxTurns: 8,
+        setup: enableMcp("brave"),
     });
     try {
         const braveEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "brave" });
@@ -168,19 +175,45 @@ test("{§web-search-retrieval} story: answer a question through an attached sear
     } finally { await story.cleanup(); }
 });
 
-test("story: retrieve a fact from a live web page", { timeout: TIMEOUT }, async () => {
+test("story: answer a recent general-knowledge question", { timeout: TIMEOUT }, async () => {
     const story = await runStory({
         label: "web-retrieve-live",
-        prompt: "From which husband does the Marilyn Monroe wiki claim she received a 'Mexican divorce'?",
+        prompt: "Who won the 2026 Eurovision Song Contest, and with which song?",
         maxTurns: 30,
+        ...(process.env.PLURNK_MCP_BRAVE === undefined ? {} : { setup: enableMcp("brave") }),
     });
     try {
-        const ok = story.finalStatus === 200 && /Arthur Miller/i.test(story.lastContent);
+        const execSignals = await story.db.test_log_entries_by_worker_op_signal.all<{ signal: string | null }>({
+            worker_id: story.modelWorkerId,
+            op: "EXEC",
+        });
+        const execNames = execSignals.map(({ signal }) => {
+            const decoded: unknown = JSON.parse(signal ?? "null");
+            assert.equal(typeof decoded, "string", "every model EXEC names one executor");
+            return decoded;
+        });
+        const nonRetrievalExecs = execNames
+            .filter((signal) => signal !== "brave");
+        const httpsEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "https" });
+        const httpEntries = await story.db.test_count_entries_by_scheme.get<{ n: number }>({ scheme: "http" });
+        const usedFirstClassRetrieval = execNames.includes("brave")
+            || (httpsEntries?.n ?? 0) > 0
+            || (httpEntries?.n ?? 0) > 0;
+        const ok = story.finalStatus === 200
+            && /DARA/i.test(story.lastContent)
+            && /Bangaranga/i.test(story.lastContent)
+            && nonRetrievalExecs.length === 0
+            && usedFirstClassRetrieval;
         if (!ok) await story.dump();
-        await assertMaterializedWebPage(story);
+        assert.deepEqual(
+            nonRetrievalExecs,
+            [],
+            "recent general knowledge uses first-class retrieval rather than a script executor",
+        );
+        assert.equal(usedFirstClassRetrieval, true, "recent general knowledge is confirmed through first-class retrieval");
         assert.equal(story.finalStatus, 200);
-        assert.match(story.lastContent, /Arthur Miller/i,
-            `the answer identifies Arthur Miller; got: ${story.lastContent.slice(0, 200)}`);
+        assert.match(story.lastContent, /DARA/i, `the answer identifies DARA; got: ${story.lastContent.slice(0, 200)}`);
+        assert.match(story.lastContent, /Bangaranga/i, `the answer identifies Bangaranga; got: ${story.lastContent.slice(0, 200)}`);
     } finally { await story.cleanup(); }
 });
 

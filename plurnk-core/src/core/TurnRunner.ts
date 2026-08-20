@@ -827,10 +827,9 @@ export default class TurnRunner {
         await this.#warmWorkspace(systemCtx, true, false);
 
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
-        // One worked-skills READ exemplar followed by six FIND surveys foisted into the worker's first model turn
-        // establish the skills tree (authored and Plurnk-generated families), the attached tools tree, project,
-        // commons, and private surfaces in that order. Their `init` classification lets the model curate this
-        // opening survey as one log set.
+        // Six FIND surveys foisted into the worker's first model turn establish the skills tree (authored and
+        // Plurnk-generated families), attached tools tree, project, commons, and private surfaces in that order.
+        // Their `init` classification lets the model curate this opening survey as one log set.
         if (seq === 1) {
             // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
             const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
@@ -839,18 +838,11 @@ export default class TurnRunner {
                 const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
                 const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
                 const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
-                const kernelId = await Owner.kernelId(this.#db, workspaceId);
-                const shellSample = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
-                    workspace_id: workspaceId,
-                    owner_id: kernelId,
-                    scheme: "worker",
-                    pathname: "/skills/plurnk/sh.md",
-                });
                 // {§tools-resource-materialization} — PLURNK_MCP_EXPANDED servers
                 // contribute one complete tool-tree survey each, directly after the
                 // family survey, so turn 0 names every tool they expose in order.
                 const registry = this.#executors();
-                const toolExpansions: Array<{ statement: FindStatement | ReadStatement; exemplar: string }> = [];
+                const toolExpansions: Array<{ statement: FindStatement; exemplar: string }> = [];
                 for (const tag of registry?.availableRuntimes(workspaceId) ?? []) {
                     const entry = registry?.entry(tag, workspaceId);
                     if (entry?.resourcesPath !== "/tools" || entry.expandTools !== true) continue;
@@ -863,15 +855,7 @@ export default class TurnRunner {
                         exemplar: `## FIND0 [+init,+tools] (worker://plurnk/tools/${tag}/**) <1,-1> <!-- enabled tools: ${tag} -->`,
                     });
                 }
-                const surveys: Array<{ statement: FindStatement | ReadStatement; exemplar: string }> = [
-                    ...(shellSample === undefined ? [] : [{
-                        statement: {
-                            op: "READ" as const, delimiter: "", annotation: null, signal: ["+init", "+skills"],
-                            target: { kind: "url" as const, raw: "worker://plurnk/skills/plurnk/sh.md", scheme: "worker", username: null, password: null, hostname: "plurnk", port: null, pathname: "/skills/plurnk/sh.md", query: null, fragment: null },
-                            body: null, lineMarker: { marks: [1, 17] as [number, number] }, position: UNKNOWN_POSITION,
-                        },
-                        exemplar: "## READ0 [+init,+skills] (worker://plurnk/skills/plurnk/sh.md) <1,17>",
-                    }]),
+                const surveys: Array<{ statement: FindStatement; exemplar: string }> = [
                     {
                         statement: {
                             op: "FIND", delimiter: "", annotation: null, signal: ["+init", "+skills"],
@@ -937,10 +921,10 @@ export default class TurnRunner {
                 }
             }
             // {§worker-initialization-entry} — write the kernel's turn-0 initialization OPEN at sequence 1: PLAN → the orienting
-            // READ/FIND surveys actually foisted above (real, their results already in the log) → SEND signal 102.
+            // FIND surveys actually foisted above (real, their results already in the log) → SEND signal 102.
             // The bodyless surveys render on consecutive lines ({§empty-section}); PLAN and SEND keep their bodies.
-            // Dynamic — it reflects the true survey, never a frozen print — and OPEN: the worked example the
-            // model orients on, so the grammar can stay thin.
+            // Dynamic — it reflects the true survey, never a frozen print — and OPEN so the model can orient
+            // on the actual discovery operations while the grammar stays thin.
             if (workerFirstLoop) {
                 const initialization = [
                     "# PLAN0\n* Discover the tooling available and survey the workspace file root.",

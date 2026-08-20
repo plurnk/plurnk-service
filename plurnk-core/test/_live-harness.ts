@@ -33,6 +33,7 @@ export interface LiveWorkspace {
     provider: Provider;
     workspaceId: number;
     runDir: string;
+    invokeWorkspaceAction: (name: string, params: Readonly<Record<string, unknown>>) => Promise<unknown>;
     cleanup: () => Promise<void>;
 }
 
@@ -98,6 +99,11 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
     })).result as { id: number };
     return {
         db, ws, provider, workspaceId: created.id, runDir,
+        invokeWorkspaceAction: async (name, params) => daemon.invokeModuleAction(
+            name,
+            params,
+            { scope: "workspace", workspaceId: created.id },
+        ),
         cleanup: async () => {
             ws.close(); await daemon.stop(); await db.close();
             Digest.run({ dbPath, digestDir: join(runDir, "digest") });
