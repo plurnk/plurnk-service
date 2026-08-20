@@ -88,5 +88,8 @@
         "oxlint-tsgolint": "^7.0.2001",
         "publint": "^0.3.23",
         "typescript": "^7.0.2"
+    },
+    "allowScripts": {
+        "esbuild@0.28.2": true
     }
 }
