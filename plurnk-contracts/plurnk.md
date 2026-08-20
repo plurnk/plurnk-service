@@ -34,26 +34,26 @@ A turn is completely generated before its OPs run; their results become observab
 
 ```mermaid
 flowchart LR
-    subgraph T1["Action Turn"]
+    subgraph ActionTurn
         direction TB
-        A1["# PLAN0"]
-        A2["OPs<br>research, execute, or delegate"]
-        A3["## SEND0 [102]"]
-        A1 --> A2 --> A3
+        ActionPlan["# PLAN0"]
+        ActionOps["OPs<br>research, execute, or delegate"]
+        Continue["## SEND0 [102]"]
+        ActionPlan --> ActionOps --> Continue
     end
 
-    D{"all required work<br>completed and confirmed?"}
+    CompletionConfirmed{"all required work<br>completed and confirmed?"}
 
-    subgraph T2["Completion Turn"]
+    subgraph CompletionTurn
         direction TB
-        C1["# PLAN0"]
-        C2["## SEND0 [200]<br>complete prompt"]
-        C1 --> C2
+        CompletionPlan["# PLAN0"]
+        Complete["## SEND0 [200]<br>complete prompt"]
+        CompletionPlan --> Complete
     end
 
-    A3 -. "turn submitted" .-> D
-    D -- No --> A1
-    D -- Yes --> C1
+    ActionTurn -. "turn submitted" .-> CompletionConfirmed
+    CompletionConfirmed -- No --> ActionTurn
+    CompletionConfirmed -- Yes --> CompletionTurn
 ```
 
 ### OPs
