@@ -124,7 +124,7 @@ export const liveLoop = async (
             ...(params.maxTurns !== undefined ? { maxTurns: params.maxTurns } : {}),
         }, { timeoutMs });
     } catch (error) {
-        // #295 — a harness timeout must explicitly cancel the loop before the
+        // {§methods-loop-cancel}/{§crash-only-stop} — a harness timeout explicitly cancels before the
         // rejection propagates, so cleanup (daemon.stop) never doubles as the
         // only cancellation path and a wedged child can't wedge the teardown.
         try {

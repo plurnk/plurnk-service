@@ -17,6 +17,8 @@ const expectedProfile = {
     PLURNK_SERVICE_GIT_AUTO: "1",
     PLURNK_SERVICE_MD_POLICY: "",
     PLURNK_SERVICE_PACKET_INJECT: "",
+    PLURNK_MCP_ENABLED: "[]",
+    PLURNK_MCP_EXPANDED: "[]",
 };
 
 const parseProfile = (source) => Object.fromEntries(source

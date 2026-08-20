@@ -50,7 +50,8 @@
         "test": "npm run test:lint && npm run test:unit && npm run test:intg",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",
-        "build": "npm run build:clean && npm run build:dist",
+        "build:assets": "node scripts/copy-assets.mjs",
+        "build": "npm run build:clean && npm run build:dist && npm run build:assets",
         "prepack": "npm run build",
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },

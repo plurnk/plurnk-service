@@ -1,4 +1,10 @@
 const projections = new Map([
+    ["plurnk-mcp", {
+        required: [
+            "dist/mcp-watchdog.mjs",
+        ],
+        forbiddenPrefixes: [],
+    }],
     ["plurnk-core", {
         required: [
             "dist/core/content_weight.js",

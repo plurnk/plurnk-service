@@ -132,6 +132,11 @@ conformance stays a separate named gate, never folded into a matrix row.
 | stdio | Spawn one exact executable with an explicit argument array and no shell; newline-delimited JSON-RPC is the only stdout/stdin traffic; stderr is diagnostic; shutdown closes stdin, waits, then terminates if necessary |
 | Streamable HTTP | Send one POST per request or notification; accept JSON or SSE responses; close the response stream to cancel; never open the removed general GET stream |
 
+§mcp-stdio-process-ownership A stdio connection owns the complete process group
+created for its server. Ordinary closure forwards stdin EOF and permits a
+bounded graceful exit; an expired shutdown bound or disappearance of the host
+process forcibly terminates the group, including descendants.
+
 Every HTTP request carries matching `MCP-Protocol-Version` and `Mcp-Method`
 headers. Named requests also carry `Mcp-Name`; declared primitive tool
 parameters carry validated `Mcp-Param-*` headers. Header names compare

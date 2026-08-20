@@ -305,7 +305,7 @@ const openTransport = (
             },
         );
     }
-    // #295 crash-only child lifecycle — stdio servers spawn through the
+    // {§mcp-stdio-process-ownership} — stdio servers spawn through the
     // parent-death watchdog wrapper: the real server runs detached (own
     // process group) and the wrapper group-kills it (grandchildren included)
     // when the daemon dies by ANY path, including SIGKILL where close()

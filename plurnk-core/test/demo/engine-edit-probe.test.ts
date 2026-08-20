@@ -25,16 +25,15 @@ test("demo: locate and edit deep in a large source file — coordinate held, no 
     const s = await liveWorkspace({ name: `engine-edit-probe-${crypto.randomUUID()}`, projectRoot: fixture });
     let loop: Awaited<ReturnType<typeof liveLoop>> | undefined;
     try {
-        loop = await liveLoop(
-            s, 2,
-            { prompt: "In Engine.ts, insert a new line containing exactly `#pragma plurnk-once` immediately above the line that declares the `resolveWorkerPrimary` method.", maxTurns: 30 },
-            { timeoutMs: TIMEOUT - 30_000 },
-        );
-    } finally {
-        console.error(`[engine-edit-probe] runDir=${s.runDir} finalStatus=${loop?.finalStatus}`);
-    }
-
-    try {
+        try {
+            loop = await liveLoop(
+                s, 2,
+                { prompt: "In Engine.ts, insert a new line containing exactly `#pragma plurnk-once` immediately above the line that declares the `resolveWorkerPrimary` method.", maxTurns: 30 },
+                { timeoutMs: TIMEOUT - 30_000 },
+            );
+        } finally {
+            console.error(`[engine-edit-probe] runDir=${s.runDir} finalStatus=${loop?.finalStatus}`);
+        }
         const edited = await readFile(join(fixture, "Engine.ts"), "utf8");
         const editedLines = edited.split("\n");
 

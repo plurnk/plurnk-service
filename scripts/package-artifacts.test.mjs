@@ -6,6 +6,18 @@ test("package artifact projection leaves packages without special roots unchange
     assert.deepEqual(packageArtifactViolations("plurnk-models", ["dist/index.js"]), []);
 });
 
+test("MCP package projection retains the runtime watchdog loaded beside client.js", () => {
+    assert.deepEqual(packageArtifactViolations("plurnk-mcp", [
+        "dist/client.js",
+        "dist/mcp-watchdog.mjs",
+    ]), []);
+    assert.deepEqual(packageArtifactViolations("plurnk-mcp", [
+        "dist/client.js",
+    ]), [
+        "plurnk-mcp: required runtime artifact is absent: dist/mcp-watchdog.mjs",
+    ]);
+});
+
 test("core package projection retains runtime-loaded modules and rejects test helpers", () => {
     assert.deepEqual(packageArtifactViolations("plurnk-core", [
         "dist/core/content_weight.js",

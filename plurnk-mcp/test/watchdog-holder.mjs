@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// #295 acceptance holder — boots one ServerConnection to a stdio MCP fixture
+// {§mcp-stdio-process-ownership} acceptance holder — boots one ServerConnection to a stdio MCP fixture
 // server and idles. The test SIGKILLs THIS process; the watchdog wrapper must
 // then take the fixture server (and any grandchildren) down with it.
 import { setTimeout as delay } from "node:timers/promises";

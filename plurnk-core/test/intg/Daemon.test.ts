@@ -1446,6 +1446,41 @@ test("daemon shutdown preserves module and scheme lifecycle failures in one aggr
     }
 });
 
+test("{§crash-only-stop}: every shutdown owner shares the absolute stop deadline", async (t) => {
+    const prior = process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS;
+    process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS = "50";
+    t.after(() => {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS = prior;
+    });
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null });
+    daemon.registerModule({
+        close: () => new Promise(() => {}),
+    });
+    try {
+        await daemon.start();
+        const guarded = Promise.race([
+            daemon.stop(),
+            new Promise<never>((_resolve, reject) => {
+                setTimeout(() => reject(new Error("test guard: daemon stop remained unbounded")), 500);
+            }),
+        ]);
+        await assert.rejects(
+            guarded,
+            (error: unknown) => {
+                assert.ok(error instanceof AggregateError);
+                assert.equal(error.message, "daemon shutdown failed");
+                assert.match(String(error.errors[0]), /stop deadline exceeded waiting for modules close/);
+                return true;
+            },
+        );
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
 test("a module that acquires resources during setup is closed when later setup fails", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({
