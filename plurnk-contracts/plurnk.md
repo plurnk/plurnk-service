@@ -133,14 +133,15 @@ Text scopes use 1-based lines and Unicode code-point columns consistently across
 
     # PLAN0
     * The prior READ identified obsolete line 1847 with `@aB3dE`; the draft heading spans lines 4-6; the audit marker belongs above line 2; the preface belongs before line 1.
-    * The audit marker inserts as its OWN line above line 2: a zero-width range at column 1 with a body that ends in a newline pushes the existing line down. A body WITHOUT the newline prepends onto the existing line. Line-oriented edits that replace whole lines never need a trailing newline.
+    * To insert lines, replace the anchor line with the new content followed by the original line re-emitted verbatim.
     * Still need to inspect the notes selection and verify the copy and move destinations.
     ## EDIT0 (worker:///obsolete.md) <@aB3dE>
     ## READ0 (worker:///notes.md) <2,1,2,5>
     ## EDIT0 (worker:///heading.md) <4,6>
     Replacement heading
-    ## EDIT0 (worker:///draft.md) <2,1,2,1>
-    // AUDIT-OK⏎
+    ## EDIT0 (worker:///draft.md) <2>
+    // AUDIT-OK
+    original line 2 content
     ## EDIT0 (worker:///preface.md) <0>
     # Preface
     Current status
@@ -151,7 +152,6 @@ Text scopes use 1-based lines and Unicode code-point columns consistently across
     ## SEND0 [102]
     Next: Inspect each result and read the changed destinations.
 
-* `⏎` marks a literal newline in a body shown in examples.
 * Unscoped FIND returns items 1-16; unscoped READ returns lines 1–16. Use `<1,-1>` for all.
 * Rendered exact READ lines begin with a per-line `@hash` anchor and `L:` line number; neither is content.
 
