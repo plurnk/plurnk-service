@@ -470,6 +470,7 @@ test("service defaults hydrate as workspace-local executor and resource snapshot
         const [registration] = h.snapshots.get(1) ?? [];
         assert.equal(registration?.namespaceOwner, "@plurnk/plurnk-mcp");
         assert.equal(registration?.decl.name, "echo");
+        assert.equal(registration?.decl.summary, "Tools: echo, fail.");
         assert.equal(registration?.availability.available, true);
         assert.match(registration?.availability.detail ?? "", /MCP 2026-07-28/);
         assert.deepEqual(

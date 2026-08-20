@@ -9,7 +9,7 @@ import type { ExecArgs } from "@plurnk/plurnk-execs";
 
 import type { Notice } from "@plurnk/plurnk-contracts";
 import McpExecutor, { runtimeDecl, serverSummary } from "./McpExecutor.ts";
-import ServerConnection from "./client.ts";
+import ServerConnection, { type ServerCatalog } from "./client.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const interactionFixture = fileURLToPath(new URL("./fixtures/interaction-server.mjs", import.meta.url));
@@ -364,15 +364,26 @@ test("MCP executor backstops core admission against disabled targets", async () 
     }
 });
 
-test("{§mcp-summary-derivation} the server's display title outranks the tool-name fallback", () => {
-    const catalog = {
+test("{§mcp-summary-derivation} every server-summary tier has one deterministic precedence", () => {
+    const catalog = (
+        server: Readonly<Record<string, string>>,
+        instructions?: string,
+        tools = [{ name: "click", inputSchema: { type: "object" } }],
+    ): ServerCatalog => ({
         protocolVersion: "2026-07-28",
-        server: { name: "chrome_devtools", title: "Chrome DevTools MCP server", version: "0.1.0" },
+        server: { name: "chrome_devtools", version: "0.1.0", ...server },
         capabilities: {},
-        tools: [{ name: "click", inputSchema: { type: "object" } }],
+        tools,
         resources: [],
         resourceTemplates: [],
         prompts: [],
-    } as unknown as Parameters<typeof serverSummary>[1];
-    assert.equal(serverSummary("cdp", catalog, undefined), "Chrome DevTools MCP server");
+        ...(instructions === undefined ? {} : { instructions }),
+    }) as unknown as ServerCatalog;
+
+    assert.equal(serverSummary("cdp", catalog({ description: "Server description.", title: "Display title" }), "Authored override."), "Authored override.");
+    assert.equal(serverSummary("cdp", catalog({ description: " Server   description. ", title: "Display title" }), undefined), "Server description.");
+    assert.equal(serverSummary("cdp", catalog({ title: "Chrome DevTools MCP server" }), undefined), "Chrome DevTools MCP server");
+    assert.equal(serverSummary("cdp", catalog({}, "First instruction. Second instruction."), undefined), "First instruction.");
+    assert.equal(serverSummary("cdp", catalog({}, undefined), undefined), "Tools: click.");
+    assert.equal(serverSummary("cdp", catalog({}, undefined, []), undefined), "MCP server cdp.");
 });
