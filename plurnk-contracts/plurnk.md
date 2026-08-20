@@ -82,8 +82,8 @@ Matcher bodies select resources by content.
 
     ## FIND0 (src/**/*.ts)
     /createCoder/i
-    ## FIND0 (https://example.com#html)
-    //h1
+    ## FIND0 (README.md)
+    //heading[text()="Installation"]
     ## FIND0 (log:///1/2/4/FIND)
     $[*][0].path
     ## FIND0 (worker:///**) <0.7,1,50>
