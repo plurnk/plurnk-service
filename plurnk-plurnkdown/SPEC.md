@@ -52,7 +52,6 @@ flowchart LR
 | `definition`          | system | Bare `plurnk.md`; no wrapper heading          | {§definition-table-projection}  |
 | `system-policy`       | system | Authored Markdown                             | {§policy-sections}              |
 | `project-policy`      | system | Authored Markdown                             | {§policy-sections}              |
-| `optional-operations` | system | `plurnk` fence                                | {§send-300-choices}             |
 | `schemes`             | system | `plurnk` fence                                | {§schemes-directory}            |
 | `inject`              | system | Authored Markdown                             | {§packet-inject}                |
 | `log`                 | user   | Dynamic `jsonplurnk` fence                    | {§jsonplurnk}                   |

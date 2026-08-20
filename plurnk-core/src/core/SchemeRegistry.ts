@@ -366,13 +366,13 @@ export default class SchemeRegistry {
         return this.manifestFor(scheme, workspaceId)?.defaultChannel ?? "body";
     }
 
-    // {§schemes-directory} The `schemes` packet section follows privileged policy
-    // and optional operations. Language teaching covers grammar and dialects, not
+    // {§schemes-directory} The `schemes` packet section follows privileged policy.
+    // Language teaching covers grammar and dialects, not
     // the installed scheme set, so the service advertises what resources exist at
     // packet-time. Each handler that ships
     // `manifest.example` contributes concise canonical operation examples, plus a
     // pull doc when it ships `manifest.documentation` (materialized at
-    // worker://plurnk/docs/<name>.md by LoopDocs, READ on demand). The verbose semantics live
+    // worker://plurnk/skills/plurnk/<name>.md by LoopDocs, READ on demand). The verbose semantics live
     // in that pull doc, not here: terse pushes, depth pulls. These are complete
     // operation examples. Insertion order; a scheme with no example
     // (provisional, e.g. skill) is omitted. The doc's curation weight rides its manifest entry.

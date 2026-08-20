@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 
 const LIMIT = 8;
 const root = JSON.parse(await fs.readFile("package.json", "utf8"));
+const rootTarget = { dir: ".", name: root.name, scripts: Object.keys(root.scripts ?? {}) };
 const workspaces = [];
 for (const dir of root.workspaces) {
     const pkg = JSON.parse(await fs.readFile(path.join(dir, "package.json"), "utf8"));
@@ -103,6 +104,7 @@ const phase = async (title, script, subset) => {
 
 if (import.meta.main) {
     const t0 = Date.now();
+    if (!(await phase("root", "root:lint", [rootTarget]))) process.exit(1);
     if (!(await phase("lint", "test:lint", workspaces))) process.exit(1);
     if (!(await phase("unit", "test:unit", workspaces))) process.exit(1);
 

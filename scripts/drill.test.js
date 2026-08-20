@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { formatPhaseSummary, partitionByScript, scopeIntg } from "./drill.mjs";
 
 const DIRS = ["plurnk-contracts", "plurnk-core", "plurnk-mimetypes-text-html"];
@@ -30,6 +31,19 @@ describe("drill scopeIntg — changed-workspace intg scoping", () => {
 });
 
 describe("drill tier inventory", () => {
+    it("runs root-owned lint before the workspace tiers", async () => {
+        const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+        assert.equal(
+            manifest.scripts["test:lint"],
+            "npm run root:lint && npm run test:lint --workspaces --if-present",
+            "the direct lint command and drill must share one root-lint owner",
+        );
+        const source = await readFile(new URL("./drill.mjs", import.meta.url), "utf8");
+        const rootLint = source.indexOf('phase("root", "root:lint"');
+        const workspaceLint = source.indexOf('phase("lint", "test:lint"');
+        assert.ok(rootLint >= 0 && rootLint < workspaceLint, "npm test must gate root policy before workspace lint");
+    });
+
     it("reports applicable and inapplicable workspaces explicitly", () => {
         const workspaces = [
             { dir: "unit", scripts: ["test:unit"] },

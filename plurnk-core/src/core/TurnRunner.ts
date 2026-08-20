@@ -1831,8 +1831,8 @@ export default class TurnRunner {
         };
     }
 
-    // #note12 — the plugin-provided reference docs (schemes' + execs' `documentation`),
-    // materialized at worker://plurnk/docs/<name>.md by LoopDocs (like operator docs).
+    // #note12 — plugin reference docs are materialized beneath
+    // worker://plurnk/skills/plurnk/ by LoopDocs.
 
     async #materializeEnvironmentDeltas(args: {
         workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;

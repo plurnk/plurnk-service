@@ -4,7 +4,7 @@
 //   1. the project AGENTS.md at worker://plurnk/agents.md — Engine.runTurn foists
 //      its READ at turn 0 ({§turn0-agents-stunt});
 //   2. the exact current scheme and executable-tool reference set under
-//      worker://plurnk/docs/ and worker://plurnk/tools/ — discovered by the
+//      worker://plurnk/skills/plurnk/ and worker://plurnk/tools/ — discovered by the
 //      turn-0 FIND surveys ({§schemes-self-doc-materialization},
 //      {§tools-resource-materialization}).
 import { createHash } from "node:crypto";
