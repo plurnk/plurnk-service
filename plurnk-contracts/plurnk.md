@@ -30,13 +30,35 @@ Body content is character-perfect, including whitespace.
 
 ### Standard Workflow
 
+A turn is completely generated before its OPs run; their results become observable in a later turn.
+
 ```mermaid
-flowchart TD
-    A["# PLAN0<br>discover, deploy, or delegate"] --> B["## SEND0 [102]<br>await the results"]
-    B --> C["# PLAN0<br>edit, execute, or evaluate"]
-    C --> D["## SEND0 [102]<br>observe the results"]
-    D --> E["# PLAN0<br>confirmed, completed, or concluded"]
-    E --> F["## SEND0 [200]"]
+flowchart LR
+    subgraph T1["Turn 1"]
+        direction TB
+        A1["# PLAN0<br>research, execute, or delegate"]
+        A2["one or more OPs"]
+        A3["## SEND0 [102]<br>or<br>## SEND0 [202]"]
+        A1 --> A2 --> A3
+    end
+
+    subgraph T2["Turn 2"]
+        direction TB
+        B1["# PLAN0<br>observe returned results"]
+        B2["one or more OPs<br>act, evaluate, or verify"]
+        B3["## SEND0 [102]<br>or<br>## SEND0 [202]"]
+        B1 --> B2 --> B3
+    end
+
+    subgraph T3["Turn 3"]
+        direction TB
+        C1["# PLAN0<br>observe results and confirm completion"]
+        C2["## SEND0 [200]<br>conclude"]
+        C1 --> C2
+    end
+
+    T1 -. "results enter the next packet" .-> T2
+    T2 -. "results enter the next packet" .-> T3
 ```
 
 ### OPs
@@ -61,7 +83,6 @@ flowchart TD
 YOU SHOULD use purpose-built Plurnk OPs when possible; use EXEC for scripts only when necessary.
 
 * Files you create are tracked automatically.
-* OPs perform the work: a PLAN describes it, the OPs execute it. Conclude 200 only when the required OPs have run.
 
 ### Pattern Filtering
 
