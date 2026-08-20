@@ -127,7 +127,7 @@ Text scopes use 1-based lines and Unicode code-point columns consistently across
     ## EDIT0 (worker:///obsolete.md) <@aB3dE>
     ## READ0 (worker:///notes.md) <2,1,2,5>
     ## EDIT0 (worker:///heading.md) <4,6>
-    # A tidy replacement heading
+    Replacement heading
     ## EDIT0 (worker:///draft.md) <2,1,2,1>
     // AUDIT-OK
     ## EDIT0 (worker:///preface.md) <0>
