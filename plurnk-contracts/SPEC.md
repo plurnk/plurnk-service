@@ -228,13 +228,13 @@ body?
 §section-boundary A statement is one Markdown section. PLAN alone uses a level-one
 heading; every other operation uses a level-two heading. Its body is the
 character-perfect section content before the next structural heading or EOF.
-Canonical adjacent sections have one blank separator line. That final separator
-line is syntax and is not body content; any additional preceding blank lines
-remain body content. The tolerant ingester also admits a structural heading on
-the immediately following line.
+Canonical adjacent sections place the next structural heading on the immediately
+following line. The tolerant ingester also admits one empty separator line; that
+separator is syntax rather than body content, while any additional preceding
+blank lines remain body content.
 
-§empty-section An empty section has no body lines between its heading and the
-section separator (or EOF) and normalizes to a null body.
+§empty-section An empty section has no body lines between its heading and the next
+structural heading, tolerated separator, or EOF and normalizes to a null body.
 
 | Element      | Canonical contract                                                        |
 |--------------|---------------------------------------------------------------------------|
@@ -754,7 +754,7 @@ possible. EOF is a valid body boundary. An unfinished signal or target produces
 | Before annotation           | One ASCII space                        | Zero or more horizontal whitespace characters             |
 | Inside annotation           | One-line prose padded by one space     | Any single-line text through the first closing `-->`       |
 | Inside body                 | Character-perfect                     | Character-perfect                                         |
-| Between canonical sections  | One empty separator line              | A directly following structural heading is also admitted  |
+| Between canonical sections  | No empty separator line                | One empty separator line is also admitted                  |
 | Before the first PLAN       | Nothing                               | Whitespace or TEXT may surface as preamble items without requiring a separator before PLAN |
 
 PLURNK never escape-decodes body text: `\n` reaches the owning operation as

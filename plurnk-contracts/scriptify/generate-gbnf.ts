@@ -93,8 +93,8 @@ const optionalBodySection = (
 ): void => {
     const annotated = [...header, opt(ref("annotation-slot"))];
     model.set(name, [
-        [...annotated, lit("\n\n")],
-        [...annotated, lit("\n"), ref(`${bodyRule}-ne`), lit("\n\n")],
+        [...annotated, lit("\n")],
+        [...annotated, lit("\n"), ref(`${bodyRule}-ne`), lit("\n")],
     ]);
 };
 
@@ -104,11 +104,11 @@ const requiredBodySection = (
     header: GSeq,
     bodyRule = "section-body",
 ): void => {
-    model.set(name, [[...header, opt(ref("annotation-slot")), lit("\n"), ref(`${bodyRule}-ne`), lit("\n\n")]]);
+    model.set(name, [[...header, opt(ref("annotation-slot")), lit("\n"), ref(`${bodyRule}-ne`), lit("\n")]]);
 };
 
 const emptySection = (model: GModel, name: string, header: GSeq): void => {
-    model.set(name, [[...header, opt(ref("annotation-slot")), lit("\n\n")]]);
+    model.set(name, [[...header, opt(ref("annotation-slot")), lit("\n")]]);
 };
 
 export const buildModel = (): GModel => {
@@ -170,8 +170,8 @@ export const buildModel = (): GModel => {
         [lit("## SEND0"), opt(ref("target-slot"))],
     ];
     model.set("send-mid", sendMidHeaders.flatMap((header): GRule => [
-        [...header, opt(ref("annotation-slot")), lit("\n\n")],
-        [...header, opt(ref("annotation-slot")), lit("\n"), ref("section-body-ne"), lit("\n\n")],
+        [...header, opt(ref("annotation-slot")), lit("\n")],
+        [...header, opt(ref("annotation-slot")), lit("\n"), ref("section-body-ne"), lit("\n")],
     ]));
 
     const final = (name: string, signal: string, park: boolean): void => {
