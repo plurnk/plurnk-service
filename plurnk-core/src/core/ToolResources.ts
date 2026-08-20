@@ -167,7 +167,7 @@ export default class ToolResources {
         const family = renderDocument(
             source.runtime,
             source.summary,
-            ["## Invocation", "", ...familyInvocations],
+            ["## Invocation", "", fence("plurnk", familyInvocations.join("\n"))],
             source.details,
         );
         const toolResources = tools.map((tool): ToolResource => {

@@ -65,7 +65,7 @@ test("{§tools-resource-discovery} renders an exact registry as one family and o
         "/skills/plurnk/gitea/issue%2Fread.md",
     ]);
     const family = resources[0]?.content ?? "";
-    assert.match(family, /^## Invocation$/m);
+    assert.match(family, /^## Invocation\n\n```plurnk\n## EXEC0[\s\S]*\n```$/m);
     assert.match(
         family,
         /^## EXEC0 \[gitea\] \(index\) <!-- List repository issues\. \(details: worker:\/\/plurnk\/skills\/plurnk\/gitea\/index\.md\) -->\n\{"owner"\?: string\}$/m,
