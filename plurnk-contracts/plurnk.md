@@ -42,23 +42,18 @@ flowchart LR
         A1 --> A2 --> A3
     end
 
-    subgraph T2["Next Packet"]
-        direction TB
-        B1["results become observable"]
-        B2{"all required work<br>completed and confirmed?"}
-        B1 --> B2
-    end
+    D{"all required work<br>completed and confirmed?"}
 
-    subgraph T3["Completion Turn"]
+    subgraph T2["Completion Turn"]
         direction TB
         C1["# PLAN0"]
         C2["## SEND0 [200]<br>complete prompt"]
         C1 --> C2
     end
 
-    A3 -. "results enter the next packet" .-> B1
-    B2 -- No --> A1
-    B2 -- Yes --> C1
+    A3 -. "turn submitted" .-> D
+    D -- No --> A1
+    D -- Yes --> C1
 ```
 
 ### OPs
