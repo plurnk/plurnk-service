@@ -69,3 +69,15 @@ test("a workspace must own at least one deterministic tier", () => {
         "empty: test must be absent until a canonical tier exists",
     ]);
 });
+
+test("a workspace cannot impose a build-time prepare script on package consumers", () => {
+    assert.deepEqual(packageLifecycleViolations("consumer-script", {
+        scripts: {
+            prepare: "npm run build",
+            "test:unit": "node --test",
+            test: "npm run test:unit",
+        },
+    }), [
+        "consumer-script: prepare runs in package consumers; build checkout state at the root and packed artifacts through prepack",
+    ]);
+});

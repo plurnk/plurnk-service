@@ -26,6 +26,10 @@ export const packageLifecycleViolations = (dir, manifest) => {
     const expected = canonicalTestCommand(scripts);
     const violations = [];
 
+    if (scripts.prepare !== undefined) {
+        violations.push(`${dir}: prepare runs in package consumers; build checkout state at the root and packed artifacts through prepack`);
+    }
+
     if (expected === "") {
         violations.push(`${dir}: declare at least one of test:lint, test:unit, or test:intg`);
         if (scripts.test !== undefined) {

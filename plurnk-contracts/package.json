@@ -70,8 +70,7 @@
         "test": "npm run test:lint && npm run test:unit && npm run test:intg",
         "release:check": "npm run test:installation",
         "prepublishOnly": "npm audit && npm run build && npm test && npm run test:installation",
-        "prepack": "npm run build",
-        "prepare": "npm run build"
+        "prepack": "npm run build"
     },
     "dependencies": {
         "@cfworker/json-schema": "^4.1.1",
