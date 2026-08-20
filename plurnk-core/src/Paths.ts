@@ -9,7 +9,6 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { homedir } from "node:os";
 import { TEACHING_CORPUS, type TeachingCorpusSource } from "@plurnk/plurnk-meta";
 
 export default class Paths {

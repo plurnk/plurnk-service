@@ -34,7 +34,6 @@ import { ReadProjector } from "../content/index.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import EntryOps from "../schemes/_entry-ops.ts";
 import EntryFind from "../schemes/_entry-find.ts";
-import WorkspaceSettings from "./workspace-settings.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
 import TerminalResult from "./TerminalResult.ts";

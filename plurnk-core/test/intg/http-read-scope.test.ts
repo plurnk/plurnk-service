@@ -136,7 +136,6 @@ test("#283: a scoped READ of a project file still returns exactly the window", a
             statement, ...ids, sequence: ++sequence, origin: "model",
         })) as { status: number; rowsWritten?: number };
         const content = Array.from({ length: 20 }, (_, i) => `line-${i + 1}`).join("\n");
-        const editTemplate = parseRead(`## READ0 (worker:///scope.md)`);
         const seeded = await engine.dispatch({
             statement: {
                 op: "EDIT", annotation: null, delimiter: "EDIT", signal: null,

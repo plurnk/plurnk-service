@@ -847,7 +847,7 @@ test("{§oauth-lifetime} daemon restart during pending authorization leaves noth
     const firstHarness = harness(durable);
     await first.setup(firstHarness.seam);
     await firstHarness.hydrate(1);
-    const pending = await beginInteractiveAuthorization(firstHarness, 1, served, origin);
+    await beginInteractiveAuthorization(firstHarness, 1, served, origin);
     await first.close();
 
     const restored = Module.init({ env: floor });

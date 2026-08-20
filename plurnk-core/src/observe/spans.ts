@@ -11,7 +11,6 @@ import {
     SpanStatusCode,
     trace,
     type Span,
-    type SpanKind,
     type SpanOptions,
 } from "@opentelemetry/api";
 import { serviceTracer } from "./api.ts";

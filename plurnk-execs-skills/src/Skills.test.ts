@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Skills from "./Skills.ts";
@@ -62,6 +62,7 @@ test("{§skills-materialization} the skills runtime lists, adds, and removes wor
         assert.deepEqual(JSON.parse(h.writes.at(-1)!), { name: "grep", removed: true });
 
         const again = await h.run("list");
+        assert.equal(again.status, 200);
         assert.deepEqual(JSON.parse(h.writes.at(-1)!), []);
     } finally {
         await h.cleanup();

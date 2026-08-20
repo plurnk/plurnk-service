@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 // {§inject} Operator packet injection is read per turn. An explicit unreadable path fails;
 // unset or empty configuration contributes no section.

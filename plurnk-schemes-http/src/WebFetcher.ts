@@ -8,7 +8,7 @@ import {
 } from "@plurnk/plurnk-schemes";
 import Guard, { GuardBlockedError } from "./Guard.ts";
 import { responseMimetype } from "./ContentType.ts";
-import MaterializerRegistry, { type HttpMaterializer, type MaterializerResult } from "./Materializer.ts";
+import MaterializerRegistry, { type HttpMaterializer } from "./Materializer.ts";
 import { requirePositiveIntegerEnv } from "./Config.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 

@@ -22,7 +22,6 @@ import Results, { type ProblemDetails, type SchemeResultBase } from "../core/res
 import LogBody from "../core/LogBody.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogVisibility, { type LogFoldRanges } from "../core/LogVisibility.ts";
-import LineAnchors from "../content/line-anchors.ts";
 import EntrySemantic from "./_entry-semantic.ts";
 import EntryGraph from "./_entry-graph.ts";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
