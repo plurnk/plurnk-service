@@ -161,7 +161,7 @@ test("entry() materializes an https resource and classifies each plurnk narratio
         assert.ok(entry !== undefined, "the https entry materialized (authority folded into the pathname)");
         assert.equal(entry.scheme, "https");
         // The ambience: the reserved plurnk worker carries ONE narration row per write (2 here), the
-        // fs-fiction shape — origin plurnk, source = the calling worker, weight on the meta line.
+        // fs-fiction shape — origin _plurnk, source = the calling worker, weight on the meta line.
         const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
         assert.ok(plurnkWorker !== undefined, "the reserved plurnk worker exists");
         const rows = await db.test_log_entries_by_worker_op.all<{ pathname: string; source: string; weight: number; attrs: string }>({ worker_id: plurnkWorker.id, op: "EDIT" });
@@ -193,7 +193,7 @@ test("entry() materializes an https resource and classifies each plurnk narratio
         // projects the machine-created entry as an ordinary system READ, carrying the honest OPEN
         // cost — real tokens + lines, no body riding. Durable storage remains the typed EDIT above.
         const view = (folded: readonly (readonly [number, number])[]): object[] => [{
-            coordinate: "1/1/2", origin: "plurnk", op: "EDIT", delimiter: "", signal: null,
+            coordinate: "1/1/2", origin: "_plurnk", op: "EDIT", delimiter: "", signal: null,
             target: { scheme: "https", username: null, password: null, hostname: null, port: null, pathname: "/example.org/turkeys", query: null, fragment: null },
             status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
             folded, source: "worker://researcher", attrs: { kind: "entry_materialized" }, tags: ["second_query"],

@@ -1,15 +1,15 @@
 // Budget pressure as a meta-scenario: rerun ordinary storylines with a tight
-// provider-derived input capacity. The integration tier pins exact grinder
+// provider-derived input capacity. The integration tier pins exact overflow recovery
 // mechanics; these demos assert that a real model still delivers the outcome.
 //
 // The marquee (owner): a JUMBO prompt — SPEC.md itself, ~42k tokens — under a tight
-// gauge. A whole-read drives the gauge deeply negative, so on the next turn the grinder auto-folds
-// it (pre-LLM) and the model must use patterns + chunks (matched / sliced READs) to
+// gauge. A whole-read makes the next candidate packet exceed the ceiling, so a
+// packetless overflow turn folds it and the model must use patterns + chunks (matched / sliced READs) to
 // pull the one fact it needs from inside the folded prompt.
 //
 // Driven through the REAL prod loop (loop.run via the daemon). The gauge is set
 // before liveWorkspace boots the daemon so its engine captures it at construction
-// (the budget-grind pattern). Stochastic: assert the OUTCOME (the fact surfaces),
+// (the budget-pressure pattern). Stochastic: assert the OUTCOME (the fact surfaces),
 // not a strict terminal — stochastic model output makes a strict 200 assertion invalid.
 
 import test from "node:test";
@@ -51,12 +51,15 @@ const runUnderPressure = async (opts: { label: string; prompt: string; factor?: 
     try {
         const s = await liveWorkspace({ name: `demo-budget-${opts.label}-${crypto.randomUUID()}`, projectRoot: root });
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: opts.prompt }, { timeoutMs: TIMEOUT });
-        const perTurn: number[] = [];
+        const perTurn: Array<number | null> = [];
         for (const tid of turnIds) {
-            const r = await s.db.test_get_turn.get<{ packet: string }>({ id: tid });
-            perTurn.push((JSON.parse(r?.packet ?? "{}") as { weight?: number }).weight ?? 0);
+            const r = await s.db.test_get_turn.get<{ packet: string | null }>({ id: tid });
+            perTurn.push(r?.packet == null
+                ? null
+                : (JSON.parse(r.packet) as { weight?: number }).weight ?? 0);
         }
-        console.error(`[budget-meta:${opts.label}] floor=${floor.weight} requestedCapacity=${gauge} effectiveCapacity=${s.provider.inputCapacity} outputBudget=${s.provider.outputBudget} turns=${turnIds.length} finalStatus=${finalStatus} turn1=${perTurn[0]} peak=${Math.max(0, ...perTurn)} perTurn=[${perTurn.join(",")}]`);
+        const modelWeights = perTurn.filter((weight): weight is number => weight !== null);
+        console.error(`[budget-meta:${opts.label}] floor=${floor.weight} requestedCapacity=${gauge} effectiveCapacity=${s.provider.inputCapacity} outputBudget=${s.provider.outputBudget} durableTurns=${turnIds.length} modelTurns=${modelWeights.length} finalStatus=${finalStatus} firstModel=${modelWeights[0] ?? 0} peak=${Math.max(0, ...modelWeights)} chronology=[${perTurn.map((weight) => weight ?? "packetless").join(",")}]`);
         const dump = async (): Promise<void> => {
             for (const turnId of turnIds) {
                 const row = await s.db.test_get_turn.get<{ packet: string; status: number }>({ id: turnId });
@@ -121,11 +124,10 @@ test("budget-meta: the config-host storyline still completes under a tight gauge
     } finally { await run.cleanup(); }
 });
 
-// 3 — a jumbo prompt under a tight gauge. The
-// fact lives deep in {§grinder}; the doc cannot be held whole, so the model must read
-// patterns/chunks — and if it reads broadly first, the grinder auto-folds that read
-// and the model recovers with a sliced/matched re-read. Outcome: it finds that the
-// grinder reverts the PRIOR turn first.
+// 3 — a jumbo document under a tight gauge. The fact lives deep in the document,
+// which cannot be held whole, so the model must read patterns/chunks. If it reads broadly
+// first, a packetless overflow turn folds that read and the model recovers with a
+// sliced or matched re-read.
 test("budget-meta: a jumbo uniform-density doc under a tight gauge — FIND then precise chunk-read finds the buried fact", { timeout: TIMEOUT }, async () => {
     const doc = await seedLedgerFixture();
     const run = await runUnderPressure({

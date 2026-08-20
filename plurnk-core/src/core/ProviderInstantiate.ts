@@ -10,11 +10,11 @@ import { instantiateProvider as instantiateFrameworkProvider, PROVIDERS_KNOBS, r
 import type { Provider, ProviderAlias } from "@plurnk/plurnk-providers";
 
 export default class ProviderInstantiate {
-    // One provider per (provider, model, baseUrl) for the process lifetime: a provider is
+    // One provider per complete route+tuning projection for the process lifetime: a provider is
     // stateless per the contract, and runLoop instantiating fresh per aliased call re-probed
     // the backend (latency) and re-fired providers' construction warnings on every loop (the
-    // owner's boot log: one heuristic warning per runLoop request). Cache keyed on the wire identity;
-    // env is process-stable for these fields.
+    // owner's boot log: one heuristic warning per runLoop request). Cache identity includes every
+    // provider-owned knob because operator tuning can change while a process remains alive.
     static #instances = new Map<string, Promise<Provider>>();
     static #registeredInstances = new Map<string, Provider>();
     // {§provider-instantiation-alias-resolution} — provider handle → the alias name that produced it,
@@ -37,18 +37,17 @@ export default class ProviderInstantiate {
         ProviderInstantiate.#aliasByProvider.set(provider, alias);
     }
 
-    // Register a preconstructed handle under its full durable identity. Production
-    // providers arrive through instantiateProvider and are already cached; this seam
-    // gives injected providers (notably deterministic test providers) the identical
-    // lookup behavior when a persisted loop resumes.
-    static registerInstance(provider: Provider, spec: ProviderAlias): void {
+    // Register a preconstructed handle under the same route+tuning identity as
+    // constructed providers. An injected handle must not shadow a later operator
+    // tuning projection merely because its wire route is unchanged.
+    static registerInstance(provider: Provider, spec: ProviderAlias, env: NodeJS.ProcessEnv = process.env): void {
         ProviderInstantiate.#aliasByProvider.set(provider, spec.alias);
-        ProviderInstantiate.#registeredInstances.set(ProviderInstantiate.#identityKey(spec), provider);
+        ProviderInstantiate.#registeredInstances.set(ProviderInstantiate.#cacheKey(spec, env), provider);
     }
 
     static async instantiateProvider(alias: ProviderAlias, env: NodeJS.ProcessEnv = process.env): Promise<Provider> {
         if (env === process.env) {
-            const registered = ProviderInstantiate.#registeredInstances.get(ProviderInstantiate.#identityKey(alias));
+            const registered = ProviderInstantiate.#registeredInstances.get(ProviderInstantiate.#cacheKey(alias, env));
             if (registered !== undefined) return registered;
             const key = ProviderInstantiate.#cacheKey(alias, env);
             let cached = ProviderInstantiate.#instances.get(key);

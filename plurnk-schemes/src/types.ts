@@ -8,7 +8,7 @@
 // supplies them per dispatch; this repo ships only the manifest + flag
 // types every sibling needs to declare itself.
 
-export type WriterTier = "model" | "client" | "plurnk" | "plugin";
+export type WriterTier = "model" | "client" | "_plurnk" | "plugin";
 
 export interface SchemeFlagAffinity {
     readonly excludedInAsk?: boolean;        // excluded when mode === "ask"

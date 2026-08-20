@@ -28,7 +28,6 @@ import BudgetReadout from "./BudgetReadout.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import ToolResources from "./ToolResources.ts";
 import LogVisibility from "./LogVisibility.ts";
-import LogBody from "./LogBody.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -120,8 +119,8 @@ export interface CurationOverflow {
     readonly excess: number;
 }
 
-// Packet assembly (SPEC {§packet-assembly}) + the budget grinder ({§grinder}):
-// builds the spec'd request packet, measures it, and reclaims window on overflow.
+// Packet assembly ({§packet-assembly}) and model-facing budget admission
+// ({§overflow-turn}). Visibility changes stay in the ordinary FOLD owner.
 export default class PacketBuilder {
 
     #db: Db;
@@ -366,104 +365,13 @@ export default class PacketBuilder {
         return out.toSorted((left, right) => left.pathname.localeCompare(right.pathname));
     }
 
-    // SPEC {§grinder} — the budget grinder. Runs pre-LLM (in runTurn, after the packet
-    // is built, before provider.generate); fires only when curation weight exceeds
-    // the provider-derived curation budget. One
-    // reversible rule: roll back context introduced by the NEWEST turn boundary —
-    // rows born there plus exact older rows it transitioned folded→open — then
-    // rebuild and re-measure.
-    // {§grinder-overflow-only} — fires only on actual overflow, never speculatively
-    async enforceBudget({ packet, provider, loopId, turnId, recordOverflow, rebuild }: {
-        packet: RequestPacket; provider: Provider;
-        loopId: number; turnId: number;
-        recordOverflow: (overflow: CurationOverflow) => Promise<void>;
-        rebuild: () => Promise<RequestPacket>;
-    }): Promise<{ packet: RequestPacket; fit: boolean; boundaryRolledBack: boolean }> {
+    // {§overflow-turn-only} — a pure admission fact. TurnRunner owns the
+    // producer-neutral recovery transition; PacketBuilder never mutates log
+    // visibility while measuring a candidate request.
+    curationOverflow(packet: RequestPacket, provider: Provider): CurationOverflow | null {
         const budget = this.curationBudgetFor(provider);
-        const measure = (p: RequestPacket): number => p.weight;
-        if (budget === null || measure(packet) <= budget) {
-            return { packet, fit: true, boundaryRolledBack: false };
-        }
-
-        const weight = measure(packet);
-        await recordOverflow({ weight, budget, excess: weight - budget });
-
-        // ONE rule, every turn ({§grinder-layer1-rollback}): atomically fold/tag
-        // context introduced by the newest boundary. Other older history remains
-        // model-owned; remaining curation debt is neither failure nor strike.
-        await this.#rollbackNewestBoundary(loopId, turnId);
-        const current = await rebuild();
-        return { packet: current, fit: measure(current) <= budget, boundaryRolledBack: true };
-    }
-
-    async rollbackNewestBoundary(loopId: number, turnId: number): Promise<void> {
-        await this.#rollbackNewestBoundary(loopId, turnId);
-    }
-
-    async #rollbackNewestBoundary(loopId: number, turnId: number): Promise<void> {
-        type PlannedTarget = {
-            readonly id: number;
-            readonly before: ReturnType<typeof LogVisibility.parse>;
-            after: ReturnType<typeof LogVisibility.parse>;
-        };
-        const plan = new Map<number, PlannedTarget>();
-        const boundary = await this.#db.engine_grinder_boundary_rows.all<{
-            id: number;
-            op: string | null;
-            attrs: string;
-            tx: string;
-            mimetype_tx: string;
-            rx: string;
-            mimetype_rx: string;
-            folded: string;
-        }>({ loop_id: loopId, turn_id: turnId });
-        for (const row of boundary) {
-            const before = LogVisibility.parse(row.folded);
-            const body = LogBody.resolve({
-                op: row.op,
-                attrs: row.attrs,
-                tx: row.tx,
-                rx: row.rx,
-                mimetypeTx: row.mimetype_tx,
-                mimetypeRx: row.mimetype_rx,
-            });
-            const after = LogVisibility.apply(
-                before,
-                "FOLD",
-                [1, -1],
-                LogVisibility.lineCount(body.content),
-            );
-            if (!LogVisibility.equal(before, after)) {
-                plan.set(row.id, { id: row.id, before, after });
-            }
-        }
-
-        const effects = await this.#db.engine_grinder_open_effects.all<{
-            id: number;
-            folded: string;
-            folded_before: string;
-            folded_after: string;
-        }>({ loop_id: loopId, turn_id: turnId });
-        for (const effect of effects) {
-            const opened = LogVisibility.openedBy(
-                LogVisibility.parse(effect.folded_before),
-                LogVisibility.parse(effect.folded_after),
-            );
-            if (opened.length === 0) continue;
-            const existing = plan.get(effect.id);
-            if (existing !== undefined) {
-                existing.after = LogVisibility.fold(existing.after, opened);
-                continue;
-            }
-            const before = LogVisibility.parse(effect.folded);
-            const after = LogVisibility.fold(before, opened);
-            if (!LogVisibility.equal(before, after)) {
-                plan.set(effect.id, { id: effect.id, before, after });
-            }
-        }
-        await this.#db.engine_grinder_apply({
-            targets: JSON.stringify([...plan.values()]),
-        });
+        if (budget === null || packet.weight <= budget) return null;
+        return { weight: packet.weight, budget, excess: packet.weight - budget };
     }
 
     // Every prior-turn operation failure is durable before packet assembly.

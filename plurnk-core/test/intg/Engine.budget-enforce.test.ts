@@ -1,17 +1,20 @@
-// SPEC {§grinder} — the budget grinder. The model "behaves" here (a clean SEND each
+// SPEC {§overflow-turn} — the budget overflow recovery. The model "behaves" here (a clean SEND each
 // turn); these tests exercise the engine's enforcement, not the model. An
 // absolute ceiling far below any real packet forces overflow deterministically.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
+import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import PacketWire from "../../src/core/packet-wire.ts";
 import { Mock, ProviderError, validateProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import type { ChatMessage, MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, packetSection, seedEntryWithChannel } from "./_helpers.ts";
-import { foldStmt, openStmt, readStmt, urlPath } from "./_dsl.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, packetSection } from "./_helpers.ts";
+import { foldStmt, openStmt, urlPath } from "./_dsl.ts";
+import OverflowTurn from "../../src/core/OverflowTurn.ts";
 
 const sendStmt = (status: number, body: string): SendStatement => ({
     op: "SEND", annotation: null, delimiter: "", signal: status, target: null,
@@ -24,7 +27,6 @@ const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => r
 
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
 const TINY = 2;          // absolute wall far below any real packet → forces overflow
-const OVERFLOW_DETAIL = "Token Budget Overflow: Token Usage exceeded Token Ceiling. Newest log items were automatically FOLDed to fit within token budget. Curate the log and/or perform more conservatively scoped or chunked retrieval operations to recover.";
 
 const plainEngine = (db: Db): Engine => new Engine({ db, schemes: new SchemeRegistry() });
 class DeferredCapacityMock extends Mock {
@@ -34,6 +36,16 @@ class DeferredCapacityMock extends Mock {
             tokens: 1,
             source: "test:deferred-capacity",
             detail: "fixture deliberately leaves physical admission to the upstream mock",
+        };
+    }
+}
+
+class ExactCharCapacityMock extends Mock {
+    override async countPromptTokens(messages: readonly ChatMessage[]) {
+        return {
+            kind: "exact" as const,
+            tokens: messages.reduce((sum, { content }) => sum + content.length, 0),
+            source: "test:exact-chars",
         };
     }
 }
@@ -97,6 +109,18 @@ const mockAt = (
     });
     return provider;
 };
+const exactCharAt = (capacity: number, responses: MockResponse[], window = 1_000_000): ExactCharCapacityMock => {
+    const keys = ["PLURNK_PROVIDERS_OUTPUT_BUDGET", "PLURNK_PROVIDERS_REASONING_BUDGET"] as const;
+    const previous = keys.map((key) => process.env[key]);
+    process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = String(window - capacity);
+    delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
+    const provider = new ExactCharCapacityMock({ contextWindow: window, responses });
+    keys.forEach((key, index) => {
+        if (previous[index] === undefined) delete process.env[key];
+        else process.env[key] = previous[index];
+    });
+    return provider;
+};
 const envelope = async (db: Db): Promise<{ workspaceId: number; workerId: number; loopId: number }> => {
     const workspaceId = await insertWorkspace(db, `ge-${crypto.randomUUID()}`);
     const workerId = await insertWorker(db, workspaceId);
@@ -104,7 +128,33 @@ const envelope = async (db: Db): Promise<{ workspaceId: number; workerId: number
     return { workspaceId, workerId, loopId };
 };
 
-test("under the ceiling the grinder never fires — nothing is hidden", async () => {
+const applyOverflowPlan = async ({ db, engine, workspaceId, workerId, loopId, turnId }: {
+    db: Db;
+    engine: Engine;
+    workspaceId: number;
+    workerId: number;
+    loopId: number;
+    turnId: number;
+}) => {
+    const existing = await db.test_log_entries_by_turn.all<{ sequence: number }>({ turn_id: turnId });
+    let sequence = Math.max(0, ...existing.map((row) => row.sequence)) + 1;
+    const folds = await OverflowTurn.plan(db, loopId, turnId);
+    for (const { statement } of folds) {
+        const result = await engine.dispatch({
+            statement,
+            workspaceId,
+            workerId,
+            loopId,
+            turnId,
+            sequence: sequence++,
+            origin: "_plurnk",
+        });
+        assert.ok(result.status < 400, "the deterministic recovery plan dispatches successfully");
+    }
+    return folds;
+};
+
+test("under the ceiling the overflow recovery never fires — nothing is hidden", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -112,10 +162,10 @@ test("under the ceiling the grinder never fires — nothing is hidden", async ()
         const provider = mockAt(4096, okSends(2)); // full-window ceiling — never overflows
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        // Under the ceiling the grinder early-returns before pass 1, so turn 1's
+        // Under the ceiling the overflow recovery early-returns before pass 1, so turn 1's
         // log stays shown — it would be hidden only on overflow.
         const log = await db.engine_render_log.all<{ turn_seq: number }>({ worker_id: workerId });
-        assert.ok(log.some((r) => r.turn_seq === 1), "no overflow → prior turn's log still shown, grinder inert");
+        assert.ok(log.some((r) => r.turn_seq === 2), "no overflow → prior model turn's log still shown, overflow recovery inert");
     } finally { await db.close(); }
 });
 
@@ -124,19 +174,19 @@ test("on overflow the prior turn's log entries are folded to their coordinate", 
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         // Turn 1 runs under a WIDE ceiling so the model completes and leaves an
-        // open SEND (the first-class prompt row is grinder-exempt);
+        // open SEND (the first-class prompt row is overflow recovery-exempt);
         // turn 2 runs under TINY so its accumulated packet overflows and the
-        // grinder folds turn 1's open log.
+        // overflow recovery folds turn 1's open log.
         const engine = plainEngine(db);
         const wideP = mockAt(4096, okSends(1));
         const tinyP = mockAt(TINY, okSends(2), 4096, true);
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const before = await db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number }>({ worker_id: workerId });
-        assert.ok(before.some((r) => r.turn_seq === 1 && r.weight > 0 && r.folded === "[]"), "turn 1 left an open body");
+        assert.ok(before.some((r) => r.turn_seq === 2 && r.weight > 0 && r.folded === "[]"), "the first model turn left an open body");
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const after = await db.engine_render_log.all<{ turn_seq: number; folded: string; pathname: string | null; weight: number }>({ worker_id: workerId });
-        // The prompt frame is grinder-exempt. {§grinder-errors-exempt}
-        const t1 = after.filter((r) => r.turn_seq === 1 && r.weight > 0 && (r as { scheme?: string | null }).scheme !== "prompt");
+        // The prompt frame is overflow recovery-exempt. {§overflow-turn-exemptions}
+        const t1 = after.filter((r) => r.turn_seq === 2 && r.weight > 0 && (r as { scheme?: string | null }).scheme !== "prompt");
         assert.ok(t1.length > 0 && t1.every((r) => r.folded === "[[1,-1]]"), "prior turn's bodies folded (the exempt prompt stays open) — collapsed to coordinates, not deleted");
     } finally { await db.close(); }
 });
@@ -146,7 +196,7 @@ test("a PLAN row at the newest boundary survives the overflow fold", async () =>
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         // Turn 1 emits PLAN + SEND under a WIDE ceiling — both land as open log
-        // rows. Turn 2 under TINY overflows: the grinder folds the boundary's WORK (the SEND)
+        // rows. Turn 2 under TINY overflows: the overflow recovery folds the boundary's WORK (the SEND)
         // while the PLAN — the model's orientation surface — stays OPEN, like errors + prompt.
         const planStmt = { op: "PLAN", annotation: null, delimiter: "", signal: null, target: null, lineMarker: null, body: "1. read the doc\n2. answer", position: { line: 1, column: 1 } } as PlurnkStatement;
         const engine = plainEngine(db);
@@ -154,17 +204,17 @@ test("a PLAN row at the newest boundary survives the overflow fold", async () =>
         const tinyP = mockAt(TINY, okSends(1), 4096, true);
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const before = await db.engine_render_log.all<{ turn_seq: number; op: string; folded: string }>({ worker_id: workerId });
-        assert.ok(before.some((r) => r.turn_seq === 1 && r.op === "PLAN" && r.folded === "[]"), "turn 1's PLAN landed open");
+        assert.ok(before.some((r) => r.turn_seq === 2 && r.op === "PLAN" && r.folded === "[]"), "the first model turn's PLAN landed open");
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const after = await db.engine_render_log.all<{ turn_seq: number; op: string; folded: string; pathname: string | null; weight: number }>({ worker_id: workerId });
-        const plan = after.find((r) => r.turn_seq === 1 && r.op === "PLAN");
-        assert.equal(plan?.folded, "[]", "the PLAN row is grinder-exempt — still OPEN through the fold");
-        const folded = after.filter((r) => r.turn_seq === 1 && r.weight > 0 && r.op !== "PLAN" && r.op !== "error" && (r as { scheme?: string | null }).scheme !== "prompt");
+        const plan = after.find((r) => r.turn_seq === 2 && r.op === "PLAN");
+        assert.equal(plan?.folded, "[]", "the PLAN row is overflow recovery-exempt — still OPEN through the fold");
+        const folded = after.filter((r) => r.turn_seq === 2 && r.weight > 0 && r.op !== "PLAN" && r.op !== "error" && (r as { scheme?: string | null }).scheme !== "prompt");
         assert.ok(folded.length > 0 && folded.every((r) => r.folded === "[[1,-1]]"), "the boundary's non-exempt WORK still folds around the surviving plan");
     } finally { await db.close(); }
 });
 
-test("the grinder never folds older history - the model owns its visibility", async () => {
+test("the overflow recovery never folds older history - the model owns its visibility", async () => {
     // The guard whose absence once let a fold-everything variant run green. Three turns; turn 1's
     // rows are OLD history by turn 3. Overflow at turn 3 folds the newest boundary (turn 2 + turn
     // 3's pre-model rows) and MUST leave turn 1's open rows untouched — even though folding them
@@ -179,18 +229,18 @@ test("the grinder never folds older history - the model owns its visibility", as
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         await engine.runTurn({ provider: wideP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const openT1before = (await db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number }>({ worker_id: workerId }))
-            .filter((r) => r.turn_seq === 1 && r.weight > 0 && r.folded === "[]").length;
+            .filter((r) => r.turn_seq === 2 && r.weight > 0 && r.folded === "[]").length;
         assert.ok(openT1before > 0, "precondition: turn 1 left older open rows");
         await engine.runTurn({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 3 });
         const after = await db.engine_render_log.all<{ turn_seq: number; folded: string; weight: number }>({ worker_id: workerId });
-        assert.equal(after.filter((r) => r.turn_seq === 1 && r.weight > 0 && r.folded === "[]").length, openT1before,
-            "turn 1's open rows are untouched by the turn-3 grinder fire");
-        assert.ok(after.filter((r) => r.turn_seq === 2 && r.weight > 0).every((r) => r.folded === "[[1,-1]]"),
-            "the newest completed turn (2) IS folded — the boundary rule fired");
+        assert.equal(after.filter((r) => r.turn_seq === 2 && r.weight > 0 && r.folded === "[]").length, openT1before,
+            "turn 1's open rows are untouched by the turn-3 overflow recovery fire");
+        assert.ok(after.filter((r) => r.turn_seq === 3 && r.weight > 0).every((r) => r.folded === "[[1,-1]]"),
+            "the newest completed model turn IS folded — the boundary rule fired");
     } finally { await db.close(); }
 });
 
-test("{§grinder-layer1-rollback}: overflow rolls back only the exact older rows newly opened by the completed turn", async () => {
+test("{§overflow-turn-curation}: overflow rolls back only the exact older rows newly opened by the completed turn", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -246,38 +296,28 @@ test("{§grinder-layer1-rollback}: overflow rolls back only the exact older rows
         );
 
         const currentTurnId = await insertTurn(db, curationLoopId, 2, 102);
-        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
-        const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
-        const wideProbe = mockAt(999_998, [], 1_000_000);
-        const args = { initialMessages: MESSAGES, workspaceId, workerId, loopId: curationLoopId, currentTurnSeq: 2, provider: wideProbe, gitStatus: null };
-        const openPacket = await builder.buildRequestPacket(args);
-        const provider = mockAt(openPacket.weight - 50, [], 1_000_000);
-        args.provider = provider;
-        let overflowCalls = 0;
-        const result = await builder.enforceBudget({
-            packet: await builder.buildRequestPacket(args),
-            provider,
+        const recovery = await applyOverflowPlan({
+            db,
+            engine: plainEngine(db),
+            workspaceId,
+            workerId,
             loopId: curationLoopId,
             turnId: currentTurnId,
-            recordOverflow: async () => { overflowCalls += 1; },
-            rebuild: () => builder.buildRequestPacket(args),
         });
-
-        assert.equal(result.fit, true, "rolling back the newly introduced older body makes the packet fit");
-        assert.equal(overflowCalls, 1, "one over-ceiling assembly emits one overflow event");
+        assert.ok(recovery.length > 0, "the exact prior OPEN effect produces an ordinary FOLD statement");
         const rows = await db.engine_render_log.all<{ id: number; folded: string; tags: string }>({ worker_id: workerId });
         const byId = new Map(rows.map((row) => [row.id, row]));
         assert.equal(byId.get(newlyOpenedId)?.folded, "[[1,-1]]", "the folded-to-open target is rolled back");
-        assert.deepEqual(JSON.parse(byId.get(newlyOpenedId)?.tags ?? "[]"), ["overflow"], "the rollback records its reason");
-        assert.equal(byId.get(alreadyOpenId)?.folded, "[]", "a no-op OPEN does not make older context grinder-owned");
+        assert.deepEqual(JSON.parse(byId.get(newlyOpenedId)?.tags ?? "[]"), ["_plurnk", "overflow"], "the rollback records its actor and reason");
+        assert.equal(byId.get(alreadyOpenId)?.folded, "[]", "a no-op OPEN does not make older context overflow recovery-owned");
         assert.deepEqual(JSON.parse(byId.get(alreadyOpenId)?.tags ?? "[]"), [], "the no-op target receives no overflow provenance");
         assert.equal(byId.get(unrelatedId)?.folded, "[]", "unselected older history remains model-owned");
-        assert.equal(byId.get(exemptPlanId)?.folded, "[]", "an older PLAN reopened by the boundary remains grinder-exempt");
+        assert.equal(byId.get(exemptPlanId)?.folded, "[]", "an older PLAN reopened by the boundary remains overflow recovery-exempt");
         assert.deepEqual(JSON.parse(byId.get(exemptPlanId)?.tags ?? "[]"), [], "the exempt PLAN receives no overflow provenance");
     } finally { await db.close(); }
 });
 
-test("{§grinder-layer1-rollback}: a reopened target folded again before grinding is not attributed to overflow", async () => {
+test("{§overflow-turn-curation}: a reopened target folded again before recovery is not attributed to overflow", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -307,13 +347,11 @@ test("{§grinder-layer1-rollback}: a reopened target folded again before grindin
         });
 
         const currentTurnId = await insertTurn(db, loopId, 3, 102);
-        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
-        const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
-        await builder.rollbackNewestBoundary(loopId, currentTurnId);
+        await applyOverflowPlan({ db, engine, workspaceId, workerId, loopId, turnId: currentTurnId });
         const row = (await db.engine_render_log.all<{ id: number; folded: string; tags: string }>({ worker_id: workerId }))
             .find(({ id }) => id === target.id);
         assert.equal(row?.folded, "[[1,-1]]", "the model's later FOLD remains authoritative");
-        assert.deepEqual(JSON.parse(row?.tags ?? "[]"), [], "the grinder does not claim a row that was already folded");
+        assert.deepEqual(JSON.parse(row?.tags ?? "[]"), [], "the overflow recovery does not claim a row that was already folded");
         const effects = await db.test_log_curation_effects_by_worker.all<{ op: string; folded_before: string }>({ worker_id: workerId });
         assert.deepEqual(effects.map(({ op, folded_before }) => ({ op, folded_before })), [
             { op: "OPEN", folded_before: "[[1,-1]]" },
@@ -322,7 +360,7 @@ test("{§grinder-layer1-rollback}: a reopened target folded again before grindin
     } finally { await db.close(); }
 });
 
-test("{§grinder-layer1-rollback}: rollback restores exact opened intervals without erasing later curation", async () => {
+test("{§overflow-turn-curation}: rollback restores exact opened intervals without erasing later curation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
@@ -353,14 +391,12 @@ test("{§grinder-layer1-rollback}: rollback restores exact opened intervals with
         });
 
         const currentTurnId = await insertTurn(db, loopId, 3, 102);
-        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
-        const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
-        await builder.rollbackNewestBoundary(loopId, currentTurnId);
+        await applyOverflowPlan({ db, engine, workspaceId, workerId, loopId, turnId: currentTurnId });
 
         const row = (await db.engine_render_log.all<{ id: number; folded: string; tags: string }>({ worker_id: workerId }))
             .find(({ id }) => id === target.id);
         assert.deepEqual(JSON.parse(row?.folded ?? "null"), [[3, 5], [8, 8]], "only the OPEN delta is rolled back");
-        assert.deepEqual(JSON.parse(row?.tags ?? "[]"), ["overflow"]);
+        assert.deepEqual(JSON.parse(row?.tags ?? "[]"), ["_plurnk", "overflow"]);
         for (const sequence of [1, 2]) {
             const curation = await db.test_get_log_folded.get<{ folded: string }>({
                 worker_id: workerId,
@@ -373,116 +409,63 @@ test("{§grinder-layer1-rollback}: rollback restores exact opened intervals with
     } finally { await db.close(); }
 });
 
-test("repeated negative curation pressure remains soft when physical admission defers upstream", async () => {
+test("an unrecoverable curation floor fails at 413 without provider I/O", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
-        await seedEntryWithChannel(db, {
-            workspaceId,
-            scheme: "worker",
-            pathname: "/pressure-evidence",
-            content: "ordinary retrieval evidence",
-        });
-        const provider = mockAt(TINY, [
-            response([readStmt(urlPath("worker", "pressure-evidence")), sendStmt(102, "carrying on")]),
-            response([readStmt(urlPath("worker", "pressure-evidence")), sendStmt(102, "still carrying on")]),
-            response([sendStmt(200, "done")]),
-        ], 200_000, true);
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5, maxStrikes: 1, minCycles: 4 });
-        assert.equal(result.result.status, 200, "ruler debt never becomes a one-turn quota or strike");
-        assert.equal(result.reason, "external", "the ordinary terminal disposition remains authoritative");
-        assert.equal(provider.remaining, 0, "all three admitted turns reached the provider");
+        const provider = mockAt(TINY, okSends(1), 200_000, true);
+        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
+        assert.equal(result.result.status, 413);
+        assert.equal(result.reason, "token_budget");
+        assert.equal(provider.remaining, 1, "the over-ceiling request never reaches generation");
+        assert.equal(result.turnIds.length, 2, "initialization and recovery are real packetless turns");
         for (const turnId of result.turnIds) {
-            const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
-            const budget = packetSection(JSON.parse(row!.packet), "budget");
-            assert.match(budget, /Tokens Free -\d+/, "the model sees honest negative curation pressure");
-            assert.equal(budget.match(/Context Token Budget Panic:/gu)?.length, 1, "the pressure instruction is transient and singular");
+            const row = await db.test_get_packet.get<{ packet: string | null }>({ id: turnId });
+            assert.equal(row?.packet, null, "neither packetless turn impersonates a model request");
         }
-        const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
-        const problems = errors.map(({ rx }) => JSON.parse(rx).problem);
-        assert.equal(problems.length, result.turnIds.length, "each actual overflow remains durable even though generation proceeds");
-        assert.ok(problems.every((problem) => problem?.status === 413 && problem?.detail === OVERFLOW_DETAIL));
+        const rows = await db.test_log_entries_by_turn.all<{ origin: string; attrs: string; rx: string }>({ turn_id: result.turnIds.at(-1)! });
+        const receipt = rows.find(({ attrs }) => JSON.parse(attrs).kind === "overflow");
+        assert.equal(receipt?.origin, "_plurnk");
+        assert.match(JSON.parse(receipt!.rx).content, /Token Budget Overflow:/);
     } finally { await db.close(); }
 });
 
-test("negative ruler pressure may conclude cleanly at 200", async () => {
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const engine = plainEngine(db);
-        const result = await engine.runLoop({ provider: mockAt(TINY, okSends(1), 4096, true), workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
-        assert.equal(result.result.status, 200, "curation pressure does not prevent a provider-deferred conclusion");
-    } finally { await db.close(); }
-});
-
-test("automatic pressure folding is visible through overflow tags and its nonterminal 413 Problem", async () => {
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const engine = plainEngine(db);
-        await engine.runTurn({ provider: mockAt(4096, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        const t2 = await engine.runTurn({ provider: mockAt(TINY, okSends(1), 200_000, true), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
-        assert.equal(t2.status, 200);
-        const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
-        const packet = JSON.parse(row!.packet);
-        assert.match(packetSection(packet, "log"), /"tags":\["overflow"\]/, "the ambient folded row explains why it was folded");
-        assert.match(packetSection(packet, "errors"), /^\* 413 log:\/\/\/.+\/error$/m, "the recovered overflow remains an indexed failure");
-        assert.match(packetSection(packet, "log"), new RegExp(OVERFLOW_DETAIL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-    } finally { await db.close(); }
-});
-
-test("{§grinder-layer1-rollback}: a huge current-turn engine row folds with the newest boundary", async () => {
-    // Current-turn pre-model rows fold atomically with the newest boundary; older history is untouched.
+test("{§overflow-turn-curation}: a current-turn engine row receives an exact whole-body FOLD", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         // Turn 1 — small, real (leaves a tiny open log).
         const engine = plainEngine(db);
         await engine.runTurn({ provider: mockAt(4096, okSends(1)), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-        // Turn 2 — opened manually; a HUGE OPEN engine-origin row lands on it pre-model (the wake surface).
-        const turnId = await insertTurn(db, loopId, 2, 102);
+        // The next turn is opened manually; a huge OPEN engine-origin row lands on it pre-model.
+        const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
+        if (next === undefined) throw new Error("next turn sequence unavailable");
+        const turnId = await insertTurn(db, loopId, next.next, 102);
         await db.engine_insert_log_entry.get({
             worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "plurnk", source: null, model_call_id: null, op: "READ", delimiter: "", signal: null,
+            origin: "_plurnk", source: null, model_call_id: null, op: "READ", delimiter: "", signal: null,
             scheme: "search", username: null, password: null, hostname: null, port: null,
             pathname: "/1/1/7", query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
-            rx: JSON.stringify({ status: 200, content: "R".repeat(8000) }), mimetype_rx: "application/json",
+            rx: JSON.stringify({ status: 200, content: Array.from({ length: 40 }, (_, index) => `line ${index + 1}: ${"R".repeat(80)}`).join("\n") }), mimetype_rx: "application/json",
             status_rx: 200, weight: 0, state: "resolved", outcome: null, attrs: "{}",
         });
-        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
-        // {§tokenomics-window-partition} — one builder; the ceiling pins on the provider's derived input capacity: a wide probe
-        // measures the open packet, then a provider pinned just under it forces the stage-2 fold.
-        const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
-        const wideProbe = mockAt(999_998, [], 1_000_000);
-        const args = { initialMessages: MESSAGES, workspaceId, workerId, loopId, currentTurnSeq: 2, provider: wideProbe, gitStatus: null };
-        const open = await builder.buildRequestPacket(args);
-        // Pin the ceiling just under the open packet: only folding the 8KB current-turn row can save it.
-        const provider = mockAt(open.weight - 50, [], 1_000_000);
-        args.provider = provider;
-        const packet = await builder.buildRequestPacket(args);
-        let overflowCalls = 0;
-        const result = await builder.enforceBudget({
-            packet, provider, loopId, turnId,
-            recordOverflow: async () => { overflowCalls += 1; },
-            rebuild: () => builder.buildRequestPacket(args),
-        });
-        assert.equal(result.fit, true, "stage 2 folded the current turn's engine row and the rebuilt packet fits");
+        const recovery = await applyOverflowPlan({ db, engine, workspaceId, workerId, loopId, turnId });
+        const currentFold = recovery.find(({ statement }) => statement.target?.raw === `log:///1/${next.next}/1/READ`);
+        assert.ok(currentFold !== undefined, "the current boundary row receives its own exact FOLD");
+        assert.deepEqual(currentFold.statement.lineMarker?.marks, [1, -1]);
         const rows = await db.engine_render_log.all<{ turn_seq: number; op: string; folded: string; tags: string }>({ worker_id: workerId });
-        const bigRow = rows.find((r) => r.turn_seq === 2 && r.op === "READ");
+        const bigRow = rows.find((r) => r.turn_seq === next.next && r.op === "READ");
         assert.ok(bigRow !== undefined, "the wake row is still LISTED (folded, not deleted)");
-        assert.equal(bigRow.folded, "[[1,-1]]", "the wake row is FOLDED (re-OPENable) — and not fatal");
-        assert.deepEqual(JSON.parse(bigRow.tags), ["overflow"], "the automatic fold stamps its canonical reason tag");
-        assert.match(packetSection(result.packet, "log"), /"tags":\["overflow"\]/, "the rebuilt ambient projection exposes the persisted tag");
-        assert.equal(overflowCalls, 1, "the enforcement owner emits one overflow event for the composed engine to persist");
+        assert.equal(bigRow.folded, "[[1,-1]]", "the active preview is explicitly folded so recovery reclaims packet weight");
+        assert.deepEqual(JSON.parse(bigRow.tags), ["_plurnk", "overflow"], "the automatic fold stamps actor and reason tags");
     } finally { await db.close(); }
 });
 
 test("the curation ceiling reuses provider-derived input capacity without a calibration ratio", async () => {
     const db = await openMigrated();
     try {
-        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
         const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
         // {§tokenomics-window-partition} — the provider's resolved input
         // capacity is 9998 under this request envelope.
@@ -493,16 +476,42 @@ test("the curation ceiling reuses provider-derived input capacity without a cali
     } finally { await db.close(); }
 });
 
-test("an exact physical overflow exhausts bounded recovery and preserves provider 413 evidence", async () => {
+test("an exact provider overflow remains distinct from curation admission", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
-        const tinyP = mockAt(TINY, okSends(2));
-        const result = await engine.runLoop({ provider: tinyP, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
-        assert.equal(result.result.status, 413);
-        assert.equal(tinyP.remaining, 2, "preflight rejection issued no physical generation request");
-        const turnId = result.turnIds[0]!;
+        await engine.runTurn({
+            provider: mockAt(999_000, [response([sendStmt(102, "continue")])], 1_000_000),
+            workspaceId,
+            workerId,
+            loopId,
+            messages: MESSAGES,
+            turnNumber: 1,
+        });
+        const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
+        if (next === undefined) throw new Error("next turn sequence unavailable");
+        const probeProvider = mockAt(999_000, [], 1_000_000);
+        const probe = await new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined }).buildRequestPacket({
+            initialMessages: MESSAGES,
+            workspaceId,
+            workerId,
+            loopId,
+            currentTurnSeq: next.next,
+            provider: probeProvider,
+            gitStatus: null,
+        });
+        const exactChars = PacketWire.packetToWireMessages(probe)
+            .reduce((sum, { content }) => sum + content.length, 0);
+        const capacity = Math.floor((probe.weight + exactChars) / 2);
+        assert.ok(probe.weight < capacity && capacity < exactChars, "fixture separates the curation ruler from provider tokens");
+
+        const provider = exactCharAt(capacity, [response([sendStmt(200, "unreachable")])]);
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        assert.equal(result.status, 413);
+        assert.equal(result.capacityHardStop, true);
+        assert.equal(provider.remaining, 1, "exact preflight rejection consumes no generated response");
+        const turnId = result.turnId;
         const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
         const packet = JSON.parse(row!.packet) as Record<string, unknown>;
         assert.equal("assistant" in packet, false, "terminal capacity failure preserves only the attempted request");
@@ -529,10 +538,10 @@ test("an exact physical overflow exhausts bounded recovery and preserves provide
         assert.equal(failure.retryable, false);
         assert.equal(failure.capacityStage, "preflight");
         assert.equal(failure.capacity?.decision, "reject");
-        assert.equal(failure.capacity?.inputCapacity, TINY);
+        assert.equal(failure.capacity?.inputCapacity, capacity);
         assert.equal(failure.capacity?.prompt?.kind, "exact");
-        assert.ok((failure.capacity?.prompt?.tokens ?? 0) > TINY);
-        assert.equal(failure.capacity?.prompt?.source, "mock:chars2");
+        assert.ok((failure.capacity?.prompt?.tokens ?? 0) > capacity);
+        assert.equal(failure.capacity?.prompt?.source, "test:exact-chars");
         assert.match(failure.detail ?? "", /exceeds its exact input capacity/);
         const calls = await db.test_model_calls.all<{ capacity: string | null }>({ turn_id: turnId });
         assert.ok(calls.length >= 1 && calls.every(({ capacity }) => capacity !== null), "every failed logical request retains its request-shaped capacity evidence");
@@ -587,93 +596,6 @@ test("an upstream 413 withholds the automatic prompt body and retries without sp
     } finally {
         await db.close();
     }
-});
-
-test("negative ruler pressure preserves the ordinary operation contract", async () => {
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const engine = plainEngine(db);
-        await seedEntryWithChannel(db, {
-            workspaceId,
-            scheme: "worker",
-            pathname: "/available-under-pressure",
-            content: "ordinary read result",
-        });
-        const read: PlurnkStatement = {
-            op: "READ",
-            annotation: null,
-            delimiter: "",
-            signal: null,
-            target: {
-                kind: "url",
-                raw: "worker:///available-under-pressure",
-                scheme: "worker",
-                username: null,
-                password: null,
-                hostname: null,
-                port: null,
-                pathname: "/available-under-pressure",
-                query: null,
-                fragment: null,
-            },
-            lineMarker: null,
-            body: null,
-            position: { line: 1, column: 1 },
-        };
-        await engine.runTurn({
-            provider: mockAt(
-                TINY,
-                [response([read, sendStmt(200, "done")])],
-                200_000,
-                true,
-            ),
-            workspaceId,
-            workerId,
-            loopId,
-            messages: MESSAGES,
-            turnNumber: 2,
-        });
-        const rows = await db.test_log_entries_by_worker_op_full.all<{
-            rx: string;
-            status_rx: number;
-        }>({
-            worker_id: workerId,
-            op: "READ",
-        });
-        const delivered = rows
-            .map((row) => ({
-                ...row,
-                result: JSON.parse(row.rx) as {
-                    problem?: {
-                        type?: string;
-                    };
-                    content?: string;
-                },
-            }))
-            .find((row) => row.result.content === "ordinary read result");
-        assert.ok(delivered !== undefined, "an ordinary READ executes while the curation gauge is negative");
-        assert.equal(delivered.status_rx, 200);
-    } finally { await db.close(); }
-});
-
-test("a request outside exact provider input capacity returns 413 before physical generation", async () => {
-    const db = await openMigrated();
-    try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        const engine = plainEngine(db);
-        // A 4-token effective envelope with a 2-token generation reserve cannot
-        // admit even the packet frame.
-        const mock = mockAt(TINY, okSends(3), 4);
-        const result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
-        assert.equal(result.result.status, 413);
-        assert.equal(mock.remaining, 3, "generate never ran because admission is final");
-        const row = await db.test_get_packet.get<{ packet: string | null }>({ id: result.turnIds[0] });
-        assert.ok(row?.packet !== null && row?.packet !== undefined);
-        const packet = JSON.parse(row.packet) as Record<string, unknown>;
-        assert.equal("assistant" in packet, false, "a hard stop preserves the request without inventing a response");
-        assert.equal("assistantRaw" in packet, false, "opaque response evidence exists only after admission");
-    } finally { await db.close(); }
 });
 
 test("an estimate defers physical admission to the upstream provider", async () => {

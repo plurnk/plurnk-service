@@ -182,8 +182,9 @@ test("the turn-0 initialization mirrors the REAL foisted survey — dynamic, not
                 assert.deepEqual(map.map(([item]) => item.path), ["worker:///a.md", "worker:///nested/**"]);
                 assert.equal(map[1]?.[0]?.items, 1, "the automatic shallow map retains the nested subtree as a complete aggregate");
                 // The worker's first turn opens with the actionless initialization at 1/1/1, born OPEN.
-                const row = await db.log_read_by_coordinate.get<{ op: string | null; rx: string; attrs: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
+                const row = await db.log_read_by_coordinate.get<{ origin: string; op: string | null; rx: string; attrs: string }>({ worker_id: modelWorkerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
                 assert.equal(row?.op, null, "the turn-0 initialization does not fabricate an operation");
+                assert.equal(row?.origin, "_plurnk", "the real initialization turn identifies its internal producer");
                 assert.equal((JSON.parse(row!.attrs) as { kind?: string }).kind, "initialization");
                 const content = (JSON.parse(row!.rx) as { content: string }).content;
                 // Dynamic - it carries the FIND the foist ACTUALLY dispatched (worker:///*), rendered to
@@ -193,8 +194,8 @@ test("the turn-0 initialization mirrors the REAL foisted survey — dynamic, not
                     /^# PLAN0\n\* Discover the tooling available and survey the workspace file root\./,
                     "opens with the concrete orientation work",
                 );
-                assert.match(content, /## FIND0 \[\+init\] \(worker:\/\/\/\*\) <!-- workspace entries -->/, "the classified markerless shallow survey is rendered back to DSL with its annotation");
-                assert.doesNotMatch(content, /## FIND0 \[\+init\] \(worker:\/\/\/\*\) <!-- workspace entries --> </, "the ordinary survey does not teach an explicit all-results scope");
+                assert.match(content, /## FIND0 \[\+_plurnk,\+init\] \(worker:\/\/\/\*\) <!-- workspace entries -->/, "the classified markerless shallow survey is rendered back to DSL with its annotation");
+                assert.doesNotMatch(content, /## FIND0 \[\+_plurnk,\+init\] \(worker:\/\/\/\*\) <!-- workspace entries --> </, "the ordinary survey does not teach an explicit all-results scope");
                 assert.match(
                     content,
                     /## SEND0 \[102\]\nNext: Address the prompt\.$/,
@@ -228,7 +229,7 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                     { scheme: "worker", hostname: "~", pathname: "/*" },
                 ], "the six surveys execute in their taught order");
                 assert.deepEqual(finds.map(({ signal }) => JSON.parse(signal ?? "null")), [
-                    ["+init", "+skills"], ["+init", "+skills"], ["+init", "+tools"], ["+init"], ["+init"], ["+init"],
+                    ["+_plurnk", "+init", "+skills"], ["+_plurnk", "+init", "+skills"], ["+_plurnk", "+init", "+tools"], ["+_plurnk", "+init"], ["+_plurnk", "+init"], ["+_plurnk", "+init"],
                 ]);
                 const orientations = [
                     ["project files", finds.find((r) => r.scheme === null && r.pathname === "*"), true, 200],
@@ -280,16 +281,21 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                 assert.equal(content, `# PLAN0
 * Discover the tooling available and survey the workspace file root.
 
-## FIND0 [+init,+skills] (worker://plurnk/skills/*.md) <1,-1>
-## FIND0 [+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>
-## FIND0 [+init,+tools] (worker://plurnk/tools/*.md) <1,-1> <!-- enabled tools -->
-## FIND0 [+init] (*) <!-- workspace files -->
-## FIND0 [+init] (worker:///*) <!-- workspace entries -->
-## FIND0 [+init] (worker://~/*) <!-- worker entries -->
+## FIND0 [+_plurnk,+init,+skills] (worker://plurnk/skills/*.md) <1,-1>
+## FIND0 [+_plurnk,+init,+skills] (worker://plurnk/skills/plurnk/*.md) <1,-1>
+## FIND0 [+_plurnk,+init,+tools] (worker://plurnk/tools/*.md) <1,-1> <!-- enabled tools -->
+## FIND0 [+_plurnk,+init] (*) <!-- workspace files -->
+## FIND0 [+_plurnk,+init] (worker:///*) <!-- workspace entries -->
+## FIND0 [+_plurnk,+init] (worker://~/*) <!-- worker entries -->
 
 ## SEND0 [102]
 Next: Address the prompt.`);
                 const logTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: modelWorkerId });
+                assert.deepEqual(
+                    logTags.filter(({ coordinate }) => coordinate === "1/1/1").map(({ tag }) => tag),
+                    ["_plurnk", "init"],
+                    "the actionless receipt classifies the real internal initialization turn",
+                );
                 const tagsBySequence = new Map<number, string[]>();
                 for (const { sequence } of finds) tagsBySequence.set(sequence, []);
                 for (const { coordinate, tag } of logTags) {
@@ -297,7 +303,7 @@ Next: Address the prompt.`);
                     tagsBySequence.get(sequence)?.push(tag);
                 }
                 assert.deepEqual(finds.map(({ sequence }) => tagsBySequence.get(sequence)), [
-                    ["init", "skills"], ["init", "skills"], ["init", "tools"], ["init"], ["init"], ["init"],
+                    ["_plurnk", "init", "skills"], ["_plurnk", "init", "skills"], ["_plurnk", "init", "tools"], ["_plurnk", "init"], ["_plurnk", "init"], ["_plurnk", "init"],
                 ], "each FIND classifies its own durable log item; the skills surveys retain the shared init set");
             } finally { ws.close(); }
         });

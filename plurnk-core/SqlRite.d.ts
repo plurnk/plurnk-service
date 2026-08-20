@@ -52,7 +52,6 @@ export class SqlRiteSync {
 	static open(options?: SqlRiteOptions): Promise<SqlRiteSync>;
 	close(): void;
 	[Symbol.dispose](): void;
-	engine_grinder_apply(params?: Record<string, unknown>): SqlRiteResult;
 	crud_find_workspace_entry: SqlRiteSyncPreparedStatements;
 	crud_read_channels: SqlRiteSyncPreparedStatements;
 	crud_insert_workspace_entry: SqlRiteSyncPreparedStatements;
@@ -181,6 +180,7 @@ export class SqlRiteSync {
 	engine_loop_turn_seqs: SqlRiteSyncPreparedStatements;
 	engine_open_turn: SqlRiteSyncPreparedStatements;
 	engine_close_turn: SqlRiteSyncPreparedStatements;
+	engine_close_packetless_turn: SqlRiteSyncPreparedStatements;
 	engine_open_model_call: SqlRiteSyncPreparedStatements;
 	engine_observe_model_call_response: SqlRiteSyncPreparedStatements;
 	engine_fail_model_call: SqlRiteSyncPreparedStatements;
@@ -201,8 +201,8 @@ export class SqlRiteSync {
 	engine_child_workers_live: SqlRiteSyncPreparedStatements;
 	engine_child_streams_open: SqlRiteSyncPreparedStatements;
 	engine_render_errors: SqlRiteSyncPreparedStatements;
-	engine_grinder_boundary_rows: SqlRiteSyncPreparedStatements;
-	engine_grinder_open_effects: SqlRiteSyncPreparedStatements;
+	overflow_turn_boundary_rows: SqlRiteSyncPreparedStatements;
+	overflow_turn_open_effects: SqlRiteSyncPreparedStatements;
 	engine_fold_log_entry: SqlRiteSyncPreparedStatements;
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_insert_log_entry: SqlRiteSyncPreparedStatements;
@@ -281,6 +281,7 @@ export class SqlRiteSync {
 	lifecycle_finish_loop: SqlRiteSyncPreparedStatements;
 	lifecycle_loop_status: SqlRiteSyncPreparedStatements;
 	lifecycle_loop_turns: SqlRiteSyncPreparedStatements;
+	lifecycle_loop_model_turn_count: SqlRiteSyncPreparedStatements;
 	lifecycle_worker_tree: SqlRiteSyncPreparedStatements;
 	lifecycle_cancel_worker_tree: SqlRiteSyncPreparedStatements;
 	owner_is_ancestor_or_self: SqlRiteSyncPreparedStatements;
@@ -312,7 +313,6 @@ export default class SqlRite {
 	ready(): Promise<SqlRite>;
 	close(): Promise<void>;
 	[Symbol.asyncDispose](): Promise<void>;
-	engine_grinder_apply(params?: Record<string, unknown>): Promise<SqlRiteResult>;
 	crud_find_workspace_entry: SqlRitePreparedStatements;
 	crud_read_channels: SqlRitePreparedStatements;
 	crud_insert_workspace_entry: SqlRitePreparedStatements;
@@ -441,6 +441,7 @@ export default class SqlRite {
 	engine_loop_turn_seqs: SqlRitePreparedStatements;
 	engine_open_turn: SqlRitePreparedStatements;
 	engine_close_turn: SqlRitePreparedStatements;
+	engine_close_packetless_turn: SqlRitePreparedStatements;
 	engine_open_model_call: SqlRitePreparedStatements;
 	engine_observe_model_call_response: SqlRitePreparedStatements;
 	engine_fail_model_call: SqlRitePreparedStatements;
@@ -461,8 +462,8 @@ export default class SqlRite {
 	engine_child_workers_live: SqlRitePreparedStatements;
 	engine_child_streams_open: SqlRitePreparedStatements;
 	engine_render_errors: SqlRitePreparedStatements;
-	engine_grinder_boundary_rows: SqlRitePreparedStatements;
-	engine_grinder_open_effects: SqlRitePreparedStatements;
+	overflow_turn_boundary_rows: SqlRitePreparedStatements;
+	overflow_turn_open_effects: SqlRitePreparedStatements;
 	engine_fold_log_entry: SqlRitePreparedStatements;
 	engine_render_log: SqlRitePreparedStatements;
 	engine_insert_log_entry: SqlRitePreparedStatements;
@@ -541,6 +542,7 @@ export default class SqlRite {
 	lifecycle_finish_loop: SqlRitePreparedStatements;
 	lifecycle_loop_status: SqlRitePreparedStatements;
 	lifecycle_loop_turns: SqlRitePreparedStatements;
+	lifecycle_loop_model_turn_count: SqlRitePreparedStatements;
 	lifecycle_worker_tree: SqlRitePreparedStatements;
 	lifecycle_cancel_worker_tree: SqlRitePreparedStatements;
 	owner_is_ancestor_or_self: SqlRitePreparedStatements;

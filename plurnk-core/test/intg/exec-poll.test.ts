@@ -75,7 +75,7 @@ test("an explicit zero cadence stays blind while open but still wakes exactly on
                 await rpcCall(ws, 1, "workspace.create", { name: "exec-poll-blind" });
                 const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
                 assert.equal(finalStatus, 200);
-                assert.equal(turnIds?.length, 2, "no pre-closure poll turn consumed the terminal response");
+                assert.equal(turnIds?.length, 3, "initialization plus two model turns; no pre-closure poll consumed the terminal response");
                 assert.equal(mock.remaining, 0, "closure produced the only continuation");
             } finally { ws.close(); }
         });

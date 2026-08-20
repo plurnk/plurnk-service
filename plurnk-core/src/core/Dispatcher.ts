@@ -58,7 +58,7 @@ import type { ProviderEncryptedReasoningItem } from "@plurnk/plurnk-providers";
 import DurableStatement from "./DurableStatement.ts";
 import type { LogCurationOutcome, LogCurationPlan } from "../schemes/Log.ts";
 import ResourceMutations from "./ResourceMutations.ts";
-import LogBody from "./LogBody.ts";
+import LogBody, { type ActionlessLogKind } from "./LogBody.ts";
 
 // SPEC {§scheme-surface}: writer must be in target scheme's manifest.writableBy.
 // OPEN/FOLD/READ/FIND are not gated — they curate the log or read, never mutating an entry.
@@ -1183,7 +1183,7 @@ export default class Dispatcher {
 
     async #writeActionlessEntry({ verbatim, workerId, loopId, turnId, sequence, origin, kind, folded, modelCallId = null, attrs = {} }: {
         verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
-        origin: "model" | "plurnk"; kind: "initialization" | "model_emission"; folded: boolean;
+        origin: "model" | "_plurnk"; kind: ActionlessLogKind; folded: boolean;
         modelCallId?: number | null;
         attrs?: Readonly<Record<string, unknown>>;
     }): Promise<number> {
@@ -1222,7 +1222,18 @@ export default class Dispatcher {
     }): Promise<number> {
         return this.#writeActionlessEntry({
             verbatim, workerId, loopId, turnId, sequence,
-            origin: "plurnk", kind: "initialization", folded: false,
+            origin: "_plurnk", kind: "initialization", folded: false,
+        });
+    }
+
+    // {§overflow-turn-receipt} — the kernel-authored, born-open account of
+    // one transparent budget-recovery operation batch.
+    async writeOverflowEntry({ verbatim, workerId, loopId, turnId, sequence }: {
+        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
+    }): Promise<number> {
+        return this.#writeActionlessEntry({
+            verbatim, workerId, loopId, turnId, sequence,
+            origin: "_plurnk", kind: "overflow", folded: false,
         });
     }
 

@@ -22,7 +22,7 @@ test("prompt:// scheme manifest: engine-authored, model-READ-ONLY, body channel,
     assert.equal(Prompt.manifest.modelVisible, true, "the model READS its task frames");
     assert.ok(!Prompt.manifest.writableBy.includes("model"), "the model never writes prompt:// — it is engine-authored");
     assert.ok(Prompt.manifest.writableBy.includes("client"));
-    assert.ok(Prompt.manifest.writableBy.includes("plurnk"));
+    assert.ok(Prompt.manifest.writableBy.includes("_plurnk"));
     assert.equal(Prompt.manifest.documentation, undefined, "prompt:// needs no redundant pull document");
 });
 

@@ -162,7 +162,7 @@ test("Engine.dispatch preserves log KILL's missing-coordinate failure", async ()
     try {
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/0") }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "plurnk",
+            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "_plurnk",
         });
         assert.equal(kill.status, 404, "a missing log coordinate remains not found");
     } finally { await db.close(); }
@@ -859,7 +859,7 @@ test("Engine.dispatch: an invalid classifying signal fails before EDIT mutates a
 test("Engine.dispatch: origin field captured in log", async () => {
     const { db, engine, env } = await setup();
     try {
-        for (const [i, origin] of (["model", "client", "plurnk", "plugin"] as const).entries()) {
+        for (const [i, origin] of (["model", "client", "_plurnk", "plugin"] as const).entries()) {
             await engine.dispatch({
                 statement: editStmt({ target: urlPath("worker", `/o${i}`), body: "x" }),
                 workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
@@ -867,7 +867,7 @@ test("Engine.dispatch: origin field captured in log", async () => {
             });
         }
         const rows = await db.test_log_entries_by_turn.all<{ origin: string; sequence: number }>({ turn_id: env.turnId });
-        assert.deepEqual(rows.map((r) => r.origin), ["model", "client", "plurnk", "plugin"]);
+        assert.deepEqual(rows.map((r) => r.origin), ["model", "client", "_plurnk", "plugin"]);
     } finally { await db.close(); }
 });
 
@@ -877,7 +877,7 @@ test("Engine.dispatch: origin field captured in log", async () => {
 test("Engine.dispatch: a writer outside writableBy is rejected 403 without invoking the handler", async () => {
     const { db, engine, env } = await setup();
     try {
-        // worker://'s writableBy is ['model','client','plurnk'] — a plugin-origin EDIT 403s at the gate.
+        // worker://'s writableBy is ['model','client','_plurnk'] — a plugin-origin EDIT 403s at the gate.
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("worker", "/x"), body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
@@ -887,7 +887,7 @@ test("Engine.dispatch: a writer outside writableBy is rejected 403 without invok
         assert.equal(result.problem?.type, "https://problems.plurnk.dev/engine/dispatcher/writer-forbidden");
         assert.equal(result.problem?.writer, "plugin");
         assert.equal(result.problem?.scheme, "worker");
-        assert.deepEqual(result.problem?.allowedWriters, ["model", "client", "plurnk"]);
+        assert.deepEqual(result.problem?.allowedWriters, ["model", "client", "_plurnk"]);
         // 403 still writes a log row
         const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number; scheme: string }>({ turn_id: env.turnId });
         assert.equal(log?.status_rx, 403);
@@ -950,14 +950,14 @@ test("Engine.dispatch: model READ log:/// is NOT gated by writableBy (read-side 
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: plurnk EDIT log:/// is allowed by writableBy", async () => {
+test("Engine.dispatch: _plurnk EDIT log:/// is allowed by writableBy", async () => {
     const { db, engine, env } = await setup();
     try {
         // Log has no edit() handler — so this returns 501 (not 403) when allowed.
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("log", "/x"), body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
-            sequence: 1, origin: "plurnk",
+            sequence: 1, origin: "_plurnk",
         });
         assert.notEqual(result.status, 403);
     } finally { await db.close(); }

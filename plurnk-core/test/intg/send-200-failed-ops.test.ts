@@ -19,7 +19,7 @@ test("{§send-premature-terminate}: a failed op blocks same-turn 200 until the n
             await rpcCall(ws, 1, "workspace.create", { name: "failgate" });
             const { finalStatus, turnIds = [], loopId } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
             assert.equal(finalStatus, 200, "the loop concluded on the SECOND turn, failures weighed");
-            assert.equal(turnIds.length, 2, "exactly two turns — the refusal forced one weigh turn, no more");
+            assert.equal(turnIds.length, 3, "initialization plus two model turns — the refusal forced one observation turn, no more");
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const sends = (rows ?? []).filter((r) => r.op === "SEND" && r.origin === "model");
@@ -39,7 +39,7 @@ test("{§send-premature-terminate}: SEND[499] deliberately abandons a same-turn 
             await rpcCall(ws, 1, "workspace.create", { name: "abandon" });
             const { finalStatus, turnIds = [] } = await runLoopToTerminal(ws, 2, { prompt: "go", flags: { auto: true } });
             assert.equal(finalStatus, 499, "the abandon went through in ONE turn — 499 is never gated");
-            assert.equal(turnIds.length, 1);
+            assert.equal(turnIds.length, 2, "packetless initialization precedes the one abandoning model turn");
         } finally { ws.close(); }
     });
 });

@@ -69,7 +69,7 @@ interface Provider {
 `contextWindow` is the effective total context envelope resolved under
 {§model-fact-resolution}: the minimum of known model capacity and any stricter
 operator cap. `null` means genuinely unknown; a consumer MUST NOT invent a
-stand-in. The context-window knob is a hard cap, never model-facing grinder
+stand-in. The context-window knob is a hard cap, never a model-facing curation
 pressure.
 
 §provider-prompt-measurement `PromptTokenMeasurement` is a discriminated

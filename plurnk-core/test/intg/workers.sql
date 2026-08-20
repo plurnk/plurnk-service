@@ -22,7 +22,7 @@ INSERT INTO workers (workspace_id, name, version) VALUES ($workspace_id, $name, 
 
 -- PREP: test_workers_get_by_workspace
 SELECT id, version, workspace_id, name, created_at, parent_worker_id, provider_identity
-FROM workers WHERE workspace_id = $workspace_id AND origin != 'plurnk' LIMIT 1;
+FROM workers WHERE workspace_id = $workspace_id AND origin != '_plurnk' LIMIT 1;
 
 -- PREP: test_workers_get_provider_identity
 SELECT provider_identity FROM workers WHERE id = $id;
@@ -41,14 +41,14 @@ SELECT parent_worker_id FROM workers WHERE id = $id;
 UPDATE workers SET parent_worker_id = $parent_worker_id WHERE id = $id;
 
 -- PREP: test_workers_count
--- Excludes the ambient reserved rows (origin plurnk: commons/kernel); the contract counts test-inserted workers.
-SELECT COUNT(*) AS n FROM workers WHERE origin != 'plurnk';
+-- Excludes the ambient reserved rows (origin _plurnk: commons/kernel); the contract counts test-inserted workers.
+SELECT COUNT(*) AS n FROM workers WHERE origin != '_plurnk';
 
 -- PREP: test_workers_get_workspace_id
 SELECT workspace_id FROM workers WHERE workspace_id IS NOT NULL LIMIT 1;
 
 -- PREP: test_workers_get_one_workspace_id
-SELECT workspace_id FROM workers WHERE origin != 'plurnk';
+SELECT workspace_id FROM workers WHERE origin != '_plurnk';
 
 -- PREP: test_workspaces_delete
 DELETE FROM workspaces WHERE id = $id;
@@ -57,13 +57,13 @@ DELETE FROM workspaces WHERE id = $id;
 DELETE FROM workers WHERE id = $id;
 
 -- PREP: test_workers_list_by_workspace
-SELECT id FROM workers WHERE workspace_id = $workspace_id AND origin != 'plurnk' ORDER BY id;
+SELECT id FROM workers WHERE workspace_id = $workspace_id AND origin != '_plurnk' ORDER BY id;
 
 -- PREP: test_workers_index_exists
 SELECT name FROM sqlite_master WHERE type = 'index' AND name = $name;
 
 -- PREP: test_workers_root_lookup
-SELECT id FROM workers WHERE workspace_id = $workspace_id AND origin != 'plurnk' AND parent_worker_id IS NULL;
+SELECT id FROM workers WHERE workspace_id = $workspace_id AND origin != '_plurnk' AND parent_worker_id IS NULL;
 
 -- EXEC: test_workers_insert_default_values
 INSERT INTO workers DEFAULT VALUES;

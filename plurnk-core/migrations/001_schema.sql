@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS workers (
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
     -- workers fork via parent_worker_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
-    origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', 'plurnk')),
+    origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', '_plurnk')),
     -- {§methods-model-worker}: durable identity for the workspace's stable
     -- default conversation; unrelated to its human-facing, reclaimable name.
     default_conversation INTEGER NOT NULL DEFAULT 0 CHECK (default_conversation IN (0, 1)),
@@ -217,7 +217,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS loops_worker_id_sequence ON loops (worker_id, 
 CREATE UNIQUE INDEX IF NOT EXISTS loops_orphan_source_loop_id ON loops (orphan_source_loop_id);
 -- {§worker-scheme}: a loop crossing into a terminal status stamps terminated_at, so sibling
 -- workers pull the termination as a folded ambient delta — caught uniformly across every
--- death-path (SEND, grinder, max-turns, strike, KILL). The stamp updates terminated_at,
+-- death-path (SEND, overflow recovery, max-turns, strike, KILL). The stamp updates terminated_at,
 -- never status, so it cannot re-fire this trigger. Terminals: 200 done · 413 budget ·
 -- 429 turn-ceiling · 499 cancel · 500 fail · 504 wall-clock timeout · 508 runaway. (202 = parked/sleeping, NOT terminal.)
 CREATE TRIGGER IF NOT EXISTS loops_stamp_terminated_at
@@ -788,7 +788,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     turn_id         INTEGER NOT NULL,
     sequence        INTEGER NOT NULL           CHECK (sequence >= 1),
     at              TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    origin          TEXT    NOT NULL           CHECK (origin IN ('model', 'client', 'plurnk', 'plugin')),
+    origin          TEXT    NOT NULL           CHECK (origin IN ('model', 'client', '_plurnk', 'plugin')),
     -- {§env-delta-attribution}: a worker:// name or stable subsystem token ('file');
     -- NULL = the owning worker itself, rendered without causal attribution.
     source          TEXT,
@@ -805,7 +805,8 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- produced no op still records a log entry (op='error', status_rx≥400, no target) so the model
     -- can fold/kill/recall its own mistakes like any other log row — one budget surface, the log.
     -- Actionless artifacts carry NULL here: kernel-authored worker initialization
-    -- ({§worker-initialization-entry}) or a model emission ({§model-entry}).
+    -- or overflow recovery ({§worker-initialization-entry}, {§overflow-turn-receipt}),
+    -- or a model emission ({§model-entry}).
     -- No op enum here: the grammar op set is grammar's contract (PlurnkOp), and this column is written
     -- only by the PlurnkOp-typed engine (grammar ops), service row selectors, or NULL for no op.
     -- A SQL enum would be a hand-copy of grammar's op list that silently goes stale on every new verb
@@ -845,8 +846,8 @@ CREATE TABLE IF NOT EXISTS log_entries (
     folded           TEXT    NOT NULL DEFAULT '[]'
                     CHECK (json_valid(folded) AND json_type(folded) = 'array'),
 
-    CHECK ((op IS NULL) = COALESCE(json_extract(attrs, '$.kind') IN ('initialization', 'model_emission'), 0)),
-    CHECK (json_extract(attrs, '$.kind') != 'initialization' OR origin = 'plurnk'),
+    CHECK ((op IS NULL) = COALESCE(json_extract(attrs, '$.kind') IN ('initialization', 'overflow', 'model_emission'), 0)),
+    CHECK (json_extract(attrs, '$.kind') NOT IN ('initialization', 'overflow') OR origin = '_plurnk'),
     CHECK (json_extract(attrs, '$.kind') != 'model_emission' OR origin = 'model'),
 
     FOREIGN KEY (worker_id)  REFERENCES workers(id)  ON DELETE CASCADE,
@@ -1040,6 +1041,27 @@ BEGIN
     WHERE kind = 'edit'
       AND producer_worker_id = NEW.worker_id
       AND source_record_id = NEW.id;
+END;
+
+-- {§worker-initialization-entry} {§overflow-turn-receipt} — kernel receipts
+-- are structurally self-classifying. Their immutable provenance and mutable
+-- folksonomy therefore cannot drift apart through a caller omission.
+CREATE TRIGGER IF NOT EXISTS log_entries_classify_plurnk_actionless
+AFTER INSERT ON log_entries
+WHEN NEW.op IS NULL
+ AND NEW.origin = '_plurnk'
+ AND json_extract(NEW.attrs, '$.kind') IN ('initialization', 'overflow')
+BEGIN
+    INSERT INTO log_tags (log_entry_id, tag)
+    VALUES (NEW.id, '_plurnk');
+    INSERT INTO log_tags (log_entry_id, tag)
+    VALUES (
+        NEW.id,
+        CASE json_extract(NEW.attrs, '$.kind')
+            WHEN 'initialization' THEN 'init'
+            ELSE 'overflow'
+        END
+    );
 END;
 
 -- Successful OPEN/FOLD rows are durable curation events even though their
@@ -1408,7 +1430,7 @@ WHEN NEW.ambient_event_id IS NULL
  AND (NEW.scheme IS NULL OR NEW.scheme != 'plurnk')
  AND (NEW.scheme IS NULL OR NEW.scheme != 'worker' OR NEW.hostname IS NULL OR NEW.hostname = 'plurnk')
  AND (
-     NEW.origin != 'plurnk'
+     NEW.origin != '_plurnk'
      OR EXISTS (SELECT 1 FROM workers w WHERE w.id = NEW.worker_id AND w.name = 'plurnk')
  )
 BEGIN
@@ -1442,7 +1464,7 @@ WHEN OLD.state = 'proposed'
  AND (NEW.scheme IS NULL OR NEW.scheme != 'plurnk')
  AND (NEW.scheme IS NULL OR NEW.scheme != 'worker' OR NEW.hostname IS NULL OR NEW.hostname = 'plurnk')
  AND (
-     NEW.origin != 'plurnk'
+     NEW.origin != '_plurnk'
      OR EXISTS (SELECT 1 FROM workers w WHERE w.id = NEW.worker_id AND w.name = 'plurnk')
  )
 BEGIN

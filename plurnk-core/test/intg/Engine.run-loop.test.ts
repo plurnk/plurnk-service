@@ -58,7 +58,7 @@ test("Engine.runLoop: three-turn loop terminating on SEND[200]", async () => {
             provider, workspaceId, workerId, loopId,
             messages: [{ role: "user", content: "do three steps" }],
         });
-        assert.equal(result.turnIds.length, 3);
+        assert.equal(result.turnIds.length, 4, "packetless initialization precedes three model turns");
         assert.equal(result.result.status, 200);
         assert.equal(result.hitMaxTurns, false);
 
@@ -84,7 +84,7 @@ test("Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns 
             provider, workspaceId, workerId, loopId, maxTurns: 3,
             messages: [{ role: "user", content: "never terminate" }],
         });
-        assert.equal(result.turnIds.length, 3);
+        assert.equal(result.turnIds.length, 4, "packetless initialization does not consume the three-model-turn ceiling");
         assert.equal(result.result.status, 429, "max_turns → 429 Too Many Requests");
         assert.equal(result.hitMaxTurns, true);
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
@@ -115,7 +115,7 @@ test("maxTurns=-1 disables the turn terminator — loop ends on SEND, not a cap"
             provider, workspaceId, workerId, loopId, maxTurns: -1,
             messages: [{ role: "user", content: "run until I say done" }],
         });
-        assert.equal(result.turnIds.length, 5, "ran all five turns — no turn cap");
+        assert.equal(result.turnIds.length, 6, "initialization plus all five model turns — no turn cap");
         assert.equal(result.result.status, 200);
         assert.equal(result.hitMaxTurns, false);
     } finally { await db.close(); }
@@ -135,7 +135,7 @@ test("Engine.runLoop: idle turn (102, no work op) steers and strikes — spins o
         });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
         assert.equal(result.result.status, 500, "idle spin-out is the engine ruling failure, not the model's 499");
-        assert.equal(result.turnIds.length, 2, "struck out at maxStrikes:2, well before maxTurns:10");
+        assert.equal(result.turnIds.length, 3, "initialization plus two model strikes, well before maxTurns:10");
         // The idle steer is a terse op='error' log row (409 Idle Turn) — its derived LogCoordinate
         // pointer reaches the model; the guidance lives in the packet, not the row.
         let steered = false;
@@ -159,11 +159,11 @@ test("Engine.runLoop: premature terminate (200 over a live stream) downgrades to
             response([sendStmt(499, "abandoning")]),  // turn 2: 499 is the model-decided exit the contract allows over a live stream
         ] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
-        assert.equal(result.turnIds.length, 2, "the premature 200 was downgraded, not honored — the loop ran on");
+        assert.equal(result.turnIds.length, 3, "initialization plus two model turns prove the premature 200 was not honored");
         assert.equal(result.result.status, 499, "the loop ended on the model's 499, never the premature 200");
         // The premature steer is a terse op='error' log row (409 Premature Termination); its derived
         // LogCoordinate pointer reaches the model on the next packet — the guidance lives in the packet.
-        const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[1] });
+        const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[2] });
         const packet = JSON.parse(row?.packet ?? "{}");
         assert.match(packetSection(packet, "errors"), /^\* 409 log:\/\/\/.+\/SEND$/m, "the premature SEND failure surfaced as a terse log-coordinate pointer");
     } finally { await db.close(); }
@@ -228,7 +228,7 @@ test("Engine.runLoop: 499 model-emitted termination", async () => {
             provider, workspaceId, workerId, loopId,
             messages: [{ role: "user", content: "may abort" }],
         });
-        assert.equal(result.turnIds.length, 2);
+        assert.equal(result.turnIds.length, 3, "packetless initialization precedes both model turns");
         assert.equal(result.result.status, 499);
         assert.equal(result.hitMaxTurns, false);
     } finally { await db.close(); }
@@ -256,8 +256,8 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
             provider, workspaceId, workerId, loopId,
             messages: [{ role: "user", content: "store then retrieve" }],
         });
-        assert.equal(result.turnIds.length, 3);
-        const readLog = await db.test_read_log_entries_for_turn_by_op.get<{ status_rx: number }>({ turn_id: result.turnIds[1], op: "READ" });
+        assert.equal(result.turnIds.length, 4, "packetless initialization precedes three model turns");
+        const readLog = await db.test_read_log_entries_for_turn_by_op.get<{ status_rx: number }>({ turn_id: result.turnIds[2], op: "READ" });
         assert.equal(readLog?.status_rx, 200, "READ in turn 2 found the entry written in turn 1");
     } finally { await db.close(); }
 });
@@ -291,7 +291,7 @@ test("Engine.runLoop: turn sequence numbers monotonic", async () => {
         });
         await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
         const seqs = await db.test_list_turns_in_loop.all<{ sequence: number }>({ loop_id: loopId });
-        assert.deepEqual(seqs.map((s) => s.sequence), [1, 2, 3]);
+        assert.deepEqual(seqs.map((s) => s.sequence), [1, 2, 3, 4]);
     } finally { await db.close(); }
 });
 

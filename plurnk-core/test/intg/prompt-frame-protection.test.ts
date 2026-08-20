@@ -1,10 +1,11 @@
-// {§prompt-entry}, {§grinder-errors-exempt}. Prompt frames are ordinary
-// curatable log memory. The automatic grinder preserves them, while explicit
+// {§prompt-entry}, {§overflow-turn-exemptions}. Prompt frames are ordinary
+// curatable log memory. The automatic overflow recovery preserves them, while explicit
 // OPEN/FOLD/KILL follows the universal log-curation contract.
 import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import OverflowTurn from "../../src/core/OverflowTurn.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { foldStmt, editStmt, openStmt } from "./_dsl.ts";
@@ -24,7 +25,9 @@ async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
         provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [{ op: "SEND", annotation: null, delimiter: "", signal: 102, target: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }] } }] }),
         workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "Improve the module loader so require() stays deterministic." }],
     });
-    const curationTurn = await insertTurn(db, loopId, 2, 102);
+    const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
+    if (next === undefined) throw new Error("next turn sequence unavailable");
+    const curationTurn = await insertTurn(db, loopId, next.next, 102);
     return { workspaceId, workerId, loopId, engine, curationTurn };
 }
 
@@ -32,8 +35,8 @@ test("an explicit FOLD of the prompt row is ordinary curation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
-        // The turn-0 initialization is row 1; the prompt is row 2.
-        const r = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        // Turn 1 is initialization; the first model turn's prompt is turn 2, row 1.
+        const r = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/2/1/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 200, "the valid prompt log row folds like every other open row");
         assert.equal((r as { matched?: number }).matched, 1);
         const visibility = await db.test_prompt_folded.get<{ folded: string }>({});
@@ -45,9 +48,9 @@ test("the prompt row can be folded and opened again", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
-        const folded = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        const folded = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/2/1/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.equal(folded.status, 200, "FOLD of the frame body is legal");
-        const opened = await engine.dispatch({ statement: openStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
+        const opened = await engine.dispatch({ statement: openStmt(urlLog("log:///1/2/1/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
         assert.equal(opened.status, 200, "OPEN restores the configured prompt projection");
         const visibility = await db.test_prompt_folded.get<{ folded: string }>({});
         assert.equal(visibility?.folded, "[]", "the frame survives the round trip");
@@ -65,7 +68,7 @@ test("prior and current loop prompts share the same explicit curation contract",
             workspaceId, workerId, loopId: loop2, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the next task" }],
         });
         const curationTurn = await insertTurn(db, loop2, 2, 102);
-        const stale = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 1, origin: "model" });
+        const stale = await engine.dispatch({ statement: foldStmt(urlLog("log:///1/2/1/prompt")), workspaceId, workerId, loopId: loop2, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.equal(stale.status, 200, "the old loop's prompt folds");
         assert.equal((stale as { matched?: number }).matched, 1, "the fold matched the stale prompt row - not a vacuous zero-match 200");
         // Loop 2 has no initialization, so its prompt is row 1.
@@ -78,17 +81,15 @@ test("KILL of the prompt remains deliberate curation", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
-        const r = await engine.dispatch({ statement: killStmt(urlLog("log:///1/1/2/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
+        const r = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/prompt")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         assert.ok(r.status < 400, `KILL of the prompt succeeds (deliberate) — got ${r.status}`);
     } finally { await db.close(); }
 });
 
-test("the grinder never folds the prompt frame, even on overflow", async () => {
+test("the overflow recovery never folds the prompt frame, even on overflow", async () => {
     const db = await openMigrated();
     try {
-        const { workerId, loopId } = await seedPromptWorker(db);
-        // Fire the grinder's fold directly (as enforceBudget does on overflow) against turn 1.
-        const t1 = await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: loopId, sequence: 1 });
+        const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
         const before = await db.engine_render_log.all<{
             id: number;
             loop_seq: number;
@@ -98,11 +99,21 @@ test("the grinder never folds the prompt frame, even on overflow", async () => {
             scheme: string | null;
             folded: string;
         }>({ worker_id: workerId });
-        const { default: PacketBuilder } = await import("../../src/core/PacketBuilder.ts");
-        const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
-        await builder.rollbackNewestBoundary(loopId, t1!.id);
+        const folds = await OverflowTurn.plan(db, loopId, curationTurn);
+        for (const [index, { statement }] of folds.entries()) {
+            const result = await engine.dispatch({
+                statement,
+                workspaceId,
+                workerId,
+                loopId,
+                turnId: curationTurn,
+                sequence: index + 1,
+                origin: "_plurnk",
+            });
+            assert.ok(result.status < 400, "the ordinary recovery FOLD succeeds");
+        }
         const visibility = await db.test_prompt_folded.get<{ folded: string }>({});
-        assert.equal(visibility?.folded, "[]", "the grinder skipped the prompt — the task frame survives its reclamation");
+        assert.equal(visibility?.folded, "[]", "the overflow recovery skipped the prompt — the task frame survives its reclamation");
 
         const after = new Map((await db.engine_render_log.all<{ id: number; folded: string }>({ worker_id: workerId }))
             .map((row) => [row.id, row.folded]));
@@ -114,7 +125,7 @@ test("the grinder never folds the prompt frame, even on overflow", async () => {
             .filter(({ tag }) => tag === "overflow")
             .map(({ coordinate }) => coordinate)
             .sort();
-        assert.deepEqual(overflowTags, expected, "the grinder tags exactly the rows it folds as overflow");
+        assert.deepEqual(overflowTags, expected, "the overflow recovery tags exactly the rows it folds as overflow");
     } finally { await db.close(); }
 });
 
@@ -148,7 +159,7 @@ test("OPEN/FOLD are recorded in the DB but suppressed from the packet render", a
         const { workspaceId, workerId, loopId, engine, curationTurn } = await seedPromptWorker(db);
         // seed a genuine non-prompt row (a worker:/// note), then fold IT so the success records
         await engine.dispatch({ statement: editStmt(urlWorker("worker:///scratch"), "note"), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
-        await engine.dispatch({ statement: foldStmt(urlLog("log:///1/2/1/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
+        await engine.dispatch({ statement: foldStmt(urlLog("log:///1/3/1/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
         const dbRow = await db.test_count_op.get<{ n: number }>({ op: "FOLD" });
         assert.ok((dbRow?.n ?? 0) >= 1, "the FOLD is recorded in the DB (forensics)");
         const rendered = await db.engine_render_log.all<{ op: string }>({ worker_id: workerId });
@@ -163,7 +174,7 @@ test("a successful log-item KILL is suppressed; a non-log KILL renders", async (
         // Two seeds: a worker:/// note (a real artifact) and a log row to curate. KILL each.
         await engine.dispatch({ statement: editStmt(urlWorker("worker:///scratch"), "note"), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 1, origin: "model" });
         // KILL the log EDIT row just written (a LOG item) — the run61 tombstone case.
-        const logKill = await engine.dispatch({ statement: killStmt(urlLog("log:///1/2/1/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
+        const logKill = await engine.dispatch({ statement: killStmt(urlLog("log:///1/3/1/EDIT")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model" });
         assert.ok(logKill.status < 400, `KILL of the log item succeeds — got ${logKill.status}`);
         // KILL the worker:/// note (a WORLD mutation, not log housekeeping).
         const noteKill = await engine.dispatch({ statement: killStmt(urlWorker("worker:///scratch")), workspaceId, workerId, loopId, turnId: curationTurn, sequence: 3, origin: "model" });

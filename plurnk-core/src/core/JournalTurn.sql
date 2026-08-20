@@ -1,4 +1,4 @@
--- Journal-only turn helpers. Client and plurnk actor work needs an ordered
+-- Journal-only turn helpers. Client and `_plurnk` actor work needs an ordered
 -- Turn container for log rows but does not assemble a model packet.
 
 -- PREP: journal_turn_next_sequence

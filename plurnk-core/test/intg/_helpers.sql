@@ -168,6 +168,16 @@ SELECT status FROM turns WHERE id = $id;
 -- PREP: test_list_turns_in_loop
 SELECT id, sequence, status, packet FROM turns WHERE loop_id = $loop_id ORDER BY sequence;
 
+-- PREP: test_latest_model_turn_in_loop
+-- Packetless chronology is a turn but not a model turn. A logical model call
+-- identifies the latest inference turn even while its packet is still open.
+SELECT t.id, t.sequence, t.status, t.packet, t.finish_reason, t.model, t.meta
+FROM turns t
+WHERE t.loop_id = $loop_id
+  AND EXISTS (SELECT 1 FROM model_calls mc WHERE mc.turn_id = t.id)
+ORDER BY t.sequence DESC
+LIMIT 1;
+
 -- PREP: test_log_entries_by_turn
 SELECT sequence, status_rx, pathname, scheme, fragment, op, origin, signal, rx, attrs, weight, model_call_id
 FROM log_entries WHERE turn_id = $turn_id ORDER BY sequence;
@@ -185,11 +195,18 @@ JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE l.worker_id = $worker_id ORDER BY coordinate, lt.tag;
 
+-- PREP: test_log_tags_by_turn
+SELECT le.sequence, lt.tag
+FROM log_tags lt
+JOIN log_entries le ON le.id = lt.log_entry_id
+WHERE le.turn_id = $turn_id
+ORDER BY le.sequence, lt.tag;
+
 -- PREP: test_log_entries_by_loop
 -- The model loop's own entries, independent of which worker owns it
 -- ({§connection-lifecycle}), so a test queries by the loopId it holds.
--- origin is the writer tier (model | client | plurnk) — lets a test assert an engine foist
--- (origin='plurnk') vs a model op without a second query.
+-- origin is the writer tier (model | client | _plurnk) — lets a test assert an engine foist
+-- (origin='_plurnk') vs a model op without a second query.
 SELECT id, op, pathname, scheme, hostname, sequence, turn_id, loop_id, status_rx, signal, tx, rx,
        folded, origin, lineMarker, attrs
 FROM log_entries WHERE loop_id = $loop_id ORDER BY id;

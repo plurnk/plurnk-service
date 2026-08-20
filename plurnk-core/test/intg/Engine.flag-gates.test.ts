@@ -30,7 +30,7 @@ class SideEffectingScheme {
         channels: {},
         defaultChannel: "body",
         category: "data",
-        writableBy: ["model", "client", "plurnk"],
+        writableBy: ["model", "client", "_plurnk"],
         volatile: false,
         modelVisible: true,
         flags: { excludedInAsk: true },

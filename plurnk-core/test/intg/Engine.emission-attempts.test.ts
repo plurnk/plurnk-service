@@ -82,10 +82,12 @@ test("provider I/O begins only after its pending attempt row is durable", async 
         });
         const generate = provider.generate.bind(provider);
         provider.generate = async (args) => {
+            const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
+            assert.ok(turn, "the pending call identifies its owning model turn");
             const attempts = await db.test_turn_attempts.all<{
                 state: string;
                 completed_at: string | null;
-            }>({ turn_id: (await db.test_turns_get_full.get<{ id: number }>({ loop_id: loopId }))!.id });
+            }>({ turn_id: turn.id });
             assert.deepEqual(attempts.map(({ state, completed_at }) => ({
                 state,
                 completed_at,
@@ -256,7 +258,8 @@ test("invalid emissions retry beneath one turn against the identical packet, the
         assert.equal(result.emissionAttempts, 3);
         assert.equal(result.emissionExhausted, false);
         assert.equal(new Set(provider.packets).size, 1, "every provider attempt receives the identical packet");
-        assert.equal((await db.test_count_turns.get<{ n: number }>())?.n, 1, "attempts do not open extra turns");
+        assert.equal((await db.test_count_turns.get<{ n: number }>())?.n, 2,
+            "private attempts share one model turn beside packetless initialization");
 
         const attempts = await db.test_turn_attempts.all<{
             sequence: number;
@@ -292,7 +295,11 @@ test("invalid emissions retry beneath one turn against the identical packet, the
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string }>({ turn_id: result.turnId });
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "invalid emissions do not mint model-visible errors");
-        assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "initialization").length, 1, "the turn-zero initialization is classified independently");
+        assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "initialization").length, 0,
+            "the packetless initialization is not smuggled into the model turn");
+        const chronology = await db.engine_render_log.all<{ op: string | null; attrs: string }>({ worker_id: workerId });
+        assert.equal(chronology.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "initialization").length, 1,
+            "one independently classified initialization remains in the worker chronology");
         assert.equal(rows.filter((row) => row.op === null && JSON.parse(row.attrs).kind === "model_emission").length, 1, "only the accepted model emission is mirrored as model output");
 
         const loopUsage = await engine.loopUsage(loopId);
@@ -715,7 +722,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose only the l
 
         assert.equal(result.result.status, 200);
         assert.equal(result.reason, "external", "the admitted SEND concludes through the ordinary loop lifecycle");
-        assert.equal(result.turnIds.length, 3, "the lifeline is an honestly stored engine turn");
+        assert.equal(result.turnIds.length, 4, "initialization, rejected, informed recovery, and final turns are durable");
         assert.equal(provider.packets.length, 5);
         assert.equal(new Set(provider.packets.slice(0, 3)).size, 1, "private attempts retain one exact packet");
         assert.notEqual(provider.packets[3], provider.packets[2], "the informed recovery has its own packet");
@@ -725,7 +732,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose only the l
         assert.doesNotMatch(provider.packets[3]!, /line [0-9]+|missing|expected/i, "no parser diagnosis is manufactured");
         assert.doesNotMatch(provider.packets[4]!, /1:# PLAN0\\n2:inspect the source/, "the rejected emission is projected only into its recovery packet");
 
-        const [failedTurnId, recoveryTurnId, finalTurnId] = result.turnIds;
+        const [, failedTurnId, recoveryTurnId, finalTurnId] = result.turnIds;
         const failedTurn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: failedTurnId });
         assert.equal(failedTurn?.status, 102);
         assert.equal((JSON.parse(failedTurn?.packet ?? "{}") as { assistant?: unknown }).assistant, undefined);
@@ -749,7 +756,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose only the l
         }>({ worker_id: workerId });
         const rejectedMirror = rows.find((row) => JSON.parse(row.attrs).admission === "rejected");
         assert.ok(rejectedMirror !== undefined);
-        assert.equal(rejectedMirror.turn_seq, 1);
+        assert.equal(rejectedMirror.turn_seq, 2, "the rejected emission belongs to the first packet-bearing turn");
         assert.equal(rejectedMirror.folded, "[[1,-1]]", "the rejected model item remains durably folded");
         assert.match(rejectedMirror.rx, /## READ0 \(file:\/\/\/main\.go/);
         assert.equal(rows.filter((row) => row.origin === "model" && row.op === "READ").length, 0, "no rejected operation dispatches");
@@ -789,7 +796,7 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
         assert.equal(result.reason, "invalid_emission");
         assert.equal(result.result.status, 500);
         assert.equal(result.result.problem?.detail, "No valid PLAN...SEND turn was received after 3 emission attempts.");
-        assert.equal(result.turnIds.length, 2);
+        assert.equal(result.turnIds.length, 3, "packetless initialization precedes both failed model turns");
         assert.equal(provider.packets.length, 6, "each turn receives its independent private attempt budget");
         assert.equal(new Set(provider.packets.slice(0, 3)).size, 1);
         assert.equal(new Set(provider.packets.slice(3)).size, 1);
@@ -797,7 +804,7 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
         assert.match(provider.packets[3]!, /Your previous response contained an unrecoverable syntax error\. No operations were performed\. Try again\./);
         assert.match(provider.packets[3]!, /1:## SEND0 \[200\]\\n2:no plan/);
 
-        const [firstTurnId, recoveryTurnId] = result.turnIds;
+        const [, firstTurnId, recoveryTurnId] = result.turnIds;
         const firstAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: firstTurnId });
         const recoveryAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: recoveryTurnId });
         assert.deepEqual(firstAttempts.map((attempt) => attempt.accepted), [0, 0, 0]);
@@ -825,15 +832,15 @@ test("{§invalid-emission-attempts} consecutive exhaustion of the informed recov
             result.result,
             "the digest preserves the exact terminal generation Problem",
         );
-        const informedPacket = await readFile(join(digestDir, "packet001.user.md"), "utf8");
+        const informedPacket = await readFile(join(digestDir, "packet002.user.md"), "utf8");
         assert.match(informedPacket, /Your previous response contained an unrecoverable syntax error\. No operations were performed\. Try again\./);
         assert.match(informedPacket, /1:## SEND0 \[200\]\n2:no plan/);
         assert.equal(
-            await readFile(join(digestDir, "packet000.attempt003.rejected.assistant.md"), "utf8"),
+            await readFile(join(digestDir, "packet001.attempt003.rejected.assistant.md"), "utf8"),
             "## SEND0 [200]\nno plan",
         );
         assert.equal(
-            await readFile(join(digestDir, "packet001.attempt003.rejected.assistant.md"), "utf8"),
+            await readFile(join(digestDir, "packet002.attempt003.rejected.assistant.md"), "utf8"),
             "recovery invalid three",
         );
     } finally {
@@ -870,15 +877,15 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
     try {
         Digest.run({ dbPath, digestDir });
         assert.equal(
-            await readFile(join(digestDir, "packet000.attempt001.rejected.assistant.md"), "utf8"),
+            await readFile(join(digestDir, "packet001.attempt001.rejected.assistant.md"), "utf8"),
             rejected,
         );
         const rejectedResponse = JSON.parse(
-            await readFile(join(digestDir, "packet000.attempt001.rejected.response.json"), "utf8"),
+            await readFile(join(digestDir, "packet001.attempt001.rejected.response.json"), "utf8"),
         ) as { assistant?: { content?: string } };
         assert.equal(rejectedResponse.assistant?.content, rejected);
         const parseErrors = JSON.parse(
-            await readFile(join(digestDir, "packet000.attempt001.rejected.parse-errors.json"), "utf8"),
+            await readFile(join(digestDir, "packet001.attempt001.rejected.parse-errors.json"), "utf8"),
         ) as Array<{ line?: number; column?: number; source?: string }>;
         assert.deepEqual(
             { line: parseErrors[0]?.line, column: parseErrors[0]?.column, source: parseErrors[0]?.source },
@@ -886,7 +893,7 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
             "the persisted digest evidence retains parser code-point coordinates",
         );
         assert.equal(
-            await readFile(join(digestDir, "packet000.assistant.md"), "utf8"),
+            await readFile(join(digestDir, "packet001.assistant.md"), "utf8"),
             "# PLAN0\ncomplete the task\n\n## SEND0 [200]\naccepted bytes",
         );
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
@@ -951,7 +958,7 @@ test("a provider failure after a rejected emission preserves both issued calls a
 
         assert.equal(provider.packets.length, 2);
         assert.equal(new Set(provider.packets).size, 1, "the infrastructure failure occurred on the same-packet retry");
-        const turn = await db.test_turns_get_full.get<{ id: number }>({ loop_id: loopId });
+        const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
         const requests = await db.test_provider_requests.all<{
             outcome: string;
             usage_input: number | null;
@@ -1029,7 +1036,7 @@ test("a classified provider error retains billed usage and authoritative charge 
             },
         );
 
-        const turn = await db.test_turns_get_full.get<{ id: number }>({ loop_id: loopId });
+        const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
         const request = (await db.test_provider_requests.all<{
             outcome: string;
             status: number;
@@ -1190,7 +1197,7 @@ test("#161: a complete-looking resource-interrupted attempt is persisted but nev
         );
 
         assert.equal(calls, 1, "provider-declared interruption bypasses emission rerolls");
-        const turn = await db.test_turns_get_full.get<{
+        const turn = await db.test_latest_model_turn_in_loop.get<{
             id: number;
             status: number;
             packet: string;
@@ -1273,7 +1280,7 @@ test("an internal attempt-processing failure is not mislabeled as a provider fai
         );
         const rows = await db.test_log_entries_by_loop.all<{ op: string }>({ loop_id: loopId });
         assert.equal(rows.filter(({ op }) => op === "error").length, 0, "core failures do not mint provider Problem rows");
-        const turn = await db.test_turns_get_full.get<{ id: number }>({ loop_id: loopId });
+        const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
         const attempts = await db.test_turn_attempts.all<{
             state: string;
             accepted: number | null;
@@ -1299,7 +1306,7 @@ test("a valid turn with a failed operation remains recoverable and model-visible
                 channels: {},
                 defaultChannel: "",
                 category: "data",
-                writableBy: ["plurnk"],
+                writableBy: ["_plurnk"],
                 volatile: false,
                 modelVisible: true,
                 example: "",

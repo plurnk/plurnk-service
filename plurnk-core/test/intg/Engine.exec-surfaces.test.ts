@@ -31,9 +31,9 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
             await rpcCall(ws, 1, "workspace.create", { name: "exec-surface" });
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "run a command", flags: { auto: true } });
             assert.equal(finalStatus, 200, "loop terminates on the turn-2 SEND[200]");
-            assert.ok((turnIds?.length ?? 0) >= 2, `expected at least 2 turns; got ${turnIds?.length}`);
+            assert.ok((turnIds?.length ?? 0) >= 3, `expected initialization plus at least 2 model turns; got ${turnIds?.length}`);
 
-            const turn2 = turnIds![1];
+            const turn2 = turnIds![2];
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(row?.packet ?? "{}");
             const entries = logEntries(packet);
@@ -42,10 +42,10 @@ test("regression: a model's EXEC result surfaces OPEN in the NEXT turn without a
                 `turn-2 log must link the exec result via stream=; got ${JSON.stringify(entries.map((e) => e.stream))}`,
             );
             // {§exec-stream} — the environment-observation machine foists a READ of the exec stream
-            // into the NEXT turn (origin=plurnk), OPEN because the channel closed: the model SEES
+            // into the NEXT turn (origin=_plurnk), OPEN because the channel closed: the model SEES
             // its output, it never has to find+pull it. This is the loop the live demo exposed.
             assert.ok(
-                entries.some((e) => String(e.path).endsWith("/READ") && e.origin === "plurnk" && String(e.target ?? "").includes("stdout")),
+                entries.some((e) => String(e.path).endsWith("/READ") && e.origin === "_plurnk" && String(e.target ?? "").includes("stdout")),
                 `turn-2 must foist a READ of the exec stdout; got ${JSON.stringify(entries.map((e) => ({ path: e.path, origin: e.origin, target: e.target })))}`,
             );
             assert.match(packetSection(packet, "log"), /plurnk-index-probe/, "the foisted delta surfaces the actual stdout, open");
@@ -70,7 +70,7 @@ test("a generated JSON result stays typed, item-addressable, and complete throug
             });
             assert.equal(finalStatus, 200);
 
-            const turn2 = turnIds![1]!;
+            const turn2 = turnIds![2]!;
             const rows = await db.test_log_entries_by_turn.all<{
                 scheme: string;
                 op: string;
@@ -79,7 +79,7 @@ test("a generated JSON result stays typed, item-addressable, and complete throug
                 weight: number;
             }>({ turn_id: turn2 });
             const observation = rows.find((row) =>
-                row.scheme === "sqlite" && row.op === "READ" && row.origin === "plurnk");
+                row.scheme === "sqlite" && row.op === "READ" && row.origin === "_plurnk");
             assert.ok(observation, "the structured executor result reaches the ambient READ path");
 
             const result = JSON.parse(observation.rx) as { content: string; mimetype: string };
@@ -116,9 +116,9 @@ test("a failed EXEC reaches the model as the executor's exact Problem on its ter
                 flags: { auto: true },
             });
             assert.equal(finalStatus, 200, "the model may conclude after observing the failed execution");
-            assert.ok((turnIds?.length ?? 0) >= 2, `expected at least 2 turns; got ${turnIds?.length}`);
+            assert.ok((turnIds?.length ?? 0) >= 3, `expected initialization plus at least 2 model turns; got ${turnIds?.length}`);
 
-            const turn2 = turnIds![1];
+            const turn2 = turnIds![2];
             const rows = await db.test_log_entries_by_turn.all<{
                 sequence: number;
                 status_rx: number;
@@ -131,7 +131,7 @@ test("a failed EXEC reaches the model as the executor's exact Problem on its ter
             }>({ turn_id: turn2 });
             const terminal = rows.find((row) =>
                 row.op === "READ"
-                && row.origin === "plurnk"
+                && row.origin === "_plurnk"
                 && row.scheme === "sh"
                 && row.status_rx === 500);
             assert.ok(terminal !== undefined, "the next turn contains a failed terminal READ, not a synthetic success");
@@ -189,11 +189,11 @@ test("the cursor-terminal race: a one-burst stream fully shown FOLDED before its
             const row = await db.test_get_packet.get<{ packet: string }>({ id: last });
             const packet = JSON.parse(row?.packet ?? "{}");
             const entries = logEntries(packet);
-            const deltas = entries.filter((e) => String(e.path).endsWith("/READ") && e.origin === "plurnk" && String(e.target ?? "").includes("stdout"));
+            const deltas = entries.filter((e) => String(e.path).endsWith("/READ") && e.origin === "_plurnk" && String(e.target ?? "").includes("stdout"));
             assert.ok(deltas.length >= 1, "the stream's deltas surfaced");
             const log = packetSection(packet, "log");
             assert.match(log, /burst-payload/, "the burst content was delivered born-OPEN as the terminal observation");
-            const stderrConclusion = entries.filter((e) => e.origin === "plurnk" && String(e.target ?? "").includes("stderr") && e.display === "none");
+            const stderrConclusion = entries.filter((e) => e.origin === "_plurnk" && String(e.target ?? "").includes("stderr") && e.display === "none");
             assert.ok(stderrConclusion.length >= 1, "the empty stderr channel still lands a bodyless conclusion row — completion is information, never a silent skip");
         } finally { ws.close(); }
     });

@@ -47,10 +47,10 @@ test("PLAN is a durable goals activity; SEND is assistant speech with the signal
     assert.equal(custom.value.signal, 200, "the signal rides the namespaced custom — never lost, never masquerading");
 });
 
-test("ambient (origin plurnk) rows ride plurnk.ambient; the model mirror row emits nothing", () => {
+test("ambient (origin _plurnk) rows ride plurnk.ambient; the model mirror row emits nothing", () => {
     const tr = t();
     tr.logEntry(entry({ op: "PLAN", tx: "{}" }));
-    const ambient = tr.logEntry(entry({ op: "EDIT", origin: "plurnk", pathname: "/prompt/1/1" }));
+    const ambient = tr.logEntry(entry({ op: "EDIT", origin: "_plurnk", pathname: "/prompt/1/1" }));
     assert.deepEqual(ambient.map((e) => e.type), ["CUSTOM", "CUSTOM"]);
     assert.equal((ambient[1] as { name: string }).name, "plurnk.ambient");
     const mirror = tr.logEntry(entry({ op: null, coordinate: "1/1/3", attrs: { kind: "model_emission" }, tx: "# PLAN0\nx" }));
@@ -266,7 +266,7 @@ test("the workspace log replays PLAN, SEND, and singular encrypted evidence thro
         { id: 5, op: null, origin: "model", coordinate: "1/1/10", turn_id: 1, sequence: 10, attrs: { kind: "model_emission", reasoning: [
             { id: "provider-detail", subtype: "message", encrypted: [{ data: "SEALED", format: "f" }] },
         ] } },
-        { id: 3, op: "EDIT", origin: "plurnk", tx: { body: "ambient" } },
+        { id: 3, op: "EDIT", origin: "_plurnk", tx: { body: "ambient" } },
         { id: 4, op: "SEND", origin: "model", turn_id: 2, sequence: 2, tx: { body: "And done." } },
         { id: 6, op: null, origin: "model", turn_id: 2, sequence: 3, attrs: { kind: "model_emission", reasoning: [
             { id: "a", subtype: "message", encrypted: [{ data: "A" }] },

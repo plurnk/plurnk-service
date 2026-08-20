@@ -244,7 +244,7 @@ test("BARE calls receive only their body prompts, run in parallel, and commit in
         assert.ok(calls.slice(1).every(({ log_entry_id }) => log_entry_id !== null));
         assert.ok(calls.slice(1).every(({ attributions }) =>
             JSON.stringify(JSON.parse(attributions)) === JSON.stringify(["provider:bare-witness"])));
-        const tags = await db.test_log_tags_by_worker.all<{ tag: string }>({ worker_id: workerId });
+        const tags = await db.test_log_tags_by_turn.all<{ tag: string }>({ turn_id: result.turnId });
         assert.deepEqual(tags.map(({ tag }) => tag), ["fact", "fact", "quick"]);
 
         const usage = await engine.loopUsage(loopId);
@@ -283,7 +283,7 @@ test("loop cancellation reaches every concurrent BARE call before the batch esca
         controller.abort(cancellation);
         await assert.rejects(running, (error: unknown) => error === cancellation);
         assert.deepEqual(child.aborted.toSorted(), ["first", "second"]);
-        const turn = await db.test_turns_get_full.get<{ id: number }>({ loop_id: loopId });
+        const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
         const calls = await db.test_model_calls.all<{ kind: string; state: string }>({ turn_id: turn!.id });
         assert.deepEqual(calls.filter(({ kind }) => kind === "bare").map(({ state }) => state), ["error", "error"]);
     } finally {

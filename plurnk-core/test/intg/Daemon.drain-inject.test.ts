@@ -25,7 +25,7 @@ test("loop.run: enqueues + drains + returns first loop's result", async () => {
             assert.equal(result.action, "enqueued_new_loop");
             assert.equal(result.result.status, 200);
             assert.equal(result.hitMaxTurns, false);
-            assert.equal(result.turnIds?.length, 1);
+            assert.equal(result.turnIds?.length, 2, "packetless initialization and one model turn are durable");
         } finally { ws.close(); }
     });
 });
@@ -267,7 +267,7 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
                 op: string; origin: string; scheme: string | null; pathname: string; turn_id: number;
             }>({ loop_id: ended[0].loopId });
             const frame = rows.find((row) => row.op === "prompt" && row.pathname === "/1/2");
-            const contextRead = rows.find((row) => row.op === "READ" && row.origin === "plurnk" && row.scheme === null && row.pathname === "src/active-context.ts");
+            const contextRead = rows.find((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null && row.pathname === "src/active-context.ts");
             assert.ok(frame, "the injected prompt was published as its own frame");
             assert.ok(contextRead, "the injected prompt's selected path produced a core READ");
             assert.equal(contextRead.turn_id, frame.turn_id,
@@ -340,7 +340,7 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
                 op: string; origin: string; scheme: string | null; pathname: string; turn_id: number;
             }>({ loop_id: loopId });
             const frame = rows.find((row) => row.op === "prompt" && row.pathname === "/1/2");
-            const contextRead = rows.find((row) => row.op === "READ" && row.origin === "plurnk" && row.scheme === null && row.pathname === "src/parked-context.ts");
+            const contextRead = rows.find((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null && row.pathname === "src/parked-context.ts");
             assert.ok(frame, "the waking prompt was published as its own frame");
             assert.ok(contextRead, "the waking prompt's selected path produced a core READ");
             assert.equal(contextRead.turn_id, frame.turn_id,
@@ -507,7 +507,7 @@ test("{§prompt-loop-containment}: every orphaned prompt frame is promoted in or
                 ],
                 "the complete orphan set remains separate and ordered in one subsequent turn",
             );
-            const contextReads = rows.filter((row) => row.op === "READ" && row.origin === "plurnk" && row.scheme === null);
+            const contextReads = rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null);
             assert.deepEqual(
                 contextReads.map((row) => row.pathname),
                 ["src/first-orphan-context.ts", "src/second-orphan-context.ts"],

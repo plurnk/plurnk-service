@@ -136,7 +136,7 @@ test("budget headline shows usage as a percent of the ceiling", async () => {
     } finally { await db.close(); }
 });
 
-test("a hard context-envelope rejection preserves negative curation debt and over-100% pressure in its stored evidence", async () => {
+test("an unrecoverable curation overflow preserves exact pressure evidence in its packetless recovery turn", async () => {
     const db = await openMigrated();
     const partitionKeys = ["PLURNK_PROVIDERS_OUTPUT_BUDGET", "PLURNK_PROVIDERS_REASONING_BUDGET"] as const;
     const previousPartition = partitionKeys.map((key) => process.env[key]);
@@ -150,27 +150,25 @@ test("a hard context-envelope rejection preserves negative curation debt and ove
         delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         // An 11-token provider context − 2 output tokens → input capacity 9; the packet's own
-        // scaffolding alone blows past it and CANNOT fold under
-        // (turn 1, nothing to roll back) → the un-foldable corner case. The loop hard-413s rather than
-        // DELIVER an over-budget packet; the stored record below is engine forensics, NOT a packet the
-        // model saw. The ruler may otherwise remain above 100% when authoritative
-        // context-envelope admission proves that the request still fits.
+        // scaffolding alone blows past it and cannot be recovered by folding the owned boundary.
         const provider = new Mock({ contextWindow: 11, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.equal(result.status, 413, "un-foldable → hard-413; the loop fails rather than deliver an over-budget packet");
-        // The STORED failure record renders the overshoot honestly — never clamped to hide the degenerate state.
-        const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
-        const m = budget.match(/Token Ceiling (\d+) · Token Usage\s+(\d+) \(\s*(\d+)%\) · Tokens Free\s+(-?\d+)/);
-        assert.ok(m, `headline present; got: ${budget}`);
-        const ceiling = Number(m![1]); const usage = Number(m![2]); const percent = Number(m![3]); const free = Number(m![4]);
+        const turn = await db.test_get_turn.get<{ packet: string | null }>({ id: result.turnId });
+        assert.equal(turn?.packet, null, "an over-ceiling candidate is never stored as a model request");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: result.turnId });
+        const receipt = rows.find((row) => row.op === null
+            && row.origin === "_plurnk"
+            && JSON.parse(row.attrs).kind === "overflow");
+        assert.ok(receipt, "the failed recovery remains an explicit _plurnk overflow turn");
+        const body = (JSON.parse(receipt.rx) as { content: string }).content;
+        const pressure = /Token Usage (\d+) exceeded Token Ceiling (\d+) by (\d+)\./.exec(body);
+        assert.ok(pressure, `the receipt carries exact pressure evidence; got: ${body}`);
+        const usage = Number(pressure[1]);
+        const ceiling = Number(pressure[2]);
+        const deficit = Number(pressure[3]);
         assert.ok(usage > ceiling, `usage ${usage} exceeds the ceiling of ${ceiling}`);
-        assert.equal(free, ceiling - usage, "free tokens preserve the exact negative curation debt");
-        assert.ok(percent > 100, `percent ${percent} honestly recorded past 100 in the failure record`);
-        assert.equal(
-            budget.match(/Context Token Budget Panic: YOU MUST FOLD or KILL enough less-relevant log items to restore free tokens\./gu)?.length,
-            1,
-            "negative debt carries exactly one transient curation instruction",
-        );
+        assert.equal(deficit, usage - ceiling, "the deficit reconciles exactly");
     } finally {
         partitionKeys.forEach((key, index) => {
             const previous = previousPartition[index];

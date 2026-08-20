@@ -158,7 +158,7 @@ test("runtime-owned entry work uses the durable plurnk worker and an ephemeral l
                 const plurnkLog = await db.engine_render_log.all<{ op: string; scheme: string; pathname: string; origin: string }>({ worker_id: plurnkWorker.id });
                 const matEdit = plurnkLog.find((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/agents.md");
                 assert.ok(matEdit !== undefined, "the materializing EDIT is IN the plurnk worker's log — an op, not a privileged engine pathway");
-                assert.equal(matEdit!.origin, "plurnk", "the op is attributed to the plurnk actor (origin=plurnk)");
+                assert.equal(matEdit!.origin, "_plurnk", "the op is attributed to the plurnk actor (origin=_plurnk)");
 
                 // 2. The model worker's log NEVER carries that EDIT — isolation by worker holds; nothing privileged leaked in.
                 const modelLog = await db.engine_render_log.all<{ op: string; scheme: string; pathname: string; status_rx: number }>({ worker_id: modelWorkerId });

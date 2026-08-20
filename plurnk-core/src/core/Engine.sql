@@ -59,7 +59,7 @@ SELECT settings FROM workspaces WHERE id = $workspace_id;
 SELECT 1 AS hit
 FROM log_entries
 WHERE worker_id = $worker_id AND turn_id = $turn_id
-  AND origin = 'plurnk' AND source = 'file' AND op = 'EDIT'
+  AND origin = '_plurnk' AND source = 'file' AND op = 'EDIT'
   AND scheme IS $scheme AND pathname = $pathname
 LIMIT 1;
 
@@ -91,15 +91,16 @@ ORDER BY e.updated_at ASC, e.id ASC, ec.name;
 SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM turns WHERE loop_id = $loop_id;
 
 -- PREP: engine_loop_usage
--- Latest-turn gauge ({§tokenomics-client-gauge}), surfaced beside the derived
+-- Latest packet-bearing model-turn gauge ({§tokenomics-client-gauge}), surfaced beside the derived
 -- accounting projection on {§notifications-loop-terminated}. Physical usage
 -- and capacity bind to the same latest completed emission call. A preflight
 -- rejection has capacity evidence but no physical input usage; neither fact
--- falls back to an earlier call or turn.
+-- falls back to an earlier call. Packetless chronology cannot erase the latest
+-- assembled model request.
 WITH latest_turn AS (
     SELECT id, packet, usage_curation_budget, meta
       FROM turns
-     WHERE loop_id = $loop_id
+     WHERE loop_id = $loop_id AND packet IS NOT NULL
      ORDER BY sequence DESC
      LIMIT 1
 ), latest_emission AS (
@@ -189,6 +190,17 @@ UPDATE turns SET
     model = $model,
     meta = $meta
 WHERE id = $id;
+
+-- PREP: engine_close_packetless_turn
+-- {§overflow-turn-only} — complete a producer-neutral operation batch without
+-- manufacturing packet or provider metadata. A model call would make this
+-- representation invalid and therefore blocks the transition.
+UPDATE turns
+SET status = $status
+WHERE id = $id
+  AND packet IS NULL
+  AND NOT EXISTS (SELECT 1 FROM model_calls WHERE turn_id = turns.id)
+RETURNING id;
 
 -- PREP: engine_open_model_call
 -- Logical identity and request attribution become durable before provider I/O.
@@ -350,7 +362,7 @@ INSERT INTO log_entries (
     op, scheme, hostname, pathname, tx, mimetype_tx,
     rx, mimetype_rx, status_rx, weight, folded, attrs
 ) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', $source, $event_id,
+    $worker_id, $loop_id, $turn_id, $sequence, '_plurnk', $source, $event_id,
     $op, $scheme, $hostname, $pathname, '', 'text/plain',
     $rx, $mimetype_rx, $status, $weight, $folded, $attrs
 )
@@ -393,20 +405,20 @@ ORDER BY s.id, ec.name;
 -- foisted observation (the caller defaults to 0 when none exists yet).
 SELECT attrs
 FROM log_entries
-WHERE worker_id = $worker_id AND origin = 'plurnk' AND op = 'READ'
+WHERE worker_id = $worker_id AND origin = '_plurnk' AND op = 'READ'
     AND scheme = $scheme AND pathname = $pathname AND fragment IS $fragment
 ORDER BY id DESC LIMIT 1;
 
 -- PREP: engine_insert_stream_delta
 -- {§exec-stream} / {§env-delta} — materialize a channel's next publishable content as a
--- foisted READ row (the model READs the stream it never typed). origin=plurnk; fragment is
+-- foisted READ row (the model READs the stream it never typed). origin=_plurnk; fragment is
 -- the channel; attrs.streamEnd is the next turn's cursor; terminal observations
 -- are born open and ongoing observations wholly folded. {§exec-stream}
 INSERT INTO log_entries (
     worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
     op, scheme, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs, folded
 ) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, 'plurnk', NULL, NULL,
+    $worker_id, $loop_id, $turn_id, $sequence, '_plurnk', NULL, NULL,
     'READ', $scheme, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $weight, $attrs, $folded
 );
 
@@ -434,10 +446,20 @@ ORDER BY e.pathname;
 -- PREP: engine_render_errors
 -- SPEC {§operation-results}: 4xx/5xx log rows are indexed in the packet's errors as
 -- LogCoordinate pointers, forcing the model to confront failures instead of letting
--- them rot in log:///. Window = the current turn AND the immediately-prior one
--- (>= current_turn_seq - 1): prior-turn for action failures the model just caused,
--- current-turn so a pre-generate engine error surfaces THIS turn rather than a turn late.
+-- them rot in log:///. Window = the current would-be model turn AND the immediately
+-- preceding packet-bearing model turn: prior-model-turn for action failures the
+-- model just caused, current-turn so a pre-generate engine error surfaces THIS turn
+-- rather than a turn late. Packetless chronology never hides a model failure.
 -- {§operation-result-uniform-error-channel}
+WITH previous_model_turn AS (
+    SELECT id
+    FROM turns
+    WHERE loop_id = $loop_id
+      AND sequence < $current_turn_seq
+      AND packet IS NOT NULL
+    ORDER BY sequence DESC
+    LIMIT 1
+)
 SELECT
     le.origin, le.op, le.attrs, le.sequence, le.status_rx, le.rx, le.mimetype_rx,
     le.scheme, le.pathname,
@@ -449,92 +471,66 @@ WHERE le.loop_id = $loop_id
   AND le.status_rx >= 400
   -- {§log-row-self-explains}: every >=400 row points at ITSELF — the op row carries its failure
   -- message on its meta line (packet-wire), so the pointer leads to a record that states its why.
-  AND t.sequence >= $current_turn_seq - 1
+  AND (
+      t.sequence = $current_turn_seq
+      OR t.id = (SELECT id FROM previous_model_turn)
+  )
 ORDER BY t.sequence, le.sequence;
 
--- PREP: engine_grinder_boundary_rows
--- {§grinder-layer1-rollback} — THE DOCTRINE: the log is the model's memory and the model ALONE
--- curates it (FOLD/KILL). The grinder rolls back only context introduced by the newest turn
--- boundary: rows born in the immediately-prior/current turn plus exact older rows that a successful
--- OPEN in the immediately-prior turn exposed. TypeScript performs the interval
--- algebra; this query owns the boundary selection. Folded, never deleted; THREE
--- exemptions ({§grinder-errors-exempt}): op='error', the user prompt, and PLAN.
-WITH previous_turn AS (
-    SELECT MAX(id) AS id FROM turns WHERE loop_id = $loop_id AND id < $turn_id
+-- PREP: overflow_turn_boundary_rows
+-- {§overflow-turn-curation} — current pre-model rows and the immediately
+-- preceding packet-bearing model turn are the complete automatic boundary.
+WITH previous_model_turn AS (
+    SELECT id
+    FROM turns
+    WHERE loop_id = $loop_id
+      AND id < $turn_id
+      AND packet IS NOT NULL
+    ORDER BY sequence DESC
+    LIMIT 1
 )
-SELECT boundary.id, boundary.op, boundary.attrs,
+SELECT boundary.id,
+       (loop.sequence || '/' || turn.sequence || '/' || boundary.sequence) AS coordinate,
+       boundary.origin, boundary.op, boundary.attrs,
        boundary.tx, boundary.mimetype_tx, boundary.rx, boundary.mimetype_rx,
        boundary.folded
 FROM log_entries boundary
+JOIN turns turn ON turn.id = boundary.turn_id
+JOIN loops loop ON loop.id = boundary.loop_id
 WHERE boundary.loop_id = $loop_id
-  AND json(boundary.folded) != '[[1,-1]]'
   AND COALESCE(boundary.op, '') NOT IN ('error', 'PLAN')
-  AND COALESCE(boundary.scheme, '') != 'prompt'  -- the task frame ({§prompt-self-only}); NULL-safe: a model-emission row's scheme is NULL
-  AND (boundary.turn_id = $turn_id OR boundary.turn_id = (SELECT id FROM previous_turn));
+  AND COALESCE(boundary.scheme, '') != 'prompt'
+  AND (boundary.turn_id = $turn_id OR boundary.turn_id = (SELECT id FROM previous_model_turn))
+ORDER BY turn.sequence, boundary.sequence;
 
--- PREP: engine_grinder_open_effects
--- Exact intervals exposed by successful OPENs at the boundary. Current target
--- visibility rides beside them so later authored FOLDs remain authoritative.
-WITH previous_turn AS (
-    SELECT MAX(id) AS id FROM turns WHERE loop_id = $loop_id AND id < $turn_id
+-- PREP: overflow_turn_open_effects
+-- Re-fold only exact older intervals exposed by the previous model turn.
+WITH previous_model_turn AS (
+    SELECT id
+    FROM turns
+    WHERE loop_id = $loop_id
+      AND id < $turn_id
+      AND packet IS NOT NULL
+    ORDER BY sequence DESC
+    LIMIT 1
 )
-SELECT target.id, target.folded,
+SELECT target.id,
+       (loop.sequence || '/' || turn.sequence || '/' || target.sequence) AS coordinate,
+       target.origin, target.op, target.attrs,
+       target.tx, target.mimetype_tx, target.rx, target.mimetype_rx,
+       target.folded,
        effect.folded_before, effect.folded_after
 FROM log_curation_effects effect
 JOIN log_entries operation ON operation.id = effect.operation_log_entry_id
 JOIN log_entries target ON target.id = effect.target_log_entry_id
-WHERE operation.turn_id = (SELECT id FROM previous_turn)
+JOIN turns turn ON turn.id = target.turn_id
+JOIN loops loop ON loop.id = target.loop_id
+WHERE operation.turn_id = (SELECT id FROM previous_model_turn)
   AND operation.op = 'OPEN'
   AND operation.status_rx < 400
   AND COALESCE(target.op, '') NOT IN ('error', 'PLAN')
-  AND COALESCE(target.scheme, '') != 'prompt';
-
--- TX: engine_grinder_apply
--- Apply one already-resolved exact set atomically. Each before snapshot is a
--- collision guard; concurrent visibility change fails at this owning boundary.
-CREATE TEMP TABLE IF NOT EXISTS engine_grinder_plan_guard (
-    valid INTEGER NOT NULL CHECK (valid = 1)
-);
-DELETE FROM engine_grinder_plan_guard;
-INSERT INTO engine_grinder_plan_guard (valid)
-SELECT CASE WHEN
-    COALESCE(json_type($targets), '') != 'array'
-    OR EXISTS (
-        SELECT 1
-        FROM json_each($targets) target
-        WHERE target.type != 'object'
-           OR COALESCE(json_type(target.value, '$.id'), '') != 'integer'
-           OR COALESCE(json_type(target.value, '$.before'), '') != 'array'
-           OR COALESCE(json_type(target.value, '$.after'), '') != 'array'
-    )
-    OR (
-        SELECT COUNT(*) FROM json_each($targets)
-    ) != (
-        SELECT COUNT(DISTINCT json_extract(value, '$.id')) FROM json_each($targets)
-    )
-    OR EXISTS (
-        SELECT 1
-        FROM json_each($targets) planned
-        LEFT JOIN log_entries current ON current.id = json_extract(planned.value, '$.id')
-        WHERE current.id IS NULL
-           OR json(current.folded) != json(json_extract(planned.value, '$.before'))
-    )
-THEN 0 ELSE 1 END;
-
-UPDATE log_entries
-SET folded = (
-    SELECT json_extract(planned.value, '$.after')
-    FROM json_each($targets) planned
-    WHERE json_extract(planned.value, '$.id') = log_entries.id
-)
-WHERE id IN (SELECT json_extract(value, '$.id') FROM json_each($targets));
-
-INSERT OR IGNORE INTO log_tags (log_entry_id, tag)
-SELECT json_extract(value, '$.id'), 'overflow'
-FROM json_each($targets)
-WHERE json(json_extract(value, '$.before')) != json(json_extract(value, '$.after'));
-
-DELETE FROM engine_grinder_plan_guard;
+  AND COALESCE(target.scheme, '') != 'prompt'
+ORDER BY turn.sequence, target.sequence, operation.sequence;
 
 -- PREP: engine_fold_log_entry
 -- Fold one known log row by id. Model-emission rows use this after insertion so
@@ -662,7 +658,7 @@ WHERE s.worker_id = $worker_id
   AND NOT EXISTS (
       SELECT 1 FROM log_entries le
       WHERE le.worker_id = $worker_id
-        AND le.origin = 'plurnk'
+        AND le.origin = '_plurnk'
         AND le.op = 'READ'
         AND le.scheme = e.scheme
         AND le.pathname = e.pathname

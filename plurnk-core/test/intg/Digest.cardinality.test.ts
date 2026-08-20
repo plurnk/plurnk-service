@@ -23,7 +23,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         turnId = await insertTurn(db, loopId, 1, 200);
         const insert = async (
             sequence: number,
-            origin: "model" | "plurnk",
+            origin: "model" | "_plurnk",
             op: "READ" | "EDIT" | "EXEC" | "OPEN",
             pathname: string,
             attrs: object,
@@ -35,7 +35,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         ): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
-                origin, source: origin === "plurnk" ? "worker://researcher" : null, model_call_id: null,
+                origin, source: origin === "_plurnk" ? "worker://researcher" : null, model_call_id: null,
                 op, delimiter: "", signal: null,
                 scheme, username: null, password: null, hostname, port,
                 pathname, query, fragment, lineMarker: null,
@@ -48,15 +48,15 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             return row.id;
         };
         for (let i = 1; i <= 50; i++) readIds.push(await insert(i, "model", "READ", "/example.test/whale", {}));
-        for (let i = 51; i <= 62; i++) await insert(i, "plurnk", "EDIT", `/result${i}.test/`, { kind: "entry_materialized" });
+        for (let i = 51; i <= 62; i++) await insert(i, "_plurnk", "EDIT", `/result${i}.test/`, { kind: "entry_materialized" });
         await insert(63, "model", "READ", "/wiki/Paris", {}, "en.wikipedia.org", "https", "b=2&a=1&a=3", 8443);
         await insert(64, "model", "EXEC", "/filesystem_read_text_file", {
             stream: "atlas:///1/1/64",
         }, null, null);
-        await insert(65, "plurnk", "EDIT", "/page", { kind: "entry_materialized" }, "repeat.test", "https", "q=1", 9443, "body");
-        await insert(66, "plurnk", "EDIT", "/page", { kind: "entry_materialized" }, "repeat.test", "https", "q=1", 9443, "body");
-        await insert(67, "plurnk", "EDIT", "/", { kind: "entry_materialized" }, "empty.test", "https", null);
-        await insert(68, "plurnk", "EDIT", "/", { kind: "entry_materialized" }, "empty.test", "https", "");
+        await insert(65, "_plurnk", "EDIT", "/page", { kind: "entry_materialized" }, "repeat.test", "https", "q=1", 9443, "body");
+        await insert(66, "_plurnk", "EDIT", "/page", { kind: "entry_materialized" }, "repeat.test", "https", "q=1", 9443, "body");
+        await insert(67, "_plurnk", "EDIT", "/", { kind: "entry_materialized" }, "empty.test", "https", null);
+        await insert(68, "_plurnk", "EDIT", "/", { kind: "entry_materialized" }, "empty.test", "https", "");
         await db.log_set_folded_by_id.run({ id: readIds[0], folded: "[[1,-1]]" });
         openId = await insert(69, "model", "OPEN", "/**/READ", {
             __plurnk_curation: {
@@ -94,14 +94,14 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
         assert.match(markdown, /\[model\] READ\[200\] https:\/\/example\.test\/whale ×50 \(seq 1–50\)/);
         assert.match(markdown, /\[model\] READ\[200\] https:\/\/en\.wikipedia\.org:8443\/wiki\/Paris\?b=2&a=1&a=3/);
         assert.equal(
-            markdown.match(/\[plurnk\] materialized entry\[200\] https:\/\/result\d+\.test\//g)?.length,
+            markdown.match(/\[_plurnk\] materialized entry\[200\] https:\/\/result\d+\.test\//g)?.length,
             12,
             "distinct materialization targets remain distinct Markdown evidence",
         );
         assert.doesNotMatch(markdown, /materialized entr(?:y|ies)\[200\] ×12/, "target partitioning replaces the targetless aggregate");
-        assert.match(markdown, /\[plurnk\] materialized entry\[200\] https:\/\/repeat\.test:9443\/page\?q=1#body source=worker:\/\/researcher ×2 \(seq 65–66\)/);
-        assert.match(markdown, /\[plurnk\] materialized entry\[200\] https:\/\/empty\.test\/ source=worker:\/\/researcher\n/, "an absent query has its own group");
-        assert.match(markdown, /\[plurnk\] materialized entry\[200\] https:\/\/empty\.test\/\? source=worker:\/\/researcher\n/, "an explicit empty query has its own group");
+        assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/repeat\.test:9443\/page\?q=1#body source=worker:\/\/researcher ×2 \(seq 65–66\)/);
+        assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/empty\.test\/ source=worker:\/\/researcher\n/, "an absent query has its own group");
+        assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/empty\.test\/\? source=worker:\/\/researcher\n/, "an explicit empty query has its own group");
         assert.match(markdown, /\[model\] EXEC\[200\] filesystem_read_text_file stream=atlas:\/\/\/1\/1\/64/);
         assert.equal(json.log_entries.length, 69, "machine-readable evidence remains lossless");
         assert.equal(json.log_curation_effects.length, 50, "the suppressed broad OPEN retains every exact selected target");
@@ -124,7 +124,7 @@ test("digest Markdown exposes amplification as exact aggregates while JSON prese
             },
             "JSON preserves the row's actor and lifecycle coordinates",
         );
-        assert.equal(json.log_entries[50]?.origin, "plurnk", "JSON distinguishes automatic materialization from model actions");
+        assert.equal(json.log_entries[50]?.origin, "_plurnk", "JSON distinguishes automatic materialization from model actions");
         assert.equal(json.log_entries[50]?.source, "worker://researcher", "JSON preserves the causal worker identity");
         assert.deepEqual(json.log_entries[50]?.attrs, { kind: "entry_materialized" }, "JSON preserves typed machine provenance");
         assert.equal(json.log_entries.find((entry) => entry.target?.includes("wikipedia"))?.target, "https://en.wikipedia.org:8443/wiki/Paris?b=2&a=1&a=3", "JSON preserves authority, port, and serialized query");

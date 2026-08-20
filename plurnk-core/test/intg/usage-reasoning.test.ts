@@ -60,7 +60,8 @@ test("output reasoning usage is persisted and exposed by the digest", async () =
             turns: Array<{ accounting: { usage: { outputTokenDetails: { reasoningTokens: number } } } }>;
         };
         assert.match(markdown, /input=100 output=57 reasoning=37 cache-read=0/);
-        assert.equal(json.turns[0]?.accounting.usage.outputTokenDetails.reasoningTokens, 37);
+        assert.equal(json.turns.at(-1)?.accounting.usage.outputTokenDetails.reasoningTokens, 37,
+            "the packet-bearing model turn retains reasoning usage after packetless initialization");
     } finally {
         await rm(dir, { recursive: true, force: true });
     }

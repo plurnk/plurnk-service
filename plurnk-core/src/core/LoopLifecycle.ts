@@ -90,6 +90,14 @@ export default class LoopLifecycle {
         return rows.map(({ id }) => id);
     }
 
+    async modelTurnCount(loopId: number): Promise<number> {
+        const row = await this.#db.lifecycle_loop_model_turn_count.get<{ count: number }>({
+            loop_id: loopId,
+        });
+        if (row === undefined) throw new Error(`loop ${loopId} model-turn count is unavailable`);
+        return row.count;
+    }
+
     async cancelTree(workerId: number, reason: string, includeRoot: boolean): Promise<CancelledTree> {
         const boundedReason = ErrorDetail.preview(reason) || "no reason was supplied";
         const params = {

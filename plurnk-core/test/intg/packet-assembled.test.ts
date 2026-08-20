@@ -184,7 +184,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const foists = (await db.test_log_entries_by_loop.all<{ id: number; op: string; origin: string }>({ loop_id: loopId }))
-            .filter(({ op, origin }) => origin === "plurnk" && (op === "FIND" || op === "READ"));
+            .filter(({ op, origin }) => origin === "_plurnk" && (op === "FIND" || op === "READ"));
         assert.ok(foists.length > 0, "the first turn persists its structural observation foists");
         for (const { id } of foists) {
             const tx = await db.test_log_entries_get_tx_by_id.get<{ tx: string }>({ id });
@@ -216,7 +216,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.match(log, /"path":"log:\/\/\/[^"]+\/FIND"/, "the catalog foist appears as a FIND op in the log address");
         assert.match(
             log,
-            /\d+:## FIND0 \[\+init,\+skills\] \(worker:\/\/plurnk\/skills\/\*\.md\) <1,-1>\n ?\d+:## FIND0 \[\+init,\+skills\] \(worker:\/\/plurnk\/skills\/plurnk\/\*\.md\) <1,-1>\n ?\d+:## FIND0 \[\+init,\+tools\] \(worker:\/\/plurnk\/tools\/\*\.md\) <1,-1> <!-- enabled tools -->\n ?\d+:## FIND0 \[\+init\] \(\*\)/,
+            /\d+:## FIND0 \[\+_plurnk,\+init,\+skills\] \(worker:\/\/plurnk\/skills\/\*\.md\) <1,-1>\n ?\d+:## FIND0 \[\+_plurnk,\+init,\+skills\] \(worker:\/\/plurnk\/skills\/plurnk\/\*\.md\) <1,-1>\n ?\d+:## FIND0 \[\+_plurnk,\+init,\+tools\] \(worker:\/\/plurnk\/tools\/\*\.md\) <1,-1> <!-- enabled tools -->\n ?\d+:## FIND0 \[\+_plurnk,\+init\] \(\*\)/,
             "turn-0 crams its bodyless surveys and keeps reference discovery before workspace discovery",
         );
         assert.doesNotMatch(log, /worker:\/\/plurnk\/skills\/plurnk\/sh\.md/, "turn-0 never privileges the sh skill with an orientation READ");

@@ -80,7 +80,7 @@ WHERE e.scheme = 'prompt'
   AND c.name = 'body'
   AND NOT EXISTS (
       SELECT 1 FROM log_entries le
-      WHERE le.loop_id = $loop_id AND le.origin = 'plurnk' AND le.op = 'prompt'
+      WHERE le.loop_id = $loop_id AND le.origin = '_plurnk' AND le.op = 'prompt'
         AND le.scheme = 'prompt' AND le.pathname = e.pathname
   )
 ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
@@ -122,7 +122,7 @@ WHERE e.scheme = 'prompt'
   AND c.name = 'body'
   AND NOT EXISTS (
       SELECT 1 FROM log_entries le
-      WHERE le.loop_id = $loop_id AND le.origin = 'plurnk' AND le.op = 'prompt'
+      WHERE le.loop_id = $loop_id AND le.origin = '_plurnk' AND le.op = 'prompt'
         AND le.scheme = 'prompt' AND le.pathname = e.pathname
   )
 ORDER BY CAST(substr(e.pathname, $prefix_len + 1) AS INTEGER) ASC;
@@ -161,7 +161,7 @@ WITH orphaned(id, ordinal) AS MATERIALIZED (
       )
       AND NOT EXISTS (
           SELECT 1 FROM log_entries le
-          WHERE le.loop_id = $source_loop_id AND le.origin = 'plurnk' AND le.op = 'prompt'
+          WHERE le.loop_id = $source_loop_id AND le.origin = '_plurnk' AND le.op = 'prompt'
             AND le.scheme = 'prompt' AND le.pathname = e.pathname
       )
 )

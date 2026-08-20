@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { Mock } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 
 // Regression: a per-alias baseUrl (PLURNK_BASEURL_<alias>) MUST reach the standard
@@ -97,6 +98,34 @@ test("the process cache separates aliases and provider tuning for the same wire 
         assert.equal(first.contextWindow, 32_000);
         assert.equal(second.contextWindow, 16_000);
         assert.notEqual(first, second);
+    } finally {
+        if (previous === undefined) delete process.env[key]; else process.env[key] = previous;
+        globalThis.fetch = realFetch;
+    }
+});
+
+test("a registered handle cannot shadow changed provider tuning", async () => {
+    const realFetch = globalThis.fetch;
+    const key = "PLURNK_PROVIDERS_CONTEXT_WINDOW_registeredcap";
+    const previous = process.env[key];
+    const spec = { alias: "registeredcap", provider: "openai", model: "local", baseUrl: "http://registered.test/v1" };
+    globalThis.fetch = (async (input: string | URL | Request) => {
+        if (String(input).endsWith("/models")) {
+            return new Response(JSON.stringify({ data: [{ id: "served.gguf", meta: { n_ctx: 49_152 } }] }), { status: 200 });
+        }
+        if (String(input).endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }), { status: 200 });
+        throw new Error(`unexpected request: ${String(input)}`);
+    }) as typeof fetch;
+    try {
+        process.env[key] = "32000";
+        const injected = new Mock({ contextWindow: 32_000, responses: [] });
+        ProviderInstantiate.registerInstance(injected, spec);
+        assert.equal(await ProviderInstantiate.instantiateProvider(spec), injected);
+
+        process.env[key] = "16000";
+        const retuned = await ProviderInstantiate.instantiateProvider(spec);
+        assert.notEqual(retuned, injected);
+        assert.equal(retuned.contextWindow, 16_000);
     } finally {
         if (previous === undefined) delete process.env[key]; else process.env[key] = previous;
         globalThis.fetch = realFetch;

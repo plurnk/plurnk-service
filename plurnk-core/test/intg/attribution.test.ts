@@ -69,7 +69,7 @@ test("each emission attempt composes opaque family hooks and records exactly wha
                 workerId: workerIdentity?.provider_identity,
                 primaryWorkerId: workerIdentity?.provider_identity,
                 loop: 1,
-                turn: 1,
+                turn: 2,
                 attempt: 1,
             },
             {
@@ -77,7 +77,7 @@ test("each emission attempt composes opaque family hooks and records exactly wha
                 workerId: workerIdentity?.provider_identity,
                 primaryWorkerId: workerIdentity?.provider_identity,
                 loop: 1,
-                turn: 1,
+                turn: 2,
                 attempt: 2,
             },
         ], "plugins receive only the exact provider-attempt coordinates");

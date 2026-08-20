@@ -1,6 +1,6 @@
 import type { SchemeFlagAffinity, SchemeManifest, WriterTier } from "./types.ts";
 
-const WRITERS = new Set<WriterTier>(["model", "client", "plurnk", "plugin"]);
+const WRITERS = new Set<WriterTier>(["model", "client", "_plurnk", "plugin"]);
 const CATEGORIES = new Set<SchemeManifest["category"]>(["data", "logging", "control"]);
 const MANIFEST_FIELD_NAMES = new Set<string>(Object.keys({
     name: true,

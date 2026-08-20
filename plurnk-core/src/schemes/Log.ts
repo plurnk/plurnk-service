@@ -117,7 +117,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         category: "logging",
         // Log KILL is model-authorized curation. Other mutations remain unavailable
         // because Log exposes no edit/writeEntry handler. {§model-entry-log-curation}
-        writableBy: ["plurnk", "model"],
+        writableBy: ["_plurnk", "model"],
         volatile: false,
         modelVisible: true,
         folderScopes: true,

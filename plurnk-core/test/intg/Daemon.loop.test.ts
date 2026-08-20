@@ -19,7 +19,7 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
             assert.equal(result.accepted, 100, "loop.run returns immediately — accepted, not the terminal");
             assert.equal(result.result.status, 200);
             assert.equal(result.hitMaxTurns, false);
-            assert.equal(result.turnIds?.length, 1);
+            assert.equal(result.turnIds?.length, 2, "packetless initialization and one model turn are both durable chronology");
             // {§notifications}: loop/terminated carries usage summed over the loop's turns.
             assert.equal(result.usage?.accounting.usage?.outputTokens, 142, "output tokens sum the physical request evidence");
             assert.equal(result.usage?.accounting.usage?.inputTokens, 0);
@@ -136,20 +136,27 @@ test("loop.run streams log/entry notifications during execution", async () => {
             await flush();
 
             const captured = logEntries().filter((event) => (event as { entry?: { loop_id?: unknown } }).entry?.loop_id === terminal.loopId);
-            // The actionless prompt row broadcasts once ahead of model ops.
-            assert.equal(captured.length, 4);
-            const prompt = captured[0] as { entry: { op: string; origin: string } };
+            assert.ok(captured.some((event) => {
+                const entry = (event as { entry: { op: string | null; origin: string } }).entry;
+                return entry.op === null && entry.origin === "_plurnk";
+            }), "the packetless initialization receipt streams like every other durable turn row");
+            const authored = captured.filter((event) => {
+                const entry = (event as { entry: { op: string | null; origin: string } }).entry;
+                return entry.op === "prompt" || entry.origin === "model";
+            });
+            assert.equal(authored.length, 4, "prompt plus PLAN, EDIT, and SEND stream independently of configured initialization surveys");
+            const prompt = authored[0] as { entry: { op: string; origin: string } };
             assert.equal(prompt.entry.op, "prompt");
-            assert.equal(prompt.entry.origin, "plurnk");
+            assert.equal(prompt.entry.origin, "_plurnk");
             // PLAN leads every model turn (grammar 0.70) — dispatched + broadcast to the
             // client as an ordinary log op (this is the "pass PLAN along" behavior).
-            const plan = captured[1] as { entry: { op: string; origin: string } };
+            const plan = authored[1] as { entry: { op: string; origin: string } };
             assert.equal(plan.entry.op, "PLAN");
             assert.equal(plan.entry.origin, "model");
-            const first = captured[2] as { entry: { op: string; origin: string } };
+            const first = authored[2] as { entry: { op: string; origin: string } };
             assert.equal(first.entry.op, "EDIT");
             assert.equal(first.entry.origin, "model");
-            const second = captured[3] as { entry: { op: string; status_rx: number } };
+            const second = authored[3] as { entry: { op: string; status_rx: number } };
             assert.equal(second.entry.op, "SEND");
             assert.equal(second.entry.status_rx, 200);
         } finally { ws.close(); }
@@ -291,7 +298,7 @@ test("loop.run respects maxTurns cap when model emits non-terminal statuses repe
             assert.equal(result.accepted, 100, "loop.run accepts immediately");
             assert.equal(result.hitMaxTurns, true);
             assert.equal(result.result.status, 429, "max_turns exhausts the turn ceiling → 429");
-            assert.equal(result.turnIds?.length, 3);
+            assert.equal(result.turnIds?.length, 4, "packetless initialization does not consume the three-model-turn cap");
         } finally { ws.close(); }
     });
 });
@@ -310,14 +317,14 @@ test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ pe
             // entry identity stores scheme='file'; origin plus the nullable target identifies the foists.
             const reads = (logEntries() as Array<{ entry: { op: string; origin: string; scheme: string | null; pathname: string } }>)
                 .map((c) => c.entry)
-                .filter((e) => e.op === "READ" && e.origin === "plurnk" && e.scheme === null);
+                .filter((e) => e.op === "READ" && e.origin === "_plurnk" && e.scheme === null);
             assert.deepEqual(reads.map((r) => r.pathname).toSorted(), ["README.md", "src/foo.ts"], "a plurnk-origin file READ foisted per openPath at turn 0 — columns in wire canon ({§fs-answer-in-canon})");
             const rows = await db.test_log_entries_by_loop.all<{
                 op: string; origin: string; scheme: string | null; pathname: string; turn_id: number;
             }>({ loop_id: result.loopId });
             const frame = rows.find((row) => row.op === "prompt" && row.pathname === "/1/1");
             assert.ok(frame, "the initial prompt frame exists");
-            assert.ok(rows.filter((row) => row.op === "READ" && row.origin === "plurnk" && row.scheme === null)
+            assert.ok(rows.filter((row) => row.op === "READ" && row.origin === "_plurnk" && row.scheme === null)
                 .every((row) => row.turn_id === frame.turn_id),
             "every selected path is read in the same turn that publishes the initial prompt frame");
         } finally { ws.close(); }
