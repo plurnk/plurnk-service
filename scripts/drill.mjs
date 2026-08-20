@@ -70,6 +70,16 @@ export const partitionByScript = (subset, script) => ({
     excluded: subset.filter((workspace) => !workspace.scripts.includes(script)),
 });
 
+export const formatPhaseSummary = ({ title, results, reds, excluded, elapsedSeconds }) => {
+    const failures = reds.length === 0
+        ? ""
+        : `; red: ${reds.map((result) => result.dir).join(", ")}`;
+    const inapplicable = excluded.length === 0
+        ? ""
+        : `; ${excluded.length} n/a: ${excluded.map((workspace) => workspace.dir).join(", ")}`;
+    return `${title}: ${results.length - reds.length}/${results.length} green in ${elapsedSeconds}s${failures}${inapplicable}`;
+};
+
 const phase = async (title, script, subset) => {
     const started = Date.now();
     const { included, excluded } = partitionByScript(subset, script);
@@ -77,10 +87,13 @@ const phase = async (title, script, subset) => {
         .map((w) => () => run(w.dir, script));
     const results = await pool(jobs);
     const reds = results.filter((r) => r.code !== 0);
-    const inapplicable = excluded.length === 0
-        ? ""
-        : `; ${excluded.length} n/a: ${excluded.map((workspace) => workspace.dir).join(", ")}`;
-    console.log(`${title}: ${results.length - reds.length}/${results.length} green in ${Math.round((Date.now() - started) / 1000)}s${inapplicable}`);
+    console.log(formatPhaseSummary({
+        title,
+        results,
+        reds,
+        excluded,
+        elapsedSeconds: Math.round((Date.now() - started) / 1000),
+    }));
     for (const r of reds) {
         console.log(`\n===== RED ${r.dir} (${r.script}) =====`);
         console.log(r.out);

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { partitionByScript, scopeIntg } from "./drill.mjs";
+import { formatPhaseSummary, partitionByScript, scopeIntg } from "./drill.mjs";
 
 const DIRS = ["plurnk-contracts", "plurnk-core", "plurnk-mimetypes-text-html"];
 
@@ -40,5 +40,20 @@ describe("drill tier inventory", () => {
             included: [workspaces[1], workspaces[2]],
             excluded: [workspaces[0]],
         });
+    });
+
+    it("names every failing package in the tier summary", () => {
+        const results = [
+            { dir: "green", code: 0 },
+            { dir: "red-one", code: 1 },
+            { dir: "red-two", code: 2 },
+        ];
+        assert.equal(formatPhaseSummary({
+            title: "intg",
+            results,
+            reds: results.filter((result) => result.code !== 0),
+            excluded: [{ dir: "not-applicable" }],
+            elapsedSeconds: 95,
+        }), "intg: 1/3 green in 95s; red: red-one, red-two; 1 n/a: not-applicable");
     });
 });
