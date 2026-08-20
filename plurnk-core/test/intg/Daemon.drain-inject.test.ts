@@ -5,6 +5,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
+import Engine from "../../src/core/Engine.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { rpcCall, flush, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
@@ -288,6 +290,21 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
             sendOnly("## SEND0 [499]\ndone with the parked work"),
         ],
     });
+    const parkedBoundary = Promise.withResolvers<void>();
+    const releaseBoundary = Promise.withResolvers<void>();
+    const runLoop = Engine.prototype.runLoop;
+    t.mock.method(Engine.prototype, "runLoop", async function (
+        this: Engine,
+        ...args: Parameters<Engine["runLoop"]>
+    ) {
+        const result = await runLoop.apply(this, args);
+        if (result.result.status === 202) {
+            parkedBoundary.resolve();
+            await releaseBoundary.promise;
+        }
+        return result;
+    });
+    t.after(() => releaseBoundary.resolve());
 
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -299,6 +316,7 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
                 flags: { auto: true },
             });
             const loopId = (started.result as { loopId: number }).loopId;
+            await parkedBoundary.promise;
             await waitForDb(
                 async () => (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status,
                 (status) => status === 202,
@@ -311,6 +329,7 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
             assert.equal((resumed.result as { action: string }).action, "injected_next_turn");
             assert.equal((resumed.result as { loopId: number }).loopId, loopId,
                 "the prompt resumes the parked loop rather than opening another");
+            releaseBoundary.resolve();
 
             await waitFor(
                 () => terminated() as Array<{ loopId: number; result: { status: number } }>,
@@ -326,7 +345,75 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
             assert.ok(contextRead, "the waking prompt's selected path produced a core READ");
             assert.equal(contextRead.turn_id, frame.turn_id,
                 "the context READ is observable in the resumed turn that publishes its prompt frame");
-        } finally { ws.close(); }
+        } finally {
+            releaseBoundary.resolve();
+            ws.close();
+        }
+    });
+});
+
+test("{§prompt-loop-containment}: an injection crossing the park transition is not stranded", async (t) => {
+    const previousSettlement = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
+    t.after(() => {
+        if (previousSettlement === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previousSettlement;
+    });
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [
+            sendOnly("## EXEC0 [sh]\nsleep 30\n\n## SEND0 [202] <-1>\npark"),
+            sendOnly("## SEND0 [499]\ndone with the injected prompt"),
+        ],
+    });
+    const parking = Promise.withResolvers<void>();
+    const releasePark = Promise.withResolvers<void>();
+    const park = LoopLifecycle.prototype.park;
+    t.mock.method(LoopLifecycle.prototype, "park", async function (
+        this: LoopLifecycle,
+        ...args: Parameters<LoopLifecycle["park"]>
+    ) {
+        parking.resolve();
+        await releasePark.promise;
+        return park.apply(this, args);
+    });
+    t.after(() => releasePark.resolve());
+
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "inject-at-park-boundary" });
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+            const started = await rpcCall(ws, 2, "loop.run", {
+                prompt: "start and park",
+                flags: { auto: true },
+            });
+            const loopId = (started.result as { loopId: number }).loopId;
+            await parking.promise;
+            assert.equal(
+                (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status,
+                102,
+                "the injection lands after SEND requests a park but before the lifecycle commits it",
+            );
+
+            const injected = await rpcCall(ws, 3, "loop.run", { prompt: "do not strand this prompt" });
+            assert.equal((injected.result as { action: string }).action, "injected_next_turn");
+            releasePark.resolve();
+
+            await waitFor(
+                () => terminated() as Array<{ loopId: number; result: { status: number } }>,
+                (events) => events.some((event) => event.loopId === loopId),
+                { timeoutMs: 5000 },
+            );
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string }>({ loop_id: loopId });
+            assert.ok(
+                rows.some((row) => row.op === "prompt" && row.pathname === "/1/2"),
+                "the park-boundary prompt reaches the resumed turn",
+            );
+        } finally {
+            releasePark.resolve();
+            ws.close();
+        }
     });
 });
 

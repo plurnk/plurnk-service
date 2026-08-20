@@ -14,6 +14,7 @@ import Results, { OperationFailureError, type SchemeResult } from "../core/resul
 import { observed } from "../observe/spans.ts";
 import { LOOP_TERMINALS, recordCounter } from "../observe/metrics.ts";
 import { readOptimisticSettlementMs } from "../core/optimistic-settlement.ts";
+import { promptLoopPrefix } from "../core/plurnk-uri.ts";
 import { execPollBackoffMs } from "./exec-poll-backoff.ts";
 
 export interface DrainLoopResult {
@@ -209,7 +210,8 @@ export default class DrainSupervisor {
 
     async inject(args: DrainInjectionArgs): Promise<DrainInjectionResult> {
         const { workspaceId, workerId, prompt } = args;
-        if (this.#activeDrains.has(workerId)) {
+        const activeInjection = await this.#withDrainLock(workerId, async () => {
+            if (!this.#activeDrains.has(workerId)) return null;
             const active = await this.#db.drain_current_loop_for_worker.get<{ id: number }>({ worker_id: workerId });
             if (active !== undefined) {
                 await this.#assertInjectionCompatibility({
@@ -224,9 +226,15 @@ export default class DrainSupervisor {
             }
             const result = await this.#injectPrompt(workerId, prompt, args.openPaths ?? []);
             if (result !== null) {
-                return { action: "injected_next_turn", loopId: result.loopId, turnSeq: result.turnSeq };
+                // runLoop may already have parked in the database while this drain
+                // is still registered. Wake that state now; if it is still running,
+                // the serialized park-boundary check below supplies the wake edge.
+                await this.#lifecycle.wake(result.loopId);
+                return { action: "injected_next_turn", loopId: result.loopId, turnSeq: result.turnSeq } as const;
             }
-        }
+            return null;
+        });
+        if (activeInjection !== null) return activeInjection;
 
         // A parked worker resumes the same durable loop; a wake is not a new
         // loop and cannot silently replace its flags/provider/turn ceiling.
@@ -405,6 +413,26 @@ export default class DrainSupervisor {
                                 t.unref();
                                 this.#parkTimers.set(workerId, t);
                             }
+                        }
+                        // Serialize the park boundary against active prompt injection.
+                        // Whichever side arrives first owns a wake edge: injection wakes
+                        // an already-parked loop, while this check wakes a prompt written
+                        // just before runLoop finished parking.
+                        const promptWaiting = await this.#withDrainLock(workerId, async () => {
+                            const prefix = promptLoopPrefix(loopRow.sequence);
+                            const undelivered = await this.#db.drain_undelivered_prompts_for_loop.get<{ pathname: string }>({
+                                owner_id: workerId,
+                                pattern: `${prefix}%`,
+                                prefix_len: prefix.length,
+                                loop_id: loopRow.id,
+                            });
+                            if (undelivered === undefined) return false;
+                            await this.#lifecycle.wake(loopRow.id);
+                            return true;
+                        });
+                        if (promptWaiting) {
+                            currentLoopId = null;
+                            continue;
                         }
                         // Honor an OWED wake ({§worker-lifecycle-child-wake}): a child/stream concluded while
                         // this worker was mid-turn, before it slept — resume in place rather than park blind,
