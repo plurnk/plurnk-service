@@ -18,7 +18,7 @@ test("{§tools-resource-discovery} renders a general runtime as one self-describ
     const content = resources[0]?.content ?? "";
     assert.match(content, /^# example$/m);
     assert.match(content, /^## Summary\n\nCompute a thing\.$/m);
-    assert.match(content, /^## Example$/m);
+    assert.match(content, /^## Invocation$/m);
     assert.match(content, /^\| body \| required: query \|$/m);
     assert.match(content, /```plurnk\n## EXEC0 \[example\] <!-- Compute a thing\. -->\nsomething\n```/);
     assert.match(content, /^## Scope$/m);
@@ -65,6 +65,7 @@ test("{§tools-resource-discovery} renders an exact registry as one family and o
         "/skills/plurnk/gitea/issue%2Fread.md",
     ]);
     const family = resources[0]?.content ?? "";
+    assert.match(family, /^## Invocation$/m);
     assert.match(
         family,
         /^## EXEC0 \[gitea\] \(index\) <!-- List repository issues\. \(details: worker:\/\/plurnk\/skills\/plurnk\/gitea\/index\.md\) -->\n\{"owner"\?: string\}$/m,
@@ -78,6 +79,7 @@ test("{§tools-resource-discovery} renders an exact registry as one family and o
 
     const issue = resources.find(({ pathname }) => pathname.endsWith("issue%2Fread.md"))?.content ?? "";
     assert.match(issue, /^## Summary\n\nRead one issue and its discussion\.$/m);
+    assert.match(issue, /^## Invocation$/m);
     assert.match(issue, /`## EXEC0 \[gitea\] \(issue\/read\) <!-- Read one issue and its discussion\. -->`/);
     assert.match(issue, /^Signature: `\{"owner": string, "repo": string, "index": integer\}`$/m);
     assert.match(issue, /^## Inputs$/m);

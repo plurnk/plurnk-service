@@ -394,7 +394,7 @@ test("assembled packet: the skills foist — FIND(worker://plurnk/skills/**) sur
         // A materialized scheme doc (what loop_run writes in production — the demo's runLoop doesn't) —
         // kernel-owned at worker://plurnk/skills/plurnk/… ({§entry-owner}).
         const Owner = (await import("../../src/core/Owner.ts")).default;
-        await seedEntryWithChannel(db, { workspaceId, ownerId: await Owner.kernelId(db, workspaceId), scheme: "worker", pathname: "/skills/plurnk/worker.md", channel: "body", content: "# worker\n\n## Summary\n\nManage shared worker entries.\n\n## Example\n\n## EDIT0 (worker:///notes.md)\nNotes.", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, ownerId: await Owner.kernelId(db, workspaceId), scheme: "worker", pathname: "/skills/plurnk/worker.md", channel: "body", content: "# worker\n\n## Summary\n\nManage shared worker entries.\n\n## Invocation\n\n## EDIT0 (worker:///notes.md)\nNotes.", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });

@@ -19,7 +19,7 @@ const findStatement = (): FindStatement => ({
         username: null, password: null, hostname: "plurnk", port: null,
         pathname: "/skills/plurnk/*.md", query: null, fragment: null,
     },
-    body: { dialect: "xpath", raw: '//heading[text()="Example"]' },
+    body: null,
     lineMarker: { marks: [1, -1] }, position: { line: 1, column: 1 },
 });
 

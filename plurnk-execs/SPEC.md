@@ -365,9 +365,10 @@ I/O boundary rather than making packet assembly perform network discovery.
 §executor-tool-document **Tool documents are the model-facing executor
 directory.** A general runtime's document carries exact H2 `Summary` and
 `Invocation` sections plus its executable witness. An exact registry instead
-renders one compact family document containing every exact annotated EXEC
-heading and signature, plus one child document per tool with its H2 `Summary`,
-literal target, signature, and supplemental input details. Supplemental
+renders one compact family document whose H2 `Invocation` contains every exact
+annotated EXEC heading and signature, plus one child document per tool with H2
+`Summary` and `Invocation` sections containing its literal target, signature,
+and supplemental input details. Supplemental
 `details` follows framework-owned sections and cannot own identity, invocation,
 or admission. The consumer chooses resource addresses, materializes the
 documents, and exposes each Summary through ordinary FIND metadata. No executor
