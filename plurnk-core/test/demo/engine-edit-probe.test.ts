@@ -27,7 +27,7 @@ test("demo: locate and edit deep in a large source file — coordinate held, no 
     try {
         loop = await liveLoop(
             s, 2,
-            { prompt: "In Engine.ts, insert a new line containing exactly `// AUDIT-OK` immediately above the line that declares the `resolveWorkerPrimary` method.", maxTurns: 30 },
+            { prompt: "In Engine.ts, insert a new line containing exactly `#pragma plurnk-once` immediately above the line that declares the `resolveWorkerPrimary` method.", maxTurns: 30 },
             { timeoutMs: TIMEOUT - 30_000 },
         );
     } finally {
@@ -43,7 +43,7 @@ test("demo: locate and edit deep in a large source file — coordinate held, no 
         // (1) COORDINATE: the audit line lands immediately above resolveWorkerPrimary — the located target, not a fabricated spot.
         const rwpIdx = editedLines.findIndex((l) => /\bresolveWorkerPrimary\s*\(/.test(l) && !l.trimStart().startsWith("//"));
         assert.ok(rwpIdx > 0, "resolveWorkerPrimary declaration still present");
-        assert.match(editedLines[rwpIdx - 1], /\/\/ AUDIT-OK/, "AUDIT-OK sits immediately above resolveWorkerPrimary (coordinate landed on the located target)");
+        assert.match(editedLines[rwpIdx - 1], /#pragma plurnk-once/, "the marker sits immediately above resolveWorkerPrimary (coordinate landed on the located target)");
 
         // (2) NO run61-style corruption: exactly one class, key methods intact, no duplication.
         assert.equal(edited.split("export default class Engine").length - 1, 1, "exactly one class declaration (no duplicate/self-nested block)");
@@ -53,8 +53,8 @@ test("demo: locate and edit deep in a large source file — coordinate held, no 
 
         // (3) MINIMAL DELTA: exactly the inserted audit line(s), nothing else changed.
         assert.ok(editedLines.length >= origLines.length && editedLines.length <= origLines.length + 2, `file grew minimally (${origLines.length} -> ${editedLines.length}); a large delta = destruction/bloat`);
-        const withoutAudit = editedLines.filter((l) => l.trim() !== "// AUDIT-OK").join("\n");
-        assert.equal(withoutAudit.trimEnd(), original.trimEnd(), "with the audit line removed, the file is byte-identical to the original — nothing else was touched");
+        const withoutMarker = editedLines.filter((l) => l.trim() !== "#pragma plurnk-once").join("\n");
+        assert.equal(withoutMarker.trimEnd(), original.trimEnd(), "with the marker line removed, the file is byte-identical to the original — nothing else was touched");
     } finally {
         await s.cleanup();
         await rm(fixture, { recursive: true, force: true });
