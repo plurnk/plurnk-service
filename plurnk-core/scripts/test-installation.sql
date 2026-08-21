@@ -14,7 +14,17 @@ VALUES ($worker_id, 1, $prompt) RETURNING id;
 
 -- PREP: installation_insert_turn
 INSERT INTO turns (loop_id, sequence, producer, kind, status)
-VALUES ($loop_id, 1, 'client', 'operation', 200);
+VALUES ($loop_id, 1, 'client', 'operation', 200)
+RETURNING id;
+
+-- PREP: installation_insert_turn_ops
+INSERT INTO log_entries (
+    worker_id, loop_id, turn_id, sequence, origin, op,
+    tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs
+) VALUES (
+    $worker_id, $loop_id, $turn_id, 1, 'client', NULL,
+    '', 'text/vnd.plurnk', $rx, 'application/json', 200, $weight, '{"kind":"turnOps"}'
+);
 
 -- PREP: installation_select_skills
 SELECT entries.pathname, entry_channels.content

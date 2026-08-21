@@ -3137,17 +3137,26 @@ leaves the request-only record, while rejected exchanges remain in
 flat schema enforces its root states; typed reads additionally validate every
 section and parsed operation. A hard budget stop remains request-only. Client,
 setup, filesystem-narration, and executor-materialization turns are ordinary
-operation turns and therefore store `NULL`. Digest writes packet artifacts only
-for turns that actually assembled a model request; request-only turns receive a
-note instead of a fabricated response.
+operation turns and therefore store `NULL`. Digest projects exact operation
+source independently from this optional model-exchange record; a request-only
+turn receives a note instead of a fabricated response.
 
-§digest-packet-artifact-identity **Packet artifact ordinals describe packets, not unrelated turns.**
-After selectors are applied, digest orders packet-bearing turns chronologically
-and names them contiguously from `packet001`. Packetless initialization,
-overflow, client, plugin, and narration turns reserve no artifact ordinal and
-can create no filename hole. Durable worker/loop/turn identity remains in the
-digest data and waterfall rather than being encoded ambiguously into this
-presentation ordinal.
+§digest-turn-artifact-identity **Digest packet artifacts project durable turns.**
+After selectors are applied, digest retains every turn with exact `turnOps` or
+a stored provider request, orders those turns by durable chronology, and names
+them contiguously from `packet000`. The producer does not affect projection.
+
+| Artifact | Present when | Authority |
+|----------|--------------|-----------|
+| `packetNNN.assistant.md` | The turn has `turnOps` | Exact persisted `turnOps` source |
+| `packetNNN.system.md`, `packetNNN.user.md` | The turn stored a provider request | Stored packet sections projected through `PacketWire` |
+| `packetNNN.assistantRaw.json` | The request has an admitted provider response | Stored opaque provider response |
+| `packetNNN.response.md`, attempt artifacts | The request received no admitted response | Stored request and attempt state |
+
+A source-backed turn without provider participation therefore produces only
+`assistant.md`; a request-only turn produces no fabricated assistant. A
+source-less programmatic turn with no provider request has no forensic payload
+to project and reserves no ordinal.
 
 The external tokenless draft and transformation boundary is owned by
 {§scheme-packet-transform}. Core alone extends each validated draft with its

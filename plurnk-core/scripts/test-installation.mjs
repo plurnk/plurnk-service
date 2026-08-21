@@ -250,6 +250,7 @@ ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from 
 // consumer, not the workspace source condition. A successful run proves the
 // packed dist/digest/digest.sql resolved beside Digest.js.
 const packedDigestDir = resolve(sandbox, "packed-digest");
+const packedTurnOps = "# PLAN0\n* Exercise the installed digest.\n## SEND0 [200]\ndone";
 const digestFixture = new SqlRiteSync({
     path: migratedDb,
     dir: dirname(fileURLToPath(import.meta.url)),
@@ -264,7 +265,14 @@ try {
         worker_id: worker.id,
         prompt: "packed-digest-prompt",
     });
-    digestFixture.installation_insert_turn.run({ loop_id: loop.id });
+    const turn = digestFixture.installation_insert_turn.get({ loop_id: loop.id });
+    digestFixture.installation_insert_turn_ops.run({
+        worker_id: worker.id,
+        loop_id: loop.id,
+        turn_id: turn.id,
+        rx: JSON.stringify({ content: packedTurnOps, mimetype: "text/vnd.plurnk" }),
+        weight: Math.ceil(packedTurnOps.length / 2),
+    });
 } finally {
     digestFixture.close();
 }
@@ -285,8 +293,11 @@ ok(
     "the packed digest subpath resolves its SQL and writes selected forensic artifacts",
 );
 ok(
-    !existsSync(resolve(packedDigestDir, "packet000.packet.md")),
-    "the packed digest does not invent a model packet artifact for an operation turn",
+    readFileSync(resolve(packedDigestDir, "packet000.assistant.md"), "utf8") === packedTurnOps
+        && !existsSync(resolve(packedDigestDir, "packet000.system.md"))
+        && !existsSync(resolve(packedDigestDir, "packet000.user.md"))
+        && !existsSync(resolve(packedDigestDir, "packet000.assistantRaw.json")),
+    "the packed digest projects exact source-only turnOps without fabricated provider artifacts",
 );
 
 const firstEnv = resolve(sandbox, "cascade-first.env");

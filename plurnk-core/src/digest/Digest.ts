@@ -11,11 +11,11 @@
 //   test/digest/reasoning.md        Every provider attempt's reasoning and admission result
 //   test/digest/requiem.md          Out-of-band model audit
 //   test/digest/requiem.json        Exact audit messages, responses, usage, and cost
-//   test/digest/packetNNN.system.md       BYTE-FOR-BYTE the system message the LLM
-//                                         received on TURN N (0-based).
+//   test/digest/packetNNN.system.md       BYTE-FOR-BYTE the system message sent
+//                                         when the turn involved a provider.
 //   test/digest/packetNNN.user.md         Same for the user message.
 //   test/digest/packetNNN.response.md      Request-only note when no response was admitted.
-//   test/digest/packetNNN.assistant.md     Model emission (content string).
+//   test/digest/packetNNN.assistant.md     Exact persisted turnOps, regardless of producer.
 //   test/digest/packetNNN.assistantRaw.json  Opaque provider response.
 //   test/digest/packetNNN.attemptNNN.rejected.assistant.md
 //                                          Rejected provider emission.
@@ -24,8 +24,8 @@
 //   test/digest/packetNNN.attemptNNN.rejected.parse-errors.json
 //                                          Admission errors for that attempt.
 //
-// packet files are byte-identical to what Engine emits, because Engine and
-// digest both project through PacketWire (one renderer, no drift).
+// Provider request slots are byte-identical to what Engine emits because both
+// paths project through PacketWire. Assistant files preserve durable turnOps.
 //
 // SQL lives in the co-located digest.sql; opened the sqlrite way (SqlRiteSync,
 // the sync CLI/script facade). Each PREP block is read through its own accessor.
@@ -201,7 +201,7 @@ interface LogRow {
     origin: string; source: string | null; model_call_id: number | null; attrs: string;
     op: string | null; scheme: string | null; hostname: string | null; port: number | null;
     pathname: string | null; query: string | null; fragment: string | null;
-    rx: string | null; status_rx: number; state: string; outcome: string | null;
+    rx: string | null; mimetype_rx: string; status_rx: number; state: string; outcome: string | null;
 }
 interface LogCurationEffectRow {
     operation_log_entry_id: number;
@@ -665,32 +665,55 @@ export default class Digest {
         return lines.join("\n");
     }
 
-    // Per-turn packet files, byte-identical to the wire (Engine and digest both
-    // project through PacketWire). system/user are markdown; assistantRaw is JSON.
+    static #turnOpsSource(m: DigestModel, turn: TurnRow): string | null {
+        const rows = (m.logEntriesByTurn.get(turn.id) ?? []).filter((row) =>
+            row.op === null
+            && LogBody.actionlessKind({ op: row.op, attrs: row.attrs }) === "turnOps");
+        if (rows.length > 1) {
+            throw new TypeError(`digest: turn ${turn.id} has ${rows.length} turnOps rows; expected at most one`);
+        }
+        const row = rows[0];
+        if (row === undefined) return null;
+        const body = LogBody.resolve({
+            op: row.op,
+            attrs: row.attrs,
+            tx: null,
+            rx: row.rx,
+            mimetypeRx: row.mimetype_rx,
+        });
+        if (body.mimetype !== "text/vnd.plurnk") {
+            throw new TypeError(`digest: turn ${turn.id} turnOps has mimetype ${JSON.stringify(body.mimetype)}; expected text/vnd.plurnk`);
+        }
+        return body.content;
+    }
+
+    // Per-turn forensic files. turnOps is the source authority; PacketWire
+    // reproduces provider request slots, and assistantRaw preserves provider bytes.
     static #writePacketFiles(m: DigestModel): string[] {
         const written: string[] = [];
-        // {§digest-packet-artifact-identity} — packet artifacts form their own
-        // one-based contiguous chronology. Packetless turns reserve no name.
         m.turns
-            .filter((turn) => turn.packet !== null)
-            .toSorted((a, b) => a.id - b.id)
-            .forEach((t, index) => {
-            const packet = t.packet;
-            if (packet === null) throw new Error("packet-bearing digest turn lost its packet");
-            const ordinal = index + 1;
+            .map((turn) => ({ turn, source: Digest.#turnOpsSource(m, turn) }))
+            .filter(({ turn, source }) => turn.packet !== null || source !== null)
+            .toSorted((a, b) => a.turn.id - b.turn.id)
+            .forEach(({ turn, source }, ordinal) => {
             const padded = String(ordinal).padStart(3, "0");
-            const systemMd = PacketWire.renderSlot(packet.sections, "system");
-            const userMd = PacketWire.renderSlot(packet.sections, "user");
-            const files: Array<[string, string]> = [
-                [`packet${padded}.system.md`, systemMd],
-                [`packet${padded}.user.md`, userMd],
-            ];
-            if (StoredPacket.isAdmitted(packet)) {
+            const files: Array<[string, string]> = [];
+            const packet = turn.packet;
+            if (packet !== null) {
                 files.push(
-                    [`packet${padded}.assistant.md`, packet.assistant.content],
-                    [`packet${padded}.assistantRaw.json`, JSON.stringify(packet.assistantRaw, null, 2)],
+                    [`packet${padded}.system.md`, PacketWire.renderSlot(packet.sections, "system")],
+                    [`packet${padded}.user.md`, PacketWire.renderSlot(packet.sections, "user")],
                 );
-            } else {
+            }
+            if (source !== null) {
+                files.push([`packet${padded}.assistant.md`, source]);
+            }
+            if (packet !== null && StoredPacket.isAdmitted(packet)) {
+                if (source !== null && packet.assistant.content !== source) {
+                    throw new TypeError(`digest: turn ${turn.id} packet assistant differs from its turnOps source`);
+                }
+                files.push([`packet${padded}.assistantRaw.json`, JSON.stringify(packet.assistantRaw, null, 2)]);
+            } else if (packet !== null) {
                 files.push([
                     `packet${padded}.response.md`,
                     `# Packet ${ordinal} — request only\n\nNo provider response was admitted. Rejected attempt evidence, when present, is written separately.\n`,
@@ -700,7 +723,7 @@ export default class Digest {
                 writeFileSync(join(m.digestDir, file), body);
                 written.push(file);
             }
-            for (const attempt of m.attemptsByTurn.get(t.id) ?? []) {
+            for (const attempt of m.attemptsByTurn.get(turn.id) ?? []) {
                 if (attempt.accepted === 1) continue;
                 const attemptPadded = String(attempt.sequence).padStart(3, "0");
                 if (attempt.state !== "response") {
