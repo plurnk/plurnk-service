@@ -406,7 +406,17 @@ test("two Fireworks aliases independently select default and priority service ti
     const bodies: Record<string, unknown>[] = [];
     mock.method(globalThis, "fetch", async (_url: string, init?: RequestInit) => {
         bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-        return new Response(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+        const chunk = {
+            id: "fireworks-test",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "fireworks-test",
+            choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
+        };
+        return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+        });
     });
     const env = {
         ...fullEnv,

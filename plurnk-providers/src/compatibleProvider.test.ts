@@ -21,6 +21,17 @@ const env = {
     PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "stable-system",
 };
 
+const streamedChatResponse = (content: string) => new Response([
+    `data: ${JSON.stringify({
+        id: "test-completion",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "local",
+        choices: [{ index: 0, delta: { content }, finish_reason: "stop" }],
+    })}`,
+    "data: [DONE]",
+].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
+
 test.afterEach(() => mock.restoreAll());
 
 test("an undifferentiated compatible endpoint receives no guessed prompt-cache field", async () => {
@@ -30,11 +41,7 @@ test("an undifferentiated compatible endpoint receives no guessed prompt-cache f
             return new Response(JSON.stringify({ data: [{ id: "local", n_ctx: 8192 }] }));
         }
         body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-        return new Response(JSON.stringify({
-            model: "local",
-            choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
-            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-        }), { headers: { "content-type": "application/json" } });
+        return streamedChatResponse("ok");
     });
 
     const provider = await compatibleProviderFromEnv("openai", env, "local");
@@ -55,11 +62,7 @@ test("the server-wide DRY-off floor emits no DRY request fields", async () => {
             }));
         }
         body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-        return new Response(JSON.stringify({
-            model: "local",
-            choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
-            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-        }), { headers: { "content-type": "application/json" } });
+        return streamedChatResponse("ok");
     });
 
     const provider = await compatibleProviderFromEnv("openai", {

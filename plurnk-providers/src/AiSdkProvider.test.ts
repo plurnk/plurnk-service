@@ -60,9 +60,18 @@ const sseStream = (chunks: unknown[]) => {
 
 const installFetch = (chunks: unknown[]) => {
     const calls: { url: string; init: RequestInit }[] = [];
+    const completeChunks = chunks.some((value) => {
+        const choices = (value as { choices?: Array<{ finish_reason?: unknown }> }).choices;
+        return choices?.some(({ finish_reason }) => finish_reason != null) ?? false;
+    })
+        ? chunks
+        : [...chunks, { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }];
     mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
         calls.push({ url, init });
-        return new Response(sseStream(chunks), { status: 200 });
+        return new Response(sseStream(completeChunks), {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+        });
     });
     return calls;
 };
@@ -1955,7 +1964,7 @@ test("retry: a transient failure retries and a later success resolves", async ()
         { status: 409, retryAfter: 0 },
         { status: 429, retryAfter: 0 },
         { status: 503, retryAfter: 0 },
-        { status: 200, chunks: [{ choices: [{ delta: { content: "ok" } }] }] },
+        { status: 200, chunks: [{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }] },
     ]);
     const p = testProvider({ ...retryCfg, retryAttempts: 4 });
     const res = await p.generate({ workerId: "r", messages: [] });

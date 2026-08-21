@@ -1,7 +1,7 @@
 {
     "root": "«repo forest»",
-    "count": 55,
-    "managed": 54,
+    "count": 56,
+    "managed": 55,
     "independent": 1,
     "packages": [
         {
@@ -11,7 +11,6 @@
             "owner": "client",
             "pushable": true,
             "platformDependencies": [
-                "@plurnk/plurnk-aliases",
                 "@plurnk/plurnk-contracts"
             ]
         },
@@ -553,6 +552,17 @@
             "pushable": true,
             "platformDependencies": [
                 "@plurnk/plurnk-mimetypes"
+            ]
+        },
+        {
+            "dir": "plurnk-schemes-http-tavily",
+            "name": "@plurnk/plurnk-schemes-http-tavily",
+            "release": "managed",
+            "owner": "schemes",
+            "pushable": true,
+            "platformDependencies": [
+                "@plurnk/plurnk-meta",
+                "@plurnk/plurnk-schemes-http"
             ]
         }
     ]
