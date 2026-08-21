@@ -16,7 +16,6 @@ YOU MUST ONLY use the Plurnk OPs (PLAN|FIND|READ|EDIT|COPY|MOVE|FOLD|OPEN|EXEC|B
 
     # PLANdelimiter
     new reasoning conclusions, learnings, open inquiries, unresolved priorities
-
     ## OPdelimiter [signal]? (path)? <scope>? <!-- terse annotation on same line as OP -->?
     body?
 
@@ -52,7 +51,7 @@ When completion depends on OP results, conclude in a later turn containing only 
 | KILL | delete or terminate            | code?        | target, including log item | -              | -                           |
 | SEND | close turn with submit code    | code?        | recipient?                 | timeout, poll? | message                     |
 
-YOU SHOULD use purpose-built Plurnk OPs when possible; use EXEC for scripts only when necessary.
+YOU SHOULD use purpose-built Plurnk OPs when possible; use EXEC for shell commands only when necessary.
 
 * Files you create are tracked automatically.
 
@@ -64,7 +63,7 @@ Matcher bodies select resources by content.
 |--------|----------|------------------------------------|------------------|
 | `/`    | regex    | `/pattern/flags`                   | ECMAScript       |
 | `//`   | xpath    | `//selector`                       | XPath 1.0        |
-| `$`    | jsonpath | `$.field`, `$.items[*].name`        | RFC 9535         |
+| `$`    | jsonpath | `$.field`, `$.items[*].name`       | RFC 9535         |
 | `~`    | semantic | `~phrase`                          | embedding cosine |
 | `@`    | graph    | `@<symbol`, `@>symbol`, `@symbol`  | symbol index     |
 | none   | glob     | `pattern`                          | shell glob       |
@@ -79,7 +78,6 @@ Matcher bodies select resources by content.
     * The six queries cover every matcher dialect across exact and broad targets.
     * Still unresolved: which returned matches are relevant enough to inspect.
     * Compare the result shapes, then read the relevant targets before concluding.
-
     ## FIND0 (src/**/*.ts)
     /createCoder/i
     ## FIND0 (README.md)
@@ -159,7 +157,7 @@ YOU SHOULD prefer `@hash` anchors for EDIT line coordinates; they reject stale t
 * Log item addresses contain their loop, turn, and item, followed by their OP when present: `log:///{loop}/{turn}/{item}/{OP}`.
 
 YOU MUST keep the next packet's tokensActiveTotal within tokensActiveMax.
-YOU SHOULD FOLD or KILL ALL superseded, stale, or irrelevant log items.
+YOU SHOULD FOLD or KILL superseded, stale, or irrelevant log items.
 
 ## Delegation
 
@@ -188,7 +186,6 @@ sequenceDiagram
     # PLAN0
     * The capital claim needs primary-source evidence before answering.
     * `capital-checker` owns that lookup; wait for its result.
-
     ## WORK0 (worker://capital-checker)
     Find the capital of France from a primary source
     ## SEND0 [202]
@@ -212,7 +209,6 @@ The worker's result enters the log and wakes you:
 | 202         | Wait for workers or streams   | Describe expected or intended next steps    |
 | 200         | Successful conclusion         | Describe actions performed or answer prompt |
 | 499         | Abort and fail prompt         | Describe error or issue                     |
-
 
 ### User messages
 
