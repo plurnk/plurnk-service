@@ -2331,21 +2331,28 @@ names, request validation, discovery result, and event projection.
 ```mermaid
 flowchart LR
     register["Daemon.registerModule"] --> setup["module.setup(ModuleSetupSeam)"]
-    setup --> capabilities["Register static capabilities,<br/>workspace providers, and actions"]
-    capabilities --> ready["Schemes ready; docs published;<br/>durable lifecycle recovered"]
-    ready --> start["module.start(CoreSeam)"]
+    setup --> capabilities["Register static capabilities,<br/>workspace activators, and actions"]
+    capabilities --> ready["Process-wide schemes ready"]
+    ready --> recovery["Reconcile durable lifecycle"]
+    recovery --> start["module.start(CoreSeam)"]
     start --> interface["Module-owned listener<br/>and client protocol"]
-    interface --> calls["Typed CoreSeam calls"]
+    recovery -->|durable workspace work| demand["First workspace demand"]
+    interface -->|client workspace work| demand
+    demand --> activate["Activate capabilities once;<br/>publish workspace docs"]
+    activate --> calls["Typed CoreSeam calls"]
+    interface -->|worldless call| calls
     calls --> core["Core state and orchestration"]
     core --> events["subscribeToEvents<br/>(workspaceId, event, payload)"]
     events --> interface
 ```
 
 Every registered module's `setup` runs in registration order before any
-module's `start`. Core then readies schemes, publishes installed capabilities,
-recovers durable lifecycle, and starts modules in registration order. Shutdown
-closes started and self-closing modules in reverse order and surfaces aggregated
-close failures.
+module's `start`. Core then readies process-wide schemes, reconciles durable
+lifecycle, and starts modules in registration order. Persisted workspaces with
+no durable work stay passive until first demand; activation publishes their
+complete capabilities and documentation before the demanding operation
+proceeds. Shutdown closes started and self-closing modules in reverse order and
+surfaces aggregated close failures.
 
 §module-discovery **Third-party daemon-module composition is manifest
 discovery.** A package declares `plurnk: { kind: "module", module:
@@ -2386,7 +2393,7 @@ flowchart LR
 | `registerRuntimes([{ decl, executor, availability, scheme? }, ...])` | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every process-wide executor and optional claimed scheme facet atomically. |
 | `registerScheme(name, handler)` | Adds one process-wide addressable scheme handler; scheme readiness and model-facing capability publication remain core-owned. |
 | §module-action-registration `registerModuleAction({ name, scope, handler })` | Adds one non-empty, extension-unique action. `scope` is exactly `worldless` or `workspace`; the handler receives validated params and a separate matching context. A workspace context contains the trusted bound `workspaceId`, never a client parameter. A client-interface module decides whether and how the name becomes public and owns collisions with its built-ins. |
-| §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique provider whose `hydrate(workspaceId)` reconstructs its effective snapshot. Core invokes every provider for existing workspaces before capability publication and for a new workspace before that workspace is returned or advertised. |
+| §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique provider whose `activate(workspaceId)` reconstructs its effective snapshot. Core coalesces concurrent first demand, invokes every provider once for that workspace, publishes its generated documentation, and keeps the snapshot warm until daemon shutdown. Existing dormant workspaces perform no provider work at boot. Demand includes create/attach, execution by any producer, an explicit workspace capability action, and durable work resumed after restart; it is not client-only. |
 | §module-workspace-state `readWorkspaceModuleState(workspaceId, namespaceOwner)` | Reads the provider's one nullable JSON state value. Core owns workspace isolation and storage; the provider owns and validates its schema. Secret values are forbidden when a durable symbolic reference can identify their authoritative source. |
 | §module-workspace-capabilities `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })` | Replaces one provider's complete durable state and runtime/scheme snapshot at a quiescent workspace boundary. Core validates base/peer namespace claims before mutation, blocks new turns, commits the snapshot, and reconciles pull docs as one operation. Failure restores the prior state and presentation. The empty runtime set removes that provider's workspace namespace. |
 

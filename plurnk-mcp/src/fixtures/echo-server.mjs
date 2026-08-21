@@ -4,13 +4,18 @@ import {
     fromJsonSchema,
 } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
-import { writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod/v4";
 
 const closeMarker = process.env.PLURNK_MCP_TEST_CLOSE_MARKER;
 if (closeMarker !== undefined) {
     process.on("exit", () => writeFileSync(closeMarker, "closed\n"));
 }
+const startMarker = process.env.PLURNK_MCP_TEST_START_MARKER;
+if (startMarker !== undefined) appendFileSync(startMarker, `${process.pid}\n`);
+const startDelayMs = Number(process.env.PLURNK_MCP_TEST_START_DELAY_MS ?? "0");
+if (startDelayMs > 0) await delay(startDelayMs);
 
 const factory = () => {
     const server = new McpServer({

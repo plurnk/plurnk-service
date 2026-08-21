@@ -172,12 +172,12 @@ service definition's enabledness or own an added definition and its enabledness.
 Disabled definitions remain client-visible but contribute no connection,
 Registry, documentation, or resource authority.
 
-§mcp-hydration-isolation **Cold endpoint failure is capability-local.** Invalid
+§mcp-activation-isolation **Cold endpoint failure is capability-local.** Invalid
 service configuration or durable state fails admission, but an enabled server
-that cannot connect or complete discovery during workspace hydration remains
+that cannot connect or complete discovery during first workspace activation remains
 enabled and client-visible as `unavailable`. It publishes no runtime, tools,
 resources, or documentation and cannot prevent other capabilities or the daemon
-from starting. Enabling that already-enabled alias is an explicit reconnect
+from starting or serving dormant workspaces. Enabling that already-enabled alias is an explicit reconnect
 attempt; failure preserves the unavailable snapshot, while success atomically
 replaces it. Interactive add and enable mutations continue to reject an
 unavailable candidate without changing durable state.
@@ -298,7 +298,7 @@ server fails completion with a conflict instead of replaying a stale workspace
 snapshot. `oauth.complete` accepts the complete
 callback URL so state, `code`, and `iss` remain one parsing unit. A missing,
 expired, mismatched, or replayed callback fails without exposing attacker-owned
-OAuth error text. It completes either pending hydration or the originally
+OAuth error text. It completes either pending activation or the originally
 requested add or enable.
 
 ## §oauth-lifetime Interactive OAuth lifetime and reauthorization
@@ -376,13 +376,13 @@ decision on durable identity material is ratified.
 
 ## §mcp-setup Atomic lifecycle
 
-For each workspace, hydration resolves service defaults and durable positive
+On a workspace's first demand, activation resolves service defaults and durable positive
 workspace state, opens and discovers only enabled connections,
 lists the negotiated catalogs, applies enabled/effect policy, builds each exact
 tool Registry and resource facet, and submits one complete owner snapshot to
 {§module-workspace-capabilities}. A configured tool absent from the server, a
 duplicate remote name, an enabled name not representable as a Plurnk target,
-or a `read` name outside the enabled set fails that workspace hydration. No
+or a `read` name outside the enabled set fails that workspace activation. No
 partial namespace is published and every acquired candidate closes.
 
 Add and enable prepare the candidate while the old snapshot remains
@@ -395,11 +395,13 @@ commit leaves the durable definition, connection, Registry, docs, and resource
 authority unchanged. Materialization and registration inspect the complete
 owning operation result; a non-success preserves its original Problem.
 
-Shutdown first prevents new work, cancels pending OAuth candidates and
-infrastructure watches, settles every active request and Task, closes every
-acquired connection, then reports all close failures. Whole-connection
-shutdown retires subscription work before closing its transport; it does not
-first issue a redundant per-listen cancellation.
+Shutdown first prevents new serialized work, cancels infrastructure watches,
+and closes every acquired connection—including a candidate still negotiating.
+That cancellation reaches pending OAuth, active requests, and Tasks. It then
+waits active mutations to settle, discards process-local snapshots, and reports
+every close failure. Whole-connection shutdown retires subscription work before
+closing its transport; it does not first issue a redundant per-listen
+cancellation.
 
 ## §mcp-host-composition Protocol-to-Plurnk composition
 

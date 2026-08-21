@@ -48,6 +48,22 @@ test("boot restores a drain for accepted queued work", async () => {
     });
     ProviderInstantiate.registerInstance(mock, providerSpec);
     const daemon = new Daemon({ db, provider: mock });
+    const activations: number[] = [];
+    daemon.registerModule({
+        setup: (seam) => {
+            seam.registerWorkspaceCapabilityProvider("recovery activation fixture", {
+                activate: async (workspaceId) => {
+                    activations.push(workspaceId);
+                    await seam.replaceWorkspaceCapabilities({
+                        workspaceId,
+                        namespaceOwner: "recovery activation fixture",
+                        state: null,
+                        runtimes: [],
+                    });
+                },
+            });
+        },
+    });
     try {
         const workspaceId = await insertWorkspace(db, `recovery-queue-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
@@ -61,6 +77,11 @@ test("boot restores a drain for accepted queued work", async () => {
         );
         assert.equal(status, 200);
         assert.equal(mock.remaining, 0, "the recovered queue was executed, not merely relabelled");
+        assert.deepEqual(
+            activations,
+            [workspaceId],
+            "durable queued work activates its workspace without a client attachment",
+        );
     } finally {
         await daemon.stop();
         await db.close();

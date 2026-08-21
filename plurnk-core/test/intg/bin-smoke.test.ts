@@ -8,10 +8,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn, ChildProcess } from "node:child_process";
-import { access, mkdtemp, mkdir, rm } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
+import { insertWorkspace, openMigrated } from "./_helpers.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BIN_PATH = resolve(here, "../../src/service.ts");
@@ -27,10 +28,18 @@ interface BootedDaemon {
     tmpdir: string;
 }
 
-const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rejectPromise) => {
+interface BootPaths {
+    readonly dir: string;
+    readonly dbPath: string;
+}
+
+const bootDaemon = (
+    prepare?: (paths: BootPaths) => Promise<NodeJS.ProcessEnv | void>,
+): Promise<BootedDaemon> => new Promise((resolvePromise, rejectPromise) => {
     void (async () => {
         const dir = await mkdtemp(join(tmpdir(), "plurnk-bin-smoke-"));
         const dbPath = join(dir, "plurnk.db");
+        const overrides = await prepare?.({ dir, dbPath }) ?? {};
         const env: NodeJS.ProcessEnv = {
             ...process.env,
             HOME: dir,
@@ -39,6 +48,7 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
             PLURNK_SERVICE_DB_PATH: dbPath,
             PLURNK_HOST: "127.0.0.1",
             PLURNK_PORT: "0",      // the AG-UI+ surface — THE listener; OS picks a free port
+            ...overrides,
         };
         delete env.PLURNK_MODEL;
 
@@ -90,8 +100,80 @@ const bootDaemon = (): Promise<BootedDaemon> => new Promise((resolvePromise, rej
             clearTimeout(timer);
             rejectPromise(err);
         });
-    })();
+    })().catch(rejectPromise);
 });
+
+const action = async (
+    booted: BootedDaemon,
+    kind: string,
+    params: Readonly<Record<string, unknown>> = {},
+): Promise<unknown> => {
+    const response = await fetch(`http://${booted.host}:${booted.port}/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+            runId: crypto.randomUUID(),
+            threadId: "startup-specimen",
+            state: {},
+            messages: [],
+            tools: [],
+            context: [],
+            forwardedProps: {
+                plurnk: {
+                    action: { kind, ...params },
+                },
+            },
+        }),
+    });
+    assert.equal(response.status, 200);
+    const frames = (await response.text())
+        .split("\n\n")
+        .filter((frame) => frame.startsWith("data: "))
+        .map((frame) => JSON.parse(frame.slice(6)) as {
+            type?: string;
+            name?: string;
+            value?: { ok?: boolean; result?: unknown; problem?: unknown };
+        });
+    const outcome = frames.find(({ type, name }) =>
+        type === "CUSTOM" && name === "plurnk.action.result")?.value;
+    assert.equal(outcome?.ok, true, `action ${kind} failed: ${JSON.stringify(outcome?.problem)}`);
+    return outcome?.result;
+};
+
+const markerLines = async (path: string): Promise<string[]> => {
+    try {
+        return (await readFile(path, "utf8")).trim().split("\n").filter(Boolean);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+        throw error;
+    }
+};
+
+const waitForMarkerLines = async (path: string): Promise<string[]> => {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+        const lines = await markerLines(path);
+        if (lines.length > 0) return lines;
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
+    }
+    assert.fail(`marker ${path} remained empty`);
+};
+
+const waitForExit = async (pids: readonly number[]): Promise<void> => {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+        const alive = pids.filter((pid) => {
+            try {
+                process.kill(pid, 0);
+                return true;
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+                throw error;
+            }
+        });
+        if (alive.length === 0) return;
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
+    }
+    assert.fail(`processes remained alive: ${pids.join(", ")}`);
+};
 
 const stopDaemon = async (booted: BootedDaemon): Promise<{ code: number | null; signal: NodeJS.Signals | null }> => {
     const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolvePromise) => {
@@ -123,6 +205,87 @@ test("bin: spawns, the AG-UI listener answers HTTP on its bound port, exits clea
         assert.equal(code, 0, `the service handled SIGTERM and exited zero (signal=${signal})`);
         assert.equal(signal, null, "SIGTERM was handled rather than killing the process directly");
     }
+});
+
+test("bin: persisted dormant workspaces stay cold until one is attached", { timeout: 120_000 }, async () => {
+    let startMarker = "";
+    const booted = await bootDaemon(async ({ dir, dbPath }) => {
+        const db = await openMigrated(dbPath);
+        try {
+            await insertWorkspace(db, "cold-one");
+            await insertWorkspace(db, "cold-two");
+            await insertWorkspace(db, "cold-three");
+        } finally {
+            await db.close();
+        }
+        startMarker = join(dir, "mcp-starts.txt");
+        return {
+            PLURNK_MCP_ECHO: process.execPath,
+            PLURNK_MCP_ECHO_ARGS: JSON.stringify([
+                resolve(here, "../../../plurnk-mcp/src/fixtures/echo-server.mjs"),
+            ]),
+            PLURNK_MCP_ECHO_ENV: JSON.stringify({
+                PLURNK_MCP_TEST_START_MARKER: startMarker,
+            }),
+            PLURNK_MCP_ENABLED: JSON.stringify(["echo"]),
+        };
+    });
+    try {
+        assert.deepEqual(
+            await markerLines(startMarker),
+            [],
+            "global boot must not launch one enabled MCP process per dormant workspace",
+        );
+        await action(booted, "workspace.attach", { id: 1 });
+        const firstActivationStarts = (await markerLines(startMarker)).length;
+        assert.ok(
+            firstActivationStarts > 0,
+            "first demand opens the configured MCP endpoint",
+        );
+        await action(booted, "workspace.attach", { id: 1 });
+        assert.equal(
+            (await markerLines(startMarker)).length,
+            firstActivationStarts,
+            "an already-active workspace remains warm instead of reconnecting",
+        );
+    } finally {
+        await stopDaemon(booted);
+    }
+});
+
+test("bin: SIGTERM interrupts in-flight workspace activation and reaps its MCP process", { timeout: 120_000 }, async () => {
+    let startMarker = "";
+    const booted = await bootDaemon(async ({ dir, dbPath }) => {
+        const db = await openMigrated(dbPath);
+        try {
+            await insertWorkspace(db, "activation-stop");
+        } finally {
+            await db.close();
+        }
+        startMarker = join(dir, "mcp-starts.txt");
+        return {
+            PLURNK_MCP_ECHO: process.execPath,
+            PLURNK_MCP_ECHO_ARGS: JSON.stringify([
+                resolve(here, "../../../plurnk-mcp/src/fixtures/echo-server.mjs"),
+            ]),
+            PLURNK_MCP_ECHO_ENV: JSON.stringify({
+                PLURNK_MCP_TEST_START_MARKER: startMarker,
+                PLURNK_MCP_TEST_START_DELAY_MS: "30000",
+            }),
+            PLURNK_MCP_ENABLED: JSON.stringify(["echo"]),
+        };
+    });
+    const attachment = action(booted, "workspace.attach", { id: 1 }).catch((error: unknown) => error);
+    const pids = (await waitForMarkerLines(startMarker)).map(Number);
+    const { code, signal } = await stopDaemon(booted);
+    assert.equal(code, 0, `SIGTERM during activation exits zero (signal=${signal})`);
+    assert.equal(signal, null, "the daemon handled SIGTERM during activation");
+    await Promise.race([
+        attachment,
+        new Promise<never>((_resolvePromise, rejectPromise) =>
+            setTimeout(() => rejectPromise(new Error("attachment did not settle after daemon shutdown")), 2_000)),
+    ]);
+    await waitForExit(pids);
 });
 
 test("bin: --help prints usage without booting daemon", async () => {

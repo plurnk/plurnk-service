@@ -261,7 +261,7 @@ test("Daemon: module actions register once during setup and invoke through CoreS
     }
 });
 
-test("Daemon: workspace capability providers hydrate, isolate, detach, and reconstruct snapshots", async () => {
+test("Daemon: workspace capability providers activate on demand, isolate, and reconstruct snapshots", async () => {
     const db = await openMigrated();
     const owner = "workspace capability test module";
     const tag = "workspacecap";
@@ -272,7 +272,7 @@ test("Daemon: workspace capability providers hydrate, isolate, detach, and recon
         state: JSON.stringify({ source: "workspace" }),
     });
     const executions: number[] = [];
-    const hydrated: number[] = [];
+    const activated: number[] = [];
     let setupSeam: ModuleSetupSeam | null = null;
     const activeSetupSeam = (): ModuleSetupSeam => {
         if (setupSeam === null) throw new Error("workspace capability setup seam was not handed to the module");
@@ -296,8 +296,8 @@ test("Daemon: workspace capability providers hydrate, isolate, detach, and recon
         setup: (seam: ModuleSetupSeam): void => {
             setupSeam = seam;
             seam.registerWorkspaceCapabilityProvider(owner, {
-                hydrate: async (workspaceId) => {
-                    hydrated.push(workspaceId);
+                activate: async (workspaceId) => {
+                    activated.push(workspaceId);
                     const state = await seam.readWorkspaceModuleState(workspaceId, owner);
                     const detached = typeof state === "object"
                         && state !== null
@@ -318,8 +318,9 @@ test("Daemon: workspace capability providers hydrate, isolate, detach, and recon
     let createdId = 0;
     try {
         await daemon.start();
-        assert.deepEqual(hydrated, [existingId], "boot hydrates every existing workspace before publication");
+        assert.deepEqual(activated, [], "boot leaves persisted workspaces dormant");
         const existing = await daemon.attachWorkspace({ workspaceId: existingId });
+        assert.deepEqual(activated, [existingId], "the first attachment activates one workspace");
         const existingResult = await daemon.dispatchAsClient({
             workspaceId: existingId,
             workerId: existing.workerId,
@@ -329,7 +330,7 @@ test("Daemon: workspace capability providers hydrate, isolate, detach, and recon
 
         const created = await daemon.createWorkspace({ name: `workspace-cap-new-${crypto.randomUUID()}` });
         createdId = created.workspaceId;
-        assert.deepEqual(hydrated, [existingId, createdId], "creation hydrates before returning the workspace");
+        assert.deepEqual(activated, [existingId, createdId], "creation activates before returning the workspace");
         const createdResult = await daemon.dispatchAsClient({
             workspaceId: createdId,
             workerId: created.workerId,
@@ -382,10 +383,11 @@ test("Daemon: workspace capability providers hydrate, isolate, detach, and recon
     const restored = new Daemon({ db, provider: null });
     restored.registerModule(capabilityModule);
     try {
-        hydrated.length = 0;
+        activated.length = 0;
         await restored.start();
-        assert.deepEqual(hydrated.toSorted((left, right) => left - right), [existingId, createdId].toSorted((left, right) => left - right));
+        assert.deepEqual(activated, [], "restart leaves historical workspaces dormant");
         const existing = await restored.attachWorkspace({ workspaceId: existingId });
+        assert.deepEqual(activated, [existingId]);
         const detached = await restored.dispatchAsClient({
             workspaceId: existingId,
             workerId: existing.workerId,
@@ -393,6 +395,7 @@ test("Daemon: workspace capability providers hydrate, isolate, detach, and recon
         });
         assert.equal(detached.status, 501, "the provider reconstructs the durable tombstone");
         const created = await restored.attachWorkspace({ workspaceId: createdId });
+        assert.deepEqual(activated, [existingId, createdId]);
         const attached = await restored.dispatchAsClient({
             workspaceId: createdId,
             workerId: created.workerId,
@@ -405,21 +408,98 @@ test("Daemon: workspace capability providers hydrate, isolate, detach, and recon
     }
 });
 
-test("Daemon boot reconciles the generated skills surface for existing workspaces once", async () => {
+test("Daemon: concurrent workspace demands share one capability activation", async () => {
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `workspace-cap-concurrent-${crypto.randomUUID()}`);
+    const activationStarted = Promise.withResolvers<void>();
+    const releaseActivation = Promise.withResolvers<void>();
+    let activations = 0;
+    let actions = 0;
+    const daemon = new Daemon({ db, provider: null });
+    daemon.registerModule({
+        setup: (seam) => {
+            seam.registerWorkspaceCapabilityProvider("concurrent capability fixture", {
+                activate: async (activatedWorkspaceId) => {
+                    activations += 1;
+                    assert.equal(activatedWorkspaceId, workspaceId);
+                    activationStarted.resolve();
+                    await releaseActivation.promise;
+                    await seam.replaceWorkspaceCapabilities({
+                        workspaceId: activatedWorkspaceId,
+                        namespaceOwner: "concurrent capability fixture",
+                        state: null,
+                        runtimes: [],
+                    });
+                },
+            });
+            seam.registerModuleAction({
+                name: "capability.probe",
+                scope: "workspace",
+                handler: async () => {
+                    actions += 1;
+                    return { ready: true };
+                },
+            });
+        },
+    });
+    try {
+        await daemon.start();
+        const first = daemon.invokeModuleAction(
+            "capability.probe",
+            {},
+            { scope: "workspace", workspaceId },
+        );
+        await activationStarted.promise;
+        const second = daemon.invokeModuleAction(
+            "capability.probe",
+            {},
+            { scope: "workspace", workspaceId },
+        );
+        releaseActivation.resolve();
+        assert.deepEqual(await Promise.all([first, second]), [
+            { ready: true },
+            { ready: true },
+        ]);
+        assert.equal(activations, 1, "both demands await one serialized activation");
+        assert.equal(actions, 2, "neither demand is lost after activation");
+
+        assert.deepEqual(
+            await daemon.invokeModuleAction(
+                "capability.probe",
+                {},
+                { scope: "workspace", workspaceId },
+            ),
+            { ready: true },
+        );
+        assert.equal(activations, 1, "the activated workspace remains warm");
+    } finally {
+        releaseActivation.resolve();
+        await daemon.stop();
+        await db.close();
+    }
+});
+
+test("Daemon first attachment reconciles generated skills for an existing workspace", async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `boot-docs-${crypto.randomUUID()}`);
     const daemon = new Daemon({ db, provider: null });
     try {
         await daemon.start();
+        assert.deepEqual(
+            await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "worker", prefix: "/skills/plurnk/%" }),
+            [],
+            "dormant boot does not rewrite workspace documentation",
+        );
+        await daemon.attachWorkspace({ workspaceId });
         const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "worker", prefix: "/skills/plurnk/%" });
-        assert.ok(docs.length > 0, "boot publishes the current installed skills surface into an existing workspace");
+        assert.ok(docs.length > 0, "activation publishes the current installed skills surface into an existing workspace");
         assert.equal(
             docs.some(({ pathname }) => pathname === "/skills/plurnk/log.md" || pathname === "/skills/plurnk/prompt.md"),
             false,
             "self-evident log and prompt schemes do not materialize redundant pull documentation",
         );
         const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "plurnk" });
-        assert.ok(plurnkWorker !== undefined, "boot publication is authored by the workspace's reserved plurnk worker");
+        assert.ok(plurnkWorker !== undefined, "activation publication is authored by the workspace's reserved plurnk worker");
     } finally {
         await daemon.stop();
         await db.close();

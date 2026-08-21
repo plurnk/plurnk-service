@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { access, mkdtemp, rm, symlink } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -49,7 +49,7 @@ interface ActionRegistration {
 const harness = (durable = new Map<number, unknown | null>()) => {
     const actions = new Map<string, ActionRegistration>();
     const snapshots = new Map<number, readonly RuntimeRegistration[]>();
-    let provider: { hydrate(workspaceId: number): void | Promise<void> } | undefined;
+    let provider: { activate(workspaceId: number): void | Promise<void> } | undefined;
     let replacementCalls = 0;
     const seam = {
         registerModuleAction: (registration: ActionRegistration): void => {
@@ -57,7 +57,7 @@ const harness = (durable = new Map<number, unknown | null>()) => {
         },
         registerWorkspaceCapabilityProvider: (
             namespaceOwner: string,
-            candidate: { hydrate(workspaceId: number): void | Promise<void> },
+            candidate: { activate(workspaceId: number): void | Promise<void> },
         ): void => {
             assert.equal(namespaceOwner, "@plurnk/plurnk-mcp");
             provider = candidate;
@@ -87,9 +87,9 @@ const harness = (durable = new Map<number, unknown | null>()) => {
         snapshots,
         seam,
         replacementCalls: () => replacementCalls,
-        hydrate: async (workspaceId: number): Promise<void> => {
+        activate: async (workspaceId: number): Promise<void> => {
             if (provider === undefined) throw new Error("MCP provider was not registered.");
-            await provider.hydrate(workspaceId);
+            await provider.activate(workspaceId);
         },
         invoke: async (
             workspaceId: number,
@@ -266,7 +266,7 @@ test("{§mcp-management-actions} cold service definitions remain available while
     const first = Module.init({ env });
     const firstHarness = harness(durable);
     await first.setup(firstHarness.seam);
-    await firstHarness.hydrate(1);
+    await firstHarness.activate(1);
     assert.deepEqual(firstHarness.snapshots.get(1)?.map(({ decl }) => decl.name), ["echo"]);
     assert.deepEqual(
         (await firstHarness.invoke(1, "workspace.mcp.list") as {
@@ -289,7 +289,7 @@ test("{§mcp-management-actions} cold service definitions remain available while
     const restoredHarness = harness(durable);
     try {
         await restored.setup(restoredHarness.seam);
-        await restoredHarness.hydrate(1);
+        await restoredHarness.activate(1);
         assert.deepEqual(restoredHarness.snapshots.get(1)?.map(({ decl }) => decl.name), ["atlas"]);
         await rejectsManagementProblem(
             () => restoredHarness.invoke(1, "workspace.mcp.remove", { alias: "atlas" }),
@@ -311,7 +311,7 @@ test("{§mcp-configuration-cascade} listing projects client-only definitions wit
     const h = harness();
     try {
         await module.setup(h.seam);
-        await h.hydrate(1);
+        await h.activate(1);
         const calls = h.replacementCalls();
         const listed = await h.invoke(1, "workspace.mcp.list", {
             overlay: {
@@ -356,7 +356,7 @@ test("{§mcp-configuration-cascade} customized enable persists one shadowing def
     const first = Module.init({ env });
     const firstHarness = harness(durable);
     await first.setup(firstHarness.seam);
-    await firstHarness.hydrate(1);
+    await firstHarness.activate(1);
     const enabled = await firstHarness.invoke(1, "workspace.mcp.enable", {
         alias: "gitea",
         overlay: { PLURNK_MCP_GITEA_ARGS: '["discarded-by-options"]' },
@@ -388,7 +388,7 @@ test("{§mcp-configuration-cascade} customized enable persists one shadowing def
     const restoredHarness = harness(durable);
     try {
         await restored.setup(restoredHarness.seam);
-        await restoredHarness.hydrate(1);
+        await restoredHarness.activate(1);
         const before = await restoredHarness.invoke(1, "workspace.mcp.list") as {
             servers: Array<{ alias: string; source: string; state: string }>;
         };
@@ -425,7 +425,7 @@ test("{§mcp-configuration-cascade} enable admits a complete client-only definit
     const h = harness();
     try {
         await module.setup(h.seam);
-        await h.hydrate(1);
+        await h.activate(1);
         const result = await h.invoke(1, "workspace.mcp.enable", {
             alias: "local",
             overlay: {
@@ -442,7 +442,7 @@ test("{§mcp-configuration-cascade} enable admits a complete client-only definit
     }
 });
 
-test("service defaults hydrate as workspace-local executor and resource snapshots", async () => {
+test("service defaults activate as workspace-local executor and resource snapshots", async () => {
     const module = Module.init({
         env: {
             ...floor,
@@ -466,7 +466,7 @@ test("service defaults hydrate as workspace-local executor and resource snapshot
                 "workspace.mcp.complete",
             ].map((name) => ({ name, scope: "workspace" })),
         );
-        await h.hydrate(1);
+        await h.activate(1);
         const [registration] = h.snapshots.get(1) ?? [];
         assert.equal(registration?.namespaceOwner, "@plurnk/plurnk-mcp");
         assert.equal(registration?.decl.name, "echo");
@@ -506,7 +506,7 @@ test("add and remove change only the bound workspace and persist an unexpanded d
     const h = harness();
     try {
         await module.setup(h.seam);
-        await Promise.all([h.hydrate(1), h.hydrate(2)]);
+        await Promise.all([h.activate(1), h.activate(2)]);
         const result = await h.invoke(1, "workspace.mcp.add", {
             alias: "echo",
             target: process.execPath,
@@ -538,7 +538,7 @@ test("{§mcp-management-actions} disable and enable retire then rebuild one comp
     const h = harness();
     try {
         await module.setup(h.seam);
-        await h.hydrate(1);
+        await h.activate(1);
         await h.invoke(1, "workspace.mcp.add", {
             alias: "echo",
             target: process.execPath,
@@ -575,7 +575,7 @@ test("{§mcp-setup} a workspace-added server reconstructs from its durable unexp
     const first = Module.init({ env: floor });
     const firstHarness = harness(durable);
     await first.setup(firstHarness.seam);
-    await firstHarness.hydrate(1);
+    await firstHarness.activate(1);
     await firstHarness.invoke(1, "workspace.mcp.add", {
         alias: "echo",
         target: process.execPath,
@@ -587,7 +587,7 @@ test("{§mcp-setup} a workspace-added server reconstructs from its durable unexp
     const restoredHarness = harness(durable);
     try {
         await restored.setup(restoredHarness.seam);
-        await restoredHarness.hydrate(1);
+        await restoredHarness.activate(1);
         const listed = await restoredHarness.invoke(1, "workspace.mcp.list") as {
             servers: Array<{ alias: string; source: string; state: string }>;
         };
@@ -611,7 +611,7 @@ test("{§mcp-management-actions} management conflicts preserve exact Problems an
     const h = harness();
     try {
         await module.setup(h.seam);
-        await h.hydrate(1);
+        await h.activate(1);
         await rejectsManagementProblem(
             () => h.invoke(1, "workspace.mcp.list", { server: "legacy-shape" }),
             "parameters-invalid",
@@ -726,7 +726,7 @@ test("OAuth completion rebases add and customized enable onto current workspace 
     const h = harness();
     try {
         await module.setup(h.seam);
-        await h.hydrate(1);
+        await h.activate(1);
         const pending = await h.invoke(1, "workspace.mcp.add", {
             alias: "added-oauth",
             target: served.url,
@@ -762,7 +762,7 @@ test("OAuth completion rebases add and customized enable onto current workspace 
         assert.match(JSON.stringify(h.durable.get(1)), /"local"/);
         assert.match(JSON.stringify(h.durable.get(1)), /"added-oauth"/);
 
-        await h.hydrate(2);
+        await h.activate(2);
         const specialized = await h.invoke(2, "workspace.mcp.enable", {
             alias: "oauth",
             options: {
@@ -798,7 +798,7 @@ test("{§tasks-lifetime} daemon restart leaves no task material and a re-run dri
     const first = Module.init({ env: floor });
     const firstHarness = harness(durable);
     await first.setup(firstHarness.seam);
-    await firstHarness.hydrate(1);
+    await firstHarness.activate(1);
     await firstHarness.invoke(1, "workspace.mcp.add", {
         alias: "tasks",
         target: process.execPath,
@@ -830,7 +830,7 @@ test("{§tasks-lifetime} daemon restart leaves no task material and a re-run dri
     const restoredHarness = harness(durable);
     try {
         await restored.setup(restoredHarness.seam);
-        await restoredHarness.hydrate(1);
+        await restoredHarness.activate(1);
         const replayed = restoredHarness.snapshots.get(1)?.[0]?.executor;
         assert.ok(replayed);
         const result = await run(replayed);
@@ -846,7 +846,7 @@ test("{§oauth-lifetime} daemon restart during pending authorization leaves noth
     const first = Module.init({ env: floor });
     const firstHarness = harness(durable);
     await first.setup(firstHarness.seam);
-    await firstHarness.hydrate(1);
+    await firstHarness.activate(1);
     await beginInteractiveAuthorization(firstHarness, 1, served, origin);
     await first.close();
 
@@ -854,7 +854,7 @@ test("{§oauth-lifetime} daemon restart during pending authorization leaves noth
     const restoredHarness = harness(durable);
     try {
         await restored.setup(restoredHarness.seam);
-        await restoredHarness.hydrate(1);
+        await restoredHarness.activate(1);
         const list = await restoredHarness.invoke(1, "workspace.mcp.list", {}) as {
             servers: Array<{ alias: string }>;
         };
@@ -879,7 +879,7 @@ test("{§oauth-lifetime} a restart reconstructs an authorized server as authoriz
     const first = Module.init({ env: floor });
     const firstHarness = harness(durable);
     await first.setup(firstHarness.seam);
-    await firstHarness.hydrate(1);
+    await firstHarness.activate(1);
     const pending = await beginInteractiveAuthorization(firstHarness, 1, served, origin);
     await completeAuthorization(firstHarness, 1, pending, origin);
     assert.deepEqual(firstHarness.snapshots.get(1)?.map(({ decl }) => decl.name), ["oauth"]);
@@ -891,7 +891,7 @@ test("{§oauth-lifetime} a restart reconstructs an authorized server as authoriz
     const restoredHarness = harness(durable);
     try {
         await restored.setup(restoredHarness.seam);
-        await restoredHarness.hydrate(1);
+        await restoredHarness.activate(1);
         const list = await restoredHarness.invoke(1, "workspace.mcp.list", {}) as {
             servers: Array<{ alias: string; state: string }>;
         };
@@ -918,7 +918,7 @@ test("{§oauth-lifetime} a superseded authorization attempt cannot complete a re
     const h = harness();
     try {
         await module.setup(h.seam);
-        await h.hydrate(1);
+        await h.activate(1);
         const first = await beginInteractiveAuthorization(h, 1, served, origin);
         const firstState = new URL(first.authorization.url).searchParams.get("state");
         assert.ok(firstState);
@@ -973,7 +973,7 @@ test("list change refreshes the workspace snapshot without replacing its connect
     const h = harness();
     try {
         await module.setup(h.seam);
-        await h.hydrate(1);
+        await h.activate(1);
         await h.invoke(1, "workspace.mcp.add", {
             alias: "dynamic",
             target: served.url,
@@ -1015,7 +1015,7 @@ test("disabling a service default writes a positive override that survives modul
     const first = Module.init({ env });
     const firstHarness = harness(durable);
     await first.setup(firstHarness.seam);
-    await firstHarness.hydrate(1);
+    await firstHarness.activate(1);
     await firstHarness.invoke(1, "workspace.mcp.disable", { alias: "echo" });
     assert.match(JSON.stringify(durable.get(1)), /"kind":"service","enabled":false/);
     await first.close();
@@ -1024,7 +1024,7 @@ test("disabling a service default writes a positive override that survives modul
     const restoredHarness = harness(durable);
     try {
         await restored.setup(restoredHarness.seam);
-        await restoredHarness.hydrate(1);
+        await restoredHarness.activate(1);
         assert.deepEqual(restoredHarness.snapshots.get(1), []);
         assert.deepEqual(
             (await restoredHarness.invoke(1, "workspace.mcp.list") as {
@@ -1047,7 +1047,7 @@ test("failed enable leaves durable state and Registry authoritative", async () =
     const h = harness();
     try {
         await module.setup(h.seam);
-        await h.hydrate(1);
+        await h.activate(1);
         const priorState = structuredClone(h.durable.get(1));
         const calls = h.replacementCalls();
         await assert.rejects(
@@ -1097,7 +1097,7 @@ test("{§oauth-client-credentials} a rejected grant crosses the boundary as an a
     const h = harness();
     try {
         await module.setup(h.seam);
-        await h.hydrate(1);
+        await h.activate(1);
         await rejectsManagementProblem(
             () => h.invoke(1, "workspace.mcp.add", {
                 alias: "grant",
@@ -1126,7 +1126,7 @@ test("{§mcp-authority} a legacy peer negotiates below the pin and serves its st
     const h = harness();
     try {
         await module.setup(h.seam);
-        await h.hydrate(1);
+        await h.activate(1);
         await h.invoke(1, "workspace.mcp.add", {
             alias: "echo",
             target: process.execPath,
@@ -1146,7 +1146,7 @@ test("{§mcp-authority} a legacy peer negotiates below the pin and serves its st
     }
 });
 
-test("{§mcp-hydration-isolation} partial hydration publishes healthy servers and isolates unavailable ones", async (t) => {
+test("{§mcp-activation-isolation} partial activation publishes healthy servers and isolates unavailable ones", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-partial-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const marker = join(root, "alpha.closed");
@@ -1165,7 +1165,7 @@ test("{§mcp-hydration-isolation} partial hydration publishes healthy servers an
     const h = harness();
     try {
         await module.setup(h.seam);
-        await h.hydrate(1);
+        await h.activate(1);
         assert.equal(h.replacementCalls(), 1);
         assert.deepEqual(h.snapshots.get(1)?.map(({ decl }) => decl.name), ["alpha"]);
         const listed = await h.invoke(1, "workspace.mcp.list") as {
@@ -1196,7 +1196,50 @@ test("{§mcp-hydration-isolation} partial hydration publishes healthy servers an
     await waitForFile(marker);
 });
 
-test("{§mcp-hydration-isolation} workspace-owned unavailable servers can be removed or explicitly retried", async (t) => {
+test("{§mcp-setup} shutdown interrupts negotiation and settles an in-flight workspace activation", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-activation-stop-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const started = join(root, "started");
+    const module = Module.init({
+        env: {
+            ...floor,
+            PLURNK_MCP_ECHO: process.execPath,
+            PLURNK_MCP_ECHO_ARGS: JSON.stringify([fixture]),
+            PLURNK_MCP_ECHO_ENV: JSON.stringify({
+                PLURNK_MCP_TEST_START_MARKER: started,
+                PLURNK_MCP_TEST_START_DELAY_MS: "30000",
+            }),
+            PLURNK_MCP_ENABLED: '["echo"]',
+        },
+    });
+    const h = harness();
+    await module.setup(h.seam);
+    const activation = h.activate(1);
+    await waitForFile(started);
+
+    const outcome = await Promise.race([
+        module.close().then(() => "closed" as const),
+        delay(2_000).then(() => "timeout" as const),
+    ]);
+    assert.equal(outcome, "closed", "shutdown cancels negotiation instead of waiting for its connection timeout");
+    await assert.rejects(activation, /MCP module is closed/u);
+    const pids = (await readFile(started, "utf8"))
+        .trim()
+        .split("\n")
+        .map(Number);
+    await waitFor(() => pids.every((pid) => {
+        try {
+            process.kill(pid, 0);
+            return false;
+        } catch (error) {
+            return (error as NodeJS.ErrnoException).code === "ESRCH";
+        }
+    }));
+    assert.deepEqual(h.snapshots.get(1), undefined, "an interrupted activation publishes no workspace snapshot");
+    await assert.rejects(() => h.activate(1), /MCP module is closed/u);
+});
+
+test("{§mcp-activation-isolation} workspace-owned unavailable servers can be removed or explicitly retried", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-retry-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const retryTarget = join(root, "retry-node");
@@ -1230,7 +1273,7 @@ test("{§mcp-hydration-isolation} workspace-owned unavailable servers can be rem
     const h = harness(durable);
     try {
         await module.setup(h.seam);
-        await h.hydrate(1);
+        await h.activate(1);
         const initial = await h.invoke(1, "workspace.mcp.list") as {
             servers: Array<{ alias: string; state: string }>;
         };
@@ -1274,7 +1317,7 @@ test("remove closes the exact workspace connection after the replacement commits
     const h = harness();
     try {
         await module.setup(h.seam);
-        await h.hydrate(1);
+        await h.activate(1);
         await h.invoke(1, "workspace.mcp.add", {
             alias: "echo",
             target: process.execPath,
@@ -1299,7 +1342,7 @@ test("a whitespace-bearing executable path remains one exact attachment command"
     const h = harness();
     try {
         await module.setup(h.seam);
-        await h.hydrate(1);
+        await h.activate(1);
         await h.invoke(1, "workspace.mcp.add", {
             alias: "echo",
             target: command,

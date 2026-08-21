@@ -128,6 +128,9 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     // not from CWD/node_modules — the global-dogfood scenario (start from your own project).
     const childEnv = { ...process.env };
     for (const key of ["PLURNK_AGUI_TOKEN", "PLURNK_AGUI_MAX_TURNS", "PLURNK_AGUI_HEARTBEAT_MS"]) delete childEnv[key];
+    for (const key of Object.keys(childEnv)) {
+        if (key.startsWith("PLURNK_MCP_")) delete childEnv[key];
+    }
     Object.assign(childEnv, sandboxHostEnv, { PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" }, env);
     const child = spawn(bin, ["start"], { cwd: resolve(sandbox, ".."), env: childEnv });
     let stdout = "", stderr = "", listening = false, probeResult, probeError;
@@ -152,6 +155,43 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     child.once("exit", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError }); });
     child.once("error", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError, error: true }); });
 });
+
+const aguiAction = async (address, kind, params = {}, workspace) => {
+    const response = await fetch(address, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+            runId: crypto.randomUUID(),
+            threadId: "installation-probe",
+            workerId: "installation-probe",
+            state: {},
+            messages: [],
+            tools: [],
+            context: [],
+            forwardedProps: {
+                plurnk: {
+                    ...(workspace === undefined ? {} : { workspace }),
+                    action: { kind, ...params },
+                },
+            },
+        }),
+    });
+    const body = await response.text();
+    const events = body
+        .split("\n\n")
+        .filter((frame) => frame.startsWith("data: "))
+        .map((frame) => JSON.parse(frame.slice(6)));
+    const outcome = events.find((event) =>
+        event.type === "CUSTOM" && event.name === "plurnk.action.result")?.value;
+    if (!response.ok || outcome?.ok !== true) {
+        throw new Error(`packed ${kind} failed (${response.status}): ${body}`);
+    }
+    return outcome.result;
+};
+
+const markerCount = (path) => existsSync(path)
+    ? readFileSync(path, "utf8").trim().split("\n").filter(Boolean).length
+    : 0;
 
 process.stdout.write("== plurnk-service installation e2e ==\n");
 process.stdout.write("-- local sandbox install --\n");
@@ -381,39 +421,24 @@ writeFileSync(resolve(packedSkillDir, "SKILL.md"), [
 ].join("\n"));
 const packedSkillDb = resolve(sandbox, "packed-skills.db");
 const skillBoot = await bootStart({ PLURNK_SERVICE_DB_PATH: packedSkillDb }, async (address) => {
-    const response = await fetch(address, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-            runId: "packed-skills",
-            threadId: "packed-skills",
-            workerId: "packed-skills",
-            state: {},
-            messages: [],
-            tools: [],
-            context: [],
-            forwardedProps: {
-                plurnk: {
-                    action: {
-                        kind: "workspace.create",
-                        projectRoot: packedSkillProject,
-                    },
-                },
-            },
-        }),
-    });
-    const body = await response.text();
-    if (!response.ok || !/plurnk\.action\.result/u.test(body) || !/"ok":true/u.test(body)) {
-        throw new Error(`packed workspace.create failed (${response.status}): ${body}`);
-    }
+    const primary = await aguiAction(address, "workspace.create", { projectRoot: packedSkillProject });
+    await aguiAction(address, "workspace.create", { name: "packed-dormant-two" });
+    await aguiAction(address, "workspace.create", { name: "packed-dormant-three" });
+    return primary;
 });
 ok(
     skillBoot.listening === true && skillBoot.probeError === undefined,
     "the packed AG-UI workspace bootstrap accepts a conventional project skill without a provider",
 );
+const dormantWorkspaceId = skillBoot.probeResult?.id;
+if (!Number.isSafeInteger(dormantWorkspaceId) || dormantWorkspaceId <= 0) {
+    throw new Error(`packed workspace.create returned no usable id: ${JSON.stringify(skillBoot.probeResult)}`);
+}
 const skillDb = new SqlRiteSync({ path: packedSkillDb, dir: import.meta.dirname });
 const packedSkills = new Map(
-    skillDb.installation_select_skills.all().map(({ pathname, content }) => [pathname, content]),
+    skillDb.installation_select_skills.all()
+        .filter(({ workspace_id }) => workspace_id === dormantWorkspaceId)
+        .map(({ pathname, content }) => [pathname, content]),
 );
 skillDb.close();
 ok(
@@ -428,6 +453,54 @@ ok(
     packedSkills.get("/skills/index.md")?.includes("**inspect**") === true
         && packedSkills.get("/skills/index.md")?.includes("**find-skills**") === true,
     "the installed product publishes both skills through one model-facing index",
+);
+
+const mcpStartMarker = resolve(sandbox, "packed-mcp-starts.txt");
+const mcpFixture = resolve(import.meta.dirname, "../../plurnk-mcp/src/fixtures/echo-server.mjs");
+const dormantMcpEnv = {
+    PLURNK_SERVICE_DB_PATH: packedSkillDb,
+    PLURNK_MCP_BROKEN: resolve(sandbox, "missing-mcp-server"),
+    PLURNK_MCP_ECHO: process.execPath,
+    PLURNK_MCP_ECHO_ARGS: JSON.stringify([mcpFixture]),
+    PLURNK_MCP_ECHO_ENV: JSON.stringify({ PLURNK_MCP_TEST_START_MARKER: mcpStartMarker }),
+    PLURNK_MCP_ENABLED: JSON.stringify(["broken", "echo"]),
+};
+const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
+    const before = markerCount(mcpStartMarker);
+    const attached = await aguiAction(address, "workspace.attach", { id: dormantWorkspaceId });
+    const afterFirst = markerCount(mcpStartMarker);
+    await aguiAction(address, "workspace.attach", { id: dormantWorkspaceId });
+    const listed = await aguiAction(address, "workspace.mcp.list", {}, attached.name);
+    return {
+        before,
+        afterFirst,
+        afterSecond: markerCount(mcpStartMarker),
+        states: Object.fromEntries(listed.servers.map(({ alias, state }) => [alias, state])),
+    };
+});
+ok(
+    dormantBoot.listening === true
+        && dormantBoot.probeError === undefined
+        && dormantBoot.probeResult?.before === 0,
+    "the packed daemon leaves persisted workspace capabilities cold at global boot",
+);
+ok(
+    dormantBoot.probeResult?.afterFirst > 0
+        && dormantBoot.probeResult?.afterSecond === dormantBoot.probeResult?.afterFirst,
+    "the packed daemon activates one demanded workspace once and keeps it warm",
+);
+ok(
+    dormantBoot.probeResult?.states?.broken === "unavailable"
+        && dormantBoot.probeResult?.states?.echo === "connected",
+    "one unavailable packed MCP remains visible without withholding its healthy peer",
+);
+const startsAfterActivation = markerCount(mcpStartMarker);
+const coldRestart = await bootStart(dormantMcpEnv);
+ok(
+    coldRestart.listening === true
+        && markerCount(mcpStartMarker) === startsAfterActivation
+        && !/MCP server .* unavailable during workspace activation/u.test(coldRestart.stderr),
+    "restart leaves previously activated workspace integrations cold until fresh demand",
 );
 
 const boot = await bootStart({

@@ -51,7 +51,7 @@ export interface RuntimeRegistration {
 }
 
 export interface WorkspaceCapabilityProvider {
-    hydrate(workspaceId: number): void | Promise<void>;
+    activate(workspaceId: number): void | Promise<void>;
 }
 
 export interface WorkspaceCapabilityReplacement {

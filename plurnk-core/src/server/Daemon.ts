@@ -147,6 +147,8 @@ export default class Daemon {
     #moduleClosers: StartedModule[] = [];
     #moduleActions = new Map<string, ModuleActionRegistration>();
     #workspaceCapabilityProviders = new Map<string, WorkspaceCapabilityProvider>();
+    #workspaceCapabilityActivations = new Map<number, Promise<void>>();
+    #activeWorkspaceCapabilities = new Set<number>();
     // {§methods-event-subscribe} — the broadcast's in-process event source. A transport
     // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never owns
     // client transport or connection state.
@@ -225,6 +227,7 @@ export default class Daemon {
                 return { workerId, loopId };
             },
             startChild: async (workspaceId, workerId, loopId) => {
+                await this.#ensureWorkspaceCapabilities(workspaceId);
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
                 const started = await this.#drains.ensureDrain({ workspaceId, workerId, systemPrompt });
                 if (started === null) throw new Error(`Branch worker ${workerId} already has a live drain`);
@@ -357,6 +360,7 @@ export default class Daemon {
                 signal,
                 onDispatch,
             }) => {
+                await this.#ensureWorkspaceCapabilities(workspaceId);
                 const { provider, childProvider } = await this.#providersForLoop(loopId);
                 return this.#engine.runLoop({
                     provider,
@@ -465,6 +469,7 @@ export default class Daemon {
         const selector = ClientInput.assertOptionalSelector("runLoop", "selector", args.selector);
         const childSelector = ClientInput.assertOptionalChildSelector("runLoop", args.childSelector);
         const flags = ClientInput.normalizeLoopFlags("runLoop", args.flags) as Partial<LoopFlags> | undefined;
+        await this.#ensureWorkspaceCapabilities(workspaceId);
         // {§worker-model-selection} — the worker owns the model. An explicit selector
         // persists onto the worker; an omitted selector resolves the worker's durable model
         // (seeded once from the daemon default). The loop then snapshots the resolved route.
@@ -1102,6 +1107,7 @@ export default class Daemon {
     async dispatchAsClient(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
         const workspaceId = ClientInput.assertId("operation.dispatch", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("operation.dispatch", "workerId", args.workerId);
+        await this.#ensureWorkspaceCapabilities(workspaceId);
         const { statement } = args;
         const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
         try {
@@ -1121,6 +1127,7 @@ export default class Daemon {
     async dispatchClientAction(args: { workspaceId: number; workerId: number; statements: PlurnkStatement[] }): Promise<Array<{ status: number; [key: string]: unknown }>> {
         const workspaceId = ClientInput.assertId("operation.dispatch-batch", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("operation.dispatch-batch", "workerId", args.workerId);
+        await this.#ensureWorkspaceCapabilities(workspaceId);
         const { statements } = args;
         if (statements.length === 0) return [];
         const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
@@ -1188,6 +1195,7 @@ export default class Daemon {
     async look(args: { workspaceId: number; workerId: number; statement: PlurnkStatement }): Promise<{ status: number; [key: string]: unknown }> {
         const workspaceId = ClientInput.assertId("operation.look", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("operation.look", "workerId", args.workerId);
+        await this.#ensureWorkspaceCapabilities(workspaceId);
         const { statement } = args;
         const release = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
         const clientLoopId = await Envelope.ensureClientLoop(this.#db, workerId);
@@ -1389,11 +1397,7 @@ export default class Daemon {
                     await this.#db.crud_insert_workspace_constraint.run({ workspace_id: envelope.workspaceId, effect, glob });
                 }
                 if (constraints.length > 0) await GitMembership.resolveGitMembership(this.#db, envelope.workspaceId, undefined);
-                for (const provider of this.#workspaceCapabilityProviders.values()) {
-                    await provider.hydrate(envelope.workspaceId);
-                }
-                await LoopDocs.materialize(this.#engine, this.#db, envelope.workspaceId);
-                await SkillDocs.materialize(this.#engine, this.#db, envelope.workspaceId);
+                await this.#ensureWorkspaceCapabilities(envelope.workspaceId);
                 void this.#engine.warmWorkspaceDerivations(envelope.workspaceId).catch(() => {});
                 this.#broadcast("all", "workspace/created", { id: envelope.workspaceId, name: envelope.workspaceName, projectRoot: envelope.projectRoot });
                 return envelope;
@@ -1408,6 +1412,7 @@ export default class Daemon {
             ? undefined
             : ClientInput.assertId("workspace.attach", "workerId", args.workerId);
         const workerName = ClientInput.assertOptionalWorkerName("workspace.attach", "workerName", args.workerName);
+        await this.#ensureWorkspaceCapabilities(workspaceId);
         const envelope = await Envelope.attachToWorkspace(this.#db, workspaceId, { workerId, workerName });
         void this.#engine.warmWorkspaceDerivations(envelope.workspaceId).catch(() => {});
         return envelope;
@@ -1461,6 +1466,7 @@ export default class Daemon {
     }): Promise<EntryReadResult> {
         const workspaceId = ClientInput.assertId("entry.read", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("entry.read", "workerId", args.workerId);
+        await this.#ensureWorkspaceCapabilities(workspaceId);
         if (typeof args.target !== "string" || args.target.length === 0) {
             throw daemonFailure(
                 "daemon:input",
@@ -1735,9 +1741,9 @@ export default class Daemon {
         const normalized = registrations.map((registration) => this.#normalizeRuntime(registration));
         this.#engine.registerRuntimes(normalized);
         if (this.#capabilitiesPublished) {
-            for (const workspace of await Envelope.listWorkspaces(this.#db)) {
-                await LoopDocs.materialize(this.#engine, this.#db, workspace.id);
-                await SkillDocs.materialize(this.#engine, this.#db, workspace.id);
+            for (const workspaceId of this.#activeWorkspaceCapabilities) {
+                await LoopDocs.materialize(this.#engine, this.#db, workspaceId);
+                await SkillDocs.materialize(this.#engine, this.#db, workspaceId);
             }
         }
     }
@@ -1750,9 +1756,9 @@ export default class Daemon {
         this.#schemes.register(name, handler);
         if (this.#capabilitiesPublished) {
             await this.#schemes.ready();
-            for (const workspace of await Envelope.listWorkspaces(this.#db)) {
-                await LoopDocs.materialize(this.#engine, this.#db, workspace.id);
-                await SkillDocs.materialize(this.#engine, this.#db, workspace.id);
+            for (const workspaceId of this.#activeWorkspaceCapabilities) {
+                await LoopDocs.materialize(this.#engine, this.#db, workspaceId);
+                await SkillDocs.materialize(this.#engine, this.#db, workspaceId);
             }
         }
     }
@@ -1814,9 +1820,47 @@ export default class Daemon {
             );
         }
         if (context.scope === "workspace") {
-            ClientInput.assertId(`module action '${name}'`, "workspaceId", context.workspaceId);
+            const workspaceId = ClientInput.assertId(`module action '${name}'`, "workspaceId", context.workspaceId);
+            await this.#ensureWorkspaceCapabilities(workspaceId);
         }
         return registration.handler(params, context);
+    }
+
+    async #ensureWorkspaceCapabilities(workspaceId: number): Promise<void> {
+        const checkedWorkspaceId = ClientInput.assertId(
+            "workspace capability activation",
+            "workspaceId",
+            workspaceId,
+        );
+        if (this.#activeWorkspaceCapabilities.has(checkedWorkspaceId)) return;
+        const existing = this.#workspaceCapabilityActivations.get(checkedWorkspaceId);
+        if (existing !== undefined) return existing;
+        const activation = Promise.resolve().then(async () => {
+            const workspace = await this.#db.envelope_get_workspace.get({ id: checkedWorkspaceId });
+            if (workspace === undefined) {
+                throw daemonFailure(
+                    "daemon:workspace",
+                    "workspace-not-found",
+                    404,
+                    `Workspace ${checkedWorkspaceId} does not exist.`,
+                    { workspaceId: checkedWorkspaceId, retryable: false },
+                );
+            }
+            for (const provider of this.#workspaceCapabilityProviders.values()) {
+                await provider.activate(checkedWorkspaceId);
+            }
+            await LoopDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
+            await SkillDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
+            this.#activeWorkspaceCapabilities.add(checkedWorkspaceId);
+        });
+        this.#workspaceCapabilityActivations.set(checkedWorkspaceId, activation);
+        try {
+            await activation;
+        } finally {
+            if (this.#workspaceCapabilityActivations.get(checkedWorkspaceId) === activation) {
+                this.#workspaceCapabilityActivations.delete(checkedWorkspaceId);
+            }
+        }
     }
 
     registerWorkspaceCapabilityProvider(
@@ -1933,9 +1977,12 @@ export default class Daemon {
             }
             stateChanged = true;
             rollbackRuntimes = commitRuntimes();
-            if (this.#capabilitiesPublished) {
+            if (
+                this.#capabilitiesPublished
+                && !this.#workspaceCapabilityActivations.has(checkedWorkspaceId)
+            ) {
                 await LoopDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
-                    await SkillDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
+                await SkillDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
             }
         } catch (cause) {
             rollbackRuntimes?.();
@@ -1957,10 +2004,13 @@ export default class Daemon {
                 } catch (rollbackCause) {
                     rollbackErrors.push(rollbackCause);
                 }
-                if (this.#capabilitiesPublished) {
+                if (
+                    this.#capabilitiesPublished
+                    && !this.#workspaceCapabilityActivations.has(checkedWorkspaceId)
+                ) {
                     try {
                         await LoopDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
-                    await SkillDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
+                        await SkillDocs.materialize(this.#engine, this.#db, checkedWorkspaceId);
                     } catch (rollbackCause) {
                         rollbackErrors.push(rollbackCause);
                     }
@@ -2043,20 +2093,7 @@ export default class Daemon {
             if (module.close !== undefined) this.#moduleClosers.push(module as StartedModule);
             await module.setup?.(setupSeam);
         }
-        for (const workspace of await Envelope.listWorkspaces(this.#db)) {
-            for (const provider of this.#workspaceCapabilityProviders.values()) {
-                await provider.hydrate(workspace.id);
-            }
-        }
         await this.#schemes.ready();
-
-        // Reconcile the kernel-published documentation surface once per existing workspace.
-        // Installed capabilities and operator configuration are now fully known; model loops
-        // consume this workspace state but never republish it.
-        for (const workspace of await Envelope.listWorkspaces(this.#db)) {
-            await LoopDocs.materialize(this.#engine, this.#db, workspace.id);
-                await SkillDocs.materialize(this.#engine, this.#db, workspace.id);
-        }
         this.#capabilitiesPublished = true;
 
         await this.#recoverLifecycle();
@@ -2097,6 +2134,7 @@ export default class Daemon {
             workspace_id: number;
         }>({});
         for (const row of queued) {
+            await this.#ensureWorkspaceCapabilities(row.workspace_id);
             const started = await this.#drains.ensureDrain({
                 workspaceId: row.workspace_id,
                 workerId: row.worker_id,
@@ -2112,6 +2150,7 @@ export default class Daemon {
             workspace_id: number;
         }>({});
         for (const row of parked) {
+            await this.#ensureWorkspaceCapabilities(row.workspace_id);
             await this.#drains.schedulePollWake(
                 row.workspace_id,
                 row.worker_id,

@@ -27,7 +27,7 @@ INSERT INTO log_entries (
 );
 
 -- PREP: installation_select_skills
-SELECT entries.pathname, entry_channels.content
+SELECT entries.workspace_id, entries.pathname, entry_channels.content
 FROM entries
 JOIN entry_channels ON entry_channels.entry_id = entries.id
 WHERE entries.scheme = 'worker'

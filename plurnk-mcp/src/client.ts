@@ -475,6 +475,7 @@ export default class ServerConnection {
         readonly authorizationUrl: string;
         readonly standaloneTransport: boolean;
     } | undefined;
+    #openingTransport: StdioClientTransport | StreamableHTTPClientTransport | undefined;
     #activeRequests = 0;
     #closed = false;
 
@@ -516,6 +517,7 @@ export default class ServerConnection {
         }
         if (this.#client !== undefined) return this.#client;
         const transport = openTransport(this.#resolved);
+        this.#openingTransport = transport;
         const pending = openClient(
             this.#resolved,
             this.#environ,
@@ -537,6 +539,8 @@ export default class ServerConnection {
             }
             if (this.#client === pending) this.#client = undefined;
             throw cause;
+        }).finally(() => {
+            if (this.#openingTransport === transport) this.#openingTransport = undefined;
         });
         this.#client = pending;
         return pending;
@@ -799,29 +803,35 @@ export default class ServerConnection {
         this.#closed = true;
         const client = this.#client;
         this.#client = undefined;
+        const openingTransport = this.#openingTransport;
+        this.#openingTransport = undefined;
         const pending = this.#pendingAuthorization;
         this.#pendingAuthorization = undefined;
         const closures: Promise<void>[] = [];
+        if (openingTransport !== undefined) closures.push(openingTransport.close());
         if (client !== undefined) {
-            closures.push(client.then(async ({ client: connected, extensions, subscriptions }) => {
-                const failures: unknown[] = [];
-                extensions?.close();
-                // A full connection close terminates its listen request. Retiring first
-                // avoids a redundant cancellation racing the SDK's removed listen ID.
-                const settled = await Promise.allSettled([
-                    subscriptions.retire(),
-                    connected.close(),
-                ]);
-                failures.push(...settled.flatMap((result) =>
-                    result.status === "rejected" ? [result.reason] : []));
-                if (failures.length === 1) throw failures[0];
-                if (failures.length > 1) {
-                    throw new AggregateError(
-                        failures,
-                        `MCP server '${this.#definition.name}' connection shutdown failed.`,
-                    );
-                }
-            }));
+            closures.push(client.then(
+                async ({ client: connected, extensions, subscriptions }) => {
+                    const failures: unknown[] = [];
+                    extensions?.close();
+                    // A full connection close terminates its listen request. Retiring first
+                    // avoids a redundant cancellation racing the SDK's removed listen ID.
+                    const settled = await Promise.allSettled([
+                        subscriptions.retire(),
+                        connected.close(),
+                    ]);
+                    failures.push(...settled.flatMap((result) =>
+                        result.status === "rejected" ? [result.reason] : []));
+                    if (failures.length === 1) throw failures[0];
+                    if (failures.length > 1) {
+                        throw new AggregateError(
+                            failures,
+                            `MCP server '${this.#definition.name}' connection shutdown failed.`,
+                        );
+                    }
+                },
+                () => undefined,
+            ));
         }
         if (pending?.standaloneTransport === true) closures.push(pending.transport.close());
         const settled = await Promise.allSettled(closures);

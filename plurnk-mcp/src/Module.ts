@@ -67,7 +67,7 @@ interface ModuleSetupSeam {
     }): void;
     registerWorkspaceCapabilityProvider(
         namespaceOwner: string,
-        provider: { hydrate(workspaceId: number): void | Promise<void> },
+        provider: { activate(workspaceId: number): void | Promise<void> },
     ): void;
     readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null>;
     replaceWorkspaceCapabilities(replacement: {
@@ -357,6 +357,7 @@ export default class Module {
     // (workspace, alias); a restart loses them by design.
     readonly #pending = new Map<string, PendingMutation>();
     readonly #locks = new Map<number, Promise<void>>();
+    readonly #connections = new Set<ServerConnection>();
     readonly #refreshTimers = new Map<string, NodeJS.Timeout>();
     #seam: ModuleSetupSeam | undefined;
     #closed = false;
@@ -378,7 +379,7 @@ export default class Module {
     async setup(seam: ModuleSetupSeam): Promise<void> {
         this.#seam = seam;
         seam.registerWorkspaceCapabilityProvider(OWNER, {
-            hydrate: async (workspaceId) => this.#serialize(workspaceId, async () => {
+            activate: async (workspaceId) => this.#serialize(workspaceId, async () => {
                 const state = parseState(await seam.readWorkspaceModuleState(workspaceId, OWNER));
                 await this.#applyState(workspaceId, state, {
                     authorizationDisposition: "publish-required",
@@ -416,6 +417,7 @@ export default class Module {
     }
 
     async #serialize<T>(workspaceId: number, run: () => Promise<T>): Promise<T> {
+        this.#assertOpen();
         const prior = this.#locks.get(workspaceId) ?? Promise.resolve();
         let release = (): void => undefined;
         const barrier = new Promise<void>((resolve) => { release = resolve; });
@@ -423,10 +425,24 @@ export default class Module {
         this.#locks.set(workspaceId, queued);
         await prior.catch(() => undefined);
         try {
+            this.#assertOpen();
             return await run();
         } finally {
             release();
             if (this.#locks.get(workspaceId) === queued) this.#locks.delete(workspaceId);
+        }
+    }
+
+    #assertOpen(): void {
+        if (this.#closed) throw new Error("MCP module is closed.");
+    }
+
+    async #closeOwned(connections: readonly ServerConnection[]): Promise<void> {
+        const owned = [...new Set(connections)];
+        try {
+            await closeConnections(owned);
+        } finally {
+            for (const connection of owned) this.#connections.delete(connection);
         }
     }
 
@@ -469,6 +485,7 @@ export default class Module {
         effective: Omit<AvailableDefinition, "enabled">,
         connection?: ServerConnection,
     ): Promise<Attachment> {
+        this.#assertOpen();
         const definition = effective.definition;
         const candidate = connection ?? new ServerConnection(definition, this.#env, {
             onCatalogChanged: (error) => {
@@ -482,6 +499,7 @@ export default class Module {
                 console.error(`MCP server '${definition.name}' infrastructure failure:`, error);
             },
         });
+        this.#connections.add(candidate);
         const executor = new McpExecutor(
             { runtime: definition.name, glyph: "🔌" },
             candidate,
@@ -514,7 +532,7 @@ export default class Module {
             }
             let closeCause: unknown;
             try {
-                await candidate.close();
+                await this.#closeOwned([candidate]);
             } catch (error) {
                 closeCause = error;
             }
@@ -564,6 +582,7 @@ export default class Module {
                 try {
                     attachment = supplied ?? await this.#prepareAttachment(workspaceId, definition);
                 } catch (cause) {
+                    this.#assertOpen();
                     if (options.preparationFailureDisposition === "reject") throw cause;
                     const failure = cause instanceof ModuleActionError
                         ? cause
@@ -574,7 +593,7 @@ export default class Module {
                         problem: structuredClone(failure.problem),
                     };
                     console.error(
-                        `MCP server '${name}' unavailable during workspace hydration: ${failure.problem.detail}`,
+                        `MCP server '${name}' unavailable during workspace activation: ${failure.problem.detail}`,
                         failure.cause ?? failure,
                     );
                 }
@@ -582,7 +601,8 @@ export default class Module {
                 if (attachment.kind !== "unavailable") fresh.push(attachment);
             }
         } catch (cause) {
-            const cleanup = await Promise.allSettled(fresh.map(({ connection }) => connection.close()));
+            const cleanup = await Promise.allSettled(fresh.map(({ connection }) =>
+                this.#closeOwned([connection])));
             const failures = cleanup.flatMap((result) =>
                 result.status === "rejected" ? errorsOf(result.reason) : []);
             if (failures.length > 0) {
@@ -597,10 +617,11 @@ export default class Module {
         );
         if (authorization !== undefined && options.authorizationDisposition === "defer-mutation") {
             const discard = fresh.filter((attachment) => attachment !== authorization);
-            await closeConnections(discard.map(({ connection }) => connection));
+            await this.#closeOwned(discard.map(({ connection }) => connection));
             return { authorization };
         }
 
+        this.#assertOpen();
         const runtimes = [...next.values()].flatMap((attachment) =>
             attachment.kind === "active" ? [attachment.runtime] : []);
         try {
@@ -611,7 +632,8 @@ export default class Module {
                 runtimes,
             });
         } catch (cause) {
-            const cleanup = await Promise.allSettled(fresh.map(({ connection }) => connection.close()));
+            const cleanup = await Promise.allSettled(fresh.map(({ connection }) =>
+                this.#closeOwned([connection])));
             const failures = cleanup.flatMap((result) =>
                 result.status === "rejected" ? errorsOf(result.reason) : []);
             if (failures.length > 0) {
@@ -629,7 +651,7 @@ export default class Module {
             .filter((connection) => !retained.has(connection));
         if (obsolete.length > 0) {
             try {
-                await closeConnections(obsolete);
+                await this.#closeOwned(obsolete);
             } catch (cause) {
                 throw actionError(
                     "obsolete-connection-close-failed",
@@ -671,7 +693,7 @@ export default class Module {
         const existing = this.#pending.get(key);
         this.#pending.set(key, pending);
         if (closeExisting && existing !== undefined && existing.connection !== pending.connection) {
-            await existing.connection.close();
+            await this.#closeOwned([existing.connection]);
         }
     }
 
@@ -685,7 +707,7 @@ export default class Module {
         this.#pending.delete(key);
         if (pending === undefined || pending.connection === retained) return;
         try {
-            await pending.connection.close();
+            await this.#closeOwned([pending.connection]);
         } catch (cause) {
             throw actionError(
                 "pending-authorization-close-failed",
@@ -701,10 +723,10 @@ export default class Module {
         const snapshot = this.#workspaces.get(workspaceId);
         if (snapshot === undefined) {
             throw actionError(
-                "workspace-not-hydrated",
+                "workspace-not-active",
                 409,
-                "MCP capabilities have not been hydrated for this workspace.",
-                { workspaceId, recovery: "Retry after workspace initialization completes." },
+                "MCP capabilities have not been activated for this workspace.",
+                { workspaceId, recovery: "Retry after workspace activation completes." },
             );
         }
         return snapshot;
@@ -1303,16 +1325,10 @@ export default class Module {
         this.#closed = true;
         for (const timer of this.#refreshTimers.values()) clearTimeout(timer);
         this.#refreshTimers.clear();
-        const connections = new Set<ServerConnection>();
-        for (const snapshot of this.#workspaces.values()) {
-            for (const attachment of snapshot.attachments.values()) {
-                const connection = attachmentConnection(attachment);
-                if (connection !== undefined) connections.add(connection);
-            }
-        }
-        for (const pending of this.#pending.values()) connections.add(pending.connection);
+        const closing = this.#closeOwned([...this.#connections]);
+        await Promise.all([...this.#locks.values()]);
         this.#workspaces.clear();
         this.#pending.clear();
-        await closeConnections([...connections]);
+        await closing;
     }
 }
