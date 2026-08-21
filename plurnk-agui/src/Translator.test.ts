@@ -61,19 +61,19 @@ test("readable provider reasoning precedes SEND speech on the standard AG-UI cha
         reasoning: "checked the evidence",
     } as never));
     assert.deepEqual(events.map((event) => event.type), [
-        "CUSTOM",
         "STEP_STARTED",
         "REASONING_START",
         "REASONING_MESSAGE_START",
         "REASONING_MESSAGE_CONTENT",
         "REASONING_MESSAGE_END",
         "REASONING_END",
+        "CUSTOM",
         "TEXT_MESSAGE_START",
         "TEXT_MESSAGE_CONTENT",
         "TEXT_MESSAGE_END",
         "CUSTOM",
     ]);
-    const reasoning = events.slice(2, 7);
+    const reasoning = events.slice(1, 6);
     assert.deepEqual(reasoning, [
         { type: "REASONING_START", messageId: "1/1/8/SEND/reasoning" },
         { type: "REASONING_MESSAGE_START", messageId: "1/1/8/SEND/reasoning", role: "reasoning" },
@@ -86,6 +86,7 @@ test("readable provider reasoning precedes SEND speech on the standard AG-UI cha
     assert.doesNotThrow(() => ReasoningMessageContentEventSchema.parse(reasoning[2]));
     assert.doesNotThrow(() => ReasoningMessageEndEventSchema.parse(reasoning[3]));
     assert.doesNotThrow(() => ReasoningEndEventSchema.parse(reasoning[4]));
+    assert.equal((events[6] as { name?: string }).name, "plurnk.row", "family clients see reasoning before the paired SEND row");
 });
 
 test("readable reasoning identity is turn-specific and absent evidence invents nothing", () => {

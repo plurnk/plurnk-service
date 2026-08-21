@@ -74,7 +74,9 @@ immediately before that SEND's text events. Every event uses the stable
 `<SEND identity>/reasoning` message ID and preserves the text verbatim. Reattach
 places the equivalent `ReasoningMessage` immediately before its SEND
 `AssistantMessage` in `MESSAGES_SNAPSHOT`. An absent or empty value emits no
-reasoning entity; PLAN never substitutes for it ({§agui-plan-activity}).
+reasoning entity; PLAN never substitutes for it ({§agui-plan-activity}). The
+SEND's `plurnk.row` mirror follows this reasoning sequence and precedes the text
+sequence, so family and generic clients preserve the same presentation order.
 
 - **An op row IS a tool call** — its `coordinate` is the `toolCallId`, its tx the args (one
   delta: a dispatched plurnk op is atomic), its rx the result. The log-shaped richness the

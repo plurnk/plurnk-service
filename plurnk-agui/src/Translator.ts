@@ -67,11 +67,17 @@ export default class Translator {
         // the core vocabulary can't hold. Rich clients render from plurnk.row; generic clients
         // never see the difference. This is the metadata channel the exclusive-portal migration
         // stands on: core events for the world, plurnk.* for the family.
-        events.push({ type: EventType.CUSTOM, name: "plurnk.row", value: e });
+        const row = { type: EventType.CUSTOM, name: "plurnk.row", value: e } as const;
         if (foreign) {
+            events.push(row);
             events.push({ type: EventType.CUSTOM, name: "plurnk.ambient", value: e });
             return events;
         }
+        // A family client renders the SEND from plurnk.row rather than duplicating
+        // TEXT_MESSAGE. Delay that one mirror until after the standard reasoning
+        // lifecycle so both generic and family clients observe reasoning before speech.
+        const delayedSendRow = e.origin === "model" && e.op === "SEND";
+        if (!delayedSendRow) events.push(row);
         if (typeof e.turn_id === "number" && e.turn_id !== this.#currentTurn) {
             if (this.#currentTurn !== null) events.push({ type: EventType.STEP_FINISHED, stepName: `turn-${this.#currentTurn}` });
             this.#currentTurn = e.turn_id;
@@ -98,6 +104,7 @@ export default class Translator {
             const text = Translator.#txBody(e.tx);
             if (typeof e.turn_id === "number") this.#assistantMessage = { turnId: e.turn_id, id };
             events.push(...Translator.#readableReasoningEvents(id, e.reasoning));
+            events.push(row);
             events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant" });
             if (text.length > 0) events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: id, delta: text });
             events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
