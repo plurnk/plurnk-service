@@ -1,16 +1,28 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { lookup, lookupProvider, resolveModel, catalogSnapshot, providerCatalogSnapshot, providerCredentialEnvNames } from "./index.ts";
+import {
+    catalogSnapshot,
+    lookup,
+    lookupProvider,
+    providerCatalogSnapshot,
+    providerCredentialEnvNames,
+    providerNameFromCatalogId,
+    resolveModel,
+} from "./index.ts";
 
 test("lookup: a known cloud model exposes the independent limits and rate groups", () => {
     const info = lookup("openai", "gpt-5.4");
     assert.ok(info !== null, "expected a snapshot entry for a well-known relay model");
+    assert.equal(info.name, "GPT-5.4");
     assert.ok(info.contextWindow > 0);
     assert.ok((info.maxInputTokens ?? 0) > 0);
     assert.ok((info.maxOutputTokens ?? 0) > 0);
     assert.equal(info.reasoning, true);
     assert.equal(typeof info.cost?.inputPer1M, "number");
     assert.equal(typeof info.cost?.outputPer1M, "number");
+    assert.deepEqual(info.modalities?.output, ["text"]);
+    assert.equal(typeof info.toolCall, "boolean");
+    assert.equal(typeof info.structuredOutput, "boolean");
 });
 
 test("lookup: the diverging provider names map to their models.dev ids", () => {
@@ -45,14 +57,21 @@ test("resolveModel: a unique provider-native suffix resolves without a PLURNK ve
 
 test("provider catalog carries Models.dev's AI SDK construction facts", () => {
     assert.deepEqual(lookupProvider("google"), providerCatalogSnapshot().google);
+    assert.equal(lookupProvider("google")?.name, "Google");
     assert.equal(lookupProvider("google")?.npm, "@ai-sdk/google");
     assert.ok(lookupProvider("google")?.env.includes("GEMINI_API_KEY"));
     assert.equal(lookupProvider("cloudflare")?.id, "cloudflare-workers-ai");
 });
 
+test("providerNameFromCatalogId projects the one canonical PLURNK route segment", () => {
+    assert.equal(providerNameFromCatalogId("fireworks-ai"), "fireworks");
+    assert.equal(providerNameFromCatalogId("google"), "google");
+});
+
 test("provider catalog carries Cerebras and Gemma 4 facts", () => {
     assert.deepEqual(lookupProvider("cerebras"), {
         id: "cerebras",
+        name: "Cerebras",
         npm: "@ai-sdk/cerebras",
         env: ["CEREBRAS_API_KEY"],
     });

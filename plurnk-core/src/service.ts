@@ -16,7 +16,8 @@ import LegacyHome from "./core/LegacyHome.ts";
 import OperatorConfig from "./core/OperatorConfig.ts";
 import ProviderInstantiate from "./core/ProviderInstantiate.ts";
 import Meta from "@plurnk/plurnk-meta";
-import { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-providers";
+import { parseAliasesFromEnv, resolveActiveRoute, resolveModelSelector } from "@plurnk/plurnk-providers";
+import type { ProviderSpec } from "@plurnk/plurnk-providers";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as HooksModule } from "@plurnk/plurnk-hooks";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
@@ -89,29 +90,27 @@ export default class Service {
 
     static #modelConfiguration(): {
         readonly aliases: ReturnType<typeof parseAliasesFromEnv>;
-        readonly active: ReturnType<typeof resolveActiveAlias>;
+        readonly active: ReturnType<typeof resolveActiveRoute>;
     } {
         const aliases = parseAliasesFromEnv(process.env);
-        const active = resolveActiveAlias(process.env);
-        const selected = process.env.PLURNK_MODEL ?? "";
-        if (active === null && selected !== "") {
-            const declared = aliases.map(({ alias }) => alias).join(", ");
-            throw new Error(
-                `PLURNK_MODEL=${selected} names no declared alias (declared: ${declared.length > 0 ? declared : "none"}). `
-                + `The knob takes an ALIAS name; for an inline model, declare PLURNK_MODEL_<alias>=${selected} and set PLURNK_MODEL=<alias>.`,
-            );
-        }
-        const childAlias = process.env.PLURNK_MODEL_CHILD;
-        if (childAlias !== undefined) {
-            if (childAlias.length === 0 || !aliases.some(({ alias }) => alias === childAlias.toLowerCase())) {
+        const active = resolveActiveRoute(process.env);
+        const childSelector = process.env.PLURNK_MODEL_CHILD;
+        if (childSelector !== undefined) {
+            if (childSelector.length === 0 || resolveModelSelector(childSelector, aliases) === null) {
                 const names = aliases.map(({ alias }) => alias).join(", ");
                 throw new Error(
-                    `PLURNK_MODEL_CHILD=${childAlias} names no declared alias (declared: ${names.length > 0 ? names : "none"}). `
-                    + "Unset it to inherit each spawning loop's provider, or select a declared alias.",
+                    `PLURNK_MODEL_CHILD=${childSelector} is neither a declared alias nor a provider/model route `
+                    + `(declared aliases: ${names.length > 0 ? names : "none"}). Unset it to inherit.`,
                 );
             }
         }
         return { aliases, active };
+    }
+
+    static #formatModelRoute(route: ProviderSpec | null): string {
+        if (route === null) return "not selected";
+        const exact = `${route.provider}/${route.model}`;
+        return route.alias === undefined ? exact : `${route.alias}=${exact}`;
     }
 
     static async #ensureOperatorConfig(): Promise<void> {
@@ -199,9 +198,9 @@ export default class Service {
         // it at boot via the seam). {§rpc}: production has no daemon-owned listener.
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
 
-        // {§operator-config} — an explicit boot alias must resolve; only an
+        // {§operator-config} — an explicit boot selector must resolve; only an
         // unset selector permits modelless boot for per-request selection.
-        const { active: alias } = Service.#modelConfiguration();
+        const { active: route } = Service.#modelConfiguration();
         // {§startup-admission-order}: persistence and its exclusive owner are
         // admitted before provider verification can perform external work.
         const db = await Service.#openDb(dbPath, true);
@@ -217,7 +216,7 @@ export default class Service {
             // implementation loads; teardown already owns the admitted DB.
             observability = await startObservability();
             const hooksModule = HooksModule.init();
-            const provider = alias === null ? null : await ProviderInstantiate.loadActiveProvider();
+            const provider = route === null ? null : await ProviderInstantiate.loadActiveProvider();
             daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules() });
             daemon.registerModule(McpModule.init());
             daemon.registerModule(hooksModule);
@@ -247,14 +246,14 @@ export default class Service {
             } else if (embedInfo.contextWindow === null) {
                 process.stderr.write("plurnk-service: remote embedder active but reports no input context window — set PLURNK_MIMETYPES_EMBED_CONTEXT_WINDOW to the endpoint's limit or embedding derivations will refuse\n");
             }
-            if (alias === null) {
+            if (route === null) {
                 process.stderr.write(
                     `plurnk-service: no model configured — choose a profile in ${Service.#hostPaths.configFile}; `
                     + "run plurnk-service config defaults for every installed option. Loops fail legibly until then.\n",
                 );
             }
-            const aliasStr = alias === null ? "no model" : `${alias.alias}=${alias.provider}/${alias.model}`;
-            process.stdout.write(`plurnk-service agui=http://${aguiAddr.host}:${aguiAddr.port} db=${dbPath} ${aliasStr}\n`);
+            const routeText = route === null ? "no model" : Service.#formatModelRoute(route);
+            process.stdout.write(`plurnk-service agui=http://${aguiAddr.host}:${aguiAddr.port} db=${dbPath} ${routeText}\n`);
 
             const shutdown = (): void => {
                 teardown.request((cause) => {
@@ -286,7 +285,7 @@ export default class Service {
             ...explicitFiles.map((path) => `  ${path}${existsSync(path) ? "" : " (absent)"}`),
             "  process environment",
             "  CLI flags",
-            `model: ${active === null ? "not selected" : `${active.alias}=${active.provider}/${active.model}`}`,
+            `model: ${Service.#formatModelRoute(active)}`,
             `declared aliases: ${aliases.length === 0 ? "none" : aliases.map(({ alias }) => alias).join(", ")}`,
             `database: ${Service.#databasePath()}`,
             "defaults: plurnk-service config defaults",
@@ -305,7 +304,7 @@ export default class Service {
         process.stdout.write([
             "configuration valid",
             `config: ${Service.#hostPaths.configFile}`,
-            `model: ${active === null ? "not selected" : `${active.alias}=${active.provider}/${active.model}`}`,
+            `model: ${Service.#formatModelRoute(active)}`,
             `declared aliases: ${aliases.length === 0 ? "none" : aliases.map(({ alias }) => alias).join(", ")}`,
             `database: ${Service.#databasePath()}`,
             "provider requests: none",

@@ -12,8 +12,10 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
     isProviderCredentialName,
     lookupProvider,
+    providerCatalogSnapshot,
     type ProviderInfo,
 } from "@plurnk/plurnk-models";
+import { Validator, type ModelReadiness, type ModelReadinessCause } from "@plurnk/plurnk-contracts";
 import type { LanguageModel } from "ai";
 import { providerCostNormalizer } from "./accounting.ts";
 import type { AiSdkProviderOptions, CacheAffinity } from "./AiSdkProvider.ts";
@@ -34,6 +36,12 @@ export type SdkModel = {
 };
 
 const cacheControl = { type: "ephemeral" as const };
+// The release generator admits only packages implemented by this package.
+// Derive runtime readiness from that same pinned provider projection instead
+// of maintaining a second support list beside the construction switch.
+const supportedSdkPackages = new Set(
+    Object.values(providerCatalogSnapshot()).map(({ npm }) => npm),
+);
 
 const openRouterHeaders = (
     provider: string,
@@ -93,6 +101,7 @@ export const configuredProviderInfo = (
     const api = env[`${prefix}_BASE_URL`];
     return {
         id: provider,
+        name: provider,
         npm,
         env: keyNames,
         ...(api === undefined || api.length === 0 ? {} : { api }),
@@ -107,6 +116,11 @@ const firstSet = (env: NodeJS.ProcessEnv, names: readonly string[]): string | un
     return undefined;
 };
 
+const isSet = (env: NodeJS.ProcessEnv, name: string): boolean => {
+    const value = env[name];
+    return value !== undefined && value.length > 0;
+};
+
 const configuredKeyNames = (
     provider: string,
     env: NodeJS.ProcessEnv,
@@ -116,6 +130,124 @@ const configuredKeyNames = (
     return configured === undefined || configured.length === 0
         ? catalog.env
         : [singleCredentialName(provider, configured)];
+};
+
+const credentialCandidates = (
+    provider: string,
+    env: NodeJS.ProcessEnv,
+    catalog: ProviderInfo,
+): readonly string[] => {
+    const names = configuredKeyNames(provider, env, catalog);
+    const credentials = names.filter(isProviderCredentialName);
+    return credentials.length > 0 ? credentials : names;
+};
+
+const configuredBaseUrl = (
+    provider: string,
+    env: NodeJS.ProcessEnv,
+    catalog: ProviderInfo,
+    override?: string,
+): string | undefined => {
+    const prefix = envPrefix(provider);
+    return override
+        ?? env[`PLURNK_PROVIDERS_PROVIDER_${prefix}_BASE_URL`]
+        ?? env[`${prefix}_BASE_URL`]
+        ?? catalog.api;
+};
+
+const templateEnvironmentNames = (value: string | undefined): readonly string[] => value === undefined
+    ? []
+    : [...new Set([...value.matchAll(/\$\{([A-Z0-9_]+)\}/g)].map((match) => match[1]!))];
+
+const missingCause = (
+    kind: ModelReadinessCause["kind"],
+    alternatives: readonly (readonly string[])[],
+): ModelReadinessCause => ({
+    kind,
+    alternatives: alternatives.map((alternative) => [...alternative]) as ModelReadinessCause["alternatives"],
+});
+
+const bedrockReadinessCauses = (
+    env: NodeJS.ProcessEnv,
+    hasExplicitBaseUrl: boolean,
+): ModelReadinessCause[] => {
+    const bearer = isSet(env, "AWS_BEARER_TOKEN_BEDROCK");
+    const sigv4 = isSet(env, "AWS_ACCESS_KEY_ID") && isSet(env, "AWS_SECRET_ACCESS_KEY");
+    const region = isSet(env, "AWS_REGION") || isSet(env, "AWS_DEFAULT_REGION");
+    if (bearer) {
+        return hasExplicitBaseUrl || region
+            ? []
+            : [missingCause("configuration", [["AWS_REGION"], ["AWS_DEFAULT_REGION"]])];
+    }
+    if (sigv4) {
+        return region
+            ? []
+            : [missingCause("configuration", [["AWS_REGION"], ["AWS_DEFAULT_REGION"]])];
+    }
+    return [missingCause("credential", hasExplicitBaseUrl
+        ? [
+            ["AWS_BEARER_TOKEN_BEDROCK"],
+            ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"],
+            ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION"],
+        ]
+        : [
+            ["AWS_BEARER_TOKEN_BEDROCK", "AWS_REGION"],
+            ["AWS_BEARER_TOKEN_BEDROCK", "AWS_DEFAULT_REGION"],
+            ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"],
+            ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION"],
+        ])];
+};
+
+// Local evidence only: this shares the exact environment and endpoint rules
+// used by createSdkModel, but never probes a provider or validates a secret.
+export const providerReadiness = (
+    provider: string,
+    env: NodeJS.ProcessEnv,
+    baseUrlOverride?: string,
+): ModelReadiness | null => {
+    const catalog = lookupProvider(provider) ?? configuredProviderInfo(provider, env);
+    if (catalog === null) return null;
+    if (!supportedSdkPackages.has(catalog.npm)) return null;
+    const rawUrl = configuredBaseUrl(provider, env, catalog, baseUrlOverride);
+    const missingCoordinates = templateEnvironmentNames(rawUrl).filter((name) => !isSet(env, name));
+    const causes: ModelReadinessCause[] = missingCoordinates.length === 0
+        ? []
+        : [missingCause("configuration", [missingCoordinates])];
+
+    if (catalog.npm === "@ai-sdk/amazon-bedrock") {
+        causes.push(...bedrockReadinessCauses(env, rawUrl !== undefined));
+    } else {
+        const candidates = credentialCandidates(provider, env, catalog);
+        const credentialRequired = catalog.npm !== "@ai-sdk/openai-compatible" || candidates.length > 0;
+        if (credentialRequired && candidates.length === 0) {
+            causes.push(missingCause("configuration", [[
+                `PLURNK_PROVIDERS_PROVIDER_${envPrefix(provider)}_API_KEY_ENV`,
+            ]]));
+        } else if (credentialRequired && firstSet(env, candidates) === undefined) {
+            causes.push(missingCause("credential", candidates.map((name) => [name])));
+        }
+        if (catalog.npm === "@ai-sdk/openai-compatible" && rawUrl === undefined) {
+            const prefix = envPrefix(provider);
+            causes.push(missingCause("configuration", [
+                [`PLURNK_PROVIDERS_PROVIDER_${prefix}_BASE_URL`],
+                [`${prefix}_BASE_URL`],
+            ]));
+        }
+    }
+    return Validator.assertModelReadiness({ ready: causes.length === 0, causes });
+};
+
+const assertProviderReady = (
+    provider: string,
+    env: NodeJS.ProcessEnv,
+    baseUrlOverride?: string,
+): void => {
+    const readiness = providerReadiness(provider, env, baseUrlOverride);
+    if (readiness === null || readiness.ready) return;
+    const requirements = readiness.causes
+        .map(({ alternatives }) => alternatives.map((group) => group.join(" and ")).join(" or "))
+        .join("; ");
+    throw new Error(`${provider} provider: ${requirements} must be set`);
 };
 
 const expandEnv = (value: string, env: NodeJS.ProcessEnv, provider: string): string =>
@@ -133,15 +265,11 @@ const baseUrl = (
     catalog: ProviderInfo,
     override?: string,
 ): string | undefined => {
-    const prefix = envPrefix(provider);
     // {§provider-fact-authority} — distinct sources, one precedence: the PLURNK
     // knob, then the provider-native convention (OPENAI_BASE_URL etc.), then
     // the catalog. This is not an alias fallback: each source is a different
     // owner, and the catalog remains the last authority.
-    const configured = env[`PLURNK_PROVIDERS_PROVIDER_${prefix}_BASE_URL`]
-        ?? env[`${prefix}_BASE_URL`]
-        ?? catalog.api;
-    const value = override ?? configured;
+    const value = configuredBaseUrl(provider, env, catalog, override);
     return value === undefined ? undefined : expandEnv(value, env, provider).replace(/\/+$/, "");
 };
 
@@ -150,11 +278,9 @@ const requireApiKey = (
     env: NodeJS.ProcessEnv,
     catalog: ProviderInfo,
 ): string => {
-    const names = configuredKeyNames(provider, env, catalog);
     // {§provider-fact-authority} — a catalog `env` list mixes credentials with
     // non-secret coordinates; the credential is the credential-named one.
-    const credentialNames = names.filter(isProviderCredentialName);
-    const candidates = credentialNames.length > 0 ? credentialNames : names;
+    const candidates = credentialCandidates(provider, env, catalog);
     const key = firstSet(env, candidates);
     if (key === undefined) throw new Error(`${provider} provider: ${candidates.join(" or ")} must be set`);
     return key;
@@ -168,6 +294,10 @@ export const createSdkModel = (
 ): SdkModel | null => {
     const catalog = lookupProvider(provider) ?? configuredProviderInfo(provider, env);
     if (catalog === null) return null;
+    if (!supportedSdkPackages.has(catalog.npm)) {
+        throw new Error(`${provider} provider: Models.dev declares unsupported AI SDK package ${catalog.npm}`);
+    }
+    assertProviderReady(provider, env, baseUrlOverride);
     const url = baseUrl(provider, env, catalog, baseUrlOverride);
     const normalizeCost = providerCostNormalizer(catalog.npm);
 

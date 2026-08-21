@@ -21,6 +21,9 @@ import type {
     ClientInteractionProjection,
     ClientInteractionResolution,
     EntryReadResult,
+    ModelCatalogPage,
+    ModelCatalogQuery,
+    ModelRoute,
     ProposalProjection,
 } from "@plurnk/plurnk-contracts";
 
@@ -73,7 +76,7 @@ export interface DaemonSeam {
     ensureModelWorker(workspaceId: number, settings?: { requestUserInput?: boolean }): Promise<number>;
     // Loop control — drive/steer a loop on the model worker (runLoop refuses a client-origin
     // worker loudly). Returns immediately; the outcome arrives on the event source.
-    runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean }; openPaths?: string[]; alias?: string; model?: string; childAlias?: string | null; childModel?: string }): Promise<OperationResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }>;
+    runLoop(args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean }; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<OperationResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }>;
     // Loop-control — cancel a worker's active drain. Returns whether a drain was cancelled.
     cancelDrain(workerId: number, reason?: string): boolean;
     // One client action journals all of its parsed statements in one internal segment.
@@ -84,6 +87,8 @@ export interface DaemonSeam {
     readLog(args: { workspaceId: number; workerId: number; loopId?: number; turnId?: number; sinceId?: number; limit?: number; loopSeq?: number; turnSeq?: number; sequence?: number }): Promise<LogEntryWire[]>;
     // Providers + their resolved physical input capacity for the STATE gauge.
     listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; inputCapacity: number | null }> };
+    // Bounded release-pinned catalog discovery is worldless and side-effect free.
+    listModels(query: ModelCatalogQuery): ModelCatalogPage;
     // Workspace lifecycle — establish the world/client-worker value a thread binds to.
     // Conversation-worker selection remains a separate module-owned step.
     createWorkspace(args: { name?: string; projectRoot?: string | null; settings?: string | object; constraints?: Array<{ effect: string; glob: string }> }): Promise<ClientEnvelope>;
@@ -114,9 +119,9 @@ export interface DaemonSeam {
     createConversationWorker(args: { workspaceId: number; name?: string; settings?: { requestUserInput?: boolean } }): Promise<{ workerId: number; workerName: string }>;
     // {§agui-worker-model-actions} — the worker's durable model and spawn override,
     // resolved specs or null (unset / inherit).
-    readWorkerModel(args: { workspaceId: number; workerId: number }): Promise<{ model: { alias: string; provider: string; model: string } | null; spawnModel: { alias: string; provider: string; model: string } | null }>;
-    setWorkerModel(args: { workspaceId: number; workerId: number; alias?: string; model?: string }): Promise<{ alias: string; provider: string; model: string }>;
-    setWorkerSpawnModel(args: { workspaceId: number; workerId: number; alias?: string | null; model?: string }): Promise<{ alias: string; provider: string; model: string } | null>;
+    readWorkerModel(args: { workspaceId: number; workerId: number }): Promise<{ model: ModelRoute | null; spawnModel: ModelRoute | null }>;
+    setWorkerModel(args: { workspaceId: number; workerId: number; selector: string }): Promise<ModelRoute>;
+    setWorkerSpawnModel(args: { workspaceId: number; workerId: number; selector: string | null }): Promise<ModelRoute | null>;
     // {§agui-worker-reasoning-actions} — reasoning is a durable worker policy,
     // independent of model selection and immutable during a loop.
     readWorkerReasoning(args: { workspaceId: number; workerId: number }): Promise<{ policy: ReasoningPolicy | null; supportedPolicies: readonly ReasoningPolicy[] }>;

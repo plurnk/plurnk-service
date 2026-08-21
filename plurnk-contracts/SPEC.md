@@ -11,6 +11,7 @@ is the single code API for those contracts.
 | Parser, AST, validators, Problems, results, Notices, text regions and extents   | `@plurnk/plurnk-contracts`                          |
 | Effective loop policy and its default                                           | `LoopFlags`, `DEFAULT_LOOP_FLAGS`                   |
 | Durable reasoning intent                                                        | `ReasoningPolicy`, `REASONING_POLICIES`             |
+| Model route and catalog discovery                                               | `ModelRoute`, `ModelCatalogQuery`, `ModelCatalogPage`, `ModelReadiness` |
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
 | Client-owned interaction contract                                               | `ClientInteractionRequest`, `ClientInteractionProjection`, `ClientInteractionResolution` |
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
@@ -94,6 +95,15 @@ The schemas own the runtime-neutral shapes; core owns their stateful values.
 medium | high`. The schema owns this shared wire vocabulary. Providers own the
 supported subset and native projection for a selected route; core owns the
 durable worker value.
+
+§model-catalog-wire `ModelRoute` is one exact client-visible provider/model
+identity with optional alias provenance. Provider credentials, endpoints, and
+tuning never enter this wire shape. Catalog discovery uses a
+closed bounded query and page: entries carry exact selectors, display facts,
+physical limits, capabilities, and local `ModelReadiness`. A readiness cause
+contains alternative environment-variable sets—every name within a set is
+required and any set may satisfy the cause. It carries names only, never values,
+and asserts neither credential validity nor endpoint reachability.
 
 ### §client-interaction-wire Client-owned interaction wire
 

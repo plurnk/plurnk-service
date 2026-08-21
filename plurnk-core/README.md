@@ -37,8 +37,10 @@ plurnk-service start      # daemon
 Configuration follows XDG at `$XDG_CONFIG_HOME/plurnk` (normally
 `~/.config/plurnk`); durable data defaults to `$XDG_DATA_HOME/plurnk` (normally
 `~/.local/share/plurnk`). First start seeds the user-owned `.env` and
-`AGENTS.md` once. Declare `PLURNK_MODEL_<alias>=<provider>/<model-id>`, then
-select it with `PLURNK_MODEL=<alias>`. Run `plurnk-service config defaults` for
+`AGENTS.md` once. Select an exact route with
+`PLURNK_MODEL=<provider>/<model-id>`, or declare a reusable/tuned
+`PLURNK_MODEL_<alias>=<provider>/<model-id>` and select its alias. Run
+`plurnk-service config defaults` for
 the complete installed option catalog and `plurnk-service config check` to
 validate without contacting a provider. **[`INSTALL.md`](./INSTALL.md) is the
 configuration guide.** A legacy mixed `~/.plurnk` is moved only by the explicit

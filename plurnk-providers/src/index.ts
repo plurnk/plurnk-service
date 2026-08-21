@@ -29,17 +29,22 @@ export type {
 export { assertPromptTokenMeasurement } from "./promptTokens.ts";
 export { assessRequestCapacity, effectiveInputCapacity, effectiveOutputBudget, requestCapacityDecision } from "./capacity.ts";
 
-// Alias cascade — re-exported from the zero-dep @plurnk/plurnk-aliases, so
-// the "." surface is unchanged for existing importers and there's one source of
-// truth for the parser (thin clients depend on that package directly).
-export type { ProviderAlias } from "@plurnk/plurnk-aliases";
-export { parseAliasesFromEnv, resolveActiveAlias } from "@plurnk/plurnk-aliases";
+// Selector and alias parsing stay runtime-free in @plurnk/plurnk-aliases;
+// ModelRoute is the contracts-owned client wire shape; ProviderSpec is the
+// daemon-private construction identity that may retain an endpoint override.
+export type { ModelRoute, ProviderAlias, ProviderSpec } from "@plurnk/plurnk-aliases";
+export {
+    parseAliasesFromEnv,
+    resolveActiveRoute,
+    resolveModelSelector,
+} from "@plurnk/plurnk-aliases";
 
 export {
     instantiateProvider,
     loadActiveProvider,
     resetDiscoveryCache,
 } from "./ProviderRegistry.ts";
+export { providerReadiness } from "./sdkModels.ts";
 
 // Scope-agnostic plugin discovery ({§plugin-family-kind}).
 export { discover } from "./discover.ts";

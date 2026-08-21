@@ -14,15 +14,25 @@ export type ModelCost = {
 };
 
 export type ModelInfo = {
+    readonly name: string;
     readonly contextWindow: number;     // tokens
     readonly maxInputTokens?: number;   // independent input cap; absent when the source had none
     readonly maxOutputTokens?: number;  // independent total-output cap; absent when the source had none
-    readonly reasoning?: boolean;       // true when Models.dev asserts reasoning capability
+    readonly reasoning: boolean;        // Models.dev's asserted capability fact
+    readonly attachment: boolean;
+    readonly toolCall: boolean;
+    readonly structuredOutput?: boolean;
+    readonly temperature?: boolean;
+    readonly modalities: {
+        readonly input: readonly string[];
+        readonly output: readonly string[];
+    };
     readonly cost?: ModelCost;          // absent without complete input and output rates
 };
 
 export type ProviderInfo = {
     readonly id: string;
+    readonly name: string;
     readonly npm: string;
     readonly env: readonly string[];
     readonly api?: string;
@@ -43,6 +53,10 @@ const PROVIDER_IDS: Readonly<Record<string, string>> = Object.freeze({
     hunyuan: "tencent-tokenhub",
     bedrock: "amazon-bedrock",
 });
+
+const PROVIDER_NAMES: Readonly<Record<string, string>> = Object.freeze(
+    Object.fromEntries(Object.entries(PROVIDER_IDS).map(([name, id]) => [id, name])),
+);
 
 const data = catalog as Record<string, Record<string, ModelInfo>>;
 const providerData = providers as Record<string, ProviderInfo>;
@@ -83,6 +97,11 @@ export const catalogSnapshot = (): Readonly<Record<string, Readonly<Record<strin
 // PLURNK provider name → Models.dev provider id, for consumers that must
 // reconcile a declaration or default against the authoritative catalog.
 export const providerIdMap = (): Readonly<Record<string, string>> => PROVIDER_IDS;
+
+// Models.dev provider id -> the exact provider segment accepted by a PLURNK
+// model route. Identity names remain unchanged; the explicit map reverses the
+// handful whose operator-facing route name deliberately differs.
+export const providerNameFromCatalogId = (id: string): string => PROVIDER_NAMES[id] ?? id;
 
 export const providerCatalogSnapshot = (): Readonly<Record<string, ProviderInfo>> => providerData;
 

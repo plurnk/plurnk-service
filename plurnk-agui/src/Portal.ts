@@ -184,7 +184,7 @@ export default class Portal {
 
     // Drive a prompt through the loop (fire-and-forget — the outcome streams via the
     // subscription as loop/terminated). Re-surface any pending stopped-world first.
-    async run(thread: unknown, args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean }; openPaths?: string[]; alias?: string; model?: string; childAlias?: string | null; childModel?: string }): Promise<{ loopId: number } | null> {
+    async run(thread: unknown, args: { workspaceId: number; workerId: number; prompt: string; maxTurns?: number; flags?: { auto?: boolean }; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<{ loopId: number } | null> {
         const pending = await this.#hitl.resurface(args.workspaceId, args.workerId);
         if (pending.events.length > 0) {
             this.#withHitl(pending, (events) => (thread as Thread).emit(events));

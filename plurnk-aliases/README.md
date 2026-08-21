@@ -1,14 +1,15 @@
 # @plurnk/plurnk-aliases
 
-Zero-dependency parser for the plurnk model-alias cascade. Vendor-agnostic, MIT.
+Runtime-free parser for Plurnk model selectors and the optional alias cascade.
+Vendor-agnostic, MIT.
 
 Resolves `PLURNK_MODEL_<alias>=<provider>/<model>` env vars (plus per-alias
 `PLURNK_BASEURL_<alias>` endpoint overrides) into structured `ProviderAlias`
-records. Extracted from `@plurnk/plurnk-providers` so a **thin client** can
-resolve aliases from its own always-fresh env — and send the daemon a resolved
-`{ provider, model, baseUrl? }` — without pulling the provider-instantiation or
-tokenizer machinery. `@plurnk/plurnk-providers` depends on this and re-exports
-the same surface, so it stays the single source of truth.
+records. `PLURNK_MODEL` may select one of those aliases or an exact
+`provider/model` route. `@plurnk/plurnk-providers` depends on this package and
+re-exports the same surface, keeping environment parsing separate from provider
+construction. Clients send selector strings; the daemon resolves them against
+its own operator environment.
 
 ## Install
 
@@ -21,10 +22,11 @@ Node ≥26, ESM.
 ## API
 
 ```ts
-import { parseAliasesFromEnv, resolveActiveAlias, type ProviderAlias } from "@plurnk/plurnk-aliases";
+import { parseAliasesFromEnv, resolveActiveRoute, resolveModelSelector, type ProviderAlias, type ProviderSpec } from "@plurnk/plurnk-aliases";
 
 parseAliasesFromEnv(env = process.env): ProviderAlias[]   // every declared alias
-resolveActiveAlias(env = process.env): ProviderAlias | null // the PLURNK_MODEL-selected one, or null
+resolveModelSelector(selector, aliases): ProviderSpec | null // alias or exact route
+resolveActiveRoute(env = process.env): ProviderSpec | null  // the PLURNK_MODEL-selected route, or null
 ```
 
 ```ts
@@ -36,10 +38,10 @@ interface ProviderAlias {
 }
 ```
 
-To resolve a named alias (e.g. from `loop.run({ alias })`), parse and find:
+To resolve a selector from a client control:
 
 ```ts
-const alias = parseAliasesFromEnv().find((a) => a.alias === name.toLowerCase());
+const route = resolveModelSelector(selector, parseAliasesFromEnv());
 ```
 
 ## Contract
@@ -47,4 +49,5 @@ const alias = parseAliasesFromEnv().find((a) => a.alias === name.toLowerCase());
 The provider segment is the **first** `/`-delimited field; the model id is the
 remainder (it may itself contain `/`). Aliases are case-folded. Fail-hard on a
 case-folding collision (two keys → one alias) and on a `PLURNK_BASEURL_*`
-override with no matching alias (a typo, never a silent no-op). See `SPEC.md`.
+override with no matching alias (a typo, never a silent no-op). Exact routes do
+not manufacture aliases or gain alias-scoped tuning. See `SPEC.md`.

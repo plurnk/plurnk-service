@@ -25,7 +25,7 @@ import { PlurnkParser, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
 import { RunAgentInputSchema, type Interrupt } from "@ag-ui/core";
-import { Problems, Validator, type ClientDisplayCapabilities, type ExecStatement, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { InvalidModelCatalogQueryError, Problems, Validator, type ClientDisplayCapabilities, type ExecStatement, type ModelCatalogQuery, type OperationResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
 
 export type { ModuleOptions } from "./config.ts";
@@ -143,7 +143,7 @@ export default class Module {
     #threadWorkers = new Map<string, number>();   // threadId → conversation workerId
 
     static #CONTROL_ACTIONS = Object.freeze([
-        "ping", "discover", "providers.list", "workspace.list", "workspace.create", "workspace.attach",
+        "ping", "discover", "providers.list", "models.list", "workspace.list", "workspace.create", "workspace.attach",
     ]);
 
     // The control plane vs the world. An AG-UI Run lives in a world (a conversation, or an action
@@ -532,21 +532,15 @@ export default class Module {
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "openPaths")
                 ? { openPaths: forwarded.openPaths as string[] }
                 : {}),
-            // {§methods-loop-run-model} The client may still forward an explicit
-            // alias/model; model is the client-resolved <provider>/<model>. The daemon
+            // {§methods-loop-run-model} The client may still forward one explicit
+            // alias-or-provider/model selector. The daemon
             // persists an explicit selection onto the worker and snapshots it on the
             // loop; an omitted selector continues the worker's durable model.
-            ...(forwarded !== undefined && Object.hasOwn(forwarded, "alias")
-                ? { alias: forwarded.alias as string }
+            ...(forwarded !== undefined && Object.hasOwn(forwarded, "selector")
+                ? { selector: forwarded.selector as string }
                 : {}),
-            ...(forwarded !== undefined && Object.hasOwn(forwarded, "model")
-                ? { model: forwarded.model as string }
-                : {}),
-            ...(forwarded !== undefined && Object.hasOwn(forwarded, "childAlias")
-                ? { childAlias: forwarded.childAlias as string | null }
-                : {}),
-            ...(forwarded !== undefined && Object.hasOwn(forwarded, "childModel")
-                ? { childModel: forwarded.childModel as string }
+            ...(forwarded !== undefined && Object.hasOwn(forwarded, "childSelector")
+                ? { childSelector: forwarded.childSelector as string | null }
                 : {}),
         });
         // A dropped SSE on a live AG-UI Run cancels the loop (hangup is the abort). A stream we
@@ -633,6 +627,25 @@ export default class Module {
                 case "ping": return { ok: true, result: {} };
                 case "discover": return { ok: true, result: await this.#capabilities() };
                 case "providers.list": return { ok: true, result: this.#seam.listProviders() };
+                case "models.list": {
+                    let query: ModelCatalogQuery;
+                    try {
+                        query = Validator.assertModelCatalogQuery(p);
+                    } catch (error) {
+                        if (error instanceof InvalidModelCatalogQueryError) {
+                            return actionFailure(
+                                "invalid-action-parameters",
+                                "models.list received an invalid catalog query.",
+                                400,
+                                {
+                                    recovery: "Use provider?, search?, availability?, offset?, and limit? within the advertised bounds.",
+                                },
+                            );
+                        }
+                        throw error;
+                    }
+                    return { ok: true, result: this.#seam.listModels(query) };
+                }
                 case "workspace.list": return { ok: true, result: { workspaces: await this.#seam.listWorkspaces() } };
                 case "workspace.create": {
                     // The name IS the identity: an explicit name creates/attaches EXACTLY
@@ -964,35 +977,34 @@ export default class Module {
                     return { ok: true, result: { model, spawnModel } };
                 }
                 case "worker.model.set": {
-                    if (!Object.hasOwn(p, "alias") && !Object.hasOwn(p, "model")) {
+                    if (typeof p.selector !== "string" || p.selector.length === 0) {
                         return actionFailure(
                             "invalid-action-parameters",
-                            "worker.model.set requires an alias or model.",
+                            "worker.model.set requires a selector.",
                             400,
-                            { recovery: "Provide alias or model." },
+                            { recovery: "Provide a declared alias or provider/model route." },
                         );
                     }
                     return { ok: true, result: await this.#seam.setWorkerModel({
                         workspaceId: env.workspaceId,
                         workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
-                        ...(typeof p.alias === "string" ? { alias: p.alias } : {}),
-                        ...(typeof p.model === "string" ? { model: p.model } : {}),
+                        selector: p.selector,
                     }) };
                 }
                 case "worker.child.set": {
-                    if (!Object.hasOwn(p, "alias") && !Object.hasOwn(p, "model")) {
+                    if (!Object.hasOwn(p, "selector")
+                        || (p.selector !== null && (typeof p.selector !== "string" || p.selector.length === 0))) {
                         return actionFailure(
                             "invalid-action-parameters",
-                            "worker.child.set requires an alias or model.",
+                            "worker.child.set requires a selector.",
                             400,
-                            { recovery: "Provide alias or model; alias null means inherit." },
+                            { recovery: "Provide a declared alias or provider/model route; null means inherit." },
                         );
                     }
                     return { ok: true, result: await this.#seam.setWorkerSpawnModel({
                         workspaceId: env.workspaceId,
                         workerId: conversationWorkerId ?? await this.#seam.ensureModelWorker(env.workspaceId),
-                        ...(Object.hasOwn(p, "alias") ? { alias: p.alias as string | null } : {}),
-                        ...(typeof p.model === "string" ? { model: p.model } : {}),
+                        selector: p.selector as string | null,
                     }) };
                 }
                 case "worker.reasoning.get": {

@@ -334,8 +334,22 @@ defaults.
 
 §provider-resolution `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares an
 alias.
-`PLURNK_MODEL=<alias>` selects the boot alias. Model IDs may contain `/`.
+`PLURNK_MODEL=<selector>` selects either a declared alias or an exact
+`<provider>/<model-id>` route. Model IDs may contain `/`; only the first slash
+separates provider from model. Exact routes carry no fabricated alias and use
+the global provider configuration. Declared aliases retain their provenance,
+endpoint override, and alias-scoped tuning.
 `PLURNK_BASEURL_<alias>` is a per-alias endpoint override.
+
+§model-catalog-readiness **Catalog readiness and construction share one local
+configuration predicate.** For each Models.dev provider, readiness evaluates
+the same effective credential names, endpoint template coordinates, base-URL
+precedence, and alternative Bedrock authentication sets used by construction.
+It makes no request and validates no credential value. A ready result therefore
+means only “configured enough to attempt”; missing causes contain environment
+names without values. Construction rejects the same missing requirements at
+the provider boundary instead of deferring a known configuration failure to a
+model request.
 
 ### §model-fact-resolution Model fact precedence
 

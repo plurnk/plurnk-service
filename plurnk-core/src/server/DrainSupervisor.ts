@@ -1,5 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
-import type { ProviderAlias } from "@plurnk/plurnk-providers";
+import type { ProviderSpec } from "@plurnk/plurnk-providers";
 import type { ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import { routeForSpec } from "./model-route.ts";
@@ -37,14 +37,14 @@ export type DrainInjectionArgs = {
     workspaceId: number;
     workerId: number;
     prompt: string;
-    providerSpec: ProviderAlias;
+    providerSpec: ProviderSpec;
     reasoningPolicy: ReasoningPolicy;
     // False = the client omitted a selector; a continuation must keep the loop's
     // durable provider rather than compare against a re-resolved boot default.
     // Absent/true = an explicit selection, so the compatibility check applies.
     providerSpecExplicit?: boolean;
     systemPrompt: string;
-    childProviderSpec?: ProviderAlias | null;
+    childProviderSpec?: ProviderSpec | null;
     turnCeiling?: TurnCeilingSelection;
     flags?: Partial<LoopFlags>;
     openPaths?: string[];
@@ -283,9 +283,9 @@ export default class DrainSupervisor {
     enqueueFreshLoop(args: {
         workerId: number;
         prompt: string;
-        providerSpec: ProviderAlias;
+        providerSpec: ProviderSpec;
         reasoningPolicy: ReasoningPolicy;
-        childProviderSpec: ProviderAlias | null;
+        childProviderSpec: ProviderSpec | null;
         maxTurns?: number;
         flags?: Partial<LoopFlags>;
         openPaths?: string[];

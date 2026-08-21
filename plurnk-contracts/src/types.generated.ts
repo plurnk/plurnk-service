@@ -551,6 +551,75 @@ export interface McpServerHeaders {
 [k: string]: string
 }
 
+export interface ModelCatalogPage {
+/**
+ * @maxItems 100
+ */
+items: ModelCatalogEntry[]
+offset: number
+total: number
+nextOffset?: number
+}
+
+export interface ModelCatalogEntry {
+selector: string
+provider: string
+providerName: string
+model: string
+modelName: string
+limits: ModelCatalogLimits
+capabilities: ModelCatalogCapabilities
+readiness: ModelReadiness
+}
+
+export interface ModelCatalogLimits {
+contextTokens: number
+inputTokens?: number
+outputTokens?: number
+}
+
+export interface ModelCatalogCapabilities {
+attachment: boolean
+reasoning: boolean
+toolCall: boolean
+structuredOutput?: boolean
+temperature?: boolean
+inputModalities: string[]
+outputModalities: string[]
+}
+/**
+ * Local configuration evidence that a catalog provider is ready to attempt a request, without probing or validating credentials.
+ */
+
+export interface ModelReadiness {
+ready: boolean
+causes: ModelReadinessCause[]
+}
+
+export interface ModelReadinessCause {
+kind: ("credential" | "configuration")
+/**
+ * Alternative environment-variable sets. Every name in one inner array is required; satisfying any inner array resolves this cause.
+ *
+ * @minItems 1
+ */
+alternatives: [[string, ...(string)[]], ...([string, ...(string)[]])[]]
+}
+
+export interface ModelCatalogQuery {
+provider?: string
+search?: string
+availability?: ("configured" | "all")
+offset?: number
+limit?: number
+}
+
+export interface ModelRoute {
+alias?: string
+provider: string
+model: string
+}
+
 export interface Notice {
 /**
  * Producer identifier. Top-level for self-contained subsystems; colon-namespaced for parameterized producers such as `provider:openai` or `exec:search`.

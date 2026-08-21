@@ -445,5 +445,8 @@ test("loadActiveProvider: resolves the alias cascade to an installed AI SDK prov
 });
 
 test("loadActiveProvider: throws a named error when no alias is active", async () => {
-    await assert.rejects(() => loadActiveProvider({ ...fullEnv }), /set PLURNK_MODEL to an alias/);
+    await assert.rejects(
+        () => loadActiveProvider({ ...fullEnv }),
+        /set PLURNK_MODEL to a declared alias or provider\/model route/,
+    );
 });

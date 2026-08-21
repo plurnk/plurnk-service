@@ -173,10 +173,11 @@ never sees or reconstructs an upstream protocol's continuation state.
 
 Raw `auto`, `noProposals`, operation, attrs, and stale-target facts remain visible evidence but are not re-evaluated here. Reconnect filters by the same disposition, so an internal policy failure cannot silently turn client presentation into an accidental fallback.
 
-§agui-provider-policy-forwarding A textual Run forwards `alias`, `model`,
-`childAlias`, and `childModel` from `forwardedProps.plurnk` unchanged to
-`CoreSeam.runLoop`; an explicit `childAlias: null` remains distinguishable from
-an omitted service-default selection.
+§agui-provider-policy-forwarding A textual Run forwards `selector` and
+`childSelector` from `forwardedProps.plurnk` unchanged to `CoreSeam.runLoop`.
+Each string is one declared alias or exact provider/model route; an explicit
+`childSelector: null` remains distinguishable from an omitted service-default
+selection.
 
 ## §agui-management-plane The action surface
 
@@ -217,6 +218,7 @@ successfully transported management Run; it does not turn the Run into
 | `ping`                   | Worldless | none                                                 | AG-UI-local liveness; returns `{}`.                                                                                |
 | `discover`               | Worldless | none                                                 | AG-UI-local public membership manifest ({§discovery}).                                                             |
 | `providers.list`         | Worldless | none                                                 | `CoreSeam.listProviders`.                                                                                          |
+| `models.list`            | Worldless | `provider?`, `search?`, `availability?`, `offset?`, `limit?` | Returns one bounded {§model-catalog-wire} page from `CoreSeam.listModels` under {§model-catalog}. |
 | `workspace.list`         | Worldless | none                                                 | `CoreSeam.listWorkspaces`.                                                                                         |
 | `workspace.create`       | Worldless | `name?`, `projectRoot?`, `settings?`, `constraints?` | Creates or attaches the exact named world, or asks core to create an automatically named world.                    |
 | `workspace.attach`       | Worldless | `id`, `workerId?`                                    | `CoreSeam.attachWorkspace`; returns the selected envelope.                                                         |
@@ -237,8 +239,8 @@ successfully transported management Run; it does not turn the Run into
 | `op.look`                | Workspace | `text`                                               | Admits one LOOK under {§agui-op-look}, rewrites it to READ, and calls core's no-log `look` projection.              |
 | `run.fork`               | Workspace | `name?`                                              | `CoreSeam.forkWorker` from the thread's conversation worker.                                                       |
 | `worker.model.get`       | Workspace | none                                                 | `CoreSeam.readWorkerModel` on the thread's conversation worker; returns `{ model, spawnModel }` as resolved specs or `null`. |
-| `worker.model.set`       | Workspace | `alias?`, `model?`                                   | `CoreSeam.setWorkerModel` on the thread's conversation worker; persists the resolved selection and returns it.        |
-| `worker.child.set`       | Workspace | `alias?`, `model?`                                   | `CoreSeam.setWorkerSpawnModel` on the thread's conversation worker; persists the override (`alias: null` means inherit) and returns it. |
+| `worker.model.set`       | Workspace | `selector`                                           | `CoreSeam.setWorkerModel` on the thread's conversation worker; persists the resolved selection and returns it.        |
+| `worker.child.set`       | Workspace | `selector`                                           | `CoreSeam.setWorkerSpawnModel` on the thread's conversation worker; persists the override (`null` means inherit) and returns it. |
 | `worker.reasoning.get`   | Workspace | none                                                 | `CoreSeam.readWorkerReasoning` on the thread's conversation worker; returns its durable policy and the policies supported by both its model and optional spawn model. |
 | `worker.reasoning.set`   | Workspace | `policy`                                             | `CoreSeam.setWorkerReasoning` on the thread's conversation worker; validates and persists the policy between loops. |
 | `worker.settings.get`    | Workspace | none                                                 | `CoreSeam.readWorkerSettings` on the thread's conversation worker; returns the worker's behavioral-rules bag ({§worker-settings}).        |
@@ -251,7 +253,7 @@ thread's bound conversation worker under {§worker-model-selection}. They are
 the client's durable `/model` and `/child`; a client must not reassert a
 model on every loop. The get action returns the worker's resolved durable
 model and spawn override (`null` for an unset worker or inherit); the set
-actions resolve and persist before returning, failing with the owning
+actions accept one alias-or-exact-route selector, resolve and persist before returning, failing with the owning
 problem when the selector is unresolvable or the daemon is deliberately
 modelless.
 

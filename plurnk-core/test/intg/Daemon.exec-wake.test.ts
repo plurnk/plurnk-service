@@ -66,8 +66,7 @@ test("{§methods-loop-run-model}: an async wake resumes with the loop's durable 
                 const terminated = subscribeNotifications(ws, "loop/terminated");
                 const started = await rpcCall(ws, 2, "loop.run", {
                     prompt: "run on B, park, then resume on B",
-                    alias: "wakeb",
-                    model: "openai/wake-provider-b",
+                    selector: "wakeb",
                     flags: { auto: true },
                 });
                 const loopId = (started.result as { loopId: number }).loopId;
@@ -82,8 +81,7 @@ test("{§methods-loop-run-model}: an async wake resumes with the loop's durable 
                 // injection; the caller must conclude/cancel and open a new loop.
                 const conflict = await rpcCall(ws, 3, "loop.run", {
                     prompt: "silently change this parked loop to the boot model",
-                    alias: "mocktest",
-                    model: "openai/mocktest",
+                    selector: "mocktest",
                     flags: { auto: true },
                 });
                 const problem = rpcProblem(conflict);
@@ -136,8 +134,7 @@ test("{§methods-loop-run-model}: a selector-less continuation resumes the loop'
                 await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-default-identity" });
                 const started = await rpcCall(ws, 2, "loop.run", {
                     prompt: "run on B, park, then resume on B without a selector",
-                    alias: "wakedefault",
-                    model: "openai/wake-provider-b",
+                    selector: "wakedefault",
                     flags: { auto: true },
                 });
                 const loopId = (started.result as { loopId: number }).loopId;
@@ -194,8 +191,7 @@ test("{§methods-loop-run-model}: a parked loop retains its provider across daem
             workspaceId: envelope.workspaceId,
             workerId,
             prompt: "park on B before restart",
-            alias: "restartb",
-            model: "openai/restart-provider-b",
+            selector: "restartb",
             flags: { auto: true },
         });
         await waitForDb(

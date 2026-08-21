@@ -43,7 +43,8 @@ for (const file of files) {
         format: false,
         style: { singleQuote: false, useTabs: false, tabWidth: 4 },
     });
-    for (const block of source.split(/\n(?=export (?:interface|type) )/)) {
+    const normalized = source.replace(/[ \t]+$/gm, "");
+    for (const block of normalized.split(/\n(?=export (?:interface|type) )/)) {
         const match = declaration.exec(block);
         if (match === null || emitted.has(match[1])) continue;
         emitted.add(match[1]);

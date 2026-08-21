@@ -203,15 +203,9 @@ The worker's result enters the log and wakes you:
 
 ### Submit codes
 
-| submit code | meaning                       | message                                     |
+| submit code | meaning                       | body message (user-facing)                  |
 |-------------|-------------------------------|---------------------------------------------|
 | 102         | Retrieve results in next turn | Describe expected or intended next steps    |
 | 202         | Wait for workers or streams   | Describe expected or intended next steps    |
-| 200         | Successful conclusion         | Describe actions performed or answer prompt |
+| 200         | Successful conclusion         | Response to Active User Prompt (markdown with mermaid, tables, lists, and/or prose) |
 | 499         | Abort and fail prompt         | Describe error or issue                     |
-
-### User messages
-
-YOU SHOULD ONLY place user-facing conclusion messages in the body of SEND with status code 200.
-YOU MAY use markdown, mermaid diagrams, tables, lists, and/or prose in user-facing conclusion messages.
-YOU SHOULD NOT describe Plurnk OPs in user-facing conclusion messages unless directly prompted to do so.

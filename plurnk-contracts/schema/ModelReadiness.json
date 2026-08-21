@@ -1,0 +1,47 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/ModelReadiness.json",
+    "title": "ModelReadiness",
+    "description": "Local configuration evidence that a catalog provider is ready to attempt a request, without probing or validating credentials.",
+    "type": "object",
+    "required": ["ready", "causes"],
+    "additionalProperties": false,
+    "properties": {
+        "ready": {
+            "type": "boolean"
+        },
+        "causes": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/cause"
+            }
+        }
+    },
+    "$defs": {
+        "cause": {
+            "title": "ModelReadinessCause",
+            "type": "object",
+            "required": ["kind", "alternatives"],
+            "additionalProperties": false,
+            "properties": {
+                "kind": {
+                    "enum": ["credential", "configuration"]
+                },
+                "alternatives": {
+                    "description": "Alternative environment-variable sets. Every name in one inner array is required; satisfying any inner array resolves this cause.",
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "array",
+                        "minItems": 1,
+                        "uniqueItems": true,
+                        "items": {
+                            "type": "string",
+                            "pattern": "^[A-Z0-9_]+$"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

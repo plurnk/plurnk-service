@@ -106,10 +106,8 @@ export default class SeamSocket {
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
                     ...(p.flags !== undefined ? { flags: p.flags as { auto?: boolean } } : {}),
                     ...(p.openPaths !== undefined ? { openPaths: p.openPaths as string[] } : {}),
-                    ...(p.alias !== undefined ? { alias: p.alias as string } : {}),
-                    ...(p.model !== undefined ? { model: p.model as string } : {}),
-                    ...(p.childAlias !== undefined ? { childAlias: p.childAlias as string | null } : {}),
-                    ...(p.childModel !== undefined ? { childModel: p.childModel as string } : {}),
+                    ...(p.selector !== undefined ? { selector: p.selector as string } : {}),
+                    ...(p.childSelector !== undefined ? { childSelector: p.childSelector as string | null } : {}),
                 });
                 return { ...loop, modelWorkerId };
             }
@@ -135,10 +133,8 @@ export default class SeamSocket {
                     workspaceId: s.workspaceId, workerId: this.#modelWorkerId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
                     ...(p.flags !== undefined ? { flags: p.flags as { auto?: boolean } } : {}),
-                    ...(p.alias !== undefined ? { alias: p.alias as string } : {}),
-                    ...(p.model !== undefined ? { model: p.model as string } : {}),
-                    ...(p.childAlias !== undefined ? { childAlias: p.childAlias as string | null } : {}),
-                    ...(p.childModel !== undefined ? { childModel: p.childModel as string } : {}),
+                    ...(p.selector !== undefined ? { selector: p.selector as string } : {}),
+                    ...(p.childSelector !== undefined ? { childSelector: p.childSelector as string | null } : {}),
                 });
                 return { ...result, modelWorkerId: this.#modelWorkerId };
             }

@@ -40,6 +40,8 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
     });
     assert.deepEqual(JSON.parse(ClientInput.parseSettings("{\"git\":false}")), { git: false });
     assert.equal(ClientInput.assertPrompt("loop.run", "continue"), "continue");
+    assert.equal(ClientInput.assertSelector("worker.model.set", "selector", "google/gemini"), "google/gemini");
+    assert.equal(ClientInput.assertChildSelector("worker.child.set", null), null);
     assert.equal(ClientInput.assertMaxTurns("loop.run", -1), -1);
     assert.deepEqual(ClientInput.assertOpenPaths("loop.run", ["README.md"]), ["README.md"]);
     assert.equal(ClientInput.assertLimit("workspace.prompts", 10), 10);
@@ -167,16 +169,28 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
             field: "openPaths[0]",
         },
         {
-            run: () => ClientInput.assertOptionalSelector("loop.run", "alias", ""),
-            code: "alias-invalid",
+            run: () => ClientInput.assertOptionalSelector("loop.run", "selector", ""),
+            code: "selector-invalid",
             context: "loop.run",
-            field: "alias",
+            field: "selector",
         },
         {
-            run: () => ClientInput.assertOptionalSelector("loop.run", "childModel", ""),
-            code: "child-model-invalid",
+            run: () => ClientInput.assertOptionalSelector("loop.run", "childSelector", ""),
+            code: "child-selector-invalid",
             context: "loop.run",
-            field: "childModel",
+            field: "childSelector",
+        },
+        {
+            run: () => ClientInput.assertSelector("worker.model.set", "selector", undefined),
+            code: "selector-invalid",
+            context: "worker.model.set",
+            field: "selector",
+        },
+        {
+            run: () => ClientInput.assertChildSelector("worker.child.set", undefined),
+            code: "child-selector-invalid",
+            context: "worker.child.set",
+            field: "childSelector",
         },
         {
             run: () => ClientInput.assertLimit("workspace.prompts", 0),
@@ -211,7 +225,7 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
 });
 
 test("child provider input distinguishes omitted, explicit inherit, and an alias", () => {
-    assert.equal(ClientInput.assertOptionalChildAlias("loop.run", undefined), undefined);
-    assert.equal(ClientInput.assertOptionalChildAlias("loop.run", null), null);
-    assert.equal(ClientInput.assertOptionalChildAlias("loop.run", "fast"), "fast");
+    assert.equal(ClientInput.assertOptionalChildSelector("loop.run", undefined), undefined);
+    assert.equal(ClientInput.assertOptionalChildSelector("loop.run", null), null);
+    assert.equal(ClientInput.assertOptionalChildSelector("loop.run", "fast"), "fast");
 });

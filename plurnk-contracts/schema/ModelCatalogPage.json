@@ -1,0 +1,122 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.dev/v0/ModelCatalogPage.json",
+    "title": "ModelCatalogPage",
+    "description": "One deterministic bounded page from the release-pinned model catalog.",
+    "type": "object",
+    "required": ["items", "offset", "total"],
+    "additionalProperties": false,
+    "properties": {
+        "items": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+                "$ref": "#/$defs/model"
+            }
+        },
+        "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+        },
+        "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+        },
+        "nextOffset": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+        }
+    },
+    "$defs": {
+        "model": {
+            "title": "ModelCatalogEntry",
+            "type": "object",
+            "required": [
+                "selector",
+                "provider",
+                "providerName",
+                "model",
+                "modelName",
+                "limits",
+                "capabilities",
+                "readiness"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "selector": {
+                    "type": "string",
+                    "minLength": 3
+                },
+                "provider": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "providerName": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "model": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "modelName": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "limits": {
+                    "$ref": "#/$defs/limits"
+                },
+                "capabilities": {
+                    "$ref": "#/$defs/capabilities"
+                },
+                "readiness": {
+                    "$ref": "https://schemas.plurnk.dev/v0/ModelReadiness.json"
+                }
+            }
+        },
+        "limits": {
+            "title": "ModelCatalogLimits",
+            "type": "object",
+            "required": ["contextTokens"],
+            "additionalProperties": false,
+            "properties": {
+                "contextTokens": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "inputTokens": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "outputTokens": {
+                    "type": "integer",
+                    "minimum": 1
+                }
+            }
+        },
+        "capabilities": {
+            "title": "ModelCatalogCapabilities",
+            "type": "object",
+            "required": ["attachment", "reasoning", "toolCall", "inputModalities", "outputModalities"],
+            "additionalProperties": false,
+            "properties": {
+                "attachment": { "type": "boolean" },
+                "reasoning": { "type": "boolean" },
+                "toolCall": { "type": "boolean" },
+                "structuredOutput": { "type": "boolean" },
+                "temperature": { "type": "boolean" },
+                "inputModalities": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 }
+                },
+                "outputModalities": {
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1 }
+                }
+            }
+        }
+    }
+}

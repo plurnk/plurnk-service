@@ -1,2 +1,2 @@
-export type { ProviderAlias } from "./types.ts";
-export { parseAliasesFromEnv, resolveActiveAlias } from "./aliases.ts";
+export type { ModelRoute, ProviderAlias, ProviderSpec } from "./types.ts";
+export { parseAliasesFromEnv, resolveActiveRoute, resolveModelSelector } from "./aliases.ts";

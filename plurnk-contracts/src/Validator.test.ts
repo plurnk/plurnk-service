@@ -9,6 +9,10 @@ import Validator, {
     InvalidMcpServerDefinitionError,
     InvalidMcpServerOptionsError,
     InvalidMcpConfigurationOverlayError,
+    InvalidModelCatalogPageError,
+    InvalidModelCatalogQueryError,
+    InvalidModelReadinessError,
+    InvalidModelRouteError,
     InvalidNoticeError,
     InvalidOperationResultError,
     InvalidProblemDetailsError,
@@ -18,7 +22,104 @@ import Validator, {
     InvalidTextRegionError,
 } from "./Validator.ts";
 import Problems from "./Problems.ts";
-import type { ClientDisplayCapabilities, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, RangeExtent } from "./types.generated.ts";
+import type { ClientDisplayCapabilities, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, RangeExtent } from "./types.generated.ts";
+
+test("{§model-catalog-wire}: model routes and bounded catalog pages preserve readiness evidence", () => {
+    const directRoute: unknown = { provider: "google", model: "gemini-3-flash" };
+    assert.deepEqual(
+        Validator.assertModelRoute(directRoute),
+        { provider: "google", model: "gemini-3-flash" },
+    );
+    assert.deepEqual(
+        Validator.assertModelRoute({ alias: "gemini", provider: "google", model: "gemini-3-flash" }),
+        { alias: "gemini", provider: "google", model: "gemini-3-flash" },
+    );
+    assert.throws(
+        () => Validator.assertModelRoute({ alias: "", provider: "google", model: "gemini" }),
+        InvalidModelRouteError,
+    );
+    assert.throws(
+        () => Validator.assertModelRoute({
+            alias: "private",
+            provider: "openai",
+            model: "local",
+            baseUrl: "http://private-host.internal/v1",
+        }),
+        InvalidModelRouteError,
+        "daemon-owned endpoint configuration never crosses the client wire",
+    );
+
+    assert.deepEqual(
+        Validator.assertModelCatalogQuery({ search: "gemini", availability: "all", offset: 10, limit: 20 }),
+        { search: "gemini", availability: "all", offset: 10, limit: 20 },
+    );
+    assert.throws(
+        () => Validator.assertModelCatalogQuery({ limit: 101 }),
+        InvalidModelCatalogQueryError,
+    );
+
+    const unavailable = {
+        ready: false,
+        causes: [{
+            kind: "credential" as const,
+            alternatives: [["GOOGLE_API_KEY"], ["GEMINI_API_KEY"]] as [[string], [string]],
+        }],
+    };
+    const untrustedReadiness: unknown = unavailable;
+    assert.equal(Validator.assertModelReadiness(untrustedReadiness), unavailable);
+    assert.deepEqual(
+        Validator.assertModelReadiness({
+            ready: false,
+            causes: [{ kind: "credential", alternatives: [["302AI_API_KEY"]] }],
+        }),
+        { ready: false, causes: [{ kind: "credential", alternatives: [["302AI_API_KEY"]] }] },
+        "Models.dev environment names are OS keys, not shell identifiers",
+    );
+    assert.throws(
+        () => Validator.assertModelReadiness({ ready: true, causes: unavailable.causes }),
+        InvalidModelReadinessError,
+    );
+    assert.throws(
+        () => Validator.assertModelReadiness({ ready: false, causes: [] }),
+        InvalidModelReadinessError,
+    );
+
+    const page: ModelCatalogPage = {
+        items: [{
+            selector: "google/gemini-3-flash",
+            provider: "google",
+            providerName: "Google",
+            model: "gemini-3-flash",
+            modelName: "Gemini 3 Flash",
+            limits: { contextTokens: 1_000_000, outputTokens: 65_536 },
+            capabilities: {
+                attachment: true,
+                reasoning: true,
+                toolCall: true,
+                structuredOutput: true,
+                temperature: true,
+                inputModalities: ["text", "image"],
+                outputModalities: ["text"],
+            },
+            readiness: unavailable,
+        }],
+        offset: 0,
+        total: 1,
+    };
+    const untrustedPage: unknown = page;
+    assert.equal(Validator.assertModelCatalogPage(untrustedPage), page, "the wire validator narrows unknown input");
+    assert.throws(
+        () => Validator.assertModelCatalogPage({ ...page, nextOffset: 0 }),
+        InvalidModelCatalogPageError,
+    );
+    assert.throws(
+        () => Validator.assertModelCatalogPage({
+            ...page,
+            items: [{ ...page.items[0], selector: "google/a-different-model" }],
+        }),
+        InvalidModelCatalogPageError,
+    );
+});
 
 test("{§reasoning-policy-wire}: reasoning policy is the exact shared portable vocabulary", () => {
     for (const policy of ["off", "adaptive", "low", "medium", "high"] as const) {

@@ -3,21 +3,23 @@
 // persistence; no path re-resolves a historical selection through a possibly
 // changed alias declaration.
 
-import type { ProviderAlias } from "@plurnk/plurnk-providers";
+import type { ModelRoute } from "@plurnk/plurnk-contracts";
+import type { ProviderSpec } from "@plurnk/plurnk-providers";
 import type { Db } from "../core/Db.ts";
 
-export const routeForSpec = async (db: Db, spec: ProviderAlias | null): Promise<number | null> => {
+export const routeForSpec = async (db: Db, spec: ProviderSpec | null): Promise<number | null> => {
     if (spec === null) return null;
-    const baseUrl = spec.baseUrl ?? "";
+    const alias = spec.alias ?? null;
+    const baseUrl = spec.baseUrl ?? null;
     const existing = await db.model_route_lookup.get<{ id: number }>({
-        alias: spec.alias,
+        alias,
         provider: spec.provider,
         model: spec.model,
         base_url: baseUrl,
     });
     if (existing !== undefined) return existing.id;
     const created = await db.model_route_create.get<{ id: number }>({
-        alias: spec.alias,
+        alias,
         provider: spec.provider,
         model: spec.model,
         base_url: baseUrl,
@@ -26,14 +28,21 @@ export const routeForSpec = async (db: Db, spec: ProviderAlias | null): Promise<
     return created.id;
 };
 
-export const specForRoute = async (db: Db, routeId: number | null): Promise<ProviderAlias | null> => {
+export const specForRoute = async (db: Db, routeId: number | null): Promise<ProviderSpec | null> => {
     if (routeId === null) return null;
-    const row = await db.model_route_by_id.get<{ alias: string; provider: string; model: string; base_url: string }>({ id: routeId });
+    const row = await db.model_route_by_id.get<{ alias: string | null; provider: string; model: string; base_url: string | null }>({ id: routeId });
     if (row === undefined) throw new Error(`model_route ${routeId} is missing`);
     return {
-        alias: row.alias,
+        ...(row.alias === null ? {} : { alias: row.alias }),
         provider: row.provider,
         model: row.model,
-        ...(row.base_url === "" ? {} : { baseUrl: row.base_url }),
+        ...(row.base_url === null ? {} : { baseUrl: row.base_url }),
     };
 };
+
+// The provider endpoint is durable construction state, not client model identity.
+export const projectModelRoute = (spec: ProviderSpec): ModelRoute => ({
+    ...(spec.alias === undefined ? {} : { alias: spec.alias }),
+    provider: spec.provider,
+    model: spec.model,
+});

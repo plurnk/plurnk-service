@@ -12,8 +12,9 @@ import { loopUsage } from "../test/accounting-fixture.ts";
 
 const mockSeam = () => {
     const resolves: Array<{ logEntryId: number; resolution: ProposalResolution }> = [];
-    const loopRuns: Array<{ alias?: string; model?: string; childAlias?: string | null; childModel?: string; prompt: string }> = [];
-    const modelSets: Array<{ alias?: string; model?: string; childAlias?: string | null; childModel?: string }> = [];
+    const loopRuns: Array<{ selector?: string; childSelector?: string | null; prompt: string }> = [];
+    const modelSets: Array<{ selector?: string; childSelector?: string | null }> = [];
+    const modelQueries: unknown[] = [];
     const reasoningSets: unknown[] = [];
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
     const seam: DaemonSeam = {
@@ -29,11 +30,34 @@ const mockSeam = () => {
             setImmediate(() => handlers.forEach((h) => h(3, "loop/terminated", { loopId: 1, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) })));
         },
         resolveClientInteraction: async () => {},
-        runLoop: async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.alias !== undefined ? { alias: a.alias } : {}), ...(a.model !== undefined ? { model: a.model } : {}), ...(a.childAlias !== undefined ? { childAlias: a.childAlias } : {}), ...(a.childModel !== undefined ? { childModel: a.childModel } : {}) }); return { status: 100, action: "injected_next_turn" as const, loopId: 9, turnSeq: 2 }; },
+        runLoop: async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}) }); return { status: 100, action: "injected_next_turn" as const, loopId: 9, turnSeq: 2 }; },
         cancelDrain: () => true,
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [{ id: 1, op: "SEND", origin: "model" }],
         listProviders: () => ({ aliases: [{ alias: "opus", provider: "anthropic", model: "claude", active: true, inputCapacity: 200000 }] }),
+        listModels: (query) => {
+            modelQueries.push(query);
+            return {
+                items: [{
+                    selector: "google/gemini-3-flash",
+                    provider: "google",
+                    providerName: "Google",
+                    model: "gemini-3-flash",
+                    modelName: "Gemini 3 Flash",
+                    limits: { contextTokens: 1_000_000 },
+                    capabilities: {
+                        attachment: true,
+                        reasoning: true,
+                        toolCall: true,
+                        inputModalities: ["text", "image"],
+                        outputModalities: ["text"],
+                    },
+                    readiness: { ready: true, causes: [] },
+                }],
+                offset: query.offset ?? 0,
+                total: 1,
+            };
+        },
         createWorkspace: async () => ({ workspaceId: 3, workspaceName: "agui-t", projectRoot: null, workerId: 10, workerName: "client-1" }),
         attachWorkspace: async () => { throw new Error("unexpected attach"); },
         listWorkspaces: async () => [],
@@ -61,13 +85,19 @@ const mockSeam = () => {
         readWorkerReasoning: async () => ({ policy: null, supportedPolicies: [] }),
         readWorkerSettings: async () => ({ requestUserInput: false }),
         setWorkerSettings: async ({ settings }) => ({ requestUserInput: settings?.requestUserInput === true }),
-        setWorkerModel: async ({ alias, model }) => {
-            modelSets.push({ ...(alias !== undefined ? { alias } : {}), ...(model !== undefined ? { model } : {}) });
-            return { alias: alias ?? "mocktest", provider: "openai", model: model ?? "mocktest" };
+        setWorkerModel: async ({ selector }) => {
+            modelSets.push({ selector });
+            return selector.includes("/")
+                ? { provider: selector.slice(0, selector.indexOf("/")), model: selector.slice(selector.indexOf("/") + 1) }
+                : { alias: selector, provider: "openai", model: "mocktest" };
         },
-        setWorkerSpawnModel: async ({ alias, model }) => {
-            modelSets.push({ ...(alias !== undefined ? { childAlias: alias } : {}), ...(model !== undefined ? { childModel: model } : {}) });
-            return alias === null ? null : ({ alias: alias ?? "mocktest", provider: "openai", model: model ?? "mocktest" });
+        setWorkerSpawnModel: async ({ selector }) => {
+            modelSets.push({ childSelector: selector });
+            return selector === null
+                ? null
+                : selector.includes("/")
+                    ? { provider: selector.slice(0, selector.indexOf("/")), model: selector.slice(selector.indexOf("/") + 1) }
+                    : { alias: selector, provider: "openai", model: "mocktest" };
         },
         setWorkerReasoning: async ({ policy }) => {
             reasoningSets.push(policy);
@@ -76,7 +106,7 @@ const mockSeam = () => {
     };
     const finish = (workspaceId: number | null) => setImmediate(() => handlers.forEach((h) => h(workspaceId, "loop/terminated", { loopId: 9, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) })));
     const emit = (workspaceId: number | null, method: string, params: unknown) => handlers.forEach((h) => h(workspaceId, method, params));
-    return { seam, resolves, loopRuns, modelSets, reasoningSets, finish, emit };
+    return { seam, resolves, loopRuns, modelSets, modelQueries, reasoningSets, finish, emit };
 };
 
 const standardInput = (body: Record<string, unknown>): Record<string, unknown> => ({
@@ -158,7 +188,7 @@ test("a workspace's stream events fan to every open AG-UI Run (never last-binder
 });
 
 test("a management-action AG-UI Run executes via the seam: result custom + RUN_FINISHED, no loop", async () => {
-    const { seam } = mockSeam();
+    const { seam, modelQueries } = mockSeam();
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         const events = await post(mod.address().port, { threadId: "t1", workerId: "r1", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "providers.list" } } } });
@@ -166,6 +196,16 @@ test("a management-action AG-UI Run executes via the seam: result custom + RUN_F
         assert.equal(result.value.ok, true);
         assert.equal(result.value.result.aliases[0].alias, "opus");
         assert.equal(events[events.length - 1].type, "RUN_FINISHED", "management-action AG-UI Run finishes clean");
+        const models = await post(mod.address().port, { threadId: "t1", workerId: "models", forwardedProps: { plurnk: { action: { kind: "models.list", provider: "google", search: "flash", limit: 10 } } } });
+        const modelResult = models.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { items: Array<{ selector: string }> } } };
+        assert.equal(modelResult.value.ok, true);
+        assert.equal(modelResult.value.result.items[0]?.selector, "google/gemini-3-flash");
+        assert.deepEqual(modelQueries, [{ provider: "google", search: "flash", limit: 10 }]);
+
+        const invalidModels = await post(mod.address().port, { threadId: "t1", workerId: "models-invalid", forwardedProps: { plurnk: { action: { kind: "models.list", limit: 101 } } } });
+        const invalidModelResult = invalidModels.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; problem: { status: number; type: string } } };
+        assert.equal(invalidModelResult.value.ok, false);
+        assert.equal(invalidModelResult.value.problem.status, 400);
         // inject rides the same surface
         const inj = await post(mod.address().port, { threadId: "t1", workerId: "r2", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "loop.inject", prompt: "steer" } } } });
         const ack = inj.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as { value: { ok: boolean; result: { action: string } } };
@@ -208,13 +248,13 @@ test("{§agui-worker-model-actions}: worker model get/set reach the seam and chi
         assert.equal(got.value.result.model?.alias, "opus");
         assert.equal(got.value.result.spawnModel?.alias, "tiny");
 
-        const set = await post(port, { threadId: "t1", workerId: "r2", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.model.set", alias: "fresh" } } } });
+        const set = await post(port, { threadId: "t1", workerId: "r2", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.model.set", selector: "fresh" } } } });
         assert.equal(set[set.length - 1].type, "RUN_FINISHED");
-        assert.deepEqual(modelSets, [{ alias: "fresh" }]);
+        assert.deepEqual(modelSets, [{ selector: "fresh" }]);
 
-        const child = await post(port, { threadId: "t1", workerId: "r3", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.child.set", alias: null } } } });
+        const child = await post(port, { threadId: "t1", workerId: "r3", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.child.set", selector: null } } } });
         assert.equal(child[child.length - 1].type, "RUN_FINISHED");
-        assert.deepEqual(modelSets, [{ alias: "fresh" }, { childAlias: null }], "child alias null forwards as inherit");
+        assert.deepEqual(modelSets, [{ selector: "fresh" }, { childSelector: null }], "child selector null forwards as inherit");
 
         const noSelector = await post(port, { threadId: "t1", workerId: "r4", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.model.set" } } } });
         const refused = noSelector.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as {
@@ -1285,6 +1325,7 @@ test("discover returns the exact public action and notification membership", asy
             "log.read",
             "loop.cancel",
             "loop.inject",
+            "models.list",
             "op.exec",
             "op.look",
             "op.parse",
@@ -1498,19 +1539,17 @@ test("a message AG-UI Run forwards parent and child provider selection into runL
     const { seam, loopRuns, finish } = mockSeam();
     // The worker self-completes: the runLoop override closes the stream for its workspace (the working
     // message-drive pattern above), so the POST resolves.
-    seam.runLoop = async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.alias !== undefined ? { alias: a.alias } : {}), ...(a.model !== undefined ? { model: a.model } : {}), ...(a.childAlias !== undefined ? { childAlias: a.childAlias } : {}), ...(a.childModel !== undefined ? { childModel: a.childModel } : {}) }); finish(a.workspaceId); return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 }; };
+    seam.runLoop = async (a) => { loopRuns.push({ prompt: a.prompt, ...(a.selector !== undefined ? { selector: a.selector } : {}), ...(a.childSelector !== undefined ? { childSelector: a.childSelector } : {}) }); finish(a.workspaceId); return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         await post(mod.address().port, {
             threadId: "t-model", workerId: "r1",
-            forwardedProps: { plurnk: { workspace: "t-model", alias: "fireslow", model: "fireworks/deepseek-v4", childAlias: "firefast", childModel: "fireworks/qwen3-coder" } },
+            forwardedProps: { plurnk: { workspace: "t-model", selector: "fireslow", childSelector: "firefast" } },
             messages: [{ role: "user", content: "hello" }],
         });
         assert.equal(loopRuns.length, 1, "the message drove one runLoop");
-        assert.equal(loopRuns[0].alias, "fireslow", "the alias forwarded off forwardedProps.plurnk");
-        assert.equal(loopRuns[0].model, "fireworks/deepseek-v4", "the client-resolved model forwarded too (daemon applies precedence)");
-        assert.equal(loopRuns[0].childAlias, "firefast", "the child alias rides the same per-loop wire");
-        assert.equal(loopRuns[0].childModel, "fireworks/qwen3-coder", "the client-resolved child model rides with it");
+        assert.equal(loopRuns[0].selector, "fireslow", "the parent selector forwards off forwardedProps.plurnk");
+        assert.equal(loopRuns[0].childSelector, "firefast", "the child selector rides the same per-loop wire");
     } finally { await mod.close(); }
 });
 

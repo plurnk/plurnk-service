@@ -1,7 +1,7 @@
-// Provider instantiation + active-alias resolution. Alias PARSING (the
+// Provider instantiation + active model-route resolution. Alias parsing (the
 // PLURNK_MODEL_<alias>=<provider>/<model> cascade + PLURNK_BASEURL_<alias>
-// overrides) lives in @plurnk/plurnk-aliases — the zero-dep parser shared with
-// thin clients; this module resolves the active alias to a Provider.
+// overrides) lives in @plurnk/plurnk-aliases; this module resolves the active
+// alias-or-route selector to a Provider.
 //
 // {§provider-resolution} Models.dev catalog → PLURNK provider declaration
 // → local protocol adapter → scope-agnostic AI SDK plugin discovery. Generic
@@ -11,7 +11,7 @@
 import type { AiSdkProviderPlugin, Provider } from "./types.ts";
 import { catalogProviderFromEnv, providerFromSdkModel } from "./catalogProvider.ts";
 import { discover, type DiscoverOptions, type Discovery } from "./discover.ts";
-import { resolveActiveAlias } from "@plurnk/plurnk-aliases";
+import { resolveActiveRoute } from "@plurnk/plurnk-aliases";
 import { scopeEnvToAlias } from "./env.ts";
 import { ollamaProviderFromEnv } from "./ollama.ts";
 import { compatibleProviderFromEnv } from "./compatibleProvider.ts";
@@ -106,15 +106,23 @@ export const instantiateProvider = async (
 // Test-only: drop the memoized discovery so a fresh scan/injection runs next.
 export const resetDiscoveryCache = (): void => { discoveredCache = null; };
 
-// Boot convenience: resolve the active alias cascade and instantiate it.
+// Boot convenience: resolve the active selector and instantiate its exact route.
 export const loadActiveProvider = async (
     env: NodeJS.ProcessEnv = process.env,
     importImpl: ImportModule = importModule,
     discoverFn: DiscoverFn = discover,
 ): Promise<Provider> => {
-    const alias = resolveActiveAlias(env);
-    if (alias === null) {
-        throw new Error("no active provider: set PLURNK_MODEL to an alias declared via PLURNK_MODEL_<alias>=<provider>/<model>");
+    const route = resolveActiveRoute(env);
+    if (route === null) {
+        throw new Error("no active provider: set PLURNK_MODEL to a declared alias or provider/model route");
     }
-    return instantiateProvider(alias.provider, env, alias.model, importImpl, discoverFn, alias.baseUrl, alias.alias);
+    return instantiateProvider(
+        route.provider,
+        env,
+        route.model,
+        importImpl,
+        discoverFn,
+        route.baseUrl,
+        route.alias,
+    );
 };

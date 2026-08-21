@@ -5,7 +5,7 @@
 -- resolved tuple. Create-or-lookup is one owner (the drain boundary).
 -- PREP: model_route_lookup
 SELECT id FROM model_routes
-WHERE alias = $alias AND provider = $provider AND model = $model AND base_url = $base_url;
+WHERE alias IS $alias AND provider = $provider AND model = $model AND base_url IS $base_url;
 
 -- PREP: model_route_create
 INSERT INTO model_routes (alias, provider, model, base_url)
