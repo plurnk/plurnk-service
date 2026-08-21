@@ -66,6 +66,58 @@ test("{§worker-model-selection}: an explicit selection persists onto the worker
     });
 });
 
+test("{§worker-reasoning-policy}: reasoning controls seed the daemon-default model before the first loop", async () => {
+    const spec = provider("reasoning-default", "reasoning-default-model");
+    const mock = new Mock({ contextWindow: 16_384, responses: [] });
+    const priorModel = process.env.PLURNK_MODEL;
+    const declaration = `PLURNK_MODEL_${spec.alias}`;
+    const priorDeclaration = process.env[declaration];
+    process.env.PLURNK_MODEL = spec.alias;
+    process.env[declaration] = `${spec.provider}/${spec.model}`;
+    ProviderInstantiate.registerInstance(mock, spec, process.env, "adaptive");
+    ProviderInstantiate.registerInstance(mock, spec, process.env, "high");
+
+    try {
+        await withDaemon(mock, async (db, daemon) => {
+            const workspace = await daemon.createWorkspace({
+                name: `reasoning-default-${crypto.randomUUID()}`,
+                projectRoot: null,
+            });
+            const inspectedWorker = await daemon.ensureModelWorker(workspace.workspaceId);
+            assert.deepEqual(await daemon.readWorkerReasoning({
+                workspaceId: workspace.workspaceId,
+                workerId: inspectedWorker,
+            }), {
+                policy: "adaptive",
+                supportedPolicies: ["off", "adaptive", "low", "medium", "high"],
+            });
+
+            const selectedWorkspace = await daemon.createWorkspace({
+                name: `reasoning-selected-${crypto.randomUUID()}`,
+                projectRoot: null,
+            });
+            const selectedWorker = await daemon.ensureModelWorker(selectedWorkspace.workspaceId);
+            assert.equal((await daemon.setWorkerReasoning({
+                workspaceId: selectedWorkspace.workspaceId,
+                workerId: selectedWorker,
+                policy: "high",
+            })).policy, "high");
+
+            const rows = await db.test_workers_with_model.all<WorkerRow>({});
+            for (const workerId of [inspectedWorker, selectedWorker]) {
+                const row = rows.find(({ id }) => id === workerId);
+                assert.ok(row !== undefined);
+                assert.deepEqual(await routeSpec(db, row.model_route_id), spec);
+            }
+        });
+    } finally {
+        if (priorModel === undefined) delete process.env.PLURNK_MODEL;
+        else process.env.PLURNK_MODEL = priorModel;
+        if (priorDeclaration === undefined) delete process.env[declaration];
+        else process.env[declaration] = priorDeclaration;
+    }
+});
+
 test("{§worker-reasoning-policy}: alias configuration seeds once, explicit policy persists, and loops snapshot it", async () => {
     const spec = provider("reasoning-durable", "reasoning-durable-model");
     const mock = new Mock({

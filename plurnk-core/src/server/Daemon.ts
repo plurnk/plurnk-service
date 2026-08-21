@@ -956,6 +956,7 @@ export default class Daemon {
         const workspaceId = ClientInput.assertId("worker.reasoning.get", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("worker.reasoning.get", "workerId", args.workerId);
         await this.#assertWorkerOwned(workspaceId, workerId);
+        await this.#resolveWorkerModel(workerId, undefined, undefined);
         const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
         if (row === undefined) throw new Error(`worker ${workerId}: generation policy row missing`);
         if (row.model_route_id === null) {
@@ -1003,6 +1004,7 @@ export default class Daemon {
         }
         await this.#assertWorkerOwned(workspaceId, workerId);
         await this.#assertWorkerSelectable(workerId);
+        await this.#resolveWorkerModel(workerId, undefined, undefined);
         const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
         if (row === undefined) throw new Error(`worker ${workerId}: generation policy row missing`);
         const spec = await specForRoute(this.#db, row.model_route_id);

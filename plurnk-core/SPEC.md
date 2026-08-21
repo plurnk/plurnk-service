@@ -872,7 +872,7 @@ registry. An unresolvable or unreadable rail fails the constrained generation
 loudly; it never silently becomes unconstrained.
 
 §gbnf-requires-reasoning Both shipped PLURNK rails require reasoning. The same alias-scoped configuration
-must resolve reasoning to `adaptive` or `on`; `off` with GBNF is rejected before
+must resolve reasoning to `adaptive` or a supported fixed effort; `off` with GBNF is rejected before
 the probe or any model generation. Reasoning-off remains valid when no GBNF rail
 is configured.
 
@@ -2537,7 +2537,9 @@ policy are persisted atomically, while visibility of returned reasoning and
 token ceilings remain separate concerns. An explicit policy change validates
 the exact policy against both the worker model and its optional spawn model and
 is refused while the worker owns a live or parked loop. Client inspection
-returns the supported-policy intersection of those two routes.
+returns the supported-policy intersection of those two routes. Inspection or
+mutation materializes the daemon-default model and policy onto an uninitialized
+model worker before answering; a deliberately modelless daemon remains unset.
 
 Starting a loop snapshots the worker's policy beside its model. Restart, retry,
 park, wake, and injection retain that immutable snapshot. WORK, FORK, and BARE
