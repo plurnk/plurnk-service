@@ -102,7 +102,6 @@
         "@plurnk/plurnk-mimetypes-application-ipynb": "1.7.0",
         "@plurnk/plurnk-mimetypes-application-json": "1.7.0",
         "@plurnk/plurnk-mimetypes-application-jsonl": "1.7.0",
-        "@plurnk/plurnk-mimetypes-application-pdf": "1.7.0",
         "@plurnk/plurnk-mimetypes-application-xml": "1.7.0",
         "@plurnk/plurnk-mimetypes-embeddings": "1.7.0",
         "@plurnk/plurnk-mimetypes-text-csv": "1.7.0",
@@ -112,19 +111,17 @@
         "@plurnk/plurnk-mimetypes-text-ini": "1.7.0",
         "@plurnk/plurnk-mimetypes-text-markdown": "1.7.0",
         "@plurnk/plurnk-mimetypes-text-plain": "1.7.0",
-        "@plurnk/plurnk-mimetypes-tokenizers": "1.7.0",
         "@plurnk/plurnk-models": "1.7.0",
         "@plurnk/plurnk-providers": "1.7.0",
         "@plurnk/plurnk-schemes": "1.7.0",
         "@plurnk/plurnk-schemes-http": "1.7.0",
         "@possumtech/sqlrite": "^6.5.2",
         "diff": "^9.0.0",
-        "ignore": "7.0.6",
-        "isomorphic-git": "1.41.7",
         "yaml": "^2.9.0"
     },
     "devDependencies": {
         "@opentelemetry/core": "^2.10.0",
+        "@plurnk/plurnk-mimetypes-tokenizers": "1.7.0",
         "@types/diff": "^7.0.2"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-core#readme",

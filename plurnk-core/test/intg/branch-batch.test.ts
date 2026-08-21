@@ -56,10 +56,8 @@ const seedRepository = async (
 test("a branch batch freezes one base, runs children serially, and restores the parent checkout", async () => {
     const priorAllowed = process.env.PLURNK_SERVICE_GIT_ALLOWED;
     const priorAuto = process.env.PLURNK_SERVICE_GIT_AUTO;
-    const priorIso = process.env.PLURNK_SERVICE_GIT_ISO;
     process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
     process.env.PLURNK_SERVICE_GIT_AUTO = "1";
-    process.env.PLURNK_SERVICE_GIT_ISO = "0";
     const root = await mkdtemp(join(tmpdir(), "plurnk-branch-batch-"));
     const db = await openMigrated();
     try {
@@ -218,18 +216,14 @@ test("a branch batch freezes one base, runs children serially, and restores the 
         else process.env.PLURNK_SERVICE_GIT_ALLOWED = priorAllowed;
         if (priorAuto === undefined) delete process.env.PLURNK_SERVICE_GIT_AUTO;
         else process.env.PLURNK_SERVICE_GIT_AUTO = priorAuto;
-        if (priorIso === undefined) delete process.env.PLURNK_SERVICE_GIT_ISO;
-        else process.env.PLURNK_SERVICE_GIT_ISO = priorIso;
     }
 });
 
 test("tagged sibling workers execute through the complete daemon topology", async () => {
     const priorAllowed = process.env.PLURNK_SERVICE_GIT_ALLOWED;
     const priorAuto = process.env.PLURNK_SERVICE_GIT_AUTO;
-    const priorIso = process.env.PLURNK_SERVICE_GIT_ISO;
     process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
     process.env.PLURNK_SERVICE_GIT_AUTO = "1";
-    process.env.PLURNK_SERVICE_GIT_ISO = "0";
     const root = await mkdtemp(join(tmpdir(), "plurnk-branch-daemon-"));
     try {
         await git(root, ["init", "--quiet"]);
@@ -307,8 +301,6 @@ test("tagged sibling workers execute through the complete daemon topology", asyn
         else process.env.PLURNK_SERVICE_GIT_ALLOWED = priorAllowed;
         if (priorAuto === undefined) delete process.env.PLURNK_SERVICE_GIT_AUTO;
         else process.env.PLURNK_SERVICE_GIT_AUTO = priorAuto;
-        if (priorIso === undefined) delete process.env.PLURNK_SERVICE_GIT_ISO;
-        else process.env.PLURNK_SERVICE_GIT_ISO = priorIso;
     }
 });
 
@@ -441,10 +433,8 @@ test("SEND[202] does not check branch completion while joined work is still live
 test("restart recovery preserves an interrupted committed tip and continues queued siblings", async () => {
     const priorAllowed = process.env.PLURNK_SERVICE_GIT_ALLOWED;
     const priorAuto = process.env.PLURNK_SERVICE_GIT_AUTO;
-    const priorIso = process.env.PLURNK_SERVICE_GIT_ISO;
     process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
     process.env.PLURNK_SERVICE_GIT_AUTO = "1";
-    process.env.PLURNK_SERVICE_GIT_ISO = "0";
     const root = await mkdtemp(join(tmpdir(), "plurnk-branch-recover-"));
     const db = await openMigrated();
     try {
@@ -571,18 +561,14 @@ test("restart recovery preserves an interrupted committed tip and continues queu
         else process.env.PLURNK_SERVICE_GIT_ALLOWED = priorAllowed;
         if (priorAuto === undefined) delete process.env.PLURNK_SERVICE_GIT_AUTO;
         else process.env.PLURNK_SERVICE_GIT_AUTO = priorAuto;
-        if (priorIso === undefined) delete process.env.PLURNK_SERVICE_GIT_ISO;
-        else process.env.PLURNK_SERVICE_GIT_ISO = priorIso;
     }
 });
 
 test("branch preflight rejects every dirty checkout class and existing refs without starting a child", async (t) => {
     const priorAllowed = process.env.PLURNK_SERVICE_GIT_ALLOWED;
     const priorAuto = process.env.PLURNK_SERVICE_GIT_AUTO;
-    const priorIso = process.env.PLURNK_SERVICE_GIT_ISO;
     process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
     process.env.PLURNK_SERVICE_GIT_AUTO = "1";
-    process.env.PLURNK_SERVICE_GIT_ISO = "0";
     try {
         for (const specimen of ["staged", "unstaged", "untracked", "existing-branch"] as const) {
             await t.test(specimen, async () => {
@@ -682,18 +668,14 @@ test("branch preflight rejects every dirty checkout class and existing refs with
         else process.env.PLURNK_SERVICE_GIT_ALLOWED = priorAllowed;
         if (priorAuto === undefined) delete process.env.PLURNK_SERVICE_GIT_AUTO;
         else process.env.PLURNK_SERVICE_GIT_AUTO = priorAuto;
-        if (priorIso === undefined) delete process.env.PLURNK_SERVICE_GIT_ISO;
-        else process.env.PLURNK_SERVICE_GIT_ISO = priorIso;
     }
 });
 
 test("a nested project branches its containing monorepo and ignores an unrelated repository", async () => {
     const priorAllowed = process.env.PLURNK_SERVICE_GIT_ALLOWED;
     const priorAuto = process.env.PLURNK_SERVICE_GIT_AUTO;
-    const priorIso = process.env.PLURNK_SERVICE_GIT_ISO;
     process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
     process.env.PLURNK_SERVICE_GIT_AUTO = "1";
-    process.env.PLURNK_SERVICE_GIT_ISO = "0";
     const root = await mkdtemp(join(tmpdir(), "plurnk-branch-boundary-"));
     const monorepo = join(root, "monorepo");
     const projectRoot = join(monorepo, "packages", "app");
@@ -768,14 +750,10 @@ test("a nested project branches its containing monorepo and ignores an unrelated
         else process.env.PLURNK_SERVICE_GIT_ALLOWED = priorAllowed;
         if (priorAuto === undefined) delete process.env.PLURNK_SERVICE_GIT_AUTO;
         else process.env.PLURNK_SERVICE_GIT_AUTO = priorAuto;
-        if (priorIso === undefined) delete process.env.PLURNK_SERVICE_GIT_ISO;
-        else process.env.PLURNK_SERVICE_GIT_ISO = priorIso;
     }
 });
 
 test("branch preflight refuses a workspace with a still-open stream", async () => {
-    const priorIso = process.env.PLURNK_SERVICE_GIT_ISO;
-    process.env.PLURNK_SERVICE_GIT_ISO = "0";
     const root = await mkdtemp(join(tmpdir(), "plurnk-branch-stream-"));
     const db = await openMigrated();
     try {
@@ -843,14 +821,10 @@ test("branch preflight refuses a workspace with a still-open stream", async () =
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
-        if (priorIso === undefined) delete process.env.PLURNK_SERVICE_GIT_ISO;
-        else process.env.PLURNK_SERVICE_GIT_ISO = priorIso;
     }
 });
 
 test("shutdown lets the active branch settle and does not start its queued sibling", async () => {
-    const priorIso = process.env.PLURNK_SERVICE_GIT_ISO;
-    process.env.PLURNK_SERVICE_GIT_ISO = "0";
     const root = await mkdtemp(join(tmpdir(), "plurnk-branch-stop-"));
     const db = await openMigrated();
     try {
@@ -920,14 +894,10 @@ test("shutdown lets the active branch settle and does not start its queued sibli
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
-        if (priorIso === undefined) delete process.env.PLURNK_SERVICE_GIT_ISO;
-        else process.env.PLURNK_SERVICE_GIT_ISO = priorIso;
     }
 });
 
 test("an ambiguous dirty child checkout is preserved as recovery_required", async () => {
-    const priorIso = process.env.PLURNK_SERVICE_GIT_ISO;
-    process.env.PLURNK_SERVICE_GIT_ISO = "0";
     const root = await mkdtemp(join(tmpdir(), "plurnk-branch-recovery-required-"));
     const db = await openMigrated();
     try {
@@ -991,7 +961,5 @@ test("an ambiguous dirty child checkout is preserved as recovery_required", asyn
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
-        if (priorIso === undefined) delete process.env.PLURNK_SERVICE_GIT_ISO;
-        else process.env.PLURNK_SERVICE_GIT_ISO = priorIso;
     }
 });

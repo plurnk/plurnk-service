@@ -129,6 +129,11 @@ test("discovery: every service-owned format-handler declaration is registered", 
     }
 });
 
+test("the default service omits heavyweight opt-in mimetype artifacts", () => {
+    assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-application-pdf"], undefined);
+    assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-tokenizers"], undefined);
+});
+
 for (const c of CASES) {
     test(`${c.label}: extension '${c.ext}' routes to '${c.expectedMimetype}'`, async () => {
         await mimetypes.ready();
@@ -145,11 +150,3 @@ for (const c of CASES) {
         assert.ok(result.totalLines > 0, `${c.label} should report a content extent`);
     });
 }
-
-// PDF is application/pdf; sample binary too complex to ship inline, so
-// this just checks discovery without preview content.
-test("application/pdf: handler is registered by extension routing", async () => {
-    await mimetypes.ready();
-    const detected = await mimetypes.detect({ ext: ".pdf" });
-    assert.equal(detected, "application/pdf");
-});

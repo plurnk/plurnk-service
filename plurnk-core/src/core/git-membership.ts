@@ -21,13 +21,11 @@
 //        projection identity without reacquiring bytes. EMI divergence rides the
 //        same pass. {§membership-change-gated-sync}
 //
-// Git resolution uses native Git by default (subprocess + hermeticGitEnv,
-// AbortSignal-respecting). PLURNK_SERVICE_GIT_ISO=1 explicitly selects the
-// slower in-process portability backend for a deployment that cannot spawn Git.
+// Git resolution uses native Git (subprocess + hermeticGitEnv,
+// AbortSignal-respecting).
 
 import { execFile } from "node:child_process";
-import { gitOutputMaxBytes, hermeticGitEnv, isomorphicGitEnabled } from "./git-env.ts";
-import GitIso from "./git-iso.ts";
+import { gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
 import { promisify } from "node:util";
 import { readFile, glob, stat } from "node:fs/promises";
 import { resolve, join, matchesGlob } from "node:path";
@@ -133,11 +131,7 @@ export default class GitMembership {
 
     static async stageFile(root: string, key: string, signal?: AbortSignal): Promise<void> {
         try {
-            if (isomorphicGitEnabled()) {
-                await GitIso.add(root, key);
-            } else {
-                await GitMembership.#execFileP("git", ["add", "--", key], { cwd: root, signal, env: hermeticGitEnv() });
-            }
+            await GitMembership.#execFileP("git", ["add", "--", key], { cwd: root, signal, env: hermeticGitEnv() });
         } catch {
             // Ignore staging errors if root is not a git repo
         }
@@ -150,11 +144,9 @@ export default class GitMembership {
         return row?.project_root ?? null;
     }
 
-    // Tracked files of one repo, workspace-relative - GitIso.trackedFiles (walk STAGE, blob
-    // entries only) or native `git ls-files --stage -z`. Either way gitlinks
+    // Tracked files of one repo, workspace-relative via `git ls-files --stage -z`. Gitlinks
     // are filtered: a submodule is a repository boundary, not a file member. Empty → [].
-    static async #gitTrackedFiles(root: string, signal: AbortSignal | undefined, cache: object): Promise<string[]> {
-        if (isomorphicGitEnabled()) return GitIso.trackedFiles(root, cache);
+    static async #gitTrackedFiles(root: string, signal: AbortSignal | undefined): Promise<string[]> {
         // NUL-delimited so paths with spaces/newlines survive.
         const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--stage", "-z"], { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() });
         const files: string[] = [];
@@ -169,18 +161,15 @@ export default class GitMembership {
     }
 
     // Untracked-but-not-ignored members of one repo ({§membership-auto-add}) —
-    // GitIso.untrackedFiles (the differential-gated pruning ignore-walk) or native `git ls-files
-    // --others --exclude-standard -z`. A model-created file is a repo
+    // `git ls-files --others --exclude-standard -z`. A model-created file is a repo
     // member the moment it exists — no git-stage required — while `.gitignore` still filters it.
-    static async #gitUntrackedFiles(root: string, signal: AbortSignal | undefined, cache: object): Promise<string[]> {
-        if (isomorphicGitEnabled()) return GitIso.untrackedFiles(root, cache);
+    static async #gitUntrackedFiles(root: string, signal: AbortSignal | undefined): Promise<string[]> {
         const { stdout } = await GitMembership.#execFileP("git", ["ls-files", "--others", "--exclude-standard", "-z"], { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() });
         return stdout.split("\0").filter((e) => e.length > 0);
     }
 
     // Resolve a directory to the containing Git repository, or null when absent.
     static async #repoToplevel(dir: string, signal: AbortSignal | undefined): Promise<string | null> {
-        if (isomorphicGitEnabled()) return GitIso.repoToplevel(dir);
         try {
             const { stdout } = await GitMembership.#execFileP("git", ["rev-parse", "--show-toplevel"], { cwd: dir, signal, env: hermeticGitEnv() });
             return stdout.trim();
@@ -201,9 +190,8 @@ export default class GitMembership {
 
     static async #projectMembers(root: string, repoRoot: string, signal: AbortSignal | undefined): Promise<string[]> {
         const members = new Set<string>();
-        const cache = {};
-        const tracked = await GitMembership.#gitTrackedFiles(repoRoot, signal, cache);
-        const untracked = await GitMembership.#gitUntrackedFiles(repoRoot, signal, cache);
+        const tracked = await GitMembership.#gitTrackedFiles(repoRoot, signal);
+        const untracked = await GitMembership.#gitUntrackedFiles(repoRoot, signal);
         for (const file of [...tracked, ...untracked]) {
             members.add(Namespace.fromRepositoryPath(file, root, repoRoot));
         }

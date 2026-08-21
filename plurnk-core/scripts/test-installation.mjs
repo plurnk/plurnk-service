@@ -15,6 +15,8 @@ let failures = 0;
 const ok = (cond, msg) => { process.stdout.write(`  ${cond ? "✓" : "✗"} ${msg}\n`); if (!cond) failures++; };
 const bin = resolve(sandbox, "node_modules", ".bin", "plurnk-service");
 const isogitPackage = "@plurnk/plurnk-execs-isogit";
+const pdfPackage = "@plurnk/plurnk-mimetypes-application-pdf";
+const tokenizersPackage = "@plurnk/plurnk-mimetypes-tokenizers";
 const sandboxHostEnv = {
     HOME: sandbox,
     XDG_CONFIG_HOME: resolve(sandbox, ".config"),
@@ -79,12 +81,15 @@ const packedMimetypeInventory = () => {
             { channels: ["symbols"] },
         );
         const embedder = await mimetypes.embedderInfo();
-        const tokenizer = await mimetypes.tokenizer("o200k", { strict: true });
+        const tokenizer = await mimetypes.tokenizer("o200k");
         process.stdout.write(JSON.stringify({
             owners: Object.fromEntries([...discovery.handlers].map(([name, info]) => [name, info.packageName])),
             json: { ok: json.ok, mimetype: json.mimetype },
             embedder: embedder !== null,
-            tokenizer: tokenizer.exact,
+            tokenizer: {
+                exact: tokenizer.exact,
+                plurnkPackage: tokenizer.notices?.[0]?.plurnkPackage ?? null,
+            },
         }));
         await mimetypes.dispose();
     `;
@@ -204,6 +209,7 @@ ok(
     !mimetypeFrameworkDependencies.some((name) => name.startsWith("@plurnk/plurnk-mimetypes-")),
     "the mimetype framework contains no leaf-consumer dependency edges",
 );
+ok(!serviceDependencies.includes("isomorphic-git"), "the service has one native ambient Git implementation");
 
 const mimetypeInventory = packedMimetypeInventory();
 for (const packageName of defaultMimetypePackages) {
@@ -220,7 +226,31 @@ ok(
     "a packed default handler loads through the composed service module graph",
 );
 ok(mimetypeInventory.embedder === true, "the packed default embedding artifact resolves");
-ok(mimetypeInventory.tokenizer === true, "the packed default tokenizer artifact resolves exactly");
+ok(
+    mimetypeInventory.tokenizer.exact === false
+        && mimetypeInventory.tokenizer.plurnkPackage === tokenizersPackage,
+    "the clean service reports the optional tokenizer artifact honestly",
+);
+
+const pdfRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-application-pdf");
+const tokenizersRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-tokenizers");
+ok(!existsSync(pdfRoot), "the heavyweight PDF handler is absent from a clean service install");
+ok(!existsSync(tokenizersRoot), "the tokenizer vocabulary artifact is absent from a clean service install");
+ok(
+    !Object.values(mimetypeInventory.owners).includes(pdfPackage),
+    "a clean service does not advertise the uninstalled PDF handler",
+);
+
+process.stdout.write("-- optional mimetype lifecycle --\n");
+installPacked(tarballs, pdfPackage);
+ok(existsSync(resolve(pdfRoot, "package.json")), "the exact packed PDF leaf installs into the service-visible module graph");
+const pdfInventory = packedMimetypeInventory();
+ok(pdfInventory.owners["application/pdf"] === pdfPackage, "the installed PDF leaf is discovered without a service rebuild");
+
+installPacked(tarballs, tokenizersPackage);
+ok(existsSync(resolve(tokenizersRoot, "package.json")), "the exact packed tokenizer artifact installs into the service-visible module graph");
+const tokenizerInventory = packedMimetypeInventory();
+ok(tokenizerInventory.tokenizer.exact === true, "the installed tokenizer artifact resolves an exact bundled vocabulary");
 
 const embedderRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings");
 ok(existsSync(embedderRoot), "embedder ships in the default service composition");

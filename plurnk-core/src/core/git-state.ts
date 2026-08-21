@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
-import { gitOutputMaxBytes, hermeticGitEnv, isomorphicGitEnabled } from "./git-env.ts";
-import GitIso from "./git-iso.ts";
+import { gitOutputMaxBytes, hermeticGitEnv } from "./git-env.ts";
 import { promisify } from "node:util";
 import type { Db } from "./Db.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
@@ -25,9 +24,8 @@ export interface GitStatusSnapshot extends GitStatus {
 }
 
 // Git working-tree state for the packet: the model's ambient "where am I, what
-// have I touched" without running a command. Native Git is the default;
-// PLURNK_SERVICE_GIT_ISO=1 explicitly selects the in-process portability
-// backend. Gated by `PLURNK_SERVICE_GIT_ALLOWED` (the
+// have I touched" without running a command. Gated by
+// `PLURNK_SERVICE_GIT_ALLOWED` (the
 // hard service ceiling) + a git worktree. Returns null when git is disabled,
 // headless, or non-git — the status block is then omitted entirely. This is the
 // *state* read; the model's arbitrary git *operations* go through EXEC runtime `git`.
@@ -46,18 +44,20 @@ export default class GitState {
         const row = await db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const root = row?.project_root ?? null;
         if (root === null) return null;
-        if (isomorphicGitEnabled()) {
-            const repository = await GitIso.repoToplevel(root);
-            if (repository === null) return null;
-            return GitIso.status(root, repository);
-        }
-        let stdout: string;
+        let statusOutput: string;
+        let repositoryRoot: string;
         try {
-            ({ stdout } = await GitState.#execFileP("git", ["status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all"], { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() }));
+            const options = { cwd: root, signal, maxBuffer: gitOutputMaxBytes(), env: hermeticGitEnv() };
+            const [status, repository] = await Promise.all([
+                GitState.#execFileP("git", ["status", "--porcelain=v1", "-z", "--branch", "--untracked-files=all"], options),
+                GitState.#execFileP("git", ["rev-parse", "--show-toplevel"], options),
+            ]);
+            statusOutput = status.stdout;
+            repositoryRoot = repository.stdout.trim();
         } catch {
             return null;  // not a git worktree, or git absent — fail closed, no status
         }
-        return GitState.#parse(stdout, root, await GitIso.repoToplevel(root) ?? root);
+        return GitState.#parse(statusOutput, root, repositoryRoot);
     }
 
     // `git status --porcelain=v1 -z --branch --untracked-files=all`: one NUL-delimited branch header,
