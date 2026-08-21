@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
-type LogRow = { op: string; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string };
+type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; attrs: string; folded: string; origin: string };
 const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("## SEND0 [200]\ndone", 50)] });
 
 test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
@@ -275,9 +275,18 @@ test("an empty workspace executes all six orienting FINDs and preserves empty-su
                 const initializationTurnId = finds[0]!.turn_id;
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
-                    initializationRows.map(({ op }) => op),
+                    initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
                     ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
-                    "the real initialization script contains the six surveys between PLAN and SEND",
+                    "the initialization outcomes contain the six surveys between PLAN and SEND",
+                );
+                const turnOps = initializationRows.find(({ op }) => op === null);
+                assert.equal(turnOps?.origin, "_plurnk");
+                assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
+                assert.equal(turnOps?.folded, "[]", "the exact initialization program is born open");
+                assert.match(
+                    (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
+                    /^# PLAN0\n[\s\S]*\n## SEND0 \[102\]\nNext: Address the prompt\.$/,
+                    "the exact initialization source surrounds the same six executed surveys",
                 );
                 const logTags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: modelWorkerId });
                 assert.deepEqual(

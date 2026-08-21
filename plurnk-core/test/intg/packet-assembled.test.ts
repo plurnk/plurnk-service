@@ -15,7 +15,7 @@ import Paths from "../../src/Paths.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { InvalidLoopFlagsError, Validator } from "@plurnk/plurnk-contracts";
+import { InvalidLoopFlagsError, PlurnkParser, Validator } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { copyStmt, editStmt, readStmt, findStmt, regex, sendStmt, urlPath } from "./_dsl.ts";
 
@@ -183,15 +183,26 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(200)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        const foists = (await db.test_log_entries_by_loop.all<{ id: number; op: string; origin: string }>({ loop_id: loopId }))
+        const rows = await db.test_log_entries_by_loop.all<{ id: number; op: string | null; origin: string; tx: string; rx: string; attrs: string }>({ loop_id: loopId });
+        const foists = rows
             .filter(({ op, origin }) => origin === "_plurnk" && (op === "FIND" || op === "READ"));
         assert.ok(foists.length > 0, "the first turn persists its structural observation foists");
-        for (const { id } of foists) {
-            const tx = await db.test_log_entries_get_tx_by_id.get<{ tx: string }>({ id });
-            assert.ok(tx !== undefined);
-            const statement = JSON.parse(tx.tx) as unknown;
+        const turnOps = rows.find(({ op, origin, attrs }) => op === null
+            && origin === "_plurnk"
+            && (JSON.parse(attrs) as { kind?: string }).kind === "turnOps");
+        assert.ok(turnOps !== undefined, "the initialization source accompanies its operation outcomes");
+        const source = (JSON.parse(turnOps.rx) as { content: string }).content;
+        const sourceFoists = PlurnkParser.parse(source).items.flatMap((item) => item.kind === "statement" ? [item.statement] : [])
+            .filter(({ op }) => op === "FIND" || op === "READ");
+        assert.equal(sourceFoists.length, foists.length, "the exact source accounts for every structural observation");
+        for (const [index, { tx }] of foists.entries()) {
+            const statement = JSON.parse(tx) as { position?: unknown };
             assert.equal(Validator.validatePlurnkStatement(statement).valid, true);
-            assert.deepEqual((statement as { position?: unknown }).position, { line: 0, column: 0 });
+            assert.deepEqual(
+                statement.position,
+                sourceFoists[index]!.position,
+                "the dispatched statement preserves its coordinate in the exact initialization source",
+            );
         }
         const packet = await getPacket(db, result.turnId);
         const log = packetSection(packet, "log");
@@ -216,13 +227,19 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.match(log, /"path":"log:\/\/\/[^"]+\/FIND"/, "the catalog foist appears as a FIND op in the log address");
         const initialization = logEntries(packet)
             .filter(({ path }) => String(path).startsWith("log:///1/1/"));
+        const initializationOutcomes = initialization.filter(({ kind }) => kind !== "turnOps");
         assert.deepEqual(
-            initialization.map(({ path }) => String(path).split("/").at(-1)),
+            initializationOutcomes.map(({ path }) => String(path).split("/").at(-1)),
             ["PLAN", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "SEND"],
-            "turn 0 exposes the real PLAN → surveys → SEND operation sequence",
+            "turn 0 exposes the real PLAN → surveys → SEND outcome sequence",
         );
         assert.deepEqual(
-            initialization.filter(({ target }) => target !== undefined).slice(0, 4).map(({ target }) => target),
+            initialization.filter(({ kind }) => kind === "turnOps").map(({ display, origin }) => ({ display, origin })),
+            [{ display: "open", origin: "_plurnk" }],
+            "turn 0 also exposes its exact open source as one ordinary turnOps row",
+        );
+        assert.deepEqual(
+            initializationOutcomes.filter(({ target }) => target !== undefined).slice(0, 4).map(({ target }) => target),
             [
                 "worker://plurnk/skills/*.md",
                 "worker://plurnk/skills/plurnk/*.md",

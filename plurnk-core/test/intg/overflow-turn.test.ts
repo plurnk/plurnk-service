@@ -96,13 +96,23 @@ test("overflow is a packetless _plurnk turn composed from ordinary FOLD operatio
             attrs: string;
             tx: string;
             rx: string;
+            folded: string;
         }>({ turn_id: recovery.turnId });
-        assert.equal(rows.some(({ op }) => op === null), false, "no actionless receipt shadows the recovery operations");
-        assert.equal(rows[0]?.op, "PLAN");
-        assert.equal(rows[0]?.origin, "_plurnk");
-        assert.match((JSON.parse(rows[0]!.tx) as { body: string }).body, /^\* Token Budget Overflow:/);
-        assert.equal(rows.at(-1)?.op, "SEND");
-        assert.ok(rows.some(({ op, origin }) => op === "FOLD" && origin === "_plurnk"), "recovery uses the ordinary FOLD dispatcher");
+        const operationRows = rows.filter(({ op }) => op !== null);
+        assert.equal(operationRows[0]?.op, "PLAN");
+        assert.equal(operationRows[0]?.origin, "_plurnk");
+        assert.match((JSON.parse(operationRows[0]!.tx) as { body: string }).body, /^\* Token Budget Overflow:/);
+        assert.equal(operationRows.at(-1)?.op, "SEND");
+        assert.ok(operationRows.some(({ op, origin }) => op === "FOLD" && origin === "_plurnk"), "recovery uses the ordinary FOLD dispatcher");
+
+        const turnOps = rows.find(({ op }) => op === null);
+        assert.equal(turnOps?.origin, "_plurnk");
+        assert.equal(JSON.parse(turnOps?.attrs ?? "null").kind, "turnOps");
+        assert.equal(turnOps?.folded, "[]", "the exact recovery program is born open");
+        const recoverySource = (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content;
+        assert.match(recoverySource, /^# PLAN0\n\* Token Budget Overflow:/);
+        assert.match(recoverySource, /\n## FOLD0 /, "the source records the same ordinary FOLD operations");
+        assert.match(recoverySource, /\n## SEND0 \[102\]\nNext: Curate the log/);
 
         const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: workerId });
         assert.ok(tags.some(({ tag }) => tag === "_plurnk"));
