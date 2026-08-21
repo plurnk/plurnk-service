@@ -219,7 +219,7 @@ test("config discovery is provider-free, on-demand, and does not create a second
             env: { PLURNK_MODEL: "missing" },
         });
         assert.equal(invalid.code, 1);
-        assert.match(invalid.stderr, /PLURNK_MODEL=missing names no declared alias/);
+        assert.match(invalid.stderr, /PLURNK_MODEL 'missing' is neither a declared alias nor a provider\/model route/);
     } finally {
         await rm(fx.root, { recursive: true, force: true });
     }

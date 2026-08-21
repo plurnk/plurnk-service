@@ -279,9 +279,9 @@ test("bin: observability initialization failure closes the admitted database", a
     }
 });
 
-// {§provider-resolution}: a set-but-unresolvable PLURNK_MODEL fails boot naming the value and
-// declaration contract; it never degrades to a silently modelless daemon.
-test("bin: PLURNK_MODEL naming no declared alias fails the boot LOUD — never a silent modelless daemon", { timeout: 60_000 }, async () => {
+// {§provider-resolution}: a set-but-unresolvable PLURNK_MODEL fails boot naming the value;
+// it never degrades to a silently modelless daemon.
+test("bin: a malformed exact PLURNK_MODEL route fails boot loudly", { timeout: 60_000 }, async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-bin-model-"));
     try {
         const env: NodeJS.ProcessEnv = {
@@ -289,19 +289,18 @@ test("bin: PLURNK_MODEL naming no declared alias fails the boot LOUD — never a
             HOME: dir,
             PLURNK_SERVICE_DB_PATH: join(dir, "plurnk.db"),
             PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0",
-            PLURNK_MODEL: "plurnk/jennifer",  // a provider/model path where an alias belongs
+            PLURNK_MODEL: "plurnk/",
         };
         const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, cwd: dir, stdio: ["ignore", "pipe", "pipe"] }); // cwd-isolated from ./.env like the boot smoke
         let stderrBuf = "";
         child.stderr?.on("data", (d: Buffer) => { stderrBuf += d.toString(); });
         const code = await new Promise<number | null>((res) => { child.on("exit", (c) => res(c)); });
         assert.notEqual(code, 0, "the boot FAILED — no silent modelless daemon");
-        assert.match(stderrBuf, /PLURNK_MODEL=plurnk\/jennifer names no declared alias/, "the error names the VALUE and the violated contract");
-        assert.match(stderrBuf, /declare PLURNK_MODEL_<alias>=plurnk\/jennifer/, "the corrective declaration form is stated");
+        assert.match(stderrBuf, /PLURNK_MODEL 'plurnk\/' is neither a declared alias nor a provider\/model route/, "the error names the value and selector contract");
     } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test("bin: PLURNK_MODEL_CHILD must name a declared alias", { timeout: 60_000 }, async () => {
+test("bin: PLURNK_MODEL_CHILD must resolve as an alias or exact route", { timeout: 60_000 }, async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-bin-child-model-"));
     try {
         const missing = `missing-${crypto.randomUUID()}`;
@@ -319,8 +318,8 @@ test("bin: PLURNK_MODEL_CHILD must name a declared alias", { timeout: 60_000 }, 
         child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
         const code = await new Promise<number | null>((resolvePromise) => { child.on("exit", resolvePromise); });
         assert.notEqual(code, 0);
-        assert.match(stderr, new RegExp(`PLURNK_MODEL_CHILD=${missing} names no declared alias`));
-        assert.match(stderr, /Unset it to inherit each spawning loop's provider/);
+        assert.match(stderr, new RegExp(`PLURNK_MODEL_CHILD=${missing} is neither a declared alias nor a provider/model route`));
+        assert.match(stderr, /Unset it to inherit\./);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }

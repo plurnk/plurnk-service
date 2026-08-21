@@ -503,7 +503,7 @@ literal `workers.name` value.
 | `KILL`    | existing literal name, `~`  | Terminate the named worker or caller.   |
 
 - §worker-scheme-spawn **Spawn** — `## WORK0 (worker://<name>)` with a task body creates a new worker sister (empty log) and starts it with that task on its first loop. WORK/FORK are the worker-creation verbs: EDIT is file/entry only, so EDIT on the bare worker entity is a **400** steering to WORK/FORK — the entity is not an entry. A name is **frozen per worker** but **reclaimable across time** ({§machine-processes-worker-origin}): a name held only by a *terminated* sister is free to reuse — a fresh spawn takes a new row and `worker_resolve_by_name` resolves the newest, the corpse keeping its name in permanent history. A name a *live* sister still holds is a conflict — **409 `worker '<name>' is already running`**, legible at the spawn gate, never a raw store-level uniqueness error.
-- §worker-scheme-irc **irc** — `## SEND0 (worker://<name>)` with a message body delivers it to an existing sister, the **voice door** ({§actor-boundary-two-doors}): an active sister folds it into its next turn, an idle one wakes ({§actor-boundary-passive-wake}). `## SEND0 (worker://~)` targets the caller; a literal name with no worker in the workspace is 404.
+- §worker-scheme-irc **irc** — `## SEND0 (worker://<name>)` with a message body delivers it to an existing sister, the **voice door** ({§actor-boundary-two-doors}): an active sister folds it into its next turn, an idle one wakes ({§actor-boundary-passive-wake}). A fresh receiving loop retains that worker's durable model, spawn override, and reasoning policy; the sender and daemon default do not re-select it. `## SEND0 (worker://~)` targets the caller; a literal name with no worker in the workspace is 404.
 - §worker-scheme-fork **Fork** — `## FORK0 (worker://<name>)` with a task body branches the
   current worker into a **named** sister: its log is deep-copied
   ({§machine-processes-fork-copies-the-log}), which continues with `task`; the
@@ -846,19 +846,21 @@ tuning.
 
 §grammar-configuration-admission **Optional local GBNF is admitted without model generation.**
 The ANTLR grammar always defines and validates the PLURNK language. Separately,
-an operator may configure `PLURNK_PROVIDERS_GBNF_<alias>` for a local
+an operator may configure global `PLURNK_PROVIDERS_GBNF` or
+`PLURNK_PROVIDERS_GBNF_<alias>` for a local
 llama-server. Startup requires the provider to advertise GBNF transport and a
 reasoning-compatible configuration, but daemon lifecycle grants no inference
 or spending authority and therefore generates no verification tokens. The
-setting is resolved per alias and is unset by default. Configuring it on a cloud
+setting is resolved globally for an exact route and per alias for a declared
+alias; it is unset by default. Configuring it on a cloud
 or endpoint-managed provider is an error, not a request for best-effort
 filtering. Every user-authorized constrained generation proves transport through
 its exact pre-projection evidence ({§rail-truth-engine-verdict}). Alias-scoped
 `PLURNK_PROVIDERS_GBNF_DEBUG` is the explicit exception: it deliberately
 withholds transport while retaining local grammar validation and the engine's
 withheld-rail verdict. Runtime injection uses the provider's registered alias,
-falling back only to the process's active alias. Suffixed rail settings with
-neither identity fail instead of guessing. A configured package variant or
+falling back only to a real process-active alias; an alias-free route uses the
+global setting and ignores unrelated suffixes. A configured package variant or
 explicit path that cannot be loaded also fails; it never silently becomes
 unconstrained.
 
@@ -2191,7 +2193,7 @@ or provider request. The seeded `.env`, first-run diagnostic, service help, and
 missing-model recovery all signpost `plurnk-service config defaults` as the
 complete installed option catalog.
 
-Model selection: separate alias cascade in `ProviderRegistry` ({§provider-instantiation}). `PLURNK_MODEL_<alias>=<provider>/<model-id>` declares; `PLURNK_MODEL=<alias>` selects. Optional `PLURNK_MODEL_CHILD=<alias>` selects the default child provider; unset means inherit the spawning loop's provider. Aliases and selections live in `.env`, not `.env.defaults` (operator-specific).
+Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-instantiation}). `PLURNK_MODEL_<alias>=<provider>/<model-id>` optionally declares a friendly route and tuning scope; `PLURNK_MODEL=<selector>` selects either that alias or an exact provider/model route. `PLURNK_MODEL_CHILD=<selector>` uses the same vocabulary for the default child provider; unset means inherit the spawning loop's provider. Operator selections and alias declarations live in `.env`, not `.env.defaults`.
 
 | Var                                                         | Default | Purpose |
 |-------------------------------------------------------------|---------|---------|
@@ -2221,7 +2223,7 @@ Every core knob listed is enforced at its owning read site; `.env.defaults` is t
 **Two override semantics — ceiling vs default.** Which kind a var is determines what "override" means across the cascade:
 
 - **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-workspace constraint, not a per-call seam argument. `PLURNK_SERVICE_GIT_ALLOWED` ({§operator-config-git-ceiling}), `PLURNK_SERVICE_MAX_COMMANDS`, `PLURNK_SERVICE_MAX_STRIKES`, and `PLURNK_SERVICE_MAX_TURNS` (`-1` ships it off; a positive value caps the per-call request). The sandbox/cost guarantee: the operator caps it; no client widens it.
-- **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `runLoop({alias})` request overrides it) and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
+- **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `runLoop({selector})` request overrides it) and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
 
 §operator-config-shipped-defaults **The shipped `.env.defaults` is itself under
 test.** It has no active `PLURNK_MODEL`; no active local GBNF constraint; and
@@ -2415,13 +2417,14 @@ Its function names are transport-neutral library calls, not public wire names.
 | §methods-proposal-resolve Proposals               | `resolveProposal(logEntryId, resolution)` | Validates and delivers one accept, reject, or cancel decision to the engine. An unknown or already-resolved id fails; the client protocol owns how the decision arrived. |
 | §client-interaction-list Client interactions      | `pendingClientInteractions(workspaceId)` | Intersects durable interaction rows with their live operation waiters and returns the contracts-owned projection; a row alone is not a resumable interaction. |
 | §methods-client-interaction-resolve Client interactions | `resolveClientInteraction(interactionId, resolution)` | Validates and delivers one resolved payload or cancellation. Unknown, ownerless, and already-resolved identities fail before affecting an operation. |
-| §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, maxTurns?, flags?, openPaths?, alias?, model?, childAlias?, childModel? })` | Validates a model worker and provider policy, persists it with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
+| §methods-loop-run Loops                           | `runLoop({ workspaceId, workerId, prompt, maxTurns?, flags?, openPaths?, selector?, childSelector? })` | Validates a model worker and provider policy, persists it with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
 | §methods-loop-cancel Loops                        | `cancelDrain(workerId, reason?)` | Begins durable structured cancellation of the worker tree and reaps its process-local scopes. The boolean reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. |
 | §methods-op-mirror Client dispatch                | `dispatchClientAction({ workspaceId, workerId, statements })` | Dispatches already-parsed grammar statements as one client action in one administrative loop. Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the action promise resolves; a proposal may keep its turn, loop, and action promise open until resolution. Core exposes no per-op method family. |
 | Client observation                                | `look({ workspaceId, workerId, statement })` | Runs an already-parsed READ through the full resolver without a log row. A non-READ statement is rejected ({§op-look}). |
 | §methods-log-read Reads                           | `readLog({ workspaceId, workerId, ...coordinate })` | Ownership-checks the worker, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate. `limit` defaults to 100 and is capped at 1000. |
 | §methods-entry-read Reads                         | `readEntry({ workspaceId, workerId, target, channel?, offset? })` | Resolves the selector from that worker's perspective and returns {§entry-read-result}, either complete or as one channel suffix, without creating action evidence. |
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
+| Model catalog                                     | `listModels(query)` | Returns one validated bounded {§model-catalog-wire} page under {§model-catalog}; performs no provider request or selection. |
 | Client capabilities                               | `listClientDisplayCapabilities()` | Composes sorted scheme declarations ({§manifest-client-display}) followed by sorted MIME declarations ({§mimetype-client-display}) into the validated shared wire ({§client-display-capabilities}). The internal `exec` operation handler is excluded; its addressable runtime-tag scheme faces remain included. |
 | §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings?, constraints? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the world and its client envelope, materializes current docs and constraints, starts derivation warming, and emits global `workspace/created`. `projectRoot` is established here or the workspace remains headless. |
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId, workerId?, workerName? })` | Validates ownership and returns a client envelope for an existing world. It does not retain caller or transport binding state in core. |
@@ -2514,6 +2517,16 @@ worker's FIND. Dispatch enforces the same boundary with an explicit
 not-available outcome. Admission reads the worker's behavioral rules
 ({§worker-settings}) at the operation boundary, never at registration.
 
+§model-catalog **Model discovery is a bounded local projection, not provider
+activity.** Core composes the release-pinned Models.dev snapshot with
+provider-owned `{§model-catalog-readiness}`. The default query includes only
+providers configured enough to attempt; `availability: "all"` includes every
+catalog model with structured missing-configuration causes. Provider and text
+filters apply before deterministic selector ordering and offset/limit paging;
+the default page is 50 and the schema caps it at 100. Discovery never probes,
+authenticates, invokes, or selects a model, and catalog data never enters model
+packets or state snapshots.
+
 §worker-model-selection **Worker-owned model selection.** Every model worker
 owns one durable model, persisted as a nullable `model_routes` foreign key.
 The root conversation worker is seeded once — from an explicit selection, else
@@ -2538,8 +2551,9 @@ live policy link to the source worker.
 
 §worker-reasoning-policy **Reasoning is a durable worker policy.** Each selected
 worker model has exactly one member of the shared `{§reasoning-policy-wire}`;
-a modelless worker has none. An alias-scoped environment value seeds the policy
-only when the worker first receives its model. Model identity and reasoning
+a modelless worker has none. A declared alias's scoped environment value—or the
+global provider value for an exact route—seeds the policy only when the worker
+first receives its model. Model identity and reasoning
 policy are persisted atomically, while visibility of returned reasoning and
 token ceilings remain separate concerns. An explicit policy change validates
 the exact policy against both the worker model and its optional spawn model and
@@ -2554,9 +2568,10 @@ inherit the spawning loop's policy by value; no descendant consults a later
 environment or parent-worker change. Unsupported policies fail with a precise
 provider-boundary problem rather than being silently weakened or translated.
 
-§methods-loop-run-model **Per-loop model selection.** `runLoop` accepts
-optional `model` (client-resolved `<provider>/<model>`, wins) or `alias` (a
-declared `PLURNK_MODEL_<alias>`). An explicit selection persists onto the
+§methods-loop-run-model **Per-loop model selection.** `runLoop` accepts one
+optional `selector`: either a declared alias or an exact `<provider>/<model>`
+route. An exact route stores no fabricated alias and receives no alias-scoped
+configuration. An explicit selection persists onto the
 addressed worker before the loop snapshots it; an omitted selector is not a
 selection and continues the worker's durable model
 ({§worker-model-selection}). The fully resolved provider identity and reasoning
@@ -2567,9 +2582,9 @@ before work is accepted. Provider instances are cached; no resume path
 substitutes a boot default for missing or malformed durable selection.
 
 §methods-loop-run-child-provider **Child-provider selection is one durable
-subcall policy.** Optional `childModel` (client-resolved `<provider>/<model>`, wins) or
-`childAlias` selects the spawn override for every WORK/FORK descendant and BARE inference; omitted uses
-`PLURNK_MODEL_CHILD`, while explicit `childAlias: null` means inherit. An
+subcall policy.** Optional `childSelector` uses the same alias-or-exact-route
+vocabulary for every WORK/FORK descendant and BARE inference; omitted uses
+`PLURNK_MODEL_CHILD`, while explicit `childSelector: null` means inherit. An
 explicit override persists onto the addressed worker before the loop
 snapshots it; an omitted selector continues the worker's durable override
 ({§worker-model-selection}). Core persists the resolved policy on each loop. A

@@ -12,7 +12,7 @@ Invoke it with:
 ```sh
 PLURNK_ACCEPTANCE_PROJECT_ROOT=/path/to/open-project-forest \
 PLURNK_CLIENT_CHECKOUT=/path/to/open-client \
-  npm run readiness:metaproject -- --model <alias> --requiem --preserve
+  npm run readiness:metaproject -- --model <selector> --requiem --preserve
 ```
 
 Both paths are explicit preconditions. The runner never guesses a sibling
@@ -43,7 +43,7 @@ forensic digestion.
 - Every default-installed optional provider resolvable from the daemon.
 - An explicitly assembled open-project forest with its root `AGENTS.md`; shared
   parent directories containing other organizations are not valid substitutes.
-- One inexpensive capable model alias and, optionally, one local smoke-test alias.
+- One inexpensive capable model selector and, optionally, one local smoke-test selector.
 
 Missing preconditions are RED outcomes. The runner never silently skips a phase.
 

@@ -31,17 +31,19 @@ CREATE TABLE IF NOT EXISTS workspace_module_state (
 ) STRICT;
 
 -- model_routes — the immutable resolved model route ({§worker-model-selection}). One row per
--- complete resolved tuple; append-only. `base_url` uses '' as the absent sentinel so the
--- unique tuple works under SQLite (NULLs are distinct in UNIQUE).
+-- complete resolved tuple; append-only. Alias is provenance plus a tuning scope,
+-- not route identity, and is absent on a direct provider/model selection.
 CREATE TABLE IF NOT EXISTS model_routes (
     id         INTEGER NOT NULL PRIMARY KEY,
-    alias      TEXT    NOT NULL CHECK (length(alias) > 0),
+    alias      TEXT             CHECK (alias IS NULL OR length(alias) > 0),
     provider   TEXT    NOT NULL CHECK (length(provider) > 0),
     model      TEXT    NOT NULL CHECK (length(model) > 0),
-    base_url   TEXT    NOT NULL DEFAULT '',
-    created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    UNIQUE (alias, provider, model, base_url)
+    base_url   TEXT             CHECK (base_url IS NULL OR length(base_url) > 0),
+    created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS model_routes_identity
+ON model_routes (coalesce(alias, ''), provider, model, coalesce(base_url, ''));
 
 -- workers
 CREATE TABLE IF NOT EXISTS workers (

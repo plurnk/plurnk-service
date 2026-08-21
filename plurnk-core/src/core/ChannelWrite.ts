@@ -78,7 +78,8 @@ export type InjectWorkerNotify = (args: {
     workerId: number;
     prompt: string;
     // WORK/FORK name the spawning loop so the daemon can apply its durable
-    // child-provider policy. Other voice-door injections omit it.
+    // child-provider policy. Other voice-door injections omit it and retain
+    // the addressed worker's own generation policy.
     parentLoopId?: number;
     // {§worker-delegation-inherits-flags} — the SENDING loop's flags. Authority flows down the
     // delegation edge: a spawned/forked child's live loop runs with its delegator's flags,

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Mock, type ProviderAlias } from "@plurnk/plurnk-providers";
+import { Mock, type ProviderAlias, type ProviderSpec } from "@plurnk/plurnk-providers";
 import type { ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import Daemon from "../../src/server/Daemon.ts";
@@ -8,24 +8,44 @@ import type { Db } from "../../src/core/Db.ts";
 import { openMigrated } from "./_helpers.ts";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 
-const provider = (name: string, model: string): ProviderAlias => ({
-    alias: `${name}-${crypto.randomUUID()}`,
-    provider: "openai",
-    model,
+const declaredProviderEnv = new Map<string, string | undefined>();
+test.afterEach(() => {
+    for (const [key, value] of declaredProviderEnv) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+    }
+    declaredProviderEnv.clear();
 });
+
+const declaredProvider = (name: string, model: string): ProviderAlias => {
+    const spec = {
+        alias: `${name}-${crypto.randomUUID()}`,
+        provider: "openai",
+        model,
+    };
+    const key = `PLURNK_MODEL_${spec.alias}`;
+    declaredProviderEnv.set(key, process.env[key]);
+    process.env[key] = `${spec.provider}/${spec.model}`;
+    return spec;
+};
 
 type WorkerRow = { id: number; name: string; model_route_id: number | null; spawn_model_route_id: number | null; reasoning_policy: ReasoningPolicy | null };
 type LoopRow = { id: number; worker_id: number; model_route_id: number | null; spawn_model_route_id: number | null; reasoning_policy: ReasoningPolicy | null; status: number };
 
-const routeSpec = async (db: Db, routeId: number | null): Promise<ProviderAlias | null> => {
+const routeSpec = async (db: Db, routeId: number | null): Promise<ProviderSpec | null> => {
     if (routeId === null) return null;
-    const row = await db.model_route_by_id.get<{ alias: string; provider: string; model: string; base_url: string }>({ id: routeId });
+    const row = await db.model_route_by_id.get<{ alias: string | null; provider: string; model: string; base_url: string | null }>({ id: routeId });
     if (row === undefined) throw new Error(`model_route ${routeId} is missing`);
-    return { alias: row.alias, provider: row.provider, model: row.model, ...(row.base_url === "" ? {} : { baseUrl: row.base_url }) };
+    return {
+        provider: row.provider,
+        model: row.model,
+        ...(row.alias === null ? {} : { alias: row.alias }),
+        ...(row.base_url === null ? {} : { baseUrl: row.base_url }),
+    };
 };
 
 test("{§worker-model-selection}: an explicit selection persists onto the worker and an omitted selector continues it", async () => {
-    const spec = provider("durable", "durable-model");
+    const spec = declaredProvider("durable", "durable-model");
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [
@@ -41,8 +61,7 @@ test("{§worker-model-selection}: an explicit selection persists onto the worker
             await rpcCall(ws, 1, "workspace.create", { name: `durable-${crypto.randomUUID()}` });
             const first = await runLoopToTerminal(ws, 2, {
                 prompt: "first turn",
-                alias: spec.alias,
-                model: `${spec.provider}/${spec.model}`,
+                selector: spec.alias,
             });
             assert.equal(first.finalStatus, 200);
             const second = await runLoopToTerminal(ws, 3, { prompt: "second turn with no selector" });
@@ -66,8 +85,91 @@ test("{§worker-model-selection}: an explicit selection persists onto the worker
     });
 });
 
+test("{§worker-model-selection}: an exact provider/model selector persists without fabricated alias provenance", async () => {
+    const spec: ProviderSpec = { provider: "openai", model: `direct-${crypto.randomUUID()}` };
+    const bootAlias = `boot-${crypto.randomUUID()}`;
+    for (const [key, value] of Object.entries({
+        PLURNK_MODEL: bootAlias,
+        [`PLURNK_MODEL_${bootAlias}`]: "openai/unrelated-local-model",
+        [`PLURNK_PROVIDERS_GBNF_${bootAlias}`]: "plurnk.qwen.gbnf",
+    })) {
+        declaredProviderEnv.set(key, process.env[key]);
+        process.env[key] = value;
+    }
+    const mock = new Mock({
+        contextWindow: 16_384,
+        responses: [makeMockResponse("## SEND0 [200]\ndirect route complete")],
+    });
+    ProviderInstantiate.registerInstance(mock, spec);
+
+    await withDaemon(null, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: `direct-${crypto.randomUUID()}` });
+            const result = await runLoopToTerminal(ws, 2, {
+                prompt: "run the direct route",
+                selector: `${spec.provider}/${spec.model}`,
+            });
+            assert.equal(result.finalStatus, 200);
+            const workers = await db.test_workers_with_model.all<WorkerRow>({});
+            const worker = workers.find(({ id }) => id === result.modelWorkerId);
+            assert.ok(worker !== undefined);
+            assert.deepEqual(await routeSpec(db, worker.model_route_id), spec);
+            const stored = await db.model_route_by_id.get<{ alias: string | null }>({ id: worker.model_route_id });
+            assert.equal(stored?.alias, null, "database identity records the absence of an alias directly");
+            assert.equal(mock.remaining, 0, "the unrelated boot alias's GBNF scope did not intercept the direct route");
+        } finally {
+            ws.close();
+        }
+    });
+});
+
+test("{§worker-model-selection}: worker model actions never disclose daemon endpoint configuration", async () => {
+    const alias = `private-${crypto.randomUUID()}`;
+    const spec: ProviderAlias = {
+        alias,
+        provider: "openai",
+        model: "private-model",
+        baseUrl: "http://private-model-host.internal/v1",
+    };
+    for (const [key, value] of Object.entries({
+        [`PLURNK_MODEL_${alias}`]: `${spec.provider}/${spec.model}`,
+        [`PLURNK_BASEURL_${alias}`]: spec.baseUrl,
+    })) {
+        declaredProviderEnv.set(key, process.env[key]);
+        process.env[key] = value;
+    }
+    ProviderInstantiate.registerInstance(new Mock({ contextWindow: 16_384, responses: [] }), spec);
+
+    await withDaemon(null, async (_db, daemon) => {
+        const envelope = await daemon.createWorkspace({
+            name: `private-route-${crypto.randomUUID()}`,
+            projectRoot: null,
+        });
+        const workerId = await daemon.ensureModelWorker(envelope.workspaceId);
+        const selected = await daemon.setWorkerModel({
+            workspaceId: envelope.workspaceId,
+            workerId,
+            selector: alias,
+        });
+        assert.deepEqual(selected, {
+            alias,
+            provider: spec.provider,
+            model: spec.model,
+        });
+        assert.equal("baseUrl" in selected, false);
+
+        const projected = await daemon.readWorkerModel({
+            workspaceId: envelope.workspaceId,
+            workerId,
+        });
+        assert.deepEqual(projected.model, selected);
+        assert.equal(projected.model !== null && "baseUrl" in projected.model, false);
+    });
+});
+
 test("{§worker-reasoning-policy}: reasoning controls seed the daemon-default model before the first loop", async () => {
-    const spec = provider("reasoning-default", "reasoning-default-model");
+    const spec = declaredProvider("reasoning-default", "reasoning-default-model");
     const mock = new Mock({ contextWindow: 16_384, responses: [] });
     const priorModel = process.env.PLURNK_MODEL;
     const declaration = `PLURNK_MODEL_${spec.alias}`;
@@ -119,7 +221,7 @@ test("{§worker-reasoning-policy}: reasoning controls seed the daemon-default mo
 });
 
 test("{§worker-reasoning-policy}: alias configuration seeds once, explicit policy persists, and loops snapshot it", async () => {
-    const spec = provider("reasoning-durable", "reasoning-durable-model");
+    const spec = declaredProvider("reasoning-durable", "reasoning-durable-model");
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [makeMockResponse("## SEND0 [200]\nfixed reasoning")],
@@ -144,8 +246,7 @@ test("{§worker-reasoning-policy}: alias configuration seeds once, explicit poli
         await first.setWorkerModel({
             workspaceId: workspace.workspaceId,
             workerId,
-            alias: spec.alias,
-            model: `${spec.provider}/${spec.model}`,
+            selector: spec.alias,
         });
         assert.deepEqual(await first.readWorkerReasoning({
             workspaceId: workspace.workspaceId,
@@ -193,7 +294,7 @@ test("{§worker-reasoning-policy}: alias configuration seeds once, explicit poli
 });
 
 test("{§worker-reasoning-policy}: unsupported policy fails precisely and leaves durable state unchanged", async () => {
-    const spec = provider("reasoning-limited", "reasoning-limited-model");
+    const spec = declaredProvider("reasoning-limited", "reasoning-limited-model");
     const limited = new Mock({ contextWindow: 16_384, responses: [] });
     Object.defineProperty(limited, "supportedReasoningPolicies", {
         value: ["off", "adaptive", "high"],
@@ -213,8 +314,7 @@ test("{§worker-reasoning-policy}: unsupported policy fails precisely and leaves
         await daemon.setWorkerModel({
             workspaceId: workspace.workspaceId,
             workerId,
-            alias: spec.alias,
-            model: `${spec.provider}/${spec.model}`,
+            selector: spec.alias,
         });
         const refused = await daemon.setWorkerReasoning({
             workspaceId: workspace.workspaceId,
@@ -240,8 +340,8 @@ test("{§worker-reasoning-policy}: unsupported policy fails precisely and leaves
 });
 
 test("{§worker-model-selection}: a client-created branch copies durable generation policy by value", async () => {
-    const spec = provider("branch-parent", "branch-parent-model");
-    const childSpec = provider("branch-child", "branch-child-model");
+    const spec = declaredProvider("branch-parent", "branch-parent-model");
+    const childSpec = declaredProvider("branch-child", "branch-child-model");
     const parent = new Mock({ contextWindow: 16_384, responses: [] });
     const child = new Mock({ contextWindow: 16_384, responses: [] });
     Object.defineProperty(child, "supportedReasoningPolicies", {
@@ -264,8 +364,7 @@ test("{§worker-model-selection}: a client-created branch copies durable generat
         await daemon.setWorkerModel({
             workspaceId: workspace.workspaceId,
             workerId,
-            alias: spec.alias,
-            model: `${spec.provider}/${spec.model}`,
+            selector: spec.alias,
         });
         await daemon.setWorkerReasoning({
             workspaceId: workspace.workspaceId,
@@ -275,8 +374,7 @@ test("{§worker-model-selection}: a client-created branch copies durable generat
         await daemon.setWorkerSpawnModel({
             workspaceId: workspace.workspaceId,
             workerId,
-            alias: childSpec.alias,
-            model: `${childSpec.provider}/${childSpec.model}`,
+            selector: childSpec.alias,
         });
         assert.deepEqual((await daemon.readWorkerReasoning({
             workspaceId: workspace.workspaceId,
@@ -312,8 +410,8 @@ test("{§worker-model-selection}: a client-created branch copies durable generat
 });
 
 test("{§worker-model-selection}: the spawn override persists onto the worker and supplies a later delegation", async () => {
-    const parentSpec = provider("spawn-parent", "spawn-parent-model");
-    const childSpec = provider("spawn-child", "spawn-child-model");
+    const parentSpec = declaredProvider("spawn-parent", "spawn-parent-model");
+    const childSpec = declaredProvider("spawn-child", "spawn-child-model");
     const parent = new Mock({
         contextWindow: 16_384,
         responses: [
@@ -332,10 +430,8 @@ test("{§worker-model-selection}: the spawn override persists onto the worker an
             await rpcCall(ws, 1, "workspace.create", { name: `spawn-override-${crypto.randomUUID()}` });
             const first = await runLoopToTerminal(ws, 2, {
                 prompt: "first turn",
-                alias: parentSpec.alias,
-                model: `${parentSpec.provider}/${parentSpec.model}`,
-                childAlias: childSpec.alias,
-                childModel: `${childSpec.provider}/${childSpec.model}`,
+                selector: parentSpec.alias,
+                childSelector: childSpec.alias,
             });
             assert.equal(first.finalStatus, 200);
             const second = await runLoopToTerminal(ws, 3, { prompt: "spawn a kid with no selectors" });
@@ -360,7 +456,7 @@ test("{§worker-model-selection}: the spawn override persists onto the worker an
 });
 
 test("{§worker-model-selection}: an absent spawn override inherits the worker's own model by value", async () => {
-    const spec = provider("inherit-worker", "same-through-tree");
+    const spec = declaredProvider("inherit-worker", "same-through-tree");
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [
@@ -377,8 +473,7 @@ test("{§worker-model-selection}: an absent spawn override inherits the worker's
             await rpcCall(ws, 1, "workspace.create", { name: `inherit-worker-${crypto.randomUUID()}` });
             const result = await runLoopToTerminal(ws, 2, {
                 prompt: "spawn one kid",
-                alias: spec.alias,
-                model: `${spec.provider}/${spec.model}`,
+                selector: spec.alias,
                 flags: { auto: true },
             });
             assert.equal(result.finalStatus, 200);
@@ -400,7 +495,7 @@ test("{§worker-model-selection}: an absent spawn override inherits the worker's
 });
 
 test("{§worker-model-selection}: a redeclared alias does not rewrite the worker's durable model", async () => {
-    const spec = provider("mutable", "original-model");
+    const spec = declaredProvider("mutable", "original-model");
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [
@@ -420,8 +515,7 @@ test("{§worker-model-selection}: a redeclared alias does not rewrite the worker
                 process.env[declaration] = `${spec.provider}/${spec.model}`;
                 const first = await runLoopToTerminal(ws, 2, {
                     prompt: "first turn",
-                    alias: spec.alias,
-                    model: `${spec.provider}/${spec.model}`,
+                    selector: spec.alias,
                 });
                 assert.equal(first.finalStatus, 200);
                 process.env[declaration] = "deepseek/redeclared-elsewhere";
@@ -444,8 +538,8 @@ test("{§worker-model-selection}: a redeclared alias does not rewrite the worker
 });
 
 test("{§worker-model-selection}: the worker's durable model and spawn override survive daemon restart", async () => {
-    const spec = provider("restart-durable", "restart-durable-model");
-    const childSpec = provider("restart-child", "restart-child-model");
+    const spec = declaredProvider("restart-durable", "restart-durable-model");
+    const childSpec = declaredProvider("restart-child", "restart-child-model");
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [
@@ -466,8 +560,8 @@ test("{§worker-model-selection}: the worker's durable model and spawn override 
         await first.start();
         const envelope = await first.createWorkspace({ name: `worker-model-restart-${crypto.randomUUID()}`, projectRoot: null });
         const workerId = await first.ensureModelWorker(envelope.workspaceId);
-        await first.setWorkerModel({ workspaceId: envelope.workspaceId, workerId, alias: spec.alias, model: `${spec.provider}/${spec.model}` });
-        await first.setWorkerSpawnModel({ workspaceId: envelope.workspaceId, workerId, alias: childSpec.alias, model: `${childSpec.provider}/${childSpec.model}` });
+        await first.setWorkerModel({ workspaceId: envelope.workspaceId, workerId, selector: spec.alias });
+        await first.setWorkerSpawnModel({ workspaceId: envelope.workspaceId, workerId, selector: childSpec.alias });
         const before = await first.runLoop({ workspaceId: envelope.workspaceId, workerId, prompt: "before restart", flags: { auto: true } });
         assert.equal(before.status, 100);
         const terminated: Array<{ loopId: number; result: { status: number } }> = [];
@@ -508,8 +602,8 @@ test("{§worker-model-selection}: the worker's durable model and spawn override 
 });
 
 test("{§worker-model-selection}: a selection while the worker holds a parked loop is a precise 409", async () => {
-    const spec = provider("parked", "parked-model");
-    const otherSpec = provider("switcheroo", "other-model");
+    const spec = declaredProvider("parked", "parked-model");
+    const otherSpec = declaredProvider("switcheroo", "other-model");
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [
@@ -533,8 +627,7 @@ test("{§worker-model-selection}: a selection while the worker holds a parked lo
                 workspaceId: workspace.id,
                 workerId,
                 prompt: "park",
-                alias: spec.alias,
-                model: `${spec.provider}/${spec.model}`,
+                selector: spec.alias,
                 flags: { auto: true },
             });
             // The EXEC stream keeps the loop parked (202); wait for that state.
@@ -549,8 +642,7 @@ test("{§worker-model-selection}: a selection while the worker holds a parked lo
             const refused = await daemon.setWorkerModel({
                 workspaceId: workspace.id,
                 workerId,
-                alias: otherSpec.alias,
-                model: `${otherSpec.provider}/${otherSpec.model}`,
+                selector: otherSpec.alias,
             }).then(
                 () => null,
                 (error: unknown) => error as { result?: { problem?: { type?: string; status?: number } } },
@@ -579,8 +671,7 @@ test("{§worker-model-selection}: a selection while the worker holds a parked lo
             const selected = await daemon.setWorkerModel({
                 workspaceId: workspace.id,
                 workerId,
-                alias: otherSpec.alias,
-                model: `${otherSpec.provider}/${otherSpec.model}`,
+                selector: otherSpec.alias,
             });
             assert.equal(selected.alias, otherSpec.alias, "after cancelling, the selection persists");
             void started;

@@ -88,7 +88,7 @@ test("the resolved grammar text reaches generate through a real turn", async () 
     try {
         process.env[key] = gbnfPath;  // absolute path — BYO grammar arm, no dist artifact dependence
         const { provider, calls } = recordingProvider();
-        ProviderInstantiate.registerAlias(provider, "railprobe");
+        ProviderInstantiate.registerConfigurationScope(provider, "railprobe");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const { workspaceId, workerId, loopId } = await envelope(db);
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
@@ -100,7 +100,7 @@ test("the resolved grammar text reaches generate through a real turn", async () 
     }
 });
 
-test("an unregistered provider without an active alias cannot guess a suffixed rail", async () => {
+test("an alias-free provider ignores unrelated suffixed rails and uses the global configuration", async () => {
     const dir = mkdtempSync(join(tmpdir(), "rail-"));
     const gbnfPath = join(dir, "probe.gbnf");
     await writeFile(gbnfPath, 'root ::= "PROBE-RAIL"\n');
@@ -109,19 +109,18 @@ test("an unregistered provider without an active alias cannot guess a suffixed r
     const prior = process.env[key];
     try {
         process.env[key] = gbnfPath;
-        // Remove the active-alias fallback so this provider has no identity
-        // from which it could resolve a suffixed rail.
+        // Remove the active selector so this provider is explicitly alias-free.
         const modelKeys = Object.keys(process.env).filter((k) => k.startsWith("PLURNK_MODEL"));
         const savedModels = modelKeys.map((k) => [k, process.env[k]] as const);
         for (const k of modelKeys) delete process.env[k];
         try {
-            const { provider } = recordingProvider();  // NOT alias-registered
+            const { provider, calls } = recordingProvider();
+            ProviderInstantiate.registerConfigurationScope(provider, null);
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const { workspaceId, workerId, loopId } = await envelope(db);
-            await assert.rejects(
-                () => engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 }),
-                /GBNF constraint: provider has no registered alias/,
-            );
+            await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
+            assert.equal(calls.length, 1);
+            assert.equal(calls[0].grammar, undefined, "another alias's rail is not a global fallback");
         } finally { for (const [k, v] of savedModels) process.env[k] = v; }
     } finally {
         if (prior === undefined) delete process.env[key]; else process.env[key] = prior;
@@ -136,7 +135,7 @@ test("a configured but unloadable grammar fails instead of running unconstrained
     try {
         process.env[key] = "/nonexistent/rail/never-here.gbnf";
         const { provider } = recordingProvider();
-        ProviderInstantiate.registerAlias(provider, "railbroken");
+        ProviderInstantiate.registerConfigurationScope(provider, "railbroken");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const { workspaceId, workerId, loopId } = await envelope(db);
         await assert.rejects(
@@ -165,7 +164,7 @@ test("{§rail-truth-engine-verdict} the engine stamps local attachment and its o
         const acceptedContent = "# PLAN0\n\n## SEND0 [200]\nok";
         await writeFile(gbnfPath, `root ::= ${JSON.stringify(acceptedContent)}\n`);
         const accept = Object.assign(new Mock({ contextWindow: 100000, responses: [{ assistant: { content: acceptedContent, reasoning: null } }] }), { constrainsOutput: true }) as unknown as Provider;
-        ProviderInstantiate.registerAlias(accept, "verdictbox");
+        ProviderInstantiate.registerConfigurationScope(accept, "verdictbox");
         const t1 = await engine.runTurn({ provider: accept, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
         const meta1 = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: t1.turnId }))!.meta) as Record<string, unknown>;
         assert.equal(meta1.railsAttached, "client");
@@ -173,7 +172,7 @@ test("{§rail-truth-engine-verdict} the engine stamps local attachment and its o
 
         // reject — same contract, diverging emission.
         const reject = Object.assign(new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "# PLAN0\n\n## SEND0 [200]\ndone", reasoning: null } }] }), { constrainsOutput: true }) as unknown as Provider;
-        ProviderInstantiate.registerAlias(reject, "verdictbox");
+        ProviderInstantiate.registerConfigurationScope(reject, "verdictbox");
         const t2 = await engine.runTurn({ provider: reject, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         const meta2 = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: t2.turnId }))!.meta) as Record<string, unknown>;
         assert.equal(meta2.railsAttached, "client");
@@ -201,7 +200,7 @@ test("the engine grades the exact pre-projection sentence, not projected content
             assistantRaw: null,
             grammarEvidence: { input, contentStart: [...prefix].length, transported: true },
         });
-        ProviderInstantiate.registerAlias(provider, "rawverdict");
+        ProviderInstantiate.registerConfigurationScope(provider, "rawverdict");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const { workspaceId, workerId, loopId } = await envelope(db);
         const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
@@ -248,7 +247,7 @@ test("a rail response root composes a template prefix without sending it to cons
                 }).generate(args);
             },
         } as Provider;
-        ProviderInstantiate.registerAlias(provider, "templateroot");
+        ProviderInstantiate.registerConfigurationScope(provider, "templateroot");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const { workspaceId, workerId, loopId } = await envelope(db);
         const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
@@ -296,7 +295,7 @@ test("raw rail positions map only from content, and debug evidence is stamped wi
         });
 
         const contentProvider = staticProvider(response(false));
-        ProviderInstantiate.registerAlias(contentProvider, "contentreject");
+        ProviderInstantiate.registerConfigurationScope(contentProvider, "contentreject");
         const first = await envelope(db);
         const contentTurn = await engine.runTurn({ provider: contentProvider, ...first, messages: MESSAGES, turnNumber: 1 });
         const contentMeta = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: contentTurn.turnId }))!.meta) as Record<string, unknown>;
@@ -306,7 +305,7 @@ test("raw rail positions map only from content, and debug evidence is stamped wi
 
         broadcasts.length = 0;
         const reasoningProvider = staticProvider(response(true));
-        ProviderInstantiate.registerAlias(reasoningProvider, "reasoningreject");
+        ProviderInstantiate.registerConfigurationScope(reasoningProvider, "reasoningreject");
         const second = await envelope(db);
         await engine.runTurn({ provider: reasoningProvider, ...second, messages: MESSAGES, turnNumber: 1 });
         const secondRail = broadcasts.find(({ notice }) => notice.source === "engine:rails")?.notice;
@@ -334,7 +333,7 @@ test("a configured grammar fails hard when the provider omits its observation ev
             assistant: { content, reasoning: null, finishReason: "stop", model: "fake" },
             assistantRaw: null,
         });
-        ProviderInstantiate.registerAlias(provider, "noevidence");
+        ProviderInstantiate.registerConfigurationScope(provider, "noevidence");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const { workspaceId, workerId, loopId } = await envelope(db);
         await assert.rejects(
@@ -362,7 +361,7 @@ test("a configured grammar fails hard when transport is withheld outside debug m
             assistantRaw: null,
             grammarEvidence: { input: content, contentStart: 0, transported: false },
         });
-        ProviderInstantiate.registerAlias(provider, "withheld");
+        ProviderInstantiate.registerConfigurationScope(provider, "withheld");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const { workspaceId, workerId, loopId } = await envelope(db);
         await assert.rejects(

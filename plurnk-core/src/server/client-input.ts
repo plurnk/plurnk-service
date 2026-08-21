@@ -96,7 +96,7 @@ export default class ClientInput {
         }
     }
 
-    static assertOptionalSelector(context: string, field: "alias" | "model" | "childAlias" | "childModel", value: unknown): string | undefined {
+    static assertOptionalSelector(context: string, field: "selector" | "childSelector", value: unknown): string | undefined {
         if (value === undefined) return undefined;
         if (typeof value !== "string" || value.length === 0) {
             const codeField = field.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
@@ -104,15 +104,34 @@ export default class ClientInput {
                 context,
                 `${codeField}-invalid`,
                 `${field} is not a non-empty string.`,
-                { field, recovery: `Provide a non-empty provider ${field}.` },
+                { field, recovery: "Provide a declared alias or provider/model route." },
             );
         }
         return value;
     }
 
-    static assertOptionalChildAlias(context: string, value: unknown): string | null | undefined {
+    static assertSelector(context: string, field: "selector" | "childSelector", value: unknown): string {
+        const selector = ClientInput.assertOptionalSelector(context, field, value);
+        if (selector === undefined) {
+            const codeField = field.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+            ClientInput.#invalid(
+                context,
+                `${codeField}-invalid`,
+                `${field} is required.`,
+                { field, recovery: "Provide a declared alias or provider/model route." },
+            );
+        }
+        return selector;
+    }
+
+    static assertOptionalChildSelector(context: string, value: unknown): string | null | undefined {
         if (value === null) return null;
-        return ClientInput.assertOptionalSelector(context, "childAlias", value);
+        return ClientInput.assertOptionalSelector(context, "childSelector", value);
+    }
+
+    static assertChildSelector(context: string, value: unknown): string | null {
+        if (value === null) return null;
+        return ClientInput.assertSelector(context, "childSelector", value);
     }
 
     static assertOptionalChannel(context: string, channel: unknown): string | undefined {

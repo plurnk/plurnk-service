@@ -6,6 +6,8 @@ import test from "node:test";
 import { viableWindow } from "./_helpers.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
+import type { ProviderSpec } from "@plurnk/plurnk-providers";
+import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import Results from "../../src/core/results.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, flush } from "./_rpc.ts";
@@ -180,19 +182,24 @@ test("a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
     });
 });
 
-test("an irc (SEND worker://name) wakes a CONCLUDED sibling — the voice door mints a fresh loop", async () => {
+test("an irc (SEND worker://name) wakes a CONCLUDED sibling on that worker's durable model", async () => {
     // Under {§worker-lifecycle-idle-is-concluded}, an actor with nothing to wait on CONCLUDES — it does not
     // park awaiting voice. So the voice door (a sibling's irc) reawakens it as a NEW loop carrying the
     // message as its prompt (the same wake `loop.inject` proves for the operator voice), never a
     // resume-in-place of a slept loop — there is no slept loop to resume.
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("## SEND0 [200]\nstanding by for the entry code", 10),        // loop 1 — idle actor concludes
-        makeMockResponse("## SEND0 [200]\nreceived the entry code and confirmed", 10), // loop 2 — woken by the irc
+        makeMockResponse("## SEND0 [200]\nstanding by for the entry code", 10), // loop 1 — idle actor concludes
     ] });
-    await withDaemon(mock, async (db, _daemon, addr) => {
+    const directRoute: ProviderSpec = { provider: "mocktest", model: `irc-${crypto.randomUUID()}` };
+    const selected = new Mock({ contextWindow: viableWindow(), responses: [
+        makeMockResponse("## SEND0 [200]\nreceived the entry code and confirmed", 10),
+    ] });
+    ProviderInstantiate.registerInstance(selected, directRoute);
+    await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
-            await rpcCall(ws, 1, "workspace.create", { name: "irc-wake" });
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "irc-wake" });
+            const workspaceId = (created.result as { id: number }).id;
             const terminated = subscribeNotifications(ws, "loop/terminated");
             const response = await rpcCall(ws, 2, "loop.run", { prompt: "be a butler; await the entry code", flags: { auto: true } });
             const modelWorkerId = (response.result as { modelWorkerId: number }).modelWorkerId;
@@ -200,13 +207,25 @@ test("an irc (SEND worker://name) wakes a CONCLUDED sibling — the voice door m
             // The actor concludes its first (idle) loop — nothing to wait on.
             await waitFor(() => terminated() as Array<{ loopId: number }>, (ts) => ts.some((t) => t.loopId === loopId), { timeoutMs: 8000 });
             const before = (await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: modelWorkerId }))!.n;
+            await daemon.setWorkerModel({
+                workspaceId,
+                workerId: modelWorkerId,
+                selector: `${directRoute.provider}/${directRoute.model}`,
+            });
             // Address the concluded actor by name, then irc it — the voice door.
-            const workers = ((await rpcCall(ws, 3, "workspace.workers", {})).result as { workers: Array<{ name: string; origin: string }> }).workers;
+            const workers = ((await rpcCall(ws, 4, "workspace.workers", {})).result as { workers: Array<{ name: string; origin: string }> }).workers;
             const actor = workers.find((r) => r.origin === "model")!;
-            await rpcCall(ws, 4, "op.send", { status: 200, recipient: `worker://${actor.name}`, body: "the entry code is 4815" });
+            await rpcCall(ws, 5, "op.send", { status: 200, recipient: `worker://${actor.name}`, body: "the entry code is 4815" });
             // A FRESH loop is minted (there was no slept loop to resume).
             const after = await waitForDb(() => db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: modelWorkerId }), (r) => (r?.n ?? 0) > before, { timeoutMs: 8000 });
             assert.ok((after?.n ?? 0) > before, "the irc reawakened the concluded actor as a FRESH loop — the voice door mints a new loop, never resumes a park");
+            const secondLoop = await waitFor(
+                () => terminated() as Array<{ loopId: number; result: { status: number } }>,
+                (items) => items.some(({ loopId: candidate }) => candidate !== loopId),
+                { timeoutMs: 8000 },
+            );
+            assert.equal(secondLoop.find(({ loopId: candidate }) => candidate !== loopId)?.result.status, 200);
+            assert.equal(selected.remaining, 0, "the voice door retained the receiving worker's explicitly selected model");
         } finally { ws.close(); }
     });
 });

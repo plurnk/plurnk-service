@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { configuredProviderInfo, createSdkModel } from "./sdkModels.ts";
+import { configuredProviderInfo, createSdkModel, providerReadiness } from "./sdkModels.ts";
 
 test("{§provider-fact-authority} one env declaration holds one credential name", () => {
     assert.deepEqual(configuredProviderInfo("acme-cloud", {
@@ -9,6 +9,7 @@ test("{§provider-fact-authority} one env declaration holds one credential name"
         PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_API_KEY_ENV: "ACME_API_KEY",
     }), {
         id: "acme-cloud",
+        name: "acme-cloud",
         npm: "@ai-sdk/openai-compatible",
         env: ["ACME_API_KEY"],
         api: "https://api.acme.test/v1",
@@ -19,6 +20,86 @@ test("{§provider-fact-authority} one env declaration holds one credential name"
             PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_API_KEY_ENV: "ACME_API_KEY,ACME_TOKEN",
         }),
         /one exact name, never an ordered fallback/,
+    );
+});
+
+test("{§model-catalog-readiness}: readiness uses the construction credential and endpoint requirements without exposing values", () => {
+    assert.deepEqual(providerReadiness("google", {}), {
+        ready: false,
+        causes: [{
+            kind: "credential",
+            alternatives: [["GOOGLE_API_KEY"], ["GOOGLE_GENERATIVE_AI_API_KEY"], ["GEMINI_API_KEY"]],
+        }],
+    });
+    assert.deepEqual(providerReadiness("google", { GEMINI_API_KEY: "secret-value" }), {
+        ready: true,
+        causes: [],
+    });
+    assert.doesNotMatch(JSON.stringify(providerReadiness("google", { GEMINI_API_KEY: "secret-value" })), /secret-value/);
+
+    assert.deepEqual(providerReadiness("cloudflare", { CLOUDFLARE_API_KEY: "key" }), {
+        ready: false,
+        causes: [{
+            kind: "configuration",
+            alternatives: [["CLOUDFLARE_ACCOUNT_ID"]],
+        }],
+    });
+    assert.deepEqual(providerReadiness("cloudflare", {
+        CLOUDFLARE_ACCOUNT_ID: "account",
+        CLOUDFLARE_API_KEY: "key",
+    }), { ready: true, causes: [] });
+});
+
+test("{§model-catalog-readiness}: Bedrock reports its actual alternative authentication sets and region requirement", () => {
+    assert.deepEqual(providerReadiness("bedrock", {}), {
+        ready: false,
+        causes: [{
+            kind: "credential",
+            alternatives: [
+                ["AWS_BEARER_TOKEN_BEDROCK", "AWS_REGION"],
+                ["AWS_BEARER_TOKEN_BEDROCK", "AWS_DEFAULT_REGION"],
+                ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"],
+                ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_DEFAULT_REGION"],
+            ],
+        }],
+    });
+    assert.deepEqual(providerReadiness("bedrock", {
+        AWS_BEARER_TOKEN_BEDROCK: "bearer",
+        AWS_REGION: "us-east-1",
+    }), { ready: true, causes: [] });
+    assert.deepEqual(providerReadiness("bedrock", {
+        AWS_ACCESS_KEY_ID: "access",
+        AWS_SECRET_ACCESS_KEY: "secret",
+    }), {
+        ready: false,
+        causes: [{
+            kind: "configuration",
+            alternatives: [["AWS_REGION"], ["AWS_DEFAULT_REGION"]],
+        }],
+    });
+});
+
+test("{§model-catalog-readiness}: operator-declared unauthenticated compatible endpoints are ready without an invented credential", () => {
+    assert.deepEqual(providerReadiness("acme", {
+        PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@ai-sdk/openai-compatible",
+        PLURNK_PROVIDERS_PROVIDER_ACME_BASE_URL: "http://127.0.0.1:9000/v1",
+    }), { ready: true, causes: [] });
+});
+
+test("{§model-catalog-readiness}: an authenticated operator declaration reports its missing credential-name configuration", () => {
+    const env = {
+        PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@ai-sdk/openai",
+    };
+    assert.deepEqual(providerReadiness("acme", env), {
+        ready: false,
+        causes: [{
+            kind: "configuration",
+            alternatives: [["PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV"]],
+        }],
+    });
+    assert.throws(
+        () => createSdkModel("acme", "model", env),
+        /PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV must be set/,
     );
 });
 

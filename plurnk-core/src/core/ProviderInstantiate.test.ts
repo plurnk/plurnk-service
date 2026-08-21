@@ -147,3 +147,46 @@ test("the process cache separates durable reasoning policies for one route", asy
     assert.equal(await ProviderInstantiate.instantiateProvider(spec, process.env, "high"), high);
     assert.notEqual(adaptive, high);
 });
+
+test("an exact route uses global provider tuning and never fabricates an alias scope", () => {
+    const route = { provider: "mocktest", model: "same-model" };
+    const env = {
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+        "PLURNK_PROVIDERS_REASONING_mocktest/same-model": "high",
+    };
+    assert.equal(
+        ProviderInstantiate.configuredReasoningPolicy(route, env),
+        "adaptive",
+        "the exact route string is identity, not an alias-shaped tuning namespace",
+    );
+});
+
+test("an exact-route handle never inherits the daemon default alias's configuration scope", () => {
+    const provider = new Mock({ contextWindow: 32_000, responses: [] });
+    ProviderInstantiate.registerInstance(provider, {
+        provider: "mocktest",
+        model: "direct-model",
+    });
+    const env = {
+        PLURNK_MODEL: "defaultbox",
+        PLURNK_MODEL_defaultbox: "openai/local-model",
+        PLURNK_PROVIDERS_GBNF_defaultbox: "plurnk.qwen.gbnf",
+    };
+
+    assert.equal(ProviderInstantiate.aliasOf(provider), undefined);
+    assert.equal(ProviderInstantiate.configurationAliasOf(provider, env), undefined);
+    assert.doesNotThrow(
+        () => ProviderInstantiate.validateGrammarConfiguration(provider, env),
+        "the boot alias's GBNF does not constrain an independently selected exact route",
+    );
+});
+
+test("route-scoped GBNF cannot bind to a provider with no route identity", () => {
+    const provider = new Mock({ contextWindow: 32_000, responses: [] });
+    assert.throws(
+        () => ProviderInstantiate.validateGrammarConfiguration(provider, {
+            PLURNK_PROVIDERS_GBNF_somewhere: "plurnk.qwen.gbnf",
+        }),
+        /provider has no registered route and no active model route resolves/,
+    );
+});

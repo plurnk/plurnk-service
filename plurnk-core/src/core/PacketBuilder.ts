@@ -22,7 +22,7 @@ import type { RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type { ChatMessage, Provider } from "@plurnk/plurnk-providers";
-import { scopeEnvToAlias, resolveActiveAlias } from "@plurnk/plurnk-providers";
+import { scopeEnvToAlias, resolveActiveRoute } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import BudgetReadout from "./BudgetReadout.ts";
 import LineAnchors from "../content/line-anchors.ts";
@@ -140,7 +140,7 @@ export default class PacketBuilder {
         this.#schemes = schemes;
         this.#executors = executors;
         // Retired capacity knobs fail at boot rather than silently becoming inert.
-        const bootAlias = resolveActiveAlias(process.env)?.alias ?? "";
+        const bootAlias = resolveActiveRoute(process.env)?.alias ?? "";
         this.#shedRetiredCapacityKnobs();
         this.#promptProjectionFor(bootAlias);
     }
@@ -246,7 +246,7 @@ export default class PacketBuilder {
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
         const weighContent = contentWeight;
         const curationBudget = this.curationBudgetFor(provider);
-        const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(process.env)?.alias ?? "";
+        const alias = ProviderInstantiate.configurationAliasOf(provider) ?? "";
         const promptProjectionWeight = promptProjection === "withheld"
             ? 0
             : curationBudget === null

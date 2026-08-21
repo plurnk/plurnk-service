@@ -31,19 +31,43 @@ const SUPPORTED_NPM = new Set([
 
 // One models.dev model entry → our pruned ModelInfo, or null if it has no usable
 // context window (the field we anchor on).
-const prune = (m) => {
+const prune = (providerId, modelId, m) => {
     const contextWindow = m?.limit?.context;
     if (typeof contextWindow !== "number" || contextWindow <= 0) return null;
-    const info = { contextWindow };
+    if (typeof m?.name !== "string" || m.name.length === 0) {
+        throw new Error(`Models.dev model ${providerId}/${modelId} has no display name`);
+    }
+    for (const capability of ["attachment", "reasoning", "tool_call"]) {
+        if (typeof m[capability] !== "boolean") {
+            throw new Error(`Models.dev model ${providerId}/${modelId} has no ${capability} capability fact`);
+        }
+    }
+    if (!Array.isArray(m?.modalities?.input) || !Array.isArray(m?.modalities?.output)) {
+        throw new Error(`Models.dev model ${providerId}/${modelId} has no modalities fact`);
+    }
+    const info = {
+        name: m.name,
+        contextWindow,
+        attachment: m.attachment,
+        reasoning: m.reasoning,
+        toolCall: m.tool_call,
+        modalities: {
+            input: m.modalities.input,
+            output: m.modalities.output,
+        },
+    };
     // Context, input, and output are independent Models.dev facts. Neither
     // specialized limit can be reconstructed safely from the other two.
     const maxInputTokens = m?.limit?.input;
     if (typeof maxInputTokens === "number" && maxInputTokens > 0) info.maxInputTokens = maxInputTokens;
     const maxOutputTokens = m?.limit?.output;
     if (typeof maxOutputTokens === "number" && maxOutputTokens > 0) info.maxOutputTokens = maxOutputTokens;
-    // The capability bit is informational. Runtime activation and wire style are
-    // provider concerns, not catalog fields. Store only an asserted true value.
-    if (m?.reasoning === true) info.reasoning = true;
+    for (const [source, target] of [
+        ["structured_output", "structuredOutput"],
+        ["temperature", "temperature"],
+    ]) {
+        if (typeof m?.[source] === "boolean") info[target] = m[source];
+    }
     const c = m?.cost;
     if (c && typeof c.input === "number" && typeof c.output === "number") {
         info.cost = { inputPer1M: c.input, outputPer1M: c.output };
@@ -63,15 +87,19 @@ const providersCatalog = {};
 let providers = 0, models = 0, dropped = 0;
 for (const [id, entry] of Object.entries(db)) {
     if (!SUPPORTED_NPM.has(entry.npm)) continue;
+    if (typeof entry.name !== "string" || entry.name.length === 0) {
+        throw new Error(`Models.dev provider ${id} has no display name`);
+    }
     providersCatalog[id] = {
         id: entry.id,
+        name: entry.name,
         npm: entry.npm,
         env: entry.env ?? [],
         ...(entry.api === undefined ? {} : { api: entry.api }),
     };
     const out = {};
     for (const [modelId, m] of Object.entries(entry.models ?? {})) {
-        const info = prune(m);
+        const info = prune(id, modelId, m);
         if (info === null) { dropped++; continue; }
         out[modelId] = info;
         models++;

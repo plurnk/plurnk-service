@@ -3,11 +3,11 @@
 // calling module's location; this is the package that actually has the
 // `@plurnk/plurnk-providers-*` siblings installed in its node_modules.
 //
-// The pure helpers (parseAliasesFromEnv, resolveActiveAlias) live in
+// The pure selector helpers live in
 // @plurnk/plurnk-providers as framework-grade env parsing.
 
-import { instantiateProvider as instantiateFrameworkProvider, parseReasoningPolicy, PROVIDERS_KNOBS, resolveActiveAlias, scopeEnvToAlias, UnsupportedReasoningPolicyError } from "@plurnk/plurnk-providers";
-import type { Provider, ProviderAlias, ReasoningPolicy } from "@plurnk/plurnk-providers";
+import { instantiateProvider as instantiateFrameworkProvider, parseReasoningPolicy, PROVIDERS_KNOBS, resolveActiveRoute, scopeEnvToAlias, UnsupportedReasoningPolicyError } from "@plurnk/plurnk-providers";
+import type { Provider, ProviderSpec, ReasoningPolicy } from "@plurnk/plurnk-providers";
 
 export default class ProviderInstantiate {
     // One provider per complete route+tuning projection for the process lifetime: a provider is
@@ -21,20 +21,53 @@ export default class ProviderInstantiate {
     // so the service scopes its own
     // per-alias packet-policy knobs by the provider it's building a packet
     // for. Service-owned metadata about handles WE created; never a provider-contract field.
-    static #aliasByProvider = new WeakMap<Provider, string>();
+    // `null` is meaningful: this handle was constructed for an alias-free exact
+    // route and therefore uses global tuning. An absent entry is a foreign or
+    // hand-built handle for which the boot route remains the compatibility
+    // source of configuration scope.
+    static #configurationAliasByProvider = new WeakMap<Provider, string | null>();
 
-    // The alias name a provider was built under, or undefined (a test Mock, a hand-built handle).
-    // PacketBuilder falls back to resolveActiveAlias for the boot-global case.
+    // The alias name a provider was built under, or undefined for an exact
+    // route, a test Mock, or another hand-built handle.
     static aliasOf(provider: Provider): string | undefined {
-        return ProviderInstantiate.#aliasByProvider.get(provider);
+        return ProviderInstantiate.#configurationAliasByProvider.get(provider) ?? undefined;
     }
 
-    // {§grammar-configuration-admission} — register a hand-built provider (a recording Mock)
-    // under an alias, so tests can
-    // drive the per-alias grammar-rail resolution through the REAL chain instead of the
-    // boot-global fallback the silent-severance guard now refuses.
-    static registerAlias(provider: Provider, alias: string): void {
-        ProviderInstantiate.#aliasByProvider.set(provider, alias);
+    static configurationAliasOf(
+        provider: Provider,
+        env: NodeJS.ProcessEnv = process.env,
+    ): string | undefined {
+        const registered = ProviderInstantiate.#configurationAliasByProvider.get(provider);
+        if (registered !== undefined) return registered ?? undefined;
+        return resolveActiveRoute(env)?.alias;
+    }
+
+    static hasConfigurationScope(
+        provider: Provider,
+        env: NodeJS.ProcessEnv = process.env,
+    ): boolean {
+        return ProviderInstantiate.#configurationAliasByProvider.has(provider)
+            || resolveActiveRoute(env) !== null;
+    }
+
+    static assertGrammarConfigurationScope(
+        provider: Provider,
+        env: NodeJS.ProcessEnv = process.env,
+    ): void {
+        if (ProviderInstantiate.hasConfigurationScope(provider, env)) return;
+        const scoped = Object.keys(env).some((key) => key.startsWith("PLURNK_PROVIDERS_GBNF_")
+            && key !== "PLURNK_PROVIDERS_GBNF_DEBUG");
+        if (scoped) {
+            throw new Error("GBNF constraint: provider has no registered route and no active model route resolves, while route-scoped PLURNK_PROVIDERS_GBNF_* constraints are configured");
+        }
+    }
+
+    // {§grammar-configuration-admission} — identify a hand-built provider's
+    // configuration scope so direct Engine specimens exercise the same grammar
+    // resolution as daemon-constructed handles. null is an exact route using
+    // global tuning; a string is an alias-scoped route.
+    static registerConfigurationScope(provider: Provider, alias: string | null): void {
+        ProviderInstantiate.#configurationAliasByProvider.set(provider, alias);
     }
 
     // Register a preconstructed handle under the same route+tuning identity as
@@ -42,11 +75,11 @@ export default class ProviderInstantiate {
     // tuning projection merely because its wire route is unchanged.
     static registerInstance(
         provider: Provider,
-        spec: ProviderAlias,
+        spec: ProviderSpec,
         env: NodeJS.ProcessEnv = process.env,
         reasoningPolicy?: ReasoningPolicy,
     ): void {
-        ProviderInstantiate.#aliasByProvider.set(provider, spec.alias);
+        ProviderInstantiate.#configurationAliasByProvider.set(provider, spec.alias ?? null);
         ProviderInstantiate.#registeredInstances.set(
             ProviderInstantiate.#cacheKey(spec, env, reasoningPolicy),
             provider,
@@ -54,78 +87,81 @@ export default class ProviderInstantiate {
     }
 
     static async instantiateProvider(
-        alias: ProviderAlias,
+        route: ProviderSpec,
         env: NodeJS.ProcessEnv = process.env,
         reasoningPolicy?: ReasoningPolicy,
     ): Promise<Provider> {
         if (env === process.env) {
             const registered = ProviderInstantiate.#registeredInstances.get(
-                ProviderInstantiate.#cacheKey(alias, env, reasoningPolicy),
+                ProviderInstantiate.#cacheKey(route, env, reasoningPolicy),
             );
             if (registered !== undefined) {
                 if (reasoningPolicy !== undefined
                     && !registered.supportedReasoningPolicies.includes(reasoningPolicy)) {
                     throw new UnsupportedReasoningPolicyError(
-                        `provider:${alias.provider}`,
+                        `provider:${route.provider}`,
                         reasoningPolicy,
                         registered.supportedReasoningPolicies,
                     );
                 }
                 return registered;
             }
-            const key = ProviderInstantiate.#cacheKey(alias, env, reasoningPolicy);
+            const key = ProviderInstantiate.#cacheKey(route, env, reasoningPolicy);
             let cached = ProviderInstantiate.#instances.get(key);
             if (cached === undefined) {
-                cached = ProviderInstantiate.#instantiate(alias, env, reasoningPolicy);
+                cached = ProviderInstantiate.#instantiate(route, env, reasoningPolicy);
                 ProviderInstantiate.#instances.set(key, cached);
                 cached.catch(() => ProviderInstantiate.#instances.delete(key)); // a failed construct never poisons the cache
             }
             return cached;
         }
-        return ProviderInstantiate.#instantiate(alias, env, reasoningPolicy); // custom env (tests) — never cached
+        return ProviderInstantiate.#instantiate(route, env, reasoningPolicy); // custom env (tests) — never cached
     }
 
-    static #identityKey(alias: ProviderAlias): string {
-        return `${alias.alias}|${alias.provider}|${alias.model}|${alias.baseUrl ?? ""}`;
+    static #identityKey(route: ProviderSpec): string {
+        return `${route.alias ?? ""}|${route.provider}|${route.model}|${route.baseUrl ?? ""}`;
     }
 
-    static #cacheKey(alias: ProviderAlias, env: NodeJS.ProcessEnv, reasoningPolicy?: ReasoningPolicy): string {
-        const scoped = ProviderInstantiate.#scopedEnv(alias, env, reasoningPolicy);
+    static #cacheKey(route: ProviderSpec, env: NodeJS.ProcessEnv, reasoningPolicy?: ReasoningPolicy): string {
+        const scoped = ProviderInstantiate.#scopedEnv(route, env, reasoningPolicy);
         const tuning = PROVIDERS_KNOBS.map((name) => [name, scoped[name] ?? ""]);
-        return `${ProviderInstantiate.#identityKey(alias)}|${JSON.stringify(tuning)}`;
+        return `${ProviderInstantiate.#identityKey(route)}|${JSON.stringify(tuning)}`;
     }
 
     static #scopedEnv(
-        alias: ProviderAlias,
+        route: ProviderSpec,
         env: NodeJS.ProcessEnv,
         reasoningPolicy?: ReasoningPolicy,
     ): NodeJS.ProcessEnv {
-        const scoped = scopeEnvToAlias(env, alias.alias);
+        const scoped = route.alias === undefined ? env : scopeEnvToAlias(env, route.alias);
         return reasoningPolicy === undefined
             ? scoped
             : { ...scoped, PLURNK_PROVIDERS_REASONING: reasoningPolicy };
     }
 
     static configuredReasoningPolicy(
-        alias: ProviderAlias,
+        route: ProviderSpec,
         env: NodeJS.ProcessEnv = process.env,
     ): ReasoningPolicy {
-        const value = ProviderInstantiate.#scopedEnv(alias, env).PLURNK_PROVIDERS_REASONING;
-        return parseReasoningPolicy(value, `Provider alias '${alias.alias}' reasoning policy`);
+        const value = ProviderInstantiate.#scopedEnv(route, env).PLURNK_PROVIDERS_REASONING;
+        const selection = route.alias === undefined
+            ? `Model route '${route.provider}/${route.model}'`
+            : `Provider alias '${route.alias}'`;
+        return parseReasoningPolicy(value, `${selection} reasoning policy`);
     }
 
     static async #instantiate(
-        alias: ProviderAlias,
+        route: ProviderSpec,
         env: NodeJS.ProcessEnv,
         reasoningPolicy?: ReasoningPolicy,
     ): Promise<Provider> {
-        const provider = await ProviderInstantiate.#construct(alias, env, reasoningPolicy);
-        ProviderInstantiate.#aliasByProvider.set(provider, alias.alias);
+        const provider = await ProviderInstantiate.#construct(route, env, reasoningPolicy);
+        ProviderInstantiate.#configurationAliasByProvider.set(provider, route.alias ?? null);
         return provider;
     }
 
     static async #construct(
-        alias: ProviderAlias,
+        route: ProviderSpec,
         env: NodeJS.ProcessEnv,
         reasoningPolicy?: ReasoningPolicy,
     ): Promise<Provider> {
@@ -133,18 +169,18 @@ export default class ProviderInstantiate {
         // (PLURNK_PROVIDERS_*_<alias>) to
         // bare BEFORE construction, so per-alias tuning and generation-envelope pins bind. Without this
         // the whole per-alias provider surface was silently dropped at construction.
-        env = ProviderInstantiate.#scopedEnv(alias, env, reasoningPolicy);
-        return ProviderInstantiate.#constructWith(alias, env);
+        env = ProviderInstantiate.#scopedEnv(route, env, reasoningPolicy);
+        return ProviderInstantiate.#constructWith(route, env);
     }
 
-    static async #constructWith(alias: ProviderAlias, env: NodeJS.ProcessEnv): Promise<Provider> {
+    static async #constructWith(route: ProviderSpec, env: NodeJS.ProcessEnv): Promise<Provider> {
         return instantiateFrameworkProvider(
-            alias.provider,
+            route.provider,
             env,
-            alias.model,
+            route.model,
             undefined,
             undefined,
-            alias.baseUrl,
+            route.baseUrl,
             // #construct already materialized the alias-scoped environment.
             undefined,
         );
@@ -153,9 +189,9 @@ export default class ProviderInstantiate {
     // Convenience: resolve + instantiate in one call. Returns null when no
     // PLURNK_MODEL is set (caller decides what 'no provider' means).
     static async loadActiveProvider(env: NodeJS.ProcessEnv = process.env): Promise<Provider | null> {
-        const alias = resolveActiveAlias(env); // the active provider alias resolves from PLURNK_MODEL — {§provider-instantiation-alias-resolution}
-        if (alias === null) return null;
-        const provider = await ProviderInstantiate.instantiateProvider(alias, env);
+        const route = resolveActiveRoute(env); // PLURNK_MODEL resolves one alias or direct route — {§provider-instantiation-alias-resolution}
+        if (route === null) return null;
+        const provider = await ProviderInstantiate.instantiateProvider(route, env);
         ProviderInstantiate.validateGrammarConfiguration(provider, env);
         return provider;
     }
@@ -169,10 +205,11 @@ export default class ProviderInstantiate {
         reasoningPolicy?: ReasoningPolicy,
     ): void {
         // {§grammar-configuration-admission}: resolve through the provider's registered alias,
-        // with the active alias
+        // with the active real alias; exact routes remain globally scoped
         // retained only for the boot-global fallback.
-        const alias = ProviderInstantiate.aliasOf(provider) ?? resolveActiveAlias(env)?.alias ?? "";
-        const scoped = scopeEnvToAlias(env, alias, [
+        ProviderInstantiate.assertGrammarConfigurationScope(provider, env);
+        const alias = ProviderInstantiate.configurationAliasOf(provider, env);
+        const scoped = alias === undefined ? env : scopeEnvToAlias(env, alias, [
             "PLURNK_PROVIDERS_GBNF",
             "PLURNK_PROVIDERS_REASONING",
         ]);

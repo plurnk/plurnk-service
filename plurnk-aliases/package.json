@@ -1,7 +1,7 @@
 {
     "name": "@plurnk/plurnk-aliases",
     "version": "1.7.0",
-    "description": "Zero-dependency parser for the plurnk model-alias cascade (PLURNK_MODEL_<alias>=<provider>/<model>, PLURNK_BASEURL_<alias>). Shared by @plurnk/plurnk-providers and thin plurnk clients that resolve aliases without pulling the provider/tokenizer machinery.",
+    "description": "Runtime-free parser for PLURNK model selectors and the model-alias cascade.",
     "keywords": [
         "plurnk",
         "alias",
@@ -48,5 +48,8 @@
         "build:dist": "tsc -p tsconfig.build.json",
         "build": "npm run build:clean && npm run build:dist",
         "prepack": "npm run build"
+    },
+    "dependencies": {
+        "@plurnk/plurnk-contracts": "1.7.0"
     }
 }

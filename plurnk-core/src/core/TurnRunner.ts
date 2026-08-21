@@ -172,7 +172,6 @@ import type {
 } from "@plurnk/plurnk-providers";
 import {
     ProviderError,
-    resolveActiveAlias,
     scopeEnvToAlias,
 } from "@plurnk/plurnk-providers";
 import { validateGbnf } from "@plurnk/gbnf";
@@ -420,19 +419,17 @@ export default class TurnRunner {
 
 
     async #grammarConstraint(provider: Provider): Promise<ResolvedGrammarConstraint | undefined> {
-        // Resolve through the registered or active alias; ambiguity and load
-        // failures never degrade to unconstrained generation.
+        // A real alias scopes its rail; an alias-free direct route uses the
+        // global provider configuration. Unrelated alias settings never apply.
         // {§grammar-configuration-admission}
-        const registered = ProviderInstantiate.aliasOf(provider);
-        const fallback = registered === undefined ? resolveActiveAlias(process.env)?.alias : undefined;
-        if (registered === undefined && fallback === undefined && Object.keys(process.env).some((k) => k.startsWith("PLURNK_PROVIDERS_GBNF_"))) {
-            throw new Error("GBNF constraint: provider has no registered alias and no active alias resolves, while per-alias PLURNK_PROVIDERS_GBNF_* constraints are configured");
-        }
-        const alias = registered ?? fallback ?? "";
-        const scoped = scopeEnvToAlias(process.env, alias, [
-            "PLURNK_PROVIDERS_GBNF",
-            "PLURNK_PROVIDERS_GBNF_DEBUG",
-        ]);
+        ProviderInstantiate.assertGrammarConfigurationScope(provider);
+        const alias = ProviderInstantiate.configurationAliasOf(provider);
+        const scoped = alias === undefined
+            ? process.env
+            : scopeEnvToAlias(process.env, alias, [
+                "PLURNK_PROVIDERS_GBNF",
+                "PLURNK_PROVIDERS_GBNF_DEBUG",
+            ]);
         const variant = scoped.PLURNK_PROVIDERS_GBNF;
         if (variant === undefined || variant === "" || variant === "0") return undefined;
         const allowWithheld = scoped.PLURNK_PROVIDERS_GBNF_DEBUG !== undefined

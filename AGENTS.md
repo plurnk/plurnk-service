@@ -74,7 +74,7 @@ repeatable `--env-file-if-exists` flags the LAST flag wins. The live/demo tier
 
 1. the operator's shell env — `scripts/operator-environment.sh` sources `~/.bashrc`
    before running, so the `<PROVIDER>_API_KEY` credentials (e.g. `DEEPSEEK_API_KEY`)
-   are present and `PLURNK_MODEL=<alias>` here overrides the committed gate default,
+   are present and `PLURNK_MODEL=<selector>` here overrides the committed gate default,
 2. `plurnk-core/.env.test` — the committed real-model gate profile
    (`PLURNK_MODEL=turboderp`, `PLURNK_SERVICE_FILES_ITEMS=-1`,
    `PLURNK_SERVICE_GIT_AUTO=1`, `PLURNK_SERVICE_EMBED_DISABLE=0`),
@@ -86,12 +86,13 @@ repeatable `--env-file-if-exists` flags the LAST flag wins. The live/demo tier
 5. `test/floor.ts` — the assembled `.env.defaults` of every installed package,
    applied set-if-unset so it only fills genuinely-unset knobs.
 
-Model selection: `PLURNK_MODEL=<alias>` selects the active alias;
-`PLURNK_MODEL_<alias>=<provider>/<model>` declares it (provider ids in
-`plurnk-models/src/providers.json`). Resolution is `resolveActiveAlias()`
-(plurnk-aliases) then `loadActiveProvider()` (plurnk-providers). Declare an alias
-once in `$XDG_CONFIG_HOME/plurnk/.env` and select it per run with `PLURNK_MODEL=<alias>`; never
-redeclare it inline. The repo ships only the `turboderp` gate default, never a
+Model selection: `PLURNK_MODEL=<selector>` accepts either a declared alias or an
+exact `<provider>/<model>` route; `PLURNK_MODEL_<alias>=<provider>/<model>`
+declares an optional reusable tuning scope (provider ids in
+`plurnk-models/src/providers.json`). Resolution is `resolveActiveRoute()`
+(plurnk-aliases) then `loadActiveProvider()` (plurnk-providers). Declare reusable
+aliases once in `$XDG_CONFIG_HOME/plurnk/.env` and select them per run; never
+redeclare one inline. The repo ships only the `turboderp` gate default, never a
 credential.
 
 Test tiers: `test:lint` / `test:unit` / `test:intg` run per package against the
@@ -106,10 +107,10 @@ cascade (operator-environment.sh → floor.ts → `.env.defaults`, the XDG user 
 (node ignores it after the files). Run from `plurnk-core`, selecting a model:
 
 ```sh
-PLURNK_MODEL=<alias> npm run test:demo               # every demo story
-PLURNK_MODEL=<alias> npm run test:demo:specimen -- <name-substring>   # one story
-PLURNK_MODEL=<alias> npm run test:live                # every live specimen
-PLURNK_MODEL=<alias> npm run test:live:specimen -- <exact name>       # one specimen
+PLURNK_MODEL=<selector> npm run test:demo               # every demo story
+PLURNK_MODEL=<selector> npm run test:demo:specimen -- <name-substring>   # one story
+PLURNK_MODEL=<selector> npm run test:live                # every live specimen
+PLURNK_MODEL=<selector> npm run test:live:specimen -- <exact name>       # one specimen
 ```
 
 ## Monorepo contracts

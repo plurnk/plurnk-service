@@ -18,6 +18,10 @@ export {
     InvalidClientInteractionProjectionError,
     InvalidClientInteractionResolutionError,
     InvalidReasoningPolicyError,
+    InvalidModelCatalogPageError,
+    InvalidModelCatalogQueryError,
+    InvalidModelReadinessError,
+    InvalidModelRouteError,
 } from "./Validator.ts";
 export { default as Problems } from "./Problems.ts";
 export type { ProblemOptions } from "./Problems.ts";

@@ -1,15 +1,30 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Mock, type ProviderAlias } from "@plurnk/plurnk-providers";
+import { Mock, type ProviderAlias, type ProviderSpec } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { connect, flush, makeMockResponse, rpcCall, runLoopToTerminal, subscribeNotifications, withDaemon } from "./_rpc.ts";
 
-const provider = (name: string, model: string): ProviderAlias => ({
-    alias: `${name}-${crypto.randomUUID()}`,
-    provider: "openai",
-    model,
+const declaredProviderEnv = new Map<string, string | undefined>();
+test.afterEach(() => {
+    for (const [key, value] of declaredProviderEnv) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+    }
+    declaredProviderEnv.clear();
 });
+
+const declaredProvider = (name: string, model: string): ProviderAlias => {
+    const spec = {
+        alias: `${name}-${crypto.randomUUID()}`,
+        provider: "openai",
+        model,
+    };
+    const key = `PLURNK_MODEL_${spec.alias}`;
+    declaredProviderEnv.set(key, process.env[key]);
+    process.env[key] = `${spec.provider}/${spec.model}`;
+    return spec;
+};
 
 type LoopRow = {
     id: number;
@@ -19,11 +34,16 @@ type LoopRow = {
     status: number;
 };
 
-const routeSpec = async (db: Db, routeId: number | null): Promise<ProviderAlias | null> => {
+const routeSpec = async (db: Db, routeId: number | null): Promise<ProviderSpec | null> => {
     if (routeId === null) return null;
-    const row = await db.model_route_by_id.get<{ alias: string; provider: string; model: string; base_url: string }>({ id: routeId });
+    const row = await db.model_route_by_id.get<{ alias: string | null; provider: string; model: string; base_url: string | null }>({ id: routeId });
     if (row === undefined) throw new Error(`model_route ${routeId} is missing`);
-    return { alias: row.alias, provider: row.provider, model: row.model, ...(row.base_url === "" ? {} : { baseUrl: row.base_url }) };
+    return {
+        provider: row.provider,
+        model: row.model,
+        ...(row.alias === null ? {} : { alias: row.alias }),
+        ...(row.base_url === null ? {} : { baseUrl: row.base_url }),
+    };
 };
 
 const withConfiguredChild = async <T>(spec: ProviderAlias, run: () => Promise<T>): Promise<T> => {
@@ -43,8 +63,8 @@ const withConfiguredChild = async <T>(spec: ProviderAlias, run: () => Promise<T>
 };
 
 test("{§methods-loop-run-child-provider}: a smaller WORK provider carries through every descendant", async () => {
-    const parentSpec = provider("parent", "large-parent");
-    const childSpec = provider("child", "smaller-child");
+    const parentSpec = declaredProvider("parent", "large-parent");
+    const childSpec = declaredProvider("child", "smaller-child");
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
@@ -69,10 +89,8 @@ test("{§methods-loop-run-child-provider}: a smaller WORK provider carries throu
             await rpcCall(ws, 1, "workspace.create", { name: `child-policy-${crypto.randomUUID()}` });
             const result = await runLoopToTerminal(ws, 2, {
                 prompt: "build a two-level worker tree",
-                alias: parentSpec.alias,
-                model: `${parentSpec.provider}/${parentSpec.model}`,
-                childAlias: childSpec.alias,
-                childModel: `${childSpec.provider}/${childSpec.model}`,
+                selector: parentSpec.alias,
+                childSelector: childSpec.alias,
                 flags: { auto: true },
             });
             assert.equal(result.finalStatus, 200);
@@ -92,7 +110,11 @@ test("{§methods-loop-run-child-provider}: a smaller WORK provider carries throu
             assert.equal(childLoops.length, 2);
             for (const loop of childLoops) {
                 assert.deepEqual(await routeSpec(db, loop.model_route_id), childSpec, "every descendant runs on the selected child provider");
-                assert.deepEqual(await routeSpec(db, loop.spawn_model_route_id), childSpec, "every descendant carries the same policy deeper");
+                assert.equal(
+                    loop.spawn_model_route_id,
+                    null,
+                    "a descendant carries the effective model by value and inherits it deeper without a redundant override",
+                );
             }
         } finally {
             ws.close();
@@ -101,8 +123,8 @@ test("{§methods-loop-run-child-provider}: a smaller WORK provider carries throu
 });
 
 test("{§methods-loop-run-child-provider}: the configured child alias supplies an omitted run policy", async () => {
-    const parentSpec = provider("configured-parent", "configured-parent-model");
-    const childSpec = provider("configured-child", "configured-child-model");
+    const parentSpec = declaredProvider("configured-parent", "configured-parent-model");
+    const childSpec = declaredProvider("configured-child", "configured-child-model");
     const parent = new Mock({
         contextWindow: 16384,
         responses: [
@@ -124,8 +146,7 @@ test("{§methods-loop-run-child-provider}: the configured child alias supplies a
                 await rpcCall(ws, 1, "workspace.create", { name: `configured-child-${crypto.randomUUID()}` });
                 const result = await runLoopToTerminal(ws, 2, {
                     prompt: "use the configured child provider",
-                    alias: parentSpec.alias,
-                    model: `${parentSpec.provider}/${parentSpec.model}`,
+                    selector: parentSpec.alias,
                     flags: { auto: true },
                 });
                 assert.equal(result.finalStatus, 200);
@@ -142,8 +163,8 @@ test("{§methods-loop-run-child-provider}: the configured child alias supplies a
 });
 
 test("{§bare-inference}: BARE consumes the loop's durable child provider without spawning a worker", async () => {
-    const parentSpec = provider("bare-parent", "bare-parent-model");
-    const childSpec = provider("bare-child", "bare-child-model");
+    const parentSpec = declaredProvider("bare-parent", "bare-parent-model");
+    const childSpec = declaredProvider("bare-child", "bare-child-model");
     const parent = new Mock({
         contextWindow: 16_384,
         responses: [
@@ -164,10 +185,8 @@ test("{§bare-inference}: BARE consumes the loop's durable child provider withou
             await rpcCall(ws, 1, "workspace.create", { name: `bare-child-policy-${crypto.randomUUID()}` });
             const result = await runLoopToTerminal(ws, 2, {
                 prompt: "answer one isolated factual question",
-                alias: parentSpec.alias,
-                model: `${parentSpec.provider}/${parentSpec.model}`,
-                childAlias: childSpec.alias,
-                childModel: `${childSpec.provider}/${childSpec.model}`,
+                selector: parentSpec.alias,
+                childSelector: childSpec.alias,
                 flags: { auto: true },
             });
             assert.equal(result.finalStatus, 200);
@@ -185,8 +204,8 @@ test("{§bare-inference}: BARE consumes the loop's durable child provider withou
 });
 
 test("{§methods-loop-run-child-provider}: explicit inherit overrides configuration and follows the spawning loop", async () => {
-    const spec = provider("inherit", "same-through-tree");
-    const configuredSpec = provider("ignored", "configured-child-must-not-run");
+    const spec = declaredProvider("inherit", "same-through-tree");
+    const configuredSpec = declaredProvider("ignored", "configured-child-must-not-run");
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
@@ -204,9 +223,8 @@ test("{§methods-loop-run-child-provider}: explicit inherit overrides configurat
                 await rpcCall(ws, 1, "workspace.create", { name: `inherit-policy-${crypto.randomUUID()}` });
                 const result = await runLoopToTerminal(ws, 2, {
                     prompt: "spawn one inherited child",
-                    alias: spec.alias,
-                    model: `${spec.provider}/${spec.model}`,
-                    childAlias: null,
+                    selector: spec.alias,
+                    childSelector: null,
                     flags: { auto: true },
                 });
                 assert.equal(result.finalStatus, 200);
@@ -224,8 +242,8 @@ test("{§methods-loop-run-child-provider}: explicit inherit overrides configurat
 });
 
 test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinary child loop", async () => {
-    const parentSpec = provider("fork-parent", "large-parent");
-    const childSpec = provider("fork-child", "tiny-child");
+    const parentSpec = declaredProvider("fork-parent", "large-parent");
+    const childSpec = declaredProvider("fork-child", "tiny-child");
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
@@ -244,10 +262,8 @@ test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinar
             const terminated = subscribeNotifications(ws, "loop/terminated");
             const result = await runLoopToTerminal(ws, 2, {
                 prompt: "fork work to a much smaller child",
-                alias: parentSpec.alias,
-                model: `${parentSpec.provider}/${parentSpec.model}`,
-                childAlias: childSpec.alias,
-                childModel: `${childSpec.provider}/${childSpec.model}`,
+                selector: parentSpec.alias,
+                childSelector: childSpec.alias,
                 flags: { auto: true },
             });
             assert.equal(result.finalStatus, 200, "the parent observes the failed child and can conclude normally");

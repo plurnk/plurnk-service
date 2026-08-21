@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Mock, resolveActiveAlias } from "@plurnk/plurnk-providers";
+import { Mock, resolveActiveRoute } from "@plurnk/plurnk-providers";
 import type { ChatMessage } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
@@ -33,8 +33,8 @@ test("the active alias's GBNF setting wins over the bare fallback", async () => 
     const dsl = "## SEND0 [200]\nok";
     // Alias-agnostic: resolve the Mock bootstrap's active alias and set ITS GBNF suffix — never a
     // hardcoded name, so this remains valid if the fixture alias changes. The Mock carries no side-table
-    // alias, so #grammarConstraint resolves the knob via resolveActiveAlias.
-    const alias = resolveActiveAlias(process.env)?.alias ?? "";
+    // alias, so #grammarConstraint resolves the knob via resolveActiveRoute.
+    const alias = resolveActiveRoute(process.env)?.alias ?? "";
     const suffixKey = `PLURNK_PROVIDERS_GBNF_${alias}`;
     const keys = ["PLURNK_PROVIDERS_GBNF", suffixKey];
     const orig = keys.map((k) => process.env[k]);

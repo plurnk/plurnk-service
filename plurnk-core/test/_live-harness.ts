@@ -15,7 +15,7 @@ import Owner from "../src/core/Owner.ts";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type SeamSocket from "./intg/_seam.ts";
-import { resolveActiveAlias } from "@plurnk/plurnk-providers";
+import { resolveActiveRoute } from "@plurnk/plurnk-providers";
 import type { Provider } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../src/core/ProviderInstantiate.ts";
 import Daemon from "../src/server/Daemon.ts";
@@ -63,10 +63,10 @@ const claimRunDir = async (workspace: string): Promise<string> => {
 // loadActiveProvider). Live/demo runners set the model via .env, so an
 // unconfigured model is a hard error, not a silent skip.
 export const liveProvider = async (): Promise<Provider> => {
-    const alias = resolveActiveAlias();
-    if (alias === null) throw new Error("PLURNK_MODEL not set; the live/demo tiers require a configured model alias");
+    const route = resolveActiveRoute();
+    if (route === null) throw new Error("PLURNK_MODEL not set; the live/demo tiers require a configured model route");
     const provider = await ProviderInstantiate.loadActiveProvider();
-    if (provider === null) throw new Error("loadActiveProvider returned null despite a resolved alias");
+    if (provider === null) throw new Error("loadActiveProvider returned null despite a resolved model route");
     return provider;
 };
 
@@ -216,15 +216,16 @@ export const pinAliasInputCapacity = ({
     if (!Number.isSafeInteger(outputBudget) || outputBudget <= 0) {
         throw new TypeError(`outputBudget must be a positive safe integer; got ${outputBudget}`);
     }
-    const active = resolveActiveAlias(process.env);
-    if (active === null) throw new Error("PLURNK_MODEL not set; cannot pin the active alias input capacity");
+    const active = resolveActiveRoute(process.env);
+    if (active === null) throw new Error("PLURNK_MODEL not set; cannot pin the active model input capacity");
 
     // Preserve the naturally resolved output envelope measured by the floor
     // probe. Only its input side is tightened for the pressure experiment.
     const contextWindow = inputCapacity + outputBudget;
+    const suffix = active.alias === undefined ? "" : `_${active.alias}`;
     const entries: Array<readonly [string, string]> = [
-        [`PLURNK_PROVIDERS_CONTEXT_WINDOW_${active.alias}`, String(contextWindow)],
-        [`PLURNK_PROVIDERS_OUTPUT_BUDGET_${active.alias}`, String(outputBudget)],
+        [`PLURNK_PROVIDERS_CONTEXT_WINDOW${suffix}`, String(contextWindow)],
+        [`PLURNK_PROVIDERS_OUTPUT_BUDGET${suffix}`, String(outputBudget)],
     ];
     const prev = entries.map(([k]) => [k, process.env[k]] as const);
     for (const [k, v] of entries) process.env[k] = v;

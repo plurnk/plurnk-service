@@ -1,7 +1,7 @@
 // The plurnk model-alias cascade — pure env parsing, zero runtime deps.
 //
-// PLURNK_MODEL_<alias>=<provider>/<model> declares an alias; PLURNK_MODEL=<alias>
-// selects the active one at boot. The provider segment is the first "/"-delimited
+// PLURNK_MODEL_<alias>=<provider>/<model> declares an alias; PLURNK_MODEL selects
+// either one declared alias or one exact provider/model route at boot. The provider segment is the first "/"-delimited
 // field; the model id is the remainder (it may itself contain "/"). Aliases are
 // case-folded (the .env key suffix downcased). PLURNK_BASEURL_<alias> attaches a
 // per-alias endpoint override — the one thing a per-provider base-URL var can't
@@ -10,7 +10,7 @@
 // Extracted from @plurnk/plurnk-providers so a thin consumer can resolve aliases
 // from its own (always-fresh) env without pulling the provider/tokenizer machinery.
 
-import type { ProviderAlias } from "./types.ts";
+import type { ProviderAlias, ProviderSpec } from "./types.ts";
 
 // PLURNK_BASEURL_<alias>: per-alias endpoint override, case-folded on the alias
 // to match PLURNK_MODEL_<alias>. Lets two aliases on the same provider name target
@@ -54,9 +54,27 @@ export const parseAliasesFromEnv = (env: NodeJS.ProcessEnv = process.env): Provi
     return out;
 };
 
-export const resolveActiveAlias = (env: NodeJS.ProcessEnv = process.env): ProviderAlias | null => {
+export const resolveModelSelector = (
+    selector: string,
+    aliases: readonly ProviderAlias[],
+): ProviderSpec | null => {
+    const slash = selector.indexOf("/");
+    if (slash > 0 && slash < selector.length - 1) {
+        return { provider: selector.slice(0, slash), model: selector.slice(slash + 1) };
+    }
+    if (slash !== -1) return null;
+    return aliases.find((alias) => alias.alias === selector.toLowerCase()) ?? null;
+};
+
+export const resolveActiveRoute = (env: NodeJS.ProcessEnv = process.env): ProviderSpec | null => {
     const selected = env.PLURNK_MODEL;
     if (selected === undefined || selected.length === 0) return null;
     const aliases = parseAliasesFromEnv(env);
-    return aliases.find((a) => a.alias === selected.toLowerCase()) ?? null;
+    const route = resolveModelSelector(selected, aliases);
+    if (route === null) {
+        throw new Error(
+            `PLURNK_MODEL '${selected}' is neither a declared alias nor a provider/model route.`,
+        );
+    }
+    return route;
 };

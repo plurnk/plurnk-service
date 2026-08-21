@@ -40,7 +40,14 @@ discovery and environment-file defaults.
 
 ## Configure a model
 
-Declare an alias, then select it:
+Select a catalog route directly:
+
+```dotenv
+PLURNK_MODEL=google/gemini-3-flash
+GEMINI_API_KEY=...
+```
+
+Declare an alias when the route needs a reusable name or scoped tuning:
 
 ```dotenv
 PLURNK_MODEL_fast=openai/gpt-5-mini

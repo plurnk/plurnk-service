@@ -25,7 +25,11 @@ import clientInteractionRequestSchema from "../schema/ClientInteractionRequest.j
 import clientInteractionProjectionSchema from "../schema/ClientInteractionProjection.json" with { type: "json" };
 import clientInteractionResolutionSchema from "../schema/ClientInteractionResolution.json" with { type: "json" };
 import reasoningPolicySchema from "../schema/ReasoningPolicy.json" with { type: "json" };
-import type { ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, LoopFlags, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, ReasoningPolicy, TextRegion } from "./types.generated.ts";
+import modelCatalogPageSchema from "../schema/ModelCatalogPage.json" with { type: "json" };
+import modelCatalogQuerySchema from "../schema/ModelCatalogQuery.json" with { type: "json" };
+import modelReadinessSchema from "../schema/ModelReadiness.json" with { type: "json" };
+import modelRouteSchema from "../schema/ModelRoute.json" with { type: "json" };
+import type { ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, LoopFlags, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProposalProjection, RangeExtent, ReasoningPolicy, TextRegion } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
 
@@ -45,6 +49,10 @@ export class InvalidClientInteractionRequestError extends TypeError {}
 export class InvalidClientInteractionProjectionError extends TypeError {}
 export class InvalidClientInteractionResolutionError extends TypeError {}
 export class InvalidReasoningPolicyError extends TypeError {}
+export class InvalidModelCatalogPageError extends TypeError {}
+export class InvalidModelCatalogQueryError extends TypeError {}
+export class InvalidModelReadinessError extends TypeError {}
+export class InvalidModelRouteError extends TypeError {}
 
 export default class Validator {
     static #position = new CfValidator(positionSchema as Schema, "2020-12");
@@ -119,6 +127,22 @@ export default class Validator {
     );
     static #reasoningPolicy = new CfValidator(
         reasoningPolicySchema as unknown as Schema,
+        "2020-12",
+    );
+    static #modelReadiness = new CfValidator(
+        modelReadinessSchema as unknown as Schema,
+        "2020-12",
+    );
+    static #modelCatalogPage = Validator.#withRefs(
+        modelCatalogPageSchema,
+        [modelReadinessSchema],
+    );
+    static #modelCatalogQuery = new CfValidator(
+        modelCatalogQuerySchema as unknown as Schema,
+        "2020-12",
+    );
+    static #modelRoute = new CfValidator(
+        modelRouteSchema as unknown as Schema,
         "2020-12",
     );
 
@@ -244,6 +268,36 @@ export default class Validator {
 
     static validateReasoningPolicy(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#reasoningPolicy, value);
+    }
+
+    static validateModelCatalogPage(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#modelCatalogPage, value);
+    }
+
+    static validateModelCatalogQuery(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#modelCatalogQuery, value);
+    }
+
+    static validateModelReadiness(value: unknown): ValidationResult {
+        const result = Validator.#validate(Validator.#modelReadiness, value);
+        if (!result.valid) return result;
+        const readiness = value as ModelReadiness;
+        if (readiness.ready !== (readiness.causes.length === 0)) {
+            return {
+                valid: false,
+                errors: [{
+                    keyword: "model-readiness",
+                    instanceLocation: "",
+                    keywordLocation: "#",
+                    error: "ready must be true exactly when causes is empty",
+                }],
+            };
+        }
+        return result;
+    }
+
+    static validateModelRoute(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#modelRoute, value);
     }
 
     static assertNotice<T extends Notice>(value: T): T {
@@ -419,6 +473,71 @@ export default class Validator {
             );
         }
         return value as ReasoningPolicy;
+    }
+
+    static assertModelCatalogPage(value: unknown): ModelCatalogPage {
+        const result = Validator.validateModelCatalogPage(value);
+        if (!result.valid) {
+            throw new InvalidModelCatalogPageError(
+                `invalid ModelCatalogPage: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        const page = value as ModelCatalogPage;
+        const selectors = new Set<string>();
+        for (const item of page.items) {
+            Validator.assertModelReadiness(item.readiness);
+            if (item.selector !== `${item.provider}/${item.model}`) {
+                throw new InvalidModelCatalogPageError(
+                    "ModelCatalogPage item selector must equal provider/model",
+                );
+            }
+            if (selectors.has(item.selector)) {
+                throw new InvalidModelCatalogPageError("ModelCatalogPage item selectors must be unique");
+            }
+            selectors.add(item.selector);
+        }
+        const pageEnd = page.offset + page.items.length;
+        if (page.items.length > 0 && pageEnd > page.total) {
+            throw new InvalidModelCatalogPageError("ModelCatalogPage items extend beyond total");
+        }
+        if (page.nextOffset !== undefined) {
+            if (page.nextOffset !== pageEnd || page.nextOffset >= page.total) {
+                throw new InvalidModelCatalogPageError(
+                    "ModelCatalogPage nextOffset must equal the page end and leave remaining items",
+                );
+            }
+        } else if (page.offset < page.total && pageEnd < page.total) {
+            throw new InvalidModelCatalogPageError("ModelCatalogPage omits nextOffset before total");
+        }
+        return page;
+    }
+
+    static assertModelCatalogQuery(value: unknown): ModelCatalogQuery {
+        const result = Validator.validateModelCatalogQuery(value);
+        if (!result.valid) {
+            throw new InvalidModelCatalogQueryError(
+                `invalid ModelCatalogQuery: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        return value as ModelCatalogQuery;
+    }
+
+    static assertModelReadiness(value: unknown): ModelReadiness {
+        const result = Validator.validateModelReadiness(value);
+        if (!result.valid) {
+            throw new InvalidModelReadinessError(
+                `invalid ModelReadiness: ${JSON.stringify(result.errors)}`,
+            );
+        }
+        return value as ModelReadiness;
+    }
+
+    static assertModelRoute(value: unknown): ModelRoute {
+        const result = Validator.validateModelRoute(value);
+        if (!result.valid) {
+            throw new InvalidModelRouteError(`invalid ModelRoute: ${JSON.stringify(result.errors)}`);
+        }
+        return value as ModelRoute;
     }
 
     static #validate(validator: CfValidator, value: unknown): ValidationResult {

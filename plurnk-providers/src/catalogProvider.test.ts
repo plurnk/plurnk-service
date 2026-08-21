@@ -407,7 +407,15 @@ test("native Anthropic adaptive policy uses adaptive thinking rather than a fixe
         sdkPackage: "@ai-sdk/anthropic",
         additiveReasoningProvider: "anthropic",
         contextWindow: 16_384,
-        info: { contextWindow: 16_384, maxOutputTokens: 8_192, reasoning: true },
+        info: {
+            name: "Claude Sonnet 4.6",
+            contextWindow: 16_384,
+            maxOutputTokens: 8_192,
+            reasoning: true,
+            attachment: true,
+            toolCall: true,
+            modalities: { input: ["text", "image"], output: ["text"] },
+        },
     });
     await provider.generate({ workerId: "worker", messages: [{ role: "user", content: "hello" }] });
     assert.equal(request?.reasoning, "provider-default");

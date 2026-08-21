@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { parseAliasesFromEnv, resolveActiveAlias } from "./index.ts";
+import { parseAliasesFromEnv, resolveActiveRoute, resolveModelSelector } from "./index.ts";
 
 test("parseAliasesFromEnv: extracts PLURNK_MODEL_<alias>=<provider>/<model>", () => {
     const env = {
@@ -74,24 +74,44 @@ test("parseAliasesFromEnv: a PLURNK_BASEURL_* override with no matching alias fa
     assert.throws(() => parseAliasesFromEnv(env), /PLURNK_BASEURL_\* override\(s\) with no matching PLURNK_MODEL_\* alias: typo/);
 });
 
-test("resolveActiveAlias: returns null when PLURNK_MODEL unset", () => {
+test("resolveActiveRoute: returns null when PLURNK_MODEL unset", () => {
     const env = { PLURNK_MODEL_gemma: "openai/macher.gguf" } as NodeJS.ProcessEnv;
-    assert.equal(resolveActiveAlias(env), null);
+    assert.equal(resolveActiveRoute(env), null);
 });
 
-test("resolveActiveAlias: returns null when PLURNK_MODEL doesn't match any alias", () => {
+test("resolveActiveRoute: an explicit unknown selector fails hard", () => {
     const env = {
         PLURNK_MODEL: "missing",
         PLURNK_MODEL_gemma: "openai/macher.gguf",
     } as NodeJS.ProcessEnv;
-    assert.equal(resolveActiveAlias(env), null);
+    assert.throws(() => resolveActiveRoute(env), /neither a declared alias nor a provider\/model route/);
 });
 
-test("resolveActiveAlias: matches alias case-insensitively", () => {
+test("resolveActiveRoute: matches alias case-insensitively and retains its tuning scope", () => {
     const env = {
         PLURNK_MODEL: "GEMMA",
         PLURNK_MODEL_gemma: "openai/macher.gguf",
     } as NodeJS.ProcessEnv;
-    const active = resolveActiveAlias(env);
+    const active = resolveActiveRoute(env);
     assert.equal(active?.alias, "gemma");
+});
+
+test("resolveActiveRoute: accepts an exact provider/model route without manufacturing an alias", () => {
+    const active = resolveActiveRoute({
+        PLURNK_MODEL: "openrouter/anthropic/claude-sonnet-4",
+    } as NodeJS.ProcessEnv);
+    assert.deepEqual(active, {
+        provider: "openrouter",
+        model: "anthropic/claude-sonnet-4",
+    });
+});
+
+test("resolveModelSelector: one vocabulary resolves aliases and exact routes", () => {
+    const aliases = parseAliasesFromEnv({ PLURNK_MODEL_fast: "google/gemini-3-flash" });
+    assert.deepEqual(resolveModelSelector("fast", aliases), aliases[0]);
+    assert.deepEqual(resolveModelSelector("google/gemini-3-pro", aliases), {
+        provider: "google",
+        model: "gemini-3-pro",
+    });
+    assert.equal(resolveModelSelector("google/", aliases), null);
 });
