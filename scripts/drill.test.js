@@ -31,17 +31,25 @@ describe("drill scopeIntg — changed-workspace intg scoping", () => {
 });
 
 describe("drill tier inventory", () => {
-    it("runs root-owned lint before the workspace tiers", async () => {
+    it("runs root-owned lint and unit coverage before the workspace tiers", async () => {
         const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
         assert.equal(
             manifest.scripts["test:lint"],
             "npm run root:lint && npm run test:lint --workspaces --if-present",
             "the direct lint command and drill must share one root-lint owner",
         );
+        assert.equal(
+            manifest.scripts["test:unit"],
+            "npm run root:unit && npm run test:unit --workspaces --if-present",
+            "the direct unit command and drill must share one root-unit owner",
+        );
         const source = await readFile(new URL("./drill.mjs", import.meta.url), "utf8");
         const rootLint = source.indexOf('phase("root", "root:lint"');
+        const rootUnit = source.indexOf('phase("root unit", "root:unit"');
         const workspaceLint = source.indexOf('phase("lint", "test:lint"');
+        const workspaceUnit = source.indexOf('phase("unit", "test:unit"');
         assert.ok(rootLint >= 0 && rootLint < workspaceLint, "npm test must gate root policy before workspace lint");
+        assert.ok(rootUnit >= 0 && rootUnit < workspaceUnit, "npm test must gate root unit coverage before workspace unit");
     });
 
     it("reports applicable and inapplicable workspaces explicitly", () => {

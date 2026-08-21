@@ -16,13 +16,13 @@ import { readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { setTimeout as sleep } from "node:timers/promises";
 import { caretRange, compatibleRange, exactVersion, supportsVersion } from "./release-compat.mjs";
 import {
     assertNpmPublisher,
     assertReleaseRepository,
 } from "./release-authority.mjs";
 import { resolveExternalReposRoot } from "./project-topology.mjs";
+import { awaitRegistryVersion } from "./registry-visibility.mjs";
 
 const run = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -163,7 +163,7 @@ for (const { dir, name, release, owner, platformDependencies, pushable } of regi
     if (aligned !== "") await run("git", ["-C", repo, "commit", "-am", `chore(release): align with ${version}`], { maxBuffer: 8 * 1024 * 1024 });
     await run("git", ["-C", repo, "push"], { maxBuffer: 8 * 1024 * 1024 });
     await run("npm", ["publish", "--access", "public"], { cwd: repo, maxBuffer: 64 * 1024 * 1024 }); // runs the repo's own prepublishOnly gate
-    for (let i = 0; ; i++) { if (await served(name) === version) break; if (i >= 12) throw new Error(`${tag}: published but registry never served ${version}`); await sleep(10_000); }
+    await awaitRegistryVersion({ name, version, lookup: served, subject: tag });
     swept++;
 }
 console.log(`release-externals: ${swept} ${CHECK ? "would update" : "updated"}, ${guarded} compatible at ${version}${CHECK ? " [CHECK]" : ""}`);

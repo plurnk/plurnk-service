@@ -9,6 +9,6 @@ test("the root pins the ordinary Node and npm toolchain", async () => {
     assert.equal(manifest.engines.node, ">=26");
     assert.equal(manifest.packageManager, "npm@11.18.0");
     assert.equal(manifest.scripts.prepare, "git config core.hooksPath .githooks && npm run build");
-    assert.equal(manifest.scripts["config:list"], "node --conditions=plurnk-dev scripts/config-list.mjs");
+    assert.equal(manifest.scripts["config:list"], "node --conditions=plurnk-dev plurnk-core/src/service.ts config defaults");
     assert.equal(await readFile(new URL(".node-version", root), "utf8"), "26\n");
 });

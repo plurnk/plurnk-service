@@ -18,6 +18,7 @@ import {
     RELEASE_PROBE_PORT,
     resolveClientCheckout,
 } from "./project-topology.mjs";
+import { awaitRegistryVersion } from "./registry-visibility.mjs";
 
 const run = promisify(execFile);
 const ROOT_PKG = "@plurnk/plurnk-service";
@@ -62,15 +63,6 @@ const served = async (name) => {
     catch { return null; } // never published — view exits nonzero
 };
 
-// Law 2: the registry must SERVE the version. Publish-then-poll, bounded.
-const awaitServed = async (name) => {
-    for (let i = 0; i < 12; i++) {
-        if (await served(name) === version) return;
-        await sleep(10_000);
-    }
-    throw new Error(`${name}: published but the registry never served ${version} within the poll budget — do NOT announce`);
-};
-
 console.log(`release-publish: ${order.length} workspaces at ${version}`);
 for (const { name } of order) {
     if (await served(name) === version) { console.log(`  serves  ${name}`); continue; }
@@ -78,7 +70,7 @@ for (const { name } of order) {
     // The committed stamp was built and gated once above. Publication remains
     // script-free so no package can mutate or re-prove itself mid-train.
     await run("npm", ["publish", "-w", name, "--access", "public", "--ignore-scripts"], { maxBuffer: 16 * 1024 * 1024 }); // Law 1: rejects on refusal
-    await awaitServed(name);
+    await awaitRegistryVersion({ name, version, lookup: served });
 }
 
 // Law 3: the consumer's seat. Install the root artifact FROM THE REGISTRY and boot it.

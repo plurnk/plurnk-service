@@ -1,5 +1,5 @@
-// The deterministic gate drill. Applicable lint + unit tiers fan out across all
-// workspaces; intg scopes to changed workspaces only when the pre-push hook hands
+// The deterministic gate drill. Root-owned lint + unit policy runs first; applicable
+// package tiers fan out across all workspaces. Intg scopes only when the pre-push hook hands
 // us PLURNK_GATE_BASE. The package lifecycle policy rejects hidden synonym tiers,
 // so an omitted phase is explicitly inapplicable rather than silently undiscovered.
 import fs from "node:fs/promises";
@@ -105,6 +105,7 @@ const phase = async (title, script, subset) => {
 if (import.meta.main) {
     const t0 = Date.now();
     if (!(await phase("root", "root:lint", [rootTarget]))) process.exit(1);
+    if (!(await phase("root unit", "root:unit", [rootTarget]))) process.exit(1);
     if (!(await phase("lint", "test:lint", workspaces))) process.exit(1);
     if (!(await phase("unit", "test:unit", workspaces))) process.exit(1);
 
