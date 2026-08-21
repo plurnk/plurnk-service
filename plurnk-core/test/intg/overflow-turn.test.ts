@@ -118,8 +118,8 @@ test("overflow is a packetless _plurnk turn composed from ordinary FOLD operatio
         assert.match(recoverySource, /\n## FOLD0 /, "the source records the same ordinary FOLD operations");
         assert.match(
             recoverySource,
-            /\n## SEND0 \[102\]\nNext: YOU MUST FOLD or KILL ALL superseded, stale, or irrelevant log items before continuing\.$/,
-            "the successor must comprehensively curate before continuing without being restricted to a curation-only turn",
+            /\n## SEND0 \[102\]\nNext: YOU MUST ONLY FOLD or KILL ALL superseded, stale, or irrelevant log items in bulk in the next turn\.$/,
+            "the successor must dedicate its next turn to comprehensive bulk curation",
         );
 
         const tags = await db.test_log_tags_by_worker.all<{ coordinate: string; tag: string }>({ worker_id: workerId });

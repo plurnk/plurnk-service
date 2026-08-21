@@ -28,7 +28,7 @@ export type OverflowFold = {
 };
 
 const OVERFLOW_PLAN = "Automatically FOLD log bodies newly active at token-budget overflow.";
-const OVERFLOW_SEND = "Next: YOU MUST FOLD or KILL ALL superseded, stale, or irrelevant log items before continuing.";
+const OVERFLOW_SEND = "Next: YOU MUST ONLY FOLD or KILL ALL superseded, stale, or irrelevant log items in bulk in the next turn.";
 
 const targetFor = (coordinate: string): UrlPath => ({
     kind: "url",

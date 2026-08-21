@@ -484,7 +484,7 @@ test("an unrecoverable curation floor fails at 413 without provider I/O", async 
         assert.equal(turnOps?.folded, "[[1,-1]]", "overflow turnOps are ordinary folded source evidence");
         const source = JSON.parse(turnOps?.rx ?? "null").content as string;
         assert.match(source, /^# PLAN0\nAutomatically FOLD log bodies newly active at token-budget overflow\.\n/);
-        assert.match(source, /\n## SEND0 \[102\]\nNext: YOU MUST FOLD or KILL ALL superseded, stale, or irrelevant log items before continuing\.$/);
+        assert.match(source, /\n## SEND0 \[102\]\nNext: YOU MUST ONLY FOLD or KILL ALL superseded, stale, or irrelevant log items in bulk in the next turn\.$/);
     } finally { await db.close(); }
 });
 
