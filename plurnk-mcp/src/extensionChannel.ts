@@ -41,6 +41,7 @@ interface ExtensionChannelOptions {
 }
 
 type TaskNotificationHandler = (params: unknown) => void;
+type MessageExtra = Parameters<NonNullable<Transport["onmessage"]>>[1];
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
     value !== null && typeof value === "object" && !Array.isArray(value)
@@ -68,7 +69,7 @@ export default class ExtensionChannel {
         this.#options = options;
         this.#priorMessage = transport.onmessage;
         this.#priorClose = transport.onclose;
-        this.#messageHandler = (message): void => this.#receive(message);
+        this.#messageHandler = (message, extra): void => this.#receive(message, extra);
         this.#closeHandler = (): void => {
             this.#rejectAll(new SdkError(SdkErrorCode.ConnectionClosed, "MCP extension channel closed."));
             this.#priorClose?.();
@@ -169,10 +170,10 @@ export default class ExtensionChannel {
         }
     }
 
-    #receive(message: JSONRPCMessage): void {
+    #receive(message: JSONRPCMessage, extra?: MessageExtra): void {
         const record = asRecord(message);
         if (record === undefined) {
-            this.#priorMessage?.(message);
+            this.#priorMessage?.(message, extra);
             return;
         }
         const id = record.id;
@@ -223,7 +224,20 @@ export default class ExtensionChannel {
                 return;
             }
         }
-        this.#priorMessage?.(message);
+        if (record.id !== undefined && ("result" in record || "error" in record)) {
+            // {§mcp-core-matrix} The SDK defers notification callbacks but
+            // settles responses synchronously. A microtask checkpoint keeps
+            // coalesced notification/response frames in their wire order.
+            queueMicrotask(() => {
+                try {
+                    this.#priorMessage?.(message, extra);
+                } catch (cause) {
+                    this.#options.onError?.(asError(cause));
+                }
+            });
+            return;
+        }
+        this.#priorMessage?.(message, extra);
     }
 
     #settle(id: string, error?: unknown, value?: unknown): void {
